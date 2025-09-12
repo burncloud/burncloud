@@ -1,0 +1,25 @@
+# Rust编译输出
+/target/
+**/*.rs.bk
+
+# Cargo包管理器
+Cargo.lock
+Cargo.toml.orig
+
+# 编辑器/IDE相关
+/.idea/
+/.vscode/
+/*.swp
+*.sublime-workspace
+*.sublime-project
+
+# 日志和临时文件
+*.log
+
+# 覆盖率/测试输出
+/coverage/
+*.profraw
+
+# 其他
+.DS_Store
+Thumbs.db
