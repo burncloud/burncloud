@@ -478,16 +478,24 @@ html, body {
     border-radius: var(--radius-medium);
     margin: 0 var(--spacing-sm);
     transition: all var(--animation-fast) var(--animation-curve);
+    user-select: none;
 }
 
 .nav-item:hover {
     background: var(--bg-card-hover);
     color: var(--text-primary);
+    transform: translateX(4px);
+}
+
+.nav-item:active {
+    background: var(--bg-card-selected);
+    transform: translateX(2px) scale(0.98);
 }
 
 .nav-item.active {
     background: var(--accent-color);
     color: var(--text-on-accent);
+    box-shadow: var(--elevation-card);
 }
 
 .nav-item .icon {

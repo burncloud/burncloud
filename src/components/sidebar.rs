@@ -5,49 +5,45 @@ use crate::app::Route;
 
 #[component]
 pub fn Sidebar() -> Element {
+    let route = use_route::<Route>();
+
     rsx! {
         nav { class: "sidebar",
             div { class: "p-lg",
-                div { class: "flex items-center gap-md mb-xl",
-                    div { class: "text-title font-bold text-primary",
-                        "🔥 BurnCloud"
-                    }
-                }
-
                 div { class: "flex flex-col gap-xs",
                     Link {
                         to: Route::Dashboard {},
-                        class: "nav-item",
+                        class: if matches!(route, Route::Dashboard {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🏠" }
                         span { "仪表盘" }
                     }
                     Link {
                         to: Route::ModelManagement {},
-                        class: "nav-item",
+                        class: if matches!(route, Route::ModelManagement {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🧠" }
                         span { "模型管理" }
                     }
                     Link {
                         to: Route::DeployConfig {},
-                        class: "nav-item",
+                        class: if matches!(route, Route::DeployConfig {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "⚙️" }
                         span { "部署配置" }
                     }
                     Link {
                         to: Route::ServiceMonitor {},
-                        class: "nav-item",
+                        class: if matches!(route, Route::ServiceMonitor {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "📊" }
                         span { "监控日志" }
                     }
                     Link {
                         to: Route::ApiManagement {},
-                        class: "nav-item",
+                        class: if matches!(route, Route::ApiManagement {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🔗" }
                         span { "API管理" }
                     }
                     Link {
                         to: Route::SystemSettings {},
-                        class: "nav-item",
+                        class: if matches!(route, Route::SystemSettings {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🔧" }
                         span { "系统设置" }
                     }

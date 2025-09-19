@@ -30,6 +30,12 @@ pub enum Route {
 
 #[component]
 pub fn App() -> Element {
+    let window = dioxus::desktop::use_window();
+
+    use_effect(move || {
+        window.set_maximized(true);
+    });
+
     rsx! {
         Router::<Route> {}
     }
