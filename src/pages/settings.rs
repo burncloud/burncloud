@@ -12,12 +12,19 @@ pub fn Settings() -> Element {
                 div { 
                     class: "content-area",
                     div {
-                        class: "settings-page",
+                        class: "models-page",
                         div { class: "page-header",
                             h1 { "🔧 系统设置" }
                             div { class: "header-actions",
-                                button { class: "btn", "恢复默认" }
-                                button { class: "btn primary", "保存设置" }
+                                button { class: "btn primary", "💾 保存设置" }
+                                button { class: "btn secondary", "🔄 恢复默认" }
+                                button { class: "btn secondary", "📁 导入配置" }
+                                div { class: "search-box",
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "搜索设置...",
+                                    }
+                                }
                             }
                         }
                         div { class: "settings-content",

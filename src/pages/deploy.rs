@@ -12,10 +12,20 @@ pub fn Deploy() -> Element {
                 div { 
                     class: "content-area",
                     div {
-                        class: "deploy-page",
+                        class: "models-page",
                         div { class: "page-header",
                             h1 { "⚙️ 部署配置" }
-                            button { class: "btn primary", "🚀 快速部署" }
+                            div { class: "header-actions",
+                                button { class: "btn primary", "🚀 快速部署" }
+                                button { class: "btn secondary", "📝 新建配置" }
+                                button { class: "btn secondary", "📂 导入配置" }
+                                div { class: "search-box",
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "搜索配置...",
+                                    }
+                                }
+                            }
                         }
                         div { class: "deploy-content",
                             div { class: "config-section",

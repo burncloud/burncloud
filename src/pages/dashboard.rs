@@ -45,11 +45,21 @@ pub fn Dashboard() -> Element {
                 Sidebar {}
                 div { 
                     class: "content-area",
-                    div { 
-                        class: "dashboard",
+                    div {
+                        class: "models-page",
                         div { class: "page-header",
-                            h1 { "仪表盘" }
-                            p { "BurnCloud 大模型本地部署平台" }
+                            h1 { "🧠 仪表盘" }
+                            div { class: "header-actions",
+                                button { class: "btn primary", "➕ 添加模型" }
+                                button { class: "btn secondary", "🔄 刷新" }
+                                button { class: "btn secondary", "📁 浏览本地" }
+                                div { class: "search-box",
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "搜索功能...",
+                                    }
+                                }
+                            }
                         }
                         
                         div { class: "dashboard-grid",
@@ -137,18 +147,7 @@ pub fn Dashboard() -> Element {
                                 }
                             }
 
-                            // 快速操作卡片
-                            div { class: "card quick-actions",
-                                h3 { "⚡ 快速操作" }
-                                div { class: "action-buttons",
-                                    button { class: "action-btn primary", "🚀 快速部署" }
-                                    button { class: "action-btn", "📥 下载模型" }
-                                    button { class: "action-btn", "📊 查看监控" }
-                                    button { class: "action-btn", "⚙️ 系统设置" }
-                                }
-                            }
-
-                            // 最近活动卡片  
+                            // 最近活动卡片
                             div { class: "card recent-activity",
                                 h3 { "📝 最近活动" }
                                 div { class: "activity-list",

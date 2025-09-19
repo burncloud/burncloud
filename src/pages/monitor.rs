@@ -12,14 +12,19 @@ pub fn Monitor() -> Element {
                 div { 
                     class: "content-area",
                     div {
-                        class: "monitor-page",
+                        class: "models-page",
                         div { class: "page-header",
                             h1 { "📈 监控与日志" }
                             div { class: "header-actions",
-                                button { class: "btn secondary", "📈 实时监控" }
+                                button { class: "btn primary", "📈 实时监控" }
                                 button { class: "btn secondary", "📜 日志查看" }
-                                button { class: "btn secondary", "📈 性能报告" }
-                                button { class: "btn", "导出日志" }
+                                button { class: "btn secondary", "📊 性能报告" }
+                                div { class: "search-box",
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "搜索日志...",
+                                    }
+                                }
                             }
                         }
                         div { class: "monitor-content",
