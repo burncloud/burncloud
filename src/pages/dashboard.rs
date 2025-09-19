@@ -61,8 +61,10 @@ pub fn Dashboard() -> Element {
                                 }
                             }
                         }
-                        
-                        div { class: "dashboard-grid",
+
+                        div {
+                            class: "dashboard",
+                            div { class: "dashboard-grid",
                             // 系统状态卡片
                             div { class: "card system-status",
                                 h3 { "📊 系统状态" }
@@ -165,6 +167,7 @@ pub fn Dashboard() -> Element {
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 }

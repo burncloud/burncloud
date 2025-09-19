@@ -258,7 +258,7 @@ body {
 
 /* 页面头部 */
 .page-header {
-    padding: var(--spacing-3xl);
+    padding: var(--spacing-sm) var(--spacing-3xl);
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-primary);
     position: relative;
@@ -731,7 +731,10 @@ body {
 
 /* 模型管理页面样式 */
 .models-page {
-    padding: 0;
+    padding-top: var(--spacing-md);
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0;
 }
 
 .models-section {
