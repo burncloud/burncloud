@@ -75,7 +75,7 @@ pub const FLUENT_CSS: &str = r#"
     box-sizing: border-box;
 }
 
-body {
+html, body {
     margin: 0;
     padding: 0;
     font-family: var(--font-family);
@@ -84,6 +84,8 @@ body {
     background-color: var(--bg-canvas);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+    -ms-scroll-chaining: none;
 }
 
 /* Acrylic backdrop effect */
@@ -412,6 +414,7 @@ body {
     height: 100vh;
     background: var(--bg-canvas);
     overflow: hidden;
+    overscroll-behavior: none;
 }
 
 .app-body {

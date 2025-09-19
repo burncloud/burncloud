@@ -11,7 +11,8 @@ fn main() {
     let window = WindowBuilder::new()
         .with_title("BurnCloud - 大模型本地部署平台")
         .with_inner_size(dioxus::desktop::LogicalSize::new(1200.0, 800.0))
-        .with_resizable(true);
+        .with_resizable(true)
+        .with_decorations(false);
 
     let config = Config::new().with_window(window);
 
