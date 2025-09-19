@@ -4,17 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dioxus = { version = "0.5", features = ["desktop"] }
-dioxus-router = "0.5"
+dioxus = { version = "0.6.3", features = ["desktop"] }
+dioxus-router = "0.6.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 uuid = { version = "1.0", features = ["v4"] }
 image = "0.24"
-
-[build-dependencies]
-embed-resource = "2.4"
-
-[profile.release]
-lto = true
-opt-level = "s"
