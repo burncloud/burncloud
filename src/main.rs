@@ -2,6 +2,9 @@ use std::env;
 use anyhow::Result;
 
 fn main() -> Result<()> {
+    // 初始化日志
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
 
     match args.as_slice() {

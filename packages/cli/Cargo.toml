@@ -9,3 +9,4 @@ burncloud-core = { path = "../core" }
 clap = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
+log = { workspace = true }

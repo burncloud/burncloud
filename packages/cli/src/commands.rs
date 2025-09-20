@@ -1,7 +1,9 @@
 use clap::{Arg, Command};
 use burncloud_core::{ModelManager, ConfigManager};
+use burncloud_common::AutoUpdater;
 use anyhow::Result;
 use std::io::{self, Write};
+use log::{info, error};
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
@@ -26,6 +28,16 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         .subcommand(
             Command::new("server")
                 .about("启动服务器模式")
+        )
+        .subcommand(
+            Command::new("update")
+                .about("检查并更新应用程序")
+                .arg(
+                    Arg::new("check-only")
+                        .long("check-only")
+                        .help("仅检查更新，不执行更新")
+                        .action(clap::ArgAction::SetTrue)
+                )
         );
 
     let matches = app.try_get_matches_from(std::iter::once("burncloud".to_string()).chain(args.iter().cloned()))?;
@@ -77,8 +89,60 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 }
             }
         },
+        Some(("update", sub_m)) => {
+            let check_only = sub_m.get_flag("check-only");
+            handle_update_command(check_only).await?;
+        },
         _ => {
             show_help();
+        }
+    }
+
+    Ok(())
+}
+
+/// 处理更新命令
+async fn handle_update_command(check_only: bool) -> Result<()> {
+    info!("初始化自动更新器...");
+
+    let updater = AutoUpdater::with_default_config();
+
+    if check_only {
+        println!("检查更新中...");
+        match updater.check_for_updates().await {
+            Ok(true) => {
+                println!("✅ 发现新版本可用！");
+                println!("运行 'burncloud update' 来更新到最新版本");
+            }
+            Ok(false) => {
+                println!("✅ 已是最新版本");
+            }
+            Err(e) => {
+                error!("检查更新失败: {}", e);
+                println!("❌ 检查更新失败: {}", e);
+                let (github_url, gitee_url) = updater.get_download_links();
+                println!("你可以手动从以下地址下载最新版本:");
+                println!("  GitHub: {}", github_url);
+                println!("  Gitee:  {}", gitee_url);
+                return Err(e);
+            }
+        }
+    } else {
+        println!("正在更新 BurnCloud...");
+        match updater.update_with_fallback().await {
+            Ok(_) => {
+                println!("✅ 更新成功！");
+                println!("请重新启动应用程序以使用新版本");
+            }
+            Err(e) => {
+                error!("更新失败: {}", e);
+                println!("❌ 更新失败: {}", e);
+                let (github_url, gitee_url) = updater.get_download_links();
+                println!("你可以手动从以下地址下载最新版本:");
+                println!("  GitHub: {}", github_url);
+                println!("  Gitee:  {}", gitee_url);
+                return Err(e);
+            }
         }
     }
 
@@ -89,16 +153,19 @@ pub fn show_help() {
     println!("BurnCloud - AI模型部署和管理平台");
     println!("");
     println!("用法:");
-    println!("  burncloud                 - 启动GUI (Windows) / 显示帮助 (Linux)");
-    println!("  burncloud client          - 启动GUI客户端");
-    println!("  burncloud server          - 启动服务器");
-    println!("  burncloud code            - 编程模式");
-    println!("  burncloud pull <model>    - 下载模型");
-    println!("  burncloud run <model>     - 运行模型");
-    println!("  burncloud list            - 列出模型");
+    println!("  burncloud                     - 启动GUI (Windows) / 显示帮助 (Linux)");
+    println!("  burncloud client              - 启动GUI客户端");
+    println!("  burncloud server              - 启动服务器");
+    println!("  burncloud code                - 编程模式");
+    println!("  burncloud pull <model>        - 下载模型");
+    println!("  burncloud run <model>         - 运行模型");
+    println!("  burncloud list                - 列出模型");
+    println!("  burncloud update              - 更新应用程序");
+    println!("  burncloud update --check-only - 仅检查更新");
     println!("");
     println!("示例:");
     println!("  burncloud client");
     println!("  burncloud pull llama3.2");
     println!("  burncloud run gemma3");
+    println!("  burncloud update --check-only");
 }
