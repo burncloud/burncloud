@@ -1,22 +1,48 @@
-mod app;
-mod components;
-mod pages;
-mod styles;
+use std::env;
+use anyhow::Result;
 
-use app::App;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
 
-fn main() {
-    use dioxus::desktop::{Config, WindowBuilder};
+    match args.as_slice() {
+        [_] => {
+            // burncloud.exe (无参数)
+            #[cfg(all(windows, feature = "gui"))]
+            burncloud_client::launch_gui();
 
-    let window = WindowBuilder::new()
-        .with_title("BurnCloud - 大模型本地部署平台")
-        .with_inner_size(dioxus::desktop::LogicalSize::new(1200.0, 800.0))
-        .with_resizable(true)
-        .with_decorations(false);
+            #[cfg(not(all(windows, feature = "gui")))]
+            burncloud_cli::show_help();
+        },
+        [_, subcommand, _rest @ ..] => {
+            match subcommand.as_str() {
+                "client" => {
+                    #[cfg(feature = "gui")]
+                    burncloud_client::launch_gui();
 
-    let config = Config::new().with_window(window);
+                    #[cfg(not(feature = "gui"))]
+                    {
+                        println!("GUI功能未启用，请使用 --features gui 重新构建");
+                        std::process::exit(1);
+                    }
+                },
+                "server" => {
+                    burncloud_server::start_server().await?;
+                },
+                "code" => {
+                    burncloud_code::start_cli().await?;
+                },
+                _ => {
+                    // 处理其他命令 (pull, run, list 等)
+                    burncloud_cli::handle_command(&args[1..]).await?;
+                }
+            }
+        },
+        [] => {
+            // 空参数数组 (理论上不应该发生)
+            burncloud_cli::show_help();
+        }
+    }
 
-    dioxus::LaunchBuilder::desktop()
-        .with_cfg(config)
-        .launch(App);
+    Ok(())
 }

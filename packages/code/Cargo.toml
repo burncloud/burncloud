@@ -1,0 +1,10 @@
+[package]
+name = "burncloud-code"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-common = { path = "../common" }
+burncloud-core = { path = "../core" }
+tokio = { workspace = true }
+anyhow = { workspace = true }

@@ -1,0 +1,15 @@
+[package]
+name = "burncloud-client"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+gui = ["dioxus", "dioxus-router"]
+
+[dependencies]
+burncloud-common = { path = "../common" }
+burncloud-core = { path = "../core" }
+dioxus = { workspace = true, optional = true }
+dioxus-router = { workspace = true, optional = true }
+tokio = { workspace = true }
+serde = { workspace = true }

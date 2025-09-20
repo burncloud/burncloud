@@ -1,0 +1,6 @@
+{
+  "models_dir": "models",
+  "server_port": 8080,
+  "max_memory": 8192,
+  "gpu_enabled": false
+}
