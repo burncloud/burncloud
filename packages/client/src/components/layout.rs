@@ -1,13 +1,24 @@
-#[cfg(feature = "gui")]
 use dioxus::prelude::*;
+use dioxus_router::prelude::*;
 
-#[cfg(feature = "gui")]
+use crate::app::Route;
+use crate::components::{sidebar::Sidebar, title_bar::TitleBar};
+use crate::styles::FLUENT_CSS;
+
 #[component]
 pub fn Layout() -> Element {
     rsx! {
-        div {
-            style: "height: 100vh; display: flex; flex-direction: column;",
-            "布局组件"
+        head {
+            style { "{FLUENT_CSS}" }
+        }
+        div { class: "app-container",
+            TitleBar {}
+            div { class: "app-body",
+                Sidebar {}
+                main { class: "main-content",
+                    Outlet::<Route> {}
+                }
+            }
         }
     }
 }

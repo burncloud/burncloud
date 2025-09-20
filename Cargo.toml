@@ -28,7 +28,6 @@ edition = "2021"
 
 [features]
 default = []
-gui = ["burncloud-client/gui"]
 
 [[bin]]
 name = "burncloud"

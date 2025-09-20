@@ -1,40 +1,32 @@
 use std::env;
 use anyhow::Result;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     match args.as_slice() {
         [_] => {
             // burncloud.exe (无参数)
-            #[cfg(all(windows, feature = "gui"))]
+            #[cfg(windows)]
             burncloud_client::launch_gui();
 
-            #[cfg(not(all(windows, feature = "gui")))]
+            #[cfg(not(windows))]
             burncloud_cli::show_help();
         },
         [_, subcommand, _rest @ ..] => {
             match subcommand.as_str() {
                 "client" => {
-                    #[cfg(feature = "gui")]
                     burncloud_client::launch_gui();
-
-                    #[cfg(not(feature = "gui"))]
-                    {
-                        println!("GUI功能未启用，请使用 --features gui 重新构建");
-                        std::process::exit(1);
-                    }
                 },
                 "server" => {
-                    burncloud_server::start_server().await?;
+                    run_async_server()?;
                 },
                 "code" => {
-                    burncloud_code::start_cli().await?;
+                    run_async_code()?;
                 },
                 _ => {
                     // 处理其他命令 (pull, run, list 等)
-                    burncloud_cli::handle_command(&args[1..]).await?;
+                    run_async_cli(&args[1..])?;
                 }
             }
         },
@@ -45,4 +37,19 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[tokio::main]
+async fn run_async_server() -> Result<()> {
+    burncloud_server::start_server().await
+}
+
+#[tokio::main]
+async fn run_async_code() -> Result<()> {
+    burncloud_code::start_cli().await
+}
+
+#[tokio::main]
+async fn run_async_cli(args: &[String]) -> Result<()> {
+    burncloud_cli::handle_command(args).await
 }

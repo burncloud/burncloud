@@ -1,15 +1,50 @@
-#[cfg(feature = "gui")]
 use dioxus::prelude::*;
+use dioxus_router::prelude::*;
 
-#[cfg(feature = "gui")]
-pub fn launch_gui() {
-    // 确保在非async环境中启动GUI
-    std::thread::spawn(|| {
-        launch_gui_impl();
-    }).join().unwrap();
+use crate::components::layout::Layout;
+use crate::pages::{
+    dashboard::Dashboard,
+    models::ModelManagement,
+    deploy::DeployConfig,
+    monitor::ServiceMonitor,
+    api::ApiManagement,
+    settings::SystemSettings,
+};
+
+#[derive(Clone, Routable, Debug, PartialEq)]
+pub enum Route {
+    #[layout(Layout)]
+    #[route("/")]
+    Dashboard {},
+    #[route("/models")]
+    ModelManagement {},
+    #[route("/deploy")]
+    DeployConfig {},
+    #[route("/monitor")]
+    ServiceMonitor {},
+    #[route("/api")]
+    ApiManagement {},
+    #[route("/settings")]
+    SystemSettings {},
 }
 
-#[cfg(feature = "gui")]
+#[component]
+pub fn App() -> Element {
+    let window = dioxus::desktop::use_window();
+
+    use_effect(move || {
+        window.set_maximized(true);
+    });
+
+    rsx! {
+        Router::<Route> {}
+    }
+}
+
+pub fn launch_gui() {
+    launch_gui_impl();
+}
+
 fn launch_gui_impl() {
     use dioxus::desktop::{Config, WindowBuilder};
 
@@ -24,37 +59,4 @@ fn launch_gui_impl() {
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)
         .launch(App);
-}
-
-#[cfg(not(feature = "gui"))]
-pub fn launch_gui() {
-    println!("GUI功能未启用，请使用命令行模式");
-}
-
-#[cfg(feature = "gui")]
-pub fn App() -> Element {
-    rsx! {
-        div {
-            style: "height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);",
-            div {
-                style: "padding: 20px; color: white; text-align: center;",
-                h1 { "🚀 BurnCloud" }
-                h2 { "大模型本地部署平台" }
-                p { "GUI界面开发中..." }
-
-                div {
-                    style: "margin-top: 40px;",
-                    p { "功能模块:" }
-                    ul {
-                        style: "list-style: none; padding: 0;",
-                        li { "📊 仪表板" }
-                        li { "🤖 模型管理" }
-                        li { "⚙️ 设置" }
-                        li { "📈 监控" }
-                        li { "🚀 部署" }
-                    }
-                }
-            }
-        }
-    }
 }
