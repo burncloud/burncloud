@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 burncloud-common = { path = "../common" }
 burncloud-core = { path = "../core" }
+burncloud-auto-update = { path = "../../../burncloud-auto-update" }
 clap = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }

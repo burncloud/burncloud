@@ -1,6 +1,6 @@
 use clap::{Arg, Command};
 use burncloud_core::{ModelManager, ConfigManager};
-use burncloud_common::AutoUpdater;
+use burncloud_auto_update::AutoUpdater;
 use anyhow::Result;
 use std::io::{self, Write};
 use log::{info, error};

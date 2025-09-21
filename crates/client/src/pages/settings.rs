@@ -194,18 +194,33 @@ pub fn SystemSettings() -> Element {
                                     }
                                 }
 
-                                // 更新设置
+                                // 更新设置 - 临时禁用，因为正在其它地方编写自动更新
+                                // div {
+                                //     h4 { class: "text-body font-medium mb-md", "更新设置" }
+                                //     div { class: "flex flex-col gap-md",
+                                //         label { class: "flex items-center gap-sm cursor-pointer",
+                                //             input {
+                                //                 r#type: "checkbox",
+                                //                 checked: *auto_update.read(),
+                                //                 onchange: move |evt| auto_update.set(evt.checked())
+                                //             }
+                                //             span { "自动检查更新" }
+                                //         }
+                                //         label { class: "flex items-center gap-sm cursor-pointer",
+                                //             input {
+                                //                 r#type: "checkbox",
+                                //                 checked: *send_analytics.read(),
+                                //                 onchange: move |evt| send_analytics.set(evt.checked())
+                                //             }
+                                //             span { "发送匿名使用统计 (帮助改进产品)" }
+                                //         }
+                                //     }
+                                // }
+
+                                // 匿名统计设置 (保留)
                                 div {
-                                    h4 { class: "text-body font-medium mb-md", "更新设置" }
+                                    h4 { class: "text-body font-medium mb-md", "数据统计" }
                                     div { class: "flex flex-col gap-md",
-                                        label { class: "flex items-center gap-sm cursor-pointer",
-                                            input {
-                                                r#type: "checkbox",
-                                                checked: *auto_update.read(),
-                                                onchange: move |evt| auto_update.set(evt.checked())
-                                            }
-                                            span { "自动检查更新" }
-                                        }
                                         label { class: "flex items-center gap-sm cursor-pointer",
                                             input {
                                                 r#type: "checkbox",

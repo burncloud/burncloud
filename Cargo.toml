@@ -5,8 +5,7 @@ members = [
     "crates/client",
     "crates/cli",
     "crates/server",
-    "crates/code",
-    "crates/auto-update"
+    "crates/code"
 ]
 
 [workspace.dependencies]
@@ -44,6 +43,7 @@ burncloud-client = { path = "crates/client" }
 burncloud-cli = { path = "crates/cli" }
 burncloud-server = { path = "crates/server" }
 burncloud-code = { path = "crates/code" }
+burncloud-auto-update = { path = "../burncloud-auto-update" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 self_update = { workspace = true }
