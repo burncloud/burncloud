@@ -1,0 +1,212 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      should_release: ${{ steps.check_release.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag or input
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Check if release should be created
+        id: check_release
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          # Check if release already exists
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "Release $VERSION already exists"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Release $VERSION does not exist, will create"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Update Cargo.toml version
+        run: |
+          $version = "${{ needs.check-version.outputs.version }}"
+          $version = $version -replace '^v', ''
+
+          # Update root Cargo.toml
+          (Get-Content Cargo.toml) -replace 'version = "0\.1\.0"', "version = `"$version`"" | Set-Content Cargo.toml
+
+          # Update all crate Cargo.toml files
+          Get-ChildItem -Path "crates" -Recurse -Name "Cargo.toml" | ForEach-Object {
+            $file = "crates/$_"
+            (Get-Content $file) -replace 'version = "0\.1\.0"', "version = `"$version`"" | Set-Content $file
+          }
+
+      - name: Build release binary
+        run: |
+          cargo build --release --bin burncloud
+
+      - name: Create artifacts directory
+        run: mkdir artifacts
+
+      - name: Copy binary and create archive
+        run: |
+          $version = "${{ needs.check-version.outputs.version }}"
+          $archive_name = "burncloud-$version-windows-x64"
+
+          # Copy binary
+          Copy-Item "target/release/burncloud.exe" "artifacts/"
+
+          # Create zip archive
+          Compress-Archive -Path "artifacts/burncloud.exe" -DestinationPath "artifacts/$archive_name.zip"
+
+          # Create installer directory structure
+          New-Item -ItemType Directory -Path "artifacts/installer" -Force
+          Copy-Item "target/release/burncloud.exe" "artifacts/installer/"
+
+          # Create a simple batch installer
+          @"
+          @echo off
+          echo Installing BurnCloud $version...
+
+          set INSTALL_DIR=%PROGRAMFILES%\BurnCloud
+          if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+
+          copy burncloud.exe "%INSTALL_DIR%\"
+
+          echo.
+          echo BurnCloud has been installed to %INSTALL_DIR%
+          echo You may want to add this directory to your PATH.
+          echo.
+          pause
+          "@ | Out-File -FilePath "artifacts/installer/install.bat" -Encoding ASCII
+
+          # Create installer zip
+          Compress-Archive -Path "artifacts/installer/*" -DestinationPath "artifacts/$archive_name-installer.zip"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/
+
+  create-release:
+    needs: [check-version, build-windows]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+
+          # Get the latest tag before this one
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^$VERSION$" | head -n 1)
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "## What's Changed" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+
+            # Get commits between tags
+            git log --pretty=format:"- %s (%h)" "$PREV_TAG..$VERSION" >> CHANGELOG.md
+
+            # If no commits found, use commits since last tag
+            if [ ! -s CHANGELOG.md ] || [ $(wc -l < CHANGELOG.md) -eq 2 ]; then
+              echo "## What's Changed" > CHANGELOG.md
+              echo "" >> CHANGELOG.md
+              git log --pretty=format:"- %s (%h)" --max-count=10 >> CHANGELOG.md
+            fi
+          else
+            echo "## What's Changed" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "- Initial release" >> CHANGELOG.md
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-version.outputs.version }}
+          name: Release ${{ needs.check-version.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    needs: [check-version, create-release]
+    if: always() && needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify completion
+        run: |
+          if [ "${{ needs.create-release.result }}" = "success" ]; then
+            echo "✅ Release ${{ needs.check-version.outputs.version }} created successfully!"
+            echo "🎉 Windows binaries are now available for download."
+          else
+            echo "❌ Release creation failed."
+            exit 1
+          fi
