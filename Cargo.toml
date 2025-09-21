@@ -2,7 +2,6 @@
 members = [
     "crates/common",
     "crates/core",
-    "crates/client",
     "crates/cli",
     "crates/server",
     "crates/code"
@@ -39,11 +38,10 @@ path = "src/main.rs"
 [dependencies]
 burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }
-burncloud-client = { path = "crates/client" }
+burncloud-client = { path = "../burncloud-client" }
 burncloud-cli = { path = "crates/cli" }
 burncloud-server = { path = "crates/server" }
 burncloud-code = { path = "crates/code" }
-burncloud-auto-update = { path = "../burncloud-auto-update" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 self_update = { workspace = true }
