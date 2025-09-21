@@ -6,13 +6,13 @@
 
 ### 功能特性
 
-1. **自动更新模块** (`packages/common/src/auto_update.rs`)
+1. **自动更新模块** (`crates/common/src/auto_update.rs`)
    - 基于 GitHub Releases 的自动更新
    - 简洁的配置管理
    - 完整的错误处理
    - 手动下载链接回退
 
-2. **CLI 集成** (`packages/cli/src/commands.rs`)
+2. **CLI 集成** (`crates/cli/src/commands.rs`)
    - `burncloud update` - 执行更新
    - `burncloud update --check-only` - 仅检查更新
    - 用户友好的进度提示
@@ -146,11 +146,11 @@ pub async fn update_with_fallback(&self) -> Result<()> {
 ## 项目结构
 
 ```
-packages/common/src/
+crates/common/src/
 ├── auto_update.rs          # 自动更新核心模块
 ├── lib.rs                  # 模块导出
 
-packages/cli/src/
+crates/cli/src/
 ├── commands.rs             # CLI 命令处理 (包含 update 命令)
 
 doc/

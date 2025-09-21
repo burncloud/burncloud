@@ -91,7 +91,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         },
         Some(("update", sub_m)) => {
             let check_only = sub_m.get_flag("check-only");
-            handle_update_command(check_only).await?;
+            handle_update_command(check_only)?;
         },
         _ => {
             show_help();
@@ -101,15 +101,15 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// 处理更新命令
-async fn handle_update_command(check_only: bool) -> Result<()> {
+/// 处理更新命令（使用同步版本避免运行时冲突）
+fn handle_update_command(check_only: bool) -> Result<()> {
     info!("初始化自动更新器...");
 
     let updater = AutoUpdater::with_default_config();
 
     if check_only {
         println!("检查更新中...");
-        match updater.check_for_updates().await {
+        match updater.sync_check_for_updates() {
             Ok(true) => {
                 println!("✅ 发现新版本可用！");
                 println!("运行 'burncloud update' 来更新到最新版本");
@@ -124,12 +124,12 @@ async fn handle_update_command(check_only: bool) -> Result<()> {
                 println!("你可以手动从以下地址下载最新版本:");
                 println!("  GitHub: {}", github_url);
                 println!("  Gitee:  {}", gitee_url);
-                return Err(e);
+                return Err(anyhow::anyhow!("检查更新失败: {}", e));
             }
         }
     } else {
         println!("正在更新 BurnCloud...");
-        match updater.update_with_fallback().await {
+        match updater.sync_update() {
             Ok(_) => {
                 println!("✅ 更新成功！");
                 println!("请重新启动应用程序以使用新版本");
@@ -141,7 +141,7 @@ async fn handle_update_command(check_only: bool) -> Result<()> {
                 println!("你可以手动从以下地址下载最新版本:");
                 println!("  GitHub: {}", github_url);
                 println!("  Gitee:  {}", gitee_url);
-                return Err(e);
+                return Err(anyhow::anyhow!("更新失败: {}", e));
             }
         }
     }

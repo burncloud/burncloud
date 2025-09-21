@@ -1,7 +1,7 @@
 
   burncloud/
   ├── Cargo.toml (workspace)
-  ├── packages/
+  ├── crates/
   │   ├── core/           # 核心逻辑和数据结构
   │   ├── common/         # 共享工具和类型
   │   ├── server/         # 服务器后端

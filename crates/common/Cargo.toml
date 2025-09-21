@@ -11,5 +11,4 @@ tokio = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 dirs = { workspace = true }
-self_update = { workspace = true }
-log = { workspace = true }
+burncloud-auto-update = { path = "../auto-update" }

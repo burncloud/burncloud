@@ -58,8 +58,8 @@ async fn main() -> anyhow::Result<()> {
 ## 📁 项目结构
 
 ```
-├── packages/common/src/auto_update.rs  # 核心更新模块
-├── packages/cli/src/commands.rs        # CLI 命令集成
+├── crates/common/src/auto_update.rs  # 核心更新模块
+├── crates/cli/src/commands.rs        # CLI 命令集成
 ├── src/main.rs                         # 日志初始化
 ├── doc/
 │   ├── auto_update_api.md             # API 文档
