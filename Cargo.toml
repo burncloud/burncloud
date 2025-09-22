@@ -25,7 +25,7 @@ env_logger = "0.11"
 
 [package]
 name = "burncloud"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A cross-platform file sharing and synchronization tool"
 license = "MIT"
@@ -48,7 +48,7 @@ burncloud-core = "0.1.0"
 burncloud-cli = "0.1.0"
 burncloud-server = "0.1.0"
 burncloud-code = "0.1.0"
-burncloud-client = { path = "../burncloud-client", version = "0.1.2" }
+burncloud-client = "0.1.2"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 self_update = { workspace = true }
