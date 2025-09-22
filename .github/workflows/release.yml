@@ -16,7 +16,7 @@ env:
 
 jobs:
   check-version:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       should_release: ${{ steps.check_release.outputs.should_release }}
@@ -27,27 +27,30 @@ jobs:
 
       - name: Get version from tag or input
         id: get_version
+        shell: pwsh
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $VERSION = "${{ github.event.inputs.version }}"
+          } else {
+            $VERSION = "${{ github.ref }}" -replace "refs/tags/", ""
+          }
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
           echo "Version: $VERSION"
 
       - name: Check if release should be created
         id: check_release
+        shell: pwsh
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
+          $VERSION = "${{ steps.get_version.outputs.version }}"
           # Check if release already exists
-          if gh release view "$VERSION" > /dev/null 2>&1; then
+          try {
+            gh release view "$VERSION" 2>$null
             echo "Release $VERSION already exists"
-            echo "should_release=false" >> $GITHUB_OUTPUT
-          else
+            echo "should_release=false" >> $env:GITHUB_OUTPUT
+          } catch {
             echo "Release $VERSION does not exist, will create"
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          fi
+            echo "should_release=true" >> $env:GITHUB_OUTPUT
+          }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -140,7 +143,7 @@ jobs:
   create-release:
     needs: [check-version, build-windows]
     if: needs.check-version.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -153,34 +156,36 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        shell: pwsh
         run: |
-          VERSION="${{ needs.check-version.outputs.version }}"
+          $VERSION = "${{ needs.check-version.outputs.version }}"
 
           # Get the latest tag before this one
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^$VERSION$" | head -n 1)
+          $PREV_TAG = git tag --sort=-version:refname | Where-Object { $_ -ne $VERSION } | Select-Object -First 1
 
-          if [ -n "$PREV_TAG" ]; then
-            echo "## What's Changed" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
+          if ($PREV_TAG) {
+            "## What's Changed" | Out-File -FilePath CHANGELOG.md -Encoding utf8
+            "" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
 
             # Get commits between tags
-            git log --pretty=format:"- %s (%h)" "$PREV_TAG..$VERSION" >> CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" "$PREV_TAG..$VERSION" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
 
             # If no commits found, use commits since last tag
-            if [ ! -s CHANGELOG.md ] || [ $(wc -l < CHANGELOG.md) -eq 2 ]; then
-              echo "## What's Changed" > CHANGELOG.md
-              echo "" >> CHANGELOG.md
-              git log --pretty=format:"- %s (%h)" --max-count=10 >> CHANGELOG.md
-            fi
-          else
-            echo "## What's Changed" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            echo "- Initial release" >> CHANGELOG.md
-          fi
+            if (-not (Test-Path CHANGELOG.md) -or (Get-Content CHANGELOG.md).Count -eq 2) {
+              "## What's Changed" | Out-File -FilePath CHANGELOG.md -Encoding utf8
+              "" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+              git log --pretty=format:"- %s (%h)" --max-count=10 | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+            }
+          } else {
+            "## What's Changed" | Out-File -FilePath CHANGELOG.md -Encoding utf8
+            "" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+            "- Initial release" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+          }
 
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          cat CHANGELOG.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          $changelog = Get-Content CHANGELOG.md -Raw
+          "changelog<<EOF" >> $env:GITHUB_OUTPUT
+          $changelog >> $env:GITHUB_OUTPUT
+          "EOF" >> $env:GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -198,15 +203,16 @@ jobs:
   notify:
     needs: [check-version, create-release]
     if: always() && needs.check-version.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - name: Notify completion
+        shell: pwsh
         run: |
-          if [ "${{ needs.create-release.result }}" = "success" ]; then
+          if ("${{ needs.create-release.result }}" -eq "success") {
             echo "✅ Release ${{ needs.check-version.outputs.version }} created successfully!"
             echo "🎉 Windows binaries are now available for download."
-          else
+          } else {
             echo "❌ Release creation failed."
             exit 1
-          fi
+          }
