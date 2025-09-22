@@ -1,12 +1,19 @@
 [package]
 name = "burncloud-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+description = "Command-line interface for the BurnCloud platform"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+homepage = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+keywords = ["burncloud", "cli", "command-line"]
+categories = ["command-line-utilities"]
 
 [dependencies]
-burncloud-common = { path = "../common" }
-burncloud-core = { path = "../core" }
-burncloud-auto-update = { path = "../../../burncloud-auto-update" }
+burncloud-common = { path = "../common", version = "0.1.0" }
+burncloud-core = { path = "../core", version = "0.1.0" }
+burncloud-auto-update = { path = "../../../burncloud-auto-update", version = "0.1.0" }
 clap = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }

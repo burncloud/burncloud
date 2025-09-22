@@ -27,6 +27,13 @@ env_logger = "0.11"
 name = "burncloud"
 version = "0.1.0"
 edition = "2021"
+description = "A cross-platform file sharing and synchronization tool"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+homepage = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+keywords = ["file-sharing", "sync", "cloud", "p2p"]
+categories = ["command-line-utilities", "network-programming"]
 
 [features]
 default = []
@@ -36,12 +43,12 @@ name = "burncloud"
 path = "src/main.rs"
 
 [dependencies]
-burncloud-common = { path = "crates/common" }
-burncloud-core = { path = "crates/core" }
-burncloud-client = { path = "../burncloud-client" }
-burncloud-cli = { path = "crates/cli" }
-burncloud-server = { path = "crates/server" }
-burncloud-code = { path = "crates/code" }
+burncloud-common = "0.1.0"
+burncloud-core = "0.1.0"
+burncloud-cli = "0.1.0"
+burncloud-server = "0.1.0"
+burncloud-code = "0.1.0"
+burncloud-client = { path = "../burncloud-client", version = "0.1.2" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 self_update = { workspace = true }
