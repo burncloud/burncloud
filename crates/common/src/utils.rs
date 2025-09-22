@@ -1,6 +1,6 @@
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
-use anyhow::Result;
 
 pub fn ensure_dir_exists(path: &str) -> Result<()> {
     if !Path::new(path).exists() {

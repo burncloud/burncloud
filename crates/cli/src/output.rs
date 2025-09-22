@@ -11,7 +11,11 @@ pub fn format_model_list(models: &[&ModelInfo]) {
 
     for model in models {
         let size_str = format!("{}MB", model.size / 1024 / 1024);
-        let status = if model.downloaded { "已下载" } else { "未下载" };
+        let status = if model.downloaded {
+            "已下载"
+        } else {
+            "未下载"
+        };
         println!("{:<20} {:<10} {:<10}", model.name, size_str, status);
     }
 }

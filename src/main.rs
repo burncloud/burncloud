@@ -1,5 +1,5 @@
-use std::env;
 use anyhow::Result;
+use std::env;
 
 fn main() -> Result<()> {
     // 初始化日志
@@ -15,24 +15,24 @@ fn main() -> Result<()> {
 
             #[cfg(not(windows))]
             burncloud_cli::show_help();
-        },
+        }
         [_, subcommand, _rest @ ..] => {
             match subcommand.as_str() {
                 "client" => {
                     burncloud_client::launch_gui();
-                },
+                }
                 "server" => {
                     run_async_server()?;
-                },
+                }
                 "code" => {
                     run_async_code()?;
-                },
+                }
                 _ => {
                     // 处理其他命令 (pull, run, list 等)
                     run_async_cli(&args[1..])?;
                 }
             }
-        },
+        }
         [] => {
             // 空参数数组 (理论上不应该发生)
             burncloud_cli::show_help();

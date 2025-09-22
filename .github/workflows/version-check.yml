@@ -8,6 +8,9 @@ on:
       - 'crates/*/Cargo.toml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   check-version:
     runs-on: ubuntu-latest

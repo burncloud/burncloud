@@ -17,19 +17,19 @@ pub async fn start_cli() -> Result<()> {
             "exit" | "quit" => {
                 println!("再见！");
                 break;
-            },
+            }
             "help" => {
                 show_help();
-            },
+            }
             "generate" => {
                 println!("代码生成功能开发中...");
-            },
+            }
             "analyze" => {
                 println!("代码分析功能开发中...");
-            },
+            }
             "format" => {
                 println!("代码格式化功能开发中...");
-            },
+            }
             "" => continue,
             _ => {
                 println!("未知命令: {}，输入 'help' 查看可用命令", input);

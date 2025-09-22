@@ -1,9 +1,9 @@
-use clap::{Arg, Command};
-use burncloud_core::{ModelManager, ConfigManager};
-use burncloud_auto_update::AutoUpdater;
 use anyhow::Result;
+use burncloud_auto_update::AutoUpdater;
+use burncloud_core::{ConfigManager, ModelManager};
+use clap::{Arg, Command};
+use log::{error, info};
 use std::io::{self, Write};
-use log::{info, error};
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
@@ -13,34 +13,28 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         .subcommand(
             Command::new("pull")
                 .about("下载模型")
-                .arg(Arg::new("model").required(true).help("模型名称"))
+                .arg(Arg::new("model").required(true).help("模型名称")),
         )
         .subcommand(
             Command::new("run")
                 .about("运行模型")
                 .arg(Arg::new("model").required(true).help("模型名称"))
-                .arg(Arg::new("prompt").help("输入提示"))
+                .arg(Arg::new("prompt").help("输入提示")),
         )
+        .subcommand(Command::new("list").about("列出已下载的模型"))
+        .subcommand(Command::new("server").about("启动服务器模式"))
         .subcommand(
-            Command::new("list")
-                .about("列出已下载的模型")
-        )
-        .subcommand(
-            Command::new("server")
-                .about("启动服务器模式")
-        )
-        .subcommand(
-            Command::new("update")
-                .about("检查并更新应用程序")
-                .arg(
-                    Arg::new("check-only")
-                        .long("check-only")
-                        .help("仅检查更新，不执行更新")
-                        .action(clap::ArgAction::SetTrue)
-                )
+            Command::new("update").about("检查并更新应用程序").arg(
+                Arg::new("check-only")
+                    .long("check-only")
+                    .help("仅检查更新，不执行更新")
+                    .action(clap::ArgAction::SetTrue),
+            ),
         );
 
-    let matches = app.try_get_matches_from(std::iter::once("burncloud".to_string()).chain(args.iter().cloned()))?;
+    let matches = app.try_get_matches_from(
+        std::iter::once("burncloud".to_string()).chain(args.iter().cloned()),
+    )?;
 
     let config_manager = ConfigManager::new("config.json".to_string())?;
     let mut model_manager = ModelManager::new(config_manager.get_models_dir().to_string());
@@ -49,7 +43,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("pull", sub_m)) => {
             let model = sub_m.get_one::<String>("model").unwrap();
             model_manager.pull_model(model).await?;
-        },
+        }
         Some(("run", sub_m)) => {
             let model = sub_m.get_one::<String>("model").unwrap();
             let prompt = sub_m.get_one::<String>("prompt");
@@ -74,10 +68,12 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                     }
                 }
             } else {
-                let response = model_manager.run_model(model, prompt.map(|s| s.as_str())).await?;
+                let response = model_manager
+                    .run_model(model, prompt.map(|s| s.as_str()))
+                    .await?;
                 println!("{}", response);
             }
-        },
+        }
         Some(("list", _)) => {
             let models = model_manager.list_models();
             if models.is_empty() {
@@ -88,11 +84,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                     println!("  {} ({}MB)", model.name, model.size / 1024 / 1024);
                 }
             }
-        },
+        }
         Some(("update", sub_m)) => {
             let check_only = sub_m.get_flag("check-only");
             handle_update_command(check_only)?;
-        },
+        }
         _ => {
             show_help();
         }

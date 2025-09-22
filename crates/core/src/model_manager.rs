@@ -1,5 +1,5 @@
-use burncloud_common::{ModelInfo, BurnCloudError};
 use anyhow::Result;
+use burncloud_common::{BurnCloudError, ModelInfo};
 use std::collections::HashMap;
 
 pub struct ModelManager {
@@ -34,7 +34,9 @@ impl ModelManager {
     }
 
     pub async fn run_model(&self, name: &str, prompt: Option<&str>) -> Result<String> {
-        let model = self.models.get(name)
+        let model = self
+            .models
+            .get(name)
             .ok_or_else(|| BurnCloudError::ModelNotFound(name.to_string()))?;
 
         if !model.downloaded {

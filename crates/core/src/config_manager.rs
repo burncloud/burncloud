@@ -1,5 +1,5 @@
-use burncloud_common::{Config, load_config, save_config};
 use anyhow::Result;
+use burncloud_common::{load_config, save_config, Config};
 
 pub struct ConfigManager {
     config: Config,

@@ -1,5 +1,5 @@
-use burncloud_core::{ModelManager, ConfigManager};
 use anyhow::Result;
+use burncloud_core::{ConfigManager, ModelManager};
 
 pub async fn start_server() -> Result<()> {
     let config_manager = ConfigManager::new("config.json".to_string())?;
