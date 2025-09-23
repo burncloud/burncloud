@@ -1,6 +1,6 @@
 [package]
 name = "burncloud-server"
-version = "0.1.0"
+version = "0.1.9"
 edition = "2021"
 description = "Server component for the BurnCloud platform"
 license = "MIT"
@@ -11,8 +11,8 @@ keywords = ["burncloud", "server", "api"]
 categories = ["web-programming"]
 
 [dependencies]
-burncloud-common = { path = "../common", version = "0.1.0" }
-burncloud-core = { path = "../core", version = "0.1.0" }
+burncloud-common = { path = "../common", version = "0.1.9" }
+burncloud-core = { path = "../core", version = "0.1.9" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

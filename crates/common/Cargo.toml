@@ -1,6 +1,6 @@
 [package]
 name = "burncloud-common"
-version = "0.1.0"
+version = "0.1.9"
 edition = "2021"
 description = "Common utilities and types for the BurnCloud platform"
 license = "MIT"
