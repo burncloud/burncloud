@@ -43,11 +43,11 @@ name = "burncloud"
 path = "src/main.rs"
 
 [dependencies]
-burncloud-common = "0.1.0"
-burncloud-core = "0.1.0"
-burncloud-cli = "0.1.0"
-burncloud-server = "0.1.0"
-burncloud-code = "0.1.0"
+burncloud-common = { path = "crates/common" }
+burncloud-core = { path = "crates/core" }
+burncloud-cli = { path = "crates/cli" }
+burncloud-server = { path = "crates/server" }
+burncloud-code = { path = "crates/code" }
 burncloud-client = "0.1.3"
 tokio = { workspace = true }
 anyhow = { workspace = true }
