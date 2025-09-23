@@ -187,6 +187,16 @@ jobs:
           $changelog >> $env:GITHUB_OUTPUT
           "EOF" >> $env:GITHUB_OUTPUT
 
+      - name: Debug artifacts
+        shell: pwsh
+        run: |
+          echo "Listing artifacts directory:"
+          Get-ChildItem -Path artifacts -Recurse
+          echo "Current directory:"
+          Get-Location
+          echo "Files in current directory:"
+          Get-ChildItem
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
