@@ -11,6 +11,9 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -42,17 +45,18 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = "${{ steps.get_version.outputs.version }}"
-          # Check if release already exists
-          try {
-            gh release view "$VERSION" 2>$null
+          # Use gh exit code to detect existence (avoids non-terminating errors)
+          gh release view "$VERSION" 1>$null 2>$null
+          if ($LASTEXITCODE -eq 0) {
             echo "Release $VERSION already exists"
             echo "should_release=false" >> $env:GITHUB_OUTPUT
-          } catch {
+          } else {
             echo "Release $VERSION does not exist, will create"
             echo "should_release=true" >> $env:GITHUB_OUTPUT
           }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-windows:
     needs: check-version

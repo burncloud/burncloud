@@ -1,6 +1,6 @@
 # BurnCloud - 大模型本地部署平台
 
-BurnCloud 是一个基于 Rust 和 Dioxus 构建的现代化大语言模型本地部署平台，提供了直观的用户界面来管理和部署如 Qwen、DeepSeek 等大语言模型。
+BurnCloud 是一个基于 Rust 和 Dioxus 构建的现代化大语言模型本地部署平台，提供了直观的用户界面来管理和部署如 Qwen、DeepSeek、Llama 等大语言模型。
 
 ## 🎨 设计特性
 
