@@ -115,7 +115,9 @@ jobs:
       - name: Copy binary and create archive
         run: |
           $version = "${{ needs.check-version.outputs.version }}"
-          $archive_name = "burncloud-$version-windows-x64"
+          # Use Rust target triple naming to match self_update expectations
+          $target = "x86_64-pc-windows-msvc"
+          $archive_name = "burncloud-$version-$target"
 
           # Copy binary
           Copy-Item "target/release/burncloud.exe" "artifacts/"
@@ -144,8 +146,9 @@ jobs:
           pause
           "@ | Out-File -FilePath "artifacts/installer/install.bat" -Encoding ASCII
 
-          # Create installer zip
-          Compress-Archive -Path "artifacts/installer/*" -DestinationPath "artifacts/$archive_name-installer.zip"
+          # Create installer zip (do not include target triple to avoid updater matching it)
+          $installer_name = "burncloud-$version-installer"
+          Compress-Archive -Path "artifacts/installer/*" -DestinationPath "artifacts/$installer_name.zip"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -87,7 +87,12 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         }
         Some(("update", sub_m)) => {
             let check_only = sub_m.get_flag("check-only");
-            handle_update_command(check_only)?;
+            let res = tokio::task::spawn_blocking(move || handle_update_command(check_only)).await;
+            match res {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(anyhow::anyhow!(format!("更新线程失败: {:?}", e))),
+            }
         }
         _ => {
             show_help();
