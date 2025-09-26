@@ -13,7 +13,7 @@ categories = ["command-line-utilities"]
 [dependencies]
 burncloud-common = { path = "../common", version = "0.1.9" }
 burncloud-core = { path = "../core", version = "0.1.9" }
-burncloud-auto-update = "0.1.1"
+burncloud-auto-update = "0.1.2"
 clap = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }

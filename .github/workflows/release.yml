@@ -122,8 +122,8 @@ jobs:
           # Copy binary
           Copy-Item "target/release/burncloud.exe" "artifacts/"
 
-          # Create zip archive
-          Compress-Archive -Path "artifacts/burncloud.exe" -DestinationPath "artifacts/$archive_name.zip"
+          # Create zip archive (use NoCompression to ensure compatibility with Rust zip extraction)
+          Compress-Archive -Path "artifacts/burncloud.exe" -DestinationPath "artifacts/$archive_name.zip" -CompressionLevel NoCompression
 
           # Create installer directory structure
           New-Item -ItemType Directory -Path "artifacts/installer" -Force
@@ -148,7 +148,7 @@ jobs:
 
           # Create installer zip (do not include target triple to avoid updater matching it)
           $installer_name = "burncloud-$version-installer"
-          Compress-Archive -Path "artifacts/installer/*" -DestinationPath "artifacts/$installer_name.zip"
+          Compress-Archive -Path "artifacts/installer/*" -DestinationPath "artifacts/$installer_name.zip" -CompressionLevel NoCompression
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
