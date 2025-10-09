@@ -10,7 +10,6 @@ Cargo.lock
 # IDEs
 .claude
 .vscode
-.specify
 .idea/
 *.swp
 *.swo
