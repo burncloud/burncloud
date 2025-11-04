@@ -4,7 +4,7 @@ use dioxus_router::prelude::*;
 use crate::components::layout::Layout;
 use crate::pages::{
     dashboard::Dashboard,
-    models::ModelManagement,
+    // models::ModelManagement,  // TODO: 未实现
     deploy::DeployConfig,
     monitor::ServiceMonitor,
     api::ApiManagement,
@@ -17,8 +17,8 @@ pub enum Route {
     #[layout(Layout)]
     #[route("/")]
     Dashboard {},
-    #[route("/models")]
-    ModelManagement {},
+    // #[route("/models")]
+    // ModelManagement {},  // TODO: 未实现
     #[route("/deploy")]
     DeployConfig {},
     #[route("/monitor")]
