@@ -12,21 +12,21 @@ categories = ["network-programming", "api-bindings"]
 
 [dependencies]
 # HTTP 客户端，用于下载 aria2 和 RPC 通信
-reqwest = { version = "0.11", features = ["json"] }
+reqwest.workspace = true
 
 # 序列化和反序列化
 serde.workspace = true
 serde_json.workspace = true
 
 # ZIP 文件解压
-zip = "0.6"
+zip.workspace = true
 
 # 异步运行时
 tokio.workspace = true
 
 [dev-dependencies]
 # 测试框架
-tokio-test = "0.4"
+tokio-test.workspace = true
 
 [lib]
 name = "burncloud_download_aria2"

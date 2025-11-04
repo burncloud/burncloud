@@ -21,4 +21,4 @@ name = "burncloud-client-tray"
 path = "src/main.rs"
 
 [dependencies]
-systray = "0.4.0"
+systray.workspace = true
