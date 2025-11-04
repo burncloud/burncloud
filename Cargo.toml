@@ -75,6 +75,27 @@ dioxus-desktop = "0.6.3"
 self_update = { version = "0.42.0", features = ["archive-zip"] }
 systray = "0.4.0"
 
+# Internal crates
+burncloud-auto-update = { path = "crates/auto-update" }
+burncloud-cli = { path = "crates/cli" }
+burncloud-client = { path = "crates/client" }
+burncloud-client-api = { path = "crates/client-api" }
+burncloud-client-dashboard = { path = "crates/client-dashboard" }
+burncloud-client-deploy = { path = "crates/client-deploy" }
+burncloud-client-models = { path = "crates/client-models" }
+burncloud-client-monitor = { path = "crates/client-monitor" }
+burncloud-client-settings = { path = "crates/client-settings" }
+burncloud-client-shared = { path = "crates/client-shared" }
+burncloud-client-tray = { path = "crates/client-tray" }
+burncloud-code = { path = "crates/code" }
+burncloud-common = { path = "crates/common" }
+burncloud-core = { path = "crates/core" }
+burncloud-database = { path = "crates/database" }
+burncloud-database-download = { path = "crates/database-download" }
+burncloud-database-models = { path = "crates/database-models" }
+burncloud-server = { path = "crates/server" }
+burncloud-service-models = { path = "crates/service-models" }
+
 [package]
 name = "burncloud"
 version = "0.1.17"
@@ -95,12 +116,12 @@ name = "burncloud"
 path = "src/main.rs"
 
 [dependencies]
-burncloud-common = { path = "crates/common" }
-burncloud-core = { path = "crates/core" }
-burncloud-cli = { path = "crates/cli" }
-burncloud-server = { path = "crates/server" }
-burncloud-code = { path = "crates/code" }
-burncloud-client = { path = "crates/client" }
+burncloud-common.workspace = true
+burncloud-core.workspace = true
+burncloud-cli.workspace = true
+burncloud-server.workspace = true
+burncloud-code.workspace = true
+burncloud-client.workspace = true
 
 tokio.workspace = true
 anyhow.workspace = true

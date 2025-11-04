@@ -11,7 +11,7 @@ keywords = ["burncloud", "server", "api"]
 categories = ["web-programming"]
 
 [dependencies]
-burncloud-common = { path = "../common" }
-burncloud-core = { path = "../core" }
+burncloud-common.workspace = true
+burncloud-core.workspace = true
 tokio.workspace = true
 anyhow.workspace = true

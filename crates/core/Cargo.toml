@@ -11,6 +11,6 @@ keywords = ["burncloud", "core", "model-management"]
 categories = ["development-tools"]
 
 [dependencies]
-burncloud-common = { path = "../common" }
+burncloud-common.workspace = true
 tokio.workspace = true
 anyhow.workspace = true

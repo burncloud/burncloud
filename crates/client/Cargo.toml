@@ -8,14 +8,14 @@ repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
 [dependencies]
-burncloud-client-api = { path = "../client-api" }
-burncloud-client-dashboard = { path = "../client-dashboard" }
-burncloud-client-deploy = { path = "../client-deploy" }
-burncloud-client-models = { path = "../client-models" }
-burncloud-client-monitor = { path = "../client-monitor" }
-burncloud-client-settings = { path = "../client-settings" }
-burncloud-client-shared = { path = "../client-shared" }
-burncloud-client-tray = { path = "../client-tray" }
+burncloud-client-api.workspace = true
+burncloud-client-dashboard.workspace = true
+burncloud-client-deploy.workspace = true
+burncloud-client-models.workspace = true
+burncloud-client-monitor.workspace = true
+burncloud-client-settings.workspace = true
+burncloud-client-shared.workspace = true
+burncloud-client-tray.workspace = true
 dioxus.workspace = true
 dioxus-router.workspace = true
 tokio.workspace = true

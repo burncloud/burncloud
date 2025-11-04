@@ -33,9 +33,9 @@ thiserror.workspace = true
 sha2.workspace = true
 md5.workspace = true
 futures-util.workspace = true
-burncloud-service-models = { path = "../service-models" }
-burncloud-database = { path = "../database" }
-burncloud-database-models = { path = "../database-models" }
+burncloud-service-models.workspace = true
+burncloud-database.workspace = true
+burncloud-database-models.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
