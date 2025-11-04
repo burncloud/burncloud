@@ -11,7 +11,7 @@ authors = ["burncloud contributors"]
 burncloud-client-api = "0.1.2"
 burncloud-client-dashboard = "0.1.2"
 burncloud-client-deploy = "0.1.2" 
-burncloud-client-models = { path = "../burncloud-client-models" }
+burncloud-client-models = { path = "../client-models" }
 burncloud-client-monitor = "0.1.2" 
 burncloud-client-settings = "0.1.2" 
 burncloud-client-shared = "0.1.3"

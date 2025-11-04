@@ -1,27 +1,27 @@
 [workspace]
 members = [
-    "crates/burncloud-auto-update",
-    "crates/burncloud-cli",
-    "crates/burncloud-client",
-    "crates/burncloud-client-api",
-    "crates/burncloud-client-dashboard",
-    "crates/burncloud-client-deploy",
-    "crates/burncloud-client-models",
-    "crates/burncloud-client-monitor",
-    "crates/burncloud-client-settings",
-    "crates/burncloud-client-shared",
-    "crates/burncloud-client-tray",
-    "crates/burncloud-code",
-    "crates/burncloud-common",
-    "crates/burncloud-core",
-    "crates/burncloud-database",
-    "crates/burncloud-database-download",
-    "crates/burncloud-database-models",
-    "crates/burncloud-download",
-    "crates/burncloud-download-aria2",
-    "crates/burncloud-server",
-    "crates/burncloud-service-models",
-    "crates/burncloud-service-monitor",
+    "crates/auto-update",
+    "crates/cli",
+    "crates/client",
+    "crates/client-api",
+    "crates/client-dashboard",
+    "crates/client-deploy",
+    "crates/client-models",
+    "crates/client-monitor",
+    "crates/client-settings",
+    "crates/client-shared",
+    "crates/client-tray",
+    "crates/code",
+    "crates/common",
+    "crates/core",
+    "crates/database",
+    "crates/database-download",
+    "crates/database-models",
+    "crates/download",
+    "crates/download-aria2",
+    "crates/server",
+    "crates/service-models",
+    "crates/service-monitor",
 ]
 
 [workspace.dependencies]
@@ -55,12 +55,12 @@ name = "burncloud"
 path = "src/main.rs"
 
 [dependencies]
-burncloud-common = { path = "crates/burncloud-common" }
-burncloud-core = { path = "crates/burncloud-core" }
-burncloud-cli = { path = "crates/burncloud-cli" }
-burncloud-server = { path = "crates/burncloud-server" }
-burncloud-code = { path = "crates/burncloud-code" }
-burncloud-client = { path = "crates/burncloud-client" }
+burncloud-common = { path = "crates/common" }
+burncloud-core = { path = "crates/core" }
+burncloud-cli = { path = "crates/cli" }
+burncloud-server = { path = "crates/server" }
+burncloud-code = { path = "crates/code" }
+burncloud-client = { path = "crates/client" }
 
 tokio.workspace = true
 anyhow.workspace = true

@@ -33,9 +33,9 @@ thiserror = "1.0"
 sha2 = "0.10"
 md5 = "0.7"
 futures-util = "0.3"
-burncloud-service-models = { path = "../burncloud-service-models" }
-burncloud-database = { path = "../burncloud-database" }
-burncloud-database-models = { path = "../burncloud-database-models" }
+burncloud-service-models = { path = "../service-models" }
+burncloud-database = { path = "../database" }
+burncloud-database-models = { path = "../database-models" }
 
 [dev-dependencies]
 tempfile = "3.8"
