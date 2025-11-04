@@ -1,8 +1,6 @@
 # Download test
 *.iso
 *.aria2
-download
-downloads
 
 # Rust build artifacts
 /target/

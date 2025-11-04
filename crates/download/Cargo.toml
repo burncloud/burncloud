@@ -1,0 +1,12 @@
+[package]
+name = "burncloud-download"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database-download = { path = "../database-download" }
+burncloud-download-aria2 = { path = "../download-aria2" }
+burncloud-database = { path = "../database" }
+tokio.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
