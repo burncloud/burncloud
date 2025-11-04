@@ -8,19 +8,19 @@ repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
 [dependencies]
-burncloud-client-api = "0.1.2"
-burncloud-client-dashboard = "0.1.2"
-burncloud-client-deploy = "0.1.2" 
+burncloud-client-api = { path = "../client-api" }
+burncloud-client-dashboard = { path = "../client-dashboard" }
+burncloud-client-deploy = { path = "../client-deploy" }
 burncloud-client-models = { path = "../client-models" }
-burncloud-client-monitor = "0.1.2" 
-burncloud-client-settings = "0.1.2" 
-burncloud-client-shared = "0.1.3"
-burncloud-client-tray = "0.1.3"
+burncloud-client-monitor = { path = "../client-monitor" }
+burncloud-client-settings = { path = "../client-settings" }
+burncloud-client-shared = { path = "../client-shared" }
+burncloud-client-tray = { path = "../client-tray" }
 dioxus.workspace = true
 dioxus-router.workspace = true
 tokio.workspace = true
 serde.workspace = true
-once_cell = "1.19"
+once_cell.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winuser"] }    
+winapi.workspace = true    
