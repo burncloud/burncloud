@@ -8,10 +8,10 @@ repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
 [dependencies]
-tokio = { version = "1.0", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-thiserror = "1.0"
-async-trait = "0.1"
+tokio.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["pdh", "psapi", "winbase", "winnt", "fileapi", "handleapi", "winuser", "winerror", "sysinfoapi", "winreg"] }

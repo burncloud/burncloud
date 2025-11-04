@@ -8,4 +8,4 @@ repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
 [dependencies]
-dioxus = { version = "0.6.3", features = ["desktop"] }
+dioxus.workspace = true
