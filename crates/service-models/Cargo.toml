@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database-models = { path = "../database-models" }
-burncloud-database = { path = "../database" }
+burncloud-database-models.workspace = true
+burncloud-database.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

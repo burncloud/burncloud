@@ -11,9 +11,9 @@ keywords = ["burncloud", "cli", "command-line"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-burncloud-common = { path = "../common" }
-burncloud-core = { path = "../core" }
-burncloud-auto-update = { path = "../auto-update" }
+burncloud-common.workspace = true
+burncloud-core.workspace = true
+burncloud-auto-update.workspace = true
 clap.workspace = true
 tokio.workspace = true
 anyhow.workspace = true

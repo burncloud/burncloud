@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database = { path = "../database" }
+burncloud-database.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true
