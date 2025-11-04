@@ -1,0 +1,128 @@
+/* BurnCloud Client API Styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+#app {
+    min-height: 100vh;
+    padding: 20px;
+}
+
+/* Typography */
+.text-large-title {
+    font-size: 2.5rem;
+    line-height: 1.2;
+}
+
+.text-subtitle {
+    font-size: 1.25rem;
+    line-height: 1.4;
+}
+
+.text-caption {
+    font-size: 0.875rem;
+    line-height: 1.3;
+}
+
+.font-bold {
+    font-weight: 700;
+}
+
+.font-semibold {
+    font-weight: 600;
+}
+
+.font-medium {
+    font-weight: 500;
+}
+
+/* Colors */
+.text-primary {
+    color: #1a73e8;
+}
+
+.text-secondary {
+    color: #666;
+}
+
+/* Layout */
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-content {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+/* Spacing */
+.m-0 { margin: 0; }
+.mt-sm { margin-top: 0.5rem; }
+.mb-md { margin-bottom: 1rem; }
+.p-md { padding: 1rem; }
+.p-lg { padding: 1.5rem; }
+
+/* Flexbox */
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.gap-md {
+    gap: 1rem;
+}
+
+/* Border */
+.border-b {
+    border-bottom: 1px solid #eee;
+}
+
+/* Status indicators */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-running {
+    background-color: #e8f5e8;
+    color: #2e7d2e;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: currentColor;
+}

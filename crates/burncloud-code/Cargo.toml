@@ -1,0 +1,17 @@
+[package]
+name = "burncloud-code"
+version = "0.1.9"
+edition = "2021"
+description = "Code management and execution for the BurnCloud platform"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+homepage = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+keywords = ["burncloud", "code", "execution"]
+categories = ["development-tools"]
+
+[dependencies]
+burncloud-common = { path = "../burncloud-common" }
+burncloud-core = { path = "../burncloud-core" }
+tokio.workspace = true
+anyhow.workspace = true

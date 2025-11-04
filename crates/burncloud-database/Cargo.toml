@@ -1,0 +1,35 @@
+[package]
+name = "burncloud-database"
+version = "0.1.0"
+edition = "2021"
+authors = ["BurnCloud Team <team@burncloud.com>"]
+description = "Core database abstractions and traits for BurnCloud AI management system"
+documentation = "https://docs.rs/burncloud-database"
+homepage = "https://github.com/burncloud/burncloud-database"
+repository = "https://github.com/burncloud/burncloud-database"
+license = "MIT OR Apache-2.0"
+keywords = ["database", "ai", "model-management", "burncloud", "async"]
+categories = ["database", "api-bindings", "development-tools"]
+readme = "README.md"
+
+[dependencies]
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+tokio.workspace = true
+async-trait = "0.1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5.0"
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "default_location"
+path = "examples/default_location.rs"

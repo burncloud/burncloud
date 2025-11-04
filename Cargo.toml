@@ -1,0 +1,67 @@
+[workspace]
+members = [
+    "crates/burncloud-auto-update",
+    "crates/burncloud-cli",
+    "crates/burncloud-client",
+    "crates/burncloud-client-api",
+    "crates/burncloud-client-dashboard",
+    "crates/burncloud-client-deploy",
+    "crates/burncloud-client-models",
+    "crates/burncloud-client-monitor",
+    "crates/burncloud-client-settings",
+    "crates/burncloud-client-shared",
+    "crates/burncloud-client-tray",
+    "crates/burncloud-code",
+    "crates/burncloud-common",
+    "crates/burncloud-core",
+    "crates/burncloud-database",
+    "crates/burncloud-database-download",
+    "crates/burncloud-database-models",
+    "crates/burncloud-download",
+    "crates/burncloud-download-aria2",
+    "crates/burncloud-server",
+    "crates/burncloud-service-models",
+    "crates/burncloud-service-monitor",
+]
+
+[workspace.dependencies]
+anyhow = "1.0"
+env_logger = "0.11"
+log = "0.4"
+semver = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+clap = { version = "4.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+
+[package]
+name = "burncloud"
+version = "0.1.17"
+edition = "2021"
+description = "A cross-platform file sharing and synchronization tool"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+homepage = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+keywords = ["file-sharing", "sync", "cloud", "p2p"]
+categories = ["command-line-utilities", "network-programming"]
+
+[features]
+default = []
+
+[[bin]]
+name = "burncloud"
+path = "src/main.rs"
+
+[dependencies]
+burncloud-common = { path = "crates/burncloud-common" }
+burncloud-core = { path = "crates/burncloud-core" }
+burncloud-cli = { path = "crates/burncloud-cli" }
+burncloud-server = { path = "crates/burncloud-server" }
+burncloud-code = { path = "crates/burncloud-code" }
+burncloud-client = { path = "crates/burncloud-client" }
+
+tokio.workspace = true
+anyhow.workspace = true
+env_logger.workspace = true
