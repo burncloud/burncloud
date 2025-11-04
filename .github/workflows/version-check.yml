@@ -1,0 +1,101 @@
+name: Version Check and Auto Tag
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'Cargo.toml'
+      - 'crates/*/Cargo.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+          echo "numeric_version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: v$VERSION"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          if git tag --list | grep -q "^$VERSION$"; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $VERSION already exists"
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "Tag $VERSION does not exist"
+          fi
+
+      - name: Get previous version
+        id: get_previous_version
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          # Get the latest tag
+          LATEST_TAG=$(git tag --sort=-version:refname | head -n 1)
+          if [ -n "$LATEST_TAG" ]; then
+            echo "previous_version=$LATEST_TAG" >> $GITHUB_OUTPUT
+            echo "Previous version: $LATEST_TAG"
+          else
+            echo "previous_version=none" >> $GITHUB_OUTPUT
+            echo "No previous version found"
+          fi
+
+      - name: Compare versions
+        id: compare_versions
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          CURRENT="${{ steps.get_version.outputs.numeric_version }}"
+          PREVIOUS="${{ steps.get_previous_version.outputs.previous_version }}"
+
+          if [ "$PREVIOUS" = "none" ]; then
+            echo "should_create_tag=true" >> $GITHUB_OUTPUT
+            echo "reason=Initial version" >> $GITHUB_OUTPUT
+          else
+            # Remove 'v' prefix from previous version for comparison
+            PREVIOUS_NUM=$(echo "$PREVIOUS" | sed 's/^v//')
+
+            # Simple version comparison (assumes semantic versioning)
+            if [ "$CURRENT" != "$PREVIOUS_NUM" ]; then
+              echo "should_create_tag=true" >> $GITHUB_OUTPUT
+              echo "reason=Version changed from $PREVIOUS to v$CURRENT" >> $GITHUB_OUTPUT
+            else
+              echo "should_create_tag=false" >> $GITHUB_OUTPUT
+              echo "reason=Version unchanged" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Create git tag
+        if: steps.compare_versions.outputs.should_create_tag == 'true'
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create annotated tag
+          git tag -a "$VERSION" -m "Release $VERSION - ${{ steps.compare_versions.outputs.reason }}"
+          git push origin "$VERSION"
+
+          echo "✅ Created and pushed tag: $VERSION"
+
+      - name: Summary
+        run: |
+          echo "## Version Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current Version**: ${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Previous Version**: ${{ steps.get_previous_version.outputs.previous_version || 'none' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag Exists**: ${{ steps.check_tag.outputs.tag_exists }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Should Create Tag**: ${{ steps.compare_versions.outputs.should_create_tag || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Reason**: ${{ steps.compare_versions.outputs.reason || 'N/A' }}" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,12 @@
+[package]
+name = "burncloud-database-download"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database = { path = "../burncloud-database" }
+serde.workspace = true
+serde_json.workspace = true
+sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio-rustls", "chrono"] }
+tokio.workspace = true
+chrono = { version = "0.4", features = ["serde"] }

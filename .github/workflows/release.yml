@@ -1,0 +1,265 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-version:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      should_release: ${{ steps.check_release.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag or input
+        id: get_version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $VERSION = "${{ github.event.inputs.version }}"
+          } else {
+            $VERSION = "${{ github.ref }}" -replace "refs/tags/", ""
+          }
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Check if release should be created
+        id: check_release
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.get_version.outputs.version }}"
+          $REPO = "${{ github.repository }}"
+          $uri = "https://api.github.com/repos/$REPO/releases/tags/$VERSION"
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'User-Agent' = 'actions' }
+          $ProgressPreference = 'SilentlyContinue'
+          try {
+            $res = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET -ErrorAction Stop
+            echo "Release $VERSION already exists (id: $($res.id))"
+            echo "should_release=false" >> $env:GITHUB_OUTPUT
+          } catch {
+            $code = $_.Exception.Response.StatusCode.value__
+            if ($code -eq 404) {
+              echo "Release $VERSION does not exist, will create"
+              echo "should_release=true" >> $env:GITHUB_OUTPUT
+            } else {
+              echo "Unexpected API error status: $code. Assuming should release."
+              echo "should_release=true" >> $env:GITHUB_OUTPUT
+            }
+          }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Update Cargo.toml version
+        run: |
+          $version = "${{ needs.check-version.outputs.version }}"
+          $version = $version -replace '^v', ''
+
+          # Update root Cargo.toml
+          (Get-Content Cargo.toml) -replace 'version = "0\.1\.0"', "version = `"$version`"" | Set-Content Cargo.toml
+
+          # Update all crate Cargo.toml files
+          Get-ChildItem -Path "crates" -Recurse -Name "Cargo.toml" | ForEach-Object {
+            $file = "crates/$_"
+            (Get-Content $file) -replace 'version = "0\.1\.0"', "version = `"$version`"" | Set-Content $file
+          }
+
+      - name: Build release binary
+        run: |
+          cargo build --release --bin burncloud
+
+      - name: Create artifacts directory
+        run: mkdir artifacts
+
+      - name: Copy binary and create archive
+        run: |
+          $version = "${{ needs.check-version.outputs.version }}"
+          # Use Rust target triple naming to match self_update expectations
+          $target = "x86_64-pc-windows-msvc"
+          $archive_name = "burncloud-$version-$target"
+
+          # Copy binary
+          Copy-Item "target/release/burncloud.exe" "artifacts/"
+
+          # Create zip archive (use NoCompression to ensure compatibility with Rust zip extraction)
+          Compress-Archive -Path "artifacts/burncloud.exe" -DestinationPath "artifacts/$archive_name.zip" -CompressionLevel NoCompression
+
+          # Create installer directory structure
+          New-Item -ItemType Directory -Path "artifacts/installer" -Force
+          Copy-Item "target/release/burncloud.exe" "artifacts/installer/"
+
+          # Create a simple batch installer
+          @"
+          @echo off
+          echo Installing BurnCloud $version...
+
+          set INSTALL_DIR=%PROGRAMFILES%\BurnCloud
+          if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+
+          copy burncloud.exe "%INSTALL_DIR%\"
+
+          echo.
+          echo BurnCloud has been installed to %INSTALL_DIR%
+          echo You may want to add this directory to your PATH.
+          echo.
+          pause
+          "@ | Out-File -FilePath "artifacts/installer/install.bat" -Encoding ASCII
+
+          # Create installer zip (do not include target triple to avoid updater matching it)
+          $installer_name = "burncloud-$version-installer"
+          Compress-Archive -Path "artifacts/installer/*" -DestinationPath "artifacts/$installer_name.zip" -CompressionLevel NoCompression
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/*
+
+  create-release:
+    needs: [check-version, build-windows]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/
+
+      - name: Generate changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.check-version.outputs.version }}"
+
+          # Get the latest tag before this one
+          $PREV_TAG = git tag --sort=-version:refname | Where-Object { $_ -ne $VERSION } | Select-Object -First 1
+
+          if ($PREV_TAG) {
+            "## What's Changed" | Out-File -FilePath CHANGELOG.md -Encoding utf8
+            "" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+
+            # Get commits between tags
+            git log --pretty=format:"- %s (%h)" "$PREV_TAG..$VERSION" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+
+            # If no commits found, use commits since last tag
+            if (-not (Test-Path CHANGELOG.md) -or (Get-Content CHANGELOG.md).Count -eq 2) {
+              "## What's Changed" | Out-File -FilePath CHANGELOG.md -Encoding utf8
+              "" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+              git log --pretty=format:"- %s (%h)" --max-count=10 | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+            }
+          } else {
+            "## What's Changed" | Out-File -FilePath CHANGELOG.md -Encoding utf8
+            "" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+            "- Initial release" | Out-File -FilePath CHANGELOG.md -Append -Encoding utf8
+          }
+
+          $changelog = Get-Content CHANGELOG.md -Raw
+          "changelog<<EOF" >> $env:GITHUB_OUTPUT
+          $changelog >> $env:GITHUB_OUTPUT
+          "EOF" >> $env:GITHUB_OUTPUT
+
+      - name: Ensure tag exists (for workflow_dispatch)
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.check-version.outputs.version }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $exists = git tag --list | Where-Object { $_ -eq $VERSION }
+            if (-not $exists) {
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -a "$VERSION" -m "Release $VERSION (created by workflow_dispatch)"
+              git push origin "$VERSION"
+              echo "Created and pushed tag $VERSION"
+            } else {
+              echo "Tag $VERSION already exists"
+            }
+          }
+
+      - name: Debug artifacts
+        shell: pwsh
+        run: |
+          echo "Listing artifacts directory:"
+          Get-ChildItem -Path artifacts -Recurse
+          echo "Current directory:"
+          Get-Location
+          echo "Files in current directory:"
+          Get-ChildItem
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Release ${{ needs.check-version.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    needs: [check-version, create-release]
+    if: always() && needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Notify completion
+        shell: pwsh
+        run: |
+          if ("${{ needs.create-release.result }}" -eq "success") {
+            echo "✅ Release ${{ needs.check-version.outputs.version }} created successfully!"
+            echo "🎉 Windows binaries are now available for download."
+          } else {
+            echo "❌ Release creation failed."
+            exit 1
+          }

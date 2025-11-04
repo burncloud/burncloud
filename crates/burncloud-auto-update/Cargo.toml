@@ -1,0 +1,22 @@
+[package]
+name = "burncloud-auto-update"
+version = "0.1.2"
+edition = "2021"
+description = "Auto-update functionality for BurnCloud"
+authors = ["BurnCloud Team"]
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud-auto-update"
+homepage = "https://burncloud.dev"
+documentation = "https://docs.burncloud.dev"
+keywords = ["auto-update", "self-update", "burncloud"]
+categories = ["development-tools"]
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+self_update = { version = "0.42.0", features = ["archive-zip"] }
+semver.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+env_logger.workspace = true

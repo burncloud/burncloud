@@ -1,0 +1,17 @@
+[package]
+name = "burncloud-server"
+version = "0.1.9"
+edition = "2021"
+description = "Server component for the BurnCloud platform"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+homepage = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+keywords = ["burncloud", "server", "api"]
+categories = ["web-programming"]
+
+[dependencies]
+burncloud-common = "0.1.9"
+burncloud-core = "0.1.9"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"

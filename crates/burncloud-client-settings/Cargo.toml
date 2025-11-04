@@ -1,0 +1,11 @@
+[package]
+name = "burncloud-client-settings"
+version = "0.1.2"
+edition = "2021"
+description = "System settings page for BurnCloud client applications"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+
+[dependencies]
+dioxus = { version = "0.6.3", features = ["desktop"] }

@@ -1,0 +1,24 @@
+[package]
+name = "burncloud-client-tray"
+version = "0.1.3"
+edition = "2021"
+authors = ["BurnCloud Team"]
+description = "A simple system tray application for BurnCloud client"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/burncloud/burncloud-client-tray"
+homepage = "https://burncloud.com"
+documentation = "https://docs.rs/burncloud-client-tray"
+keywords = ["tray", "systray", "burncloud", "system-tray", "gui"]
+categories = ["gui", "os::windows-apis"]
+readme = "README.md"
+
+[lib]
+name = "burncloud_client_tray"
+path = "src/lib.rs"
+
+[[bin]]
+name = "burncloud-client-tray"
+path = "src/main.rs"
+
+[dependencies]
+systray = "0.4.0"

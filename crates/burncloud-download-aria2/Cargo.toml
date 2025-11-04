@@ -1,0 +1,49 @@
+[package]
+name = "burncloud-download-aria2"
+version = "0.1.0"
+edition = "2021"
+authors = ["BurnCloud Team"]
+description = "一个简单的 Rust 库，用于下载、配置和管理 aria2 下载器"
+license = "MIT"
+homepage = "https://github.com/burncloud/burncloud-download-aria2"
+repository = "https://github.com/burncloud/burncloud-download-aria2"
+keywords = ["aria2", "download", "rpc", "manager"]
+categories = ["network-programming", "api-bindings"]
+
+[dependencies]
+# HTTP 客户端，用于下载 aria2 和 RPC 通信
+reqwest = { version = "0.11", features = ["json"] }
+
+# 序列化和反序列化
+serde.workspace = true
+serde_json.workspace = true
+
+# ZIP 文件解压
+zip = "0.6"
+
+# 异步运行时
+tokio.workspace = true
+
+[dev-dependencies]
+# 测试框架
+tokio-test = "0.4"
+
+[lib]
+name = "burncloud_download_aria2"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aria2-test"
+path = "src/main.rs"
+
+[profile.release]
+# 优化设置
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+# 开发时的优化设置
+opt-level = 0
+debug = true
