@@ -1,41 +1,11 @@
 [package]
 name = "burncloud-client-models"
-version = "0.1.3"
+version = "0.1.0"
 edition = "2021"
-description = "Model management page for BurnCloud client applications"
-license = "MIT"
-repository = "https://github.com/burncloud/burncloud"
-authors = ["burncloud contributors"]
-
-[[bin]]
-name = "model_demo"
-path = "src/main.rs"
-
-[[bin]]
-name = "integration_test"
-path = "src/integration_test.rs"
-test = false
-
-[lib]
-name = "burncloud_client_models"
-path = "src/lib.rs"
 
 [dependencies]
-dioxus.workspace = true
-dioxus-desktop.workspace = true
-reqwest.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-tokio.workspace = true
-uuid.workspace = true
-chrono.workspace = true
-thiserror.workspace = true
-sha2.workspace = true
-md5.workspace = true
-futures-util.workspace = true
+burncloud-client-shared.workspace = true
 burncloud-service-models.workspace = true
-burncloud-database.workspace = true
-burncloud-database-models.workspace = true
 
-[dev-dependencies]
-tempfile.workspace = true
+dioxus.workspace = true
+dioxus-router.workspace = true
