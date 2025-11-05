@@ -113,7 +113,7 @@ html, body {
 }
 
 .card:hover {
-    background: var(--bg-card-hover);
+    background: var(--bg-card);
     box-shadow: var(--elevation-flyout);
 }
 
@@ -343,6 +343,10 @@ html, body {
     align-items: center;
 }
 
+.items-start {
+    align-items: flex-start;
+}
+
 .justify-between {
     justify-content: space-between;
 }
@@ -362,6 +366,8 @@ html, body {
 .p-md { padding: var(--spacing-md); }
 .p-lg { padding: var(--spacing-lg); }
 .p-xl { padding: var(--spacing-xl); }
+.p-xxl { padding: var(--spacing-xxl); }
+.p-xxxl { padding: var(--spacing-xxxl); }
 
 .m-xs { margin: var(--spacing-xs); }
 .m-sm { margin: var(--spacing-sm); }
@@ -395,6 +401,7 @@ html, body {
 .text-large-title { font-size: var(--font-size-large-title); }
 .text-display { font-size: var(--font-size-display); }
 
+.text-xxl { font-size: 32px; }
 .text-xxxl { font-size: 48px; }
 
 .text-primary { color: var(--text-primary); }
@@ -507,12 +514,6 @@ html, body {
 /* Model card styles */
 .model-card {
     padding: var(--spacing-lg);
-}
-
-.model-card-static:hover {
-    background: var(--bg-card);
-    box-shadow: var(--elevation-flyout);
-    transform: translateY(-2px);
 }
 
 .model-header {
