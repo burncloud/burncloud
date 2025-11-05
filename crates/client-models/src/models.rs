@@ -98,7 +98,7 @@ fn ModelCard(
     is_disabled: bool,
 ) -> Element {
     rsx! {
-        div { class: "card hover-card",
+        div { class: "card model-card-static",
             div { class: "p-lg",
                 // 头部
                 div { class: "flex justify-between items-start mb-md",
@@ -138,7 +138,7 @@ fn ModelCard(
                 }
 
                 // 操作按钮
-                div { class: "flex gap-sm pt-md border-t",
+                div { class: "flex gap-sm pt-md",
                     button { class: "btn btn-secondary flex-1", "📄 详情" }
                     button { class: "btn btn-secondary flex-1", "🚀 部署" }
                     button { class: "btn btn-danger-outline", "🗑️" }

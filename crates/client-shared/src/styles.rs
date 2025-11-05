@@ -509,6 +509,12 @@ html, body {
     padding: var(--spacing-lg);
 }
 
+.model-card-static:hover {
+    background: var(--bg-card);
+    box-shadow: var(--elevation-flyout);
+    transform: translateY(-2px);
+}
+
 .model-header {
     display: flex;
     align-items: center;
