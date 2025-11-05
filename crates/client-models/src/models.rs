@@ -17,11 +17,18 @@ pub fn ModelManagement() -> Element {
 
     rsx! {
         div { class: "page-header",
-            h1 { class: "text-large-title font-bold text-primary m-0",
-                "模型管理"
-            }
-            p { class: "text-secondary m-0 mt-sm",
-                "管理和查看已下载的AI模型"
+            div { class: "flex justify-between items-center",
+                div {
+                    h1 { class: "text-large-title font-bold text-primary m-0",
+                        "模型管理"
+                    }
+                    p { class: "text-secondary m-0 mt-sm",
+                        "管理和查看已下载的AI模型"
+                    }
+                }
+                button { class: "btn btn-primary",
+                    "➕ 添加模型"
+                }
             }
         }
 
@@ -56,29 +63,40 @@ pub fn ModelManagement() -> Element {
                 }
             }
 
-            // 操作栏
-            div { class: "flex justify-between items-center mb-lg",
+            // 模型列表标题
+            div { class: "mb-lg",
                 h2 { class: "text-title font-semibold m-0", "模型列表" }
-                button { class: "btn btn-primary",
-                    "➕ 添加模型"
-                }
             }
 
             // 模型列表
-            div { class: "grid",
-                style: "grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--spacing-lg);",
+            if models.read().is_empty() {
+                // 空状态
+                div { class: "card",
+                    div { class: "p-xxxl text-center",
+                        div { class: "flex flex-col items-center gap-lg",
+                            div { class: "text-display", "📦" }
+                            h3 { class: "text-title font-semibold m-0 text-secondary", "暂无模型数据" }
+                            p { class: "text-secondary m-0", "当前还没有任何AI模型,点击上方"添加模型"按钮开始添加" }
+                        }
+                    }
+                }
+            } else {
+                // 模型列表
+                div { class: "grid",
+                    style: "grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--spacing-lg);",
 
-                for model in models.read().iter() {
-                    ModelCard {
-                        key: "{model.model_id}",
-                        model_id: model.model_id.clone(),
-                        pipeline_tag: model.pipeline_tag.clone(),
-                        downloads: model.downloads,
-                        likes: model.likes,
-                        size: model.size,
-                        is_private: model.private,
-                        is_gated: model.gated,
-                        is_disabled: model.disabled,
+                    for model in models.read().iter() {
+                        ModelCard {
+                            key: "{model.model_id}",
+                            model_id: model.model_id.clone(),
+                            pipeline_tag: model.pipeline_tag.clone(),
+                            downloads: model.downloads,
+                            likes: model.likes,
+                            size: model.size,
+                            is_private: model.private,
+                            is_gated: model.gated,
+                            is_disabled: model.disabled,
+                        }
                     }
                 }
             }
@@ -98,7 +116,7 @@ fn ModelCard(
     is_disabled: bool,
 ) -> Element {
     rsx! {
-        div { class: "card model-card-static",
+        div { class: "card",
             div { class: "p-lg",
                 // 头部
                 div { class: "flex justify-between items-start mb-md",
