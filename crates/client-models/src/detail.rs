@@ -19,27 +19,34 @@ pub fn ModelDetail(model_id: String) -> Element {
     let model_data = model.read();
 
     rsx! {
-        div { class: "page-container",
-            if let Some(m) = model_data.as_ref() {
-                DetailView {
-                    model_id: m.model_id.clone(),
-                    is_private: m.private,
-                    is_gated: m.gated,
-                    is_disabled: m.disabled,
-                    pipeline_tag: m.pipeline_tag.clone(),
-                    library_name: m.library_name.clone(),
-                    model_type: m.model_type.clone(),
-                    downloads: m.downloads,
-                    likes: m.likes,
-                    size: m.size,
-                    used_storage: m.used_storage,
-                    sha: m.sha.clone(),
-                    last_modified: m.last_modified.clone(),
-                    created_at: m.created_at.clone(),
-                    updated_at: m.updated_at.clone(),
+        if let Some(m) = model_data.as_ref() {
+            DetailView {
+                model_id: m.model_id.clone(),
+                is_private: m.private,
+                is_gated: m.gated,
+                is_disabled: m.disabled,
+                pipeline_tag: m.pipeline_tag.clone(),
+                library_name: m.library_name.clone(),
+                model_type: m.model_type.clone(),
+                downloads: m.downloads,
+                likes: m.likes,
+                size: m.size,
+                used_storage: m.used_storage,
+                sha: m.sha.clone(),
+                last_modified: m.last_modified.clone(),
+                created_at: m.created_at.clone(),
+                updated_at: m.updated_at.clone(),
+            }
+        } else {
+            div { class: "page-header",
+                h1 { class: "text-large-title font-bold text-primary m-0", "加载中..." }
+            }
+            div { class: "page-content",
+                div { class: "card",
+                    div { class: "p-xxxl text-center text-secondary",
+                        "正在加载模型详情..."
+                    }
                 }
-            } else {
-                div { class: "loading", "加载中..." }
             }
         }
     }
@@ -64,73 +71,148 @@ fn DetailView(
     updated_at: String,
 ) -> Element {
     rsx! {
-        div { class: "model-detail",
-            div { class: "detail-header",
-                h1 { "{model_id}" }
-                div { class: "badges",
-                    if is_private { span { class: "badge private", "私有" } }
-                    if is_gated { span { class: "badge gated", "需授权" } }
-                    if is_disabled { span { class: "badge disabled", "已禁用" } }
+        div { class: "page-header",
+            div { class: "flex justify-between items-start",
+                div {
+                    h1 { class: "text-large-title font-bold text-primary m-0", "{model_id}" }
+                    div { class: "flex gap-xs mt-sm",
+                        if is_private {
+                            span { class: "badge badge-warning", "🔒 私有" }
+                        }
+                        if is_gated {
+                            span { class: "badge badge-info", "🔑 需授权" }
+                        }
+                        if is_disabled {
+                            span { class: "badge badge-danger", "⚠️ 已禁用" }
+                        }
+                        if let Some(pt) = &pipeline_tag {
+                            span { class: "badge badge-secondary", "{pt}" }
+                        }
+                    }
+                }
+                div { class: "flex gap-sm",
+                    button { class: "btn btn-primary", "🚀 部署模型" }
+                    button { class: "btn btn-secondary", "✏️ 编辑" }
+                    button { class: "btn btn-danger-outline", "🗑️ 删除" }
+                }
+            }
+        }
+
+        div { class: "page-content",
+            // 统计概览
+            div { class: "grid mb-xxxl",
+                style: "grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-lg);",
+
+                div { class: "card metric-card",
+                    div { class: "flex flex-col gap-sm",
+                        span { class: "text-secondary text-caption", "下载量" }
+                        span { class: "text-xxl font-bold text-primary", "{format_number(downloads)}" }
+                    }
+                }
+
+                div { class: "card metric-card",
+                    div { class: "flex flex-col gap-sm",
+                        span { class: "text-secondary text-caption", "点赞数" }
+                        span { class: "text-xxl font-bold text-primary", "❤️ {format_number(likes)}" }
+                    }
+                }
+
+                div { class: "card metric-card",
+                    div { class: "flex flex-col gap-sm",
+                        span { class: "text-secondary text-caption", "文件大小" }
+                        span { class: "text-xxl font-bold text-primary", "{format_size(size)}" }
+                    }
+                }
+
+                div { class: "card metric-card",
+                    div { class: "flex flex-col gap-sm",
+                        span { class: "text-secondary text-caption", "已用存储" }
+                        span { class: "text-xxl font-bold text-primary", "{format_size(used_storage)}" }
+                    }
                 }
             }
 
-            div { class: "detail-sections",
-                section { class: "detail-section",
-                    h2 { "基本信息" }
-                    div { class: "info-grid",
-                        InfoItem { label: "模型ID", value: model_id.clone() }
-                        if let Some(pt) = pipeline_tag {
-                            InfoItem { label: "管道类型", value: pt }
-                        }
-                        if let Some(lib) = library_name {
-                            InfoItem { label: "库名称", value: lib }
-                        }
-                        if let Some(mt) = model_type {
-                            InfoItem { label: "模型类型", value: mt }
+            // 详细信息
+            div { class: "grid gap-lg",
+                style: "grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));",
+
+                // 基本信息
+                div { class: "card",
+                    div { class: "p-lg",
+                        h2 { class: "text-title font-semibold m-0 mb-lg", "基本信息" }
+                        div { class: "flex flex-col gap-md",
+                            InfoRow { label: "模型ID", value: model_id.clone() }
+                            if let Some(pt) = pipeline_tag {
+                                InfoRow { label: "管道类型", value: pt }
+                            }
+                            if let Some(lib) = library_name {
+                                InfoRow { label: "库名称", value: lib }
+                            }
+                            if let Some(mt) = model_type {
+                                InfoRow { label: "模型类型", value: mt }
+                            }
                         }
                     }
                 }
 
-                section { class: "detail-section",
-                    h2 { "统计信息" }
-                    div { class: "info-grid",
-                        InfoItem { label: "下载次数", value: format!("{downloads}") }
-                        InfoItem { label: "点赞数", value: format!("{likes}") }
-                        InfoItem { label: "文件大小", value: format_size(size) }
-                        InfoItem { label: "已用存储", value: format_size(used_storage) }
-                    }
-                }
-
-                section { class: "detail-section",
-                    h2 { "版本信息" }
-                    div { class: "info-grid",
-                        if let Some(s) = sha {
-                            InfoItem { label: "Git SHA", value: s }
+                // 版本信息
+                div { class: "card",
+                    div { class: "p-lg",
+                        h2 { class: "text-title font-semibold m-0 mb-lg", "版本信息" }
+                        div { class: "flex flex-col gap-md",
+                            if let Some(s) = sha {
+                                InfoRow { label: "Git SHA", value: s }
+                            }
+                            if let Some(modified) = last_modified {
+                                InfoRow { label: "最后修改", value: modified }
+                            }
+                            InfoRow { label: "创建时间", value: created_at.clone() }
+                            InfoRow { label: "更新时间", value: updated_at.clone() }
                         }
-                        if let Some(modified) = last_modified {
-                            InfoItem { label: "最后修改", value: modified }
-                        }
-                        InfoItem { label: "创建时间", value: created_at.clone() }
-                        InfoItem { label: "更新时间", value: updated_at.clone() }
                     }
                 }
             }
 
-            div { class: "detail-actions",
-                button { class: "btn-primary", "编辑" }
-                button { class: "btn-danger", "删除" }
-                button { class: "btn-secondary", "返回" }
+            // 快速操作
+            div { class: "mt-xxxl",
+                h2 { class: "text-title font-semibold mb-lg", "快速操作" }
+                div { class: "flex gap-lg flex-wrap",
+                    button { class: "btn btn-primary",
+                        span { "🚀" }
+                        "立即部署"
+                    }
+                    button { class: "btn btn-secondary",
+                        span { "📊" }
+                        "查看性能"
+                    }
+                    button { class: "btn btn-secondary",
+                        span { "📝" }
+                        "查看日志"
+                    }
+                    button { class: "btn btn-secondary",
+                        span { "⚙️" }
+                        "配置参数"
+                    }
+                    button { class: "btn btn-secondary",
+                        span { "📤" }
+                        "导出配置"
+                    }
+                    button { class: "btn btn-secondary",
+                        span { "🔄" }
+                        "检查更新"
+                    }
+                }
             }
         }
     }
 }
 
 #[component]
-fn InfoItem(label: String, value: String) -> Element {
+fn InfoRow(label: String, value: String) -> Element {
     rsx! {
-        div { class: "info-item",
-            span { class: "label", "{label}:" }
-            span { class: "value", "{value}" }
+        div { class: "flex justify-between items-center",
+            span { class: "text-secondary", "{label}" }
+            span { class: "font-medium", "{value}" }
         }
     }
 }
@@ -148,5 +230,15 @@ fn format_size(bytes: i64) -> String {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
+    }
+}
+
+fn format_number(num: i64) -> String {
+    if num >= 1_000_000 {
+        format!("{:.1}M", num as f64 / 1_000_000.0)
+    } else if num >= 1_000 {
+        format!("{:.1}K", num as f64 / 1_000.0)
+    } else {
+        format!("{}", num)
     }
 }
