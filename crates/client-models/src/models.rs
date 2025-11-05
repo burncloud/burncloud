@@ -16,20 +16,70 @@ pub fn ModelManagement() -> Element {
     });
 
     rsx! {
-        div { class: "page-container",
-            div { class: "page-header",
-                h1 { "模型管理" }
-                button { class: "btn-primary", "添加模型" }
+        div { class: "page-header",
+            h1 { class: "text-large-title font-bold text-primary m-0",
+                "模型管理"
+            }
+            p { class: "text-secondary m-0 mt-sm",
+                "管理和查看已下载的AI模型"
+            }
+        }
+
+        div { class: "page-content",
+            // 统计信息卡片
+            div { class: "grid mb-xxxl",
+                style: "grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--spacing-lg);",
+
+                div { class: "card metric-card",
+                    div { class: "flex flex-col gap-sm",
+                        span { class: "text-secondary text-caption", "总模型数" }
+                        span { class: "text-xxl font-bold text-primary", "{models.read().len()}" }
+                    }
+                }
+
+                div { class: "card metric-card",
+                    div { class: "flex flex-col gap-sm",
+                        span { class: "text-secondary text-caption", "总下载量" }
+                        span { class: "text-xxl font-bold text-primary",
+                            "{format_number(models.read().iter().map(|m| m.downloads).sum::<i64>())}"
+                        }
+                    }
+                }
+
+                div { class: "card metric-card",
+                    div { class: "flex flex-col gap-sm",
+                        span { class: "text-secondary text-caption", "总存储空间" }
+                        span { class: "text-xxl font-bold text-primary",
+                            "{format_size(models.read().iter().map(|m| m.size).sum::<i64>())}"
+                        }
+                    }
+                }
             }
 
-            div { class: "models-grid",
+            // 操作栏
+            div { class: "flex justify-between items-center mb-lg",
+                h2 { class: "text-title font-semibold m-0", "模型列表" }
+                button { class: "btn btn-primary",
+                    "➕ 添加模型"
+                }
+            }
+
+            // 模型列表
+            div { class: "grid",
+                style: "grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--spacing-lg);",
+
                 for model in models.read().iter() {
-                    ModelCard { key: "{model.model_id}", model_id: model.model_id.clone(),
+                    ModelCard {
+                        key: "{model.model_id}",
+                        model_id: model.model_id.clone(),
                         pipeline_tag: model.pipeline_tag.clone(),
                         downloads: model.downloads,
                         likes: model.likes,
                         size: model.size,
-                        is_private: model.private }
+                        is_private: model.private,
+                        is_gated: model.gated,
+                        is_disabled: model.disabled,
+                    }
                 }
             }
         }
@@ -44,43 +94,55 @@ fn ModelCard(
     likes: i64,
     size: i64,
     is_private: bool,
+    is_gated: bool,
+    is_disabled: bool,
 ) -> Element {
     rsx! {
-        div { class: "model-card",
-            div { class: "model-header",
-                h3 { "{model_id}" }
-                if is_private {
-                    span { class: "badge private", "私有" }
-                }
-            }
-
-            div { class: "model-info",
-                if let Some(pipeline) = pipeline_tag {
-                    div { class: "info-row",
-                        span { class: "label", "管道类型:" }
-                        span { "{pipeline}" }
+        div { class: "card hover-card",
+            div { class: "p-lg",
+                // 头部
+                div { class: "flex justify-between items-start mb-md",
+                    div { class: "flex-1",
+                        h3 { class: "text-subtitle font-semibold m-0 mb-xs", "{model_id}" }
+                        if let Some(pipeline) = pipeline_tag {
+                            span { class: "badge badge-secondary text-caption", "{pipeline}" }
+                        }
+                    }
+                    div { class: "flex gap-xs",
+                        if is_private {
+                            span { class: "badge badge-warning text-caption", "🔒 私有" }
+                        }
+                        if is_gated {
+                            span { class: "badge badge-info text-caption", "🔑 需授权" }
+                        }
+                        if is_disabled {
+                            span { class: "badge badge-danger text-caption", "⚠️ 已禁用" }
+                        }
                     }
                 }
 
-                div { class: "info-row",
-                    span { class: "label", "下载量:" }
-                    span { "{downloads}" }
+                // 统计信息
+                div { class: "flex flex-col gap-sm mb-md",
+                    div { class: "flex justify-between items-center",
+                        span { class: "text-secondary text-caption", "下载量" }
+                        span { class: "font-medium", "{format_number(downloads)}" }
+                    }
+                    div { class: "flex justify-between items-center",
+                        span { class: "text-secondary text-caption", "点赞数" }
+                        span { class: "font-medium", "❤️ {format_number(likes)}" }
+                    }
+                    div { class: "flex justify-between items-center",
+                        span { class: "text-secondary text-caption", "文件大小" }
+                        span { class: "font-medium", "{format_size(size)}" }
+                    }
                 }
 
-                div { class: "info-row",
-                    span { class: "label", "点赞数:" }
-                    span { "{likes}" }
+                // 操作按钮
+                div { class: "flex gap-sm pt-md border-t",
+                    button { class: "btn btn-secondary flex-1", "📄 详情" }
+                    button { class: "btn btn-secondary flex-1", "🚀 部署" }
+                    button { class: "btn btn-danger-outline", "🗑️" }
                 }
-
-                div { class: "info-row",
-                    span { class: "label", "大小:" }
-                    span { "{format_size(size)}" }
-                }
-            }
-
-            div { class: "model-actions",
-                button { class: "btn-secondary", "详情" }
-                button { class: "btn-danger", "删除" }
             }
         }
     }
@@ -99,5 +161,15 @@ fn format_size(bytes: i64) -> String {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
+    }
+}
+
+fn format_number(num: i64) -> String {
+    if num >= 1_000_000 {
+        format!("{:.1}M", num as f64 / 1_000_000.0)
+    } else if num >= 1_000 {
+        format!("{:.1}K", num as f64 / 1_000.0)
+    } else {
+        format!("{}", num)
     }
 }
