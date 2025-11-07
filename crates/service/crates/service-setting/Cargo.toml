@@ -1,0 +1,13 @@
+[package]
+name = "burncloud-service-setting"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database-setting.workspace = true
+burncloud-database.workspace = true
+tokio.workspace = true
+
+[[example]]
+name = "usage"
+path = "examples/usage.rs"
