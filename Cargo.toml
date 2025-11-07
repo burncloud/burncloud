@@ -17,6 +17,7 @@ members = [
     "crates/database",
     "crates/database/crates/database-download",
     "crates/database/crates/database-models",
+    "crates/database/crates/database-setting",
     "crates/download",
     "crates/download/crates/download-aria2",
     "crates/server",
@@ -95,6 +96,7 @@ burncloud-core = { path = "crates/core" }
 burncloud-database = { path = "crates/database" }
 burncloud-database-download = { path = "crates/database/crates/database-download" }
 burncloud-database-models = { path = "crates/database/crates/database-models" }
+burncloud-database-setting = { path = "crates/database/crates/database-setting" }
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
 burncloud-server = { path = "crates/server" }

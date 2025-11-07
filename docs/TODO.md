@@ -1,10 +1,37 @@
 # service-models 增加 [hugginface.co](https://huggingface.co/api/models) 对接
 {
-    "work": "https://huggingface.co/api/models是hugginface的查询",
+    "work": "使用burncloud-service-ip https://huggingface.co/api/models是hugginface的查询",
     "rules": [
         "使用中文回复",
         "使用最精简的代码来编写",
         "只允许使用rust编写代码"
+    ]
+}
+
+# service-setting
+{
+    "work": "编写crates/service/crates/service-setting 命名项目为 burncloud-service-setting，此项目为服务类，当burncloud-service-setting被其它项目调用的时候通过输入name获取value值 。name为主键。编写增加，修改，删除功能。",
+    "depend": [
+        "crates/database/crates/database-setting"
+    ],
+    "rules": [
+        "使用中文回复",
+        "使用最精简的代码来编写",
+        "只允许使用rust编写代码"
+    ]
+}
+
+# database-setting 
+{
+    "work": "编写crates/database/crates/database-setting 命名项目为 burncloud-database-setting，此项目主要是创建数据表setting，字段有name 和 value，当burncloud-databse-setting被其它项目调用的时候通过输入name获取value值 。name为主键。编写增加，修改，删除功能。",
+    "depend": [
+        "crates/database"
+    ],
+    "rules": [
+        "使用中文回复",
+        "使用最精简的代码来编写",
+        "只允许使用rust编写代码",
+        "不要重写sqlx,请依赖 burncloud-database完成数据写入"
     ]
 }
 
