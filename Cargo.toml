@@ -3,25 +3,27 @@ members = [
     "crates/auto-update",
     "crates/cli",
     "crates/client",
-    "crates/client-api",
-    "crates/client-dashboard",
-    "crates/client-deploy",
-    "crates/client-models",
-    "crates/client-monitor",
-    "crates/client-settings",
-    "crates/client-shared",
-    "crates/client-tray",
+    "crates/client/crates/client-api",
+    "crates/client/crates/client-dashboard",
+    "crates/client/crates/client-deploy",
+    "crates/client/crates/client-models",
+    "crates/client/crates/client-monitor",
+    "crates/client/crates/client-settings",
+    "crates/client/crates/client-shared",
+    "crates/client/crates/client-tray",
     "crates/code",
     "crates/common",
     "crates/core",
     "crates/database",
-    "crates/database-download",
-    "crates/database-models",
+    "crates/database/crates/database-download",
+    "crates/database/crates/database-models",
     "crates/download",
-    "crates/download-aria2",
+    "crates/download/crates/download-aria2",
     "crates/server",
-    "crates/service-models",
-    "crates/service-monitor",
+    "crates/service",
+    "crates/service/crates/service-ip",
+    "crates/service/crates/service-models",
+    "crates/service/crates/service-monitor",
 ]
 
 [workspace.dependencies]
@@ -79,22 +81,27 @@ systray = "0.4.0"
 burncloud-auto-update = { path = "crates/auto-update" }
 burncloud-cli = { path = "crates/cli" }
 burncloud-client = { path = "crates/client" }
-burncloud-client-api = { path = "crates/client-api" }
-burncloud-client-dashboard = { path = "crates/client-dashboard" }
-burncloud-client-deploy = { path = "crates/client-deploy" }
-burncloud-client-models = { path = "crates/client-models" }
-burncloud-client-monitor = { path = "crates/client-monitor" }
-burncloud-client-settings = { path = "crates/client-settings" }
-burncloud-client-shared = { path = "crates/client-shared" }
-burncloud-client-tray = { path = "crates/client-tray" }
+burncloud-client-api = { path = "crates/client/crates/client-api" }
+burncloud-client-dashboard = { path = "crates/client/crates/client-dashboard" }
+burncloud-client-deploy = { path = "crates/client/crates/client-deploy" }
+burncloud-client-models = { path = "crates/client/crates/client-models" }
+burncloud-client-monitor = { path = "crates/client/crates/client-monitor" }
+burncloud-client-settings = { path = "crates/client/crates/client-settings" }
+burncloud-client-shared = { path = "crates/client/crates/client-shared" }
+burncloud-client-tray = { path = "crates/client/crates/client-tray" }
 burncloud-code = { path = "crates/code" }
 burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }
 burncloud-database = { path = "crates/database" }
-burncloud-database-download = { path = "crates/database-download" }
-burncloud-database-models = { path = "crates/database-models" }
+burncloud-database-download = { path = "crates/database/crates/database-download" }
+burncloud-database-models = { path = "crates/database/crates/database-models" }
+burncloud-download = { path = "crates/download" }
+burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
 burncloud-server = { path = "crates/server" }
-burncloud-service-models = { path = "crates/service-models" }
+burncloud-service = { path = "crates/service" }
+burncloud-service-ip = { path = "crates/service/crates/service-ip" }
+burncloud-service-models = { path = "crates/service/crates/service-models" }
+burncloud-service-monitor = { path = "crates/service/crates/service-monitor" }
 
 [package]
 name = "burncloud"
