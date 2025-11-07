@@ -25,6 +25,7 @@ members = [
     "crates/service/crates/service-ip",
     "crates/service/crates/service-models",
     "crates/service/crates/service-monitor",
+    "crates/service/crates/service-setting",
 ]
 
 [workspace.dependencies]
@@ -104,6 +105,7 @@ burncloud-service = { path = "crates/service" }
 burncloud-service-ip = { path = "crates/service/crates/service-ip" }
 burncloud-service-models = { path = "crates/service/crates/service-models" }
 burncloud-service-monitor = { path = "crates/service/crates/service-monitor" }
+burncloud-service-setting = { path = "crates/service/crates/service-setting" }
 
 [package]
 name = "burncloud"
