@@ -3,8 +3,30 @@
 //! 模型服务层，提供简洁的增删改查接口
 
 use burncloud_database_models::ModelDatabase;
+use serde::Deserialize;
 
 type Result<T> = std::result::Result<T, burncloud_database_models::DatabaseError>;
+
+#[derive(Debug, Deserialize)]
+pub struct HfApiModel {
+    #[serde(rename = "_id")]
+    pub _id: String,
+    pub id: String,
+    pub likes: Option<i64>,
+    #[serde(rename = "trendingScore")]
+    pub trending_score: Option<f64>,
+    pub private: Option<bool>,
+    pub downloads: Option<i64>,
+    pub tags: Option<Vec<String>>,
+    #[serde(rename = "pipeline_tag")]
+    pub pipeline_tag: Option<String>,
+    #[serde(rename = "library_name")]
+    pub library_name: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: Option<String>,
+    #[serde(rename = "modelId")]
+    pub model_id: Option<String>,
+}
 
 /// 模型服务
 pub struct ModelService {
@@ -57,6 +79,24 @@ impl ModelService {
     /// 关闭服务
     pub async fn close(self) -> Result<()> {
         self.db.close().await
+    }
+
+    /// 从 HuggingFace API 获取模型列表
+    pub async fn fetch_from_huggingface() -> std::result::Result<Vec<HfApiModel>, Box<dyn std::error::Error>> {
+        // 获取地区
+        let location = burncloud_service_ip::get_location().await?;
+
+        // 根据地区选择 API 端点
+        let api_url = match location.as_str() {
+            "CN" => "https://hf-mirror.com/api/models",
+            _ => "https://huggingface.co/api/models",
+        };
+
+        // 请求数据
+        let response = reqwest::get(api_url).await?;
+        let models: Vec<HfApiModel> = response.json().await?;
+
+        Ok(models)
     }
 }
 
