@@ -1,8 +1,23 @@
-# client-models 增加功能
+# client-models 下载功能补充
 {
-    "work": "编写crates/client-models, crate名字是burncloud-client-models，编写大模型管理页面，具体的字段参数crates/service-models里面的代码。",
+    "work": "在client-models页面，添加模型点击之后打开弹出页面，页面调用service-models fetch_from_huggingfaced 加载搜索结果，通过搜索结果，搜索结果按每行一条列出来，在每一行增加下载按钮，使用下载",
     "depend": [
-        "crates/client-shared",
+        "crates/service-setting",
+        "crates/service-models",
+        "crates/download"
+    ],
+    "rules": [
+        "使用中文回复",
+        "使用最精简的代码来编写",
+        "只允许使用rust编写代码"
+    ]
+}
+
+
+# client-models 添加模型页面
+{
+    "work": "在client-models页面，添加模型点击之后打开弹出页面，页面调用service-models fetch_from_huggingfaced 加载搜索结果，通过搜索结果，搜索结果按每行一条列出来，在每一行增加下载按钮，具体下载功能暂时不做，只实现点击下载功能把这一条数据导入到本地模型里面。",
+    "depend": [
         "crates/service-models"
     ],
     "rules": [
@@ -13,7 +28,7 @@
 }
 
 
-# service-models 增加 https://huggingface.co/api/models 对接
+# [complete] service-models 增加 https://huggingface.co/api/models 对接
 {
     "work": "读取service-ip的值,world使用 https://huggingface.co/api/models查询数据，cn使用https://hf-mirror.com/api/models数据，他们返回的格式都是统一如下：[{"_id":"6909b87b734dd24dd19da3ef","id":"moonshotai/Kimi-K2-Thinking","likes":578,"trendingScore":580,"private":false,"downloads":5119,"tags":["transformers","safetensors","kimi_k2","text-generation","conversational","custom_code","license:other","autotrain_compatible","endpoints_compatible","compressed-tensors","region:us"],"pipeline_tag":"text-generation","library_name":"transformers","createdAt":"2025-11-04T08:25:31.000Z","modelId":"moonshotai/Kimi-K2-Thinking"},{"_id":"68f8dfe68cb208be9702aa87","id":"MiniMaxAI/MiniMax-M2","likes":1178,"trendingScore":319,"private":false,"downloads":846249,"tags":["transformers","safetensors","minimax_m2","text-generation","conversational","custom_code","arxiv:2504.07164","arxiv:2509.06501","arxiv:2509.13160","license:mit","autotrain_compatible","fp8","region:us"],"pipeline_tag":"text-generation","library_name":"transformers","createdAt":"2025-10-22T13:45:10.000Z","modelId":"MiniMaxAI/MiniMax-M2"}]",
     "rules": [

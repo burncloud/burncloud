@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 type Result<T> = std::result::Result<T, burncloud_database_models::DatabaseError>;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HfApiModel {
     #[serde(rename = "_id")]
     pub _id: String,

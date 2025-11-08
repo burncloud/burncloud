@@ -1,9 +1,10 @@
 use dioxus::prelude::*;
-use burncloud_service_models::ModelInfo;
+use burncloud_service_models::{ModelInfo, HfApiModel};
 
 #[component]
 pub fn ModelManagement() -> Element {
     let mut models = use_signal(Vec::<ModelInfo>::new);
+    let mut show_search_dialog = use_signal(|| false);
 
     use_effect(move || {
         spawn(async move {
@@ -26,8 +27,26 @@ pub fn ModelManagement() -> Element {
                         "管理和查看已下载的AI模型"
                     }
                 }
-                button { class: "btn btn-primary",
+                button {
+                    class: "btn btn-primary",
+                    onclick: move |_| show_search_dialog.set(true),
                     "➕ 添加模型"
+                }
+            }
+        }
+
+        if show_search_dialog() {
+            SearchDialog {
+                on_close: move |_| show_search_dialog.set(false),
+                on_model_added: move |_| {
+                    // 重新加载模型列表
+                    spawn(async move {
+                        if let Ok(service) = burncloud_service_models::ModelService::new().await {
+                            if let Ok(list) = service.list().await {
+                                models.set(list);
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -190,4 +209,165 @@ fn format_number(num: i64) -> String {
     } else {
         format!("{}", num)
     }
+}
+
+#[component]
+fn SearchDialog(on_close: EventHandler<()>, on_model_added: EventHandler<()>) -> Element {
+    let mut search_results = use_signal(Vec::<HfApiModel>::new);
+    let mut loading = use_signal(|| false);
+    let mut error_msg = use_signal(|| None::<String>);
+
+    // 自动加载模型列表
+    use_effect(move || {
+        loading.set(true);
+        spawn(async move {
+            match burncloud_service_models::ModelService::fetch_from_huggingface().await {
+                Ok(results) => {
+                    search_results.set(results);
+                    error_msg.set(None);
+                }
+                Err(e) => {
+                    error_msg.set(Some(format!("加载失败: {}", e)));
+                }
+            }
+            loading.set(false);
+        });
+    });
+
+    rsx! {
+        div {
+            class: "fixed inset-0 flex items-center justify-center",
+            style: "background: rgba(0,0,0,0.5); z-index: 1000;",
+            onclick: move |_| on_close.call(()),
+
+            div {
+                class: "card",
+                style: "width: 800px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;",
+                onclick: move |e| e.stop_propagation(),
+
+                // 标题栏
+                div { class: "p-lg flex justify-between items-center",
+                    style: "border-bottom: 1px solid var(--color-border);",
+                    h2 { class: "text-title font-semibold m-0", "添加模型" }
+                    button {
+                        class: "btn btn-secondary",
+                        onclick: move |_| on_close.call(()),
+                        "✕"
+                    }
+                }
+
+                // 内容区域
+                div { class: "p-lg", style: "flex: 1; overflow-y: auto;",
+                    if loading() {
+                        div { class: "text-center p-xxxl",
+                            div { class: "text-xl", "加载中..." }
+                        }
+                    } else if let Some(err) = error_msg() {
+                        div { class: "card", style: "background: var(--color-danger-bg); border: 1px solid var(--color-danger);",
+                            div { class: "p-lg",
+                                p { class: "m-0 text-danger", "{err}" }
+                            }
+                        }
+                    } else if search_results.read().is_empty() {
+                        div { class: "text-center p-xxxl text-secondary",
+                            "暂无搜索结果"
+                        }
+                    } else {
+                        div { class: "flex flex-col gap-md",
+                            for result in search_results.read().iter() {
+                                SearchResultItem {
+                                    key: "{result.id}",
+                                    model: result.clone(),
+                                    on_download: move |model| {
+                                        spawn(async move {
+                                            if let Err(e) = import_model_to_database(model).await {
+                                                error_msg.set(Some(format!("导入失败: {}", e)));
+                                            } else {
+                                                on_model_added.call(());
+                                                on_close.call(());
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SearchResultItem(model: HfApiModel, on_download: EventHandler<HfApiModel>) -> Element {
+    rsx! {
+        div { class: "card",
+            div { class: "p-md flex justify-between items-center",
+                div { class: "flex-1",
+                    h3 { class: "text-body font-semibold m-0 mb-xs", "{model.id}" }
+                    div { class: "flex gap-sm items-center",
+                        if let Some(pipeline) = &model.pipeline_tag {
+                            span { class: "badge badge-secondary text-caption", "{pipeline}" }
+                        }
+                        if let Some(library) = &model.library_name {
+                            span { class: "badge badge-info text-caption", "{library}" }
+                        }
+                        if model.private.unwrap_or(false) {
+                            span { class: "badge badge-warning text-caption", "🔒 私有" }
+                        }
+                    }
+                    div { class: "flex gap-md mt-sm text-caption text-secondary",
+                        if let Some(downloads) = model.downloads {
+                            span { "⬇️ {format_number(downloads)}" }
+                        }
+                        if let Some(likes) = model.likes {
+                            span { "❤️ {format_number(likes)}" }
+                        }
+                    }
+                }
+                button {
+                    class: "btn btn-primary",
+                    onclick: move |_| on_download.call(model.clone()),
+                    "⬇️ 下载"
+                }
+            }
+        }
+    }
+}
+
+// 将 HuggingFace API 模型导入到本地数据库
+async fn import_model_to_database(hf_model: HfApiModel) -> Result<(), Box<dyn std::error::Error>> {
+    let service = burncloud_service_models::ModelService::new().await?;
+
+    let model_info = ModelInfo {
+        model_id: hf_model.id.clone(),
+        private: hf_model.private.unwrap_or(false),
+        pipeline_tag: hf_model.pipeline_tag.clone(),
+        library_name: hf_model.library_name.clone(),
+        model_type: None,
+        downloads: hf_model.downloads.unwrap_or(0),
+        likes: hf_model.likes.unwrap_or(0),
+        sha: None,
+        last_modified: None,
+        gated: false,
+        disabled: false,
+        tags: serde_json::to_string(&hf_model.tags.unwrap_or_default())?,
+        config: "{}".to_string(),
+        widget_data: "[]".to_string(),
+        card_data: "{}".to_string(),
+        transformers_info: "{}".to_string(),
+        siblings: "[]".to_string(),
+        spaces: "[]".to_string(),
+        safetensors: "{}".to_string(),
+        used_storage: 0,
+        filename: None,
+        size: 0,
+        created_at: hf_model.created_at.unwrap_or_else(|| {
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
+        }),
+        updated_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+
+    service.create(&model_info).await?;
+    Ok(())
 }
