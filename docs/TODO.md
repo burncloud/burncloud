@@ -1,6 +1,21 @@
-# client-models 下载功能补充
+# client-models 下载功能实现
 {
-    "work": "在client-models页面，添加模型点击之后打开弹出页面，页面调用service-models fetch_from_huggingfaced 加载搜索结果，通过搜索结果，搜索结果按每行一条列出来，在每一行增加下载按钮，使用下载",
+    "work": "client-models现在增加模型的下载功能实现，当用户点击下载模型，先读取service-setting name=data_dir的存放位置，如果没有读取到值，则设定value=./data，",
+    "depend": [
+        "crates/service-setting",
+        "crates/service-models",
+        "crates/download"
+    ],
+    "rules": [
+        "使用中文回复",
+        "使用最精简的代码来编写",
+        "只允许使用rust编写代码"
+    ]
+}
+
+# client-models 弹出功能修改
+{
+    "work": "client-models现在增加模型的弹出窗口，没有正确的弹出一层，而是直接在菜单栏上面直接下拉了下来，而且加载hugginface数据的时候并没有加载提示，请修改上面的提的问题",
     "depend": [
         "crates/service-setting",
         "crates/service-models",
@@ -14,7 +29,7 @@
 }
 
 
-# client-models 添加模型页面
+# [complete] client-models 添加模型页面
 {
     "work": "在client-models页面，添加模型点击之后打开弹出页面，页面调用service-models fetch_from_huggingfaced 加载搜索结果，通过搜索结果，搜索结果按每行一条列出来，在每一行增加下载按钮，具体下载功能暂时不做，只实现点击下载功能把这一条数据导入到本地模型里面。",
     "depend": [
