@@ -3,6 +3,7 @@
 *.aria2
 download
 downloads
+data
 
 # Rust build artifacts
 /target/
