@@ -214,35 +214,34 @@ fn format_number(num: i64) -> String {
 #[component]
 fn SearchDialog(on_close: EventHandler<()>, on_model_added: EventHandler<()>) -> Element {
     let mut search_results = use_signal(Vec::<HfApiModel>::new);
-    let mut loading = use_signal(|| false);
+    let mut loading = use_signal(|| true);
     let mut error_msg = use_signal(|| None::<String>);
 
     // 自动加载模型列表
     use_effect(move || {
-        loading.set(true);
         spawn(async move {
             match burncloud_service_models::ModelService::fetch_from_huggingface().await {
                 Ok(results) => {
                     search_results.set(results);
                     error_msg.set(None);
+                    loading.set(false);
                 }
                 Err(e) => {
                     error_msg.set(Some(format!("加载失败: {}", e)));
+                    loading.set(false);
                 }
             }
-            loading.set(false);
         });
     });
 
     rsx! {
         div {
-            class: "fixed inset-0 flex items-center justify-center",
-            style: "background: rgba(0,0,0,0.5); z-index: 1000;",
+            style: "position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;",
             onclick: move |_| on_close.call(()),
 
             div {
                 class: "card",
-                style: "width: 800px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;",
+                style: "width: 800px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; position: relative; background: white;",
                 onclick: move |e| e.stop_propagation(),
 
                 // 标题栏
