@@ -4,6 +4,22 @@ use thiserror::Error;
 use tokio::time::{sleep, Duration};
 use std::sync::Arc;
 
+/// 从 URL 中提取文件名
+fn extract_filename_from_url(url: &str) -> Option<String> {
+    // 移除查询参数
+    let url_without_query = url.split('?').next()?;
+
+    // 提取路径的最后一部分
+    let filename = url_without_query.split('/').last()?;
+
+    // 如果文件名为空，返回 None
+    if filename.is_empty() {
+        None
+    } else {
+        Some(filename.to_string())
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum DownloadError {
     #[error("数据库错误: {0}")]
@@ -33,9 +49,13 @@ impl DownloadManager {
             DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError("客户端未就绪".to_string())))?;
 
         let dir = download_dir.unwrap_or("./downloads").to_string();
+
+        // 从 URL 中提取文件名
+        let filename = extract_filename_from_url(url);
+
         let options = burncloud_download_aria2::DownloadOptions {
             dir: Some(dir.clone()),
-            out: None,
+            out: filename,
             split: None,
             max_connection_per_server: None,
             continue_download: Some(true),

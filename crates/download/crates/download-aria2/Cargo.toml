@@ -35,15 +35,3 @@ path = "src/lib.rs"
 [[bin]]
 name = "aria2-test"
 path = "src/main.rs"
-
-[profile.release]
-# 优化设置
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-
-[profile.dev]
-# 开发时的优化设置
-opt-level = 0
-debug = true

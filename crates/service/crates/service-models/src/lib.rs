@@ -170,5 +170,36 @@ pub fn filter_gguf_files(files: &[Vec<String>]) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// 获取数据存储目录
+pub async fn get_data_dir() -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let setting = SettingService::new().await?;
+
+    if let Some(dir) = setting.get("dir_data").await? {
+        return Ok(dir);
+    }
+
+    let dir = "./data";
+    setting.set("dir_data", dir).await?;
+    Ok(dir.to_string())
+}
+
+/// 构建下载 URL
+pub async fn build_download_url(model_id: &str, path: &str) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let host = get_huggingface_host().await?;
+    Ok(format!("{}{}/resolve/main/{}?download=true", host, model_id, path))
+}
+
+/// 下载模型文件
+pub async fn download_model_file(model_id: &str, path: &str) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let url = build_download_url(model_id, path).await?;
+    let base_dir = get_data_dir().await?;
+    let download_dir = format!("{}/{}", base_dir, model_id);
+
+    let manager = burncloud_download::DownloadManager::new().await?;
+    let gid = manager.add_download(&url, Some(&download_dir)).await?;
+
+    Ok(gid)
+}
+
 /// 重新导出常用类型
 pub use burncloud_database_models::{DatabaseError, ModelInfo};
