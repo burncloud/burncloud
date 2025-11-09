@@ -1,3 +1,9 @@
+# service-models 删除模型
+- 删除模型需要清理对应的文件，包含清理.1,.2,.3的后缀
+- 例Qwen2.5-7B-Instruct-GGUF.1，Qwen2.5-7B-Instruct-GGUF.2，Qwen2.5-7B-Instruct-GGUF.3。
+- 直接先去掉文件Qwen2.5-7B-Instruct-GGUF.guff的后缀，再删除Qwen2.5-7B-Instruct-GGUF*文件
+
+
 # service-models 下载功能
 {
     "work": "client-models现在增加模型的下载功能实现，当用户点击下载模型，先读取service-setting name=dir_data存放位置，如果没有读取到值，则设定value=./data，接受用户传入id和path，例：{host}api/models/{id}/resolve/main/{path}?download=true，host=get_huggingface_host,id=Qwen/Qwen2.5-7B-Instruct-GGUF,path=qwen2.5-7b-instruct-fp16-00001-of-00004.gguf，下载使用burncloud-download来下载",
