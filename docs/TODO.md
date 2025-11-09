@@ -1,4 +1,4 @@
-# client-models 下载功能实现
+# service-models 下载功能
 {
     "work": "client-models现在增加模型的下载功能实现，当用户点击下载模型，先读取service-setting name=data_dir的存放位置，如果没有读取到值，则设定value=./data，读取service-ip 判定使用哪个",
     "depend": [
@@ -6,31 +6,25 @@
         "crates/service-models",
         "crates/download"
     ],
-    "rules": [
-        "使用中文回复",
-        "使用最精简的代码来编写",
-        "只允许使用rust编写代码"
-    ]
+    "rules": ["使用中文回复","使用最精简的代码来编写","只允许使用rust编写代码"]
 }
 
-# service-models 下载功能实现
+# service-models 列出所有GUFF文件
 {
-    "work": "service-models增加模型的下载功能实现，先读取service-setting name=data_dir的存放位置，如果没有读取到值，则设定value=./data，读取service-ip 判定使用，如果是CN则使用https://hf-mirror.com/，如果是其它则使用https://huggingface.co",
-    "rules": [
-        "使用中文回复",
-        "使用最精简的代码来编写",
-        "只允许使用rust编写代码"
-    ]
+    "work": "get_model_files获取所有文件，编写代码从中列出所有GUFF文件",
+    "rules": ["使用中文回复","使用最精简的代码来编写","只允许使用rust编写代码"]
 }
 
-# service-models 设置url host
+# service-models 递归获取所有文件
+{
+    "work": "service-models 用get_huggingface_host获取host，再根据传入的id(例：deepseek-ai/DeepSeek-OCR)，组成url: {host}api/models/{id}/tree/main 获取文件列表，如果获取的列表内容里面包含文件夹，则需要继续遍历。示例json:[{"type":"directory","oid":"e0e4421f3463b5c1f8db4514c1b39ee191da6076","size":0,"path":".ipynb_checkpoints"},{"type":"directory","oid":"8ab42b51620a04aa257174201e49eca7885265a3","size":0,"path":"assets"},{"type":"file","oid":"12296852e0362bac092cd2a53bb676d7af4023be","size":1783,"path":".gitattributes"},{"type":"file","oid":"d62e3bef9f054f21b7fc616365850fbf879a99ff","size":1084,"path":"LICENSE"}], 里面directory的assets，则需要组成url: {host}api/models/{id}/tree/main/assets 获取assets的文件列表，如果里面还包含文件夹，则要继续遍历。当获取了所有文件列表，把这些数据以二维数据的方式存在rust列表中并返回结果",
+    "rules": ["使用中文回复","使用最精简的代码来编写","只允许使用rust编写代码"]
+}
+
+# [complete] service-models 设置url host
 {
     "work": "service-models读取service-setting name=huggingface 如果 value不存在则读取service-ip 的 get_location,如果是CN则 service-setting name=hugginface value=https://huggingface.co/，其它则 service-setting name=hugginface value=https://hf-mirror.com/",
-    "rules": [
-        "使用中文回复",
-        "使用最精简的代码来编写",
-        "只允许使用rust编写代码"
-    ]
+    "rules": ["使用中文回复","使用最精简的代码来编写","只允许使用rust编写代码"]
 }
 
 # [complete] client-models 弹出功能修改
@@ -41,11 +35,7 @@
         "crates/service-models",
         "crates/download"
     ],
-    "rules": [
-        "使用中文回复",
-        "使用最精简的代码来编写",
-        "只允许使用rust编写代码"
-    ]
+    "rules": ["使用中文回复","使用最精简的代码来编写","只允许使用rust编写代码"]
 }
 
 
@@ -55,11 +45,7 @@
     "depend": [
         "crates/service-models"
     ],
-    "rules": [
-        "使用中文回复",
-        "使用最精简的代码来编写",
-        "只允许使用rust编写代码"
-    ]
+    "rules": ["使用中文回复","使用最精简的代码来编写","只允许使用rust编写代码"]
 }
 
 

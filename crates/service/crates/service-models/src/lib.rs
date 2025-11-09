@@ -29,6 +29,15 @@ pub struct HfApiModel {
     pub model_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct HfFileItem {
+    #[serde(rename = "type")]
+    pub file_type: String,
+    pub oid: String,
+    pub size: i64,
+    pub path: String,
+}
+
 /// 模型服务
 pub struct ModelService {
     db: ModelDatabase,
@@ -114,6 +123,51 @@ pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::
     setting.set("huggingface", host).await?;
 
     Ok(host.to_string())
+}
+
+/// 获取模型的所有文件列表（递归遍历）
+pub async fn get_model_files(model_id: &str) -> std::result::Result<Vec<Vec<String>>, Box<dyn std::error::Error>> {
+    let host = get_huggingface_host().await?;
+    let mut result = Vec::new();
+    fetch_files_recursive(&host, model_id, "main", &mut result).await?;
+    Ok(result)
+}
+
+fn fetch_files_recursive<'a>(
+    host: &'a str,
+    model_id: &'a str,
+    path: &'a str,
+    result: &'a mut Vec<Vec<String>>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::result::Result<(), Box<dyn std::error::Error>>> + 'a>> {
+    Box::pin(async move {
+        let url = format!("{}api/models/{}/tree/{}", host, model_id, path);
+        let response = reqwest::get(&url).await?;
+        let items: Vec<HfFileItem> = response.json().await?;
+
+        for item in items {
+            if item.file_type == "file" {
+                result.push(vec![
+                    item.file_type.clone(),
+                    item.oid.clone(),
+                    item.size.to_string(),
+                    item.path.clone(),
+                ]);
+            } else if item.file_type == "directory" {
+                let sub_path = format!("{}/{}", path, item.path);
+                fetch_files_recursive(host, model_id, &sub_path, result).await?;
+            }
+        }
+
+        Ok(())
+    })
+}
+
+/// 从文件列表中筛选出所有 GGUF 文件
+pub fn filter_gguf_files(files: &[Vec<String>]) -> Vec<Vec<String>> {
+    files.iter()
+        .filter(|f| f[3].to_lowercase().ends_with(".gguf"))
+        .cloned()
+        .collect()
 }
 
 /// 重新导出常用类型
