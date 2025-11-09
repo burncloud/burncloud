@@ -3,6 +3,7 @@
 //! 模型服务层，提供简洁的增删改查接口
 
 use burncloud_database_models::ModelDatabase;
+use burncloud_service_setting::SettingService;
 use serde::Deserialize;
 
 type Result<T> = std::result::Result<T, burncloud_database_models::DatabaseError>;
@@ -83,21 +84,36 @@ impl ModelService {
 
     /// 从 HuggingFace API 获取模型列表
     pub async fn fetch_from_huggingface() -> std::result::Result<Vec<HfApiModel>, Box<dyn std::error::Error>> {
-        // 获取地区
-        let location = burncloud_service_ip::get_location().await?;
+        let host = get_huggingface_host().await?;
+        let api_url = format!("{}api/models", host);
 
-        // 根据地区选择 API 端点
-        let api_url = match location.as_str() {
-            "CN" => "https://hf-mirror.com/api/models",
-            _ => "https://huggingface.co/api/models",
-        };
-
-        // 请求数据
-        let response = reqwest::get(api_url).await?;
+        let response = reqwest::get(&api_url).await?;
         let models: Vec<HfApiModel> = response.json().await?;
 
         Ok(models)
     }
+}
+
+/// 获取 HuggingFace Host（带缓存）
+pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let setting = SettingService::new().await?;
+
+    // 先查询缓存
+    if let Some(host) = setting.get("huggingface").await? {
+        return Ok(host);
+    }
+
+    // 没有缓存，根据地区设置
+    let location = burncloud_service_ip::get_location().await?;
+    let host = match location.as_str() {
+        "CN" => "https://hf-mirror.com/",
+        _ => "https://huggingface.co/",
+    };
+
+    // 保存到数据库
+    setting.set("huggingface", host).await?;
+
+    Ok(host.to_string())
 }
 
 /// 重新导出常用类型

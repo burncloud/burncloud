@@ -1,6 +1,6 @@
 # client-models 下载功能实现
 {
-    "work": "client-models现在增加模型的下载功能实现，当用户点击下载模型，先读取service-setting name=data_dir的存放位置，如果没有读取到值，则设定value=./data，",
+    "work": "client-models现在增加模型的下载功能实现，当用户点击下载模型，先读取service-setting name=data_dir的存放位置，如果没有读取到值，则设定value=./data，读取service-ip 判定使用哪个",
     "depend": [
         "crates/service-setting",
         "crates/service-models",
@@ -13,7 +13,27 @@
     ]
 }
 
-# client-models 弹出功能修改
+# service-models 下载功能实现
+{
+    "work": "service-models增加模型的下载功能实现，先读取service-setting name=data_dir的存放位置，如果没有读取到值，则设定value=./data，读取service-ip 判定使用，如果是CN则使用https://hf-mirror.com/，如果是其它则使用https://huggingface.co",
+    "rules": [
+        "使用中文回复",
+        "使用最精简的代码来编写",
+        "只允许使用rust编写代码"
+    ]
+}
+
+# service-models 设置url host
+{
+    "work": "service-models读取service-setting name=huggingface 如果 value不存在则读取service-ip 的 get_location,如果是CN则 service-setting name=hugginface value=https://huggingface.co/，其它则 service-setting name=hugginface value=https://hf-mirror.com/",
+    "rules": [
+        "使用中文回复",
+        "使用最精简的代码来编写",
+        "只允许使用rust编写代码"
+    ]
+}
+
+# [complete] client-models 弹出功能修改
 {
     "work": "client-models现在增加模型的弹出窗口，没有正确的弹出一层，而是直接在菜单栏上面直接下拉了下来，而且加载hugginface数据的时候并没有加载提示，请修改上面的提的问题",
     "depend": [
