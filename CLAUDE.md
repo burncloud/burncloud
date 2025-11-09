@@ -75,13 +75,16 @@ This is a Cargo workspace with 23+ crates organized by functionality:
 
 **Server/Service Crates**:
 - `burncloud-server` - Backend server component
-- `burncloud-service-models` - Model information services
+- `burncloud-service-models` - Model information services with HuggingFace API integration
 - `burncloud-service-monitor` - System monitoring services
+- `burncloud-service-ip` - Network location detection (CN vs WORLD)
+- `burncloud-service-setting` - Configuration management service
 
 **Database Crates**:
 - `burncloud-database` - Core database abstractions and SQLx integration
 - `burncloud-database-models` - Model metadata storage (ModelInfo struct)
 - `burncloud-database-download` - Download tracking and management
+- `burncloud-database-setting` - Key-value configuration storage
 
 **Download Crates**:
 - `burncloud-download` - Download orchestration
@@ -94,8 +97,37 @@ This is a Cargo workspace with 23+ crates organized by functionality:
 - `burncloud-code` - Code execution component
 - `burncloud-auto-update` - GitHub-based auto-update functionality
 
+### Nested Crate Structure
+
+The workspace uses a nested crate organization pattern:
+
+```
+crates/
+├── service/
+│   └── crates/
+│       ├── service-ip/          # Location detection
+│       ├── service-models/      # Model management
+│       ├── service-monitor/     # System monitoring
+│       └── service-setting/     # Configuration
+├── database/
+│   └── crates/
+│       ├── database-models/     # Model metadata
+│       ├── database-download/   # Download tracking
+│       └── database-setting/    # Settings storage
+├── client/
+│   └── crates/
+│       ├── client-models/       # Model UI
+│       ├── client-dashboard/    # Dashboard UI
+│       └── ...
+└── download/
+    └── crates/
+        └── download-aria2/      # Aria2 backend
+```
+
 **Location Detection**:
-- `burncloud-ip` - Network location detection (CN vs WORLD) using ip-api.com and ipinfo.io fallback
+- `burncloud-service-ip` - Network location detection using ip-api.com with ipinfo.io fallback
+- Returns "CN" for China, "WORLD" for other regions
+- Cached in `burncloud-database-setting` with name="location"
 
 ### Application Entry Points
 
@@ -126,12 +158,31 @@ Located in `crates/client-shared/src/styles.rs`, implements Fluent Design with:
 
 ### Database Architecture
 
-Uses SQLx with SQLite for model metadata storage:
+Uses SQLx with SQLite for persistent storage:
 - Database location: Default to user data directory via `dirs` crate
 - Schema defined in migrations
-- ModelInfo struct represents AI model metadata from sources like HuggingFace
-- Supports JSON fields for complex data (tags, config, siblings, etc.)
+- Three main database modules:
+  - **Models**: Stores AI model metadata from HuggingFace (ModelInfo struct with JSON fields)
+  - **Settings**: Key-value configuration store (name as primary key)
+  - **Downloads**: Download progress and state tracking
 - Boolean fields stored as integers (0/1) with custom serde converters
+
+### HuggingFace Integration
+
+**Service Models** (`burncloud-service-models`):
+- `get_huggingface_host()`: Returns region-specific HuggingFace host
+  - CN: `https://hf-mirror.com/` (mirror site)
+  - WORLD: `https://huggingface.co/` (official site)
+  - Cached in settings with name="huggingface"
+- `fetch_from_huggingface()`: Fetches model list from HuggingFace API
+- `get_model_files(model_id)`: Recursively fetches all files for a model
+  - Returns `Vec<Vec<String>>` with format: `[type, oid, size, path]`
+  - Automatically traverses directory structures
+
+**Data Flow**:
+1. Location detected by `service-ip` → cached in `database-setting`
+2. HuggingFace host determined by location → cached in `database-setting`
+3. API calls use cached host for consistent regional routing
 
 ### Workspace Dependencies
 
@@ -178,14 +229,83 @@ Each client page is a self-contained crate with its own component structure, red
 The `burncloud-database` crate provides generic database traits, while specific implementations like `burncloud-database-models` build domain-specific functionality on top.
 
 ### Service Layer
-Service crates (`burncloud-service-*`) provide business logic separate from both UI and persistence layers, enabling potential API reuse.
+
+Service crates (`burncloud-service-*`) provide business logic separate from both UI and persistence layers:
+
+**Service Models** (`burncloud-service-models`):
+- CRUD operations for model metadata
+- HuggingFace API integration with regional routing
+- File tree traversal for model repositories
+- Caches HuggingFace host in settings
+
+**Service IP** (`burncloud-service-ip`):
+- Detects user's network location (CN vs WORLD)
+- Primary API: http://ip-api.com/json/
+- Fallback API: https://ipinfo.io/
+- Caches result in settings with name="location"
+
+**Service Setting** (`burncloud-service-setting`):
+- Thin wrapper over `database-setting`
+- Provides async CRUD for configuration values
+- Common settings: "location", "huggingface", "data_dir"
 
 ### Modular Downloads
 Download functionality is abstracted with a pluggable backend system (currently Aria2), allowing for alternative download engines.
 
+## Running Examples
+
+Service crates include example programs demonstrating functionality:
+
+```bash
+# Test HuggingFace host detection and caching
+cargo run -p burncloud-service-models --example test_host
+
+# Fetch model file list recursively
+cargo run -p burncloud-service-models --example get_files
+
+# Test location detection
+cargo run -p burncloud-service-ip --example get_location
+
+# Check all settings
+cargo run -p burncloud-service-models --example check_settings
+```
+
+## Important Implementation Details
+
+### Async Recursion
+When implementing recursive async functions, use `Box::pin` to avoid infinite-sized futures:
+
+```rust
+fn recursive_async<'a>(args: &'a Type) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+    Box::pin(async move {
+        // recursive call works here
+        recursive_async(new_args).await?;
+        Ok(())
+    })
+}
+```
+
+### Regional Routing Pattern
+The codebase uses a consistent pattern for China vs international routing:
+1. Check settings cache first (`service-setting`)
+2. If not cached, detect location (`service-ip`)
+3. Save to cache for future use
+4. Return region-specific value (URLs, API endpoints, etc.)
+
+This pattern minimizes API calls and ensures consistent behavior across sessions.
+
 ## Current Development Focus
 
-According to `docs/TODO.md`, active work includes:
-1. Integrating HuggingFace API (`https://huggingface.co/api/models`) into `service-models`
-2. Network location detection in `burncloud-ip` crate (CN vs WORLD routing)
-3. Completing the `client-models` page with fields from `service-models`
+According to `docs/TODO.md`, recent completions and active work:
+
+**Recently Completed**:
+- ✅ HuggingFace API integration with regional routing
+- ✅ Location detection with caching
+- ✅ Settings database and service layer
+- ✅ Model search dialog in client-models
+- ✅ Recursive file tree traversal for model repositories
+
+**Active Development**:
+- Model download functionality in `client-models`
+- Integration with `download-aria2` backend
+- Data directory configuration management
