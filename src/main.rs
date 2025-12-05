@@ -24,6 +24,9 @@ fn main() -> Result<()> {
                 "server" => {
                     run_async_server()?;
                 }
+                "router" => {
+                    run_async_router()?;
+                }
                 "code" => {
                     run_async_code()?;
                 }
@@ -45,6 +48,12 @@ fn main() -> Result<()> {
 #[tokio::main]
 async fn run_async_server() -> Result<()> {
     burncloud_server::start_server().await
+}
+
+#[tokio::main]
+async fn run_async_router() -> Result<()> {
+    let port = std::env::var("ROUTER_PORT").unwrap_or("3000".to_string()).parse().unwrap_or(3000);
+    burncloud_router::start_server(port).await
 }
 
 #[tokio::main]

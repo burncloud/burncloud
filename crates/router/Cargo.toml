@@ -1,0 +1,18 @@
+[package]
+name = "burncloud-router"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+reqwest = { workspace = true, features = ["stream", "json"] }
+anyhow = { workspace = true }
+
+burncloud-database = { workspace = true }
+burncloud-database-router = { workspace = true }
+
+axum = { version = "0.7", features = ["macros"] }
+tower-http = { version = "0.5", features = ["trace", "cors"] }
+tracing = "0.1"
