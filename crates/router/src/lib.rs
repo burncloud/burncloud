@@ -10,11 +10,13 @@ use axum::{
 };
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
+use burncloud_router_aws::{AwsConfig, sign_request};
 use config::{AuthType, RouterConfig, Upstream};
 use reqwest::Client;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
+use http_body_util::BodyExt;
 
 #[derive(Clone)]
 struct AppState {
@@ -126,7 +128,7 @@ async fn proxy_handler(
     // 3. Build Downstream Request
     let mut req_builder = state.client.request(method, &target_url);
 
-    // 4. Forward Headers & Inject Auth
+    // 4. Forward Headers
     for (key, value) in headers {
         if let Some(key) = key {
             let key_str = key.as_str();
@@ -138,44 +140,78 @@ async fn proxy_handler(
         }
     }
 
-    // Inject Real Auth
+    // 5. Handle Auth & Body (Special logic for AWS)
     match upstream.auth_type {
-        AuthType::Bearer => {
-            req_builder = req_builder.bearer_auth(&upstream.api_key);
-        }
-        AuthType::XApiKey => {
-             req_builder = req_builder.header("x-api-key", &upstream.api_key);
-        }
-        AuthType::Query(ref _param) => {
-             // TODO: Append to URL query
-        }
-    }
-
-    let client_body = reqwest::Body::wrap_stream(body.into_data_stream());
-    req_builder = req_builder.body(client_body);
-
-    // 5. Execute & Stream Response
-    match req_builder.send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let mut response_builder = Response::builder().status(status);
+        AuthType::AwsSigV4 => {
+            // For AWS SigV4, we MUST buffer the body to calculate SHA256 hash
+            // This breaks streaming upload, but usually fine for chat prompts (text)
+            let body_bytes = match body.collect().await {
+                Ok(collected) => collected.to_bytes(),
+                Err(e) => return Response::builder().status(400).body(Body::from(format!("Body Read Error: {}", e))).unwrap(),
+            };
             
-            if let Some(headers_mut) = response_builder.headers_mut() {
-                for (k, v) in resp.headers() {
-                    headers_mut.insert(k, v.clone());
-                }
+            let aws_config = match AwsConfig::from_colon_string(&upstream.api_key) {
+                Ok(c) => c,
+                Err(e) => return Response::builder().status(500).body(Body::from(format!("AWS Config Error: {}", e))).unwrap(),
+            };
+            
+            // Reconstruct request just for signing (reqwest builder consumes itself, so we work on a "draft" or apply late)
+            // Our `sign_request` takes `&mut reqwest::Request`. We can build it first.
+            req_builder = req_builder.body(body_bytes.clone());
+            
+            let mut request = match req_builder.build() {
+                Ok(r) => r,
+                Err(e) => return Response::builder().status(500).body(Body::from(format!("Request Build Error: {}", e))).unwrap(),
+            };
+            
+            if let Err(e) = sign_request(&mut request, &aws_config, &body_bytes) {
+                 return Response::builder().status(500).body(Body::from(format!("AWS Signing Error: {}", e))).unwrap();
             }
             
-            let stream = resp.bytes_stream();
-            let body = Body::from_stream(stream);
-            
-            response_builder.body(body).unwrap_or_else(|_| Response::new(Body::empty()))
-        }
-        Err(e) => {
-            Response::builder()
-                .status(502)
-                .body(Body::from(format!("Proxy Error: {}", e)))
-                .unwrap()
+            // Execute the built request
+            match state.client.execute(request).await {
+                 Ok(resp) => handle_response(resp),
+                 Err(e) => Response::builder().status(502).body(Body::from(format!("Proxy Error: {}", e))).unwrap()
+            }
+        },
+        _ => {
+            // Standard Passthrough (Streaming Upload Supported)
+            match upstream.auth_type {
+                AuthType::Bearer => {
+                    req_builder = req_builder.bearer_auth(&upstream.api_key);
+                }
+                AuthType::XApiKey => {
+                     req_builder = req_builder.header("x-api-key", &upstream.api_key);
+                }
+                AuthType::Query(ref _param) => {
+                     // TODO: Append to URL query
+                }
+                _ => {}
+            }
+
+            let client_body = reqwest::Body::wrap_stream(body.into_data_stream());
+            req_builder = req_builder.body(client_body);
+
+            match req_builder.send().await {
+                Ok(resp) => handle_response(resp),
+                Err(e) => Response::builder().status(502).body(Body::from(format!("Proxy Error: {}", e))).unwrap()
+            }
         }
     }
+}
+
+fn handle_response(resp: reqwest::Response) -> Response {
+    let status = resp.status();
+    let mut response_builder = Response::builder().status(status);
+    
+    if let Some(headers_mut) = response_builder.headers_mut() {
+        for (k, v) in resp.headers() {
+            headers_mut.insert(k, v.clone());
+        }
+    }
+    
+    let stream = resp.bytes_stream();
+    let body = Body::from_stream(stream);
+    
+    response_builder.body(body).unwrap_or_else(|_| Response::new(Body::empty()))
 }

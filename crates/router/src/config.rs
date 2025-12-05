@@ -5,6 +5,7 @@ pub enum AuthType {
     Bearer,     // Authorization: Bearer <key>
     XApiKey,    // x-api-key: <key>
     Query(String), // ?key=<key> or ?<param>=<key>
+    AwsSigV4,   // AWS Signature Version 4 (Bedrock)
 }
 
 impl From<&str> for AuthType {
@@ -12,6 +13,7 @@ impl From<&str> for AuthType {
         match s {
             "Bearer" => AuthType::Bearer,
             "XApiKey" => AuthType::XApiKey,
+            "AwsSigV4" => AuthType::AwsSigV4,
             s if s.starts_with("Query:") => {
                 let param = s.trim_start_matches("Query:");
                 AuthType::Query(param.to_string())

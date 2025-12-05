@@ -22,6 +22,7 @@ members = [
     "crates/download",
     "crates/download/crates/download-aria2",
     "crates/router",
+    "crates/router/crates/router-aws",
     "crates/server",
     "crates/service",
     "crates/service/crates/service-ip",
@@ -104,6 +105,7 @@ burncloud-database-setting = { path = "crates/database/crates/database-setting" 
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
 burncloud-router = { path = "crates/router" }
+burncloud-router-aws = { path = "crates/router/crates/router-aws" }
 burncloud-server = { path = "crates/server" }
 burncloud-service = { path = "crates/service" }
 burncloud-service-ip = { path = "crates/service/crates/service-ip" }
