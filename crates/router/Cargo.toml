@@ -24,9 +24,5 @@ serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [[example]]
-name = "setup_test_auth"
-path = "examples/setup_test_auth.rs"
-
-[[example]]
 name = "configure_apikey_test"
 path = "examples/configure_apikey_test.rs"
