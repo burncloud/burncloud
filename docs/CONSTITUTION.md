@@ -1,6 +1,6 @@
 # BurnCloud 项目开发宪法 (Development Constitution)
 
-**版本**: 1.0
+**版本**: 1.1
 **生效日期**: 2025-12-05
 
 ## 序言
@@ -69,9 +69,23 @@ BurnCloud (奔云) 不仅仅是一个工具，它是一个致力于让大模型�
 ## 第四章：工程与代码规范 (Engineering Standards)
 
 ### 4.1 提交规范 (Commit Standards)
-Git 提交信息必须清晰描述“做了什么”以及“为什么做”。
-*   ✅ `feat(router): add aws sigv4 signing support`
-*   ❌ `update code`
+Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说明变更内容。
+
+**格式**: `<Icon> <Type>: <Summary>`
+
+| 图标 | 类型 (Type) | 说明 |
+| :--- | :--- | :--- |
+| ✨ | `feat` | 新功能 (New Feature) |
+| 🐛 | `fix` | Bug 修复 |
+| 📚 | `docs` | 文档变更 |
+| 🔨 | `refactor` | 代码重构 (无功能变更) |
+| 🚀 | `perf` | 性能优化 |
+| 🧪 | `test` | 测试代码变更 |
+| 🔧 | `chore` | 构建过程或辅助工具变更 |
+
+**示例**:
+*   ✅ `✨ feat: add aws sigv4 signing support`
+*   ✅ `📚 docs: update CONSTITUTION.md`
 
 ### 4.2 测试规范 (Testing Standards)
 *   **单元测试**：核心逻辑（如 URL 编码、签名计算、配置解析）必须有单元测试覆盖。
@@ -95,6 +109,21 @@ Git 提交信息必须清晰描述“做了什么”以及“为什么做”。
 ### 5.2 鉴权
 *   Router 必须验证用户的 Bearer Token 才能转发请求。
 *   对外暴露的端口默认绑定 `127.0.0.1`，除非用户显式配置为 `0.0.0.0`。
+
+---
+
+## 第六章：AI 代理行为准则 (AI Agent Protocol)
+
+所有协助开发的 AI 代理在完成任务时必须遵守以下汇报流程：
+
+### 6.1 汇报语言 (Reporting Language)
+*   无论用户使用何种语言提问，AI 代理在**总结更新内容**时必须使用 **中文 (Chinese)**。
+*   这有助于保持项目文档和沟通的一致性（项目核心语言为中文）。
+
+### 6.2 提交信息生成 (Git Message Generation)
+*   在每次回复的末尾，AI 代理必须提供一段**英文**的 Git Commit Message。
+*   该 Message 必须严格遵守 **4.1 提交规范** 中的 Emoji 格式。
+*   这方便开发者直接复制粘贴进行提交。
 
 ---
 
