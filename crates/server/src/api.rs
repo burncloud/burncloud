@@ -3,7 +3,7 @@ use burncloud_core::{ConfigManager, ModelManager};
 
 pub async fn start_server() -> Result<()> {
     let config_manager = ConfigManager::new("config.json".to_string())?;
-    let model_manager = ModelManager::new(config_manager.get_models_dir().to_string());
+    let _model_manager = ModelManager::new(config_manager.get_models_dir().to_string());
     let port = config_manager.get_server_port();
 
     println!("🚀 BurnCloud 服务器启动中...");
@@ -24,14 +24,14 @@ pub async fn start_server() -> Result<()> {
 
 // 模拟API端点结构
 pub struct ApiServer {
-    model_manager: ModelManager,
+    _model_manager: ModelManager,
     port: u16,
 }
 
 impl ApiServer {
     pub fn new(model_manager: ModelManager, port: u16) -> Self {
         Self {
-            model_manager,
+            _model_manager: model_manager,
             port,
         }
     }

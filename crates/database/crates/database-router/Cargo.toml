@@ -1,0 +1,12 @@
+[package]
+name = "burncloud-database-router"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
