@@ -156,6 +156,77 @@ async fn test_header_auth_proxy() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_azure_proxy() -> anyhow::Result<()> {
+    // Test Azure AuthType specifically
+    
+    // 1. Setup Database
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+    let conn = db.connection()?;
+
+    let id = "azure-test";
+    let name = "Azure Test";
+    let base_url = "https://httpbin.org/anything";
+    let api_key = "azure-secret-key-123";
+    // Simulate the Azure path structure
+    let match_path = "/openai/deployments"; 
+    let auth_type = "Azure";
+
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET 
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type
+        "#
+    )
+    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+    .execute(conn.pool())
+    .await?;
+
+    // 2. Start Server (Port 3006)
+    let port = 3006;
+    tokio::spawn(async move {
+        if let Err(_e) = burncloud_router::start_server(port).await {
+            // Ignore error
+        }
+    });
+    sleep(Duration::from_secs(2)).await;
+
+    // 3. Send Request
+    let client = Client::new();
+    // Path matches match_path
+    let url = format!("http://localhost:{}/openai/deployments/my-gpt4/chat/completions?api-version=2023-05-15", port);
+
+    let resp = client.post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .body("azure body")
+        .send()
+        .await?;
+
+    assert_eq!(resp.status(), 200);
+    let json: serde_json::Value = resp.json().await?;
+    
+    // 4. Verify Header Injection
+    let headers = json.get("headers").unwrap();
+    println!("Received Headers for Azure: {:?}", headers);
+
+    let injected_key = headers.get("Api-Key").or(headers.get("api-key")).unwrap();
+    assert_eq!(injected_key.as_str().unwrap(), "azure-secret-key-123");
+
+    // Verify URL/Path forwarding
+    let url_sent = json.get("url").unwrap().as_str().unwrap();
+    // httpbin returns the full URL it received.
+    // It should be https://httpbin.org/openai/deployments/my-gpt4/chat/completions?api-version=2023-05-15
+    assert!(url_sent.contains("/openai/deployments/my-gpt4/chat/completions"));
+    assert!(url_sent.contains("api-version=2023-05-15"));
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_aws_api_key_proxy() -> anyhow::Result<()> {
     // 1. Check for Environment Variables
     let api_key = env::var("TEST_AWS_API_KEY").unwrap_or_default();
