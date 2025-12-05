@@ -7,6 +7,7 @@ pub enum AuthType {
     Query(String),      // ?<param>=<key>
     AwsSigV4,           // AWS Signature Version 4
     Azure,              // Azure OpenAI (api-key header)
+    GoogleAI,           // Google AI Studio (x-goog-api-key header)
 }
 
 impl From<&str> for AuthType {
@@ -16,6 +17,7 @@ impl From<&str> for AuthType {
             "XApiKey" => AuthType::Header("x-api-key".to_string()), // Alias for backward compatibility
             "AwsSigV4" => AuthType::AwsSigV4,
             "Azure" => AuthType::Azure,
+            "GoogleAI" => AuthType::GoogleAI,
             s if s.starts_with("Header:") => {
                 let header_name = s.trim_start_matches("Header:").trim();
                 AuthType::Header(header_name.to_string())

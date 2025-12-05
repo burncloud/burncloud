@@ -182,6 +182,9 @@ async fn proxy_handler(
                 AuthType::Azure => {
                     req_builder = req_builder.header("api-key", &upstream.api_key);
                 }
+                AuthType::GoogleAI => {
+                    req_builder = req_builder.header("x-goog-api-key", &upstream.api_key);
+                }
                 AuthType::Header(header_name) => {
                      req_builder = req_builder.header(header_name, &upstream.api_key);
                 }
