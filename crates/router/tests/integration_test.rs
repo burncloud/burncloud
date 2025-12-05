@@ -227,6 +227,68 @@ async fn test_azure_proxy() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_google_ai_proxy() -> anyhow::Result<()> {
+    // Test Google AI Studio AuthType
+    
+    // 1. Setup Database
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+    let conn = db.connection()?;
+
+    let id = "google-gemini-test";
+    let name = "Google Gemini Test";
+    let base_url = "https://httpbin.org/anything";
+    let api_key = "google-secret-key-abc";
+    let match_path = "/v1beta/models"; 
+    let auth_type = "GoogleAI";
+
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET 
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type
+        "#
+    )
+    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+    .execute(conn.pool())
+    .await?;
+
+    // 2. Start Server (Port 3007)
+    let port = 3007;
+    tokio::spawn(async move {
+        if let Err(_e) = burncloud_router::start_server(port).await {
+            // Ignore error
+        }
+    });
+    sleep(Duration::from_secs(2)).await;
+
+    // 3. Send Request
+    let client = Client::new();
+    let url = format!("http://localhost:{}/v1beta/models/gemini-pro:generateContent", port);
+
+    let resp = client.post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .body("google body")
+        .send()
+        .await?;
+
+    assert_eq!(resp.status(), 200);
+    let json: serde_json::Value = resp.json().await?;
+    
+    // 4. Verify Header Injection
+    let headers = json.get("headers").unwrap();
+    println!("Received Headers for GoogleAI: {:?}", headers);
+
+    let injected_key = headers.get("X-Goog-Api-Key").or(headers.get("x-goog-api-key")).unwrap();
+    assert_eq!(injected_key.as_str().unwrap(), "google-secret-key-abc");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_aws_api_key_proxy() -> anyhow::Result<()> {
     // 1. Check for Environment Variables
     let api_key = env::var("TEST_AWS_API_KEY").unwrap_or_default();
