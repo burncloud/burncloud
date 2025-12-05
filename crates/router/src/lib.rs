@@ -133,7 +133,9 @@ async fn proxy_handler(
         if let Some(key) = key {
             let key_str = key.as_str();
             // Filter hop-by-hop and auth
-            if key_str == "host" || key_str == "content-length" || key_str == "transfer-encoding" || key_str == "authorization" || key_str == "x-api-key" {
+            // Also filter upstream-specific auth headers if they came from client
+            if key_str == "host" || key_str == "content-length" || key_str == "transfer-encoding" 
+               || key_str == "authorization" || key_str == "x-api-key" || key_str == "api-key" {
                 continue;
             }
             req_builder = req_builder.header(key, value);
@@ -141,10 +143,9 @@ async fn proxy_handler(
     }
 
     // 5. Handle Auth & Body (Special logic for AWS)
-    match upstream.auth_type {
+    match &upstream.auth_type {
         AuthType::AwsSigV4 => {
             // For AWS SigV4, we MUST buffer the body to calculate SHA256 hash
-            // This breaks streaming upload, but usually fine for chat prompts (text)
             let body_bytes = match body.collect().await {
                 Ok(collected) => collected.to_bytes(),
                 Err(e) => return Response::builder().status(400).body(Body::from(format!("Body Read Error: {}", e))).unwrap(),
@@ -155,8 +156,6 @@ async fn proxy_handler(
                 Err(e) => return Response::builder().status(500).body(Body::from(format!("AWS Config Error: {}", e))).unwrap(),
             };
             
-            // Reconstruct request just for signing (reqwest builder consumes itself, so we work on a "draft" or apply late)
-            // Our `sign_request` takes `&mut reqwest::Request`. We can build it first.
             req_builder = req_builder.body(body_bytes.clone());
             
             let mut request = match req_builder.build() {
@@ -168,25 +167,24 @@ async fn proxy_handler(
                  return Response::builder().status(500).body(Body::from(format!("AWS Signing Error: {}", e))).unwrap();
             }
             
-            // Execute the built request
             match state.client.execute(request).await {
                  Ok(resp) => handle_response(resp),
                  Err(e) => Response::builder().status(502).body(Body::from(format!("Proxy Error: {}", e))).unwrap()
             }
         },
-        _ => {
+        auth_type => {
             // Standard Passthrough (Streaming Upload Supported)
-            match upstream.auth_type {
+            match auth_type {
                 AuthType::Bearer => {
                     req_builder = req_builder.bearer_auth(&upstream.api_key);
                 }
-                AuthType::XApiKey => {
-                     req_builder = req_builder.header("x-api-key", &upstream.api_key);
+                AuthType::Header(header_name) => {
+                     req_builder = req_builder.header(header_name, &upstream.api_key);
                 }
                 AuthType::Query(ref _param) => {
                      // TODO: Append to URL query
                 }
-                _ => {}
+                _ => {} // AWS SigV4 handled above
             }
 
             let client_body = reqwest::Body::wrap_stream(body.into_data_stream());
