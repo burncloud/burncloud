@@ -10,7 +10,6 @@ async fn main() -> anyhow::Result<()> {
 
     println!("🔍 Searching for existing Bedrock configuration...");
 
-    // 1. Find existing Base URL
     let row = sqlx::query(
         "SELECT base_url FROM router_upstreams WHERE id LIKE '%bedrock%' OR base_url LIKE '%amazonaws%'"
     )
@@ -24,32 +23,30 @@ async fn main() -> anyhow::Result<()> {
             url
         },
         None => {
-            // Fallback if not found
             let default = "https://bedrock-runtime.us-east-1.amazonaws.com".to_string();
             println!("⚠️ No existing config found. Using default: {}", default);
             default
         }
     };
 
-    // 2. Insert New Config with the provided API Key
-    let id = "test-aws-apikey"; // The ID we will use for testing
+    let id = "test-aws-apikey";
     let name = "AWS API Key Test";
-    let api_key = "";
+    let api_key = "YOUR_API_KEY_HERE"; // Placeholder
     let match_path = "/aws-key-test"; 
-    // NOTE: If this is for a proxy, it likely uses Header auth. 
-    // If this is direct Bedrock, this key won't work, but we follow instructions.
     let auth_type = "Header:x-api-key"; 
+    let priority = 5;
 
-    println!("💾 Inserting configuration for '{}'...", id);
+    println!("💾 Inserting configuration for '{}' with priority {}...", id, priority);
     
     sqlx::query(
         r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET 
             api_key = excluded.api_key,
             base_url = excluded.base_url,
-            auth_type = excluded.auth_type
+            auth_type = excluded.auth_type,
+            priority = excluded.priority
         "#
     )
     .bind(id)
@@ -58,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
     .bind(api_key)
     .bind(match_path)
     .bind(auth_type)
+    .bind(priority)
     .execute(conn.pool())
     .await?;
 

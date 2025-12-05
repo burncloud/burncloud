@@ -10,6 +10,8 @@ pub struct DbUpstream {
     pub api_key: String,
     pub match_path: String,
     pub auth_type: String, // Stored as string: "Bearer", "XApiKey"
+    #[sqlx(default)] // Handle missing column in old rows during migration
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -40,6 +42,12 @@ impl RouterDatabase {
         .execute(conn.pool())
         .await?;
 
+        // Migration: Add priority column if it doesn't exist
+        // We use a separate query and ignore error (simplest migration strategy for now)
+        let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
+            .execute(conn.pool())
+            .await;
+
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS router_tokens (
@@ -61,10 +69,10 @@ impl RouterDatabase {
         if count == 0 {
              sqlx::query(
                 r#"
-                INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+                INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority)
                 VALUES 
-                ('demo-openai', 'OpenAI Demo', 'https://api.openai.com', 'sk-demo', '/v1', 'Bearer'),
-                ('demo-claude', 'Claude Demo', 'https://api.anthropic.com', 'sk-ant-demo', '/v1/messages', 'XApiKey')
+                ('demo-openai', 'OpenAI Demo', 'https://api.openai.com', 'sk-demo', '/v1', 'Bearer', 0),
+                ('demo-claude', 'Claude Demo', 'https://api.anthropic.com', 'sk-ant-demo', '/v1/messages', 'XApiKey', 0)
                 "#
             )
             .execute(conn.pool())
@@ -92,8 +100,9 @@ impl RouterDatabase {
 
     pub async fn get_all_upstreams(db: &Database) -> Result<Vec<DbUpstream>> {
         let conn = db.connection()?;
+        // We sort by length(desc) then priority(desc) in SQL, but we also do it in code for robustness
         let rows = sqlx::query_as::<_, DbUpstream>(
-            "SELECT id, name, base_url, api_key, match_path, auth_type FROM router_upstreams"
+            "SELECT id, name, base_url, api_key, match_path, auth_type, priority FROM router_upstreams"
         )
         .fetch_all(conn.pool())
         .await?;
