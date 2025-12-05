@@ -205,14 +205,96 @@ async fn test_aws_api_key_proxy() -> anyhow::Result<()> {
 
     // 4. Send Request
     let client = Client::new();
-    // Note: We append /v1/chat/completions or whatever the upstream expects.
-    // Since match_path is /aws-test, we request /aws-test/v1/chat/completions
-    let url = format!("http://localhost:{}/aws-test/v1/chat/completions", port);
+    // We forward whatever matches /aws-test/* to the upstream.
+    // Assuming Claude endpoint structure.
+    // NOTE: If your upstream is /v1/messages directly, adjust match_path/url accordingly.
+    let url = format!("http://localhost:{}/aws-test/v1/messages", port);
     
+    // Standard Claude Format
     let body = json!({
-        "model": "gpt-3.5-turbo", // Or whatever the gateway supports
+        "model": "claude-3-sonnet-20240229",
+        "max_tokens": 200,
         "messages": [{"role": "user", "content": "Hello"}]
     });
+
+    let resp = client.post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .header("anthropic-version", "2023-06-01") // Usually required for Claude API
+        .json(&body)
+        .send()
+        .await?;
+
+    println!("Response Status: {}", resp.status());
+    let status = resp.status();
+    let text = resp.text().await?;
+    println!("Response Body Summary: {:.100}...", text);
+
+    // 5. Assertions
+    assert!(status != 500 && status != 502, "Router failed to proxy properly. Check logs for details.");
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_real_db_apikey() -> anyhow::Result<()> {
+    // This test connects to the REAL burncloud database on disk.
+    // It looks for 'test-aws-apikey' config which we inserted via example script.
+    
+    // 1. Setup Database (Real Path)
+    // We need to construct the real Database object, not memory.
+    // burncloud_database::Database::new() uses default path.
+    let db = burncloud_database::Database::new().await?;
+    let conn = db.connection()?;
+
+    // 2. Verify config exists
+    let id = "test-aws-apikey";
+    let row = sqlx::query("SELECT base_url FROM router_upstreams WHERE id = ?")
+        .bind(id)
+        .fetch_optional(conn.pool())
+        .await?;
+
+    if row.is_none() {
+        println!("Skipping test_real_db_apikey: Config '{}' not found in real DB.", id);
+        return Ok(());
+    }
+    
+    // 3. Start Server (Port 3005)
+    let port = 3005;
+    tokio::spawn(async move {
+        // We need to pass the DB instance to start_server if we want it to use THAT db?
+        // burncloud_router::start_server currently creates its own DB connection (default path).
+        // So just starting it is fine, it will pick up the same DB file.
+        if let Err(e) = burncloud_router::start_server(port).await {
+            eprintln!("Server error: {}", e);
+        }
+    });
+    
+    sleep(Duration::from_secs(2)).await;
+
+    // 4. Send Request
+    let client = Client::new();
+    // The match_path in our example script was "/aws-key-test"
+    // Bedrock URL structure: /model/{id}/invoke
+    // So we request: /aws-key-test/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke
+    let url = format!("http://localhost:{}/aws-key-test/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke", port);
+    
+    // Bedrock Format (NOT Claude format, unless using Messages API via Bedrock)
+    // The endpoint we configured is bedrock-runtime.
+    // Bedrock expects {"anthropic_version": ..., "messages": ...} wrapped in "body" if using raw invoke?
+    // Or just the JSON body directly.
+    // Let's try the Bedrock Claude 3 Body format.
+    let body = json!({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 200,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hello from API Key test"
+            }
+        ]
+    });
+
+    println!("Sending request to: {}", url);
 
     let resp = client.post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
@@ -223,10 +305,11 @@ async fn test_aws_api_key_proxy() -> anyhow::Result<()> {
     println!("Response Status: {}", resp.status());
     let status = resp.status();
     let text = resp.text().await?;
-    println!("Response Body Summary: {:.100}...", text); // Truncate log for safety
+    println!("Response Body: {:.200}...", text);
 
-    // 5. Assertions
-    assert!(status != 500 && status != 502, "Router failed to proxy properly. Check logs for details.");
-    
+    // We expect 403 or 400 usually if Key is invalid for Bedrock directly.
+    // But if it returns 500/502/404, our Router is broken.
+    assert!(status != 500 && status != 502 && status != 404, "Router failed to proxy");
+
     Ok(())
 }

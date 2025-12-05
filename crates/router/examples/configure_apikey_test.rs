@@ -1,0 +1,66 @@
+use burncloud_database::{create_default_database, sqlx};
+use burncloud_database_router::RouterDatabase;
+use sqlx::Row;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+    let conn = db.connection()?;
+
+    println!("🔍 Searching for existing Bedrock configuration...");
+
+    // 1. Find existing Base URL
+    let row = sqlx::query(
+        "SELECT base_url FROM router_upstreams WHERE id LIKE '%bedrock%' OR base_url LIKE '%amazonaws%'"
+    )
+    .fetch_optional(conn.pool())
+    .await?;
+
+    let base_url = match row {
+        Some(r) => {
+            let url: String = r.get("base_url");
+            println!("✅ Found existing Base URL: {}", url);
+            url
+        },
+        None => {
+            // Fallback if not found
+            let default = "https://bedrock-runtime.us-east-1.amazonaws.com".to_string();
+            println!("⚠️ No existing config found. Using default: {}", default);
+            default
+        }
+    };
+
+    // 2. Insert New Config with the provided API Key
+    let id = "test-aws-apikey"; // The ID we will use for testing
+    let name = "AWS API Key Test";
+    let api_key = "";
+    let match_path = "/aws-key-test"; 
+    // NOTE: If this is for a proxy, it likely uses Header auth. 
+    // If this is direct Bedrock, this key won't work, but we follow instructions.
+    let auth_type = "Header:x-api-key"; 
+
+    println!("💾 Inserting configuration for '{}'...", id);
+    
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET 
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type
+        "#
+    )
+    .bind(id)
+    .bind(name)
+    .bind(&base_url)
+    .bind(api_key)
+    .bind(match_path)
+    .bind(auth_type)
+    .execute(conn.pool())
+    .await?;
+
+    println!("✅ Configuration saved! You can now run the test.");
+    Ok(())
+}
