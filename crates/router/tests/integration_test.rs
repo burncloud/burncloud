@@ -81,10 +81,76 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
     let text = resp.text().await?;
     println!("Response Body: {}", text);
 
-    // 5. Assertions
-    // Even if we get 403/400 from AWS, it means the Router worked (it proxied).
-    // If we get 500/502, the Router failed.
     assert!(status != 500 && status != 502, "Router failed to proxy properly");
     
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_header_auth_proxy() -> anyhow::Result<()> {
+    // Test Generic Header Injection (e.g. for Azure or AWS Gateway)
+    // We will use httpbin.org to verify the header is injected correctly
+    
+    // 1. Setup Database
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+    let conn = db.connection()?;
+
+    let id = "httpbin-test";
+    let name = "HttpBin Test";
+    let base_url = "https://httpbin.org";
+    let api_key = "my-secret-azure-key";
+    let match_path = "/anything";
+    let auth_type = "Header:api-key"; // Simulate Azure style
+
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET 
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type
+        "#
+    )
+    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+    .execute(conn.pool())
+    .await?;
+
+    // 2. Start Server (Port 3003)
+    let port = 3003;
+    tokio::spawn(async move {
+        if let Err(_e) = burncloud_router::start_server(port).await {
+            // Ignore error (port binding) as test might run in parallel
+        }
+    });
+    sleep(Duration::from_secs(2)).await;
+
+    // 3. Send Request
+    let client = Client::new();
+    let url = format!("http://localhost:{}/anything/test", port);
+
+    let resp = client.post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .body("test body")
+        .send()
+        .await?;
+
+    assert_eq!(resp.status(), 200);
+    let json: serde_json::Value = resp.json().await?;
+    
+    // 4. Verify Header Injection
+    // httpbin returns the headers it received in "headers" field
+    let headers = json.get("headers").unwrap();
+    println!("Received Headers: {:?}", headers);
+
+    // Verify 'api-key' is present and correct
+    // Note: httpbin might capitalize headers differently
+    let injected_key = headers.get("Api-Key").or(headers.get("api-key")).unwrap();
+    assert_eq!(injected_key.as_str().unwrap(), "my-secret-azure-key");
+
+    // Verify 'Authorization' (Bearer sk-burncloud-demo) is REMOVED
+    assert!(headers.get("Authorization").is_none());
+
     Ok(())
 }

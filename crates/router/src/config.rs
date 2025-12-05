@@ -2,20 +2,24 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AuthType {
-    Bearer,     // Authorization: Bearer <key>
-    XApiKey,    // x-api-key: <key>
-    Query(String), // ?key=<key> or ?<param>=<key>
-    AwsSigV4,   // AWS Signature Version 4 (Bedrock)
+    Bearer,             // Authorization: Bearer <key>
+    Header(String),     // <custom-header>: <key>
+    Query(String),      // ?<param>=<key>
+    AwsSigV4,           // AWS Signature Version 4
 }
 
 impl From<&str> for AuthType {
     fn from(s: &str) -> Self {
         match s {
             "Bearer" => AuthType::Bearer,
-            "XApiKey" => AuthType::XApiKey,
+            "XApiKey" => AuthType::Header("x-api-key".to_string()), // Alias for backward compatibility
             "AwsSigV4" => AuthType::AwsSigV4,
+            s if s.starts_with("Header:") => {
+                let header_name = s.trim_start_matches("Header:").trim();
+                AuthType::Header(header_name.to_string())
+            }
             s if s.starts_with("Query:") => {
-                let param = s.trim_start_matches("Query:");
+                let param = s.trim_start_matches("Query:").trim();
                 AuthType::Query(param.to_string())
             }
             _ => AuthType::Bearer, // Default
@@ -39,8 +43,6 @@ pub struct RouterConfig {
 }
 
 impl RouterConfig {
-    /// Find the best matching upstream for a given path.
-    /// Implements Longest Prefix Match.
     pub fn find_upstream(&self, path: &str) -> Option<&Upstream> {
         let mut best_match: Option<&Upstream> = None;
         let mut max_len = 0;
