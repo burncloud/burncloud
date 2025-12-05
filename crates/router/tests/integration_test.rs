@@ -273,23 +273,19 @@ async fn test_real_db_apikey() -> anyhow::Result<()> {
 
     // 4. Send Request
     let client = Client::new();
-    // The match_path in our example script was "/aws-key-test"
     // Bedrock URL structure: /model/{id}/invoke
-    // So we request: /aws-key-test/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke
-    let url = format!("http://localhost:{}/aws-key-test/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke", port);
+    // We use the correct Model ID for Claude 3.5 Sonnet
+    let model_id = "anthropic.claude-3-5-sonnet-20240620-v1:0";
+    let url = format!("http://localhost:{}/aws-key-test/model/{}/invoke", port, model_id);
     
-    // Bedrock Format (NOT Claude format, unless using Messages API via Bedrock)
-    // The endpoint we configured is bedrock-runtime.
-    // Bedrock expects {"anthropic_version": ..., "messages": ...} wrapped in "body" if using raw invoke?
-    // Or just the JSON body directly.
-    // Let's try the Bedrock Claude 3 Body format.
+    // Bedrock Claude 3 / 3.5 Body format
     let body = json!({
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 200,
         "messages": [
             {
                 "role": "user",
-                "content": "Hello from API Key test"
+                "content": "Hello, are you Claude 3.5 Sonnet?"
             }
         ]
     });

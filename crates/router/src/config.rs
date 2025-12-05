@@ -35,6 +35,8 @@ pub struct Upstream {
     pub api_key: String,
     pub match_path: String,
     pub auth_type: AuthType,
+    #[serde(default)]
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -44,19 +46,27 @@ pub struct RouterConfig {
 
 impl RouterConfig {
     pub fn find_upstream(&self, path: &str) -> Option<&Upstream> {
-        let mut best_match: Option<&Upstream> = None;
-        let mut max_len = 0;
+        // Find all candidates
+        let mut candidates: Vec<&Upstream> = self.upstreams.iter()
+            .filter(|u| path.starts_with(&u.match_path))
+            .collect();
 
-        for upstream in &self.upstreams {
-            if path.starts_with(&upstream.match_path) {
-                let len = upstream.match_path.len();
-                if len > max_len {
-                    max_len = len;
-                    best_match = Some(upstream);
-                }
-            }
+        if candidates.is_empty() {
+            return None;
         }
 
-        best_match
+        // Sort candidates:
+        // 1. Match Length (Descending) - More specific path wins
+        // 2. Priority (Descending) - Higher priority wins
+        candidates.sort_by(|a, b| {
+            let len_cmp = b.match_path.len().cmp(&a.match_path.len());
+            if len_cmp != std::cmp::Ordering::Equal {
+                return len_cmp;
+            }
+            b.priority.cmp(&a.priority)
+        });
+
+        // Return the best match
+        candidates.first().map(|u| *u)
     }
 }

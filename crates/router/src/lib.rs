@@ -39,6 +39,7 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
         api_key: u.api_key,
         match_path: u.match_path,
         auth_type: AuthType::from(u.auth_type.as_str()),
+        priority: u.priority, // Map priority
     }).collect();
 
     let config = RouterConfig { upstreams };
