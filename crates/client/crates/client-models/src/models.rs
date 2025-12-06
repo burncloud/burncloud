@@ -5,6 +5,7 @@ use burncloud_service_models::{ModelInfo, HfApiModel};
 pub fn ModelManagement() -> Element {
     let mut models = use_signal(Vec::<ModelInfo>::new);
     let mut show_search_dialog = use_signal(|| false);
+    let mut active_model_id = use_signal(|| None::<String>);
 
     use_effect(move || {
         spawn(async move {
@@ -39,7 +40,6 @@ pub fn ModelManagement() -> Element {
             SearchDialog {
                 on_close: move |_| show_search_dialog.set(false),
                 on_model_added: move |_| {
-                    // 重新加载模型列表
                     spawn(async move {
                         if let Ok(service) = burncloud_service_models::ModelService::new().await {
                             if let Ok(list) = service.list().await {
@@ -48,6 +48,13 @@ pub fn ModelManagement() -> Element {
                         }
                     });
                 }
+            }
+        }
+
+        if let Some(model_id) = active_model_id() {
+            FileDownloadDialog {
+                model_id: model_id,
+                on_close: move |_| active_model_id.set(None),
             }
         }
 
@@ -115,6 +122,19 @@ pub fn ModelManagement() -> Element {
                             is_private: model.private,
                             is_gated: model.gated,
                             is_disabled: model.disabled,
+                            on_details: move |id| active_model_id.set(Some(id)),
+                            on_delete: move |id| {
+                                let id_clone = id.clone();
+                                spawn(async move {
+                                    if let Ok(service) = burncloud_service_models::ModelService::new().await {
+                                        if let Ok(_) = service.delete(&id_clone).await {
+                                            if let Ok(list) = service.list().await {
+                                                models.set(list);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
                         }
                     }
                 }
@@ -133,6 +153,8 @@ fn ModelCard(
     is_private: bool,
     is_gated: bool,
     is_disabled: bool,
+    on_details: EventHandler<String>,
+    on_delete: EventHandler<String>,
 ) -> Element {
     rsx! {
         div { class: "card",
@@ -176,9 +198,116 @@ fn ModelCard(
 
                 // 操作按钮
                 div { class: "flex gap-sm pt-md",
-                    button { class: "btn btn-secondary flex-1", "📄 详情" }
+                    button { 
+                        class: "btn btn-secondary flex-1",
+                        onclick: move |_| on_details.call(model_id.clone()),
+                        "📄 详情" 
+                    }
                     button { class: "btn btn-secondary flex-1", "🚀 部署" }
-                    button { class: "btn btn-danger-outline", "🗑️" }
+                    button { 
+                        class: "btn btn-danger-outline",
+                        onclick: move |_| on_delete.call(model_id.clone()),
+                        "🗑️" 
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn FileDownloadDialog(model_id: String, on_close: EventHandler<()>) -> Element {
+    let mut files = use_signal(Vec::<Vec<String>>::new);
+    let mut loading = use_signal(|| true);
+    let mut error_msg = use_signal(|| None::<String>);
+    let mut download_status = use_signal(|| None::<String>);
+
+    // Load files
+    let model_id_clone = model_id.clone();
+    use_effect(move || {
+        let id = model_id_clone.clone();
+        spawn(async move {
+            match burncloud_service_models::get_model_files(&id).await {
+                Ok(f) => {
+                    files.set(f);
+                    loading.set(false);
+                },
+                Err(e) => {
+                    error_msg.set(Some(format!("获取文件列表失败: {}", e)));
+                    loading.set(false);
+                }
+            }
+        });
+    });
+
+    rsx! {
+        div {
+            style: "position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;",
+            onclick: move |_| on_close.call(()),
+
+            div {
+                class: "card",
+                style: "width: 800px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; position: relative; background: white;",
+                onclick: move |e| e.stop_propagation(),
+
+                div { class: "p-lg flex justify-between items-center",
+                    style: "border-bottom: 1px solid var(--color-border);",
+                    h2 { class: "text-title font-semibold m-0", "模型文件: {model_id}" }
+                    button { class: "btn btn-secondary", onclick: move |_| on_close.call(()), "✕" }
+                }
+
+                div { class: "p-lg", style: "flex: 1; overflow-y: auto;",
+                    if let Some(status) = download_status() {
+                        div { class: "card mb-md bg-secondary-bg",
+                            div { class: "p-md", "🚀 {status}" }
+                        }
+                    }
+
+                    if loading() {
+                        div { class: "text-center p-xxxl", "加载中..." }
+                    } else if let Some(err) = error_msg() {
+                        div { class: "text-danger", "{err}" }
+                    } else {
+                        table { class: "w-full",
+                            thead {
+                                tr {
+                                    th { class: "text-left p-sm", "文件名" }
+                                    th { class: "text-left p-sm", "大小" }
+                                    th { class: "text-right p-sm", "操作" }
+                                }
+                            }
+                            tbody {
+                                for file in files.read().iter() {
+                                    // file format: [type, oid, size, path]
+                                    tr { class: "border-b",
+                                        td { class: "p-sm", "{file[3]}" }
+                                        td { class: "p-sm text-secondary", 
+                                            "{format_size(file[2].parse::<i64>().unwrap_or(0))}" 
+                                        }
+                                        td { class: "text-right p-sm",
+                                            if file[3].ends_with(".gguf") {
+                                                button {
+                                                    class: "btn btn-sm btn-primary",
+                                                    onclick: move |_| {
+                                                        let m_id = model_id.clone();
+                                                        let f_path = file[3].clone();
+                                                        spawn(async move {
+                                                            download_status.set(Some(format!("开始下载 {}...", f_path)));
+                                                            match burncloud_service_models::download_model_file(&m_id, &f_path).await {
+                                                                Ok(_) => download_status.set(Some(format!("已加入下载队列: {}", f_path))),
+                                                                Err(e) => download_status.set(Some(format!("下载失败: {}", e))),
+                                                            }
+                                                        });
+                                                    },
+                                                    "下载"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
