@@ -7,6 +7,11 @@ license = "MIT"
 repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
+[features]
+default = ["desktop"]
+desktop = ["dioxus/desktop"]
+web = ["dioxus/web"]
+
 [dependencies]
 burncloud-client-api.workspace = true
 burncloud-client-dashboard.workspace = true
@@ -16,7 +21,7 @@ burncloud-client-monitor.workspace = true
 burncloud-client-settings.workspace = true
 burncloud-client-shared.workspace = true
 burncloud-client-tray.workspace = true
-dioxus.workspace = true
+dioxus = { workspace = true }
 dioxus-router.workspace = true
 tokio.workspace = true
 serde.workspace = true

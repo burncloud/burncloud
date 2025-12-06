@@ -31,12 +31,6 @@ pub enum Route {
 
 #[component]
 pub fn App() -> Element {
-    let window = dioxus::desktop::use_window();
-
-    use_effect(move || {
-        window.set_maximized(true);
-    });
-
     // Inject Global Styles (BCDS)
     let styles = include_str!("../crates/client-api/assets/styles.css");
 
@@ -46,10 +40,17 @@ pub fn App() -> Element {
     }
 }
 
+#[cfg(feature = "web")]
+pub fn launch_web() {
+    dioxus_web::launch(App);
+}
+
+#[cfg(feature = "desktop")]
 pub fn launch_gui() {
     launch_gui_with_tray();
 }
 
+#[cfg(feature = "desktop")]
 pub fn launch_gui_with_tray() {
     use dioxus::desktop::{Config, WindowBuilder};
 
@@ -66,6 +67,7 @@ pub fn launch_gui_with_tray() {
         .launch(AppWithTray);
 }
 
+#[cfg(feature = "desktop")]
 #[component]
 fn AppWithTray() -> Element {
     let window = dioxus::desktop::use_window();
@@ -99,7 +101,5 @@ fn AppWithTray() -> Element {
         });
     });
 
-    rsx! {
-        Router::<Route> {}
-    }
+    rsx! { App {} }
 }
