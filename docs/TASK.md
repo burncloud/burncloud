@@ -59,6 +59,14 @@
     - [x] `router`: 自动检测上游连续失败并暂时剔除.
     - [x] `server`: 渠道健康状态监控 API (`/console/internal/health`).
 
+## 📅 Phase 10: 本地模型管理完善 (Local Model Management)
+- [x] **Task 10.1: Model Deletion UI**
+    - [x] `client-models`: 绑定删除按钮事件，调用 `ModelService::delete` 清理数据库与文件。
+- [x] **Task 10.2: File Download Integration**
+    - [x] `client-models`: 在模型卡片中增加"文件列表"查看功能。
+    - [x] `client-models`: 选择特定 GGUF 文件并触发下载 (调用 `service-models` 下载功能)。
+
+
 
 
 ---
