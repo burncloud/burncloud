@@ -13,13 +13,13 @@ use uuid::Uuid;
 #[derive(Deserialize, Serialize)]
 pub struct CreateTokenRequest {
     pub user_id: String,
-    // Optional alias or name could go here later
+    pub quota_limit: Option<i64>,
 }
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/tokens", post(create_token).get(list_tokens))
-        .route("/tokens/{token}", get(delete_token).delete(delete_token)) // Support GET for delete link? Standard is DELETE.
+        .route("/tokens/{token}", get(delete_token).delete(delete_token))
 }
 
 async fn list_tokens(State(state): State<AppState>) -> Json<Value> {
@@ -37,6 +37,8 @@ async fn create_token(State(state): State<AppState>, Json(payload): Json<CreateT
         token: token.clone(),
         user_id: payload.user_id,
         status: "active".to_string(),
+        quota_limit: payload.quota_limit.unwrap_or(-1),
+        used_quota: 0,
     };
 
     match RouterDatabase::create_token(&state.db, &db_token).await {

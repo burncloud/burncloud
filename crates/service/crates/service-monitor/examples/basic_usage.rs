@@ -1,4 +1,4 @@
-use burncloud_tool_monitor::{SystemMonitorService, SystemMonitor};
+use burncloud_service_monitor::{SystemMonitorService, SystemMonitor};
 
 fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];

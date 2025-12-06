@@ -19,6 +19,10 @@ pub struct DbToken {
     pub token: String,
     pub user_id: String,
     pub status: String, // "active", "disabled"
+    #[sqlx(default)]
+    pub quota_limit: i64, // -1 for unlimited
+    #[sqlx(default)]
+    pub used_quota: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -86,6 +90,14 @@ impl RouterDatabase {
         )
         .execute(conn.pool())
         .await?;
+
+        // Migration: Add quota columns
+        let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1")
+            .execute(conn.pool())
+            .await;
+        let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0")
+            .execute(conn.pool())
+            .await;
 
         // Create Groups Tables
         sqlx::query(
@@ -161,8 +173,8 @@ impl RouterDatabase {
         if token_count == 0 {
              sqlx::query(
                 r#"
-                INSERT INTO router_tokens (token, user_id, status)
-                VALUES ('sk-burncloud-demo', 'demo-user', 'active')
+                INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota)
+                VALUES ('sk-burncloud-demo', 'demo-user', 'active', -1, 0)
                 "#
             )
             .execute(conn.pool())
@@ -176,6 +188,8 @@ impl RouterDatabase {
 
     pub async fn insert_log(db: &Database, log: &DbRouterLog) -> Result<()> {
         let conn = db.connection()?;
+        
+        // 1. Insert Log
         sqlx::query(
             r#"
             INSERT INTO router_logs 
@@ -193,6 +207,22 @@ impl RouterDatabase {
         .bind(log.completion_tokens)
         .execute(conn.pool())
         .await?;
+
+        // 2. Update Quota Usage if user_id is present
+        if let Some(user_id) = &log.user_id {
+            let total_tokens = log.prompt_tokens + log.completion_tokens;
+            if total_tokens > 0 {
+                // We ignore errors here to avoid failing the request if log update fails, 
+                // but technically this is critical for billing.
+                // For now, we log error if it fails? insert_log returns Result, so we bubble up.
+                sqlx::query("UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?")
+                    .bind(total_tokens)
+                    .bind(user_id)
+                    .execute(conn.pool())
+                    .await?;
+            }
+        }
+
         Ok(())
     }
 
@@ -229,7 +259,7 @@ impl RouterDatabase {
     pub async fn validate_token(db: &Database, token: &str) -> Result<Option<DbToken>> {
          let conn = db.connection()?;
          let token = sqlx::query_as::<_, DbToken>(
-             "SELECT token, user_id, status FROM router_tokens WHERE token = ? AND status = 'active'"
+             "SELECT token, user_id, status, quota_limit, used_quota FROM router_tokens WHERE token = ? AND status = 'active'"
          )
          .bind(token)
          .fetch_optional(conn.pool())
@@ -332,7 +362,7 @@ impl RouterDatabase {
     pub async fn list_tokens(db: &Database) -> Result<Vec<DbToken>> {
         let conn = db.connection()?;
         let tokens = sqlx::query_as::<_, DbToken>(
-            "SELECT token, user_id, status FROM router_tokens"
+            "SELECT token, user_id, status, quota_limit, used_quota FROM router_tokens"
         )
         .fetch_all(conn.pool())
         .await?;
@@ -342,9 +372,9 @@ impl RouterDatabase {
     pub async fn create_token(db: &Database, t: &DbToken) -> Result<()> {
         let conn = db.connection()?;
         sqlx::query(
-            "INSERT INTO router_tokens (token, user_id, status) VALUES (?, ?, ?)"
+            "INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota) VALUES (?, ?, ?, ?, ?)"
         )
-        .bind(&t.token).bind(&t.user_id).bind(&t.status)
+        .bind(&t.token).bind(&t.user_id).bind(&t.status).bind(t.quota_limit).bind(t.used_quota)
         .execute(conn.pool())
         .await?;
         Ok(())
@@ -357,5 +387,29 @@ impl RouterDatabase {
             .execute(conn.pool())
             .await?;
         Ok(())
+    }
+
+    pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
+        let conn = db.connection()?;
+        let logs = sqlx::query_as::<_, DbRouterLog>(
+            "SELECT * FROM router_logs ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(conn.pool())
+        .await?;
+        Ok(logs)
+    }
+
+    pub async fn get_usage_by_user(db: &Database, user_id: &str) -> Result<(i64, i64)> {
+        let conn = db.connection()?;
+        let row: (Option<i64>, Option<i64>) = sqlx::query_as(
+            "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = ?"
+        )
+        .bind(user_id)
+        .fetch_one(conn.pool())
+        .await?;
+        
+        Ok((row.0.unwrap_or(0), row.1.unwrap_or(0)))
     }
 }
