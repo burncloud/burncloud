@@ -270,4 +270,35 @@ impl RouterDatabase {
         }
         Ok(())
     }
+
+    // CRUD for Tokens
+    pub async fn list_tokens(db: &Database) -> Result<Vec<DbToken>> {
+        let conn = db.connection()?;
+        let tokens = sqlx::query_as::<_, DbToken>(
+            "SELECT token, user_id, status FROM router_tokens"
+        )
+        .fetch_all(conn.pool())
+        .await?;
+        Ok(tokens)
+    }
+
+    pub async fn create_token(db: &Database, t: &DbToken) -> Result<()> {
+        let conn = db.connection()?;
+        sqlx::query(
+            "INSERT INTO router_tokens (token, user_id, status) VALUES (?, ?, ?)"
+        )
+        .bind(&t.token).bind(&t.user_id).bind(&t.status)
+        .execute(conn.pool())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_token(db: &Database, token: &str) -> Result<()> {
+        let conn = db.connection()?;
+        sqlx::query("DELETE FROM router_tokens WHERE token = ?")
+            .bind(token)
+            .execute(conn.pool())
+            .await?;
+        Ok(())
+    }
 }
