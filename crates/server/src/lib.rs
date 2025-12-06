@@ -21,7 +21,7 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
     };
 
     let app = Router::new()
-        .nest("/api", api::routes(state))
+        .nest("/console", api::routes(state))
         .layer(CorsLayer::permissive());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
