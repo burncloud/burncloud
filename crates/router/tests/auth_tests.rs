@@ -60,7 +60,7 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
         .await?;
 
     let status = resp.status();
-    let text = resp.text().await?;
+    let _text = resp.text().await?;
     println!("Bedrock Response Status: {}", status);
     // assert!(status != 500 && status != 502); // Only assert if credentials valid
     Ok(())
