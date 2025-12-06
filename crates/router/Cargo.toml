@@ -10,10 +10,13 @@ thiserror = { workspace = true }
 reqwest = { workspace = true, features = ["stream", "json"] }
 anyhow = { workspace = true }
 http-body-util = "0.1"
+serde_json = { workspace = true }
 
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
 burncloud-router-aws = { workspace = true }
+burncloud-common = { workspace = true }
+uuid = { version = "1.4", features = ["v4"] }
 
 axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["trace", "cors"] }

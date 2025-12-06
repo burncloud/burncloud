@@ -26,3 +26,38 @@ impl Default for Config {
         }
     }
 }
+
+// OpenAI Compatible Types
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OpenAIChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OpenAIChatRequest {
+    pub model: String,
+    pub messages: Vec<OpenAIChatMessage>,
+    #[serde(default)]
+    pub temperature: Option<f32>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+    #[serde(default)]
+    pub stream: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OpenAIChatResponse {
+    pub id: String,
+    pub object: String,
+    pub created: u64,
+    pub model: String,
+    pub choices: Vec<OpenAIChatChoice>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OpenAIChatChoice {
+    pub index: u32,
+    pub message: OpenAIChatMessage,
+    pub finish_reason: Option<String>,
+}
