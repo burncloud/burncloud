@@ -10,4 +10,4 @@ authors = ["burncloud contributors"]
 [dependencies]
 dioxus.workspace = true
 burncloud-client-shared.workspace = true
-uuid = { version = "1.4", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
