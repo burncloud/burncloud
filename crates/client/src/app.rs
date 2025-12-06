@@ -37,7 +37,11 @@ pub fn App() -> Element {
         window.set_maximized(true);
     });
 
+    // Inject Global Styles (BCDS)
+    let styles = include_str!("../crates/client-api/assets/styles.css");
+
     rsx! {
+        style { "{styles}" }
         Router::<Route> {}
     }
 }

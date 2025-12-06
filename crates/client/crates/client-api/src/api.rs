@@ -105,74 +105,573 @@ fn ChannelRow(channel: ChannelDto, on_delete: EventHandler<String>) -> Element {
 }
 
 #[component]
+
 fn CreateChannelModal(on_close: EventHandler<()>, on_create: EventHandler<()>) -> Element {
+
     let mut name = use_signal(|| String::new());
+
     let mut base_url = use_signal(|| String::from("https://api.openai.com"));
+
     let mut api_key = use_signal(|| String::new());
+
     let mut match_path = use_signal(|| String::from("/v1/chat/completions"));
+
     let mut auth_type = use_signal(|| String::from("Bearer"));
+
     let id = use_signal(|| String::new());
 
-    let handle_submit = move |_| {
-        let new_channel = ChannelDto {
-            id: if id().is_empty() { uuid::Uuid::new_v4().to_string() } else { id() },
-            name: name(),
-            base_url: base_url(),
-            api_key: api_key(),
-            match_path: match_path(),
-            auth_type: auth_type(),
-            priority: 0,
+
+
+        let handle_submit = move |_| {
+
+
+
+            let new_channel = ChannelDto {
+
+
+
+                id: if id().is_empty() { uuid::Uuid::new_v4().to_string() } else { id() },
+
+
+
+                name: name(),
+
+
+
+                base_url: base_url(),
+
+
+
+                api_key: api_key(),
+
+
+
+                match_path: match_path(),
+
+
+
+                auth_type: auth_type(),
+
+
+
+                priority: 0,
+
+
+
+            };
+
+
+
+    
+
+
+
+            spawn(async move {
+
+
+
+                if API_CLIENT.create_channel(new_channel).await.is_ok() {
+
+
+
+                    on_create.call(());
+
+
+
+                } else {
+
+
+
+                    // Handle error (todo: toast)
+
+
+
+                    println!("Failed to create channel");
+
+
+
+                }
+
+
+
+            });
+
+
+
         };
 
-        spawn(async move {
-            if API_CLIENT.create_channel(new_channel).await.is_ok() {
-                on_create.call(());
-            } else {
-                // Handle error (todo: toast)
-                println!("Failed to create channel");
-            }
-        });
-    };
 
-    rsx! {
-        div { class: "fixed inset-0 bg-black/50 flex items-center justify-center z-50",
-            div { class: "card w-full max-w-md p-lg shadow-dialog",
-                h2 { class: "text-subtitle font-bold mb-md", "新建渠道" }
-                
-                div { class: "flex flex-col gap-sm",
-                    div { class: "form-group",
-                        label { "名称 (Name)" }
-                        input { class: "form-control", value: "{name}", oninput: move |e| name.set(e.value()) }
+
+    
+
+
+
+            rsx! {
+
+
+
+    
+
+
+
+                // HOTFIX: Inline styles to ensure modal renders correctly
+
+
+
+    
+
+
+
+                style { "
+
+
+
+    
+
+
+
+                    .modal-overlay-fixed {{
+
+
+
+    
+
+
+
+                        position: fixed;
+
+
+
+    
+
+
+
+                        top: 0; left: 0; right: 0; bottom: 0;
+
+
+
+    
+
+
+
+                        background-color: rgba(0, 0, 0, 0.5);
+
+
+
+    
+
+
+
+                        display: flex;
+
+
+
+    
+
+
+
+                        align-items: center;
+
+
+
+    
+
+
+
+                        justify-content: center;
+
+
+
+    
+
+
+
+                        z-index: 9999;
+
+
+
+    
+
+
+
+                        backdrop-filter: blur(4px);
+
+
+
+    
+
+
+
+                    }}
+
+
+
+    
+
+
+
+                    .modal-box {{
+
+
+
+    
+
+
+
+                        background: white;
+
+
+
+    
+
+
+
+                        border-radius: 8px;
+
+
+
+    
+
+
+
+                        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+
+
+
+    
+
+
+
+                        width: 400px;
+
+
+
+    
+
+
+
+                        padding: 24px;
+
+
+
+    
+
+
+
+                        display: flex;
+
+
+
+    
+
+
+
+                        flex-direction: column;
+
+
+
+    
+
+
+
+                        gap: 16px;
+
+
+
+    
+
+
+
+                    }}
+
+
+
+    
+
+
+
+                    .form-input {{
+
+
+
+    
+
+
+
+                        width: 100%;
+
+
+
+    
+
+
+
+                        padding: 8px 12px;
+
+
+
+    
+
+
+
+                        border: 1px solid #ccc;
+
+
+
+    
+
+
+
+                        border-radius: 4px;
+
+
+
+    
+
+
+
+                        font-size: 14px;
+
+
+
+    
+
+
+
+                    }}
+
+
+
+    
+
+
+
+                    .form-label {{
+
+
+
+    
+
+
+
+                        display: block;
+
+
+
+    
+
+
+
+                        margin-bottom: 4px;
+
+
+
+    
+
+
+
+                        font-weight: bold;
+
+
+
+    
+
+
+
+                        font-size: 14px;
+
+
+
+    
+
+
+
+                    }}
+
+
+
+    
+
+
+
+                " }
+
+
+
+    
+
+
+
+            div { class: "modal-overlay-fixed",
+
+
+
+                div { class: "modal-box",
+
+
+
+                    div { class: "modal-header",
+
+
+
+                        h2 { class: "text-subtitle font-bold m-0", "新建渠道" }
+
+
+
                     }
-                    div { class: "form-group",
-                        label { "Base URL" }
-                        input { class: "form-control", value: "{base_url}", oninput: move |e| base_url.set(e.value()) }
-                    }
-                    div { class: "form-group",
-                        label { "API Key" }
-                        input { class: "form-control", type: "password", value: "{api_key}", oninput: move |e| api_key.set(e.value()) }
-                    }
-                    div { class: "form-group",
-                        label { "匹配路径 (Match Path)" }
-                        input { class: "form-control", value: "{match_path}", oninput: move |e| match_path.set(e.value()) }
-                    }
-                    div { class: "form-group",
-                        label { "鉴权类型 (Auth Type)" }
-                        select { class: "form-control", value: "{auth_type}", onchange: move |e| auth_type.set(e.value()),
-                            option { value: "Bearer", "Bearer Token (OpenAI)" }
-                            option { value: "XApiKey", "X-Api-Key (Claude)" }
-                            option { value: "GoogleAI", "Google AI" }
-                            option { value: "Azure", "Azure OpenAI" }
-                            option { value: "AwsSigV4", "AWS Bedrock" }
+
+
+
+                    
+
+
+
+                    div { class: "flex flex-col gap-sm",
+
+
+
+                        div {
+
+
+
+                            label { class: "form-label", "名称 (Name)" }
+
+
+
+                            input { class: "form-input", value: "{name}", oninput: move |e| name.set(e.value()) }
+
+
+
                         }
+
+
+
+                        div {
+
+
+
+                            label { class: "form-label", "Base URL" }
+
+
+
+                            input { class: "form-input", value: "{base_url}", oninput: move |e| base_url.set(e.value()) }
+
+
+
+                        }
+
+
+
+                        div {
+
+
+
+                            label { class: "form-label", "API Key" }
+
+
+
+                            input { class: "form-input", type: "password", value: "{api_key}", oninput: move |e| api_key.set(e.value()) }
+
+
+
+                        }
+
+
+
+                        div {
+
+
+
+                            label { class: "form-label", "匹配路径 (Match Path)" }
+
+
+
+                            input { class: "form-input", value: "{match_path}", oninput: move |e| match_path.set(e.value()) }
+
+
+
+                        }
+
+
+
+                        div {
+
+
+
+                            label { class: "form-label", "鉴权类型 (Auth Type)" }
+
+
+
+                            select { class: "form-input", value: "{auth_type}", onchange: move |e| auth_type.set(e.value()),
+
+
+
+                                option { value: "Bearer", "Bearer Token (OpenAI)" }
+
+
+
+                                option { value: "XApiKey", "X-Api-Key (Claude)" }
+
+
+
+                                option { value: "GoogleAI", "Google AI" }
+
+
+
+                                option { value: "Azure", "Azure OpenAI" }
+
+
+
+                                option { value: "AwsSigV4", "AWS Bedrock" }
+
+
+
+                            }
+
+
+
+                        }
+
+
+
                     }
+
+
+
+    
+
+
+
+                    div { class: "modal-footer",
+
+
+
+                        button { class: "btn btn-secondary", onclick: move |_| on_close.call(()), "取消" }
+
+
+
+                        button { class: "btn btn-primary", onclick: handle_submit, "创建" }
+
+
+
+                    }
+
+
+
                 }
 
-                div { class: "flex justify-end gap-sm mt-lg",
-                    button { class: "btn btn-secondary", onclick: move |_| on_close.call(()), "取消" }
-                    button { class: "btn btn-primary", onclick: handle_submit, "创建" }
-                }
+
+
             }
+
+
+
         }
+
+
+
     }
-}
+
+
+
+    
