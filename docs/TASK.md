@@ -78,6 +78,17 @@
     - [x] `client-models`: 实现"Deploy"按钮逻辑，选择 GGUF 文件并启动服务。
     - [x] `client-models`: 展示正在运行的本地模型实例状态。
 
+## 📅 Phase 12: 系统集成与测试 (System Integration & Testing)
+- [x] **Task 12.1: End-to-End Testing**
+    - [x] `tests`: 编写 E2E 测试脚本，覆盖"下载 -> 部署 -> 调用"全流程 (tests/e2e_flow.py).
+    - [ ] `tests`: 使用 Python 或 Rust 编写外部调用脚本，验证 Router 的 OpenAI 兼容性。
+- [x] **Task 12.2: CI/CD Configuration**
+    - [x] `.github`: 完善 GitHub Actions，包含 Build, Test, Release 流程。
+    - [ ] `.github`: 自动化构建 Windows 安装包 (msi/exe).
+- [ ] **Task 12.3: Documentation**
+    - [ ] `docs`: 更新用户手册 (User Guide)，说明如何添加模型、配置渠道。
+    - [ ] `README.md`: 更新项目主页，添加最新功能介绍和截图。
+
 
 
 
