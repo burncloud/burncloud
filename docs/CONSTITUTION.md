@@ -118,8 +118,9 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 ### 4.6 代码排版 (Code Layout)
 *   **严禁无谓换行**: 铁律——不允许代码中出现无谓的换行。代码应保持紧凑，仅在逻辑块之间保留必要的空行。
 
-### 4.6 代码排版 (Code Layout)
-*   **严禁无谓换行**: 铁律——不允许代码中出现无谓的换行。代码应保持紧凑，仅在逻辑块之间保留必要的空行。
+### 4.7 依赖管理 (Dependency Management)
+*   **版本统一**: 所有依赖包的版本号必须在根目录 `Cargo.toml` 的 `[workspace.dependencies]` 中统一声明。
+*   **禁止散落**: 子 Crate 的 `Cargo.toml` 必须使用 `workspace = true` 引用依赖，严禁在子 Crate 中硬编码版本号。
 
 ---
 
