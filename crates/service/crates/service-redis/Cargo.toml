@@ -1,0 +1,12 @@
+[package]
+name = "burncloud-service-redis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+redis = { workspace = true, features = ["tokio-comp"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+burncloud-common = { workspace = true }

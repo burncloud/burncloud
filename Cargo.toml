@@ -19,6 +19,7 @@ members = [
     "crates/database/crates/database-models",
     "crates/database/crates/database-router",
     "crates/database/crates/database-setting",
+    "crates/database/crates/database-user",
     "crates/download",
     "crates/download/crates/download-aria2",
     "crates/router",
@@ -30,6 +31,7 @@ members = [
     "crates/service/crates/service-monitor",
     "crates/service/crates/service-setting",
     "crates/service/crates/service-inference",
+    "crates/service/crates/service-redis",
 ]
 
 [workspace.dependencies]
@@ -49,7 +51,7 @@ dioxus-router = "0.7.2"
 dioxus-liveview = { version = "0.7.2", features = ["axum"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "postgres", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.4", features = ["v4", "serde"] }
 
@@ -93,6 +95,7 @@ dioxus-desktop = "0.7.2"
 self_update = { version = "0.42.0", features = ["archive-zip"] }
 systray = "0.4.0"
 tracing = "0.1"
+redis = { version = "0.24", features = ["tokio-comp"] }
 
 # Internal crates
 burncloud-auto-update = { path = "crates/auto-update" }
@@ -114,6 +117,7 @@ burncloud-database-download = { path = "crates/database/crates/database-download
 burncloud-database-models = { path = "crates/database/crates/database-models" }
 burncloud-database-router = { path = "crates/database/crates/database-router" }
 burncloud-database-setting = { path = "crates/database/crates/database-setting" }
+burncloud-database-user = { path = "crates/database/crates/database-user" }
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
 burncloud-router = { path = "crates/router" }
@@ -125,6 +129,7 @@ burncloud-service-models = { path = "crates/service/crates/service-models" }
 burncloud-service-monitor = { path = "crates/service/crates/service-monitor" }
 burncloud-service-setting = { path = "crates/service/crates/service-setting" }
 burncloud-service-inference = { path = "crates/service/crates/service-inference" }
+burncloud-service-redis = { path = "crates/service/crates/service-redis" }
 
 [package]
 name = "burncloud"

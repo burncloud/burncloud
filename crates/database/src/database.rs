@@ -1,23 +1,35 @@
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::{any::{AnyPool, AnyPoolOptions, AnyRow, AnyConnectOptions}, ConnectOptions};
+use std::str::FromStr;
 
 use crate::error::{DatabaseError, Result};
 
 #[derive(Clone)]
 pub struct DatabaseConnection {
-    pool: SqlitePool,
+    pool: AnyPool,
 }
 
 impl DatabaseConnection {
     pub async fn new(database_url: &str) -> Result<Self> {
-        let pool = SqlitePoolOptions::new()
+        // Handle SQLite specific options for file creation if using AnyPool directly via string might not be enough for some options
+        // But AnyPool parses the URL.
+        // For SQLite, we need `create_if_missing(true)`.
+        
+        let mut options = AnyConnectOptions::from_str(database_url)
+            .map_err(|e| DatabaseError::Connection(e.to_string()))?;
+            
+        if let Some(sqlite_options) = options.as_sqlite_mut() {
+            sqlite_options.create_if_missing(true);
+        }
+
+        let pool = AnyPoolOptions::new()
             .max_connections(10)
-            .connect(database_url)
+            .connect_with(options)
             .await?;
 
         Ok(Self { pool })
     }
 
-    pub fn pool(&self) -> &SqlitePool {
+    pub fn pool(&self) -> &AnyPool {
         &self.pool
     }
 
@@ -28,50 +40,46 @@ impl DatabaseConnection {
 
 pub struct Database {
     connection: Option<DatabaseConnection>,
-    database_path: String,
+    database_url: String,
 }
 
 impl Database {
     pub async fn new() -> Result<Self> {
-        let default_path = get_default_database_path()?;
+        // Check environment variable for DB connection
+        let database_url = if let Ok(url) = std::env::var("BURNCLOUD_DATABASE_URL") {
+            url
+        } else {
+            // Default to local SQLite
+            let default_path = get_default_database_path()?;
+            create_directory_if_not_exists(&default_path)?;
+            let normalized_path = default_path.to_string_lossy().to_string().replace('\\', "/");
+            format!("sqlite://{}", normalized_path)
+        };
 
-        create_directory_if_not_exists(&default_path)?;
-
-        let path = default_path.to_string_lossy().to_string();
         let mut db = Self {
             connection: None,
-            database_path: path,
+            database_url,
         };
         db.initialize().await?;
         Ok(db)
     }
 
     pub async fn initialize(&mut self) -> Result<()> {
-        let database_url = if self.database_path == ":memory:" {
-            "sqlite::memory:".to_string()
-        } else {
-            // Normalize path separators for SQLite URL
-            // SQLite requires forward slashes even on Windows
-            let normalized_path = self.database_path.replace('\\', "/");
-            // Add mode=rwc to create the database file if it doesn't exist
-            format!("sqlite://{}?mode=rwc", normalized_path)
-        };
-
-        let connection = DatabaseConnection::new(&database_url).await?;
-
+        let connection = DatabaseConnection::new(&self.database_url).await?;
         self.connection = Some(connection);
         Ok(())
     }
 
-    pub fn connection(&self) -> Result<&DatabaseConnection> {
-        self.connection
-            .as_ref()
-            .ok_or(DatabaseError::NotInitialized)
+    pub fn kind(&self) -> sqlx::any::AnyKind {
+        if self.database_url.starts_with("postgres") {
+            sqlx::any::AnyKind::Postgres
+        } else {
+            sqlx::any::AnyKind::Sqlite
+        }
     }
 
     pub async fn create_tables(&self) -> Result<()> {
         let _conn = self.connection()?;
-
         Ok(())
     }
 
@@ -82,13 +90,13 @@ impl Database {
         Ok(())
     }
 
-    pub async fn execute_query(&self, query: &str) -> Result<sqlx::sqlite::SqliteQueryResult> {
+    pub async fn execute_query(&self, query: &str) -> Result<sqlx::any::AnyQueryResult> {
         let conn = self.connection()?;
         let result = sqlx::query(query).execute(conn.pool()).await?;
         Ok(result)
     }
 
-    pub async fn execute_query_with_params(&self, query: &str, params: Vec<String>) -> Result<sqlx::sqlite::SqliteQueryResult> {
+    pub async fn execute_query_with_params(&self, query: &str, params: Vec<String>) -> Result<sqlx::any::AnyQueryResult> {
         let conn = self.connection()?;
         let mut query_builder = sqlx::query(query);
 
@@ -100,13 +108,13 @@ impl Database {
         Ok(result)
     }
 
-    pub async fn query(&self, query: &str) -> Result<Vec<sqlx::sqlite::SqliteRow>> {
+    pub async fn query(&self, query: &str) -> Result<Vec<AnyRow>> {
         let conn = self.connection()?;
         let rows = sqlx::query(query).fetch_all(conn.pool()).await?;
         Ok(rows)
     }
 
-    pub async fn query_with_params(&self, query: &str, params: Vec<String>) -> Result<Vec<sqlx::sqlite::SqliteRow>> {
+    pub async fn query_with_params(&self, query: &str, params: Vec<String>) -> Result<Vec<AnyRow>> {
         let conn = self.connection()?;
         let mut query_builder = sqlx::query(query);
 
@@ -120,7 +128,7 @@ impl Database {
 
     pub async fn fetch_one<T>(&self, query: &str) -> Result<T>
     where
-        T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
+        T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
         let conn = self.connection()?;
         let result = sqlx::query_as::<_, T>(query).fetch_one(conn.pool()).await?;
@@ -129,7 +137,7 @@ impl Database {
 
     pub async fn fetch_all<T>(&self, query: &str) -> Result<Vec<T>>
     where
-        T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
+        T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
         let conn = self.connection()?;
         let results = sqlx::query_as::<_, T>(query).fetch_all(conn.pool()).await?;
@@ -138,7 +146,7 @@ impl Database {
 
     pub async fn fetch_optional<T>(&self, query: &str) -> Result<Option<T>>
     where
-        T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
+        T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
         let conn = self.connection()?;
         let result = sqlx::query_as::<_, T>(query).fetch_optional(conn.pool()).await?;
