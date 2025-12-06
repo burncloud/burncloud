@@ -9,12 +9,15 @@ fn main() -> Result<()> {
 
     match args.as_slice() {
         [_] => {
-            // burncloud.exe (无参数)
+            // burncloud.exe (No args)
             #[cfg(windows)]
-            burncloud_client::launch_gui();
+            burncloud_client::launch_gui_with_tray();
 
             #[cfg(not(windows))]
-            burncloud_cli::show_help();
+            {
+                println!("Starting BurnCloud Server with LiveView (Headless Mode)...");
+                run_async_server()?;
+            }
         }
         [_, subcommand, _rest @ ..] => {
             match subcommand.as_str() {

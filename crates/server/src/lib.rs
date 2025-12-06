@@ -21,7 +21,8 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
     };
 
     let app = Router::new()
-        .nest("/console", api::routes(state))
+        .nest("/console", api::routes(state.clone()))
+        .merge(burncloud_client::liveview_router(state.db.clone()))
         .layer(CorsLayer::permissive());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));

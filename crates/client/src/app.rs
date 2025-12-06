@@ -40,11 +40,6 @@ pub fn App() -> Element {
     }
 }
 
-#[cfg(feature = "web")]
-pub fn launch_web() {
-    dioxus_web::launch(App);
-}
-
 #[cfg(feature = "desktop")]
 pub fn launch_gui() {
     launch_gui_with_tray();
