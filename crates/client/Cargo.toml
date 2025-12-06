@@ -13,6 +13,7 @@ desktop = ["dioxus/desktop", "dep:burncloud-client-tray"]
 liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
 
 [dependencies]
+burncloud-common = { workspace = true }
 burncloud-client-api.workspace = true
 burncloud-client-dashboard.workspace = true
 burncloud-client-deploy.workspace = true

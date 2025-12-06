@@ -7,7 +7,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, Method, Uri},
     response::Response,
-    routing::{any, post},
+    routing::post,
     Router,
 };
 use burncloud_database::{create_default_database, Database};
@@ -72,12 +72,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
     Ok(RouterConfig { upstreams, groups })
 }
 
-pub async fn start_server(port: u16) -> anyhow::Result<()> {
-    // Initialize Database
-    let db = create_default_database().await?;
-    RouterDatabase::init(&db).await?;
-    let db = Arc::new(db); // Wrap in Arc for sharing
-
+pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
@@ -107,12 +102,28 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
         log_tx,
     };
 
+use burncloud_common::constants::INTERNAL_PREFIX;
+
+// ...
+
+    let reload_path = format!("{}/reload", INTERNAL_PREFIX);
+
     let app = Router::new()
-        .route("/", any(proxy_handler))
-        .route("/_internal/reload", post(reload_handler))
-        .route("/{*path}", any(proxy_handler)) 
+        .route(&reload_path, post(reload_handler))
+        .fallback(proxy_handler)
         .layer(CorsLayer::permissive())
         .with_state(state);
+
+    Ok(app)
+}
+
+pub async fn start_server(port: u16) -> anyhow::Result<()> {
+    // Initialize Database
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+    let db = Arc::new(db); // Wrap in Arc for sharing
+
+    let app = create_router_app(db).await?;
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("Router listening on {}", addr);

@@ -256,6 +256,17 @@ impl RouterDatabase {
         Ok(rows)
     }
 
+    pub async fn get_group_members_by_group(db: &Database, group_id: &str) -> Result<Vec<DbGroupMember>> {
+        let conn = db.connection()?;
+        let rows = sqlx::query_as::<_, DbGroupMember>(
+            "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = ?"
+        )
+        .bind(group_id)
+        .fetch_all(conn.pool())
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn validate_token(db: &Database, token: &str) -> Result<Option<DbToken>> {
          let conn = db.connection()?;
          let token = sqlx::query_as::<_, DbToken>(

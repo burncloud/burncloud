@@ -24,13 +24,22 @@
     - [x] `server`: 实现 `/api/logs` 和 `/api/usage` 接口。
 
 ## 📅 Phase 6: 前端仪表盘集成 (Dashboard Integration)
-- [/] **Task 6.1: Dashboard UI**
+- [x] **Task 6.1: Dashboard UI**
     - [x] `client-dashboard`: 连接 `/console/logs` 展示调用日志。
-    - [ ] `client-dashboard`: 展示用户余额与消耗统计。
-- [ ] **Task 6.2: Channel Management UI**
-    - [ ] `client-settings`: 连接 `/console/channels` 实现渠道 CRUD。
-- [ ] **Task 6.3: Token Management UI**
-    - [ ] `client-settings`: 连接 `/console/tokens` 实现令牌管理。
+    - [x] `client-dashboard`: 展示用户余额与消耗统计。
+- [x] **Task 6.2: Channel Management UI**
+    - [x] `client-settings`: 连接 `/console/channels` 实现渠道 CRUD。
+- [x] **Task 6.3: Token Management UI**
+    - [x] `client-settings`: 连接 `/console/tokens` 实现令牌管理。
+
+## 📅 Phase 7: 高级路由与分组 (Advanced Routing)
+- [x] **Task 7.1: Group Management API**
+    - [x] `server`: 完善 `/console/groups` API (CRUD & Member assignment).
+    - [x] `database`: 确保 `router_groups` 关联查询性能.
+- [x] **Task 7.2: Group Management UI**
+    - [x] `client-settings`: 实现分组管理界面 (创建分组、分配渠道权重).
+- [ ] **Task 7.3: Router Group Logic**
+    - [ ] `router`: 验证基于 Group 的路由分发策略 (RoundRobin/Weighted).
 
 
 ---
