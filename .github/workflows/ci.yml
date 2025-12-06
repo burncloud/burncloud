@@ -46,3 +46,9 @@ jobs:
 
     - name: Build Release
       run: cargo build --release --verbose
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: burncloud-windows
+        path: target/release/burncloud.exe
