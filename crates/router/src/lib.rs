@@ -124,6 +124,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let app = Router::new()
         .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
+        .route("/v1/models", axum::routing::get(models_handler))
         .fallback(proxy_handler)
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -131,40 +132,58 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     Ok(app)
 }
 
-pub async fn start_server(port: u16) -> anyhow::Result<()> {
-    // Initialize Database
-    let db = create_default_database().await?;
-    RouterDatabase::init(&db).await?;
-    let db = Arc::new(db); // Wrap in Arc for sharing
+// ...
 
-    let app = create_router_app(db).await?;
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    println!("Router listening on {}", addr);
-    println!("Ready to handle requests. Try: curl -H 'Authorization: Bearer sk-burncloud-demo' http://127.0.0.1:{}/v1/messages", port);
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
-}
-
-async fn reload_handler(
+async fn models_handler(
     State(state): State<AppState>,
 ) -> Response {
-    println!("Reloading router configuration...");
-    match load_router_config(&state.db).await {
-        Ok(new_config) => {
-            let mut config_write = state.config.write().await;
-            *config_write = new_config;
-            println!("Configuration reloaded successfully.");
-            Response::builder().status(200).body(Body::from("Reloaded")).unwrap()
-        }
-        Err(e) => {
-             eprintln!("Configuration reload failed: {}", e);
-             Response::builder().status(500).body(Body::from(format!("Reload failed: {}", e))).unwrap()
+    // Fetch all upstreams and groups to list as available "models"
+    // This allows clients like WebUI to auto-discover available backends
+    
+    let mut model_entries = Vec::new();
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if let Ok(upstreams) = RouterDatabase::get_all_upstreams(&state.db).await {
+        for u in upstreams {
+            model_entries.push(serde_json::json!({
+                "id": u.id,
+                "object": "model",
+                "created": current_time,
+                "owned_by": "burncloud-router",
+                "permission": [],
+                "root": u.id,
+                "parent": null,
+            }));
         }
     }
+
+    if let Ok(groups) = RouterDatabase::get_all_groups(&state.db).await {
+        for g in groups {
+            model_entries.push(serde_json::json!({
+                "id": g.id,
+                "object": "model",
+                "created": current_time,
+                "owned_by": "burncloud-group",
+                "permission": [],
+                "root": g.id,
+                "parent": null,
+            }));
+        }
+    }
+
+    let response_json = serde_json::json!({
+        "object": "list",
+        "data": model_entries
+    });
+
+    Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&response_json).unwrap()))
+        .unwrap()
 }
 
 async fn health_status_handler(

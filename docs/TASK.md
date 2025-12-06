@@ -92,8 +92,9 @@
 ## 📅 Phase 13: 生态集成验证 (Ecosystem Integration)
 - [x] **Task 13.1: Integration Guide**
     - [x] `docs`: 编写集成指南，说明如何将 BurnCloud 作为后端接入 Open WebUI, NextChat (ChatGPT-Next-Web), LobeChat (docs/ECOSYSTEM.md).
-- [ ] **Task 13.2: Compatibility Verification**
-    - [ ] `tests`: 验证与主流 WebUI 的兼容性 (特别是流式响应和模型列表接口)。
+- [x] **Task 13.2: Compatibility Verification**
+    - [x] `tests`: 验证与主流 WebUI 的兼容性 (特别是流式响应和模型列表接口)。
+    - [x] `router`: 实现 `GET /v1/models` 接口，支持模型自动发现。
 
 
 
