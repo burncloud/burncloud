@@ -19,8 +19,8 @@ burncloud-router-aws = { workspace = true }
 burncloud-common = { workspace = true }
 uuid = { version = "1.4", features = ["v4"] }
 
-axum = { version = "0.7", features = ["macros"] }
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+axum = { version = "0.8.7", features = ["macros"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
 tracing = "0.1"
 
 [dev-dependencies]

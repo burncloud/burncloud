@@ -9,8 +9,8 @@ authors = ["burncloud contributors"]
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop"]
-web = ["dioxus/web"]
+desktop = ["dioxus/desktop", "dep:burncloud-client-tray"]
+liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
 
 [dependencies]
 burncloud-client-api.workspace = true
@@ -20,12 +20,17 @@ burncloud-client-models.workspace = true
 burncloud-client-monitor.workspace = true
 burncloud-client-settings.workspace = true
 burncloud-client-shared.workspace = true
-burncloud-client-tray.workspace = true
-dioxus = { workspace = true }
+burncloud-client-tray = { workspace = true, optional = true }
+dioxus = { workspace = true, features = ["desktop", "router"] }
 dioxus-router.workspace = true
 tokio.workspace = true
 serde.workspace = true
 once_cell.workspace = true
+
+# LiveView specific dependencies
+dioxus-liveview = { workspace = true, optional = true }
+axum = { version = "0.8.7", features = ["macros", "ws"], optional = true }
+burncloud-database = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi.workspace = true    

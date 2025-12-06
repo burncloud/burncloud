@@ -36,7 +36,14 @@
 ---
 
 ## 📅 Phase 5: 精确计费与日志 (Billing & Logging)
-*(保持不变)*
+- [ ] **Task 5.1: Async Logging**
+    - [ ] `router`: 使用 `tokio::mpsc` 将请求日志发送到异步队列。
+    - [ ] `server`: 后台任务从队列消费日志并批量写入 `logs` 表 (SQLite/ClickHouse)。
+
+- [ ] **Task 5.2: Token Counting**
+    - [ ] `router`: 集成 `tiktoken` (或 Rust 等价库) 计算 Prompt Token。
+    - [ ] `router`: 对于流式响应，估算或累加 Completion Token。
+    - [ ] `service`: 扣除用户余额。
 
 ---
 *Updated by AI Agent - LiveView Strategy*

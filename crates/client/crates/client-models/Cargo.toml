@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-client-shared.workspace = true
-burncloud-service-models.workspace = true
-
 dioxus.workspace = true
 dioxus-router.workspace = true
 serde_json.workspace = true
