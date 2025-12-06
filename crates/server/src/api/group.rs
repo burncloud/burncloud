@@ -31,7 +31,7 @@ impl From<GroupDto> for DbGroup {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/groups", post(create_group).get(list_groups))
-        .route("/groups/:id", get(get_group).delete(delete_group))
+        .route("/groups/{id}", get(get_group).delete(delete_group))
 }
 
 async fn list_groups(State(state): State<AppState>) -> Json<Value> {

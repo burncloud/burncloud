@@ -19,7 +19,7 @@ pub struct CreateTokenRequest {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/tokens", post(create_token).get(list_tokens))
-        .route("/tokens/:token", get(delete_token).delete(delete_token)) // Support GET for delete link? Standard is DELETE.
+        .route("/tokens/{token}", get(delete_token).delete(delete_token)) // Support GET for delete link? Standard is DELETE.
 }
 
 async fn list_tokens(State(state): State<AppState>) -> Json<Value> {
