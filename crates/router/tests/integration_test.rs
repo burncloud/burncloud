@@ -385,13 +385,139 @@ async fn test_google_ai_proxy() -> anyhow::Result<()> {
 
         assert!(status.is_success(), "Request to Gemini API failed");
 
-        assert!(text.contains("candidates"), "Response does not look like a valid Gemini response");
+            assert!(text.contains("candidates"), "Response does not look like a valid Gemini response");
 
-    
+        
 
-        Ok(())
+            Ok(())
 
-    }
+        }
+
+        
+
+        #[tokio::test]
+
+        async fn test_deepseek_proxy() -> anyhow::Result<()> {
+
+            // Test DeepSeek Proxy (Mocked)
+
+            
+
+            // 1. Setup Database
+
+            let db = create_default_database().await?;
+
+            RouterDatabase::init(&db).await?;
+
+            let conn = db.connection()?;
+
+        
+
+            let id = "deepseek-test";
+
+            let name = "DeepSeek Test";
+
+            let base_url = "https://httpbin.org/anything"; // Mock upstream
+
+            let api_key = "sk-deepseek-mock-key";
+
+            let match_path = "/v1/chat/completions";
+
+            let auth_type = "DeepSeek";
+
+        
+
+            sqlx::query(
+
+                r#"
+
+                INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+
+                VALUES (?, ?, ?, ?, ?, ?)
+
+                ON CONFLICT(id) DO UPDATE SET 
+
+                    api_key = excluded.api_key,
+
+                    base_url = excluded.base_url,
+
+                    auth_type = excluded.auth_type
+
+                "#
+
+            )
+
+            .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+
+            .execute(conn.pool())
+
+            .await?;
+
+        
+
+            // 2. Start Server (Port 3009)
+
+            let port = 3009;
+
+            tokio::spawn(async move {
+
+                if let Err(_e) = burncloud_router::start_server(port).await {
+
+                    // Ignore error
+
+                }
+
+            });
+
+            sleep(Duration::from_secs(2)).await;
+
+        
+
+            // 3. Send Request
+
+            let client = Client::new();
+
+            let url = format!("http://localhost:{}/v1/chat/completions", port);
+
+        
+
+            let resp = client.post(&url)
+
+                .header("Authorization", "Bearer sk-burncloud-demo")
+
+                .body("deepseek body")
+
+                .send()
+
+                .await?;
+
+        
+
+            assert_eq!(resp.status(), 200);
+
+            let json: serde_json::Value = resp.json().await?;
+
+            
+
+            // 4. Verify Auth Header Injection
+
+            let headers = json.get("headers").unwrap();
+
+            println!("Received Headers for DeepSeek: {:?}", headers);
+
+        
+
+            let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
+
+            assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-deepseek-mock-key");
+
+        
+
+            Ok(())
+
+        }
+
+        
 
 #[tokio::test]
 async fn test_vertex_proxy() -> anyhow::Result<()> {

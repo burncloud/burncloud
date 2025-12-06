@@ -9,6 +9,7 @@ pub enum AuthType {
     Azure,              // Azure OpenAI (api-key header)
     GoogleAI,           // Google AI Studio (x-goog-api-key header)
     Vertex,             // Google Vertex AI (Bearer token, usually short-lived)
+    DeepSeek,           // DeepSeek API (Bearer token)
 }
 
 impl From<&str> for AuthType {
@@ -20,6 +21,7 @@ impl From<&str> for AuthType {
             "Azure" => AuthType::Azure,
             "GoogleAI" => AuthType::GoogleAI,
             "Vertex" => AuthType::Vertex,
+            "DeepSeek" => AuthType::DeepSeek,
             s if s.starts_with("Header:") => {
                 let header_name = s.trim_start_matches("Header:").trim();
                 AuthType::Header(header_name.to_string())

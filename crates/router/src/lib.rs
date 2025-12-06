@@ -190,6 +190,9 @@ async fn proxy_handler(
                     // Current implementation assumes the user provided a valid Bearer token (e.g. via gcloud auth print-access-token).
                     req_builder = req_builder.bearer_auth(&upstream.api_key);
                 }
+                AuthType::DeepSeek => {
+                    req_builder = req_builder.bearer_auth(&upstream.api_key);
+                }
                 AuthType::Header(header_name) => {
                      req_builder = req_builder.header(header_name, &upstream.api_key);
                 }
