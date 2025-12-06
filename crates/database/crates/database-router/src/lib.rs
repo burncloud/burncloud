@@ -58,93 +58,130 @@ pub struct RouterDatabase;
 impl RouterDatabase {
     pub async fn init(db: &Database) -> Result<()> {
         let conn = db.connection()?;
+        let kind = db.kind();
         
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS router_upstreams (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                base_url TEXT NOT NULL,
-                api_key TEXT NOT NULL,
-                match_path TEXT NOT NULL,
-                auth_type TEXT NOT NULL
-            );
-            "#
-        )
-        .execute(conn.pool())
-        .await?;
+        // Table definitions
+        let (upstreams_sql, tokens_sql, groups_sql, members_sql, logs_sql) = match kind {
+            sqlx::any::AnyKind::Sqlite => (
+                r#"
+                CREATE TABLE IF NOT EXISTS router_upstreams (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    api_key TEXT NOT NULL,
+                    match_path TEXT NOT NULL,
+                    auth_type TEXT NOT NULL,
+                    priority INTEGER NOT NULL DEFAULT 0
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_tokens (
+                    token TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    quota_limit INTEGER NOT NULL DEFAULT -1,
+                    used_quota INTEGER NOT NULL DEFAULT 0
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_groups (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    strategy TEXT NOT NULL DEFAULT 'round_robin',
+                    match_path TEXT NOT NULL
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_group_members (
+                    group_id TEXT NOT NULL,
+                    upstream_id TEXT NOT NULL,
+                    weight INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (group_id, upstream_id)
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id TEXT NOT NULL,
+                    user_id TEXT,
+                    path TEXT NOT NULL,
+                    upstream_id TEXT,
+                    status_code INTEGER NOT NULL,
+                    latency_ms INTEGER NOT NULL,
+                    prompt_tokens INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                "#
+            ),
+            sqlx::any::AnyKind::Postgres => (
+                r#"
+                CREATE TABLE IF NOT EXISTS router_upstreams (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    api_key TEXT NOT NULL,
+                    match_path TEXT NOT NULL,
+                    auth_type TEXT NOT NULL,
+                    priority INTEGER NOT NULL DEFAULT 0
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_tokens (
+                    token TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    quota_limit BIGINT NOT NULL DEFAULT -1,
+                    used_quota BIGINT NOT NULL DEFAULT 0
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_groups (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    strategy TEXT NOT NULL DEFAULT 'round_robin',
+                    match_path TEXT NOT NULL
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_group_members (
+                    group_id TEXT NOT NULL,
+                    upstream_id TEXT NOT NULL,
+                    weight INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (group_id, upstream_id)
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS router_logs (
+                    id SERIAL PRIMARY KEY,
+                    request_id TEXT NOT NULL,
+                    user_id TEXT,
+                    path TEXT NOT NULL,
+                    upstream_id TEXT,
+                    status_code INTEGER NOT NULL,
+                    latency_ms BIGINT NOT NULL,
+                    prompt_tokens INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                "#
+            )
+        };
 
-        // Migration: Add priority column if it doesn't exist
-        let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
-            .execute(conn.pool())
-            .await;
+        sqlx::query(upstreams_sql).execute(conn.pool()).await?;
+        sqlx::query(tokens_sql).execute(conn.pool()).await?;
+        sqlx::query(groups_sql).execute(conn.pool()).await?;
+        sqlx::query(members_sql).execute(conn.pool()).await?;
+        sqlx::query(logs_sql).execute(conn.pool()).await?;
 
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS router_tokens (
-                token TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                status TEXT NOT NULL
-            );
-            "#
-        )
-        .execute(conn.pool())
-        .await?;
-
-        // Migration: Add quota columns
-        let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1")
-            .execute(conn.pool())
-            .await;
-        let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0")
-            .execute(conn.pool())
-            .await;
-
-        // Create Groups Tables
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS router_groups (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                strategy TEXT NOT NULL DEFAULT 'round_robin',
-                match_path TEXT NOT NULL
-            );
-            "#
-        )
-        .execute(conn.pool())
-        .await?;
-
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS router_group_members (
-                group_id TEXT NOT NULL,
-                upstream_id TEXT NOT NULL,
-                weight INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (group_id, upstream_id)
-            );
-            "#
-        )
-        .execute(conn.pool())
-        .await?;
-
-        // Create Logs Table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS router_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL,
-                user_id TEXT,
-                path TEXT NOT NULL,
-                upstream_id TEXT,
-                status_code INTEGER NOT NULL,
-                latency_ms INTEGER NOT NULL,
-                prompt_tokens INTEGER DEFAULT 0,
-                completion_tokens INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            "#
-        )
-        .execute(conn.pool())
-        .await?;
+        // Note: Migrations logic (ALTER TABLE) is tricky with AnyKind without a proper migration tool.
+        // For now, we assume new deployments for Postgres, or manual migration.
+        if let sqlx::any::AnyKind::Sqlite = kind {
+             // Best effort migrations for SQLite
+             let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN priority INTEGER NOT NULL DEFAULT 0").execute(conn.pool()).await;
+             let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1").execute(conn.pool()).await;
+             let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0").execute(conn.pool()).await;
+        }
 
         // Insert default demo data if empty
         let count: i64 = sqlx::query("SELECT COUNT(*) FROM router_upstreams")
@@ -183,8 +220,6 @@ impl RouterDatabase {
 
         Ok(())
     }
-
-    // ... (existing methods)
 
     pub async fn insert_log(db: &Database, log: &DbRouterLog) -> Result<()> {
         let conn = db.connection()?;
