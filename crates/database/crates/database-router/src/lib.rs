@@ -10,8 +10,10 @@ pub struct DbUpstream {
     pub api_key: String,
     pub match_path: String,
     pub auth_type: String, // Stored as string: "Bearer", "XApiKey"
-    #[sqlx(default)] // Handle missing column in old rows during migration
+    #[sqlx(default)] 
     pub priority: i32,
+    #[sqlx(default)]
+    pub protocol: String, // "openai", "gemini", "claude"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -53,6 +55,8 @@ pub struct DbRouterLog {
     // created_at is handled by DB default
 }
 
+// DbUser etc are moved to burncloud-database-user
+
 pub struct RouterDatabase;
 
 impl RouterDatabase {
@@ -71,7 +75,8 @@ impl RouterDatabase {
                     api_key TEXT NOT NULL,
                     match_path TEXT NOT NULL,
                     auth_type TEXT NOT NULL,
-                    priority INTEGER NOT NULL DEFAULT 0
+                    priority INTEGER NOT NULL DEFAULT 0,
+                    protocol TEXT NOT NULL DEFAULT 'openai'
                 );
                 "#,
                 r#"
@@ -123,7 +128,8 @@ impl RouterDatabase {
                     api_key TEXT NOT NULL,
                     match_path TEXT NOT NULL,
                     auth_type TEXT NOT NULL,
-                    priority INTEGER NOT NULL DEFAULT 0
+                    priority INTEGER NOT NULL DEFAULT 0,
+                    protocol TEXT NOT NULL DEFAULT 'openai'
                 );
                 "#,
                 r#"
@@ -174,11 +180,10 @@ impl RouterDatabase {
         sqlx::query(members_sql).execute(conn.pool()).await?;
         sqlx::query(logs_sql).execute(conn.pool()).await?;
 
-        // Note: Migrations logic (ALTER TABLE) is tricky with AnyKind without a proper migration tool.
-        // For now, we assume new deployments for Postgres, or manual migration.
+        // Migrations
         if let sqlx::any::AnyKind::Sqlite = kind {
-             // Best effort migrations for SQLite
              let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN priority INTEGER NOT NULL DEFAULT 0").execute(conn.pool()).await;
+             let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN protocol TEXT NOT NULL DEFAULT 'openai'").execute(conn.pool()).await;
              let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1").execute(conn.pool()).await;
              let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0").execute(conn.pool()).await;
         }
@@ -192,10 +197,10 @@ impl RouterDatabase {
         if count == 0 {
              sqlx::query(
                 r#"
-                INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority)
+                INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol)
                 VALUES 
-                ('demo-openai', 'OpenAI Demo', 'https://api.openai.com', 'sk-demo', '/v1/chat/completions', 'Bearer', 0),
-                ('demo-claude', 'Claude Demo', 'https://api.anthropic.com', 'sk-ant-demo', '/v1/messages', 'XApiKey', 0)
+                ('demo-openai', 'OpenAI Demo', 'https://api.openai.com', 'sk-demo', '/v1/chat/completions', 'Bearer', 0, 'openai'),
+                ('demo-claude', 'Claude Demo', 'https://api.anthropic.com', 'sk-ant-demo', '/v1/messages', 'XApiKey', 0, 'claude')
                 "#
             )
             .execute(conn.pool())
@@ -224,7 +229,6 @@ impl RouterDatabase {
     pub async fn insert_log(db: &Database, log: &DbRouterLog) -> Result<()> {
         let conn = db.connection()?;
         
-        // 1. Insert Log
         sqlx::query(
             r#"
             INSERT INTO router_logs 
@@ -243,13 +247,9 @@ impl RouterDatabase {
         .execute(conn.pool())
         .await?;
 
-        // 2. Update Quota Usage if user_id is present
         if let Some(user_id) = &log.user_id {
             let total_tokens = log.prompt_tokens + log.completion_tokens;
             if total_tokens > 0 {
-                // We ignore errors here to avoid failing the request if log update fails, 
-                // but technically this is critical for billing.
-                // For now, we log error if it fails? insert_log returns Result, so we bubble up.
                 sqlx::query("UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?")
                     .bind(total_tokens)
                     .bind(user_id)
@@ -264,7 +264,7 @@ impl RouterDatabase {
     pub async fn get_all_upstreams(db: &Database) -> Result<Vec<DbUpstream>> {
         let conn = db.connection()?;
         let rows = sqlx::query_as::<_, DbUpstream>(
-            "SELECT id, name, base_url, api_key, match_path, auth_type, priority FROM router_upstreams"
+            "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol FROM router_upstreams"
         )
         .fetch_all(conn.pool())
         .await?;
@@ -317,9 +317,9 @@ impl RouterDatabase {
     pub async fn create_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
         let conn = db.connection()?;
         sqlx::query(
-            "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
-        .bind(&u.id).bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority)
+        .bind(&u.id).bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol)
         .execute(conn.pool())
         .await?;
         Ok(())
@@ -328,7 +328,7 @@ impl RouterDatabase {
     pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<DbUpstream>> {
         let conn = db.connection()?;
         let upstream = sqlx::query_as::<_, DbUpstream>(
-            "SELECT id, name, base_url, api_key, match_path, auth_type, priority FROM router_upstreams WHERE id = ?"
+            "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol FROM router_upstreams WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(conn.pool())
@@ -339,9 +339,9 @@ impl RouterDatabase {
     pub async fn update_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
         let conn = db.connection()?;
         sqlx::query(
-            "UPDATE router_upstreams SET name=?, base_url=?, api_key=?, match_path=?, auth_type=?, priority=? WHERE id=?"
+            "UPDATE router_upstreams SET name=?, base_url=?, api_key=?, match_path=?, auth_type=?, priority=?, protocol=? WHERE id=?"
         )
-        .bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.id)
+        .bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol).bind(&u.id)
         .execute(conn.pool())
         .await?;
         Ok(())
@@ -370,7 +370,6 @@ impl RouterDatabase {
 
     pub async fn delete_group(db: &Database, id: &str) -> Result<()> {
         let conn = db.connection()?;
-        // Transaction would be better, but for now explicit order
         sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
             .bind(id)
             .execute(conn.pool())
@@ -386,13 +385,11 @@ impl RouterDatabase {
     // Full replace of members for a group
     pub async fn set_group_members(db: &Database, group_id: &str, members: Vec<DbGroupMember>) -> Result<()> {
         let conn = db.connection()?;
-        // 1. Clear existing
         sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
             .bind(group_id)
             .execute(conn.pool())
             .await?;
         
-        // 2. Insert new
         for m in members {
             sqlx::query(
                 "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES (?, ?, ?)"
