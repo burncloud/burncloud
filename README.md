@@ -1,218 +1,112 @@
-# BurnCloud - 大模型本地部署平台
+# BurnCloud (奔云)
 
-BurnCloud 是一个基于 Rust 和 Dioxus 构建的现代化大语言模型本地部署平台，提供了直观的用户界面来管理和部署如 Qwen、DeepSeek、Llama 等大语言模型。
+<div align="center">
 
-## 🎨 设计特性
+![Rust](https://img.shields.io/badge/Built_with-Rust-orange?style=for-the-badge&logo=rust)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue?style=for-the-badge)
 
-- **Windows 11 Fluent Design** - 采用现代化的圆角设计和毛玻璃效果
-- **响应式布局** - 适配不同屏幕尺寸的网格布局系统
-- **直观导航** - 清晰的侧边栏导航和状态指示
-- **实时监控** - 系统资源和模型运行状态的实时可视化
+**The Next-Gen High-Performance AI Gateway & Aggregator**
+**下一代高性能大模型聚合网关与管理平台**
 
-## 🚀 核心功能
+[Feature Requests](https://github.com/your-repo/burncloud/issues) · [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) · [Documentation](docs/)
 
-### 1. 仪表盘 (Dashboard)
-- 系统状态概览 (CPU、内存、GPU、磁盘)
-- 模型运行状态监控
-- API 调用统计
-- 快速操作面板
-
-### 2. 模型管理 (Model Management)
-- 已安装模型列表和状态
-- 在线模型仓库浏览
-- 模型下载、启动、停止
-- 模型信息和评分展示
-
-### 3. 部署配置 (Deploy Configuration)
-- 服务配置 (端口、绑定地址、API密钥)
-- 资源配置 (GPU、内存、CPU核心)
-- 量化设置和高级参数
-- 一键部署功能
-
-### 4. 服务监控 (Service Monitor)
-- 实时系统资源监控
-- 模型运行状态追踪
-- 实时日志查看器
-- 性能统计报告
-
-### 5. API管理 (API Management)
-- 交互式 API 测试工具
-- 完整的 API 文档
-- 调用统计和分析
-- 兼容 OpenAI API 格式
-
-### 6. 系统设置 (System Settings)
-- 外观主题设置 (浅色/深色/跟随系统)
-- 语言和字体配置
-- 系统启动和更新设置
-- 安全和访问控制
-
-### 7. 自动更新 🆕
-- 一键检查最新版本
-- 自动下载和安装更新
-- 支持 GitHub Releases
-- 失败时提供手动下载链接
-
-## 🛠️ 技术栈
-
-- **前端框架**: [Dioxus](https://dioxuslabs.com/) - 现代化 Rust GUI 框架
-- **路由**: Dioxus Router - 声明式路由系统
-- **样式**: 自定义 Fluent Design CSS 系统
-- **图标**: Unicode Emoji 表情符号
-- **构建工具**: Cargo (Rust 包管理器)
-
-## 📦 安装和运行
-
-### 环境要求
-
-- Rust 1.70+
-- Windows 10/11 (推荐 Windows 11 以获得最佳视觉效果)
-
-### 构建步骤
-
-1. 克隆项目
-```bash
-git clone <repository-url>
-cd burncloud
-```
-
-2. 安装依赖并构建
-```bash
-cargo build
-```
-
-3. 运行应用
-```bash
-cargo run
-```
-
-### 自动更新功能
-
-支持从命令行检查和执行更新：
-
-```bash
-# 检查是否有新版本
-cargo run -- update --check-only
-
-# 执行更新到最新版本
-cargo run -- update
-
-# 查看所有可用命令
-cargo run -- --help
-```
-
-> 📝 详细的自动更新文档请参考 [doc/README.md](doc/README.md)
-
-## 🎯 界面预览
-
-### 主界面布局
-```
-┌─────────────────────────────────────────────────────────────┐
-│ BurnCloud - 大模型本地部署平台              [最小化] [□] [×] │
-├─────────────────────────────────────────────────────────────┤
-│ 侧边导航栏        │               主内容区域                │
-│ ┌─────────────┐   │ ┌─────────────────────────────────────┐ │
-│ │ 🏠 仪表盘    │   │ │                                     │ │
-│ │ 🧠 模型管理  │   │ │          动态内容区域                │ │
-│ │ ⚙️  部署配置  │   │ │                                     │ │
-│ │ 📊 监控日志  │   │ │                                     │ │
-│ │ 🔗 API管理   │   │ │                                     │ │
-│ │ 🔧 系统设置  │   │ │                                     │ │
-│ └─────────────┘   │ └─────────────────────────────────────┘ │
-│                   │                                         │
-├─────────────────────────────────────────────────────────────┤
-│ 状态栏：服务状态 | CPU: 45% | 内存: 2.1GB | 活跃模型: 2    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 核心页面功能
-
-#### 模型管理界面
-- 模型卡片展示：状态、版本、大小、评分
-- 搜索和筛选功能
-- 官方仓库模型浏览
-- 一键下载和部署
-
-#### 部署配置界面
-- 可视化资源配置滑块
-- 自动硬件检测和推荐
-- 高级参数折叠面板
-- 实时配置预览
-
-#### 监控界面
-- 多标签页设计：实时监控、日志查看、性能报告
-- 进度条和图表可视化
-- 模拟终端日志查看器
-- 详细性能指标统计
-
-## 🔧 开发说明
-
-### 项目结构
-```
-src/
-├── main.rs           # 应用入口
-├── app.rs            # 路由配置
-├── styles.rs         # Fluent Design 样式系统
-├── components/       # 可复用组件
-│   ├── layout.rs     # 主布局组件
-│   ├── sidebar.rs    # 侧边导航栏
-│   └── title_bar.rs  # 标题栏
-└── pages/           # 页面组件
-    ├── dashboard.rs  # 仪表盘
-    ├── models.rs     # 模型管理
-    ├── deploy.rs     # 部署配置
-    ├── monitor.rs    # 服务监控
-    ├── api.rs        # API管理
-    └── settings.rs   # 系统设置
-```
-
-### 样式系统
-
-项目采用自定义的 Fluent Design CSS 变量系统：
-
-- **颜色**: 完整的 Accent 和 Neutral 色彩体系
-- **间距**: 统一的 spacing 规范 (xs, sm, md, lg, xl, xxl, xxxl)
-- **圆角**: 四级圆角规范 (small, medium, large, xlarge)
-- **阴影**: 三级阴影系统 (card, flyout, dialog)
-- **动画**: 统一的过渡曲线和时长
-
-### 响应式设计
-
-- 采用 CSS Grid 实现灵活的响应式布局
-- `auto-fit` 和 `minmax()` 确保不同屏幕尺寸的适配
-- 组件级别的响应式断点处理
-
-## 🎨 设计原则
-
-1. **简洁直观** - 清晰的视觉层次，降低学习成本
-2. **功能导向** - 突出核心功能，减少无关干扰
-3. **一致体验** - 统一的设计语言和交互模式
-4. **实时反馈** - 即时状态更新，透明的系统信息
-
-## 📝 开发计划
-
-- [ ] 实现真实的模型管理后端集成
-- [ ] 添加模型下载进度追踪
-- [ ] 实现 WebSocket 实时通信
-- [ ] 添加深色主题支持
-- [ ] 国际化支持 (i18n)
-- [ ] 性能优化和内存管理
-- [ ] 单元测试和集成测试
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 项目
-2. 创建功能分支
-3. 提交更改
-4. 推送到分支
-5. 创建 Pull Request
-
-## 📄 许可证
-
-MIT License - 详见 [LICENSE](LICENSE) 文件。
+</div>
 
 ---
 
-**BurnCloud** - 让大模型部署变得简单而优雅 🔥
+## 💡 What is BurnCloud?
+
+BurnCloud 是一个 **Rust 原生** 的大模型聚合网关与管理平台。
+它的目标是对标并超越 **One API (New API)**，为个人开发者、团队和企业提供一个**高性能、低资源占用、安全可控**的 LLM 统一接入层。
+
+**我们不仅仅是造轮子，我们是在升级引擎。**
+如果你受够了现有网关的高内存占用、GC 停顿或复杂的部署依赖，BurnCloud 是你的最佳选择。
+
+## ✨ Why BurnCloud? (Core Values)
+
+### 🚀 1. 极致性能 (Performance First)
+*   **Rust 驱动**: 基于 `Axum` 和 `Tokio` 构建，拥有惊人的并发处理能力和极低的内存占用（MB 级别 vs GB 级别）。
+*   **零损耗透传**: 独创的 "Don't Touch the Body" 路由模式，在非协议转换场景下，实现字节级零拷贝转发，延迟近乎为零。
+*   **单二进制文件**: 没有任何 Runtime 依赖（无 Python、无 Node.js、无 Java），一个文件即是一个完整的平台。
+
+### 🔌 2. 万能聚合 (Universal Aggregation)
+*   **All to OpenAI**: 将 Anthropic (Claude), Google (Gemini), Azure, 阿里 Qwen 等所有主流模型的协议统一转换为标准 **OpenAI 格式**。
+*   **一次接入，处处运行**: 你的 LangChain、AutoGPT 或任何现有应用，只需修改 Base URL 即可无缝切换底层模型。
+
+### ⚖️ 3. 运营级治理 (Enterprise Control)
+*   **智能负载均衡**: 支持多渠道轮询 (Round-Robin)、权重分发 (Weighted) 和 自动故障转移 (Failover)。一个 `gpt-4` 倒下了，千千万万个 `gpt-4` 站起来。
+*   **精准计费**: 支持基于 Token 的精准扣费、自定义倍率 (Model Ratio) 和用户分组倍率 (Group Ratio)。
+*   **多租户管理**: 完善的兑换码、额度管理、邀请机制。
+
+### 🎨 4. 优雅体验 (Fluent Experience)
+*   **不仅仅是 API**: 内置基于 **Dioxus** 开发的 **Windows 11 Fluent Design** 本地管理客户端。
+*   **可视化监控**: 实时查看 TPS、RPM、令牌消耗趋势，告别枯燥的日志文件。
+
+---
+
+## 🏗️ Architecture (架构)
+
+BurnCloud 采用严格的四层架构设计，确保高内聚低耦合：
+
+*   **Gateway Layer (`crates/router`)**: 数据面。处理高并发流量，负责鉴权、限流、协议转换。
+*   **Control Layer (`crates/server`)**: 控制面。提供 RESTful API 供 UI 调用，管理配置与状态。
+*   **Service Layer (`crates/service`)**: 业务面。封装计费、监控、渠道测速等核心逻辑。
+*   **Data Layer (`crates/database`)**: 数据面。基于 SQLx + SQLite/PostgreSQL，未来支持 Redis 缓存。
+
+> 详见: [架构演进文档 (Architecture Evolution)](docs/ARCHITECTURE_EVOLUTION.md)
+
+---
+
+## 🛠️ Getting Started (快速开始)
+
+### 环境要求
+*   Rust 1.75+
+*   Windows 10/11, Linux, or macOS
+
+### 开发模式运行
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/burncloud/burncloud.git
+cd burncloud
+
+# 2. 运行 (自动编译 Server 和 Client)
+cargo run
+```
+
+### 命令行使用 (CLI)
+
+BurnCloud 提供强大的 CLI 工具用于快速管理：
+
+```bash
+# 启动网关服务
+burncloud serve --port 3000
+
+# 添加一个新的 OpenAI 渠道
+burncloud channel add --name "My OpenAI" --type openai --key sk-xxxx --url https://api.openai.com
+
+# 创建一个用户令牌
+burncloud token create --quota 500000
+```
+
+---
+
+## 🗺️ Roadmap (路线图)
+
+- [x] **v0.1**: 基础路由与 AWS SigV4 签名支持 (已完成)
+- [x] **v0.2**: 数据库集成与基础鉴权 (已完成)
+- [ ] **v0.3**: 统一协议适配器 (Claude/Gemini -> OpenAI)
+- [ ] **v0.4**: 智能负载均衡与故障转移
+- [ ] **v0.5**: 运营级计费系统与 Web 控制台
+- [ ] **v1.0**: 正式发布，Redis 缓存集成
+
+---
+
+## 🤝 Contributing
+
+我们欢迎任何形式的贡献！请务必在提交代码前阅读我们的 **[开发宪法 (Constitution)](docs/CONSTITUTION.md)**。
+
+## 📄 License
+
+MIT License © 2025 BurnCloud Team

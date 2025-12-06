@@ -185,6 +185,11 @@ async fn proxy_handler(
                 AuthType::GoogleAI => {
                     req_builder = req_builder.header("x-goog-api-key", &upstream.api_key);
                 }
+                AuthType::Vertex => {
+                    // TODO: For Vertex, we should ideally generate a token from Service Account JSON.
+                    // Current implementation assumes the user provided a valid Bearer token (e.g. via gcloud auth print-access-token).
+                    req_builder = req_builder.bearer_auth(&upstream.api_key);
+                }
                 AuthType::Header(header_name) => {
                      req_builder = req_builder.header(header_name, &upstream.api_key);
                 }
