@@ -21,6 +21,7 @@ axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["cors"] }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
+uuid = { version = "1.4", features = ["v4"] }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
