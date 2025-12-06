@@ -9,15 +9,23 @@ struct LogEntry {
     path: String,
     status_code: u16,
     latency_ms: i64,
-    // created_at might be string or missing depending on DB serialization, ignoring for now
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+struct UsageStats {
+    #[serde(default)]
+    prompt_tokens: i64,
+    #[serde(default)]
+    completion_tokens: i64,
+    #[serde(default)]
+    total_tokens: i64,
 }
 
 #[component]
 pub fn Dashboard() -> Element {
     let logs = use_resource(move || async move {
         let client = reqwest::Client::new();
-        // Assuming server port 4000 based on main.rs. In production, this should be configurable.
-        let url = "http://127.0.0.1:4000/console/logs?limit=10"; 
+        let url = "http://127.0.0.1:3000/console/api/logs?limit=10"; 
         match client.get(url).send().await {
              Ok(resp) => {
                  if let Ok(json) = resp.json::<Value>().await {
@@ -29,6 +37,13 @@ pub fn Dashboard() -> Element {
              },
              Err(_) => None
         }
+    });
+
+    let usage = use_resource(move || async move {
+        let client = reqwest::Client::new();
+        // Hardcoded demo-user for now
+        let url = "http://127.0.0.1:3000/console/api/usage/demo-user";
+        client.get(url).send().await.ok()?.json::<UsageStats>().await.ok()
     });
 
     rsx! {
@@ -85,16 +100,29 @@ pub fn Dashboard() -> Element {
                     }
                 }
                 
-                 // API统计卡片 (Static)
+                 // API统计卡片 (Dynamic Usage)
                 div { class: "card metric-card",
                     div { class: "metric-header",
-                        h3 { class: "text-subtitle font-semibold m-0", "API统计" }
-                        span { class: "text-secondary", "今日" }
+                        h3 { class: "text-subtitle font-semibold m-0", "Token 消耗" }
+                        span { class: "text-secondary", "demo-user" }
                     }
                     div { class: "flex flex-col gap-md",
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "总请求数" }
-                            span { class: "metric-value", "1,247" }
+                        match &*usage.read() {
+                            Some(Some(stats)) => rsx! {
+                                div { class: "flex justify-between items-center",
+                                    span { class: "metric-label", "Total Tokens" }
+                                    span { class: "metric-value", "{stats.total_tokens}" }
+                                }
+                                div { class: "flex justify-between items-center",
+                                    span { class: "metric-label", "Prompt" }
+                                    span { class: "metric-value text-secondary", "{stats.prompt_tokens}" }
+                                }
+                                div { class: "flex justify-between items-center",
+                                    span { class: "metric-label", "Completion" }
+                                    span { class: "metric-value text-secondary", "{stats.completion_tokens}" }
+                                }
+                            },
+                            _ => rsx! { div { "加载中..." } }
                         }
                     }
                 }

@@ -17,6 +17,9 @@ use std::sync::Arc;
 use burncloud_database::Database;
 
 #[cfg(feature = "liveview")]
+use burncloud_common::constants::{DEFAULT_PORT, WS_PATH};
+
+#[cfg(feature = "liveview")]
 pub fn liveview_router(_db: Arc<Database>) -> Router {
     let view = LiveViewPool::new();
 
@@ -39,10 +42,10 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                 </html>
                 "#,
                 include_str!("../crates/client-api/assets/styles.css"),
-                dioxus_liveview::interpreter_glue(&format!("ws://{}/ws", "localhost:4000"))
+                dioxus_liveview::interpreter_glue(&format!("ws://localhost:{}{}", DEFAULT_PORT, WS_PATH))
             ))
         }))
-        .route("/ws", axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {
+        .route(WS_PATH, axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {
             ws.on_upgrade(move |socket| async move {
                 _ = view.launch(dioxus_liveview::axum_socket(socket), app::App as fn() -> dioxus::prelude::Element).await;
             })
