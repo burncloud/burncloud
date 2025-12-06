@@ -5,7 +5,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, Method, Uri},
     response::Response,
-    routing::any,
+    routing::{any, post},
     Router,
 };
 use burncloud_database::{create_default_database, Database};
@@ -25,13 +25,9 @@ struct AppState {
     db: Arc<Database>,
 }
 
-pub async fn start_server(port: u16) -> anyhow::Result<()> {
-    // Initialize Database
-    let db = create_default_database().await?;
-    RouterDatabase::init(&db).await?;
-
+async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
     // Load Upstreams from DB
-    let db_upstreams = RouterDatabase::get_all_upstreams(&db).await?;
+    let db_upstreams = RouterDatabase::get_all_upstreams(db).await?;
     let upstreams = db_upstreams.into_iter().map(|u| Upstream {
         id: u.id,
         name: u.name,
@@ -39,10 +35,17 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
         api_key: u.api_key,
         match_path: u.match_path,
         auth_type: AuthType::from(u.auth_type.as_str()),
-        priority: u.priority, // Map priority
+        priority: u.priority,
     }).collect();
+    Ok(RouterConfig { upstreams })
+}
 
-    let config = RouterConfig { upstreams };
+pub async fn start_server(port: u16) -> anyhow::Result<()> {
+    // Initialize Database
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+
+    let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
 
     let state = AppState { 
@@ -53,6 +56,7 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/", any(proxy_handler))
+        .route("/_internal/reload", post(reload_handler))
         .route("/*path", any(proxy_handler)) 
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -65,6 +69,24 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn reload_handler(
+    State(state): State<AppState>,
+) -> Response {
+    println!("Reloading router configuration...");
+    match load_router_config(&state.db).await {
+        Ok(new_config) => {
+            let mut config_write = state.config.write().await;
+            *config_write = new_config;
+            println!("Configuration reloaded successfully.");
+            Response::builder().status(200).body(Body::from("Reloaded")).unwrap()
+        }
+        Err(e) => {
+             eprintln!("Configuration reload failed: {}", e);
+             Response::builder().status(500).body(Body::from(format!("Reload failed: {}", e))).unwrap()
+        }
+    }
 }
 
 async fn proxy_handler(

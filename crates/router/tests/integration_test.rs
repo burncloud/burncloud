@@ -755,11 +755,7 @@ async fn test_google_ai_proxy() -> anyhow::Result<()> {
 
         
 
-                let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
-
-        
-
-                assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-qwen-mock-key");
+                    let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
 
         
 
@@ -767,11 +763,527 @@ async fn test_google_ai_proxy() -> anyhow::Result<()> {
 
         
 
-                Ok(())
+                    assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-qwen-mock-key");
 
         
 
-            }
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    Ok(())
+
+        
+
+            
+
+        
+
+                }
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                #[tokio::test]
+
+        
+
+            
+
+        
+
+                async fn test_config_reload() -> anyhow::Result<()> {
+
+        
+
+            
+
+        
+
+                    // Test Configuration Hot Reload
+
+        
+
+            
+
+        
+
+                    
+
+        
+
+            
+
+        
+
+                    // 1. Setup Database
+
+        
+
+            
+
+        
+
+                    let db = create_default_database().await?;
+
+        
+
+            
+
+        
+
+                    RouterDatabase::init(&db).await?;
+
+        
+
+            
+
+        
+
+                    let conn = db.connection()?;
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    // 2. Start Server (Port 3011)
+
+        
+
+            
+
+        
+
+                    let port = 3011;
+
+        
+
+            
+
+        
+
+                    tokio::spawn(async move {
+
+        
+
+            
+
+        
+
+                        if let Err(_e) = burncloud_router::start_server(port).await {
+
+        
+
+            
+
+        
+
+                            // Ignore error
+
+        
+
+            
+
+        
+
+                        }
+
+        
+
+            
+
+        
+
+                    });
+
+        
+
+            
+
+        
+
+                    sleep(Duration::from_secs(2)).await;
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    let client = Client::new();
+
+        
+
+            
+
+        
+
+                    let reload_url = format!("http://localhost:{}/_internal/reload", port);
+
+        
+
+            
+
+        
+
+                    let target_url = format!("http://localhost:{}/new-path/test", port);
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    // 3. Verify path is 404 initially
+
+        
+
+            
+
+        
+
+                    let resp = client.get(&target_url)
+
+        
+
+            
+
+        
+
+                        .header("Authorization", "Bearer sk-burncloud-demo")
+
+        
+
+            
+
+        
+
+                        .send().await?;
+
+        
+
+            
+
+        
+
+                    assert_eq!(resp.status(), 404);
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    // 4. Insert New Upstream via DB
+
+        
+
+            
+
+        
+
+                    let id = "reload-test";
+
+        
+
+            
+
+        
+
+                    let name = "Reload Test";
+
+        
+
+            
+
+        
+
+                    let base_url = "https://httpbin.org/anything";
+
+        
+
+            
+
+        
+
+                    let api_key = "reload-key";
+
+        
+
+            
+
+        
+
+                    let match_path = "/new-path";
+
+        
+
+            
+
+        
+
+                    let auth_type = "Bearer";
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    sqlx::query(
+
+        
+
+            
+
+        
+
+                        r#"
+
+        
+
+            
+
+        
+
+                        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+
+        
+
+            
+
+        
+
+                        VALUES (?, ?, ?, ?, ?, ?)
+
+        
+
+            
+
+        
+
+                        "#
+
+        
+
+            
+
+        
+
+                    )
+
+        
+
+            
+
+        
+
+                    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+
+        
+
+            
+
+        
+
+                    .execute(conn.pool())
+
+        
+
+            
+
+        
+
+                    .await?;
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    // 5. Trigger Reload
+
+        
+
+            
+
+        
+
+                    let reload_resp = client.post(&reload_url).send().await?;
+
+        
+
+            
+
+        
+
+                    assert_eq!(reload_resp.status(), 200);
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    // 6. Verify path works now
+
+        
+
+            
+
+        
+
+                    let resp_after = client.get(&target_url)
+
+        
+
+            
+
+        
+
+                        .header("Authorization", "Bearer sk-burncloud-demo")
+
+        
+
+            
+
+        
+
+                        .send().await?;
+
+        
+
+            
+
+        
+
+                    
+
+        
+
+            
+
+        
+
+                    println!("After reload status: {}", resp_after.status());
+
+        
+
+            
+
+        
+
+                    assert_eq!(resp_after.status(), 200);
+
+        
+
+            
+
+        
+
+                
+
+        
+
+            
+
+        
+
+                    Ok(())
+
+        
+
+            
+
+        
+
+                }
+
+        
+
+            
+
+        
+
+                
 
         
 
