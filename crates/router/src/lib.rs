@@ -51,6 +51,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
         match_path: u.match_path,
         auth_type: AuthType::from(u.auth_type.as_str()),
         priority: u.priority,
+        protocol: u.protocol,
     }).collect();
 
     // Load Groups
@@ -345,7 +346,9 @@ async fn proxy_logic(
         }
     };
     
-    let use_adaptor = headers.contains_key("x-use-adaptor");
+    // Check for manual override via header
+    let force_adaptor = headers.contains_key("x-use-adaptor");
+    
     let mut last_error = String::new();
     let mut last_upstream_id = None;
 
@@ -363,7 +366,7 @@ async fn proxy_logic(
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
         let target_url = format!("{}{}{}", upstream.base_url, path, query);
 
-        println!("Proxying {} -> {} (via {}) [Attempt {}]", path, target_url, upstream.name, attempt + 1);
+        println!("Proxying {} -> {} (via {}) [Attempt {}] Protocol: {}", path, target_url, upstream.name, attempt + 1, upstream.protocol);
 
         // 3. Build Downstream Request
         let mut req_builder = state.client.request(method.clone(), &target_url);
@@ -378,75 +381,81 @@ async fn proxy_logic(
             req_builder = req_builder.header(key, value);
         }
 
+        // Determine if we need protocol adaptation
+        let use_gemini_adaptor = upstream.protocol == "gemini" || (force_adaptor && upstream.auth_type == AuthType::GoogleAI);
+        let use_claude_adaptor = upstream.protocol == "claude" || (force_adaptor && upstream.auth_type == AuthType::Claude);
+
         // 5. Handle Auth & Body
-        let result = match &upstream.auth_type {
-            AuthType::AwsSigV4 => {
-                let aws_config = match AwsConfig::from_colon_string(&upstream.api_key) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        last_error = format!("AWS Config Error: {}", e);
-                        continue; 
+        // Special handling for adaptors which need to parse the body
+        let result = if use_gemini_adaptor {
+             let openai_req: Result<OpenAIChatRequest, _> = serde_json::from_slice(&body_bytes);
+             match openai_req {
+                 Ok(req) => {
+                     let gemini_json = GeminiAdaptor::convert_request(req);
+                     req_builder = req_builder.header("x-goog-api-key", &upstream.api_key);
+                     req_builder = req_builder.json(&gemini_json);
+                     state.client.execute(req_builder.build().unwrap()).await
+                 },
+                 Err(e) => {
+                     return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON for Gemini Adaptor: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
+                 }
+             }
+        } else if use_claude_adaptor {
+             let openai_req: Result<OpenAIChatRequest, _> = serde_json::from_slice(&body_bytes);
+             match openai_req {
+                 Ok(req) => {
+                     let claude_json = ClaudeAdaptor::convert_request(req);
+                     req_builder = req_builder.header("x-api-key", &upstream.api_key);
+                     req_builder = req_builder.header("anthropic-version", "2023-06-01");
+                     req_builder = req_builder.json(&claude_json);
+                     state.client.execute(req_builder.build().unwrap()).await
+                 },
+                 Err(e) => {
+                     return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON for Claude Adaptor: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
+                 }
+             }
+        } else {
+            // Standard Passthrough or Auth-Only injection
+            match &upstream.auth_type {
+                AuthType::AwsSigV4 => {
+                    let aws_config = match AwsConfig::from_colon_string(&upstream.api_key) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            last_error = format!("AWS Config Error: {}", e);
+                            continue; 
+                        }
+                    };
+                    
+                    req_builder = req_builder.body(body_bytes.clone());
+                    let mut request = match req_builder.build() {
+                        Ok(r) => r,
+                        Err(e) => { last_error = format!("Req Build Error: {}", e); continue; }
+                    };
+                    
+                    if let Err(e) = sign_request(&mut request, &aws_config, &body_bytes) {
+                         last_error = format!("AWS Signing Error: {}", e);
+                         continue;
                     }
-                };
-                
-                req_builder = req_builder.body(body_bytes.clone());
-                let mut request = match req_builder.build() {
-                    Ok(r) => r,
-                    Err(e) => { last_error = format!("Req Build Error: {}", e); continue; }
-                };
-                
-                if let Err(e) = sign_request(&mut request, &aws_config, &body_bytes) {
-                     last_error = format!("AWS Signing Error: {}", e);
-                     continue;
-                }
-                state.client.execute(request).await
-            },
-            AuthType::Claude if use_adaptor => {
-                let openai_req: Result<OpenAIChatRequest, _> = serde_json::from_slice(&body_bytes);
-                match openai_req {
-                    Ok(req) => {
-                        let claude_json = ClaudeAdaptor::convert_request(req);
-                        req_builder = req_builder.header("x-api-key", &upstream.api_key);
-                        req_builder = req_builder.header("anthropic-version", "2023-06-01");
-                        req_builder = req_builder.json(&claude_json);
-                        state.client.execute(req_builder.build().unwrap()).await
-                    },
-                    Err(e) => {
-                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
+                    state.client.execute(request).await
+                },
+                auth_type => {
+                    match auth_type {
+                        AuthType::Bearer => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
+                        AuthType::Azure => { req_builder = req_builder.header("api-key", &upstream.api_key); }
+                        AuthType::GoogleAI => { req_builder = req_builder.header("x-goog-api-key", &upstream.api_key); }
+                        AuthType::Claude => { 
+                            req_builder = req_builder.header("x-api-key", &upstream.api_key); 
+                            req_builder = req_builder.header("anthropic-version", "2023-06-01");
+                        }
+                        AuthType::Vertex => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
+                        AuthType::DeepSeek => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
+                        AuthType::Qwen => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
+                        AuthType::Header(h) => { req_builder = req_builder.header(h, &upstream.api_key); }
+                        _ => {}
                     }
+                    req_builder = req_builder.body(body_bytes.clone());
+                    req_builder.send().await
                 }
-            },
-            AuthType::GoogleAI if use_adaptor => {
-                let openai_req: Result<OpenAIChatRequest, _> = serde_json::from_slice(&body_bytes);
-                match openai_req {
-                    Ok(req) => {
-                        let gemini_json = GeminiAdaptor::convert_request(req);
-                        req_builder = req_builder.header("x-goog-api-key", &upstream.api_key);
-                        req_builder = req_builder.json(&gemini_json);
-                        state.client.execute(req_builder.build().unwrap()).await
-                    },
-                    Err(e) => {
-                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
-                    }
-                }
-            },
-            auth_type => {
-                match auth_type {
-                    AuthType::Bearer => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                    AuthType::Azure => { req_builder = req_builder.header("api-key", &upstream.api_key); }
-                    AuthType::GoogleAI => { req_builder = req_builder.header("x-goog-api-key", &upstream.api_key); }
-                    AuthType::Claude => { 
-                        req_builder = req_builder.header("x-api-key", &upstream.api_key); 
-                        req_builder = req_builder.header("anthropic-version", "2023-06-01");
-                    }
-                    AuthType::Vertex => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                    AuthType::DeepSeek => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                    AuthType::Qwen => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                    AuthType::Header(h) => { req_builder = req_builder.header(h, &upstream.api_key); }
-                    _ => {}
-                }
-                req_builder = req_builder.body(body_bytes.clone());
-                req_builder.send().await
             }
         };
 
@@ -462,19 +471,29 @@ async fn proxy_logic(
                 // Success!
                 state.circuit_breaker.record_success(&upstream.id);
 
-                if use_adaptor && resp.status().is_success() {
+                if resp.status().is_success() {
                      let status = resp.status();
-                     let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
-                     let converted_json = match upstream.auth_type {
-                         AuthType::GoogleAI => GeminiAdaptor::convert_response(resp_json, &upstream.name),
-                         AuthType::Claude => ClaudeAdaptor::convert_response(resp_json, &upstream.name),
-                         _ => resp_json
-                     };
-                     return (Response::builder()
-                        .status(status)
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&converted_json).unwrap()))
-                        .unwrap(), last_upstream_id, status);
+                     
+                     if use_gemini_adaptor {
+                         let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+                         let converted_json = GeminiAdaptor::convert_response(resp_json, &upstream.name);
+                         return (Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(Body::from(serde_json::to_string(&converted_json).unwrap()))
+                            .unwrap(), last_upstream_id, status);
+                     } else if use_claude_adaptor {
+                         let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+                         let converted_json = ClaudeAdaptor::convert_response(resp_json, &upstream.name);
+                         return (Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(Body::from(serde_json::to_string(&converted_json).unwrap()))
+                            .unwrap(), last_upstream_id, status);
+                     }
+                     
+                     // No adaptor needed, passthrough response
+                     return (handle_response(resp), last_upstream_id, status);
                 } else {
                     let status = resp.status();
                     return (handle_response(resp), last_upstream_id, status);

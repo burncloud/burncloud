@@ -18,6 +18,10 @@
     - [x] `database`: 设计用户角色表 (Role-Based Access Control)。
     - [x] `database`: 实现用户注册、角色分配方法。
     - [x] `server`: 实现用户注册、登录 API (GitHub/OIDC)。
+- [x] **Task 14.4: Unified Protocol Adaptors (v0.3)**
+    - [x] `router`: 实现 `GeminiAdaptor` (OpenAI Request -> Gemini API -> OpenAI Response)。
+    - [x] `router`: 实现 `ClaudeAdaptor` (OpenAI Request -> Anthropic API -> OpenAI Response)。
+    - [x] `router`: 更新 `proxy_logic` 以支持基于 `Upstream` 配置的自动协议转换。
 
 ---
 *Updated by AI Agent - LiveView Strategy*

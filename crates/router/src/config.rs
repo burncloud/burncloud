@@ -49,6 +49,8 @@ pub struct Upstream {
     pub auth_type: AuthType,
     #[serde(default)]
     pub priority: i32,
+    #[serde(default)]
+    pub protocol: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
