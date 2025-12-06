@@ -93,3 +93,55 @@ impl GeminiAdaptor {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burncloud_common::types::{OpenAIChatMessage, OpenAIChatRequest};
+    use serde_json::json;
+
+    #[test]
+    fn test_openai_to_gemini_request() {
+        let req = OpenAIChatRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![
+                OpenAIChatMessage { role: "user".to_string(), content: "Hello".to_string() }
+            ],
+            temperature: Some(0.7),
+            max_tokens: Some(100),
+            stream: Some(false),
+        };
+
+        let gemini_val = GeminiAdaptor::convert_request(req);
+        
+        // Validate structure
+        assert_eq!(gemini_val["contents"][0]["role"], "user");
+        assert_eq!(gemini_val["contents"][0]["parts"][0]["text"], "Hello");
+        assert_eq!(gemini_val["generationConfig"]["temperature"], 0.7);
+        assert_eq!(gemini_val["generationConfig"]["maxOutputTokens"], 100);
+    }
+
+    #[test]
+    fn test_gemini_to_openai_response() {
+        let gemini_resp = json!({
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [ { "text": "Hi there!" } ],
+                        "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                }
+            ]
+        });
+
+        let openai_val = GeminiAdaptor::convert_response(gemini_resp, "gemini-pro");
+
+        // Validate structure
+        assert_eq!(openai_val["object"], "chat.completion");
+        assert_eq!(openai_val["model"], "gemini-pro");
+        assert_eq!(openai_val["choices"][0]["message"]["content"], "Hi there!");
+        assert_eq!(openai_val["choices"][0]["message"]["role"], "assistant");
+    }
+}

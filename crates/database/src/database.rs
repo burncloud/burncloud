@@ -1,4 +1,4 @@
-use sqlx::{any::{AnyPool, AnyPoolOptions, AnyRow, AnyConnectOptions}, ConnectOptions};
+use sqlx::{AnyPool, any::{AnyPoolOptions, AnyRow, AnyConnectOptions}, ConnectOptions};
 use std::str::FromStr;
 
 use crate::error::{DatabaseError, Result};
@@ -10,16 +10,12 @@ pub struct DatabaseConnection {
 
 impl DatabaseConnection {
     pub async fn new(database_url: &str) -> Result<Self> {
-        // Handle SQLite specific options for file creation if using AnyPool directly via string might not be enough for some options
-        // But AnyPool parses the URL.
-        // For SQLite, we need `create_if_missing(true)`.
+        // Handle SQLite specific options via URL string modification if needed.
+        // For AnyPool, parsing the URL usually sets up the correct options.
+        // We rely on the caller to provide a correct URL (e.g. with ?mode=rwc).
         
-        let mut options = AnyConnectOptions::from_str(database_url)
-            .map_err(|e| DatabaseError::Connection(e.to_string()))?;
-            
-        if let Some(sqlite_options) = options.as_sqlite_mut() {
-            sqlite_options.create_if_missing(true);
-        }
+        let options = AnyConnectOptions::from_str(database_url)
+            .map_err(|e| DatabaseError::Connection(e))?;
 
         let pool = AnyPoolOptions::new()
             .max_connections(10)
@@ -53,7 +49,8 @@ impl Database {
             let default_path = get_default_database_path()?;
             create_directory_if_not_exists(&default_path)?;
             let normalized_path = default_path.to_string_lossy().to_string().replace('\\', "/");
-            format!("sqlite://{}", normalized_path)
+            // Ensure we use mode=rwc for SQLite to create file
+            format!("sqlite://{}?mode=rwc", normalized_path)
         };
 
         let mut db = Self {
@@ -70,6 +67,12 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_connection(&self) -> Result<&DatabaseConnection> {
+        self.connection
+            .as_ref()
+            .ok_or(DatabaseError::NotInitialized)
+    }
+
     pub fn kind(&self) -> sqlx::any::AnyKind {
         if self.database_url.starts_with("postgres") {
             sqlx::any::AnyKind::Postgres
@@ -79,7 +82,7 @@ impl Database {
     }
 
     pub async fn create_tables(&self) -> Result<()> {
-        let _conn = self.connection()?;
+        let _conn = self.get_connection()?;
         Ok(())
     }
 
@@ -91,13 +94,13 @@ impl Database {
     }
 
     pub async fn execute_query(&self, query: &str) -> Result<sqlx::any::AnyQueryResult> {
-        let conn = self.connection()?;
+        let conn = self.get_connection()?;
         let result = sqlx::query(query).execute(conn.pool()).await?;
         Ok(result)
     }
 
     pub async fn execute_query_with_params(&self, query: &str, params: Vec<String>) -> Result<sqlx::any::AnyQueryResult> {
-        let conn = self.connection()?;
+        let conn = self.get_connection()?;
         let mut query_builder = sqlx::query(query);
 
         for param in params {
@@ -109,13 +112,13 @@ impl Database {
     }
 
     pub async fn query(&self, query: &str) -> Result<Vec<AnyRow>> {
-        let conn = self.connection()?;
+        let conn = self.get_connection()?;
         let rows = sqlx::query(query).fetch_all(conn.pool()).await?;
         Ok(rows)
     }
 
     pub async fn query_with_params(&self, query: &str, params: Vec<String>) -> Result<Vec<AnyRow>> {
-        let conn = self.connection()?;
+        let conn = self.get_connection()?;
         let mut query_builder = sqlx::query(query);
 
         for param in params {
@@ -130,7 +133,7 @@ impl Database {
     where
         T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
-        let conn = self.connection()?;
+        let conn = self.get_connection()?;
         let result = sqlx::query_as::<_, T>(query).fetch_one(conn.pool()).await?;
         Ok(result)
     }
@@ -139,7 +142,7 @@ impl Database {
     where
         T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
-        let conn = self.connection()?;
+        let conn = self.get_connection()?;
         let results = sqlx::query_as::<_, T>(query).fetch_all(conn.pool()).await?;
         Ok(results)
     }
@@ -148,7 +151,7 @@ impl Database {
     where
         T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
-        let conn = self.connection()?;
+        let conn = self.get_connection()?;
         let result = sqlx::query_as::<_, T>(query).fetch_optional(conn.pool()).await?;
         Ok(result)
     }
@@ -192,4 +195,3 @@ fn create_directory_if_not_exists(path: &std::path::Path) -> Result<()> {
     }
     Ok(())
 }
-
