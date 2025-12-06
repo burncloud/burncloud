@@ -1,4 +1,5 @@
 mod config;
+mod adaptor;
 
 use axum::{
     body::Body,
@@ -11,6 +12,8 @@ use axum::{
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_router_aws::{AwsConfig, sign_request};
+use burncloud_common::types::OpenAIChatRequest;
+use adaptor::gemini::GeminiAdaptor;
 use config::{AuthType, RouterConfig, Upstream};
 use reqwest::Client;
 use std::{net::SocketAddr, sync::Arc};
@@ -141,6 +144,9 @@ async fn proxy_handler(
                 .unwrap();
         }
     };
+    
+    // Check for explicit adaptor trigger header (before headers are moved)
+    let use_adaptor = headers.contains_key("x-use-adaptor");
 
     // 2. Construct Target URL
     let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
@@ -165,9 +171,11 @@ async fn proxy_handler(
         }
     }
 
-    // 5. Handle Auth & Body (Special logic for AWS)
+    // 5. Handle Auth & Body (Special logic for AWS and Adaptors)
+    
     match &upstream.auth_type {
         AuthType::AwsSigV4 => {
+            // ... (AWS logic remains same) ...
             // For AWS SigV4, we MUST buffer the body to calculate SHA256 hash
             let body_bytes = match body.collect().await {
                 Ok(collected) => collected.to_bytes(),
@@ -195,6 +203,45 @@ async fn proxy_handler(
                  Err(e) => Response::builder().status(502).body(Body::from(format!("Proxy Error: {}", e))).unwrap()
             }
         },
+        AuthType::GoogleAI if use_adaptor => {
+            // Protocol Adaptation: OpenAI -> Gemini
+            // 1. Read Body (OpenAI JSON)
+            let body_bytes = match body.collect().await {
+                Ok(collected) => collected.to_bytes(),
+                Err(e) => return Response::builder().status(400).body(Body::from(format!("Body Read Error: {}", e))).unwrap(),
+            };
+
+            let openai_req: OpenAIChatRequest = match serde_json::from_slice(&body_bytes) {
+                Ok(req) => req,
+                Err(e) => return Response::builder().status(400).body(Body::from(format!("Invalid OpenAI Request JSON: {}", e))).unwrap(),
+            };
+
+            // 2. Convert to Gemini Request
+            let gemini_json = GeminiAdaptor::convert_request(openai_req);
+
+            // 3. Send to Upstream
+            req_builder = req_builder.header("x-goog-api-key", &upstream.api_key);
+            req_builder = req_builder.json(&gemini_json);
+
+            match req_builder.send().await {
+                Ok(resp) => {
+                    // 4. Convert Response back (Gemini -> OpenAI)
+                    if resp.status().is_success() {
+                        let gemini_resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+                        let openai_resp = GeminiAdaptor::convert_response(gemini_resp_json, &upstream.name); // Using upstream name as model name for now
+                        Response::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(Body::from(serde_json::to_string(&openai_resp).unwrap()))
+                            .unwrap()
+                    } else {
+                        // Forward error as is
+                        handle_response(resp)
+                    }
+                },
+                Err(e) => Response::builder().status(502).body(Body::from(format!("Proxy Error: {}", e))).unwrap()
+            }
+        }
         auth_type => {
             // Standard Passthrough (Streaming Upload Supported)
             match auth_type {
