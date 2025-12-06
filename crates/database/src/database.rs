@@ -1,4 +1,4 @@
-use sqlx::{AnyPool, any::{AnyPoolOptions, AnyRow, AnyConnectOptions}, ConnectOptions};
+use sqlx::{AnyPool, any::{AnyPoolOptions, AnyRow, AnyConnectOptions}};
 use std::str::FromStr;
 
 use crate::error::{DatabaseError, Result};

@@ -30,6 +30,7 @@ impl From<ChannelDto> for DbUpstream {
             match_path: dto.match_path,
             auth_type: dto.auth_type,
             priority: dto.priority,
+            protocol: "openai".to_string(),
         }
     }
 }

@@ -170,6 +170,7 @@ impl InferenceService {
             match_path: "/v1/chat/completions".to_string(), // 默认 OpenAI 兼容路径
             auth_type: "Bearer".to_string(), // 占位，实际上不需要，但 Router 需要非空
             priority: 100, // 本地模型优先级高
+            protocol: "openai".to_string(),
         };
 
         // Upsert: 先删后插，或者检查是否存在

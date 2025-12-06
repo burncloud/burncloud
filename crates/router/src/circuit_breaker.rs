@@ -2,13 +2,6 @@ use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum State {
-    Closed,   // Healthy
-    Open,     // Tripped
-    HalfOpen, // Probing
-}
-
 #[derive(Debug)]
 struct UpstreamState {
     failure_count: AtomicU32,
@@ -41,7 +34,7 @@ impl CircuitBreaker {
 
     /// Checks if a request is allowed to proceed to the given upstream.
     pub fn allow_request(&self, upstream_id: &str) -> bool {
-        let mut entry = self.states.entry(upstream_id.to_string()).or_default();
+        let entry = self.states.entry(upstream_id.to_string()).or_default();
         
         let current_failures = entry.failure_count.load(Ordering::Relaxed);
         

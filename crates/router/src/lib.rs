@@ -12,7 +12,7 @@ use axum::{
     routing::post,
     Router,
 };
-use burncloud_database::{create_default_database, Database};
+use burncloud_database::Database;
 use burncloud_database_router::{RouterDatabase, DbRouterLog};
 use burncloud_router_aws::{AwsConfig, sign_request};
 use burncloud_common::types::OpenAIChatRequest;
@@ -23,7 +23,7 @@ use limiter::RateLimiter;
 use circuit_breaker::CircuitBreaker;
 use config::{AuthType, RouterConfig, Upstream, Group, GroupMember, RouteTarget};
 use reqwest::Client;
-use std::{net::SocketAddr, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 use tokio::sync::{RwLock, mpsc};
 use tower_http::cors::CorsLayer;
 use http_body_util::BodyExt;
@@ -365,6 +365,7 @@ async fn proxy_logic(
     let force_adaptor = headers.contains_key("x-use-adaptor");
     
     let mut last_error = String::new();
+    #[allow(unused_assignments)]
     let mut last_upstream_id = None;
 
     for (attempt, upstream) in candidates.iter().enumerate() {
