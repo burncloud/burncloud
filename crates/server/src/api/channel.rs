@@ -1,14 +1,11 @@
 use axum::{
-    extract::{State, Path},
+    extract::Path,
     response::Json,
-    routing::{get, post, put, delete},
+    routing::{get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use burncloud_database::Database;
-use burncloud_database_router::DbUpstream; // We might need to move DbUpstream to shared or re-export
-use std::sync::Arc;
 
 // TODO: Import DbUpstream properly. For now, define a DTO.
 #[derive(Deserialize, Serialize)]
