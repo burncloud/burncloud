@@ -1,88 +1,91 @@
-use systray::Application;
-use std::process;
-use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
+mod desktop {
+    use systray::Application;
+    use std::process;
+    use std::fmt;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-// 嵌入图标数据
-static ICON_DATA: &[u8] = include_bytes!("../res/burncloud.ico");
+    // 嵌入图标数据
+    static ICON_DATA: &[u8] = include_bytes!("../res/burncloud.ico");
 
-#[derive(Debug)]
-pub struct SimpleError(String);
+    #[derive(Debug)]
+    pub struct SimpleError(String);
 
-impl fmt::Display for SimpleError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for SimpleError {}
-
-// 简单的原子标志
-static SHOULD_SHOW: AtomicBool = AtomicBool::new(false);
-static SHOULD_HIDE: AtomicBool = AtomicBool::new(false);
-
-pub fn should_show_window() -> bool {
-    SHOULD_SHOW.swap(false, Ordering::Relaxed)
-}
-
-pub fn should_hide_window() -> bool {
-    SHOULD_HIDE.swap(false, Ordering::Relaxed)
-}
-
-/// 启动 BurnCloud 托盘应用
-///
-/// 这是唯一需要调用的函数，会创建并运行托盘应用
-///
-/// # Example
-/// ```
-/// use burncloud_client_tray::start_tray;
-/// start_tray().unwrap();
-/// ```
-pub fn start_tray() -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = Application::new()?;
-
-    // 创建临时文件来设置图标
-    let temp_dir = std::env::temp_dir();
-    let temp_icon_path = temp_dir.join("burncloud_temp.ico");
-
-    // 将嵌入的图标数据写入临时文件
-    match std::fs::write(&temp_icon_path, ICON_DATA) {
-        Ok(_) => {
-            // 尝试使用临时文件设置图标
-            match app.set_icon_from_file(&temp_icon_path.to_string_lossy()) {
-                Ok(_) => {
-                    println!("Icon set successfully");
-                    // 设置成功后清理临时文件
-                    let _ = std::fs::remove_file(&temp_icon_path);
-                },
-                Err(e) => {
-                    println!("Warning: Failed to set icon: {:?}", e);
-                    // 清理临时文件
-                    let _ = std::fs::remove_file(&temp_icon_path);
-                }
-            }
-        },
-        Err(e) => {
-            println!("Warning: Failed to create temporary icon file: {:?}", e);
+    impl fmt::Display for SimpleError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "{}", self.0)
         }
     }
 
-    // 添加启动界面菜单项
-    app.add_menu_item(&"显示界面".to_string(), move |_| -> Result<(), SimpleError> {
-        SHOULD_SHOW.store(true, Ordering::Relaxed);
+    impl std::error::Error for SimpleError {}
+
+    // 简单的原子标志
+    static SHOULD_SHOW: AtomicBool = AtomicBool::new(false);
+    static SHOULD_HIDE: AtomicBool = AtomicBool::new(false);
+
+    pub fn should_show_window() -> bool {
+        SHOULD_SHOW.swap(false, Ordering::Relaxed)
+    }
+
+    pub fn should_hide_window() -> bool {
+        SHOULD_HIDE.swap(false, Ordering::Relaxed)
+    }
+
+    pub fn start_tray() -> Result<(), Box<dyn std::error::Error>> {
+        let mut app = Application::new()?;
+
+        // 创建临时文件来设置图标
+        let temp_dir = std::env::temp_dir();
+        let temp_icon_path = temp_dir.join("burncloud_temp.ico");
+
+        // 将嵌入的图标数据写入临时文件
+        match std::fs::write(&temp_icon_path, ICON_DATA) {
+            Ok(_) => {
+                // 尝试使用临时文件设置图标
+                match app.set_icon_from_file(&temp_icon_path.to_string_lossy()) {
+                    Ok(_) => {
+                        println!("Icon set successfully");
+                        // 设置成功后清理临时文件
+                        let _ = std::fs::remove_file(&temp_icon_path);
+                    },
+                    Err(e) => {
+                        println!("Warning: Failed to set icon: {:?}", e);
+                        // 清理临时文件
+                        let _ = std::fs::remove_file(&temp_icon_path);
+                    }
+                }
+            },
+            Err(e) => {
+                println!("Warning: Failed to create temporary icon file: {:?}", e);
+            }
+        }
+
+        // 添加启动界面菜单项
+        app.add_menu_item(&"显示界面".to_string(), move |_| -> Result<(), SimpleError> {
+            SHOULD_SHOW.store(true, Ordering::Relaxed);
+            Ok(())
+        })?;
+
+        // 添加分隔符
+        app.add_menu_separator()?;
+
+        // 添加退出菜单项
+        app.add_menu_item(&"退出程序".to_string(), |_| -> Result<(), SimpleError> {
+            process::exit(0);
+        })?;
+
+        // 等待
+        app.wait_for_message()?;
+
         Ok(())
-    })?;
-
-    // 添加分隔符
-    app.add_menu_separator()?;
-
-    // 添加退出菜单项
-    app.add_menu_item(&"退出程序".to_string(), |_| -> Result<(), SimpleError> {
-        process::exit(0);
-    })?;
-
-    // 等待
-    app.wait_for_message()?;
-
-    Ok(())
+    }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use desktop::*;
+
+#[cfg(target_arch = "wasm32")]
+pub fn should_show_window() -> bool { false }
+
+#[cfg(target_arch = "wasm32")]
+pub fn start_tray() -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
