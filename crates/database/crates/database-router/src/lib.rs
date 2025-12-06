@@ -21,6 +21,21 @@ pub struct DbToken {
     pub status: String, // "active", "disabled"
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DbGroup {
+    pub id: String,
+    pub name: String,
+    pub strategy: String, // "round_robin", "weighted"
+    pub match_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DbGroupMember {
+    pub group_id: String,
+    pub upstream_id: String,
+    pub weight: i32,
+}
+
 pub struct RouterDatabase;
 
 impl RouterDatabase {
@@ -43,7 +58,6 @@ impl RouterDatabase {
         .await?;
 
         // Migration: Add priority column if it doesn't exist
-        // We use a separate query and ignore error (simplest migration strategy for now)
         let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
             .execute(conn.pool())
             .await;
@@ -54,6 +68,33 @@ impl RouterDatabase {
                 token TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 status TEXT NOT NULL
+            );
+            "#
+        )
+        .execute(conn.pool())
+        .await?;
+
+        // Create Groups Tables
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS router_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                strategy TEXT NOT NULL DEFAULT 'round_robin',
+                match_path TEXT NOT NULL
+            );
+            "#
+        )
+        .execute(conn.pool())
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS router_group_members (
+                group_id TEXT NOT NULL,
+                upstream_id TEXT NOT NULL,
+                weight INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (group_id, upstream_id)
             );
             "#
         )
@@ -71,7 +112,7 @@ impl RouterDatabase {
                 r#"
                 INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority)
                 VALUES 
-                ('demo-openai', 'OpenAI Demo', 'https://api.openai.com', 'sk-demo', '/v1', 'Bearer', 0),
+                ('demo-openai', 'OpenAI Demo', 'https://api.openai.com', 'sk-demo', '/v1/chat/completions', 'Bearer', 0),
                 ('demo-claude', 'Claude Demo', 'https://api.anthropic.com', 'sk-ant-demo', '/v1/messages', 'XApiKey', 0)
                 "#
             )
@@ -100,9 +141,28 @@ impl RouterDatabase {
 
     pub async fn get_all_upstreams(db: &Database) -> Result<Vec<DbUpstream>> {
         let conn = db.connection()?;
-        // We sort by length(desc) then priority(desc) in SQL, but we also do it in code for robustness
         let rows = sqlx::query_as::<_, DbUpstream>(
             "SELECT id, name, base_url, api_key, match_path, auth_type, priority FROM router_upstreams"
+        )
+        .fetch_all(conn.pool())
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn get_all_groups(db: &Database) -> Result<Vec<DbGroup>> {
+        let conn = db.connection()?;
+        let rows = sqlx::query_as::<_, DbGroup>(
+            "SELECT id, name, strategy, match_path FROM router_groups"
+        )
+        .fetch_all(conn.pool())
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn get_group_members(db: &Database) -> Result<Vec<DbGroupMember>> {
+        let conn = db.connection()?;
+        let rows = sqlx::query_as::<_, DbGroupMember>(
+            "SELECT group_id, upstream_id, weight FROM router_group_members"
         )
         .fetch_all(conn.pool())
         .await?;

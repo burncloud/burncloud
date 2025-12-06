@@ -1,5 +1,6 @@
 mod config;
 mod adaptor;
+mod balancer;
 
 use axum::{
     body::Body,
@@ -15,7 +16,8 @@ use burncloud_router_aws::{AwsConfig, sign_request};
 use burncloud_common::types::OpenAIChatRequest;
 use adaptor::gemini::GeminiAdaptor;
 use adaptor::claude::ClaudeAdaptor;
-use config::{AuthType, RouterConfig, Upstream};
+use balancer::RoundRobinBalancer;
+use config::{AuthType, RouterConfig, Upstream, Group, GroupMember, RouteTarget};
 use reqwest::Client;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::RwLock;
@@ -27,12 +29,13 @@ struct AppState {
     client: Client,
     config: Arc<RwLock<RouterConfig>>,
     db: Arc<Database>,
+    balancer: Arc<RoundRobinBalancer>,
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
-    // Load Upstreams from DB
+    // Load Upstreams
     let db_upstreams = RouterDatabase::get_all_upstreams(db).await?;
-    let upstreams = db_upstreams.into_iter().map(|u| Upstream {
+    let upstreams: Vec<Upstream> = db_upstreams.into_iter().map(|u| Upstream {
         id: u.id,
         name: u.name,
         base_url: u.base_url,
@@ -41,7 +44,30 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
         auth_type: AuthType::from(u.auth_type.as_str()),
         priority: u.priority,
     }).collect();
-    Ok(RouterConfig { upstreams })
+
+    // Load Groups
+    let db_groups = RouterDatabase::get_all_groups(db).await?;
+    let db_members = RouterDatabase::get_group_members(db).await?;
+
+    let groups = db_groups.into_iter().map(|g| {
+        let members = db_members.iter()
+            .filter(|m| m.group_id == g.id)
+            .map(|m| GroupMember {
+                upstream_id: m.upstream_id.clone(),
+                weight: m.weight,
+            })
+            .collect();
+        
+        Group {
+            id: g.id,
+            name: g.name,
+            strategy: g.strategy,
+            match_path: g.match_path,
+            members,
+        }
+    }).collect();
+
+    Ok(RouterConfig { upstreams, groups })
 }
 
 pub async fn start_server(port: u16) -> anyhow::Result<()> {
@@ -51,11 +77,13 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
 
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
+    let balancer = Arc::new(RoundRobinBalancer::new());
 
     let state = AppState { 
         client,
         config: Arc::new(RwLock::new(config)),
         db: Arc::new(db),
+        balancer,
     };
 
     let app = Router::new()
@@ -136,13 +164,41 @@ async fn proxy_handler(
     let config = state.config.read().await;
     
     // 1. Routing
-    let upstream = match config.find_upstream(path) {
-        Some(u) => u,
+    let route = match config.find_route(path) {
+        Some(r) => r,
         None => {
             return Response::builder()
                 .status(404)
                 .body(Body::from(format!("No matching upstream found for path: {}", path)))
                 .unwrap();
+        }
+    };
+    
+    // Resolve Route Target -> Upstream
+    let upstream = match route {
+        RouteTarget::Upstream(u) => u,
+        RouteTarget::Group(g) => {
+            // Load Balance
+            // Only Round Robin supported for now
+            if g.members.is_empty() {
+                 return Response::builder()
+                    .status(503)
+                    .body(Body::from(format!("Group '{}' has no healthy members", g.name)))
+                    .unwrap();
+            }
+            
+            let idx = state.balancer.next_index(&g.id, g.members.len());
+            let member = &g.members[idx];
+            
+            match config.get_upstream(&member.upstream_id) {
+                Some(u) => u,
+                None => {
+                     return Response::builder()
+                        .status(500)
+                        .body(Body::from(format!("Configuration Error: Member upstream '{}' not found", member.upstream_id)))
+                        .unwrap();
+                }
+            }
         }
     };
     
@@ -159,17 +215,15 @@ async fn proxy_handler(
     let mut req_builder = state.client.request(method, &target_url);
 
     // 4. Forward Headers
-    for (key, value) in headers {
-        if let Some(key) = key {
-            let key_str = key.as_str();
-            // Filter hop-by-hop and auth
-            // Also filter upstream-specific auth headers if they came from client
-            if key_str == "host" || key_str == "content-length" || key_str == "transfer-encoding" 
-               || key_str == "authorization" || key_str == "x-api-key" || key_str == "api-key" {
-                continue;
-            }
-            req_builder = req_builder.header(key, value);
+    for (key, value) in &headers {
+        let key_str = key.as_str();
+        // Filter hop-by-hop and auth
+        // Also filter upstream-specific auth headers if they came from client
+        if key_str == "host" || key_str == "content-length" || key_str == "transfer-encoding" 
+           || key_str == "authorization" || key_str == "x-api-key" || key_str == "api-key" {
+            continue;
         }
+        req_builder = req_builder.header(key, value);
     }
 
     // 5. Handle Auth & Body (Special logic for AWS and Adaptors)
