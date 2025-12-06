@@ -1,7 +1,36 @@
 use dioxus::prelude::*;
+use serde::Deserialize;
+use serde_json::Value;
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+struct LogEntry {
+    request_id: String,
+    user_id: Option<String>,
+    path: String,
+    status_code: u16,
+    latency_ms: i64,
+    // created_at might be string or missing depending on DB serialization, ignoring for now
+}
 
 #[component]
 pub fn Dashboard() -> Element {
+    let logs = use_resource(move || async move {
+        let client = reqwest::Client::new();
+        // Assuming server port 4000 based on main.rs. In production, this should be configurable.
+        let url = "http://127.0.0.1:4000/console/logs?limit=10"; 
+        match client.get(url).send().await {
+             Ok(resp) => {
+                 if let Ok(json) = resp.json::<Value>().await {
+                     if let Some(_arr) = json["data"].as_array() {
+                         return serde_json::from_value::<Vec<LogEntry>>(json["data"].clone()).ok();
+                     }
+                 }
+                 None
+             },
+             Err(_) => None
+        }
+    });
+
     rsx! {
         div { class: "page-header",
             h1 { class: "text-large-title font-bold text-primary m-0",
@@ -16,7 +45,7 @@ pub fn Dashboard() -> Element {
             div { class: "grid",
                 style: "grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--spacing-xl);",
 
-                // 系统状态卡片
+                // 系统状态卡片 (Static)
                 div { class: "card metric-card",
                     div { class: "metric-header",
                         h3 { class: "text-subtitle font-semibold m-0", "系统状态" }
@@ -33,17 +62,10 @@ pub fn Dashboard() -> Element {
                         div { class: "progress",
                             div { class: "progress-fill", style: "width: 45.2%" }
                         }
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "内存使用" }
-                            span { class: "metric-value text-subtitle", "8.1GB / 16GB" }
-                        }
-                        div { class: "progress",
-                            div { class: "progress-fill", style: "width: 50.6%" }
-                        }
                     }
                 }
 
-                // 模型状态卡片
+                // 模型状态卡片 (Static)
                 div { class: "card metric-card",
                     div { class: "metric-header",
                         h3 { class: "text-subtitle font-semibold m-0", "模型状态" }
@@ -60,20 +82,10 @@ pub fn Dashboard() -> Element {
                                 "运行中"
                             }
                         }
-                        div { class: "flex justify-between items-center",
-                            div { class: "flex items-center gap-sm",
-                                span { "🤖" }
-                                span { class: "font-medium", "DeepSeek-V2" }
-                            }
-                            span { class: "status-indicator status-stopped",
-                                span { class: "status-dot" }
-                                "已停止"
-                            }
-                        }
                     }
                 }
-
-                // API统计卡片
+                
+                 // API统计卡片 (Static)
                 div { class: "card metric-card",
                     div { class: "metric-header",
                         h3 { class: "text-subtitle font-semibold m-0", "API统计" }
@@ -84,103 +96,66 @@ pub fn Dashboard() -> Element {
                             span { class: "metric-label", "总请求数" }
                             span { class: "metric-value", "1,247" }
                         }
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "成功率" }
-                            span { class: "metric-value", "99.2%" }
-                        }
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "平均响应时间" }
-                            span { class: "metric-value", "1.2s" }
-                        }
                     }
                 }
-
-                // 存储使用卡片
-                div { class: "card metric-card",
+                
+                // 存储使用卡片 (Static)
+                 div { class: "card metric-card",
                     div { class: "metric-header",
                         h3 { class: "text-subtitle font-semibold m-0", "存储使用" }
                     }
-                    div { class: "flex flex-col gap-md",
+                     div { class: "flex flex-col gap-md",
                         div { class: "flex justify-between items-center",
                             span { class: "metric-label", "模型文件" }
                             span { class: "metric-value text-subtitle", "23.4GB" }
                         }
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "缓存数据" }
-                            span { class: "metric-value text-subtitle", "2.1GB" }
-                        }
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "可用空间" }
-                            span { class: "metric-value text-subtitle", "344GB" }
-                        }
-                        div { class: "progress",
-                            div { class: "progress-fill", style: "width: 31.2%" }
-                        }
                     }
                 }
             }
 
-            // 快速操作区域
+            // 快速操作区域 (Static)
             div { class: "mt-xxxl",
                 h2 { class: "text-title font-semibold mb-lg", "快速操作" }
                 div { class: "flex gap-lg",
                     button { class: "btn btn-primary",
-                        span { "🚀" }
-                        "部署新模型"
+                         span { "🚀" }
+                         "部署新模型"
                     }
-                    button { class: "btn btn-secondary",
-                        span { "📊" }
-                        "查看性能报告"
-                    }
-                    button { class: "btn btn-secondary",
+                     button { class: "btn btn-secondary",
                         span { "🔧" }
                         "系统设置"
-                    }
-                    button { class: "btn btn-secondary",
-                        span { "📚" }
-                        "查看文档"
                     }
                 }
             }
 
-            // 最近活动
+            // API 调用日志 (Dynamic)
             div { class: "mt-xxxl",
-                h2 { class: "text-title font-semibold mb-lg", "最近活动" }
+                h2 { class: "text-title font-semibold mb-lg", "API 调用日志 (Real-time)" }
                 div { class: "card",
                     div { class: "p-lg",
                         div { class: "flex flex-col gap-md",
-                            div { class: "flex items-center justify-between",
-                                div { class: "flex items-center gap-md",
-                                    span { class: "text-secondary", "09:45:32" }
-                                    span { class: "status-indicator status-running",
-                                        span { class: "status-dot" }
-                                        "INFO"
+                            match &*logs.read() {
+                                Some(Some(list)) => rsx! {
+                                    for log in list {
+                                        div { class: "flex items-center justify-between",
+                                            div { class: "flex items-center gap-md",
+                                                span { class: "text-secondary", "{log.request_id.chars().take(8).collect::<String>()}" }
+                                                span { class: 
+                                                    if log.status_code >= 500 { "status-indicator status-stopped" }
+                                                    else if log.status_code >= 400 { "status-indicator status-pending" }
+                                                    else { "status-indicator status-running" },
+                                                    span { class: "status-dot" }
+                                                    "{log.status_code}"
+                                                }
+                                                span { "{log.path}" }
+                                                span { class: "text-secondary text-caption", "{log.latency_ms}ms" }
+                                            }
+                                            span { class: "text-secondary text-caption", "{log.user_id.clone().unwrap_or_default()}" }
+                                        }
                                     }
-                                    span { "Qwen2.5-7B 启动成功" }
-                                }
-                                span { class: "text-secondary text-caption", "刚刚" }
-                            }
-                            div { class: "flex items-center justify-between",
-                                div { class: "flex items-center gap-md",
-                                    span { class: "text-secondary", "09:44:15" }
-                                    span { class: "status-indicator status-pending",
-                                        span { class: "status-dot" }
-                                        "WARN"
-                                    }
-                                    span { "内存使用达到80%" }
-                                }
-                                span { class: "text-secondary text-caption", "1分钟前" }
-                            }
-                            div { class: "flex items-center justify-between",
-                                div { class: "flex items-center gap-md",
-                                    span { class: "text-secondary", "09:42:03" }
-                                    span { class: "status-indicator status-running",
-                                        span { class: "status-dot" }
-                                        "INFO"
-                                    }
-                                    span { "API请求成功: /v1/chat/completions" }
-                                }
-                                span { class: "text-secondary text-caption", "3分钟前" }
+                                },
+                                Some(None) => rsx! { div { class: "text-secondary", "暂无日志或加载失败 (Server 4000 not running?)" } },
+                                None => rsx! { div { class: "text-secondary", "加载中..." } }
                             }
                         }
                     }

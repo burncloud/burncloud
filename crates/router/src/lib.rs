@@ -170,7 +170,15 @@ async fn proxy_handler(
 
     // Check against DB
     let user_id = match RouterDatabase::validate_token(&state.db, user_token).await {
-        Ok(Some(token_data)) => token_data.user_id,
+        Ok(Some(token_data)) => {
+             if token_data.quota_limit >= 0 && token_data.used_quota >= token_data.quota_limit {
+                 return Response::builder()
+                    .status(429)
+                    .body(Body::from("Quota Exceeded"))
+                    .unwrap();
+             }
+             token_data.user_id
+        },
         Ok(None) => {
              return Response::builder()
                 .status(401)

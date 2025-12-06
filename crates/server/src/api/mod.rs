@@ -4,11 +4,13 @@ use crate::AppState;
 pub mod channel;
 pub mod group;
 pub mod token;
+pub mod log;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .merge(channel::routes())
         .merge(group::routes())
         .merge(token::routes())
+        .merge(log::routes())
         .with_state(state)
 }
