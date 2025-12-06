@@ -14,6 +14,7 @@ use burncloud_database_router::RouterDatabase;
 use burncloud_router_aws::{AwsConfig, sign_request};
 use burncloud_common::types::OpenAIChatRequest;
 use adaptor::gemini::GeminiAdaptor;
+use adaptor::claude::ClaudeAdaptor;
 use config::{AuthType, RouterConfig, Upstream};
 use reqwest::Client;
 use std::{net::SocketAddr, sync::Arc};
@@ -242,6 +243,41 @@ async fn proxy_handler(
                 Err(e) => Response::builder().status(502).body(Body::from(format!("Proxy Error: {}", e))).unwrap()
             }
         }
+        AuthType::Claude if use_adaptor => {
+            // Protocol Adaptation: OpenAI -> Claude
+            let body_bytes = match body.collect().await {
+                Ok(collected) => collected.to_bytes(),
+                Err(e) => return Response::builder().status(400).body(Body::from(format!("Body Read Error: {}", e))).unwrap(),
+            };
+
+            let openai_req: OpenAIChatRequest = match serde_json::from_slice(&body_bytes) {
+                Ok(req) => req,
+                Err(e) => return Response::builder().status(400).body(Body::from(format!("Invalid OpenAI Request JSON: {}", e))).unwrap(),
+            };
+
+            let claude_json = ClaudeAdaptor::convert_request(openai_req);
+
+            req_builder = req_builder.header("x-api-key", &upstream.api_key);
+            req_builder = req_builder.header("anthropic-version", "2023-06-01"); // Default version
+            req_builder = req_builder.json(&claude_json);
+
+            match req_builder.send().await {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let claude_resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+                        let openai_resp = ClaudeAdaptor::convert_response(claude_resp_json, &upstream.name);
+                        Response::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(Body::from(serde_json::to_string(&openai_resp).unwrap()))
+                            .unwrap()
+                    } else {
+                        handle_response(resp)
+                    }
+                },
+                Err(e) => Response::builder().status(502).body(Body::from(format!("Proxy Error: {}", e))).unwrap()
+            }
+        }
         auth_type => {
             // Standard Passthrough (Streaming Upload Supported)
             match auth_type {
@@ -253,6 +289,10 @@ async fn proxy_handler(
                 }
                 AuthType::GoogleAI => {
                     req_builder = req_builder.header("x-goog-api-key", &upstream.api_key);
+                }
+                AuthType::Claude => {
+                    req_builder = req_builder.header("x-api-key", &upstream.api_key);
+                    req_builder = req_builder.header("anthropic-version", "2023-06-01");
                 }
                 AuthType::Vertex => {
                     // TODO: For Vertex, we should ideally generate a token from Service Account JSON.
