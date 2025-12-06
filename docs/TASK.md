@@ -85,9 +85,9 @@
 - [x] **Task 12.2: CI/CD Configuration**
     - [x] `.github`: 完善 GitHub Actions，包含 Build, Test, Release 流程。
     - [ ] `.github`: 自动化构建 Windows 安装包 (msi/exe).
-- [ ] **Task 12.3: Documentation**
-    - [ ] `docs`: 更新用户手册 (User Guide)，说明如何添加模型、配置渠道。
-    - [ ] `README.md`: 更新项目主页，添加最新功能介绍和截图。
+- [x] **Task 12.3: Documentation**
+    - [x] `docs`: 更新用户手册 (User Guide)，说明如何添加模型、配置渠道 (docs/USER_GUIDE.md).
+    - [x] `README.md`: 更新项目主页，添加最新功能介绍和截图.
 
 
 

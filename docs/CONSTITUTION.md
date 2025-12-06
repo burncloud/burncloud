@@ -123,6 +123,10 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 *   **版本统一**: 所有依赖包的版本号必须在根目录 `Cargo.toml` 的 `[workspace.dependencies]` 中统一声明。
 *   **禁止散落**: 子 Crate 的 `Cargo.toml` 必须使用 `workspace = true` 引用依赖，严禁在子 Crate 中硬编码版本号。
 
+### 4.8 营销优先 (Marketing First)
+*   **文案优先**: 每次更新 `README.md` 时，必须优先考虑营销文案，清晰突出核心功能 (Features) 和用户价值 (Benefits)。
+*   **视觉吸引**: 善用徽章 (Badges)、Emoji 和清晰的排版，确保文档对开发者和用户具有吸引力。
+
 ---
 
 ## 第五章：安全准则 (Security Protocols)
