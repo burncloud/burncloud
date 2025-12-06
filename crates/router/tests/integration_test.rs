@@ -39,7 +39,7 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
             base_url = excluded.base_url
         "#
     )
-    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+    .bind(id).bind(name).bind(base_url).bind(api_key.clone()).bind(match_path).bind(auth_type)
     .execute(conn.pool())
     .await?;
 
@@ -235,12 +235,182 @@ async fn test_google_ai_proxy() -> anyhow::Result<()> {
     RouterDatabase::init(&db).await?;
     let conn = db.connection()?;
 
-    let id = "google-gemini-test";
-    let name = "Google Gemini Test";
+        let env_key = env::var("TEST_GOOGLE_AI_KEY").unwrap_or_default();
+
+        if env_key.is_empty() {
+
+            println!("Skipping Google AI Proxy test: TEST_GOOGLE_AI_KEY not set.");
+
+            return Ok(());
+
+        }
+
+        let api_key = env_key;
+
+        
+
+        let id = "google-gemini-test";
+
+        let name = "Google Gemini Test";
+
+        let base_url = "https://generativelanguage.googleapis.com";
+
+        let match_path = "/v1beta/models"; 
+
+        let auth_type = "GoogleAI";
+
+    
+
+        sqlx::query(
+
+            r#"
+
+            INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+
+            VALUES (?, ?, ?, ?, ?, ?)
+
+            ON CONFLICT(id) DO UPDATE SET 
+
+                api_key = excluded.api_key,
+
+                base_url = excluded.base_url,
+
+                auth_type = excluded.auth_type
+
+            "#
+
+        )
+
+        .bind(id).bind(name).bind(base_url).bind(api_key.clone()).bind(match_path).bind(auth_type)
+
+        .execute(conn.pool())
+
+        .await?;
+
+    
+
+        // 2. Start Server (Port 3007)
+
+        let port = 3007;
+
+        tokio::spawn(async move {
+
+            if let Err(_e) = burncloud_router::start_server(port).await {
+
+                // Ignore error
+
+            }
+
+        });
+
+        sleep(Duration::from_secs(2)).await;
+
+    
+
+                    // 3. Send Request
+
+    
+
+                    let client = Client::new();
+
+    
+
+                    // Real Gemini API Path - using gemini-2.0-flash as found in model list
+
+    
+
+                    let url = format!("http://localhost:{}/v1beta/models/gemini-2.0-flash:generateContent", port);
+
+    
+
+                
+
+    
+
+                    // Real Gemini Request Body
+
+    
+
+                    let body = json!({
+
+    
+
+                      "contents": [{
+
+    
+
+                        "parts": [{
+
+    
+
+                          "text": "Hello, please simply reply with 'PASS'."
+
+    
+
+                        }]
+
+    
+
+                      }]
+
+    
+
+                    });
+
+    
+
+        let resp = client.post(&url)
+
+            .header("Authorization", "Bearer sk-burncloud-demo")
+
+            .json(&body)
+
+            .send()
+
+            .await?;
+
+    
+
+        println!("Response Status: {}", resp.status());
+
+        let status = resp.status();
+
+        let text = resp.text().await?;
+
+        println!("Response Body: {}", text);
+
+    
+
+        // 4. Verify Response
+
+        assert!(status.is_success(), "Request to Gemini API failed");
+
+        assert!(text.contains("candidates"), "Response does not look like a valid Gemini response");
+
+    
+
+        Ok(())
+
+    }
+
+#[tokio::test]
+async fn test_vertex_proxy() -> anyhow::Result<()> {
+    // Test Google Vertex AI Proxy
+    // This test assumes the upstream is configured with AuthType::Vertex
+    // and uses httpbin to verify the behavior (treating it as Bearer token injection).
+    
+    // 1. Setup Database
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+    let conn = db.connection()?;
+
+    let id = "vertex-test";
+    let name = "Vertex AI Test";
     let base_url = "https://httpbin.org/anything";
-    let api_key = "google-secret-key-abc";
-    let match_path = "/v1beta/models"; 
-    let auth_type = "GoogleAI";
+    // In a real scenario, this would be an Access Token.
+    let api_key = "ya29.mock-access-token-for-test";
+    let match_path = "/v1/projects";
+    let auth_type = "Vertex";
 
     sqlx::query(
         r#"
@@ -256,8 +426,8 @@ async fn test_google_ai_proxy() -> anyhow::Result<()> {
     .execute(conn.pool())
     .await?;
 
-    // 2. Start Server (Port 3007)
-    let port = 3007;
+    // 2. Start Server (Port 3008)
+    let port = 3008;
     tokio::spawn(async move {
         if let Err(_e) = burncloud_router::start_server(port).await {
             // Ignore error
@@ -267,23 +437,25 @@ async fn test_google_ai_proxy() -> anyhow::Result<()> {
 
     // 3. Send Request
     let client = Client::new();
-    let url = format!("http://localhost:{}/v1beta/models/gemini-pro:generateContent", port);
+    // Emulate Vertex AI Path: /v1/projects/{PROJECT}/locations/{REGION}/publishers/google/models/{MODEL}:streamGenerateContent
+    let url = format!("http://localhost:{}/v1/projects/my-project/locations/us-central1/publishers/google/models/gemini-pro:streamGenerateContent", port);
 
     let resp = client.post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .body("google body")
+        .body("vertex body")
         .send()
         .await?;
 
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await?;
     
-    // 4. Verify Header Injection
+    // 4. Verify Token Injection
     let headers = json.get("headers").unwrap();
-    println!("Received Headers for GoogleAI: {:?}", headers);
+    println!("Received Headers for Vertex: {:?}", headers);
 
-    let injected_key = headers.get("X-Goog-Api-Key").or(headers.get("x-goog-api-key")).unwrap();
-    assert_eq!(injected_key.as_str().unwrap(), "google-secret-key-abc");
+    // Should be injected as Authorization: Bearer ...
+    let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
+    assert_eq!(auth_header.as_str().unwrap(), "Bearer ya29.mock-access-token-for-test");
 
     Ok(())
 }
