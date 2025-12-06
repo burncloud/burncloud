@@ -10,6 +10,7 @@ pub enum AuthType {
     GoogleAI,           // Google AI Studio (x-goog-api-key header)
     Vertex,             // Google Vertex AI (Bearer token, usually short-lived)
     DeepSeek,           // DeepSeek API (Bearer token)
+    Qwen,               // Alibaba Cloud Qwen (Bearer token)
 }
 
 impl From<&str> for AuthType {
@@ -22,6 +23,7 @@ impl From<&str> for AuthType {
             "GoogleAI" => AuthType::GoogleAI,
             "Vertex" => AuthType::Vertex,
             "DeepSeek" => AuthType::DeepSeek,
+            "Qwen" => AuthType::Qwen,
             s if s.starts_with("Header:") => {
                 let header_name = s.trim_start_matches("Header:").trim();
                 AuthType::Header(header_name.to_string())

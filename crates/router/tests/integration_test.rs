@@ -507,15 +507,275 @@ async fn test_google_ai_proxy() -> anyhow::Result<()> {
 
         
 
-            let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
-
-            assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-deepseek-mock-key");
+                let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
 
         
 
-            Ok(())
+                assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-deepseek-mock-key");
 
-        }
+        
+
+            
+
+        
+
+                Ok(())
+
+        
+
+            }
+
+        
+
+            
+
+        
+
+            #[tokio::test]
+
+        
+
+            async fn test_qwen_proxy() -> anyhow::Result<()> {
+
+        
+
+                // Test Qwen (DashScope) Proxy (Mocked)
+
+        
+
+                
+
+        
+
+                // 1. Setup Database
+
+        
+
+                let db = create_default_database().await?;
+
+        
+
+                RouterDatabase::init(&db).await?;
+
+        
+
+                let conn = db.connection()?;
+
+        
+
+            
+
+        
+
+                let id = "qwen-test";
+
+        
+
+                let name = "Qwen Test";
+
+        
+
+                let base_url = "https://httpbin.org/anything"; // Mock upstream
+
+        
+
+                let api_key = "sk-qwen-mock-key";
+
+        
+
+                let match_path = "/api/v1/services/aigc/text-generation/generation"; // Typical DashScope path
+
+        
+
+                let auth_type = "Qwen";
+
+        
+
+            
+
+        
+
+                sqlx::query(
+
+        
+
+                    r#"
+
+        
+
+                    INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+
+        
+
+                    VALUES (?, ?, ?, ?, ?, ?)
+
+        
+
+                    ON CONFLICT(id) DO UPDATE SET 
+
+        
+
+                        api_key = excluded.api_key,
+
+        
+
+                        base_url = excluded.base_url,
+
+        
+
+                        auth_type = excluded.auth_type
+
+        
+
+                    "#
+
+        
+
+                )
+
+        
+
+                .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+
+        
+
+                .execute(conn.pool())
+
+        
+
+                .await?;
+
+        
+
+            
+
+        
+
+                // 2. Start Server (Port 3010)
+
+        
+
+                let port = 3010;
+
+        
+
+                tokio::spawn(async move {
+
+        
+
+                    if let Err(_e) = burncloud_router::start_server(port).await {
+
+        
+
+                        // Ignore error
+
+        
+
+                    }
+
+        
+
+                });
+
+        
+
+                sleep(Duration::from_secs(2)).await;
+
+        
+
+            
+
+        
+
+                // 3. Send Request
+
+        
+
+                let client = Client::new();
+
+        
+
+                let url = format!("http://localhost:{}/api/v1/services/aigc/text-generation/generation", port);
+
+        
+
+            
+
+        
+
+                let resp = client.post(&url)
+
+        
+
+                    .header("Authorization", "Bearer sk-burncloud-demo")
+
+        
+
+                    .body("qwen body")
+
+        
+
+                    .send()
+
+        
+
+                    .await?;
+
+        
+
+            
+
+        
+
+                assert_eq!(resp.status(), 200);
+
+        
+
+                let json: serde_json::Value = resp.json().await?;
+
+        
+
+                
+
+        
+
+                // 4. Verify Auth Header Injection
+
+        
+
+                let headers = json.get("headers").unwrap();
+
+        
+
+                println!("Received Headers for Qwen: {:?}", headers);
+
+        
+
+            
+
+        
+
+                let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
+
+        
+
+                assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-qwen-mock-key");
+
+        
+
+            
+
+        
+
+                Ok(())
+
+        
+
+            }
+
+        
+
+            
 
         
 

@@ -193,6 +193,10 @@ async fn proxy_handler(
                 AuthType::DeepSeek => {
                     req_builder = req_builder.bearer_auth(&upstream.api_key);
                 }
+                AuthType::Qwen => {
+                    // Alibaba Cloud Qwen (DashScope) uses Bearer auth
+                    req_builder = req_builder.bearer_auth(&upstream.api_key);
+                }
                 AuthType::Header(header_name) => {
                      req_builder = req_builder.header(header_name, &upstream.api_key);
                 }
