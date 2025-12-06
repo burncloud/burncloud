@@ -1,6 +1,6 @@
 # BurnCloud 项目开发宪法 (Development Constitution)
 
-**版本**: 1.5
+**版本**: 1.6
 **生效日期**: 2025-12-06
 
 ## 序言
@@ -63,6 +63,10 @@ BurnCloud (奔云) 不仅仅是一个工具，它是一个致力于让大模型�
 ### 3.3 独立性与轻量化
 *   AWS 等复杂鉴权逻辑必须隔离在子 Crate 中（如 `router-aws`）。
 *   避免引入庞大的 SDK（如完整的 AWS SDK），优先使用轻量级的 crypto 库手写实现签名逻辑，以保持二进制文件的体积和编译速度。
+
+### 3.4 协议适配的可选性 (Protocol Adaptor Optionality)
+*   **默认透传**: 如果客户端使用的是原生协议（如 Gemini SDK 访问 Gemini），Router **绝不**进行任何格式转换。
+*   **显式触发**: 仅当用户明确需要（例如通过配置或请求头指定“模拟 OpenAI”）时，才启用协议适配器 (Adaptor) 进行 Request/Response 转换。
 
 ---
 
