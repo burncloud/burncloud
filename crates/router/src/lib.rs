@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use burncloud_database::{create_default_database, Database};
-use burncloud_database_router::RouterDatabase;
+use burncloud_database_router::{RouterDatabase, DbRouterLog};
 use burncloud_router_aws::{AwsConfig, sign_request};
 use burncloud_common::types::OpenAIChatRequest;
 use adaptor::gemini::GeminiAdaptor;
@@ -19,10 +19,11 @@ use adaptor::claude::ClaudeAdaptor;
 use balancer::RoundRobinBalancer;
 use config::{AuthType, RouterConfig, Upstream, Group, GroupMember, RouteTarget};
 use reqwest::Client;
-use std::{net::SocketAddr, sync::Arc};
-use tokio::sync::RwLock;
+use std::{net::SocketAddr, sync::Arc, time::Instant};
+use tokio::sync::{RwLock, mpsc};
 use tower_http::cors::CorsLayer;
 use http_body_util::BodyExt;
+use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
@@ -30,6 +31,7 @@ struct AppState {
     config: Arc<RwLock<RouterConfig>>,
     db: Arc<Database>,
     balancer: Arc<RoundRobinBalancer>,
+    log_tx: mpsc::Sender<DbRouterLog>,
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
@@ -74,22 +76,41 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
     // Initialize Database
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
+    let db = Arc::new(db); // Wrap in Arc for sharing
 
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
 
+    // Setup Async Logging Channel
+    let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
+    let db_for_logger = db.clone(); // Clone Arc
+
+    // Spawn Logging Task
+    tokio::spawn(async move {
+        println!("Logging task started");
+        while let Some(log) = log_rx.recv().await {
+            // Need to create a new default database or use the shared one?
+            // Since Database struct isn't thread-safe or Clone by default, we rely on Arc<Database>.
+            // But RouterDatabase::insert_log takes &Database.
+            if let Err(e) = RouterDatabase::insert_log(&db_for_logger, &log).await {
+                eprintln!("Failed to insert log: {}", e);
+            }
+        }
+    });
+
     let state = AppState { 
         client,
         config: Arc::new(RwLock::new(config)),
-        db: Arc::new(db),
+        db: db, // Arc<Database>
         balancer,
+        log_tx,
     };
 
     let app = Router::new()
         .route("/", any(proxy_handler))
         .route("/_internal/reload", post(reload_handler))
-        .route("/*path", any(proxy_handler)) 
+        .route("/{*path}", any(proxy_handler)) 
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -128,6 +149,10 @@ async fn proxy_handler(
     headers: HeaderMap,
     body: Body,
 ) -> Response {
+    let start_time = Instant::now();
+    let request_id = Uuid::new_v4().to_string();
+    let path = uri.path().to_string();
+    
     // 0. Authenticate User
     let user_auth = headers.get("authorization")
         .and_then(|h| h.to_str().ok())
@@ -144,33 +169,74 @@ async fn proxy_handler(
     };
 
     // Check against DB
-    match RouterDatabase::validate_token(&state.db, user_token).await {
-        Ok(Some(_)) => { /* Valid */ },
+    let user_id = match RouterDatabase::validate_token(&state.db, user_token).await {
+        Ok(Some(token_data)) => token_data.user_id,
         Ok(None) => {
              return Response::builder()
                 .status(401)
                 .body(Body::from("Unauthorized: Invalid Token"))
                 .unwrap();
-        }
+        },
         Err(e) => {
              return Response::builder()
                 .status(500)
                 .body(Body::from(format!("Internal Auth Error: {}", e)))
                 .unwrap();
         }
-    }
+    };
 
-    let path = uri.path();
+    // Buffer body for token counting and retries
+    let body_bytes = match body.collect().await {
+        Ok(collected) => collected.to_bytes(),
+        Err(e) => return Response::builder().status(400).body(Body::from(format!("Body Read Error: {}", e))).unwrap(),
+    };
+
+    // Estimate Prompt Tokens (Simple approximation: 1 token ~= 4 bytes)
+    // TODO: Integrate tiktoken-rs for precise counting
+    let prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
+
+    // Perform Proxy Logic
+    let (response, upstream_id, final_status) = proxy_logic(&state, method, uri, headers, body_bytes, &path).await;
+
+    // Estimate Completion Tokens (If header present, else 0 for streaming)
+    // For streaming, we can't easily know without wrapping the stream.
+    let completion_tokens = 0; 
+
+    // Async Log
+    let log = DbRouterLog {
+        request_id,
+        user_id: Some(user_id),
+        path,
+        upstream_id,
+        status_code: final_status.as_u16(),
+        latency_ms: start_time.elapsed().as_millis() as i64,
+        prompt_tokens,
+        completion_tokens,
+    };
+
+    let _ = state.log_tx.send(log).await;
+
+    response
+}
+
+async fn proxy_logic(
+    state: &AppState,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body_bytes: axum::body::Bytes,
+    path: &str,
+) -> (Response, Option<String>, axum::http::StatusCode) {
     let config = state.config.read().await;
     
     // 1. Routing
     let route = match config.find_route(path) {
         Some(r) => r,
         None => {
-            return Response::builder()
+            return (Response::builder()
                 .status(404)
                 .body(Body::from(format!("No matching upstream found for path: {}", path)))
-                .unwrap();
+                .unwrap(), None, axum::http::StatusCode::NOT_FOUND);
         }
     };
     
@@ -179,15 +245,14 @@ async fn proxy_handler(
         RouteTarget::Upstream(u) => vec![u],
         RouteTarget::Group(g) => {
             if g.members.is_empty() {
-                 return Response::builder()
+                 return (Response::builder()
                     .status(503)
                     .body(Body::from(format!("Group '{}' has no healthy members", g.name)))
-                    .unwrap();
+                    .unwrap(), None, axum::http::StatusCode::SERVICE_UNAVAILABLE);
             }
             
             let start_idx = state.balancer.next_index(&g.id, g.members.len());
             
-            // Create a rotated list of upstreams starting from start_idx
             let mut ordered_members = Vec::with_capacity(g.members.len());
             for i in 0..g.members.len() {
                 let idx = (start_idx + i) % g.members.len();
@@ -198,28 +263,22 @@ async fn proxy_handler(
             }
             
             if ordered_members.is_empty() {
-                 return Response::builder()
+                 return (Response::builder()
                     .status(500)
                     .body(Body::from("Configuration Error: Group members not found in upstream list"))
-                    .unwrap();
+                    .unwrap(), None, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
             }
             ordered_members
         }
     };
     
-    // Check for explicit adaptor trigger header (before headers are moved)
     let use_adaptor = headers.contains_key("x-use-adaptor");
-
-    // Buffer body once so we can retry
-    let body_bytes = match body.collect().await {
-        Ok(collected) => collected.to_bytes(),
-        Err(e) => return Response::builder().status(400).body(Body::from(format!("Body Read Error: {}", e))).unwrap(),
-    };
-
-    // Retry Loop
     let mut last_error = String::new();
+    let mut last_upstream_id = None;
 
     for (attempt, upstream) in candidates.iter().enumerate() {
+        last_upstream_id = Some(upstream.id.clone());
+
         // 2. Construct Target URL
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
         let target_url = format!("{}{}{}", upstream.base_url, path, query);
@@ -273,7 +332,7 @@ async fn proxy_handler(
                         state.client.execute(req_builder.build().unwrap()).await
                     },
                     Err(e) => {
-                        return Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap();
+                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, axum::http::StatusCode::BAD_REQUEST);
                     }
                 }
             },
@@ -287,7 +346,7 @@ async fn proxy_handler(
                         state.client.execute(req_builder.build().unwrap()).await
                     },
                     Err(e) => {
-                        return Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap();
+                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, axum::http::StatusCode::BAD_REQUEST);
                     }
                 }
             },
@@ -327,13 +386,14 @@ async fn proxy_handler(
                          AuthType::Claude => ClaudeAdaptor::convert_response(resp_json, &upstream.name),
                          _ => resp_json
                      };
-                     return Response::builder()
+                     return (Response::builder()
                         .status(status)
                         .header("content-type", "application/json")
                         .body(Body::from(serde_json::to_string(&converted_json).unwrap()))
-                        .unwrap();
+                        .unwrap(), last_upstream_id, status);
                 } else {
-                    return handle_response(resp);
+                    let status = resp.status();
+                    return (handle_response(resp), last_upstream_id, status);
                 }
             },
             Err(e) => {
@@ -344,10 +404,10 @@ async fn proxy_handler(
         }
     }
 
-    Response::builder()
+    (Response::builder()
         .status(502)
         .body(Body::from(format!("All upstreams failed. Last error: {}", last_error)))
-        .unwrap()
+        .unwrap(), None, axum::http::StatusCode::BAD_GATEWAY)
 }
 
 fn handle_response(resp: reqwest::Response) -> Response {
