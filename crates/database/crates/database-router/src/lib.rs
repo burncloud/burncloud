@@ -179,4 +179,95 @@ impl RouterDatabase {
          .await?;
          Ok(token)
     }
+
+    // CRUD for Upstreams
+    pub async fn create_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
+        let conn = db.connection()?;
+        sqlx::query(
+            "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&u.id).bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority)
+        .execute(conn.pool())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<DbUpstream>> {
+        let conn = db.connection()?;
+        let upstream = sqlx::query_as::<_, DbUpstream>(
+            "SELECT id, name, base_url, api_key, match_path, auth_type, priority FROM router_upstreams WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(conn.pool())
+        .await?;
+        Ok(upstream)
+    }
+
+    pub async fn update_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
+        let conn = db.connection()?;
+        sqlx::query(
+            "UPDATE router_upstreams SET name=?, base_url=?, api_key=?, match_path=?, auth_type=?, priority=? WHERE id=?"
+        )
+        .bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.id)
+        .execute(conn.pool())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_upstream(db: &Database, id: &str) -> Result<()> {
+        let conn = db.connection()?;
+        sqlx::query("DELETE FROM router_upstreams WHERE id = ?")
+            .bind(id)
+            .execute(conn.pool())
+            .await?;
+        Ok(())
+    }
+
+    // CRUD for Groups
+    pub async fn create_group(db: &Database, g: &DbGroup) -> Result<()> {
+        let conn = db.connection()?;
+        sqlx::query(
+            "INSERT INTO router_groups (id, name, strategy, match_path) VALUES (?, ?, ?, ?)"
+        )
+        .bind(&g.id).bind(&g.name).bind(&g.strategy).bind(&g.match_path)
+        .execute(conn.pool())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_group(db: &Database, id: &str) -> Result<()> {
+        let conn = db.connection()?;
+        // Transaction would be better, but for now explicit order
+        sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
+            .bind(id)
+            .execute(conn.pool())
+            .await?;
+            
+        sqlx::query("DELETE FROM router_groups WHERE id = ?")
+            .bind(id)
+            .execute(conn.pool())
+            .await?;
+        Ok(())
+    }
+
+    // Full replace of members for a group
+    pub async fn set_group_members(db: &Database, group_id: &str, members: Vec<DbGroupMember>) -> Result<()> {
+        let conn = db.connection()?;
+        // 1. Clear existing
+        sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
+            .bind(group_id)
+            .execute(conn.pool())
+            .await?;
+        
+        // 2. Insert new
+        for m in members {
+            sqlx::query(
+                "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES (?, ?, ?)"
+            )
+            .bind(group_id).bind(&m.upstream_id).bind(m.weight)
+            .execute(conn.pool())
+            .await?;
+        }
+        Ok(())
+    }
 }
