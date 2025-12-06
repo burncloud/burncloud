@@ -81,13 +81,19 @@
 ## 📅 Phase 12: 系统集成与测试 (System Integration & Testing)
 - [x] **Task 12.1: End-to-End Testing**
     - [x] `tests`: 编写 E2E 测试脚本，覆盖"下载 -> 部署 -> 调用"全流程 (tests/e2e_flow.py).
-    - [ ] `tests`: 使用 Python 或 Rust 编写外部调用脚本，验证 Router 的 OpenAI 兼容性。
+    - [x] `tests`: 使用 Rust 编写外部调用脚本，验证 Router 的 OpenAI 兼容性。
 - [x] **Task 12.2: CI/CD Configuration**
     - [x] `.github`: 完善 GitHub Actions，包含 Build, Test, Release 流程。
     - [ ] `.github`: 自动化构建 Windows 安装包 (msi/exe).
 - [x] **Task 12.3: Documentation**
     - [x] `docs`: 更新用户手册 (User Guide)，说明如何添加模型、配置渠道 (docs/USER_GUIDE.md).
     - [x] `README.md`: 更新项目主页，添加最新功能介绍和截图.
+
+## 📅 Phase 13: 生态集成验证 (Ecosystem Integration)
+- [x] **Task 13.1: Integration Guide**
+    - [x] `docs`: 编写集成指南，说明如何将 BurnCloud 作为后端接入 Open WebUI, NextChat (ChatGPT-Next-Web), LobeChat (docs/ECOSYSTEM.md).
+- [ ] **Task 13.2: Compatibility Verification**
+    - [ ] `tests`: 验证与主流 WebUI 的兼容性 (特别是流式响应和模型列表接口)。
 
 
 

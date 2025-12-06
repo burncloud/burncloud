@@ -88,8 +88,8 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 | 🔧 | `chore` | 构建过程或辅助工具变更 |
 
 **示例**:
-*   ✅ `✨ feat: add aws sigv4 signing support`
-*   ✅ `📚 docs: update CONSTITUTION.md`
+*   `✨ feat: add aws sigv4 signing support`
+*   `📚 docs: update CONSTITUTION.md`
 
 ### 4.2 测试规范 (Testing Standards)
 *   **单元测试 (Mandatory Unit Tests)**：每次完成原子级开发任务时，必须编写单元测试来验证核心逻辑。
