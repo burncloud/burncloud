@@ -1,18 +1,44 @@
 use dioxus::prelude::*;
 use burncloud_service_models::{ModelInfo, HfApiModel};
 
+use std::collections::HashMap;
+use dioxus::prelude::*;
+use burncloud_service_models::{ModelInfo, HfApiModel};
+use burncloud_service_inference::InstanceStatus;
+
 #[component]
 pub fn ModelManagement() -> Element {
     let mut models = use_signal(Vec::<ModelInfo>::new);
+    let mut statuses = use_signal(HashMap::<String, InstanceStatus>::new);
     let mut show_search_dialog = use_signal(|| false);
     let mut active_model_id = use_signal(|| None::<String>);
+    let mut active_deploy_model_id = use_signal(|| None::<String>);
 
+    // Load models
     use_effect(move || {
         spawn(async move {
             if let Ok(service) = burncloud_service_models::ModelService::new().await {
                 if let Ok(list) = service.list().await {
                     models.set(list);
                 }
+            }
+        });
+    });
+
+    // Poll statuses
+    use_effect(move || {
+        spawn(async move {
+            loop {
+                if let Ok(service) = burncloud_service_inference::InferenceService::new().await {
+                    let current_models = models.read().clone();
+                    let mut new_statuses = HashMap::new();
+                    for m in current_models {
+                        let status = service.get_status(&m.model_id).await;
+                        new_statuses.insert(m.model_id, status);
+                    }
+                    statuses.set(new_statuses);
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         });
     });
@@ -35,7 +61,7 @@ pub fn ModelManagement() -> Element {
                 }
             }
         }
-
+        // ... dialogs ...
         if show_search_dialog() {
             SearchDialog {
                 on_close: move |_| show_search_dialog.set(false),
@@ -58,18 +84,28 @@ pub fn ModelManagement() -> Element {
             }
         }
 
+        if let Some(model_id) = active_deploy_model_id() {
+            DeployDialog {
+                model_id: model_id,
+                on_close: move |_| active_deploy_model_id.set(None),
+                on_deploy_success: move |_| {
+                    active_deploy_model_id.set(None);
+                    // Status will update via polling
+                }
+            }
+        }
+
         div { class: "page-content",
-            // 统计信息卡片
+            // ... metrics ...
             div { class: "grid mb-xxxl",
                 style: "grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--spacing-lg);",
-
+                // ... (same metric cards)
                 div { class: "card metric-card",
                     div { class: "flex flex-col gap-sm",
                         span { class: "text-secondary text-caption", "总模型数" }
                         span { class: "text-xxl font-bold text-primary", "{models.read().len()}" }
                     }
                 }
-
                 div { class: "card metric-card",
                     div { class: "flex flex-col gap-sm",
                         span { class: "text-secondary text-caption", "总下载量" }
@@ -78,7 +114,6 @@ pub fn ModelManagement() -> Element {
                         }
                     }
                 }
-
                 div { class: "card metric-card",
                     div { class: "flex flex-col gap-sm",
                         span { class: "text-secondary text-caption", "总存储空间" }
@@ -96,7 +131,7 @@ pub fn ModelManagement() -> Element {
 
             // 模型列表
             if models.read().is_empty() {
-                // 空状态
+                // ... empty state
                 div { class: "card",
                     div { class: "p-xxxl text-center",
                         div { class: "flex flex-col items-center gap-lg",
@@ -122,7 +157,17 @@ pub fn ModelManagement() -> Element {
                             is_private: model.private,
                             is_gated: model.gated,
                             is_disabled: model.disabled,
+                            status: statuses.read().get(&model.model_id).cloned().unwrap_or(InstanceStatus::Stopped),
                             on_details: move |id| active_model_id.set(Some(id)),
+                            on_deploy: move |id| active_deploy_model_id.set(Some(id)),
+                            on_stop: move |id| {
+                                let id_clone = id.clone();
+                                spawn(async move {
+                                    if let Ok(service) = burncloud_service_inference::InferenceService::new().await {
+                                        let _ = service.stop_instance(&id_clone).await;
+                                    }
+                                });
+                            },
                             on_delete: move |id| {
                                 let id_clone = id.clone();
                                 spawn(async move {
@@ -153,7 +198,10 @@ fn ModelCard(
     is_private: bool,
     is_gated: bool,
     is_disabled: bool,
+    status: InstanceStatus,
     on_details: EventHandler<String>,
+    on_deploy: EventHandler<String>,
+    on_stop: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
     rsx! {
@@ -162,11 +210,19 @@ fn ModelCard(
                 // 头部
                 div { class: "flex justify-between items-start mb-md",
                     div { class: "flex-1",
-                        h3 { class: "text-subtitle font-semibold m-0 mb-xs", "{model_id}" }
+                        div { class: "flex items-center gap-sm",
+                            h3 { class: "text-subtitle font-semibold m-0 mb-xs", "{model_id}" }
+                            if status == InstanceStatus::Running {
+                                span { class: "badge badge-success", "🟢 运行中" }
+                            } else if status == InstanceStatus::Starting {
+                                span { class: "badge badge-warning", "🟡 启动中..." }
+                            }
+                        }
                         if let Some(pipeline) = pipeline_tag {
                             span { class: "badge badge-secondary text-caption", "{pipeline}" }
                         }
                     }
+                    // ... badges
                     div { class: "flex gap-xs",
                         if is_private {
                             span { class: "badge badge-warning text-caption", "🔒 私有" }
@@ -203,11 +259,229 @@ fn ModelCard(
                         onclick: move |_| on_details.call(model_id.clone()),
                         "📄 详情" 
                     }
-                    button { class: "btn btn-secondary flex-1", "🚀 部署" }
+                    
+                    if status == InstanceStatus::Running || status == InstanceStatus::Starting {
+                        button { 
+                            class: "btn btn-danger flex-1", 
+                            onclick: move |_| on_stop.call(model_id.clone()),
+                            "🛑 停止" 
+                        }
+                    } else {
+                        button { 
+                            class: "btn btn-secondary flex-1",
+                            onclick: move |_| on_deploy.call(model_id.clone()),
+                            "🚀 部署" 
+                        }
+                    }
+
                     button { 
                         class: "btn btn-danger-outline",
                         onclick: move |_| on_delete.call(model_id.clone()),
                         "🗑️" 
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success: EventHandler<()>) -> Element {
+    let mut files = use_signal(Vec::<String>::new);
+    let mut selected_file = use_signal(|| None::<String>);
+    let mut port = use_signal(|| 8080);
+    let mut context_size = use_signal(|| 2048);
+    let mut gpu_layers = use_signal(|| 0); // Default 0 (CPU), -1 for all
+    let mut loading = use_signal(|| true);
+    let mut error_msg = use_signal(|| None::<String>);
+    let mut deploy_status = use_signal(|| None::<String>);
+
+    let model_id_clone = model_id.clone();
+    use_effect(move || {
+        let id = model_id_clone.clone();
+        spawn(async move {
+            match burncloud_service_models::get_model_files(&id).await {
+                Ok(file_list) => {
+                    // Filter only .gguf files
+                    let ggufs: Vec<String> = burncloud_service_models::filter_gguf_files(&file_list)
+                        .iter()
+                        .map(|f| f[3].clone()) // path is index 3
+                        .collect();
+                    
+                    if !ggufs.is_empty() {
+                        selected_file.set(Some(ggufs[0].clone()));
+                    }
+                    files.set(ggufs);
+                    loading.set(false);
+                },
+                Err(e) => {
+                    error_msg.set(Some(format!("Failed to load files: {}", e)));
+                    loading.set(false);
+                }
+            }
+        });
+    });
+
+    let on_start = move |_| {
+        let m_id = model_id.clone();
+        let f_path = match selected_file() {
+             Some(f) => f,
+             None => {
+                 error_msg.set(Some("请选择一个 GGUF 文件".to_string()));
+                 return;
+             }
+        };
+        // Get full path for the file
+        // Ideally we need a helper to resolve relative path to absolute path
+        // Assuming service-models downloads to data/{model_id}/{file_path}
+        // And we need absolute path for llama-server
+        
+        let p = port();
+        let ctx = context_size();
+        let gpu = gpu_layers();
+
+        spawn(async move {
+            deploy_status.set(Some("正在启动服务...".to_string()));
+            
+            // Resolve absolute path
+            let base_dir = match burncloud_service_models::get_data_dir().await {
+                Ok(d) => d,
+                Err(e) => {
+                    error_msg.set(Some(format!("Config Error: {}", e)));
+                    return;
+                }
+            };
+            
+            // Construct absolute path (simple join for now, need to handle OS specific)
+            let abs_path = if std::path::Path::new(&base_dir).is_absolute() {
+                 std::path::Path::new(&base_dir).join(&m_id).join(&f_path)
+            } else {
+                 match std::env::current_dir() {
+                     Ok(cwd) => cwd.join(&base_dir).join(&m_id).join(&f_path),
+                     Err(e) => {
+                         error_msg.set(Some(format!("Path Error: {}", e)));
+                         return;
+                     }
+                 }
+            };
+
+            let config = burncloud_service_inference::InferenceConfig {
+                model_id: m_id.clone(),
+                file_path: abs_path.to_string_lossy().to_string(),
+                port: p as u16,
+                context_size: ctx as u32,
+                gpu_layers: gpu as i32,
+            };
+
+            match burncloud_service_inference::InferenceService::new().await {
+                Ok(service) => {
+                    match service.start_instance(config).await {
+                        Ok(_) => {
+                             deploy_status.set(Some("服务启动成功!".to_string()));
+                             on_deploy_success.call(());
+                        },
+                        Err(e) => {
+                             error_msg.set(Some(format!("启动失败: {}", e)));
+                             deploy_status.set(None);
+                        }
+                    }
+                },
+                Err(e) => {
+                     error_msg.set(Some(format!("Service Init Failed: {}", e)));
+                }
+            }
+        });
+    };
+
+    rsx! {
+        div {
+            style: "position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;",
+            onclick: move |_| on_close.call(()),
+
+            div {
+                class: "card",
+                style: "width: 500px; background: white;",
+                onclick: move |e| e.stop_propagation(),
+
+                div { class: "p-lg flex justify-between items-center border-b",
+                    h2 { class: "text-title font-semibold m-0", "部署模型: {model_id}" }
+                    button { class: "btn btn-secondary", onclick: move |_| on_close.call(()), "✕" }
+                }
+
+                div { class: "p-lg flex flex-col gap-md",
+                    if loading() {
+                        div { class: "text-center", "加载文件列表..." }
+                    } else if files.read().is_empty() {
+                         div { class: "text-danger", "未找到 GGUF 文件，请先下载模型文件。" }
+                    } else {
+                        // File Selection
+                        div {
+                            label { class: "block text-sm font-medium mb-xs", "选择文件 (GGUF)" }
+                            select { 
+                                class: "input w-full",
+                                onchange: move |evt| selected_file.set(Some(evt.value())),
+                                for f in files.read().iter() {
+                                    option { value: "{f}", "{f}" }
+                                }
+                            }
+                        }
+
+                        // Port
+                        div {
+                            label { class: "block text-sm font-medium mb-xs", "端口 (Port)" }
+                            input { 
+                                class: "input w-full",
+                                r#type: "number",
+                                value: "{port}",
+                                oninput: move |evt| port.set(evt.value().parse().unwrap_or(8080))
+                            }
+                        }
+
+                        // Context Size
+                        div {
+                            label { class: "block text-sm font-medium mb-xs", "上下文长度 (Context Size)" }
+                            select {
+                                class: "input w-full",
+                                onchange: move |evt| context_size.set(evt.value().parse().unwrap_or(2048)),
+                                option { value: "2048", "2048" }
+                                option { value: "4096", "4096" }
+                                option { value: "8192", "8192" }
+                                option { value: "16384", "16384" }
+                                option { value: "32768", "32768" }
+                            }
+                        }
+
+                        // GPU Layers
+                        div {
+                            label { class: "block text-sm font-medium mb-xs", "GPU 层数 (-1 = 全部, 0 = 仅CPU)" }
+                            input {
+                                class: "input w-full",
+                                r#type: "number",
+                                value: "{gpu_layers}",
+                                oninput: move |evt| gpu_layers.set(evt.value().parse().unwrap_or(0))
+                            }
+                        }
+                        
+                        if let Some(err) = error_msg() {
+                            div { class: "text-danger text-sm", "{err}" }
+                        }
+                        
+                        if let Some(status) = deploy_status() {
+                            div { class: "text-info text-sm", "{status}" }
+                        }
+
+                        div { class: "flex justify-end gap-sm mt-md",
+                            button { 
+                                class: "btn btn-secondary", 
+                                onclick: move |_| on_close.call(()),
+                                "取消" 
+                            }
+                            button { 
+                                class: "btn btn-primary",
+                                onclick: on_start,
+                                "启动服务" 
+                            }
+                        }
                     }
                 }
             }

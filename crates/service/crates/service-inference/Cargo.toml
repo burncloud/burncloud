@@ -8,6 +8,7 @@ tokio = { workspace = true, features = ["process", "io-util"] }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
 burncloud-service-setting = { workspace = true }
 burncloud-service-models = { workspace = true }

@@ -74,11 +74,9 @@
 - [x] **Task 11.2: Local Upstream Registration**
     - [x] `service-inference`: 启动推理时，自动在 `router` 数据库中注册为 Upstream (localhost:port).
     - [x] `router`: 确保能路由到本地动态端口。
-- [ ] **Task 11.3: Deployment UI**
-    - [ ] `client-models`: 实现"Deploy"按钮逻辑，选择 GGUF 文件并启动服务。
-    - [ ] `client-models`: 展示正在运行的本地模型实例状态。
-    - [ ] `client-models`: 实现"Deploy"按钮逻辑，选择 GGUF 文件并启动服务。
-    - [ ] `client-models`: 展示正在运行的本地模型实例状态。
+- [x] **Task 11.3: Deployment UI**
+    - [x] `client-models`: 实现"Deploy"按钮逻辑，选择 GGUF 文件并启动服务。
+    - [x] `client-models`: 展示正在运行的本地模型实例状态。
 
 
 
