@@ -1,5 +1,5 @@
-use burncloud_common::types::{OpenAIChatRequest, OpenAIChatMessage};
-use serde::{Deserialize, Serialize};
+use burncloud_common::types::OpenAIChatRequest;
+use serde::Serialize;
 use serde_json::{json, Value};
 
 // Gemini Specific Types
@@ -15,18 +15,23 @@ pub struct GeminiPart {
 }
 
 #[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")] // This handles generationConfig -> generation_config automatically if we use snake_case in struct? No, rename_all works on fields. 
+// Wait, Gemini API expects camelCase "generationConfig". 
+// Rust standard is snake_case "generation_config".
+// Serde can map this.
 pub struct GeminiRequest {
     pub contents: Vec<GeminiContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub generationConfig: Option<GeminiGenerationConfig>,
+    pub generation_config: Option<GeminiGenerationConfig>,
 }
 
 #[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct GeminiGenerationConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub maxOutputTokens: Option<u32>,
+    pub max_output_tokens: Option<u32>,
 }
 
 pub struct GeminiAdaptor;
@@ -44,12 +49,12 @@ impl GeminiAdaptor {
 
         let config = GeminiGenerationConfig {
             temperature: req.temperature,
-            maxOutputTokens: req.max_tokens,
+            max_output_tokens: req.max_tokens,
         };
 
         let gemini_req = GeminiRequest {
             contents,
-            generationConfig: Some(config),
+            generation_config: Some(config),
         };
 
         json!(gemini_req)
