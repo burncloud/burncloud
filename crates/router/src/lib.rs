@@ -135,6 +135,21 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
 
 // ...
 
+async fn reload_handler(
+    State(state): State<AppState>,
+) -> Response {
+    match load_router_config(&state.db).await {
+        Ok(new_config) => {
+            let mut config_write = state.config.write().await;
+            *config_write = new_config;
+            Response::builder().status(200).body(Body::from("Reloaded")).unwrap()
+        },
+        Err(e) => {
+            Response::builder().status(500).body(Body::from(format!("Reload Failed: {}", e))).unwrap()
+        }
+    }
+}
+
 async fn models_handler(
     State(state): State<AppState>,
 ) -> Response {
@@ -282,7 +297,7 @@ async fn proxy_handler(
         user_id: Some(user_id),
         path,
         upstream_id,
-        status_code: final_status.as_u16(),
+        status_code: final_status.as_u16() as i32,
         latency_ms: start_time.elapsed().as_millis() as i64,
         prompt_tokens,
         completion_tokens,

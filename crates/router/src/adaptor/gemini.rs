@@ -107,9 +107,9 @@ mod tests {
             messages: vec![
                 OpenAIChatMessage { role: "user".to_string(), content: "Hello".to_string() }
             ],
-            temperature: Some(0.7),
+            temperature: Some(0.5),
             max_tokens: Some(100),
-            stream: Some(false),
+            stream: false,
         };
 
         let gemini_val = GeminiAdaptor::convert_request(req);
@@ -117,7 +117,7 @@ mod tests {
         // Validate structure
         assert_eq!(gemini_val["contents"][0]["role"], "user");
         assert_eq!(gemini_val["contents"][0]["parts"][0]["text"], "Hello");
-        assert_eq!(gemini_val["generationConfig"]["temperature"], 0.7);
+        assert_eq!(gemini_val["generationConfig"]["temperature"], 0.5);
         assert_eq!(gemini_val["generationConfig"]["maxOutputTokens"], 100);
     }
 

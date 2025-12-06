@@ -29,12 +29,12 @@ pub struct UserDatabase;
 
 impl UserDatabase {
     pub async fn init(db: &Database) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let kind = db.kind();
         
         // Table definitions
-        let (users_sql, roles_sql, user_roles_sql) = match kind {
-            sqlx::any::AnyKind::Sqlite => (
+        let (users_sql, roles_sql, user_roles_sql) = match kind.as_str() {
+            "sqlite" => (
                 r#"
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
@@ -62,7 +62,7 @@ impl UserDatabase {
                 );
                 "#
             ),
-            sqlx::any::AnyKind::Postgres => (
+            "postgres" => (
                 r#"
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
@@ -89,7 +89,8 @@ impl UserDatabase {
                     FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
                 );
                 "#
-            )
+            ),
+            _ => unreachable!("Unsupported database kind"),
         };
 
         sqlx::query(users_sql).execute(conn.pool()).await?;
@@ -128,7 +129,7 @@ impl UserDatabase {
     }
 
     pub async fn create_user(db: &Database, user: &DbUser) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id) VALUES (?, ?, ?, ?, ?)")
             .bind(&user.id)
             .bind(&user.username)
@@ -141,7 +142,7 @@ impl UserDatabase {
     }
 
     pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<DbUser>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let user = sqlx::query_as::<_, DbUser>("SELECT * FROM users WHERE username = ?")
             .bind(username)
             .fetch_optional(conn.pool())
@@ -150,7 +151,7 @@ impl UserDatabase {
     }
 
     pub async fn get_user_roles(db: &Database, user_id: &str) -> Result<Vec<String>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let rows = sqlx::query("SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = ?")
             .bind(user_id)
             .fetch_all(conn.pool())
@@ -161,7 +162,7 @@ impl UserDatabase {
     }
 
     pub async fn assign_role(db: &Database, user_id: &str, role_name: &str) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let role_id: Option<String> = sqlx::query("SELECT id FROM roles WHERE name = ?")
             .bind(role_name)
             .fetch_optional(conn.pool())

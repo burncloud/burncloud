@@ -13,7 +13,7 @@ categories = ["database", "api-bindings", "development-tools"]
 readme = "README.md"
 
 [dependencies]
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["postgres", "sqlite"] }
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true

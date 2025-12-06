@@ -48,7 +48,7 @@ pub struct DbRouterLog {
     pub user_id: Option<String>,
     pub path: String,
     pub upstream_id: Option<String>,
-    pub status_code: u16,
+    pub status_code: i32,
     pub latency_ms: i64,
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
@@ -61,12 +61,12 @@ pub struct RouterDatabase;
 
 impl RouterDatabase {
     pub async fn init(db: &Database) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let kind = db.kind();
         
         // Table definitions
-        let (upstreams_sql, tokens_sql, groups_sql, members_sql, logs_sql) = match kind {
-            sqlx::any::AnyKind::Sqlite => (
+        let (upstreams_sql, tokens_sql, groups_sql, members_sql, logs_sql) = match kind.as_str() {
+            "sqlite" => (
                 r#"
                 CREATE TABLE IF NOT EXISTS router_upstreams (
                     id TEXT PRIMARY KEY,
@@ -119,7 +119,7 @@ impl RouterDatabase {
                 );
                 "#
             ),
-            sqlx::any::AnyKind::Postgres => (
+            "postgres" => (
                 r#"
                 CREATE TABLE IF NOT EXISTS router_upstreams (
                     id TEXT PRIMARY KEY,
@@ -171,7 +171,8 @@ impl RouterDatabase {
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 "#
-            )
+            ),
+            _ => unreachable!("Unsupported database kind"),
         };
 
         sqlx::query(upstreams_sql).execute(conn.pool()).await?;
@@ -181,7 +182,7 @@ impl RouterDatabase {
         sqlx::query(logs_sql).execute(conn.pool()).await?;
 
         // Migrations
-        if let sqlx::any::AnyKind::Sqlite = kind {
+        if kind == "sqlite" {
              let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN priority INTEGER NOT NULL DEFAULT 0").execute(conn.pool()).await;
              let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN protocol TEXT NOT NULL DEFAULT 'openai'").execute(conn.pool()).await;
              let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1").execute(conn.pool()).await;
@@ -227,7 +228,7 @@ impl RouterDatabase {
     }
 
     pub async fn insert_log(db: &Database, log: &DbRouterLog) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         
         sqlx::query(
             r#"
@@ -262,7 +263,7 @@ impl RouterDatabase {
     }
 
     pub async fn get_all_upstreams(db: &Database) -> Result<Vec<DbUpstream>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let rows = sqlx::query_as::<_, DbUpstream>(
             "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol FROM router_upstreams"
         )
@@ -272,7 +273,7 @@ impl RouterDatabase {
     }
 
     pub async fn get_all_groups(db: &Database) -> Result<Vec<DbGroup>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let rows = sqlx::query_as::<_, DbGroup>(
             "SELECT id, name, strategy, match_path FROM router_groups"
         )
@@ -282,7 +283,7 @@ impl RouterDatabase {
     }
 
     pub async fn get_group_members(db: &Database) -> Result<Vec<DbGroupMember>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let rows = sqlx::query_as::<_, DbGroupMember>(
             "SELECT group_id, upstream_id, weight FROM router_group_members"
         )
@@ -292,7 +293,7 @@ impl RouterDatabase {
     }
 
     pub async fn get_group_members_by_group(db: &Database, group_id: &str) -> Result<Vec<DbGroupMember>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let rows = sqlx::query_as::<_, DbGroupMember>(
             "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = ?"
         )
@@ -303,7 +304,7 @@ impl RouterDatabase {
     }
 
     pub async fn validate_token(db: &Database, token: &str) -> Result<Option<DbToken>> {
-         let conn = db.connection()?;
+         let conn = db.get_connection()?;
          let token = sqlx::query_as::<_, DbToken>(
              "SELECT token, user_id, status, quota_limit, used_quota FROM router_tokens WHERE token = ? AND status = 'active'"
          )
@@ -315,7 +316,7 @@ impl RouterDatabase {
 
     // CRUD for Upstreams
     pub async fn create_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query(
             "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
@@ -326,7 +327,7 @@ impl RouterDatabase {
     }
 
     pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<DbUpstream>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let upstream = sqlx::query_as::<_, DbUpstream>(
             "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol FROM router_upstreams WHERE id = ?"
         )
@@ -337,7 +338,7 @@ impl RouterDatabase {
     }
 
     pub async fn update_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query(
             "UPDATE router_upstreams SET name=?, base_url=?, api_key=?, match_path=?, auth_type=?, priority=?, protocol=? WHERE id=?"
         )
@@ -348,7 +349,7 @@ impl RouterDatabase {
     }
 
     pub async fn delete_upstream(db: &Database, id: &str) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query("DELETE FROM router_upstreams WHERE id = ?")
             .bind(id)
             .execute(conn.pool())
@@ -358,7 +359,7 @@ impl RouterDatabase {
 
     // CRUD for Groups
     pub async fn create_group(db: &Database, g: &DbGroup) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query(
             "INSERT INTO router_groups (id, name, strategy, match_path) VALUES (?, ?, ?, ?)"
         )
@@ -369,7 +370,7 @@ impl RouterDatabase {
     }
 
     pub async fn delete_group(db: &Database, id: &str) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
             .bind(id)
             .execute(conn.pool())
@@ -384,7 +385,7 @@ impl RouterDatabase {
 
     // Full replace of members for a group
     pub async fn set_group_members(db: &Database, group_id: &str, members: Vec<DbGroupMember>) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
             .bind(group_id)
             .execute(conn.pool())
@@ -403,7 +404,7 @@ impl RouterDatabase {
 
     // CRUD for Tokens
     pub async fn list_tokens(db: &Database) -> Result<Vec<DbToken>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let tokens = sqlx::query_as::<_, DbToken>(
             "SELECT token, user_id, status, quota_limit, used_quota FROM router_tokens"
         )
@@ -413,7 +414,7 @@ impl RouterDatabase {
     }
 
     pub async fn create_token(db: &Database, t: &DbToken) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query(
             "INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota) VALUES (?, ?, ?, ?, ?)"
         )
@@ -424,7 +425,7 @@ impl RouterDatabase {
     }
 
     pub async fn delete_token(db: &Database, token: &str) -> Result<()> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         sqlx::query("DELETE FROM router_tokens WHERE token = ?")
             .bind(token)
             .execute(conn.pool())
@@ -433,7 +434,7 @@ impl RouterDatabase {
     }
 
     pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let logs = sqlx::query_as::<_, DbRouterLog>(
             "SELECT * FROM router_logs ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )
@@ -445,7 +446,7 @@ impl RouterDatabase {
     }
 
     pub async fn get_usage_by_user(db: &Database, user_id: &str) -> Result<(i64, i64)> {
-        let conn = db.connection()?;
+        let conn = db.get_connection()?;
         let row: (Option<i64>, Option<i64>) = sqlx::query_as(
             "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = ?"
         )

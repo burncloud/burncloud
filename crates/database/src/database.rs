@@ -73,11 +73,11 @@ impl Database {
             .ok_or(DatabaseError::NotInitialized)
     }
 
-    pub fn kind(&self) -> sqlx::any::AnyKind {
+    pub fn kind(&self) -> String {
         if self.database_url.starts_with("postgres") {
-            sqlx::any::AnyKind::Postgres
+            "postgres".to_string()
         } else {
-            sqlx::any::AnyKind::Sqlite
+            "sqlite".to_string()
         }
     }
 

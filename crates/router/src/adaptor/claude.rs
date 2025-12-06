@@ -93,7 +93,7 @@ mod tests {
             ],
             temperature: Some(0.5),
             max_tokens: Some(200),
-            stream: Some(false),
+            stream: false,
         };
 
         let claude_val = ClaudeAdaptor::convert_request(req);
