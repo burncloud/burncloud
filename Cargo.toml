@@ -50,7 +50,7 @@ dioxus-liveview = { version = "0.7.2", features = ["axum"] }
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.4", features = ["v4", "serde"] }
 
 # Utilities
 async-trait = "0.1"
@@ -58,13 +58,22 @@ dirs = "5.0"
 tempfile = "3.8"
 futures-util = "0.3"
 once_cell = "1.19"
+dashmap = "5.5"
+time = "0.3"
+hex = "0.4"
+url = "2.5"
 
 # HTTP
 reqwest = { version = "0.12", features = ["json", "stream"] }
+axum = { version = "0.8.7", features = ["macros", "ws"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+http-body-util = "0.1"
+http = "1.0"
 
 # Cryptography
 sha2 = "0.10"
 md5 = "0.7"
+hmac = "0.12"
 
 # Archive
 zip = "0.6"
@@ -82,6 +91,7 @@ dioxus-desktop = "0.7.2"
 # Application
 self_update = { version = "0.42.0", features = ["archive-zip"] }
 systray = "0.4.0"
+tracing = "0.1"
 
 # Internal crates
 burncloud-auto-update = { path = "crates/auto-update" }

@@ -17,11 +17,11 @@ tokio.workspace = true
 anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-axum = { version = "0.8.7", features = ["macros"] }
-tower-http = { version = "0.5", features = ["cors"] }
+axum = { workspace = true, features = ["macros"] }
+tower-http = { workspace = true, features = ["cors"] }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
-uuid = { version = "1.4", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }
 dioxus.workspace = true
 dioxus-liveview.workspace = true
