@@ -80,6 +80,25 @@
 
 ---
 
+## 📅 Phase 6: Web UI 适配与无头部署 (Headless & Web Support)
+**目标**: 复用 `crates/client` 代码，支持编译为 WASM 并由 Server 托管，以支持 Linux SSH 环境下的 Web 访问。
+
+- [ ] **Task 6.1: Client Build Configuration**
+    - [ ] `client`: 修改 `Cargo.toml`，添加 `web` 和 `desktop` feature flags。
+    - [ ] `client`: 配置 `dioxus-desktop` 为 `optional = true`。
+    - [ ] `client`: 添加 `dioxus-web` 依赖。
+
+- [ ] **Task 6.2: Platform Specific Entry**
+    - [ ] `client`: 重构 `src/main.rs` 和 `src/app.rs`，使用 `#[cfg(...)]` 宏隔离 `window` 和 `tray` 相关代码。
+    - [ ] `client`: 确保在 WASM 模式下不调用任何 Desktop API。
+
+- [ ] **Task 6.3: Server Static Hosting**
+    - [ ] `server`: 引入 `tower-http` 的 `fs` feature。
+    - [ ] `server`: 在 `start_server` 中挂载 `/` 到静态文件目录 (e.g., `dist/` 或 `public/`)。
+    - [ ] `server`: 处理 SPA 路由回退 (Fallback to index.html)。
+
+---
+
 ## 📅 Phase 5: 精确计费与日志 (Billing & Logging)
 
 - [ ] **Task 5.1: Async Logging**
