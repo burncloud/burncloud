@@ -76,3 +76,58 @@ impl ClaudeAdaptor {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burncloud_common::types::{OpenAIChatMessage, OpenAIChatRequest};
+    use serde_json::json;
+
+    #[test]
+    fn test_openai_to_claude_request() {
+        let req = OpenAIChatRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![
+                OpenAIChatMessage { role: "system".to_string(), content: "Be helpful".to_string() },
+                OpenAIChatMessage { role: "user".to_string(), content: "Hi".to_string() }
+            ],
+            temperature: Some(0.5),
+            max_tokens: Some(200),
+            stream: Some(false),
+        };
+
+        let claude_val = ClaudeAdaptor::convert_request(req);
+        
+        // Validate extraction of system prompt
+        assert_eq!(claude_val["system"], "Be helpful");
+        // Validate messages (system should be removed from messages array)
+        let messages = claude_val["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "Hi");
+        assert_eq!(claude_val["max_tokens"], 200);
+    }
+
+    #[test]
+    fn test_claude_to_openai_response() {
+        let claude_resp = json!({
+            "id": "msg_123",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Hello from Claude"
+                }
+            ],
+            "model": "claude-3-opus",
+            "stop_reason": "end_turn",
+            "usage": { "input_tokens": 10, "output_tokens": 20 }
+        });
+
+        let openai_val = ClaudeAdaptor::convert_response(claude_resp, "claude-3");
+
+        assert_eq!(openai_val["choices"][0]["message"]["content"], "Hello from Claude");
+        assert_eq!(openai_val["model"], "claude-3");
+    }
+}
