@@ -36,6 +36,19 @@ pub struct DbGroupMember {
     pub weight: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DbRouterLog {
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub path: String,
+    pub upstream_id: Option<String>,
+    pub status_code: u16,
+    pub latency_ms: i64,
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    // created_at is handled by DB default
+}
+
 pub struct RouterDatabase;
 
 impl RouterDatabase {
@@ -101,6 +114,26 @@ impl RouterDatabase {
         .execute(conn.pool())
         .await?;
 
+        // Create Logs Table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS router_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id TEXT NOT NULL,
+                user_id TEXT,
+                path TEXT NOT NULL,
+                upstream_id TEXT,
+                status_code INTEGER NOT NULL,
+                latency_ms INTEGER NOT NULL,
+                prompt_tokens INTEGER DEFAULT 0,
+                completion_tokens INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            "#
+        )
+        .execute(conn.pool())
+        .await?;
+
         // Insert default demo data if empty
         let count: i64 = sqlx::query("SELECT COUNT(*) FROM router_upstreams")
             .fetch_one(conn.pool())
@@ -136,6 +169,30 @@ impl RouterDatabase {
             .await?;
         }
 
+        Ok(())
+    }
+
+    // ... (existing methods)
+
+    pub async fn insert_log(db: &Database, log: &DbRouterLog) -> Result<()> {
+        let conn = db.connection()?;
+        sqlx::query(
+            r#"
+            INSERT INTO router_logs 
+            (request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&log.request_id)
+        .bind(&log.user_id)
+        .bind(&log.path)
+        .bind(&log.upstream_id)
+        .bind(log.status_code)
+        .bind(log.latency_ms)
+        .bind(log.prompt_tokens)
+        .bind(log.completion_tokens)
+        .execute(conn.pool())
+        .await?;
         Ok(())
     }
 
