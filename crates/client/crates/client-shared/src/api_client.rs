@@ -13,7 +13,7 @@ pub struct ApiClient {
 }
 
 // DTOs mirroring Server structs
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ChannelDto {
     pub id: String,
     pub name: String,
@@ -24,7 +24,7 @@ pub struct ChannelDto {
     pub priority: i32,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct TokenDto {
     pub token: String,
     pub user_id: String,

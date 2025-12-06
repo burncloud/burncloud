@@ -67,16 +67,16 @@
     - [x] `server`: 实现 `POST /api/tokens` (创建兑换码/访问令牌)。
     - [x] `database`: 完善 `tokens` 表 (余额、过期时间、无限额度标记)。
 
-- [ ] **Task 4.3: Frontend Integration & Console Prefix**
-    - [ ] **Subtask 4.3.1: API Route Refactoring**
-        - [ ] `server`: 将所有管理 API (Channel/Group/Token) 移动到 `/console` 前缀下，避免与 `/api/v1/...` (LLM请求) 冲突。
-        - [ ] `server`: 确保 `/api` 前缀预留给未来的业务逻辑或保持兼容。
-    - [ ] **Subtask 4.3.2: Frontend API Client**
-        - [ ] `client/shared`: 封装 `ApiClient`，配置 Base URL 为 `http://localhost:4000/console`。
-        - [ ] `client`: 实现 HTTP 请求方法 (GET, POST, DELETE)。
-    - [ ] **Subtask 4.3.3: Channel Management UI**
-        - [ ] `client/api`: 使用 `ApiClient` 获取真实 Channel 列表。
-        - [ ] `client/api`: 实现“创建渠道”表单。
+- [x] **Task 4.3: Frontend Integration & Console Prefix**
+    - [x] **Subtask 4.3.1: API Route Refactoring**
+        - [x] `server`: 将所有管理 API (Channel/Group/Token) 移动到 `/console` 前缀下，避免与 `/api/v1/...` (LLM请求) 冲突。
+        - [x] `server`: 确保 `/api` 前缀预留给未来的业务逻辑或保持兼容。
+    - [x] **Subtask 4.3.2: Frontend API Client**
+        - [x] `client/shared`: 封装 `ApiClient`，配置 Base URL 为 `http://localhost:4000/console`。
+        - [x] `client`: 实现 HTTP 请求方法 (GET, POST, DELETE)。
+    - [x] **Subtask 4.3.3: Channel Management UI**
+        - [x] `client/api`: 使用 `ApiClient` 获取真实 Channel 列表。
+        - [x] `client/api`: 实现“创建渠道”表单。
 
 ---
 
