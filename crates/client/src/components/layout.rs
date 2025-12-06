@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use dioxus_router::prelude::*;
 
 use crate::app::Route;
 use burncloud_client_shared::components::{Sidebar, TitleBar};
