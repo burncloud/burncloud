@@ -3,10 +3,25 @@ pub mod api;
 use axum::Router;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
+use burncloud_database::{create_default_database, Database};
+use burncloud_database_router::RouterDatabase;
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Arc<Database>,
+}
 
 pub async fn start_server(port: u16) -> anyhow::Result<()> {
+    let db = create_default_database().await?;
+    RouterDatabase::init(&db).await?;
+
+    let state = AppState {
+        db: Arc::new(db),
+    };
+
     let app = Router::new()
-        .nest("/api", api::routes())
+        .nest("/api", api::routes(state))
         .layer(CorsLayer::permissive());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));

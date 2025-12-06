@@ -1,10 +1,12 @@
 use axum::Router;
+use crate::AppState;
 
 pub mod channel;
 pub mod group;
 
-pub fn routes() -> Router {
+pub fn routes(state: AppState) -> Router {
     Router::new()
         .merge(channel::routes())
         .merge(group::routes())
+        .with_state(state)
 }
