@@ -14,7 +14,7 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
     sleep(Duration::from_secs(2)).await;
 
     let client = Client::new();
-    let base_url = format!("http://localhost:{}/console/channels", port);
+    let base_url = format!("http://localhost:{}/console/api/channels", port);
 
     // 1. Create Channel
     let new_channel = serde_json::json!({
@@ -91,7 +91,7 @@ async fn test_token_management_lifecycle() -> anyhow::Result<()> {
     sleep(Duration::from_secs(2)).await;
 
     let client = Client::new();
-    let base_url = format!("http://localhost:{}/console/tokens", port);
+    let base_url = format!("http://localhost:{}/console/api/tokens", port);
 
     // 1. Create Token with Quota
     let new_token_req = serde_json::json!({
