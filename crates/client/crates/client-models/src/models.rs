@@ -1,10 +1,7 @@
 use dioxus::prelude::*;
 use burncloud_service_models::{ModelInfo, HfApiModel};
-
-use std::collections::HashMap;
-use dioxus::prelude::*;
-use burncloud_service_models::{ModelInfo, HfApiModel};
 use burncloud_service_inference::InstanceStatus;
+use std::collections::HashMap;
 
 #[component]
 pub fn ModelManagement() -> Element {
@@ -158,9 +155,9 @@ pub fn ModelManagement() -> Element {
                             is_gated: model.gated,
                             is_disabled: model.disabled,
                             status: statuses.read().get(&model.model_id).cloned().unwrap_or(InstanceStatus::Stopped),
-                            on_details: move |id| active_model_id.set(Some(id)),
-                            on_deploy: move |id| active_deploy_model_id.set(Some(id)),
-                            on_stop: move |id| {
+                            on_details: move |id: String| active_model_id.set(Some(id)),
+                            on_deploy: move |id: String| active_deploy_model_id.set(Some(id)),
+                            on_stop: move |id: String| {
                                 let id_clone = id.clone();
                                 spawn(async move {
                                     if let Ok(service) = burncloud_service_inference::InferenceService::new().await {
@@ -168,7 +165,7 @@ pub fn ModelManagement() -> Element {
                                     }
                                 });
                             },
-                            on_delete: move |id| {
+                            on_delete: move |id: String| {
                                 let id_clone = id.clone();
                                 spawn(async move {
                                     if let Ok(service) = burncloud_service_models::ModelService::new().await {
@@ -204,6 +201,11 @@ fn ModelCard(
     on_stop: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
+    let mid_details = model_id.clone();
+    let mid_stop = model_id.clone();
+    let mid_deploy = model_id.clone();
+    let mid_delete = model_id.clone();
+
     rsx! {
         div { class: "card",
             div { class: "p-lg",
@@ -256,27 +258,27 @@ fn ModelCard(
                 div { class: "flex gap-sm pt-md",
                     button { 
                         class: "btn btn-secondary flex-1",
-                        onclick: move |_| on_details.call(model_id.clone()),
+                        onclick: move |_| on_details.call(mid_details.clone()),
                         "📄 详情" 
                     }
                     
                     if status == InstanceStatus::Running || status == InstanceStatus::Starting {
                         button { 
                             class: "btn btn-danger flex-1", 
-                            onclick: move |_| on_stop.call(model_id.clone()),
+                            onclick: move |_| on_stop.call(mid_stop.clone()),
                             "🛑 停止" 
                         }
                     } else {
                         button { 
                             class: "btn btn-secondary flex-1",
-                            onclick: move |_| on_deploy.call(model_id.clone()),
+                            onclick: move |_| on_deploy.call(mid_deploy.clone()),
                             "🚀 部署" 
                         }
                     }
 
                     button { 
                         class: "btn btn-danger-outline",
-                        onclick: move |_| on_delete.call(model_id.clone()),
+                        onclick: move |_| on_delete.call(mid_delete.clone()),
                         "🗑️" 
                     }
                 }
@@ -322,8 +324,9 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
         });
     });
 
+    let m_id_start = model_id.clone();
     let on_start = move |_| {
-        let m_id = model_id.clone();
+        let m_id = m_id_start.clone();
         let f_path = match selected_file() {
              Some(f) => f,
              None => {
@@ -331,11 +334,7 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
                  return;
              }
         };
-        // Get full path for the file
-        // Ideally we need a helper to resolve relative path to absolute path
-        // Assuming service-models downloads to data/{model_id}/{file_path}
-        // And we need absolute path for llama-server
-        
+        // ... logic ...
         let p = port();
         let ctx = context_size();
         let gpu = gpu_layers();
@@ -420,8 +419,13 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
                             select { 
                                 class: "input w-full",
                                 onchange: move |evt| selected_file.set(Some(evt.value())),
-                                for f in files.read().iter() {
-                                    option { value: "{f}", "{f}" }
+                                {
+                                    let current_files = files.read().clone();
+                                    rsx! {
+                                        for f in current_files.into_iter() {
+                                            option { value: "{f}", "{f}" }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -551,29 +555,40 @@ fn FileDownloadDialog(model_id: String, on_close: EventHandler<()>) -> Element {
                                 }
                             }
                             tbody {
-                                for file in files.read().iter() {
-                                    // file format: [type, oid, size, path]
-                                    tr { class: "border-b",
-                                        td { class: "p-sm", "{file[3]}" }
-                                        td { class: "p-sm text-secondary", 
-                                            "{format_size(file[2].parse::<i64>().unwrap_or(0))}" 
-                                        }
-                                        td { class: "text-right p-sm",
-                                            if file[3].ends_with(".gguf") {
-                                                button {
-                                                    class: "btn btn-sm btn-primary",
-                                                    onclick: move |_| {
-                                                        let m_id = model_id.clone();
-                                                        let f_path = file[3].clone();
-                                                        spawn(async move {
-                                                            download_status.set(Some(format!("开始下载 {}...", f_path)));
-                                                            match burncloud_service_models::download_model_file(&m_id, &f_path).await {
-                                                                Ok(_) => download_status.set(Some(format!("已加入下载队列: {}", f_path))),
-                                                                Err(e) => download_status.set(Some(format!("下载失败: {}", e))),
+                                {
+                                    let current_files = files.read().clone();
+                                    rsx! {
+                                        for file in current_files.into_iter() {
+                                            // file format: [type, oid, size, path]
+                                            tr { class: "border-b",
+                                                td { class: "p-sm", "{file[3]}" }
+                                                td { class: "p-sm text-secondary", 
+                                                    "{format_size(file[2].parse::<i64>().unwrap_or(0))}" 
+                                                }
+                                                td { class: "text-right p-sm",
+                                                    if file[3].ends_with(".gguf") {
+                                                        {
+                                                            let m_id_for_closure = model_id.clone();
+                                                            let f_path_for_closure = file[3].clone();
+                                                            rsx! {
+                                                                button {
+                                                                    class: "btn btn-sm btn-primary",
+                                                                    onclick: move |_| {
+                                                                        let m_id = m_id_for_closure.clone();
+                                                                        let f_path = f_path_for_closure.clone();
+                                                                        spawn(async move {
+                                                                            download_status.set(Some(format!("开始下载 {}...", f_path)));
+                                                                            match burncloud_service_models::download_model_file(&m_id, &f_path).await {
+                                                                                Ok(_) => download_status.set(Some(format!("已加入下载队列: {}", f_path))),
+                                                                                Err(e) => download_status.set(Some(format!("下载失败: {}", e))),
+                                                                            }
+                                                                        });
+                                                                    },
+                                                                    "下载"
+                                                                }
                                                             }
-                                                        });
-                                                    },
-                                                    "下载"
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
