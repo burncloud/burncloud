@@ -47,7 +47,8 @@ fn main() -> Result<()> {
 
 #[tokio::main]
 async fn run_async_server() -> Result<()> {
-    burncloud_server::start_server().await
+    let port = std::env::var("SERVER_PORT").unwrap_or("4000".to_string()).parse().unwrap_or(4000);
+    burncloud_server::start_server(port).await
 }
 
 #[tokio::main]
