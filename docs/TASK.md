@@ -66,6 +66,20 @@
     - [x] `client-models`: 在模型卡片中增加"文件列表"查看功能。
     - [x] `client-models`: 选择特定 GGUF 文件并触发下载 (调用 `service-models` 下载功能)。
 
+## 📅 Phase 11: 本地推理服务 (Local Inference Service)
+- [x] **Task 11.1: Inference Service Foundation**
+    - [x] `service-inference`: 创建新的 Crate，负责管理本地推理进程 (llama-server).
+    - [x] `service-inference`: 实现进程生命周期管理 (Start/Stop/Restart/Logs).
+    - [x] `service-inference`: 自动检测可用的 llama-server 二进制文件 (或提供下载).
+- [x] **Task 11.2: Local Upstream Registration**
+    - [x] `service-inference`: 启动推理时，自动在 `router` 数据库中注册为 Upstream (localhost:port).
+    - [x] `router`: 确保能路由到本地动态端口。
+- [ ] **Task 11.3: Deployment UI**
+    - [ ] `client-models`: 实现"Deploy"按钮逻辑，选择 GGUF 文件并启动服务。
+    - [ ] `client-models`: 展示正在运行的本地模型实例状态。
+    - [ ] `client-models`: 实现"Deploy"按钮逻辑，选择 GGUF 文件并启动服务。
+    - [ ] `client-models`: 展示正在运行的本地模型实例状态。
+
 
 
 

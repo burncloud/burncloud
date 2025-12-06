@@ -18,3 +18,10 @@
 # [complete] database-setting 
 # [complete] service-ip 判断用户当前处于哪个网络环境
 # [complete] client-models页面
+
+# [complete] service-inference 基础架构
+- 创建 crates/service/crates/service-inference
+- 定义 InferenceConfig 和 InferenceService
+- 实现 start_instance / stop_instance / get_status 逻辑
+- 集成 llama-server 启动命令
+
