@@ -1,6 +1,6 @@
 # BurnCloud 项目开发宪法 (Development Constitution)
 
-**版本**: 1.6
+**版本**: 1.7
 **生效日期**: 2025-12-06
 
 ## 序言
@@ -109,6 +109,11 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 *   **最小单元**: 每次开发必须以“最小可行单元”为粒度（例如：只支持 DeepSeek 的 AuthType，而不是一次性支持所有国产模型）。
 *   **开发闭环**: 必须遵循 `Plan` -> `Code` -> `Test` -> `Commit` 的完整闭环。上一个单元未通过测试前，严禁开始下一个单元的开发。
 *   **分步提交**: 避免“大爆炸”式的代码提交。
+
+### 4.5 零警告容忍 (Zero Warning Tolerance)
+*   **Rustc/Clippy Clean**: 代码必须能够通过 `cargo check` 和 `cargo clippy` 而不产生任何 Warning。
+*   **清理无用代码**: 严禁保留未使用的引用 (`unused imports`)、变量或死代码。
+*   **命名规范**: 严格遵守 Rust 的命名惯例 (如 snake_case)。
 
 ---
 
