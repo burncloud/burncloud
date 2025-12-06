@@ -1,0 +1,14 @@
+[package]
+name = "burncloud-service-inference"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["process", "io-util"] }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+burncloud-database-router = { workspace = true }
+burncloud-service-setting = { workspace = true }
+burncloud-service-models = { workspace = true }
+tracing = { workspace = true }

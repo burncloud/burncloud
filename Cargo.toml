@@ -29,6 +29,7 @@ members = [
     "crates/service/crates/service-models",
     "crates/service/crates/service-monitor",
     "crates/service/crates/service-setting",
+    "crates/service/crates/service-inference",
 ]
 
 [workspace.dependencies]
@@ -123,6 +124,7 @@ burncloud-service-ip = { path = "crates/service/crates/service-ip" }
 burncloud-service-models = { path = "crates/service/crates/service-models" }
 burncloud-service-monitor = { path = "crates/service/crates/service-monitor" }
 burncloud-service-setting = { path = "crates/service/crates/service-setting" }
+burncloud-service-inference = { path = "crates/service/crates/service-inference" }
 
 [package]
 name = "burncloud"

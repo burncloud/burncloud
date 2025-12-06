@@ -7,3 +7,4 @@ edition = "2021"
 burncloud-service-ip.workspace = true
 burncloud-service-models.workspace = true
 burncloud-service-monitor.workspace = true
+burncloud-service-inference.workspace = true
