@@ -1,11 +1,13 @@
 mod config;
 mod adaptor;
 mod balancer;
+mod limiter;
+mod circuit_breaker;
 
 use axum::{
     body::Body,
     extract::State,
-    http::{HeaderMap, Method, Uri},
+    http::{HeaderMap, Method, Uri, StatusCode},
     response::Response,
     routing::post,
     Router,
@@ -17,6 +19,8 @@ use burncloud_common::types::OpenAIChatRequest;
 use adaptor::gemini::GeminiAdaptor;
 use adaptor::claude::ClaudeAdaptor;
 use balancer::RoundRobinBalancer;
+use limiter::RateLimiter;
+use circuit_breaker::CircuitBreaker;
 use config::{AuthType, RouterConfig, Upstream, Group, GroupMember, RouteTarget};
 use reqwest::Client;
 use std::{net::SocketAddr, sync::Arc, time::Instant};
@@ -31,6 +35,8 @@ struct AppState {
     config: Arc<RwLock<RouterConfig>>,
     db: Arc<Database>,
     balancer: Arc<RoundRobinBalancer>,
+    limiter: Arc<RateLimiter>,
+    circuit_breaker: Arc<CircuitBreaker>,
     log_tx: mpsc::Sender<DbRouterLog>,
 }
 
@@ -76,6 +82,10 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
+    // Default Limit: 100 burst, 10 requests/second
+    let limiter = Arc::new(RateLimiter::new(100.0, 10.0));
+    // Circuit Breaker: 5 failures, 30s cooldown
+    let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30));
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -99,17 +109,21 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         config: Arc::new(RwLock::new(config)),
         db: db, // Arc<Database>
         balancer,
+        limiter,
+        circuit_breaker,
         log_tx,
     };
 
-use burncloud_common::constants::INTERNAL_PREFIX;
+    use burncloud_common::constants::INTERNAL_PREFIX;
 
 // ...
 
     let reload_path = format!("{}/reload", INTERNAL_PREFIX);
+    let health_path = format!("{}/health", INTERNAL_PREFIX);
 
     let app = Router::new()
         .route(&reload_path, post(reload_handler))
+        .route(&health_path, axum::routing::get(health_status_handler))
         .fallback(proxy_handler)
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -151,6 +165,19 @@ async fn reload_handler(
              Response::builder().status(500).body(Body::from(format!("Reload failed: {}", e))).unwrap()
         }
     }
+}
+
+async fn health_status_handler(
+    State(state): State<AppState>,
+) -> Response {
+    let status_map = state.circuit_breaker.get_status_map();
+    let json = serde_json::to_string(&status_map).unwrap_or_else(|_| "{}".to_string());
+    
+    Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(Body::from(json))
+        .unwrap()
 }
 
 async fn proxy_handler(
@@ -204,6 +231,14 @@ async fn proxy_handler(
         }
     };
 
+    // Rate Limiting Check
+    if !state.limiter.check(&user_id, 1.0) {
+        return Response::builder()
+            .status(429)
+            .body(Body::from("Too Many Requests"))
+            .unwrap();
+    }
+
     // Buffer body for token counting and retries
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
@@ -245,7 +280,7 @@ async fn proxy_logic(
     headers: HeaderMap,
     body_bytes: axum::body::Bytes,
     path: &str,
-) -> (Response, Option<String>, axum::http::StatusCode) {
+) -> (Response, Option<String>, StatusCode) {
     let config = state.config.read().await;
     
     // 1. Routing
@@ -255,7 +290,7 @@ async fn proxy_logic(
             return (Response::builder()
                 .status(404)
                 .body(Body::from(format!("No matching upstream found for path: {}", path)))
-                .unwrap(), None, axum::http::StatusCode::NOT_FOUND);
+                .unwrap(), None, StatusCode::NOT_FOUND);
         }
     };
     
@@ -267,7 +302,7 @@ async fn proxy_logic(
                  return (Response::builder()
                     .status(503)
                     .body(Body::from(format!("Group '{}' has no healthy members", g.name)))
-                    .unwrap(), None, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+                    .unwrap(), None, StatusCode::SERVICE_UNAVAILABLE);
             }
             
             let start_idx = state.balancer.next_index(&g.id, g.members.len());
@@ -285,7 +320,7 @@ async fn proxy_logic(
                  return (Response::builder()
                     .status(500)
                     .body(Body::from("Configuration Error: Group members not found in upstream list"))
-                    .unwrap(), None, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+                    .unwrap(), None, StatusCode::INTERNAL_SERVER_ERROR);
             }
             ordered_members
         }
@@ -297,6 +332,13 @@ async fn proxy_logic(
 
     for (attempt, upstream) in candidates.iter().enumerate() {
         last_upstream_id = Some(upstream.id.clone());
+
+        // Circuit Breaker Check
+        if !state.circuit_breaker.allow_request(&upstream.id) {
+            println!("Skipping upstream {} (Circuit Open)", upstream.name);
+            last_error = "Circuit Breaker Open".to_string();
+            continue;
+        }
 
         // 2. Construct Target URL
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
@@ -351,7 +393,7 @@ async fn proxy_logic(
                         state.client.execute(req_builder.build().unwrap()).await
                     },
                     Err(e) => {
-                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, axum::http::StatusCode::BAD_REQUEST);
+                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
                     }
                 }
             },
@@ -365,7 +407,7 @@ async fn proxy_logic(
                         state.client.execute(req_builder.build().unwrap()).await
                     },
                     Err(e) => {
-                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, axum::http::StatusCode::BAD_REQUEST);
+                        return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
                     }
                 }
             },
@@ -393,10 +435,14 @@ async fn proxy_logic(
             Ok(resp) => {
                 if resp.status().is_server_error() { // 500-599
                     last_error = format!("Upstream returned {}", resp.status());
+                    state.circuit_breaker.record_failure(&upstream.id);
                     eprintln!("Failover: {} failed with {}, trying next...", upstream.name, resp.status());
                     continue; 
                 }
                 
+                // Success!
+                state.circuit_breaker.record_success(&upstream.id);
+
                 if use_adaptor && resp.status().is_success() {
                      let status = resp.status();
                      let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
@@ -417,6 +463,7 @@ async fn proxy_logic(
             },
             Err(e) => {
                 last_error = format!("Network Error: {}", e);
+                state.circuit_breaker.record_failure(&upstream.id);
                 eprintln!("Failover: {} failed with {}, trying next...", upstream.name, e);
                 continue;
             }
@@ -426,7 +473,7 @@ async fn proxy_logic(
     (Response::builder()
         .status(502)
         .body(Body::from(format!("All upstreams failed. Last error: {}", last_error)))
-        .unwrap(), None, axum::http::StatusCode::BAD_GATEWAY)
+        .unwrap(), None, StatusCode::BAD_GATEWAY)
 }
 
 fn handle_response(resp: reqwest::Response) -> Response {

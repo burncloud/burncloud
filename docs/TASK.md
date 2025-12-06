@@ -52,12 +52,12 @@
     - [x] `main`: 统一入口至 3000 端口.
 
 ## 📅 Phase 9: 高可用与限流 (Robustness & Rate Limiting)
-- [ ] **Task 9.1: Rate Limiter Middleware**
-    - [ ] `router`: 实现基于 Token 的限流 (TokenBucket/LeakyBucket).
+- [x] **Task 9.1: Rate Limiter Middleware**
+    - [x] `router`: 实现基于 Token 的限流 (TokenBucket/LeakyBucket).
     - [ ] `database`: Redis 集成准备 (可选，先基于内存).
-- [ ] **Task 9.2: Circuit Breaker (熔断器)**
-    - [ ] `router`: 自动检测上游连续失败并暂时剔除.
-    - [ ] `server`: 渠道健康状态监控 API.
+- [x] **Task 9.2: Circuit Breaker (熔断器)**
+    - [x] `router`: 自动检测上游连续失败并暂时剔除.
+    - [x] `server`: 渠道健康状态监控 API (`/console/internal/health`).
 
 
 

@@ -58,7 +58,48 @@ impl ModelService {
 
     /// 删除模型
     pub async fn delete(&self, model_id: &str) -> Result<()> {
+        // 尝试清理物理文件
+        if let Ok(Some(model)) = self.get(model_id).await {
+            // 忽略文件清理错误，确保数据库记录被删除
+            let _ = self.cleanup_files(model_id, model.filename.as_deref()).await;
+        }
         self.db.delete(model_id).await
+    }
+
+    /// 清理文件辅助函数
+    async fn cleanup_files(&self, model_id: &str, filename: Option<&str>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let base_dir = get_data_dir().await?;
+        let model_dir = std::path::Path::new(&base_dir).join(model_id);
+        
+        if !model_dir.exists() {
+            return Ok(());
+        }
+
+        if let Some(fname) = filename {
+            if fname.trim().is_empty() { return Ok(()); }
+            
+            // 去掉 .gguf 后缀
+            let prefix = if fname.to_lowercase().ends_with(".gguf") {
+                &fname[..fname.len() - 5]
+            } else {
+                fname
+            };
+            
+            if prefix.is_empty() { return Ok(()); }
+
+            let mut entries = tokio::fs::read_dir(&model_dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name.starts_with(prefix) {
+                            tokio::fs::remove_file(&path).await?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// 更新模型（使用 add_model 的 INSERT OR REPLACE 逻辑）
