@@ -22,7 +22,7 @@ fn main() -> Result<()> {
         [_, subcommand, _rest @ ..] => {
             match subcommand.as_str() {
                 "client" => {
-                    burncloud_client::launch_gui();
+                    burncloud_client::launch_gui_with_tray();
                 }
                 "server" => {
                     run_async_server()?;
