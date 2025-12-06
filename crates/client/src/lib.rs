@@ -34,10 +34,12 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                 </head>
                 <body>
                     <div id="main"></div>
+                    {}
                 </body>
                 </html>
                 "#,
-                include_str!("../crates/client-api/assets/styles.css")
+                include_str!("../crates/client-api/assets/styles.css"),
+                dioxus_liveview::interpreter_glue(&format!("ws://{}/ws", "localhost:4000"))
             ))
         }))
         .route("/ws", axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {

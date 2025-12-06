@@ -37,7 +37,7 @@ impl From<ChannelDto> for DbUpstream {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/channels", post(create_channel).get(list_channels))
-        .route("/channels/:id", get(get_channel).put(update_channel).delete(delete_channel))
+        .route("/channels/{id}", get(get_channel).put(update_channel).delete(delete_channel))
 }
 
 async fn list_channels(State(state): State<AppState>) -> Json<Value> {
