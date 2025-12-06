@@ -5,110 +5,38 @@
 
 ---
 
-## 📅 Phase 1: 国产模型支持与基础路由增强 (Domestic Models & Basic Routing)
-**目标**: 解决国内用户痛点，支持 DeepSeek、Qwen 等模型，并确保路由层的稳定性。
-
-- [x] **Task 1.1: DeepSeek Support**
-    - [x] `router`: 在 `AuthType` 中添加 `DeepSeek` 枚举。
-    - [x] `router`: 实现 Bearer Token 注入逻辑 (类似 OpenAI)。
-    - [x] `test`: 编写 `test_deepseek_proxy` 集成测试 (Mock)。
-
-- [x] **Task 1.2: Qwen (通义千问) Support**
-    - [x] `router`: 在 `AuthType` 中添加 `Qwen` (阿里云 DashScope) 枚举。
-    - [x] `router`: 实现 `Authorization: Bearer <API-KEY>` 注入 (注意: 阿里云有时也用 `X-DashScope-WorkSpace`，需确认标准)。
-    - [x] `test`: 编写 `test_qwen_proxy` 集成测试。
-
-- [x] **Task 1.3: Router Config Hot Reload**
-    - [x] `router`: 实现配置热加载机制 (当数据库更新 Upstream 时，Router 无需重启)。
-    - [x] `server`: 提供 `/api/internal/reload` 接口或基于 File Watcher/DB Polling。
+## 📅 Phase 1-4 (Completed)
+- [x] 国产模型支持 (DeepSeek/Qwen)
+- [x] 协议适配器 (Gemini/Claude)
+- [x] 负载均衡与故障转移
+- [x] 控制面 API 骨架
 
 ---
 
-## 📅 Phase 2: 协议适配器 (Protocol Adaptors)
-**目标**: 实现“万物转 OpenAI”，这是对标 OneAPI 的核心能力。
+## 📅 Phase 6: Web UI 架构重构 (LiveView Transition)
+**目标**: 放弃 Desktop/WASM 路线，全面转向 **Dioxus LiveView**。将 UI 渲染逻辑移至服务端，通过 Axum + WebSocket 提供无需安装的纯 Web 管理界面，实现“开箱即用”的 OneAPI 体验。
 
-- [x] **Task 2.1: Gemini to OpenAI Adaptor**
-    - [x] `router/adaptor`: 创建 `GeminiAdaptor` 结构体。
-    - [x] `router`: 实现 Request 转换: `OpenAI ChatCompletion` -> `Gemini generateContent`。
-    - [x] `router`: 实现 Response 转换: `Gemini JSON` -> `OpenAI JSON`。
-    - [x] `test`: 真实调用 Gemini API，客户端使用 OpenAI SDK 接收。
+- [ ] **Task 6.1: Dependency Overhaul**
+    - [ ] `crates/client`: 移除 `dioxus-desktop`，引入 `dioxus-liveview` 和 `axum`。
+    - [ ] `crates/client`: 重构 `Cargo.toml`，清理不再需要的桌面端依赖（如 `tray`）。
 
-- [x] **Task 2.2: Claude to OpenAI Adaptor**
-    - [x] `router/adaptor`: 创建 `ClaudeAdaptor` 结构体。
-    - [x] `router`: 实现 Request/Response/Stream 转换。
+- [ ] **Task 6.2: LiveView Server Integration**
+    - [ ] `crates/client/src/lib.rs`: 导出一个 `launch_liveview_router(pool: Pool<Sqlite>) -> Router` 函数。
+    - [ ] `crates/client`: 修改 `app.rs` 以适应 LiveView 渲染模式（移除 Window 相关代码）。
+    - [ ] `crates/server/src/lib.rs`: 引入 `burncloud-client`，并将 LiveView 路由挂载到根路径 `/`。
 
----
+- [ ] **Task 6.3: Direct Database Integration**
+    - [ ] `crates/client`: 逐步移除 `ApiClient` (HTTP)，改为在组件 Server 端直接调用 `RouterDatabase`。
+    - [ ] *好处*: 不需要序列化 JSON，不需要 HTTP 往返，性能更高，代码更少。
 
-## 📅 Phase 3: 智能负载均衡 (Smart Load Balancing)
-**目标**: 提高可用性，支持多渠道并发与故障转移。
-
-- [x] **Task 3.1: Upstream Grouping**
-    - [x] `database`: 修改 Schema，引入 `ChannelGroup` 或 `ModelMapping` 表。
-    - [x] `router`: 逻辑修改，从“匹配路径找一个 Upstream”变为“匹配模型名找一组 Upstream”。
-
-- [x] **Task 3.2: Load Balancing Strategies**
-    - [x] `router/balancer`: 实现 `RoundRobin` (轮询) 策略。
-    - [x] `router/balancer`: 实现 `Weighted` (权重) 策略。
-
-- [x] **Task 3.3: Failover Mechanism**
-    - [x] `router`: 实现重试逻辑。当 Upstream 返回 5xx 或超时，自动重试组内下一个 Upstream。
-    - [x] `service`: 记录渠道健康状态 (Healthy/Dead)。
-
----
-
-## 📅 Phase 4: 运营级控制面 (Control Plane)
-**目标**: 提供完整的管理 API 和 UI。
-
-- [x] **Task 4.1: Channel Management API**
-    - [x] `server`: 实现 `POST /api/channels` (增), `GET` (查), `PUT` (改), `DELETE` (删)。
-    - [x] `service`: 封装 `ChannelService`。
-
-- [x] **Task 4.2: Token Management API**
-    - [x] `server`: 实现 `POST /api/tokens` (创建兑换码/访问令牌)。
-    - [x] `database`: 完善 `tokens` 表 (余额、过期时间、无限额度标记)。
-
-- [x] **Task 4.3: Frontend Integration & Console Prefix**
-    - [x] **Subtask 4.3.1: API Route Refactoring**
-        - [x] `server`: 将所有管理 API (Channel/Group/Token) 移动到 `/console` 前缀下，避免与 `/api/v1/...` (LLM请求) 冲突。
-        - [x] `server`: 确保 `/api` 前缀预留给未来的业务逻辑或保持兼容。
-    - [x] **Subtask 4.3.2: Frontend API Client**
-        - [x] `client/shared`: 封装 `ApiClient`，配置 Base URL 为 `http://localhost:4000/console`。
-        - [x] `client`: 实现 HTTP 请求方法 (GET, POST, DELETE)。
-    - [x] **Subtask 4.3.3: Channel Management UI**
-        - [x] `client/api`: 使用 `ApiClient` 获取真实 Channel 列表。
-        - [x] `client/api`: 实现“创建渠道”表单。
-
----
-
-## 📅 Phase 6: Web UI 适配与无头部署 (Headless & Web Support)
-**目标**: 复用 `crates/client` 代码，支持编译为 WASM 并由 Server 托管，以支持 Linux SSH 环境下的 Web 访问。
-
-- [ ] **Task 6.1: Client Build Configuration**
-    - [ ] `client`: 修改 `Cargo.toml`，添加 `web` 和 `desktop` feature flags。
-    - [ ] `client`: 配置 `dioxus-desktop` 为 `optional = true`。
-    - [ ] `client`: 添加 `dioxus-web` 依赖。
-
-- [ ] **Task 6.2: Platform Specific Entry**
-    - [ ] `client`: 重构 `src/main.rs` 和 `src/app.rs`，使用 `#[cfg(...)]` 宏隔离 `window` 和 `tray` 相关代码。
-    - [ ] `client`: 确保在 WASM 模式下不调用任何 Desktop API。
-
-- [ ] **Task 6.3: Server Static Hosting**
-    - [ ] `server`: 引入 `tower-http` 的 `fs` feature。
-    - [ ] `server`: 在 `start_server` 中挂载 `/` 到静态文件目录 (e.g., `dist/` 或 `public/`)。
-    - [ ] `server`: 处理 SPA 路由回退 (Fallback to index.html)。
+- [ ] **Task 6.4: UI Cleanup & Enhancement**
+    - [ ] 修复因移除 Desktop 而失效的组件（如系统托盘）。
+    - [ ] 确保 `styles.css` 在 LiveView 模式下正确加载（通过 HTML Head 注入）。
 
 ---
 
 ## 📅 Phase 5: 精确计费与日志 (Billing & Logging)
-
-- [ ] **Task 5.1: Async Logging**
-    - [ ] `router`: 使用 `tokio::mpsc` 将请求日志发送到异步队列。
-    - [ ] `server`: 后台任务从队列消费日志并批量写入 `logs` 表 (SQLite/ClickHouse)。
-
-- [ ] **Task 5.2: Token Counting**
-    - [ ] `router`: 集成 `tiktoken` (或 Rust 等价库) 计算 Prompt Token。
-    - [ ] `router`: 对于流式响应，估算或累加 Completion Token。
-    - [ ] `service`: 扣除用户余额。
+*(保持不变)*
 
 ---
-*Updated by AI Agent*
+*Updated by AI Agent - LiveView Strategy*
