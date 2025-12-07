@@ -1,10 +1,3 @@
-# Download test
-*.iso
-*.aria2
-download
-downloads
-data
-
 # Rust build artifacts
 /target/
 **/*.rs.bk
@@ -15,8 +8,20 @@ MESSAGE.md
 *.sh
 *.bat
 
-# Cargo lock file (uncomment if this is an application)
-# Cargo.lock
+# nodejs
+package-lock.json
+yarn.lock
+
+# Test output
+playwright-report
+test-results
+
+# Download test
+*.iso
+*.aria2
+download
+downloads
+data
 
 # IDEs
 .claude
