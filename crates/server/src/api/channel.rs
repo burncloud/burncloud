@@ -33,7 +33,7 @@ impl ChannelDto {
             status: 1,
             name: self.name,
             weight: self.weight,
-            created_time: 0,
+            created_time: None,
             test_time: None, // Initial state
             response_time: None, // Initial state
             base_url: self.base_url,
@@ -55,8 +55,21 @@ impl ChannelDto {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/console/api/channel", post(create_channel).put(update_channel))
+        .route("/console/api/channel", post(create_channel).put(update_channel).get(list_channels))
         .route("/console/api/channel/{id}", get(get_channel).delete(delete_channel))
+}
+
+async fn list_channels(
+    State(state): State<AppState>,
+    // TODO: Add pagination params
+) -> Json<Value> {
+    match ChannelModel::list(&state.db, 100, 0).await {
+        Ok(channels) => Json(json!({
+            "success": true,
+            "data": channels
+        })),
+        Err(e) => Json(json!({ "success": false, "message": e.to_string() })),
+    }
 }
 
 async fn create_channel(
@@ -118,7 +131,12 @@ async fn get_channel(
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Json<Value> {
-    // We don't have get_by_id yet in ChannelModel, implement later or use direct SQL.
-    // For now return dummy.
-    Json(json!({ "success": false, "message": "Not implemented yet" }))
+    match ChannelModel::get_by_id(&state.db, id).await {
+        Ok(Some(c)) => Json(json!({
+            "success": true,
+            "data": c
+        })),
+        Ok(None) => Json(json!({ "success": false, "message": "channel not found" })),
+        Err(e) => Json(json!({ "success": false, "message": e.to_string() })),
+    }
 }

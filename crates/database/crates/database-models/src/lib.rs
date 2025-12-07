@@ -86,7 +86,7 @@ impl ChannelModel {
         };
 
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
-        channel.created_time = now;
+        channel.created_time = Some(now);
 
         // Use transaction to ensure last_insert_rowid works on the same connection
         let mut tx = pool.begin().await?;
@@ -172,6 +172,65 @@ impl ChannelModel {
             .await?;
             
         Ok(())
+    }
+
+    pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => r#"
+                SELECT 
+                    id, type as "type_", key, status, name, weight, created_time, test_time, 
+                    response_time, base_url, models, "group", used_quota, model_mapping, 
+                    priority, auto_ban, other_info, tag, setting, param_override, 
+                    header_override, remark 
+                FROM channels WHERE id = $1
+            "#,
+            _ => r#"
+                SELECT 
+                    id, type as type_, key, status, name, weight, created_time, test_time, 
+                    response_time, base_url, models, `group`, used_quota, model_mapping, 
+                    priority, auto_ban, other_info, tag, setting, param_override, 
+                    header_override, remark 
+                FROM channels WHERE id = ?
+            "#
+        };
+        
+        let channel = sqlx::query_as(sql)
+            .bind(id)
+            .fetch_optional(conn.pool())
+            .await?;
+            
+        Ok(channel)
+    }
+
+    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Channel>> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => r#"
+                SELECT 
+                    id, type as "type_", key, status, name, weight, created_time, test_time, 
+                    response_time, base_url, models, "group", used_quota, model_mapping, 
+                    priority, auto_ban, other_info, tag, setting, param_override, 
+                    header_override, remark 
+                FROM channels ORDER BY id DESC LIMIT $1 OFFSET $2
+            "#,
+            _ => r#"
+                SELECT 
+                    id, type as type_, key, status, name, weight, created_time, test_time, 
+                    response_time, base_url, models, `group`, used_quota, model_mapping, 
+                    priority, auto_ban, other_info, tag, setting, param_override, 
+                    header_override, remark 
+                FROM channels ORDER BY id DESC LIMIT ? OFFSET ?
+            "#
+        };
+        
+        let channels = sqlx::query_as(sql)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(conn.pool())
+            .await?;
+            
+        Ok(channels)
     }
 
     pub async fn sync_abilities(db: &Database, channel: &Channel) -> Result<()> {

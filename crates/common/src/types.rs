@@ -159,7 +159,7 @@ pub struct Channel {
     pub status: i32, // 1: Enabled, 2: Manually Disabled, 3: Auto Disabled
     pub name: String,
     pub weight: i32,
-    pub created_time: i64,
+    pub created_time: Option<i64>,
     pub test_time: Option<i64>,
     pub response_time: Option<i32>, // ms
     pub base_url: Option<String>,
