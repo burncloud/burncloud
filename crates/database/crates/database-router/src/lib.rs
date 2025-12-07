@@ -314,6 +314,32 @@ impl RouterDatabase {
          Ok(token)
     }
 
+    /// Validates a token and returns (user_id, group, token_quota_limit, token_used_quota)
+    pub async fn validate_token_and_get_info(db: &Database, token: &str) -> Result<Option<(i32, String, i64, i64)>> {
+        let conn = db.get_connection()?;
+        let group_col = if db.kind() == "postgres" { "\"group\"" } else { "`group`" };
+        
+        // Assuming tokens.key matches the bearer token
+        // And tokens.user_id links to users.id
+        let query = format!(
+            r#"
+            SELECT u.id, u.{}, t.remain_quota, t.used_quota 
+            FROM tokens t 
+            JOIN users u ON t.user_id = u.id 
+            WHERE t.key = ? AND t.status = 1 AND u.status = 1
+            "#, 
+            group_col
+        );
+
+        // Use query_as to map to a tuple
+        let result: Option<(i32, String, i64, i64)> = sqlx::query_as(&query)
+            .bind(token)
+            .fetch_optional(conn.pool())
+            .await?;
+            
+        Ok(result)
+    }
+
     // CRUD for Upstreams
     pub async fn create_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
         let conn = db.get_connection()?;

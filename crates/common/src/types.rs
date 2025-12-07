@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelInfo {
@@ -144,15 +145,16 @@ impl From<i32> for ChannelType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Channel {
     pub id: i32,
     #[serde(rename = "type")]
+    #[sqlx(rename = "type")]
     pub type_: i32, // Use i32 for raw compatibility, or ChannelType
     pub key: String,
     pub status: i32, // 1: Enabled, 2: Manually Disabled, 3: Auto Disabled
     pub name: String,
-    pub weight: u32,
+    pub weight: i32,
     pub created_time: i64,
     pub test_time: i64,
     pub response_time: i32, // ms
@@ -172,17 +174,17 @@ pub struct Channel {
     // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Ability {
     pub group: String,
     pub model: String,
     pub channel_id: i32,
     pub enabled: bool,
     pub priority: i64,
-    pub weight: u32,
+    pub weight: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: i32,
     pub username: String,
@@ -205,7 +207,7 @@ pub struct User {
     pub inviter_id: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Token {
     pub id: i32,
     pub user_id: i32,

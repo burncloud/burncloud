@@ -1,7 +1,7 @@
 # BurnCloud 项目开发宪法 (Development Constitution)
 
-**版本**: 1.8
-**生效日期**: 2025-12-06
+**版本**: 1.9
+**生效日期**: 2025-12-07
 
 ## 序言
 
@@ -100,6 +100,11 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
     *   **敏感信息还原**：如果在本地调试或紧急修复过程中临时写入了真实 Key，**必须在提交代码或任务结束前，将其还原为脱敏的样例 Key (如 `YOUR_AK_HERE`)**。
     *   **严禁敏感文件**：严禁在代码库中包含存储了真实密钥的 JSON/YAML/ENV 文件。
     *   测试必须具备幂等性，且不能污染用户的真实数据库。
+*   **E2E 测试位置与结构 (E2E Testing Location & Structure)**：
+    *   **强制位置**：所有的 E2E (End-to-End) 测试文件必须存放在项目根目录的 `/crates/tests` 文件夹中。
+    *   **路径对应**：E2E 测试文件的命名和目录结构必须严格对应其测试的 Router 请求路径。
+        *   例如：测试路由 `POST /v1/chat/completions` 的 E2E 测试，应位于 `/crates/tests/v1/chat/completions_test.rs`。
+        *   例如：测试路由 `GET /api/models` 的 E2E 测试，应位于 `/crates/tests/api/models_test.rs`。
 *   **提交前测试 (Test Before Commit)**：在标记任务完成前，必须确保 `cargo test` 通过。
 
 ### 4.3 错误处理

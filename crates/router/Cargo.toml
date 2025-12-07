@@ -22,6 +22,7 @@ uuid = { workspace = true, features = ["v4"] }
 axum = { workspace = true, features = ["macros"] }
 tower-http = { workspace = true, features = ["trace", "cors"] }
 tracing.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
 serde_json = { workspace = true }

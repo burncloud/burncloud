@@ -3,6 +3,7 @@ mod adaptor;
 mod balancer;
 mod limiter;
 mod circuit_breaker;
+mod model_router;
 
 use axum::{
     body::Body,
@@ -21,6 +22,7 @@ use adaptor::claude::ClaudeAdaptor;
 use balancer::RoundRobinBalancer;
 use limiter::RateLimiter;
 use circuit_breaker::CircuitBreaker;
+use model_router::ModelRouter;
 use config::{AuthType, RouterConfig, Upstream, Group, GroupMember, RouteTarget};
 use reqwest::Client;
 use std::{sync::Arc, time::Instant};
@@ -38,6 +40,7 @@ struct AppState {
     limiter: Arc<RateLimiter>,
     circuit_breaker: Arc<CircuitBreaker>,
     log_tx: mpsc::Sender<DbRouterLog>,
+    model_router: Arc<ModelRouter>,
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
@@ -87,6 +90,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let limiter = Arc::new(RateLimiter::new(100.0, 10.0));
     // Circuit Breaker: 5 failures, 30s cooldown
     let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30));
+    let model_router = Arc::new(ModelRouter::new(db.clone()));
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -113,6 +117,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         limiter,
         circuit_breaker,
         log_tx,
+        model_router,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -226,6 +231,8 @@ async fn proxy_handler(
     let request_id = Uuid::new_v4().to_string();
     let path = uri.path().to_string();
     
+    println!("Proxy Handler: {} {}, Headers: {:?}", method, path, headers);
+
     // 0. Authenticate User
     let user_auth = headers.get("authorization")
         .and_then(|h| h.to_str().ok())
@@ -242,29 +249,21 @@ async fn proxy_handler(
     };
 
     // Check against DB
-    let user_id = match RouterDatabase::validate_token(&state.db, user_token).await {
-        Ok(Some(token_data)) => {
-             if token_data.quota_limit >= 0 && token_data.used_quota >= token_data.quota_limit {
-                 return Response::builder()
-                    .status(429)
-                    .body(Body::from("Quota Exceeded"))
-                    .unwrap();
-             }
-             token_data.user_id
-        },
+    let (user_id, user_group, quota_limit, used_quota) = match RouterDatabase::validate_token_and_get_info(&state.db, user_token).await {
+        Ok(Some(info)) => (info.0.to_string(), info.1, info.2, info.3),
         Ok(None) => {
-             return Response::builder()
-                .status(401)
-                .body(Body::from("Unauthorized: Invalid Token"))
-                .unwrap();
+             // Fallback to old token table logic
+             match RouterDatabase::validate_token(&state.db, user_token).await {
+                 Ok(Some(t)) => (t.user_id, "default".to_string(), t.quota_limit, t.used_quota),
+                 _ => return Response::builder().status(401).body(Body::from("Unauthorized: Invalid Token")).unwrap(),
+             }
         },
-        Err(e) => {
-             return Response::builder()
-                .status(500)
-                .body(Body::from(format!("Internal Auth Error: {}", e)))
-                .unwrap();
-        }
+        Err(e) => return Response::builder().status(500).body(Body::from(format!("Internal Auth Error: {}", e))).unwrap(),
     };
+
+    if quota_limit >= 0 && used_quota >= quota_limit {
+         return Response::builder().status(429).body(Body::from("Quota Exceeded")).unwrap();
+    }
 
     // Rate Limiting Check
     if !state.limiter.check(&user_id, 1.0) {
@@ -285,7 +284,7 @@ async fn proxy_handler(
     let prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status) = proxy_logic(&state, method, uri, headers, body_bytes, &path).await;
+    let (response, upstream_id, final_status) = proxy_logic(&state, method, uri, headers, body_bytes, &path, &user_group).await;
 
     // Estimate Completion Tokens (If header present, else 0 for streaming)
     // For streaming, we can't easily know without wrapping the stream.
@@ -315,51 +314,80 @@ async fn proxy_logic(
     headers: HeaderMap,
     body_bytes: axum::body::Bytes,
     path: &str,
+    user_group: &str,
 ) -> (Response, Option<String>, StatusCode) {
     let config = state.config.read().await;
     
-    // 1. Routing
-    let route = match config.find_route(path) {
-        Some(r) => r,
-        None => {
-            return (Response::builder()
-                .status(404)
-                .body(Body::from(format!("No matching upstream found for path: {}", path)))
-                .unwrap(), None, StatusCode::NOT_FOUND);
-        }
-    };
+    // 1. Model Routing (Priority)
+    let mut candidates: Vec<Upstream> = Vec::new();
     
-    // Resolve Route Target -> Ordered Candidates for Retry
-    let candidates: Vec<&Upstream> = match route {
-        RouteTarget::Upstream(u) => vec![u],
-        RouteTarget::Group(g) => {
-            if g.members.is_empty() {
-                 return (Response::builder()
-                    .status(503)
-                    .body(Body::from(format!("Group '{}' has no healthy members", g.name)))
-                    .unwrap(), None, StatusCode::SERVICE_UNAVAILABLE);
+    if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+        if let Some(model) = json.get("model").and_then(|v| v.as_str()) {
+             if let Ok(Some(channel)) = state.model_router.route(user_group, model).await {
+                 println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
+                 // Map Channel Type to AuthType/Protocol
+                 // Simple mapping for now
+                 let (auth_type, protocol) = match channel.type_ {
+                     1 => (AuthType::Bearer, "openai".to_string()), // OpenAI
+                     14 => (AuthType::Claude, "claude".to_string()), // Anthropic
+                     24 => (AuthType::GoogleAI, "gemini".to_string()), // Gemini
+                     _ => (AuthType::Bearer, "openai".to_string()),
+                 };
+                 
+                 candidates.push(Upstream {
+                     id: channel.id.to_string(),
+                     name: channel.name,
+                     base_url: channel.base_url.unwrap_or_default(),
+                     api_key: channel.key,
+                     match_path: "".to_string(),
+                     auth_type,
+                     priority: channel.priority as i32,
+                     protocol,
+                 });
+             }
+        }
+    }
+
+    // 2. Path Routing (Fallback)
+    if candidates.is_empty() {
+        let route = match config.find_route(path) {
+            Some(r) => r,
+            None => {
+                return (Response::builder()
+                    .status(404)
+                    .body(Body::from(format!("No matching upstream found for path: {}", path)))
+                    .unwrap(), None, StatusCode::NOT_FOUND);
             }
-            
-            let start_idx = state.balancer.next_index(&g.id, g.members.len());
-            
-            let mut ordered_members = Vec::with_capacity(g.members.len());
-            for i in 0..g.members.len() {
-                let idx = (start_idx + i) % g.members.len();
-                let member = &g.members[idx];
-                if let Some(u) = config.get_upstream(&member.upstream_id) {
-                    ordered_members.push(u);
+        };
+        
+        match route {
+            RouteTarget::Upstream(u) => candidates.push(u.clone()),
+            RouteTarget::Group(g) => {
+                if g.members.is_empty() {
+                     return (Response::builder()
+                        .status(503)
+                        .body(Body::from(format!("Group '{}' has no healthy members", g.name)))
+                        .unwrap(), None, StatusCode::SERVICE_UNAVAILABLE);
+                }
+                
+                let start_idx = state.balancer.next_index(&g.id, g.members.len());
+                for i in 0..g.members.len() {
+                    let idx = (start_idx + i) % g.members.len();
+                    let member = &g.members[idx];
+                    if let Some(u) = config.get_upstream(&member.upstream_id) {
+                        candidates.push(u.clone());
+                    }
                 }
             }
-            
-            if ordered_members.is_empty() {
-                 return (Response::builder()
-                    .status(500)
-                    .body(Body::from("Configuration Error: Group members not found in upstream list"))
-                    .unwrap(), None, StatusCode::INTERNAL_SERVER_ERROR);
-            }
-            ordered_members
-        }
-    };
+        };
+    }
+    
+    if candidates.is_empty() {
+         return (Response::builder()
+            .status(500)
+            .body(Body::from("Configuration Error: No upstreams available"))
+            .unwrap(), None, StatusCode::INTERNAL_SERVER_ERROR);
+    }
     
     // Check for manual override via header
     let force_adaptor = headers.contains_key("x-use-adaptor");
