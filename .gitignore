@@ -10,6 +10,9 @@ data
 **/*.rs.bk
 *.pdb
 Cargo.lock
+*.py
+*.sh
+*.bat
 
 # Cargo lock file (uncomment if this is an application)
 # Cargo.lock

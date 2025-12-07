@@ -45,6 +45,7 @@ impl TestClient {
         let status = resp.status();
         
         let body_text = resp.text().await.unwrap_or_default();
+        println!("TestClient: Response Body: '{}'", body_text);
 
         if !status.is_success() {
              ensure!(false, "Request failed with status: {} | Body: {}", status, body_text);
@@ -64,5 +65,21 @@ impl TestClient {
         let status = resp.status();
         ensure!(status.as_u16() == expected_status, "Expected status {}, got {}", expected_status, status);
         Ok(())
+    }
+
+    pub async fn delete(&self, path: &str) -> Result<Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = self.client.delete(&url);
+        if let Some(token) = &self.token {
+            req = req.bearer_auth(token);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+             ensure!(false, "Delete failed: {} | {}", status, body_text);
+        }
+        let json: Value = serde_json::from_str(&body_text).unwrap_or(Value::Null);
+        Ok(json)
     }
 }

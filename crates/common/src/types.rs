@@ -19,9 +19,14 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let port = std::env::var("PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3000);
+            
         Self {
             models_dir: "models".to_string(),
-            server_port: 8080,
+            server_port: port,
             max_memory: 8192,
             gpu_enabled: false,
         }
@@ -149,15 +154,14 @@ impl From<i32> for ChannelType {
 pub struct Channel {
     pub id: i32,
     #[serde(rename = "type")]
-    #[sqlx(rename = "type")]
     pub type_: i32, // Use i32 for raw compatibility, or ChannelType
     pub key: String,
     pub status: i32, // 1: Enabled, 2: Manually Disabled, 3: Auto Disabled
     pub name: String,
     pub weight: i32,
     pub created_time: i64,
-    pub test_time: i64,
-    pub response_time: i32, // ms
+    pub test_time: Option<i64>,
+    pub response_time: Option<i32>, // ms
     pub base_url: Option<String>,
     pub models: String, // Comma separated
     pub group: String,  // Comma separated, default "default"

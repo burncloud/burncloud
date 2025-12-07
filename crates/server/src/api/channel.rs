@@ -7,75 +7,118 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use crate::AppState;
-use burncloud_database_router::{RouterDatabase, DbUpstream};
+use burncloud_common::types::Channel;
+use burncloud_database_models::ChannelModel;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct ChannelDto {
-    pub id: String,
+    pub id: Option<i32>,
+    #[serde(rename = "type")]
+    pub type_: i32,
+    pub key: String,
     pub name: String,
-    pub base_url: String,
-    pub api_key: String,
-    pub match_path: String,
-    pub auth_type: String,
-    pub priority: i32,
+    pub base_url: Option<String>,
+    pub models: String,
+    pub group: String,
+    pub weight: i32,
+    pub priority: i64,
 }
 
-impl From<ChannelDto> for DbUpstream {
-    fn from(dto: ChannelDto) -> Self {
-        DbUpstream {
-            id: dto.id,
-            name: dto.name,
-            base_url: dto.base_url,
-            api_key: dto.api_key,
-            match_path: dto.match_path,
-            auth_type: dto.auth_type,
-            priority: dto.priority,
-            protocol: "openai".to_string(),
+impl ChannelDto {
+    fn into_channel(self) -> Channel {
+        Channel {
+            id: self.id.unwrap_or(0),
+            type_: self.type_,
+            key: self.key,
+            status: 1,
+            name: self.name,
+            weight: self.weight,
+            created_time: 0,
+            test_time: None, // Initial state
+            response_time: None, // Initial state
+            base_url: self.base_url,
+            models: self.models,
+            group: self.group,
+            used_quota: 0,
+            model_mapping: None,
+            priority: self.priority,
+            auto_ban: 1,
+            other_info: None,
+            tag: None,
+            setting: None,
+            param_override: None,
+            header_override: None,
+            remark: None,
         }
     }
 }
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/channels", post(create_channel).get(list_channels))
-        .route("/channels/{id}", get(get_channel).put(update_channel).delete(delete_channel))
+        .route("/console/api/channel", post(create_channel).put(update_channel))
+        .route("/console/api/channel/{id}", get(get_channel).delete(delete_channel))
 }
 
-async fn list_channels(State(state): State<AppState>) -> Json<Value> {
-    match RouterDatabase::get_all_upstreams(&state.db).await {
-        Ok(channels) => Json(json!(channels)),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+async fn create_channel(
+    State(state): State<AppState>,
+    Json(payload): Json<ChannelDto>,
+) -> Json<Value> {
+    let mut channel = payload.into_channel();
+    match ChannelModel::create(&state.db, &mut channel).await {
+        Ok(id) => Json(json!({
+            "success": true,
+            "message": "channel created",
+            "data": { "id": id }
+        })),
+        Err(e) => Json(json!({
+            "success": false,
+            "message": e.to_string()
+        })),
     }
 }
 
-async fn create_channel(State(state): State<AppState>, Json(payload): Json<ChannelDto>) -> Json<Value> {
-    let upstream: DbUpstream = payload.into();
-    match RouterDatabase::create_upstream(&state.db, &upstream).await {
-        Ok(_) => Json(json!({ "status": "created", "id": upstream.id })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+async fn update_channel(
+    State(state): State<AppState>,
+    Json(payload): Json<ChannelDto>,
+) -> Json<Value> {
+    let channel = payload.into_channel();
+    if channel.id == 0 {
+         return Json(json!({ "success": false, "message": "id is required" }));
+    }
+    match ChannelModel::update(&state.db, &channel).await {
+        Ok(_) => Json(json!({
+            "success": true,
+            "message": "channel updated",
+            "data": channel
+        })),
+        Err(e) => Json(json!({
+            "success": false,
+            "message": e.to_string()
+        })),
     }
 }
 
-async fn get_channel(State(state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
-    match RouterDatabase::get_upstream(&state.db, &id).await {
-        Ok(Some(u)) => Json(json!(u)),
-        Ok(None) => Json(json!({ "error": "Not Found" })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+async fn delete_channel(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> Json<Value> {
+    match ChannelModel::delete(&state.db, id).await {
+        Ok(_) => Json(json!({
+            "success": true,
+            "message": "channel deleted"
+        })),
+        Err(e) => Json(json!({
+            "success": false,
+            "message": e.to_string()
+        })),
     }
 }
 
-async fn update_channel(State(state): State<AppState>, Path(id): Path<String>, Json(mut payload): Json<ChannelDto>) -> Json<Value> {
-    payload.id = id.clone(); // Ensure ID matches path
-    let upstream: DbUpstream = payload.into();
-    match RouterDatabase::update_upstream(&state.db, &upstream).await {
-        Ok(_) => Json(json!({ "status": "updated", "id": id })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
-    }
-}
-
-async fn delete_channel(State(state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
-    match RouterDatabase::delete_upstream(&state.db, &id).await {
-        Ok(_) => Json(json!({ "status": "deleted", "id": id })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
-    }
+async fn get_channel(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> Json<Value> {
+    // We don't have get_by_id yet in ChannelModel, implement later or use direct SQL.
+    // For now return dummy.
+    Json(json!({ "success": false, "message": "Not implemented yet" }))
 }

@@ -47,6 +47,8 @@ impl ModelRouter {
             "#,
             group_col
         );
+        
+        println!("ModelRouter: Querying priority with Group='{}', Model='{}'", group, model);
 
         let max_priority: Option<i64> = sqlx::query_scalar(&query)
             .bind(group)

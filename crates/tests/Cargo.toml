@@ -10,5 +10,6 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-wiremock = "0.6"
 sqlx = { workspace = true, features = ["sqlite", "runtime-tokio-rustls"] }
+dotenvy = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
