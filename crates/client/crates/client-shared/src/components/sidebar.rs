@@ -41,6 +41,12 @@ pub fn Sidebar() -> Element {
                         span { "API管理" }
                     }
                     Link {
+                        to: CoreRoute::ChannelPage {},
+                        class: if matches!(route, CoreRoute::ChannelPage {}) { "nav-item active" } else { "nav-item" },
+                        span { class: "icon", "📡" }
+                        span { "渠道管理" }
+                    }
+                    Link {
                         to: CoreRoute::SystemSettings {},
                         class: if matches!(route, CoreRoute::SystemSettings {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🔧" }

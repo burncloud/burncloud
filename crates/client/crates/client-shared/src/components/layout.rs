@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::styles::FLUENT_CSS;
 use super::sidebar::Sidebar;
 use super::title_bar::TitleBar;
-use super::placeholders::{Dashboard, ModelManagement, DeployConfig, ServiceMonitor, ApiManagement, SystemSettings};
+use super::placeholders::{Dashboard, ModelManagement, DeployConfig, ServiceMonitor, ApiManagement, SystemSettings, ChannelPage};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum CoreRoute {
@@ -18,6 +18,8 @@ pub enum CoreRoute {
     ServiceMonitor {},
     #[route("/api")]
     ApiManagement {},
+    #[route("/channels")]
+    ChannelPage {},
     #[route("/settings")]
     SystemSettings {},
 }

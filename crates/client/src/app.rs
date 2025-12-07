@@ -8,6 +8,7 @@ use crate::pages::{
     monitor::ServiceMonitor,
     api::ApiManagement,
     settings::SystemSettings,
+    channels::ChannelPage,
 };
 pub use burncloud_client_tray::{start_tray, should_show_window};
 
@@ -24,6 +25,8 @@ pub enum Route {
     ServiceMonitor {},
     #[route("/api")]
     ApiManagement {},
+    #[route("/channels")]
+    ChannelPage {},
     #[route("/settings")]
     SystemSettings {},
 }
