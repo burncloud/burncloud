@@ -5,6 +5,7 @@ pub mod channel;
 pub mod group;
 pub mod token;
 pub mod log;
+pub mod monitor;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -12,5 +13,6 @@ pub fn routes(state: AppState) -> Router {
         .merge(group::routes())
         .merge(token::routes())
         .merge(log::routes())
+        .merge(monitor::routes())
         .with_state(state)
 }

@@ -7,15 +7,22 @@ use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use std::sync::Arc;
 use burncloud_router::create_router_app;
+use burncloud_service_monitor::SystemMonitorService;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
+    pub monitor: Arc<SystemMonitorService>,
 }
 
 pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Result<Router> {
+    let monitor = Arc::new(SystemMonitorService::new());
+    // Start auto collection in background
+    let _ = monitor.start_auto_update().await;
+
     let state = AppState {
         db: db.clone(),
+        monitor,
     };
 
     // 1. Management API Router

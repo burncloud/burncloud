@@ -27,6 +27,7 @@ uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }
 dioxus.workspace = true
 dioxus-liveview.workspace = true
+burncloud-service-monitor = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
