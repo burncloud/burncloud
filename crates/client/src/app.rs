@@ -9,11 +9,18 @@ use crate::pages::{
     api::ApiManagement,
     settings::SystemSettings,
     channels::ChannelPage,
+    login::LoginPage,
+    register::RegisterPage,
 };
 pub use burncloud_client_tray::{start_tray, should_show_window};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {
+    #[route("/login")]
+    LoginPage {},
+    #[route("/register")]
+    RegisterPage {},
+
     #[layout(Layout)]
     #[route("/")]
     Dashboard {},
