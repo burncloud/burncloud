@@ -1,7 +1,7 @@
-mod common;
-
 use burncloud_tests::TestClient;
 use serde_json::json;
+
+use crate::common;
 
 #[tokio::test]
 async fn test_health_check() {

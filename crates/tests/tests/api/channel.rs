@@ -2,8 +2,7 @@ use burncloud_tests::TestClient;
 use serde_json::json;
 use uuid::Uuid;
 
-#[path = "common/mod.rs"]
-mod common_mod;
+use crate::common as common_mod;
 
 #[tokio::test]
 async fn test_channel_lifecycle() {
