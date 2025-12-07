@@ -23,6 +23,8 @@ impl AuthService {
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/console/api/user/login", port);
         
+        println!("AuthService: Logging in {} with password length {}", username, password.len());
+        
         let body = serde_json::json!({
             "username": username,
             "password": password
@@ -36,6 +38,7 @@ impl AuthService {
             .map_err(|e| e.to_string())?;
 
         let json: AuthResult = resp.json().await.map_err(|e| e.to_string())?;
+        println!("AuthService: Response: {:?}", json);
 
         if json.success {
             if let Some(data) = json.data {

@@ -53,6 +53,7 @@ pub async fn spawn_app() -> String {
             .arg("server")
             .arg("start")
             .env("PORT", port.to_string())
+            .env("RUST_LOG", "error") // Force suppress noisy logs
             .stdout(Stdio::null()) 
             .stderr(Stdio::inherit())
             .spawn()

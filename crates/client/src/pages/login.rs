@@ -1,24 +1,26 @@
 use dioxus::prelude::*;
 use burncloud_client_shared::auth_service::AuthService;
+use burncloud_client_shared::use_toast;
 use crate::app::Route;
 
 #[component]
 pub fn LoginPage() -> Element {
     let mut username = use_signal(|| "".to_string());
     let mut password = use_signal(|| "".to_string());
-    let mut error_msg = use_signal(|| "".to_string());
+    let mut toast = use_toast();
     let navigator = use_navigator();
 
     let handle_login = move |_| {
         spawn(async move {
-            error_msg.set("".to_string());
             match AuthService::login(&username(), &password()).await {
                 Ok(_) => {
+                    toast.success("登录成功");
                     // Redirect to Dashboard
                     navigator.push(Route::Dashboard {});
                 },
                 Err(e) => {
-                    error_msg.set(e);
+                    println!("LoginPage: Login error: {}", e);
+                    toast.error(&e);
                 }
             }
         });
@@ -29,10 +31,6 @@ pub fn LoginPage() -> Element {
             div { class: "auth-card",
                 h2 { class: "text-title font-bold text-center mb-xl", "登录 BurnCloud" }
                 
-                if !error_msg().is_empty() {
-                    div { class: "alert alert-error mb-lg", "{error_msg}" }
-                }
-
                 div { class: "form-group",
                     label { "用户名" }
                     input { 

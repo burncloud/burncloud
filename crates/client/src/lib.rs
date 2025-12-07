@@ -2,6 +2,8 @@ pub mod app;
 pub mod components;
 pub mod pages;
 
+mod tests;
+
 pub use app::App;
 
 #[cfg(feature = "desktop")]

@@ -13,4 +13,3 @@ anyhow = { workspace = true }
 sqlx = { workspace = true, features = ["sqlite", "runtime-tokio-rustls"] }
 dotenvy = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-headless_chrome = "1.0"

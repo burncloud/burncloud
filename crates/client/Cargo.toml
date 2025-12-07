@@ -35,3 +35,6 @@ burncloud-database = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi.workspace = true    
+
+[dev-dependencies]
+dioxus-ssr = "0.7.2"

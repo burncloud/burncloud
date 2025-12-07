@@ -42,12 +42,15 @@ pub enum Route {
 pub fn App() -> Element {
     // Initialize i18n context
     burncloud_client_shared::i18n::use_init_i18n();
+    // Initialize Toast
+    burncloud_client_shared::use_init_toast();
 
     // Inject Global Styles (BCDS)
     let styles = include_str!("../crates/client-api/assets/styles.css");
 
     rsx! {
         style { "{styles}" }
+        burncloud_client_shared::ToastContainer {}
         Router::<Route> {}
     }
 }
