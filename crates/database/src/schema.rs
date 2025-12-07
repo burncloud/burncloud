@@ -14,9 +14,9 @@ impl Schema {
         let users_sql = match kind.as_str() {
             "sqlite" => r#"
                 CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id TEXT PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
-                    password TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
                     display_name TEXT DEFAULT '',
                     role INTEGER DEFAULT 1,
                     status INTEGER DEFAULT 1,
@@ -31,17 +31,17 @@ impl Schema {
                     aff_code VARCHAR(32) UNIQUE,
                     aff_count INTEGER DEFAULT 0,
                     aff_quota INTEGER DEFAULT 0,
-                    inviter_id INTEGER,
-                    deleted_at DATETIME
+                    inviter_id TEXT,
+                    deleted_at TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             "#,
             "postgres" => r#"
                 CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
+                    id TEXT PRIMARY KEY,
                     username VARCHAR(191) UNIQUE NOT NULL,
-                    password VARCHAR(255) NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
                     display_name VARCHAR(50) DEFAULT '',
                     role INTEGER DEFAULT 1,
                     status INTEGER DEFAULT 1,
@@ -56,7 +56,7 @@ impl Schema {
                     aff_code VARCHAR(32) UNIQUE,
                     aff_count INTEGER DEFAULT 0,
                     aff_quota BIGINT DEFAULT 0,
-                    inviter_id INTEGER,
+                    inviter_id TEXT,
                     deleted_at TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -165,7 +165,7 @@ impl Schema {
             "sqlite" => r#"
                 CREATE TABLE IF NOT EXISTS tokens (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
                     key CHAR(48) NOT NULL,
                     status INTEGER DEFAULT 1,
                     name VARCHAR(255),
@@ -182,7 +182,7 @@ impl Schema {
             "postgres" => r#"
                 CREATE TABLE IF NOT EXISTS tokens (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
                     key CHAR(48) NOT NULL,
                     status INTEGER DEFAULT 1,
                     name VARCHAR(255),
@@ -230,12 +230,12 @@ impl Schema {
         };
 
         if t_count == 0 {
-            // User 1 must exist (we just created it or it exists)
+            // User 'demo-user' must exist (created by UserDatabase::init)
             // created_time, accessed_time use current timestamp
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
             let insert_token_sql = match kind.as_str() {
-                "sqlite" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES (1, 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, ?, ?, -1)",
-                "postgres" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES (1, 'sk-burncloud-demo', 1, 'Demo Token', -1, TRUE, 0, $1, $2, -1)",
+                "sqlite" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, ?, ?, -1)",
+                "postgres" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, TRUE, 0, $1, $2, -1)",
                 _ => ""
             };
             if !insert_token_sql.is_empty() {

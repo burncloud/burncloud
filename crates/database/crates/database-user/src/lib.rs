@@ -42,7 +42,7 @@ impl UserDatabase {
                     email TEXT UNIQUE,
                     password_hash TEXT,
                     github_id TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
                 r#"
@@ -95,7 +95,16 @@ impl UserDatabase {
 
         sqlx::query(users_sql).execute(conn.pool()).await?;
         sqlx::query(roles_sql).execute(conn.pool()).await?;
+        println!("UserDatabase: tables created/verified.");
+        
         sqlx::query(user_roles_sql).execute(conn.pool()).await?;
+
+        // Migrations for SQLite (Add columns if missing)
+        if kind == "sqlite" {
+             // Ignoring errors as "duplicate column name" is the expected error if it exists
+             let _ = sqlx::query("ALTER TABLE users ADD COLUMN password_hash TEXT").execute(conn.pool()).await;
+             let _ = sqlx::query("ALTER TABLE users ADD COLUMN github_id TEXT").execute(conn.pool()).await;
+        }
 
         // Initialize default roles
         let role_count: i64 = sqlx::query("SELECT COUNT(*) FROM roles")
@@ -104,6 +113,7 @@ impl UserDatabase {
             .get(0);
         
         if role_count == 0 {
+            println!("UserDatabase: inserting default roles...");
             sqlx::query("INSERT INTO roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')")
                 .execute(conn.pool())
                 .await?;
@@ -116,15 +126,21 @@ impl UserDatabase {
             .get(0);
             
         if user_count == 0 {
-            sqlx::query("INSERT INTO users (id, username) VALUES ('demo-user', 'demo-user')")
+            println!("UserDatabase: inserting demo user...");
+            // Password: "123456"
+            let dummy_hash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+            sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id) VALUES ('demo-user', 'demo-user', NULL, ?, NULL)")
+                .bind(dummy_hash)
                 .execute(conn.pool())
                 .await?;
             // Assign admin role
+            println!("UserDatabase: assigning admin role...");
             sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES ('demo-user', 'role-admin')")
                 .execute(conn.pool())
                 .await?;
         }
 
+        println!("UserDatabase: init complete.");
         Ok(())
     }
 
@@ -181,5 +197,13 @@ impl UserDatabase {
             }
         }
         Ok(())
+    }
+
+    pub async fn list_users(db: &Database) -> Result<Vec<DbUser>> {
+        let conn = db.get_connection()?;
+        let users = sqlx::query_as::<_, DbUser>("SELECT * FROM users")
+            .fetch_all(conn.pool())
+            .await?;
+        Ok(users)
     }
 }
