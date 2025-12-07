@@ -29,6 +29,7 @@ async fn run_playwright_e2e() {
     let status = Command::new(program)
         .arg("playwright")
         .arg("test")
+        .arg("--workers=30")
         .current_dir(&ui_test_dir)
         .env("BASE_URL", &base_url) // Pass the dynamic server URL to Playwright
         // Pass CI env var if needed, or let it inherit

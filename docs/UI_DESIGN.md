@@ -57,11 +57,11 @@ graph TD
 
 | 组件名 | 描述 | 状态 |
 | :--- | :--- | :--- |
-| `BCButton` | 支持 Primary/Secondary/Danger，带 Loading 状态 | 📅 Pending |
-| `BCInput` | 统一风格的文本输入框，支持 Label 和 Error 提示 | 📅 Pending |
-| `BCCard` | 标准内容容器，带 Header/Body/Footer 插槽 | 📅 Pending |
+| `BCButton` | 支持 Primary/Secondary/Danger，带 Loading 状态 | ✅ Completed |
+| `BCInput` | 统一风格的文本输入框，支持 Label 和 Error 提示 | ✅ Completed |
+| `BCCard` | 标准内容容器，带 Header/Body/Footer 插槽 | ✅ Completed |
 | `BCModal` | 居中遮罩弹窗，支持 ESC 关闭 | 📅 Pending |
-| `BCToast` | 全局消息通知队列 (Success/Error/Info) | 📅 Pending |
+| `BCToast` | 全局消息通知队列 (Success/Error/Info) | ✅ Completed |
 | `BCTable` | 支持分页、排序、多选的数据表格 | 📅 Pending |
 | `BCBadge` | 状态标签 (Pill shape) | 📅 Pending |
 
@@ -100,8 +100,8 @@ graph TD
 
 ### Phase 1: 基础建设 (Foundation)
 1.  **Layout 优化**: 响应式侧边栏，支持移动端折叠。
-2.  **Toast 系统**: 实现全局状态管理的消息通知。
-3.  **Component 封装**: 完成 `BCButton`, `BCInput`, `BCCard`。
+2.  **Toast 系统**: 实现全局状态管理的消息通知 (✅ Completed).
+3.  **Component 封装**: 完成 `BCButton`, `BCInput`, `BCCard` (✅ Completed).
 
 ### Phase 2: 核心管理页 (Core CRUD)
 1.  **渠道管理重构**: 实现表格筛选、分页、批量操作。
