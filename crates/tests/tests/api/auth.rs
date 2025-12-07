@@ -1,8 +1,7 @@
 use burncloud_tests::TestClient;
 use serde_json::json;
 
-#[path = "common/mod.rs"]
-mod common;
+use crate::common;
 
 #[tokio::test]
 async fn test_auth_invalid_token() {
