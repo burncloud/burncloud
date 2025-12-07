@@ -105,6 +105,9 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
     *   **路径对应**：E2E 测试文件的命名和目录结构必须严格对应其测试的 Router 请求路径。
         *   例如：测试路由 `POST /v1/chat/completions` 的 E2E 测试，应位于 `/crates/tests/v1/chat/completions_test.rs`。
         *   例如：测试路由 `GET /api/models` 的 E2E 测试，应位于 `/crates/tests/api/models_test.rs`。
+*   **自动化 E2E 执行 (Automated E2E Execution)**：
+    *   **服务自举**: E2E 测试代码必须具备“自举”能力，即自动启动被测服务（Router/Server）并等待其就绪，严禁依赖外部预先启动的进程。
+    *   **全自动闭环**: 无论是开发者、CI 还是 AI Agent 执行测试，都必须能通过单一命令完成“启动服务 -> 运行测试 -> 停止服务”的完整闭环。
 *   **提交前测试 (Test Before Commit)**：在标记任务完成前，必须确保 `cargo test` 通过。
 
 ### 4.3 错误处理
@@ -157,6 +160,7 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 ### 6.2 提交信息生成 (Git Message Generation)
 *   在每次回复的末尾，AI 代理必须提供一段**英文**的 Git Commit Message。
 *   该 Message 必须严格遵守 **4.1 提交规范** 中的 Emoji 格式。
+*   **功能说明**: Message 必须包含简单的功能更新说明 (Simple functional update description)，清晰准确地描述变更内容。
 *   这方便开发者直接复制粘贴进行提交。
 
 ---

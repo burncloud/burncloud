@@ -39,7 +39,7 @@ pub async fn create_app(db: Arc<Database>) -> anyhow::Result<Router> {
     // We nest api under /console/api
     
     let app = Router::new()
-        .nest(API_PREFIX, api_router)
+        .merge(api_router)
         .merge(liveview_router) // Handles / and /ws
         .fallback_service(router_app)
         .layer(CorsLayer::permissive());

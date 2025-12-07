@@ -96,7 +96,12 @@
    * 安全：不像脚本那样能执行任意逻辑，只允许移动/改名/映射值。
    * 可视化：前端可以做一个“拖拽连线”的界面，让非技术运营也能配置参数映射。
 
-   
+
+# 导出下线分成数据报表
+# 导出大客户的消费报表
+# 增加ai分析功能，让ai去管理平台和渠道。用户做最终决策。
+# 上游数据只提取部分，应该做到泛型透传与协议降级 (Generic Passthrough & Protocol Degradation)
+# 目标是减少管理员的工作，管理员不应该每天去看日志错误报告，应该由系统来分析当前的渠道质量和错误情况。
 # 路径请求为 /openai/deployments/{deployment-id}/chat/completions?api-version={version} 判定为azure
 # 路径请求为 /v1beta/models/gemini-pro:generateContent 判定为google aistudio
 # 路径请求为 /v1/projects/{PROJECT_ID}/locations/{REGION}/publishers/google/models/{MODEL_ID}:{ACTION} 判定为vertex

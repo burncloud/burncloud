@@ -21,6 +21,7 @@ axum = { workspace = true, features = ["macros"] }
 tower-http = { workspace = true, features = ["cors"] }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
+burncloud-database-models = { workspace = true }
 burncloud-router = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }

@@ -1,34 +1,37 @@
 use burncloud_tests::TestClient;
 use serde_json::json;
 
-const BASE_URL: &str = "http://127.0.0.1:8080";
+#[path = "common/mod.rs"]
+mod common;
 
 #[tokio::test]
-async fn test_relay_invalid_token() {
-    let client = TestClient::new(BASE_URL).with_token("invalid-sk-123");
+async fn test_auth_invalid_token() {
+    let base_url = common::get_base_url();
+    let client = TestClient::new(&base_url).with_token("invalid-sk-123");
     let body = json!({
         "model": "gpt-3.5-turbo",
         "messages": [{"role": "user", "content": "hi"}]
     });
     
+    // Expect 401
     let res = client.post_expect_error("/v1/chat/completions", &body, 401).await;
     if let Err(e) = res {
-        eprintln!("Invalid token test failed: {}", e);
+        panic!("Invalid token test failed: {}", e);
     }
 }
 
 #[tokio::test]
-async fn test_relay_no_token() {
-    let client = TestClient::new(BASE_URL); // No token
+async fn test_auth_no_token() {
+    let base_url = common::get_base_url();
+    let client = TestClient::new(&base_url); // No token
     let body = json!({
         "model": "gpt-3.5-turbo",
         "messages": [{"role": "user", "content": "hi"}]
     });
     
-    // Should return 401
+    // Expect 401
     let res = client.post_expect_error("/v1/chat/completions", &body, 401).await;
     if let Err(ref e) = res {
-        println!("No token test failed: {}", e);
+        panic!("No token test failed: {}", e);
     }
-    assert!(res.is_ok());
 }

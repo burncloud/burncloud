@@ -83,4 +83,20 @@
 
 ---
 
+## 5. 测试策略 (Testing Strategy)
+
+### 5.1 真实环境优先 (Real-World First)
+- **禁止使用 Mock Server**: 在 E2E 测试中，不再使用 `wiremock` 等进程内 Mock 工具，避免因网络环境差异导致的 False Negative。
+- **基于配置的测试**: 测试用例应从 `.env` 读取 `TEST_UPSTREAM_BASE_URL` 和 `TEST_UPSTREAM_KEY`。
+- **按需跳过**: 如果 `.env` 中未配置真实的上游信息，测试应打印警告并 `return Ok(())` (Skip)，而不是报错。
+
+### 5.2 测试配置 (.env)
+开发者应在 `.env` 中提供以下字段以启用完整测试：
+```env
+TEST_OPENAI_BASE_URL=https://api.openai.com
+TEST_OPENAI_KEY=sk-your-real-key
+```
+
+---
+
 *此文档作为 BurnCloud 后续开发的核心准则。*

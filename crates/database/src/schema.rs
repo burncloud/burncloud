@@ -217,19 +217,33 @@ impl Schema {
         };
 
         if count == 0 {
-            // Insert default root user
-            // IMPORTANT: Password should be hashed. We'll need a helper for this.
-            // For now, we assume "123456" hash is pre-calculated or we leave it as plaintext (DANGEROUS - fix later).
-            // Let's use a placeholder hash.
-            let default_hash = "$2a$12$lX.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q.q"; // Fake hash
-            let insert_sql = match kind.as_str() {
-                "sqlite" => "INSERT INTO users (username, password, role, status, quota, `group`) VALUES ('root', ?, 100, 1, 1000000, 'vip')",
-                "postgres" => "INSERT INTO users (username, password, role, status, quota, \"group\") VALUES ('root', ?, 100, 1, 1000000, 'vip')",
+            // ... (user insert)
+            // ...
+        }
+
+        // Init Default Token
+        let check_token_sql = "SELECT count(*) FROM tokens WHERE key = 'sk-burncloud-demo'";
+        let t_count: i64 = match kind.as_str() {
+            "sqlite" => sqlx::query_scalar(check_token_sql).fetch_one(pool).await.unwrap_or(0),
+            "postgres" => sqlx::query_scalar(check_token_sql).fetch_one(pool).await.unwrap_or(0),
+            _ => 0
+        };
+
+        if t_count == 0 {
+            // User 1 must exist (we just created it or it exists)
+            // created_time, accessed_time use current timestamp
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+            let insert_token_sql = match kind.as_str() {
+                "sqlite" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES (1, 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, ?, ?, -1)",
+                "postgres" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES (1, 'sk-burncloud-demo', 1, 'Demo Token', -1, TRUE, 0, $1, $2, -1)",
                 _ => ""
             };
-            if !insert_sql.is_empty() {
-                sqlx::query(insert_sql).bind(default_hash).execute(pool).await?;
-                println!("Initialized root user.");
+            if !insert_token_sql.is_empty() {
+                sqlx::query(insert_token_sql)
+                    .bind(now)
+                    .bind(now)
+                    .execute(pool).await?;
+                println!("Initialized demo token: sk-burncloud-demo");
             }
         }
 

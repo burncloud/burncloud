@@ -70,6 +70,11 @@ impl Database {
         let connection = DatabaseConnection::new(&self.database_url).await?;
         self.connection = Some(connection);
         
+        // Enable WAL mode for SQLite performance and concurrency
+        if self.kind() == "sqlite" {
+            let _ = sqlx::query("PRAGMA journal_mode=WAL;").execute(self.connection.as_ref().unwrap().pool()).await;
+        }
+        
         // Initialize New API Schema
         crate::schema::Schema::init(self).await?;
         

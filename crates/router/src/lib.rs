@@ -229,6 +229,9 @@ async fn proxy_handler(
 ) -> Response {
     let start_time = Instant::now();
     let request_id = Uuid::new_v4().to_string();
+    
+    // DEBUG: Immediate return
+    // return Response::builder().status(200).body(Body::from("DEBUG_OK")).unwrap();
     let path = uri.path().to_string();
     
     println!("Proxy Handler: {} {}, Headers: {:?}", method, path, headers);
@@ -323,33 +326,47 @@ async fn proxy_logic(
     
     if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
         if let Some(model) = json.get("model").and_then(|v| v.as_str()) {
-             if let Ok(Some(channel)) = state.model_router.route(user_group, model).await {
-                 println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
-                 // Map Channel Type to AuthType/Protocol
-                 // Simple mapping for now
-                 let (auth_type, protocol) = match channel.type_ {
-                     1 => (AuthType::Bearer, "openai".to_string()), // OpenAI
-                     14 => (AuthType::Claude, "claude".to_string()), // Anthropic
-                     24 => (AuthType::GoogleAI, "gemini".to_string()), // Gemini
-                     _ => (AuthType::Bearer, "openai".to_string()),
-                 };
-                 
-                 candidates.push(Upstream {
-                     id: channel.id.to_string(),
-                     name: channel.name,
-                     base_url: channel.base_url.unwrap_or_default(),
-                     api_key: channel.key,
-                     match_path: "".to_string(),
-                     auth_type,
-                     priority: channel.priority as i32,
-                     protocol,
-                 });
+             println!("ProxyLogic: Attempting to route model '{}' for group '{}'", model, user_group);
+             match state.model_router.route(user_group, model).await {
+                 Ok(Some(channel)) => {
+                     println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
+                     // Map Channel Type to AuthType/Protocol
+                     // Simple mapping for now
+                     let (auth_type, protocol) = match channel.type_ {
+                         1 => (AuthType::Bearer, "openai".to_string()), // OpenAI
+                         14 => (AuthType::Claude, "claude".to_string()), // Anthropic
+                         24 => (AuthType::GoogleAI, "gemini".to_string()), // Gemini
+                         _ => (AuthType::Bearer, "openai".to_string()),
+                     };
+                     
+                     candidates.push(Upstream {
+                         id: channel.id.to_string(),
+                         name: channel.name,
+                         base_url: channel.base_url.unwrap_or_default(),
+                         api_key: channel.key,
+                         match_path: "".to_string(),
+                         auth_type,
+                         priority: channel.priority as i32,
+                         protocol,
+                     });
+                 },
+                 Ok(None) => {
+                     println!("ModelRouter: No route found for {} (Group: {})", model, user_group);
+                 },
+                 Err(e) => {
+                     println!("ModelRouter: Error querying DB: {}", e);
+                 }
              }
+        } else {
+            println!("ProxyLogic: No 'model' field in JSON body");
         }
+    } else {
+        println!("ProxyLogic: Failed to parse body as JSON");
     }
 
     // 2. Path Routing (Fallback)
     if candidates.is_empty() {
+        println!("ProxyLogic: Model routing failed/skipped, trying path routing for {}", path);
         let route = match config.find_route(path) {
             Some(r) => r,
             None => {
