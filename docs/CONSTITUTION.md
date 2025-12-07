@@ -161,6 +161,7 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 *   在每次回复的末尾，AI 代理必须提供一段**英文**的 Git Commit Message。
 *   该 Message 必须严格遵守 **4.1 提交规范** 中的 Emoji 格式。
 *   **功能说明**: Message 必须包含简单的功能更新说明 (Simple functional update description)，清晰准确地描述变更内容。
+*   **禁用 Markdown**: 生成的 Commit Message 严禁使用 Markdown 代码块格式（如 ```），必须是纯文本，方便直接复制。
 *   这方便开发者直接复制粘贴进行提交。
 
 ---
