@@ -50,7 +50,11 @@ impl Database {
             create_directory_if_not_exists(&default_path)?;
             let normalized_path = default_path.to_string_lossy().to_string().replace('\\', "/");
             // Ensure we use mode=rwc for SQLite to create file
-            format!("sqlite://{}?mode=rwc", normalized_path)
+            if is_windows() && !normalized_path.starts_with('/') {
+                 format!("sqlite:///{}?mode=rwc", normalized_path)
+            } else {
+                 format!("sqlite://{}?mode=rwc", normalized_path)
+            }
         };
 
         let mut db = Self {
@@ -62,8 +66,13 @@ impl Database {
     }
 
     pub async fn initialize(&mut self) -> Result<()> {
+        sqlx::any::install_default_drivers();
         let connection = DatabaseConnection::new(&self.database_url).await?;
         self.connection = Some(connection);
+        
+        // Initialize New API Schema
+        crate::schema::Schema::init(self).await?;
+        
         Ok(())
     }
 
