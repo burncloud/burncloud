@@ -5,3 +5,5 @@ pub mod monitor;
 pub mod api;
 pub mod settings;
 pub mod channels;
+pub mod login;
+pub mod register;

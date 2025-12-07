@@ -397,3 +397,40 @@ body {
     color: var(--color-neutral-gray-130);
 }
 .text-error { color: var(--color-danger); }
+
+/* Auth Pages */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: var(--bg-secondary);
+}
+
+.auth-card {
+    background: var(--bg-primary);
+    padding: var(--spacing-xxxl);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-elevation-flyout);
+    width: 100%;
+    max-width: 400px;
+    border: 1px solid var(--stroke-divider-default);
+}
+
+.alert {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+}
+
+.alert-error {
+    background-color: #fde8e8;
+    color: #c00f0c;
+    border: 1px solid #fbd5d5;
+}
+
+.alert-success {
+    background-color: #def7ec;
+    color: #03543f;
+    border: 1px solid #bcf0da;
+}
