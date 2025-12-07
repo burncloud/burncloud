@@ -24,6 +24,11 @@ BurnCloud (奔云) 不仅仅是一个工具，它是一个致力于让大模型�
 *   UI 必须遵循 Windows 11 Fluent Design 设计语言。
 *   响应迅速，视觉反馈流畅，拒绝卡顿。
 
+### 1.4 国际化基石 (Internationalization Foundation)
+*   **多语言原生 (i18n Native)**：我们的程序天生为全球用户设计。严禁在 UI 代码中硬编码任何语言的字符串。
+*   **中英双语 (Bilingual Baseline)**：**中文**和**英文**是项目的基准语言，所有功能发布时必须同时具备这两者的完整支持。
+*   **扩展性**：架构设计必须预留接口，以便未来轻松支持更多语言。
+
 ---
 
 ## 第二章：架构原则 (Architectural Principles)
@@ -158,11 +163,13 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 *   这有助于保持项目文档和沟通的一致性（项目核心语言为中文）。
 
 ### 6.2 提交信息生成 (Git Message Generation)
-*   在每次回复的末尾，AI 代理必须提供一段**英文**的 Git Commit Message。
-*   该 Message 必须严格遵守 **4.1 提交规范** 中的 Emoji 格式。
-*   **功能说明**: Message 必须包含简单的功能更新说明 (Simple functional update description)，清晰准确地描述变更内容。
-*   **禁用 Markdown**: 生成的 Commit Message 严禁使用 Markdown 代码块格式（如 ```），必须是纯文本，方便直接复制。
-*   这方便开发者直接复制粘贴进行提交。
+*   **写入文件 (Write to File)**：在每次涉及代码变更的回复中，AI 代理必须将生成的 Git Commit Message **覆盖写入**到项目根目录的 `MESSAGE.md` 文件中。
+*   **禁止输出 (No Chat Output)**：Git Commit Message **不再**直接显示在聊天窗口中。
+*   **格式规范**：
+    *   语言：**英文**。
+    *   结构：严格遵守 **4.1 提交规范** 中的 Emoji 格式。
+    *   内容：必须包含简单的功能更新说明 (Simple functional update description)。
+    *   纯文本：文件中**严禁**包含 Markdown 代码块标记（如 ```），仅保留 Message 本身。
 
 ---
 
