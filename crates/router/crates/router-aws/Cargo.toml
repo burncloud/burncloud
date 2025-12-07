@@ -1,0 +1,15 @@
+[package]
+name = "burncloud-router-aws"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { workspace = true }
+anyhow = { workspace = true }
+http.workspace = true
+time.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+hex.workspace = true
+url.workspace = true
+chrono.workspace = true
