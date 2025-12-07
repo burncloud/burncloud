@@ -13,7 +13,7 @@ pub struct AppState {
     pub db: Arc<Database>,
 }
 
-pub async fn create_app(db: Arc<Database>) -> anyhow::Result<Router> {
+pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Result<Router> {
     let state = AppState {
         db: db.clone(),
     };
@@ -21,41 +21,40 @@ pub async fn create_app(db: Arc<Database>) -> anyhow::Result<Router> {
     // 1. Management API Router
     let api_router = api::routes(state.clone());
 
-    // 2. LiveView Router
-    let liveview_router = burncloud_client::liveview_router(db.clone());
-
     // 3. Data Plane Router (Fallback)
-    let router_app = create_router_app(db).await?;
+    let router_app = create_router_app(db.clone()).await?;
+    
+    let mut app = Router::new()
+        .merge(api_router);
 
-    // Combine them
-    // Prioritize:
-    // 1. /console/api -> Management API
-    // 2. /ws -> LiveView WS (handled inside liveview_router, usually)
-    // 3. / -> LiveView HTML (handled inside liveview_router)
-    // 4. Fallback -> Router (LLM Traffic)
+    if enable_liveview {
+        // 2. LiveView Router
+        let liveview_router = burncloud_client::liveview_router(db.clone());
+        app = app.merge(liveview_router);
+    }
+
+    // Note: If LiveView is disabled, "/" requests will hit the fallback (router_app)
+    // which usually returns 404 for unknown paths, or handles LLM requests.
     
-    // Note: liveview_router currently handles "/" and "/ws".
-    // We nest api under /console/api
-    
-    let app = Router::new()
-        .merge(api_router)
-        .merge(liveview_router) // Handles / and /ws
+    let app = app
         .fallback_service(router_app)
         .layer(CorsLayer::permissive());
 
     Ok(app)
 }
 
-pub async fn start_server(port: u16) -> anyhow::Result<()> {
+pub async fn start_server(port: u16, enable_liveview: bool) -> anyhow::Result<()> {
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
     let db = Arc::new(db);
 
-    let app = create_app(db).await?;
+    let app = create_app(db, enable_liveview).await?;
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("Unified Gateway listening on {}", addr);
-    println!("- Dashboard: http://127.0.0.1:{}", port);
+    if enable_liveview {
+        println!("- Dashboard: http://127.0.0.1:{}", port);
+    }
     println!("- LLM API:   http://127.0.0.1:{}/v1/...", port);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
