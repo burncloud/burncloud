@@ -22,12 +22,14 @@ tower-http = { workspace = true, features = ["cors"] }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
 burncloud-database-models = { workspace = true }
+burncloud-database-user = { workspace = true }
 burncloud-router = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }
 dioxus.workspace = true
 dioxus-liveview.workspace = true
 burncloud-service-monitor = { workspace = true }
+bcrypt = "0.17.1"
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }

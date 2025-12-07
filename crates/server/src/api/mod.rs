@@ -6,6 +6,7 @@ pub mod group;
 pub mod token;
 pub mod log;
 pub mod monitor;
+pub mod user;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -14,5 +15,6 @@ pub fn routes(state: AppState) -> Router {
         .merge(token::routes())
         .merge(log::routes())
         .merge(monitor::routes())
+        .merge(user::routes())
         .with_state(state)
 }

@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
+use burncloud_database_user::UserDatabase;
 use std::sync::Arc;
 use burncloud_router::create_router_app;
 use burncloud_service_monitor::SystemMonitorService;
@@ -53,6 +54,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
 pub async fn start_server(port: u16, enable_liveview: bool) -> anyhow::Result<()> {
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
+    UserDatabase::init(&db).await?;
     let db = Arc::new(db);
 
     let app = create_app(db, enable_liveview).await?;
