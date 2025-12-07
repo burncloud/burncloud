@@ -55,6 +55,22 @@ impl TestClient {
         Ok(json)
     }
     
+    pub async fn put(&self, path: &str, body: &Value) -> Result<Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = self.client.put(&url).json(body);
+        if let Some(token) = &self.token {
+            req = req.bearer_auth(token);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+             ensure!(false, "Request failed with status: {} | Body: {}", status, body_text);
+        }
+        let json: Value = serde_json::from_str(&body_text).unwrap_or(Value::Null);
+        Ok(json)
+    }
+
     pub async fn post_expect_error(&self, path: &str, body: &Value, expected_status: u16) -> Result<()> {
         let url = format!("{}{}", self.base_url, path);
         let mut req = self.client.post(&url).json(body);

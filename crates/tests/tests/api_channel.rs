@@ -3,24 +3,22 @@ use serde_json::json;
 use uuid::Uuid;
 
 #[path = "common/mod.rs"]
-mod common;
+mod common_mod;
 
 #[tokio::test]
-async fn test_channel_crud() {
-    let base_url = common::get_base_url();
-    // Use root token for admin actions
-    // Note: API doesn't enforce auth yet, but we should be ready
-    let client = TestClient::new(&base_url).with_token(&common::get_root_token());
+async fn test_channel_lifecycle() {
+    let base_url = common_mod::get_base_url();
+    let client = TestClient::new(&base_url).with_token(&common_mod::get_root_token());
     
     let channel_name = format!("Test Channel {}", Uuid::new_v4());
     
     // 1. Create
     let body = json!({
         "type": 1,
-        "key": "sk-test-key",
+        "key": "sk-lifecycle-key",
         "name": channel_name,
         "base_url": "http://example.com",
-        "models": "gpt-test-1,gpt-test-2",
+        "models": "gpt-lifecycle",
         "group": "default",
         "weight": 10,
         "priority": 5
@@ -31,12 +29,44 @@ async fn test_channel_crud() {
     let id = res["data"]["id"].as_i64().expect("No ID returned");
     println!("Created channel ID: {}", id);
     
-    // 2. Get (Not implemented yet fully, but we can try)
-    // let get_res = client.get(&format!("/console/api/channel/{}", id)).await;
-    // assert!(get_res.is_ok());
+    // 2. Get
+    let get_res = client.get(&format!("/console/api/channel/{}", id)).await.expect("Get failed");
+    assert_eq!(get_res["success"], true);
+    assert_eq!(get_res["data"]["name"], channel_name);
     
-    // 3. Delete
-    let del_res = client.delete(&format!("/console/api/channel/{}", id)).await; // TestClient needs delete?
-    // TestClient doesn't have delete yet.
-    // Skip delete test or add delete to TestClient.
+    // 3. Update
+    let update_body = json!({
+        "id": id,
+        "type": 1,
+        "key": "sk-lifecycle-key-updated",
+        "name": channel_name,
+        "base_url": "http://example.com",
+        "models": "gpt-lifecycle-v2", 
+        "group": "default",
+        "weight": 20,
+        "priority": 5
+    });
+    let update_res = client.put("/console/api/channel", &update_body).await.expect("Update failed");
+    assert_eq!(update_res["success"], true);
+    
+    // 4. Verify Update via Get
+    let get_res_2 = client.get(&format!("/console/api/channel/{}", id)).await.expect("Get 2 failed");
+    assert_eq!(get_res_2["data"]["models"], "gpt-lifecycle-v2");
+    
+    // 5. List
+    let list_res = client.get("/console/api/channel").await.expect("List failed");
+    if list_res["success"] != true {
+        println!("List failed: {}", list_res["message"]);
+    }
+    assert_eq!(list_res["success"], true);
+    let channels = list_res["data"].as_array().expect("Data is not array");
+    assert!(channels.iter().any(|c| c["id"].as_i64() == Some(id)));
+    
+    // 6. Delete
+    let del_res = client.delete(&format!("/console/api/channel/{}", id)).await.expect("Delete failed");
+    assert_eq!(del_res["success"], true);
+    
+    // 7. Get (404 or success: false)
+    let get_res_3 = client.get(&format!("/console/api/channel/{}", id)).await.expect("Get 3 failed");
+    assert_eq!(get_res_3["success"], false);
 }
