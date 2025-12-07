@@ -310,6 +310,9 @@ async fn proxy_handler(
     response
 }
 
+use adaptor::factory::AdaptorFactory;
+use burncloud_common::types::ChannelType;
+
 async fn proxy_logic(
     state: &AppState,
     method: Method,
@@ -330,12 +333,15 @@ async fn proxy_logic(
              match state.model_router.route(user_group, model).await {
                  Ok(Some(channel)) => {
                      println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
-                     // Map Channel Type to AuthType/Protocol
-                     // Simple mapping for now
-                     let (auth_type, protocol) = match channel.type_ {
-                         1 => (AuthType::Bearer, "openai".to_string()), // OpenAI
-                         14 => (AuthType::Claude, "claude".to_string()), // Anthropic
-                         24 => (AuthType::GoogleAI, "gemini".to_string()), // Gemini
+                     // Map Channel Type
+                     let channel_type = ChannelType::from(channel.type_);
+                     
+                     // Map Channel Type to AuthType/Protocol (Still needed for legacy config struct compatibility if used elsewhere)
+                     // But AdaptorFactory will handle logic based on ChannelType.
+                     let (auth_type, protocol) = match channel_type {
+                         ChannelType::OpenAI => (AuthType::Bearer, "openai".to_string()),
+                         ChannelType::Anthropic => (AuthType::Claude, "claude".to_string()),
+                         ChannelType::Gemini | ChannelType::VertexAi => (AuthType::GoogleAI, "gemini".to_string()),
                          _ => (AuthType::Bearer, "openai".to_string()),
                      };
                      
@@ -347,7 +353,7 @@ async fn proxy_logic(
                          match_path: "".to_string(),
                          auth_type,
                          priority: channel.priority as i32,
-                         protocol,
+                         protocol, // Ideally we should store ChannelType in Upstream too
                      });
                  },
                  Ok(None) => {
@@ -406,9 +412,6 @@ async fn proxy_logic(
             .unwrap(), None, StatusCode::INTERNAL_SERVER_ERROR);
     }
     
-    // Check for manual override via header
-    let force_adaptor = headers.contains_key("x-use-adaptor");
-    
     let mut last_error = String::new();
     #[allow(unused_assignments)]
     let mut last_upstream_id = None;
@@ -424,137 +427,80 @@ async fn proxy_logic(
         }
 
         // 2. Construct Target URL
+        // Note: Some adaptors might override URL, but we set base here.
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
         let target_url = format!("{}{}{}", upstream.base_url, path, query);
 
         println!("Proxying {} -> {} (via {}) [Attempt {}] Protocol: {}", path, target_url, upstream.name, attempt + 1, upstream.protocol);
 
-        // 3. Build Downstream Request
-        let mut req_builder = state.client.request(method.clone(), &target_url);
+        // Determine Adaptor
+        // Currently Upstream struct stores protocol string. We should map it to ChannelType.
+        // Simple heuristic map for now.
+        let channel_type = match upstream.protocol.as_str() {
+            "claude" => ChannelType::Anthropic,
+            "gemini" => ChannelType::Gemini,
+            _ => ChannelType::OpenAI,
+        };
+        
+        let adaptor = AdaptorFactory::get_adaptor(channel_type);
 
-        // 4. Forward Headers
-        for (key, value) in &headers {
-            let key_str = key.as_str();
-            if key_str == "host" || key_str == "content-length" || key_str == "transfer-encoding" 
-               || key_str == "authorization" || key_str == "x-api-key" || key_str == "api-key" {
-                continue;
-            }
-            req_builder = req_builder.header(key, value);
-        }
-
-        // Determine if we need protocol adaptation
-        let use_gemini_adaptor = upstream.protocol == "gemini" || (force_adaptor && upstream.auth_type == AuthType::GoogleAI);
-        let use_claude_adaptor = upstream.protocol == "claude" || (force_adaptor && upstream.auth_type == AuthType::Claude);
-
-        // 5. Handle Auth & Body
-        // Special handling for adaptors which need to parse the body
-        let result = if use_gemini_adaptor {
-             let openai_req: Result<OpenAIChatRequest, _> = serde_json::from_slice(&body_bytes);
-             match openai_req {
-                 Ok(req) => {
-                     let gemini_json = GeminiAdaptor::convert_request(req);
-                     req_builder = req_builder.header("x-goog-api-key", &upstream.api_key);
-                     req_builder = req_builder.json(&gemini_json);
-                     state.client.execute(req_builder.build().unwrap()).await
-                 },
-                 Err(e) => {
-                     return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON for Gemini Adaptor: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
-                 }
-             }
-        } else if use_claude_adaptor {
-             let openai_req: Result<OpenAIChatRequest, _> = serde_json::from_slice(&body_bytes);
-             match openai_req {
-                 Ok(req) => {
-                     let claude_json = ClaudeAdaptor::convert_request(req);
-                     req_builder = req_builder.header("x-api-key", &upstream.api_key);
-                     req_builder = req_builder.header("anthropic-version", "2023-06-01");
-                     req_builder = req_builder.json(&claude_json);
-                     state.client.execute(req_builder.build().unwrap()).await
-                 },
-                 Err(e) => {
-                     return (Response::builder().status(400).body(Body::from(format!("Invalid OpenAI JSON for Claude Adaptor: {}", e))).unwrap(), last_upstream_id, StatusCode::BAD_REQUEST);
-                 }
-             }
+        // 3. Prepare Request Body
+        let request_body_json: Option<serde_json::Value> = if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
+            adaptor.convert_request(&req).or_else(|| Some(serde_json::json!(req))) // Use converted or original
         } else {
-            // Standard Passthrough or Auth-Only injection
-            match &upstream.auth_type {
-                AuthType::AwsSigV4 => {
-                    let aws_config = match AwsConfig::from_colon_string(&upstream.api_key) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            last_error = format!("AWS Config Error: {}", e);
-                            continue; 
-                        }
-                    };
-                    
-                    req_builder = req_builder.body(body_bytes.clone());
-                    let mut request = match req_builder.build() {
-                        Ok(r) => r,
-                        Err(e) => { last_error = format!("Req Build Error: {}", e); continue; }
-                    };
-                    
-                    if let Err(e) = sign_request(&mut request, &aws_config, &body_bytes) {
-                         last_error = format!("AWS Signing Error: {}", e);
-                         continue;
-                    }
-                    state.client.execute(request).await
-                },
-                auth_type => {
-                    match auth_type {
-                        AuthType::Bearer => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                        AuthType::Azure => { req_builder = req_builder.header("api-key", &upstream.api_key); }
-                        AuthType::GoogleAI => { req_builder = req_builder.header("x-goog-api-key", &upstream.api_key); }
-                        AuthType::Claude => { 
-                            req_builder = req_builder.header("x-api-key", &upstream.api_key); 
-                            req_builder = req_builder.header("anthropic-version", "2023-06-01");
-                        }
-                        AuthType::Vertex => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                        AuthType::DeepSeek => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                        AuthType::Qwen => { req_builder = req_builder.bearer_auth(&upstream.api_key); }
-                        AuthType::Header(h) => { req_builder = req_builder.header(h, &upstream.api_key); }
-                        _ => {}
-                    }
-                    req_builder = req_builder.body(body_bytes.clone());
-                    req_builder.send().await
-                }
-            }
+            // Failed to parse as OpenAI request, use raw bytes if possible?
+            // Adaptor interface expects Value for build_request.
+            // If body is not valid JSON, we might fail here for complex adaptors.
+            // For OpenAI passthrough, we might want raw bytes.
+            // Let's assume it's JSON for now as most LLM APIs are.
+            serde_json::from_slice(&body_bytes).ok()
         };
 
-        match result {
+        if request_body_json.is_none() {
+             // If we can't parse body and we need to (implied by using adaptors), fail?
+             // Or just pass empty?
+             // If protocol is "openai", maybe we don't need to parse?
+             // But `build_request` takes Value.
+             // We should probably update `build_request` to take Option<Value> or Bytes?
+             // For now, fail if not JSON.
+             last_error = "Invalid JSON body".to_string();
+             continue;
+        }
+        let request_body_json = request_body_json.unwrap();
+
+        // 4. Build Request via Adaptor
+        let req_builder = state.client.request(method.clone(), &target_url);
+        let req_builder = adaptor.build_request(req_builder, &upstream.api_key, &request_body_json);
+
+        // 5. Execute
+        match req_builder.send().await {
             Ok(resp) => {
-                if resp.status().is_server_error() { // 500-599
+                if resp.status().is_server_error() {
                     last_error = format!("Upstream returned {}", resp.status());
                     state.circuit_breaker.record_failure(&upstream.id);
-                    eprintln!("Failover: {} failed with {}, trying next...", upstream.name, resp.status());
                     continue; 
                 }
                 
-                // Success!
                 state.circuit_breaker.record_success(&upstream.id);
 
                 if resp.status().is_success() {
                      let status = resp.status();
+                     // 6. Handle Response Conversion
+                     // Read body to memory to convert
+                     let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
                      
-                     if use_gemini_adaptor {
-                         let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
-                         let converted_json = GeminiAdaptor::convert_response(resp_json, &upstream.name);
-                         return (Response::builder()
-                            .status(status)
-                            .header("content-type", "application/json")
-                            .body(Body::from(serde_json::to_string(&converted_json).unwrap()))
-                            .unwrap(), last_upstream_id, status);
-                     } else if use_claude_adaptor {
-                         let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
-                         let converted_json = ClaudeAdaptor::convert_response(resp_json, &upstream.name);
-                         return (Response::builder()
-                            .status(status)
-                            .header("content-type", "application/json")
-                            .body(Body::from(serde_json::to_string(&converted_json).unwrap()))
-                            .unwrap(), last_upstream_id, status);
-                     }
+                     let response_body = if let Some(converted) = adaptor.convert_response(resp_json.clone(), &upstream.name) {
+                         serde_json::to_string(&converted).unwrap_or_else(|_| "{}".to_string())
+                     } else {
+                         // No conversion needed (e.g. OpenAI), return original body
+                         serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string())
+                     };
                      
-                     // No adaptor needed, passthrough response
-                     return (handle_response(resp), last_upstream_id, status);
+                     return (Response::builder()
+                        .status(status)
+                        .header("content-type", "application/json")
+                        .body(Body::from(response_body))
+                        .unwrap(), last_upstream_id, status);
                 } else {
                     let status = resp.status();
                     return (handle_response(resp), last_upstream_id, status);
