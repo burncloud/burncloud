@@ -138,14 +138,55 @@ impl From<i32> for ChannelType {
             2 => ChannelType::Midjourney,
             3 => ChannelType::Azure,
             4 => ChannelType::Ollama,
+            5 => ChannelType::MidjourneyPlus,
+            6 => ChannelType::OpenAIMax,
+            7 => ChannelType::OhMyGPT,
+            8 => ChannelType::Custom,
+            9 => ChannelType::AILS,
+            10 => ChannelType::AIProxy,
+            11 => ChannelType::PaLM,
+            12 => ChannelType::API2GPT,
+            13 => ChannelType::AIGC2D,
             14 => ChannelType::Anthropic,
             15 => ChannelType::Baidu,
             16 => ChannelType::Zhipu,
             17 => ChannelType::Ali,
+            18 => ChannelType::Xunfei,
+            19 => ChannelType::Qihoo360,
+            20 => ChannelType::OpenRouter,
+            21 => ChannelType::AIProxyLibrary,
+            22 => ChannelType::FastGPT,
+            23 => ChannelType::Tencent,
             24 => ChannelType::Gemini,
             25 => ChannelType::Moonshot,
+            26 => ChannelType::ZhipuV4,
+            27 => ChannelType::Perplexity,
+            31 => ChannelType::LingYiWanWu,
+            33 => ChannelType::Aws,
+            34 => ChannelType::Cohere,
+            35 => ChannelType::MiniMax,
+            36 => ChannelType::SunoAPI,
+            37 => ChannelType::Dify,
+            38 => ChannelType::Jina,
+            39 => ChannelType::Cloudflare,
+            40 => ChannelType::SiliconFlow,
+            41 => ChannelType::VertexAi,
+            42 => ChannelType::Mistral,
             43 => ChannelType::DeepSeek,
-            _ => ChannelType::Unknown, // Simplify for now, can expand later
+            44 => ChannelType::MokaAI,
+            45 => ChannelType::VolcEngine,
+            46 => ChannelType::BaiduV2,
+            47 => ChannelType::Xinference,
+            48 => ChannelType::Xai,
+            49 => ChannelType::Coze,
+            50 => ChannelType::Kling,
+            51 => ChannelType::Jimeng,
+            52 => ChannelType::Vidu,
+            53 => ChannelType::Submodel,
+            54 => ChannelType::DoubaoVideo,
+            55 => ChannelType::Sora,
+            56 => ChannelType::Replicate,
+            _ => ChannelType::Unknown,
         }
     }
 }
@@ -190,10 +231,10 @@ pub struct Ability {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
-    pub id: i32,
+    pub id: String,
     pub username: String,
     #[serde(skip_serializing)] // Don't expose password hash
-    pub password: String,
+    pub password: String, // Mapped to password_hash in query if aliased?
     pub display_name: String,
     pub role: i32,   // 1: Common, 10: Admin, 100: Root
     pub status: i32, // 1: Enabled, 2: Disabled
@@ -208,13 +249,13 @@ pub struct User {
     pub aff_code: Option<String>,
     pub aff_count: i32,
     pub aff_quota: i64,
-    pub inviter_id: Option<i32>,
+    pub inviter_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Token {
     pub id: i32,
-    pub user_id: i32,
+    pub user_id: String,
     pub key: String,
     pub status: i32,
     pub name: String,
