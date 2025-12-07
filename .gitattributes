@@ -1,0 +1,46 @@
+# Set default behavior to automatic normalization to LF on commit
+# and force LF on checkout (even on Windows). 
+# This is preferred for modern development environments like VS Code.
+* text=auto eol=lf
+
+# Explicitly declare text files
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.sh text eol=lf
+*.txt text eol=lf
+*.sql text eol=lf
+.gitignore text eol=lf
+.env.example text eol=lf
+
+# Denote binary files that should not be modified
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text
+*.mov binary
+*.mp4 binary
+*.mp3 binary
+*.gz binary
+*.zip binary
+*.7z binary
+*.ttf binary
+*.eot binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.dll binary
+*.exe binary
+*.so binary
+*.dylib binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary

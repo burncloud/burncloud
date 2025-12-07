@@ -10,3 +10,4 @@ pub use api_client::*;
 pub use services::channel_service;
 pub use services::log_service;
 pub use services::usage_service;
+pub use services::monitor_service;

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use burncloud_client_shared::log_service::LogService;
 use burncloud_client_shared::usage_service::UsageService;
+use burncloud_client_shared::monitor_service::MonitorService;
 
 #[component]
 pub fn Dashboard() -> Element {
@@ -12,6 +13,10 @@ pub fn Dashboard() -> Element {
     let usage = use_resource(move || async move {
         // Hardcoded demo-user for now
         UsageService::get_user_usage("demo-user").await.ok()
+    });
+
+    let monitor = use_resource(move || async move {
+        MonitorService::get_system_metrics().await.ok()
     });
 
     rsx! {
@@ -30,8 +35,25 @@ pub fn Dashboard() -> Element {
                         span { class: "status-indicator status-running", span { class: "status-dot" }, "运行正常" }
                     }
                     div { class: "flex flex-col gap-md",
-                        div { class: "flex justify-between items-center", span { class: "metric-label", "CPU使用率" }, span { class: "metric-value text-subtitle", "45.2%" } }
-                        div { class: "progress", div { class: "progress-fill", style: "width: 45.2%" } }
+                        match &*monitor.read() {
+                            Some(Some(m)) => rsx! {
+                                div { class: "flex justify-between items-center", 
+                                    span { class: "metric-label", "CPU使用率" } 
+                                    span { class: "metric-value text-subtitle", "{m.cpu.usage_percent:.1}%" } 
+                                }
+                                div { class: "progress", div { class: "progress-fill", style: "width: {m.cpu.usage_percent}%" } }
+                                
+                                div { class: "flex justify-between items-center mt-sm", 
+                                    span { class: "metric-label", "内存" } 
+                                    span { class: "metric-value text-secondary", 
+                                        "{m.memory.used / 1024 / 1024 / 1024}GB / {m.memory.total / 1024 / 1024 / 1024}GB" 
+                                    } 
+                                }
+                                div { class: "progress", div { class: "progress-fill", style: "width: {m.memory.usage_percent}%" } }
+                            },
+                            Some(None) => rsx! { div { class: "text-secondary", "暂无数据" } },
+                            None => rsx! { div { "加载中..." } }
+                        }
                     }
                 }
 
@@ -78,7 +100,22 @@ pub fn Dashboard() -> Element {
                 div { class: "card metric-card",
                     div { class: "metric-header", h3 { class: "text-subtitle font-semibold m-0", "存储使用" } }
                     div { class: "flex flex-col gap-md",
-                        div { class: "flex justify-between items-center", span { class: "metric-label", "模型文件" }, span { class: "metric-value text-subtitle", "23.4GB" } }
+                        match &*monitor.read() {
+                            Some(Some(m)) => {
+                                let disk = m.disks.first();
+                                match disk {
+                                    Some(d) => rsx! {
+                                        div { class: "flex justify-between items-center", 
+                                            span { class: "metric-label", "磁盘 ({d.mount_point})" }, 
+                                            span { class: "metric-value text-subtitle", "{d.used / 1024 / 1024 / 1024}GB / {d.total / 1024 / 1024 / 1024}GB" } 
+                                        }
+                                        div { class: "progress", div { class: "progress-fill", style: "width: {d.usage_percent}%" } }
+                                    },
+                                    None => rsx! { div { "未检测到磁盘" } }
+                                }
+                            },
+                            _ => rsx! { div { "..." } }
+                        }
                     }
                 }
             }
