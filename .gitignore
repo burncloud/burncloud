@@ -10,6 +10,7 @@ data
 **/*.rs.bk
 *.pdb
 Cargo.lock
+MESSAGE.md
 *.py
 *.sh
 *.bat
