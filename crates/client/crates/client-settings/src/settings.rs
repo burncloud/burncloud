@@ -7,7 +7,7 @@ use burncloud_client_shared::i18n::{use_i18n, t, Language};
 #[component]
 pub fn SystemSettings() -> Element {
     let mut active_tab = use_signal(|| "general");
-    let i18n = use_i18n();
+    let mut i18n = use_i18n();
     let lang = i18n.language.read();
 
     rsx! {

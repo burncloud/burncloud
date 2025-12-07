@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Language {
@@ -13,6 +12,7 @@ impl Default for Language {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
 pub struct I18nContext {
     pub language: Signal<Language>,
 }
@@ -30,7 +30,7 @@ pub fn use_i18n() -> I18nContext {
 
 // Simple translation maps
 // In a larger app, this would be loaded from JSON or separate files.
-pub fn t(lang: Language, key: &str) -> &'static str {
+pub fn t(lang: Language, key: &'static str) -> &'static str {
     match (lang, key) {
         // Navigation
         (Language::Zh, "nav.dashboard") => "仪表盘",
@@ -59,13 +59,8 @@ pub fn t(lang: Language, key: &str) -> &'static str {
         (Language::En, "status.models_running") => "models running",
 
         // Default to key if not found
-        (_, k) => {
-            // Log missing key?
-            // println!("Missing translation for key: {}", k);
-            // For now, return a placeholder or the key itself if it looks like English text
-            // But since keys are "nav.dashboard", we probably want to fallback to English if En is missing?
-            // Let's just fallback to the key for safety
-            // A better fallback might be English map
+        (_, _) => {
+            // Fallback to English or return key itself
             match key {
                 "nav.dashboard" => "Dashboard",
                 "nav.models" => "Models",
