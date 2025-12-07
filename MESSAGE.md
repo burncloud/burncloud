@@ -1,1 +1,0 @@
-📚 docs: update constitution to redirect git commit messages to MESSAGE.md

@@ -2,18 +2,21 @@ use dioxus::prelude::*;
 use crate::channels::ChannelManager;
 use crate::tokens::TokenManager;
 use crate::groups::GroupManager;
+use burncloud_client_shared::i18n::{use_i18n, t, Language};
 
 #[component]
 pub fn SystemSettings() -> Element {
     let mut active_tab = use_signal(|| "general");
+    let i18n = use_i18n();
+    let lang = i18n.language.read();
 
     rsx! {
         div { class: "page-header",
             h1 { class: "text-large-title font-bold text-primary m-0",
-                "系统设置"
+                "{t(*lang, \"nav.settings\")}"
             }
             p { class: "text-secondary m-0 mt-sm",
-                "配置系统参数和首选项"
+                "Configure system preferences"
             }
         }
 
@@ -23,34 +26,55 @@ pub fn SystemSettings() -> Element {
                 button { 
                     class: if active_tab() == "general" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("general"),
-                    "通用设置"
+                    "General"
                 }
                 button { 
                     class: if active_tab() == "channels" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("channels"),
-                    "渠道管理"
+                    "{t(*lang, \"nav.channels\")}"
                 }
                 button { 
                     class: if active_tab() == "groups" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("groups"),
-                    "分组路由"
+                    "Groups"
                 }
                 button { 
                     class: if active_tab() == "tokens" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("tokens"),
-                    "令牌管理"
+                    "Tokens"
                 }
             }
 
             if active_tab() == "general" {
                 div { class: "card",
                     div { class: "p-lg",
-                        h3 { class: "text-subtitle font-semibold mb-md", "通用设置" }
+                        h3 { class: "text-subtitle font-semibold mb-md", "General Settings" }
                         div { class: "flex flex-col gap-md",
+                            // Language Switcher
                             div { class: "flex justify-between items-center",
                                 div {
-                                    div { class: "font-medium", "自动启动" }
-                                    div { class: "text-caption text-secondary", "开机时自动启动BurnCloud" }
+                                    div { class: "font-medium", "Language / 语言" }
+                                    div { class: "text-caption text-secondary", "Display language" }
+                                }
+                                select {
+                                    class: "input input-sm w-32",
+                                    value: match *lang { Language::Zh => "zh", Language::En => "en" },
+                                    onchange: move |evt| {
+                                        let mut l = i18n.language.write();
+                                        match evt.value().as_str() {
+                                            "en" => *l = Language::En,
+                                            _ => *l = Language::Zh,
+                                        }
+                                    },
+                                    option { value: "zh", "中文" }
+                                    option { value: "en", "English" }
+                                }
+                            }
+
+                            div { class: "flex justify-between items-center",
+                                div {
+                                    div { class: "font-medium", "Auto Start" }
+                                    div { class: "text-caption text-secondary", "Launch BurnCloud on login" }
                                 }
                                 input {
                                     r#type: "checkbox",
@@ -59,8 +83,8 @@ pub fn SystemSettings() -> Element {
                             }
                             div { class: "flex justify-between items-center",
                                 div {
-                                    div { class: "font-medium", "检查更新" }
-                                    div { class: "text-caption text-secondary", "自动检查软件更新" }
+                                    div { class: "font-medium", "Updates" }
+                                    div { class: "text-caption text-secondary", "Check for updates automatically" }
                                 }
                                 input {
                                     r#type: "checkbox",

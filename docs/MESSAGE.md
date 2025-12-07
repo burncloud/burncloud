@@ -1,0 +1,1 @@
+📚 docs: move MESSAGE.md to docs folder and update constitution to English/Chinese dual versions

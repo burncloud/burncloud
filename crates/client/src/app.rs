@@ -33,6 +33,9 @@ pub enum Route {
 
 #[component]
 pub fn App() -> Element {
+    // Initialize i18n context
+    burncloud_client_shared::i18n::use_init_i18n();
+
     // Inject Global Styles (BCDS)
     let styles = include_str!("../crates/client-api/assets/styles.css");
 
@@ -52,7 +55,7 @@ pub fn launch_gui_with_tray() {
     use dioxus::desktop::{Config, WindowBuilder};
 
     let window = WindowBuilder::new()
-        .with_title("BurnCloud - 大模型本地部署平台")
+        .with_title("BurnCloud - AI Local Deployment Platform") // Changed to English/Bilingual
         .with_inner_size(dioxus::desktop::LogicalSize::new(1200.0, 800.0))
         .with_resizable(true)
         .with_decorations(false);
