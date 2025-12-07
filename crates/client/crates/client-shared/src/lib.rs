@@ -7,6 +7,7 @@ pub mod i18n;
 pub use styles::*;
 pub use components::*;
 pub use api_client::*;
+pub use components::toast::{use_init_toast, use_toast, ToastContainer, ToastManager};
 pub use services::channel_service;
 pub use services::log_service;
 pub use services::usage_service;
