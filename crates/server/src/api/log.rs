@@ -17,8 +17,8 @@ pub struct Pagination {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/logs", get(list_logs))
-        .route("/usage/{user_id}", get(get_user_usage))
+        .route("/console/api/logs", get(list_logs))
+        .route("/console/api/usage/{user_id}", get(get_user_usage))
 }
 
 async fn list_logs(

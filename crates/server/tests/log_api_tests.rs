@@ -26,7 +26,7 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
     // 2. Start Server
     let port = 4002;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server(port).await {
+        if let Err(_e) = burncloud_server::start_server(port, false).await {
             // Ignore bind errors if already running
         }
     });
@@ -35,8 +35,8 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
     let client = Client::new();
     let base_url = format!("http://localhost:{}", port);
 
-    // 3. Test GET /console/logs
-    let resp = client.get(format!("{}/console/logs", base_url))
+    // 3. Test GET /console/api/logs
+    let resp = client.get(format!("{}/console/api/logs", base_url))
         .send().await?;
     
     assert_eq!(resp.status(), 200);
@@ -47,8 +47,8 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
     let found = logs.iter().any(|l| l["request_id"] == log_entry.request_id);
     assert!(found, "inserted log not found in API response");
 
-    // 4. Test GET /console/usage/{user_id}
-    let resp_usage = client.get(format!("{}/console/usage/test-api-user", base_url))
+    // 4. Test GET /console/api/usage/{user_id}
+    let resp_usage = client.get(format!("{}/console/api/usage/test-api-user", base_url))
         .send().await?;
     
     assert_eq!(resp_usage.status(), 200);

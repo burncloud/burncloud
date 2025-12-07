@@ -462,7 +462,7 @@ impl RouterDatabase {
     pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
         let conn = db.get_connection()?;
         let logs = sqlx::query_as::<_, DbRouterLog>(
-            "SELECT * FROM router_logs ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            "SELECT request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens FROM router_logs ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )
         .bind(limit)
         .bind(offset)

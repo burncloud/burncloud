@@ -11,7 +11,20 @@ fn main() -> Result<()> {
         [_] => {
             // burncloud.exe (No args)
             #[cfg(windows)]
-            burncloud_client::launch_gui_with_tray();
+            {
+                // Start Server in background thread
+                std::thread::spawn(|| {
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    rt.block_on(async {
+                        let port = std::env::var("PORT").unwrap_or("3000".to_string()).parse().unwrap_or(3000);
+                        if let Err(e) = burncloud_server::start_server(port, false).await {
+                            eprintln!("Server failed to start: {}", e);
+                        }
+                    });
+                });
+                
+                burncloud_client::launch_gui_with_tray();
+            }
 
             #[cfg(not(windows))]
             {
@@ -48,7 +61,7 @@ fn main() -> Result<()> {
 #[tokio::main]
 async fn run_async_server() -> Result<()> {
     let port = std::env::var("PORT").unwrap_or("3000".to_string()).parse().unwrap_or(3000);
-    burncloud_server::start_server(port).await
+    burncloud_server::start_server(port, true).await
 }
 
 #[tokio::main]
