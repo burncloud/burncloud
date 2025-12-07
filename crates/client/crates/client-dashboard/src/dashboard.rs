@@ -1,86 +1,40 @@
 use dioxus::prelude::*;
-use serde::Deserialize;
-use serde_json::Value;
-
-#[derive(Deserialize, Debug, Clone, PartialEq)]
-struct LogEntry {
-    request_id: String,
-    user_id: Option<String>,
-    path: String,
-    status_code: u16,
-    latency_ms: i64,
-}
-
-#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
-struct UsageStats {
-    #[serde(default)]
-    prompt_tokens: i64,
-    #[serde(default)]
-    completion_tokens: i64,
-    #[serde(default)]
-    total_tokens: i64,
-}
+use burncloud_client_shared::log_service::LogService;
+use burncloud_client_shared::usage_service::UsageService;
 
 #[component]
 pub fn Dashboard() -> Element {
     let logs = use_resource(move || async move {
-        let client = reqwest::Client::new();
-        let url = "http://127.0.0.1:3000/console/api/logs?limit=10"; 
-        match client.get(url).send().await {
-             Ok(resp) => {
-                 if let Ok(json) = resp.json::<Value>().await {
-                     if let Some(_arr) = json["data"].as_array() {
-                         return serde_json::from_value::<Vec<LogEntry>>(json["data"].clone()).ok();
-                     }
-                 }
-                 None
-             },
-             Err(_) => None
-        }
+        // Return Option<Vec<LogEntry>>
+        LogService::list(10).await.ok()
     });
 
     let usage = use_resource(move || async move {
-        let client = reqwest::Client::new();
         // Hardcoded demo-user for now
-        let url = "http://127.0.0.1:3000/console/api/usage/demo-user";
-        client.get(url).send().await.ok()?.json::<UsageStats>().await.ok()
+        UsageService::get_user_usage("demo-user").await.ok()
     });
 
     rsx! {
         div { class: "page-header",
-            h1 { class: "text-large-title font-bold text-primary m-0",
-                "仪表盘"
-            }
-            p { class: "text-secondary m-0 mt-sm",
-                "BurnCloud 大模型本地部署平台概览"
-            }
+            h1 { class: "text-large-title font-bold text-primary m-0", "仪表盘" }
+            p { class: "text-secondary m-0 mt-sm", "BurnCloud 大模型本地部署平台概览" }
         }
 
         div { class: "page-content",
             div { class: "grid",
                 style: "grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--spacing-xl);",
 
-                // 系统状态卡片 (Static)
                 div { class: "card metric-card",
                     div { class: "metric-header",
                         h3 { class: "text-subtitle font-semibold m-0", "系统状态" }
-                        span { class: "status-indicator status-running",
-                            span { class: "status-dot" }
-                            "运行正常"
-                        }
+                        span { class: "status-indicator status-running", span { class: "status-dot" }, "运行正常" }
                     }
                     div { class: "flex flex-col gap-md",
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "CPU使用率" }
-                            span { class: "metric-value text-subtitle", "45.2%" }
-                        }
-                        div { class: "progress",
-                            div { class: "progress-fill", style: "width: 45.2%" }
-                        }
+                        div { class: "flex justify-between items-center", span { class: "metric-label", "CPU使用率" }, span { class: "metric-value text-subtitle", "45.2%" } }
+                        div { class: "progress", div { class: "progress-fill", style: "width: 45.2%" } }
                     }
                 }
 
-                // 模型状态卡片 (Static)
                 div { class: "card metric-card",
                     div { class: "metric-header",
                         h3 { class: "text-subtitle font-semibold m-0", "模型状态" }
@@ -88,19 +42,12 @@ pub fn Dashboard() -> Element {
                     }
                     div { class: "flex flex-col gap-md",
                         div { class: "flex justify-between items-center",
-                            div { class: "flex items-center gap-sm",
-                                span { "🧠" }
-                                span { class: "font-medium", "Qwen2.5-7B" }
-                            }
-                            span { class: "status-indicator status-running",
-                                span { class: "status-dot" }
-                                "运行中"
-                            }
+                            div { class: "flex items-center gap-sm", span { "🧠" }, span { class: "font-medium", "Qwen2.5-7B" } }
+                            span { class: "status-indicator status-running", span { class: "status-dot" }, "运行中" }
                         }
                     }
                 }
                 
-                 // API统计卡片 (Dynamic Usage)
                 div { class: "card metric-card",
                     div { class: "metric-header",
                         h3 { class: "text-subtitle font-semibold m-0", "Token 消耗" }
@@ -122,41 +69,28 @@ pub fn Dashboard() -> Element {
                                     span { class: "metric-value text-secondary", "{stats.completion_tokens}" }
                                 }
                             },
-                            _ => rsx! { div { "加载中..." } }
+                            Some(None) => rsx! { div { class: "text-secondary", "暂无数据" } },
+                            None => rsx! { div { "加载中..." } }
                         }
                     }
                 }
                 
-                // 存储使用卡片 (Static)
-                 div { class: "card metric-card",
-                    div { class: "metric-header",
-                        h3 { class: "text-subtitle font-semibold m-0", "存储使用" }
-                    }
-                     div { class: "flex flex-col gap-md",
-                        div { class: "flex justify-between items-center",
-                            span { class: "metric-label", "模型文件" }
-                            span { class: "metric-value text-subtitle", "23.4GB" }
-                        }
+                div { class: "card metric-card",
+                    div { class: "metric-header", h3 { class: "text-subtitle font-semibold m-0", "存储使用" } }
+                    div { class: "flex flex-col gap-md",
+                        div { class: "flex justify-between items-center", span { class: "metric-label", "模型文件" }, span { class: "metric-value text-subtitle", "23.4GB" } }
                     }
                 }
             }
 
-            // 快速操作区域 (Static)
             div { class: "mt-xxxl",
                 h2 { class: "text-title font-semibold mb-lg", "快速操作" }
                 div { class: "flex gap-lg",
-                    button { class: "btn btn-primary",
-                         span { "🚀" }
-                         "部署新模型"
-                    }
-                     button { class: "btn btn-secondary",
-                        span { "🔧" }
-                        "系统设置"
-                    }
+                    button { class: "btn btn-primary", span { "🚀" }, "部署新模型" }
+                    button { class: "btn btn-secondary", span { "🔧" }, "系统设置" }
                 }
             }
 
-            // API 调用日志 (Dynamic)
             div { class: "mt-xxxl",
                 h2 { class: "text-title font-semibold mb-lg", "API 调用日志 (Real-time)" }
                 div { class: "card",
@@ -182,7 +116,7 @@ pub fn Dashboard() -> Element {
                                         }
                                     }
                                 },
-                                Some(None) => rsx! { div { class: "text-secondary", "暂无日志或加载失败 (Server 4000 not running?)" } },
+                                Some(None) => rsx! { div { class: "text-secondary", "API请求失败 (check logs)" } },
                                 None => rsx! { div { class: "text-secondary", "加载中..." } }
                             }
                         }

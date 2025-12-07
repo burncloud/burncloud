@@ -93,14 +93,17 @@ async fn wait_for_server(url: &str) {
     panic!("Server failed to start at {}", url);
 }
 
+#[allow(dead_code)]
 pub fn get_root_token() -> String {
     "sk-root-token-123456".to_string()
 }
 
+#[allow(dead_code)]
 pub fn get_demo_token() -> String {
     "sk-burncloud-demo".to_string()
 }
 
+#[allow(dead_code)]
 pub fn get_openai_config() -> Option<(String, String)> {
     dotenv().ok();
     let key = env::var("TEST_OPENAI_KEY").ok().filter(|k| !k.is_empty())?;

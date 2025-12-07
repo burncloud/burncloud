@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
-use dioxus_router::prelude::*;
-use burncloud_client_shared::*;
+use dioxus_router::components::Router;
+use burncloud_client_shared::components::layout::CoreRoute;
 
 fn main() {
     dioxus::launch(App);
