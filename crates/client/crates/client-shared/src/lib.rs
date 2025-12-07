@@ -2,6 +2,7 @@ pub mod styles;
 pub mod components;
 pub mod api_client;
 pub mod services;
+pub mod i18n;
 
 pub use styles::*;
 pub use components::*;

@@ -1,12 +1,15 @@
 use dioxus::prelude::*;
 use dioxus_router::components::Link;
 use dioxus_router::hooks::use_route;
+use crate::i18n::{use_i18n, t};
 
 use super::layout::CoreRoute;
 
 #[component]
 pub fn Sidebar() -> Element {
     let route = use_route::<CoreRoute>();
+    let i18n = use_i18n();
+    let lang = i18n.language.read(); // Subscribe to updates
 
     rsx! {
         nav { class: "sidebar",
@@ -16,43 +19,43 @@ pub fn Sidebar() -> Element {
                         to: CoreRoute::Dashboard {},
                         class: if matches!(route, CoreRoute::Dashboard {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🏠" }
-                        span { "仪表盘" }
+                        span { "{t(*lang, \"nav.dashboard\")}" }
                     }
                     Link {
                         to: CoreRoute::ModelManagement {},
                         class: if matches!(route, CoreRoute::ModelManagement {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🧠" }
-                        span { "模型管理" }
+                        span { "{t(*lang, \"nav.models\")}" }
                     }
                     Link {
                         to: CoreRoute::DeployConfig {},
                         class: if matches!(route, CoreRoute::DeployConfig {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "⚙️" }
-                        span { "部署配置" }
+                        span { "{t(*lang, \"nav.deploy\")}" }
                     }
                     Link {
                         to: CoreRoute::ServiceMonitor {},
                         class: if matches!(route, CoreRoute::ServiceMonitor {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "📊" }
-                        span { "监控日志" }
+                        span { "{t(*lang, \"nav.monitor\")}" }
                     }
                     Link {
                         to: CoreRoute::ApiManagement {},
                         class: if matches!(route, CoreRoute::ApiManagement {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🔗" }
-                        span { "API管理" }
+                        span { "{t(*lang, \"nav.api\")}" }
                     }
                     Link {
                         to: CoreRoute::ChannelPage {},
                         class: if matches!(route, CoreRoute::ChannelPage {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "📡" }
-                        span { "渠道管理" }
+                        span { "{t(*lang, \"nav.channels\")}" }
                     }
                     Link {
                         to: CoreRoute::SystemSettings {},
                         class: if matches!(route, CoreRoute::SystemSettings {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "🔧" }
-                        span { "系统设置" }
+                        span { "{t(*lang, \"nav.settings\")}" }
                     }
                 }
             }
@@ -60,10 +63,10 @@ pub fn Sidebar() -> Element {
             div { class: "mt-auto p-lg border-t",
                 style: "border-color: var(--neutral-quaternary);",
                 div { class: "text-caption text-secondary",
-                    "状态: 2个模型运行中"
+                    "Status: 2 {t(*lang, \"status.models_running\")}"
                 }
                 div { class: "text-caption text-secondary",
-                    "CPU: 45% | 内存: 2.1GB"
+                    "CPU: 45% | RAM: 2.1GB"
                 }
             }
         }
