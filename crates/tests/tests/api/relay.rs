@@ -8,7 +8,7 @@ use crate::common as common_mod;
 
 #[tokio::test]
 async fn test_e2e_real_upstream() {
-    let base_url = common_mod::get_base_url();
+    let base_url = common_mod::spawn_app().await;
     let (upstream_key, upstream_url) = match common_mod::get_openai_config() {
         Some(c) => c,
         None => {
@@ -67,7 +67,7 @@ async fn test_gemini_adaptor() {
         }
     };
     
-    let base_url = common_mod::get_base_url();
+    let base_url = common_mod::spawn_app().await;
     let admin_client = TestClient::new(&base_url);
     let channel_name = format!("Gemini Test {}", Uuid::new_v4());
     

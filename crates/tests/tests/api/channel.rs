@@ -6,7 +6,7 @@ use crate::common as common_mod;
 
 #[tokio::test]
 async fn test_channel_lifecycle() {
-    let base_url = common_mod::get_base_url();
+    let base_url = common_mod::spawn_app().await;
     let client = TestClient::new(&base_url).with_token(&common_mod::get_root_token());
     
     let channel_name = format!("Test Channel {}", Uuid::new_v4());
