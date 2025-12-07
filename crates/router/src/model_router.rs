@@ -2,7 +2,7 @@ use burncloud_database::Database;
 use burncloud_common::types::Channel;
 use rand::Rng;
 use anyhow::Result;
-use burncloud_database::sqlx::{self, Row}; // Use re-exported sqlx
+use burncloud_database::sqlx; // Use re-exported sqlx
 
 pub struct ModelRouter {
     db: std::sync::Arc<Database>,

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use burncloud_database::Database;
 
 #[cfg(feature = "liveview")]
-use burncloud_common::constants::{DEFAULT_PORT, WS_PATH};
+use burncloud_common::constants::WS_PATH;
 
 #[cfg(feature = "liveview")]
 pub fn liveview_router(_db: Arc<Database>) -> Router {

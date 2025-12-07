@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use burncloud_client_shared::channel_service::{ChannelService, Channel};
+use burncloud_client_shared::channel_service::ChannelService;
 
 #[component]
 pub fn ChannelPage() -> Element {

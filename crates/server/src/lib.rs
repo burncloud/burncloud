@@ -7,7 +7,6 @@ use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use std::sync::Arc;
 use burncloud_router::create_router_app;
-use burncloud_common::constants::API_PREFIX;
 
 #[derive(Clone)]
 pub struct AppState {

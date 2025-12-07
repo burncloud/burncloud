@@ -1,4 +1,6 @@
 use dioxus::prelude::*;
+use dioxus_router::components::Link;
+use dioxus_router::hooks::use_route;
 
 use super::layout::CoreRoute;
 
