@@ -24,7 +24,8 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
     let view = LiveViewPool::new();
 
     let app = Router::new()
-        .route("/", axum::routing::get(move || async move {
+        .route("/", axum::routing::get(move |headers: axum::http::HeaderMap| async move {
+            let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("localhost:3000");
             axum::response::Html(format!(
                 r#"
                 <!DOCTYPE html>
@@ -42,7 +43,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                 </html>
                 "#,
                 include_str!("../crates/client-api/assets/styles.css"),
-                dioxus_liveview::interpreter_glue(&format!("ws://localhost:{}{}", DEFAULT_PORT, WS_PATH))
+                dioxus_liveview::interpreter_glue(&format!("ws://{}{}", host, WS_PATH))
             ))
         }))
         .route(WS_PATH, axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {

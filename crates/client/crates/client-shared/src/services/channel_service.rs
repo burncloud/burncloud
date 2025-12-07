@@ -25,12 +25,12 @@ pub struct Channel {
 pub struct ChannelService;
 
 impl ChannelService {
-    // Hardcoded URL for MVP.
-    const API_URL: &'static str = "http://127.0.0.1:3000/console/api/channel";
-
     pub async fn list() -> Result<Vec<Channel>, String> {
+        let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+        let url = format!("http://127.0.0.1:{}/console/api/channel", port);
+
         let client = reqwest::Client::new();
-        let resp = client.get(Self::API_URL)
+        let resp = client.get(&url)
             .send()
             .await
             .map_err(|e| e.to_string())?;
