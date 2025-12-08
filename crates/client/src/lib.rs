@@ -57,6 +57,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
         .route("/monitor", html_handler.clone())
         .route("/api", html_handler.clone())
         .route("/channels", html_handler.clone())
+        .route("/users", html_handler.clone())
         .route("/settings", html_handler.clone())
         .route(WS_PATH, axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {
             ws.on_upgrade(move |socket| async move {

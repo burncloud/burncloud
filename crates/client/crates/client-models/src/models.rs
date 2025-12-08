@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use burncloud_service_models::{ModelInfo, HfApiModel};
 use burncloud_service_inference::InstanceStatus;
 use std::collections::HashMap;
+use burncloud_client_shared::components::{BCBadge, BadgeVariant, BCTable};
 
 #[component]
 pub fn ModelManagement() -> Element {
@@ -215,25 +216,25 @@ fn ModelCard(
                         div { class: "flex items-center gap-sm",
                             h3 { class: "text-subtitle font-semibold m-0 mb-xs", "{model_id}" }
                             if status == InstanceStatus::Running {
-                                span { class: "badge badge-success", "🟢 运行中" }
+                                BCBadge { variant: BadgeVariant::Success, dot: true, "🟢 运行中" }
                             } else if status == InstanceStatus::Starting {
-                                span { class: "badge badge-warning", "🟡 启动中..." }
+                                BCBadge { variant: BadgeVariant::Warning, dot: true, "🟡 启动中..." }
                             }
                         }
                         if let Some(pipeline) = pipeline_tag {
-                            span { class: "badge badge-secondary text-caption", "{pipeline}" }
+                            BCBadge { variant: BadgeVariant::Neutral, "{pipeline}" }
                         }
                     }
                     // ... badges
                     div { class: "flex gap-xs",
                         if is_private {
-                            span { class: "badge badge-warning text-caption", "🔒 私有" }
+                            BCBadge { variant: BadgeVariant::Warning, "🔒 私有" }
                         }
                         if is_gated {
-                            span { class: "badge badge-info text-caption", "🔑 需授权" }
+                            BCBadge { variant: BadgeVariant::Info, "🔑 需授权" }
                         }
                         if is_disabled {
-                            span { class: "badge badge-danger text-caption", "⚠️ 已禁用" }
+                            BCBadge { variant: BadgeVariant::Danger, "⚠️ 已禁用" }
                         }
                     }
                 }
@@ -546,12 +547,12 @@ fn FileDownloadDialog(model_id: String, on_close: EventHandler<()>) -> Element {
                     } else if let Some(err) = error_msg() {
                         div { class: "text-danger", "{err}" }
                     } else {
-                        table { class: "w-full",
+                        BCTable {
                             thead {
                                 tr {
-                                    th { class: "text-left p-sm", "文件名" }
-                                    th { class: "text-left p-sm", "大小" }
-                                    th { class: "text-right p-sm", "操作" }
+                                    th { "文件名" }
+                                    th { "大小" }
+                                    th { class: "text-right", "操作" }
                                 }
                             }
                             tbody {
@@ -561,11 +562,11 @@ fn FileDownloadDialog(model_id: String, on_close: EventHandler<()>) -> Element {
                                         for file in current_files.into_iter() {
                                             // file format: [type, oid, size, path]
                                             tr { class: "border-b",
-                                                td { class: "p-sm", "{file[3]}" }
-                                                td { class: "p-sm text-secondary", 
+                                                td { "{file[3]}" }
+                                                td { class: "text-secondary", 
                                                     "{format_size(file[2].parse::<i64>().unwrap_or(0))}" 
                                                 }
-                                                td { class: "text-right p-sm",
+                                                td { class: "text-right",
                                                     if file[3].ends_with(".gguf") {
                                                         {
                                                             let m_id_for_closure = model_id.clone();
@@ -724,13 +725,13 @@ fn SearchResultItem(model: HfApiModel, on_download: EventHandler<HfApiModel>) ->
                     h3 { class: "text-body font-semibold m-0 mb-xs", "{model.id}" }
                     div { class: "flex gap-sm items-center",
                         if let Some(pipeline) = &model.pipeline_tag {
-                            span { class: "badge badge-secondary text-caption", "{pipeline}" }
+                            BCBadge { variant: BadgeVariant::Neutral, "{pipeline}" }
                         }
                         if let Some(library) = &model.library_name {
-                            span { class: "badge badge-info text-caption", "{library}" }
+                            BCBadge { variant: BadgeVariant::Info, "{library}" }
                         }
                         if model.private.unwrap_or(false) {
-                            span { class: "badge badge-warning text-caption", "🔒 私有" }
+                            BCBadge { variant: BadgeVariant::Warning, "🔒 私有" }
                         }
                     }
                     div { class: "flex gap-md mt-sm text-caption text-secondary",

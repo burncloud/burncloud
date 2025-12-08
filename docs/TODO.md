@@ -97,12 +97,17 @@
    * 可视化：前端可以做一个“拖拽连线”的界面，让非技术运营也能配置参数映射。
 
 
-# 测试还是会容易限入死循环，因为ai看不到页面，那么有什么办法？
+
 # 导出下线分成数据报表
 # 导出大客户的消费报表
 # 增加ai分析功能，让ai去管理平台和渠道。用户做最终决策。
 # 上游数据只提取部分，应该做到泛型透传与协议降级 (Generic Passthrough & Protocol Degradation)
 # 目标是减少管理员的工作，管理员不应该每天去看日志错误报告，应该由系统来分析当前的渠道质量和错误情况。
+# 账号的原始性，不允许管理员填写上游渠道
+# 上游倍率问题，由平台全自动提供
+# 平台与平台之间对接，错误过多，使用客户应该直接访问到平台
+# 
+
 # 路径请求为 /openai/deployments/{deployment-id}/chat/completions?api-version={version} 判定为azure
 # 路径请求为 /v1beta/models/gemini-pro:generateContent 判定为google aistudio
 # 路径请求为 /v1/projects/{PROJECT_ID}/locations/{REGION}/publishers/google/models/{MODEL_ID}:{ACTION} 判定为vertex

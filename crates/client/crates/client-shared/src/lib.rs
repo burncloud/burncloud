@@ -13,3 +13,4 @@ pub use services::log_service;
 pub use services::usage_service;
 pub use services::monitor_service;
 pub use services::auth_service;
+pub use services::user_service;

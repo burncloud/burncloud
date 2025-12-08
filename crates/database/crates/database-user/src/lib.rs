@@ -9,6 +9,10 @@ pub struct DbUser {
     pub email: Option<String>,
     pub password_hash: Option<String>, // Nullable for OIDC users
     pub github_id: Option<String>,
+    #[sqlx(default)]
+    pub status: i32, // 1: Active, 0: Disabled
+    #[sqlx(default)]
+    pub balance: f64,
     // created_at handled by DB
 }
 
@@ -42,6 +46,8 @@ impl UserDatabase {
                     email TEXT UNIQUE,
                     password_hash TEXT,
                     github_id TEXT,
+                    status INTEGER DEFAULT 1,
+                    balance REAL DEFAULT 0.0,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
@@ -70,6 +76,8 @@ impl UserDatabase {
                     email TEXT UNIQUE,
                     password_hash TEXT,
                     github_id TEXT,
+                    status INTEGER DEFAULT 1,
+                    balance DOUBLE PRECISION DEFAULT 0.0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
@@ -104,6 +112,8 @@ impl UserDatabase {
              // Ignoring errors as "duplicate column name" is the expected error if it exists
              let _ = sqlx::query("ALTER TABLE users ADD COLUMN password_hash TEXT").execute(conn.pool()).await;
              let _ = sqlx::query("ALTER TABLE users ADD COLUMN github_id TEXT").execute(conn.pool()).await;
+             let _ = sqlx::query("ALTER TABLE users ADD COLUMN status INTEGER DEFAULT 1").execute(conn.pool()).await;
+             let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0").execute(conn.pool()).await;
         }
 
         // Initialize default roles
@@ -129,7 +139,7 @@ impl UserDatabase {
             println!("UserDatabase: inserting demo user...");
             // Password: "123456"
             let dummy_hash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
-            sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id) VALUES ('demo-user', 'demo-user', NULL, ?, NULL)")
+            sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id, status, balance) VALUES ('demo-user', 'demo-user', NULL, ?, NULL, 1, 100.0)")
                 .bind(dummy_hash)
                 .execute(conn.pool())
                 .await?;
@@ -146,12 +156,14 @@ impl UserDatabase {
 
     pub async fn create_user(db: &Database, user: &DbUser) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id) VALUES (?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(&user.id)
             .bind(&user.username)
             .bind(&user.email)
             .bind(&user.password_hash)
             .bind(&user.github_id)
+            .bind(user.status)
+            .bind(user.balance)
             .execute(conn.pool())
             .await?;
         Ok(())
@@ -205,5 +217,22 @@ impl UserDatabase {
             .fetch_all(conn.pool())
             .await?;
         Ok(users)
+    }
+
+    pub async fn update_balance(db: &Database, user_id: &str, delta: f64) -> Result<f64> {
+        let conn = db.get_connection()?;
+        sqlx::query("UPDATE users SET balance = balance + ? WHERE id = ?")
+            .bind(delta)
+            .bind(user_id)
+            .execute(conn.pool())
+            .await?;
+            
+        let new_balance: f64 = sqlx::query("SELECT balance FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(conn.pool())
+            .await?
+            .get(0);
+            
+        Ok(new_balance)
     }
 }

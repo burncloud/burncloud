@@ -7,3 +7,4 @@ pub mod settings;
 pub mod channels;
 pub mod login;
 pub mod register;
+pub mod user;

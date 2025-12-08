@@ -11,6 +11,7 @@ use crate::pages::{
     channels::ChannelPage,
     login::LoginPage,
     register::RegisterPage,
+    user::UserPage,
 };
 pub use burncloud_client_tray::{start_tray, should_show_window};
 
@@ -34,6 +35,8 @@ pub enum Route {
     ApiManagement {},
     #[route("/channels")]
     ChannelPage {},
+    #[route("/users")]
+    UserPage {},
     #[route("/settings")]
     SystemSettings {},
 }

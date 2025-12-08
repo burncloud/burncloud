@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::api_client::ApiClient; // Assuming we have a generic client or use reqwest directly for now
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginResponse {

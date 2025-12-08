@@ -9,7 +9,7 @@ pub fn LoginPage() -> Element {
     let mut username = use_signal(|| "".to_string());
     let mut password = use_signal(|| "".to_string());
     let mut loading = use_signal(|| false);
-    let mut toast = use_toast();
+    let toast = use_toast();
     let navigator = use_navigator();
 
     let handle_login = move |_| {
@@ -57,7 +57,7 @@ pub fn LoginPage() -> Element {
                 div { class: "mt-lg",
                     BCButton { 
                         class: "w-full",
-                        loading: "{loading}",
+                        loading: loading(),
                         onclick: handle_login,
                         "登录" 
                     }

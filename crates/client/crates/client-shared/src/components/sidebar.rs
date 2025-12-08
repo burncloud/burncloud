@@ -46,6 +46,12 @@ pub fn Sidebar() -> Element {
                         span { "{t(*lang, \"nav.api\")}" }
                     }
                     Link {
+                        to: CoreRoute::UserPage {},
+                        class: if matches!(route, CoreRoute::UserPage {}) { "nav-item active" } else { "nav-item" },
+                        span { class: "icon", "👥" }
+                        span { "{t(*lang, \"nav.users\")}" }
+                    }
+                    Link {
                         to: CoreRoute::ChannelPage {},
                         class: if matches!(route, CoreRoute::ChannelPage {}) { "nav-item active" } else { "nav-item" },
                         span { class: "icon", "📡" }

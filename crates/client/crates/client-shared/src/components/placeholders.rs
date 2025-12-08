@@ -48,3 +48,10 @@ pub fn ChannelPage() -> Element {
         div { "Channel Placeholder" }
     }
 }
+
+#[component]
+pub fn UserPage() -> Element {
+    rsx! {
+        div { "User Placeholder" }
+    }
+}

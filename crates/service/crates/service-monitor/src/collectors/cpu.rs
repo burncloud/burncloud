@@ -6,7 +6,7 @@ use std::fs;
 
 /// CPU数据收集器
 pub struct CpuCollector {
-    last_update: Instant,
+    _last_update: Instant,
     update_interval: Duration,
     #[cfg(unix)]
     last_cpu_times: Option<CpuTimes>,
@@ -23,7 +23,7 @@ impl CpuCollector {
     /// 创建新的CPU收集器
     pub fn new() -> Self {
         Self {
-            last_update: Instant::now(),
+            _last_update: Instant::now(),
             update_interval: Duration::from_millis(500),
             #[cfg(unix)]
             last_cpu_times: None,
@@ -51,11 +51,6 @@ impl CpuCollector {
     #[cfg(windows)]
     async fn collect_windows(&mut self) -> Result<CpuInfo, MonitorError> {
         use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
-        use winapi::um::winreg::*;
-        use winapi::shared::minwindef::HKEY;
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
-        use std::ptr;
 
         // 获取CPU核心数
         let mut sys_info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
