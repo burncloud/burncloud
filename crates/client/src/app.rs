@@ -48,11 +48,7 @@ pub fn App() -> Element {
     // Initialize Toast
     burncloud_client_shared::use_init_toast();
 
-    // Inject Global Styles (BCDS)
-    let styles = include_str!("../crates/client-api/assets/styles.css");
-
     rsx! {
-        style { "{styles}" }
         burncloud_client_shared::ToastContainer {}
         Router::<Route> {}
     }
