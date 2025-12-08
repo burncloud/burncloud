@@ -7,7 +7,7 @@ use burncloud_client_shared::components::{Sidebar, TitleBar};
 pub fn Layout() -> Element {
     rsx! {
         head {
-            link { href: "https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css", rel: "stylesheet", r#type: "text/css" }
+            link { href: "https://npm.elemecdn.com/daisyui@4.12.10/dist/full.min.css", rel: "stylesheet", r#type: "text/css" }
             script { src: "https://cdn.tailwindcss.com" }
             // Inject Custom CSS for Apple-like Aesthetics
             style {
@@ -19,6 +19,12 @@ pub fn Layout() -> Element {
                     font-family: var(--font-sans);
                     -webkit-font-smoothing: antialiased;
                     overflow: hidden; /* Prevent body scroll, handle in containers */
+                }}
+                /* Fallback for SVGs if Tailwind fails to load */
+                svg {{
+                    width: 1.5rem;
+                    height: 1.5rem;
+                    max-width: 100%;
                 }}
                 .app-drag-region {{
                     -webkit-app-region: drag;
