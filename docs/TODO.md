@@ -135,3 +135,18 @@
 - 实现 start_instance / stop_instance / get_status 逻辑
 - 集成 llama-server 启动命令
 
+# [complete] UI Design Refactor (Jobs Philosophy)
+- Redesign Layout to be frameless with custom TitleBar (macOS/Windows adaptive).
+- Redesign Sidebar with "Expert" and "BurnGrid" metaphors, using SVG icons.
+- Redesign Dashboard to be minimalist ("Zen Mode"), hiding technical parameters.
+- Add "Jobs Design Philosophy" to Constitution.
+
+# [pending] Client - Dashboard Dynamic Data
+- Connect the "Coding Expert" card to real running model data.
+- Display "No Active Expert" state when no model is loaded.
+- Connect "Neural Load" and "Context Memory" to real system metrics (partially done).
+
+# [pending] Client - BurnGrid Integration
+- Implement "BurnGrid" page to replace "Channels".
+- Show network sharing status toggle (AirPlay metaphor).
+- Implement "Universal Memory" placeholder page.

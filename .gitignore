@@ -7,6 +7,7 @@ MESSAGE.md
 *.py
 *.sh
 *.bat
+/image.png
 
 # nodejs
 package-lock.json

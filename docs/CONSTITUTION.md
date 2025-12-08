@@ -21,13 +21,25 @@ We choose Rust for our extreme pursuit of performance.
 *   Do not upload any telemetry or user privacy data unless explicitly authorized by the user.
 
 ### 1.3 Fluent Experience
-*   The UI must follow the Windows 11 Fluent Design language.
 *   Responsiveness must be fast, visual feedback smooth, and stuttering is rejected.
 
 ### 1.4 Internationalization Foundation
 *   **i18n Native**: Our program is natively designed for global users. Hardcoding strings in any language within UI code is strictly prohibited.
 *   **Bilingual Baseline**: **Chinese** and **English** are the baseline languages for the project. All features must fully support both languages upon release.
 *   **Extensibility**: The architecture must reserve interfaces to easily support more languages in the future.
+
+### 1.5 The Jobs Design Philosophy
+*   **Zen & Focus**: The interface must be minimalist. Hide the plumbing (technical details) and highlight the magic (the model/intelligence).
+*   **Delight**: Prioritize user delight over raw feature count. Use animations, whitespace, and visual hierarchy to create an emotional connection.
+*   **"iTunes for Intelligence"**: The UI should feel like a premium macOS application—clean, intuitive, and polished. Simplicity is the ultimate sophistication.
+
+### 1.6 The Expert Metaphor
+*   **Experts, not Models**: Users don't care about `.bin` files. They care about capabilities. We present "Experts" (e.g., "Coding Wizard", "Creative Writer"), not just raw model names.
+*   **Hide the Math**: Don't show quantization bits (INT4/FP16) by default. Use human-readable sliders: "Faster" <-> "Smarter".
+
+### 1.7 BurnGrid Protocol
+*   **Seamless Sharing**: Network features (reselling/channels) are branded as "**BurnGrid**". It should feel like AirPlay for Compute—toggle it on to share excess power, toggle off for privacy.
+*   **Universal Memory**: We aim to provide a system-level vector memory that persists across different experts.
 
 ---
 

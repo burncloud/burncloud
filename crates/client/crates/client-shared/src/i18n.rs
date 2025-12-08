@@ -51,8 +51,48 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
         (Language::Zh, "nav.channels") => "渠道管理",
         (Language::En, "nav.channels") => "Channels",
         
+        (Language::Zh, "nav.users") => "用户管理",
+        (Language::En, "nav.users") => "Users",
+
         (Language::Zh, "nav.settings") => "系统设置",
         (Language::En, "nav.settings") => "Settings",
+
+        // Dashboard
+        (Language::Zh, "dashboard.title") => "仪表盘",
+        (Language::En, "dashboard.title") => "Dashboard",
+        (Language::Zh, "dashboard.subtitle") => "BurnCloud 大模型本地部署平台概览",
+        (Language::En, "dashboard.subtitle") => "BurnCloud Local LLM Platform Overview",
+
+        (Language::Zh, "dashboard.system_status") => "系统状态",
+        (Language::En, "dashboard.system_status") => "System Status",
+        (Language::Zh, "dashboard.running_normal") => "运行正常",
+        (Language::En, "dashboard.running_normal") => "Normal",
+
+        (Language::Zh, "dashboard.model_status") => "模型状态",
+        (Language::En, "dashboard.model_status") => "Model Status",
+        (Language::Zh, "dashboard.running_count") => "运行中",
+        (Language::En, "dashboard.running_count") => "Running",
+
+        (Language::Zh, "dashboard.token_usage") => "Token 消耗",
+        (Language::En, "dashboard.token_usage") => "Token Usage",
+        
+        (Language::Zh, "dashboard.storage_usage") => "存储使用",
+        (Language::En, "dashboard.storage_usage") => "Storage",
+
+        (Language::Zh, "dashboard.request_id") => "请求 ID",
+        (Language::En, "dashboard.request_id") => "Request ID",
+        (Language::Zh, "dashboard.status") => "状态",
+        (Language::En, "dashboard.status") => "Status",
+        (Language::Zh, "dashboard.path") => "路径",
+        (Language::En, "dashboard.path") => "Path",
+        (Language::Zh, "dashboard.latency") => "耗时",
+        (Language::En, "dashboard.latency") => "Latency",
+        (Language::Zh, "dashboard.user") => "用户",
+        (Language::En, "dashboard.user") => "User",
+        (Language::Zh, "dashboard.details") => "详情",
+        (Language::En, "dashboard.details") => "Details",
+        (Language::Zh, "dashboard.view") => "查看",
+        (Language::En, "dashboard.view") => "View",
 
         // Status
         (Language::Zh, "status.models_running") => "模型运行中",
