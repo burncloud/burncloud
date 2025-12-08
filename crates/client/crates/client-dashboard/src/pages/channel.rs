@@ -1,15 +1,18 @@
 use dioxus::prelude::*;
 use burncloud_client_shared::channel_service::{ChannelService, Channel};
 use burncloud_client_shared::components::{
-    BCButton, BCInput, BCCard, BCModal, BCBadge, BCTable, 
+    BCButton, BCInput, BCCard, BCModal, BCBadge, BCTable, BCPagination,
     ButtonVariant, BadgeVariant
 };
 use burncloud_client_shared::use_toast;
 
 #[component]
 pub fn ChannelPage() -> Element {
+    let mut page = use_signal(|| 1);
+    let limit = 10; // Default items per page
+    
     let mut channels = use_resource(move || async move {
-        ChannelService::list().await.unwrap_or(vec![])
+        ChannelService::list(page(), limit).await.unwrap_or(vec![])
     });
 
     let mut is_modal_open = use_signal(|| false);
@@ -83,6 +86,10 @@ pub fn ChannelPage() -> Element {
     // Clone data to avoid lifetime issues in RSX
     let channels_data = channels.read().clone();
 
+    // Mock total pages for now since API might not return count yet
+    // In real scenario, list() should return (Vec<Channel>, total_count)
+    let total_pages = 5; // Placeholder
+
     rsx! {
         div { class: "channel-page-wrapper",
             div { class: "page-header",
@@ -103,6 +110,13 @@ pub fn ChannelPage() -> Element {
                 BCCard {
                     class: "p-0 overflow-hidden",
                     BCTable {
+                        pagination: rsx! {
+                            BCPagination {
+                                page: page(),
+                                total_pages: total_pages,
+                                on_change: move |p| page.set(p)
+                            }
+                        },
                         thead {
                             tr {
                                 th { "ID" }
