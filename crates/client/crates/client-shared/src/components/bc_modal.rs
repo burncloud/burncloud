@@ -9,13 +9,12 @@ pub fn BCModal(
     onclose: EventHandler<()>,
     children: Element,
 ) -> Element {
-    if !open {
-        return rsx! {};
-    }
+    let display_style = if open { "flex" } else { "none" };
 
     rsx! {
         div { 
-            class: "modal-overlay", 
+            class: "modal-overlay",
+            style: "display: {display_style}",
             onclick: move |_| onclose.call(()), // Click backdrop to close
             
             div { 

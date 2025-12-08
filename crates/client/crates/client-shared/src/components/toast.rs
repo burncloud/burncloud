@@ -51,10 +51,10 @@ impl ToastManager {
         self.0.write().retain(|t| t.id != id);
     }
     
-    pub fn success(mut self, msg: &str) { self.add(msg.to_string(), ToastType::Success); }
-    pub fn error(mut self, msg: &str) { self.add(msg.to_string(), ToastType::Error); }
-    pub fn info(mut self, msg: &str) { self.add(msg.to_string(), ToastType::Info); }
-    pub fn warning(mut self, msg: &str) { self.add(msg.to_string(), ToastType::Warning); }
+    pub fn success(self, msg: &str) { self.add(msg.to_string(), ToastType::Success); }
+    pub fn error(self, msg: &str) { self.add(msg.to_string(), ToastType::Error); }
+    pub fn info(self, msg: &str) { self.add(msg.to_string(), ToastType::Info); }
+    pub fn warning(self, msg: &str) { self.add(msg.to_string(), ToastType::Warning); }
 }
 
 pub fn use_toast() -> ToastManager {

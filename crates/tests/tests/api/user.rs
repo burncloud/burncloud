@@ -33,7 +33,7 @@ async fn test_user_management_lifecycle() -> anyhow::Result<()> {
     
     // 4. List Users (Should contain the new user)
     // List users might require admin permission in future, but currently open.
-    let list_res = client.get("/console/api/user").await?;
+    let list_res = client.get("/console/api/list_users").await?;
     assert!(list_res["success"].as_bool().unwrap_or(false));
     let users = list_res["data"].as_array().unwrap();
     

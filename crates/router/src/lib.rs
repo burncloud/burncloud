@@ -15,10 +15,7 @@ use axum::{
 };
 use burncloud_database::Database;
 use burncloud_database_router::{RouterDatabase, DbRouterLog};
-use burncloud_router_aws::{AwsConfig, sign_request};
 use burncloud_common::types::OpenAIChatRequest;
-use adaptor::gemini::GeminiAdaptor;
-use adaptor::claude::ClaudeAdaptor;
 use balancer::RoundRobinBalancer;
 use limiter::RateLimiter;
 use circuit_breaker::CircuitBreaker;
@@ -317,7 +314,7 @@ async fn proxy_logic(
     state: &AppState,
     method: Method,
     uri: Uri,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     body_bytes: axum::body::Bytes,
     path: &str,
     user_group: &str,

@@ -1,15 +1,12 @@
 use burncloud_common::types::{ChannelType, OpenAIChatRequest};
-use burncloud_database::sqlx::types::Json;
 use serde_json::Value;
-use axum::{http::HeaderMap, response::Response};
 use reqwest::RequestBuilder;
-use std::future::Future;
-use std::pin::Pin;
 
 /// Trait defining the behavior for a channel adaptor.
 /// This mirrors the structure of New API's channel adapters.
 pub trait ChannelAdaptor: Send + Sync {
     /// Returns the name of the adaptor (e.g., "OpenAI", "Claude").
+    #[allow(dead_code)]
     fn name(&self) -> &'static str;
 
     /// Converts an OpenAI-compatible request to the vendor-specific request body.
@@ -34,6 +31,7 @@ pub trait ChannelAdaptor: Send + Sync {
     ) -> RequestBuilder;
 
     /// Checks if the adaptor supports streaming for the given model/request.
+    #[allow(dead_code)]
     fn supports_stream(&self) -> bool {
         true
     }

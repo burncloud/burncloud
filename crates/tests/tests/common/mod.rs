@@ -53,8 +53,8 @@ pub async fn spawn_app() -> String {
             .arg("server")
             .arg("start")
             .env("PORT", port.to_string())
-            .env("RUST_LOG", "error") // Force suppress noisy logs
-            .stdout(Stdio::null()) 
+            .env("RUST_LOG", "burncloud=info") // Enable info logs for debugging
+            .stdout(Stdio::inherit()) 
             .stderr(Stdio::inherit())
             .spawn()
             .expect("Failed to spawn server");

@@ -6,7 +6,7 @@ use crate::styles::FLUENT_CSS;
 use super::sidebar::Sidebar;
 use super::title_bar::TitleBar;
 #[allow(unused_imports)]
-use super::placeholders::{Dashboard, ModelManagement, DeployConfig, ServiceMonitor, ApiManagement, SystemSettings, ChannelPage};
+use super::placeholders::{Dashboard, ModelManagement, DeployConfig, ServiceMonitor, ApiManagement, SystemSettings, ChannelPage, UserPage};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum CoreRoute {
@@ -23,6 +23,8 @@ pub enum CoreRoute {
     ApiManagement {},
     #[route("/channels")]
     ChannelPage {},
+    #[route("/users")]
+    UserPage {},
     #[route("/settings")]
     SystemSettings {},
 }

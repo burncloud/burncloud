@@ -60,7 +60,7 @@ graph TD
 | `BCButton` | 支持 Primary/Secondary/Danger，带 Loading 状态 | ✅ Completed |
 | `BCInput` | 统一风格的文本输入框，支持 Label 和 Error 提示 | ✅ Completed |
 | `BCCard` | 标准内容容器，带 Header/Body/Footer 插槽 | ✅ Completed |
-| `BCModal` | 居中遮罩弹窗，支持 ESC 关闭 | 📅 Pending |
+| `BCModal` | 居中遮罩弹窗，支持 ESC 关闭 | ✅ Completed |
 | `BCToast` | 全局消息通知队列 (Success/Error/Info) | ✅ Completed |
 | `BCTable` | 支持分页、排序、多选的数据表格 | 📅 Pending |
 | `BCBadge` | 状态标签 (Pill shape) | 📅 Pending |

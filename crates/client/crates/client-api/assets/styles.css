@@ -377,6 +377,69 @@ body {
 .status-stopped { background-color: var(--color-neutral-gray-30); color: var(--color-neutral-gray-130); }
 .status-pending { background-color: #fff4ce; color: #795e00; } /* Warning-ish */
 
+/* Badges */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+.badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: currentColor;
+}
+
+.badge-success { background-color: var(--color-success-bg); color: var(--color-success); }
+.badge-warning { background-color: #fff4ce; color: #795e00; }
+.badge-danger { background-color: var(--color-danger-bg); color: var(--color-danger); }
+.badge-info { background-color: var(--color-primary-light); color: var(--color-primary); }
+.badge-neutral { background-color: var(--color-neutral-gray-30); color: var(--color-neutral-gray-130); }
+
+/* Table */
+.table-container {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--color-neutral-gray-30);
+    border-radius: var(--radius-md);
+    background: var(--color-neutral-white);
+    margin-bottom: 16px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    table-layout: auto;
+}
+
+.table th {
+    text-align: left;
+    padding: 10px 16px;
+    background: var(--color-neutral-gray-10);
+    border-bottom: 1px solid var(--color-neutral-gray-30);
+    font-weight: 600;
+    color: var(--color-neutral-gray-130);
+    white-space: nowrap;
+}
+
+.table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--color-neutral-gray-30);
+    color: var(--color-neutral-gray-160);
+    vertical-align: middle;
+}
+
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover { background-color: var(--color-neutral-gray-10); }
+
 /* Backgrounds */
 .bg-hover:hover { background-color: var(--color-neutral-gray-20); }
 .bg-primary-light { background-color: var(--color-primary-light); }

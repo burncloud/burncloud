@@ -7,6 +7,8 @@ pub mod bc_button;
 pub mod bc_input;
 pub mod bc_card;
 pub mod bc_modal;
+pub mod bc_badge;
+pub mod bc_table;
 
 pub use layout::*;
 pub use sidebar::*;
@@ -16,3 +18,5 @@ pub use bc_button::*;
 pub use bc_input::*;
 pub use bc_card::*;
 pub use bc_modal::*;
+pub use bc_badge::*;
+pub use bc_table::*;

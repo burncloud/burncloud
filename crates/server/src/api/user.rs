@@ -1,10 +1,10 @@
 use axum::{
-    extract::{State, Json, Path},
+    extract::{State, Json},
     response::Json as AxumJson,
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use crate::AppState;
 use burncloud_database_user::{UserDatabase, DbUser};
@@ -24,12 +24,29 @@ pub struct LoginDto {
     pub password: String,
 }
 
+#[derive(Deserialize)]
+pub struct TopupDto {
+    pub user_id: String,
+    pub amount: f64,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/console/api/user/register", post(register))
         .route("/console/api/user/login", post(login))
-        .route("/console/api/user", get(list_users))
+        .route("/console/api/user/topup", post(topup))
+        .route("/console/api/list_users", get(list_users))
         // .route("/console/api/user/me", get(get_current_user)) // Needs auth middleware context
+}
+
+async fn topup(
+    State(state): State<AppState>,
+    Json(payload): Json<TopupDto>,
+) -> AxumJson<Value> {
+    match UserDatabase::update_balance(&state.db, &payload.user_id, payload.amount).await {
+        Ok(new_balance) => AxumJson(json!({ "success": true, "data": { "balance": new_balance } })),
+        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+    }
 }
 
 async fn register(
@@ -56,6 +73,8 @@ async fn register(
         email: payload.email,
         password_hash: Some(password_hash),
         github_id: None,
+        status: 1,
+        balance: 10.0, // Signup bonus
     };
 
     match UserDatabase::create_user(&state.db, &user).await {
@@ -103,15 +122,22 @@ async fn list_users(
 ) -> AxumJson<Value> {
     match UserDatabase::list_users(&state.db).await {
         Ok(users) => {
-            // Filter out sensitive data if needed (e.g., password_hash)
-            // But DbUser has #[serde(skip)]? No.
-            // Let's map it manually to be safe.
-            let safe_users: Vec<Value> = users.into_iter().map(|u| json!({
-                "id": u.id,
-                "username": u.username,
-                "email": u.email,
-                // "password_hash": u.password_hash // Don't return this
-            })).collect();
+            let mut safe_users = Vec::new();
+            for u in users {
+                // Fetch role (N+1 query for MVP)
+                let roles = UserDatabase::get_user_roles(&state.db, &u.id).await.unwrap_or_default();
+                let role = roles.first().map(|s| s.as_str()).unwrap_or("user");
+
+                safe_users.push(json!({
+                    "id": u.id,
+                    "username": u.username,
+                    "email": u.email,
+                    "status": u.status,
+                    "balance": u.balance,
+                    "role": role,
+                    "group": "default" // Placeholder for group
+                }));
+            }
             
             AxumJson(json!({ "success": true, "data": safe_users }))
         },
