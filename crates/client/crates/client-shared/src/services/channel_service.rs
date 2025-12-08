@@ -30,8 +30,8 @@ impl ChannelService {
         format!("http://127.0.0.1:{}/console/api/channel", port)
     }
 
-    pub async fn list() -> Result<Vec<Channel>, String> {
-        let url = Self::get_base_url();
+    pub async fn list(page: usize, limit: usize) -> Result<Vec<Channel>, String> {
+        let url = format!("{}?page={}&limit={}", Self::get_base_url(), page, limit);
         let client = reqwest::Client::new();
         let resp = client.get(&url)
             .send()

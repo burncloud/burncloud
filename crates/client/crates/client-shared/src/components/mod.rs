@@ -19,4 +19,4 @@ pub use bc_input::*;
 pub use bc_card::*;
 pub use bc_modal::*;
 pub use bc_badge::*;
-pub use bc_table::*;
+pub use bc_table::{BCTable, BCPagination};
