@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
 use crate::DesktopMode;
+use dioxus::prelude::*;
 
 #[component]
 pub fn TitleBar() -> Element {
@@ -11,7 +11,7 @@ pub fn TitleBar() -> Element {
     }
 
     let window = dioxus::desktop::use_window();
-    
+
     // Clones for Mac handlers
     let mac_close = window.clone();
     let mac_min = window.clone();
@@ -24,24 +24,24 @@ pub fn TitleBar() -> Element {
 
     rsx! {
         div { class: "w-full h-8 flex items-center justify-between select-none app-drag-region px-4",
-            
+
             // MacOS: Traffic Lights on the Left
             if cfg!(target_os = "macos") {
                 div { class: "flex items-center gap-2 app-no-drag group",
                     // Close (Red)
-                    button { 
+                    button {
                         class: "w-3 h-3 rounded-full bg-macos-red border border-macos-red flex items-center justify-center text-xxxs text-macos-red-dark opacity-100 hover:opacity-100",
                         onclick: move |_| mac_close.set_visible(false),
                         div { class: "opacity-0 group-hover:opacity-100", "✕" }
                     }
                     // Minimize (Yellow)
-                    button { 
+                    button {
                         class: "w-3 h-3 rounded-full bg-macos-yellow border border-macos-yellow flex items-center justify-center text-xxxs text-macos-yellow-dark opacity-100 hover:opacity-100",
                         onclick: move |_| mac_min.set_minimized(true),
                         div { class: "opacity-0 group-hover:opacity-100", "−" }
                     }
                     // Maximize (Green)
-                    button { 
+                    button {
                         class: "w-3 h-3 rounded-full bg-macos-green border border-macos-green flex items-center justify-center text-xxxs text-macos-green-dark opacity-100 hover:opacity-100",
                         onclick: move |_| {
                             let is_max = mac_max.is_maximized();

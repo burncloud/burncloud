@@ -1,7 +1,7 @@
-use burncloud_client_shared::{ChannelDto, API_CLIENT};
 use burncloud_client_shared::components::{
-    BCButton, BCModal, BCInput, BadgeVariant, BCBadge, ButtonVariant,
+    BCBadge, BCButton, BCInput, BCModal, BadgeVariant, ButtonVariant,
 };
+use burncloud_client_shared::{ChannelDto, API_CLIENT};
 use dioxus::prelude::*;
 
 #[component]
@@ -116,7 +116,7 @@ pub fn ApiManagement() -> Element {
             // Routing Table
             div { class: "flex flex-col gap-4",
                 h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "上游路由规则 (Upstream Routing)" }
-                
+
                 div { class: "overflow-x-auto border border-base-200 rounded-lg",
                     table { class: "table w-full text-sm",
                         thead { class: "bg-base-50 text-base-content/60",
