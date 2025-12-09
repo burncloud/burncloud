@@ -17,12 +17,9 @@ impl Default for BadgeVariant {
 
 #[component]
 pub fn BCBadge(
-    #[props(default)]
-    variant: BadgeVariant,
-    #[props(default)]
-    class: String,
-    #[props(default)]
-    dot: bool,
+    #[props(default)] variant: BadgeVariant,
+    #[props(default)] class: String,
+    #[props(default)] dot: bool,
     children: Element,
 ) -> Element {
     let base_class = "badge";

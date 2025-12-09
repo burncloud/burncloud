@@ -21,13 +21,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 统计
-    let total_size: i64 = files.iter()
-        .filter_map(|f| f[2].parse::<i64>().ok())
-        .sum();
+    let total_size: i64 = files.iter().filter_map(|f| f[2].parse::<i64>().ok()).sum();
 
     println!("统计信息:");
     println!("  总文件数: {}", files.len());
-    println!("  总大小:   {:.2} GB", total_size as f64 / 1024.0 / 1024.0 / 1024.0);
+    println!(
+        "  总大小:   {:.2} GB",
+        total_size as f64 / 1024.0 / 1024.0 / 1024.0
+    );
 
     // 按目录分组
     println!("\n目录结构:");

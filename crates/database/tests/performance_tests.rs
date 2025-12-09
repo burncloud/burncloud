@@ -1,4 +1,4 @@
-use burncloud_database::{Database, create_default_database, Result};
+use burncloud_database::{create_default_database, Database, Result};
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
@@ -27,7 +27,10 @@ async fn test_database_creation_performance() {
             let _ = db.close().await;
         }
         Ok(Err(e)) => {
-            println!("Database creation failed (acceptable in some environments): {}", e);
+            println!(
+                "Database creation failed (acceptable in some environments): {}",
+                e
+            );
         }
         Err(_) => {
             panic!("Database creation timed out after 30 seconds");
@@ -51,7 +54,10 @@ async fn test_concurrent_database_access() {
         let num_tasks = 10;
 
         for i in 0..num_tasks {
-            let connection = db.connection().expect("Database should be initialized").clone();
+            let connection = db
+                .connection()
+                .expect("Database should be initialized")
+                .clone();
             let handle = tokio::spawn(async move {
                 let timestamp = chrono::Utc::now().to_rfc3339();
                 let query = format!(
@@ -75,7 +81,10 @@ async fn test_concurrent_database_access() {
             }
         }
 
-        println!("✓ Concurrent operations: {}/{} succeeded", success_count, num_tasks);
+        println!(
+            "✓ Concurrent operations: {}/{} succeeded",
+            success_count, num_tasks
+        );
 
         // Verify all data was inserted
         #[derive(sqlx::FromRow)]
@@ -84,9 +93,15 @@ async fn test_concurrent_database_access() {
             thread_id: i64,
         }
 
-        if let Ok(rows) = db.fetch_all::<ConcurrentRow>("SELECT id, thread_id FROM concurrent_test").await {
+        if let Ok(rows) = db
+            .fetch_all::<ConcurrentRow>("SELECT id, thread_id FROM concurrent_test")
+            .await
+        {
             println!("✓ Inserted {} rows concurrently", rows.len());
-            assert!(rows.len() >= success_count, "Should have at least as many rows as successful inserts");
+            assert!(
+                rows.len() >= success_count,
+                "Should have at least as many rows as successful inserts"
+            );
         }
 
         let _ = db.close().await;
@@ -130,16 +145,25 @@ async fn test_large_dataset_operations() {
         }
 
         let insert_time = start_time.elapsed();
-        println!("✓ Inserted {} records in {:?}", successful_inserts, insert_time);
+        println!(
+            "✓ Inserted {} records in {:?}",
+            successful_inserts, insert_time
+        );
 
         // Test query performance
         let query_start = Instant::now();
-        let count_result = db.fetch_one::<(i64,)>("SELECT COUNT(*) FROM performance_test").await;
+        let count_result = db
+            .fetch_one::<(i64,)>("SELECT COUNT(*) FROM performance_test")
+            .await;
         let query_time = query_start.elapsed();
 
         if let Ok((count,)) = count_result {
             println!("✓ Query returned {} records in {:?}", count, query_time);
-            assert!(query_time < Duration::from_secs(5), "Query took too long: {:?}", query_time);
+            assert!(
+                query_time < Duration::from_secs(5),
+                "Query took too long: {:?}",
+                query_time
+            );
         }
 
         // Test more complex query
@@ -150,8 +174,16 @@ async fn test_large_dataset_operations() {
         let complex_query_time = complex_query_start.elapsed();
 
         if let Ok(results) = complex_result {
-            println!("✓ Complex query returned {} records in {:?}", results.len(), complex_query_time);
-            assert!(complex_query_time < Duration::from_secs(5), "Complex query took too long: {:?}", complex_query_time);
+            println!(
+                "✓ Complex query returned {} records in {:?}",
+                results.len(),
+                complex_query_time
+            );
+            assert!(
+                complex_query_time < Duration::from_secs(5),
+                "Complex query took too long: {:?}",
+                complex_query_time
+            );
         }
 
         let _ = db.close().await;
@@ -179,11 +211,16 @@ async fn test_database_initialization_performance() {
     }
 
     if !initialized_times.is_empty() {
-        let avg_initialized = initialized_times.iter().sum::<Duration>() / initialized_times.len() as u32;
+        let avg_initialized =
+            initialized_times.iter().sum::<Duration>() / initialized_times.len() as u32;
         println!("✓ Average Database::new() time: {:?}", avg_initialized);
 
         // The initialized version should be reasonable
-        assert!(avg_initialized < Duration::from_secs(10), "Initialization taking too long: {:?}", avg_initialized);
+        assert!(
+            avg_initialized < Duration::from_secs(10),
+            "Initialization taking too long: {:?}",
+            avg_initialized
+        );
     }
 
     // Test create_default_database() performance for comparison
@@ -200,9 +237,17 @@ async fn test_database_initialization_performance() {
     }
 
     if !convenience_times.is_empty() {
-        let avg_convenience = convenience_times.iter().sum::<Duration>() / convenience_times.len() as u32;
-        println!("✓ Average create_default_database() time: {:?}", avg_convenience);
-        assert!(avg_convenience < Duration::from_secs(10), "Convenience function taking too long: {:?}", avg_convenience);
+        let avg_convenience =
+            convenience_times.iter().sum::<Duration>() / convenience_times.len() as u32;
+        println!(
+            "✓ Average create_default_database() time: {:?}",
+            avg_convenience
+        );
+        assert!(
+            avg_convenience < Duration::from_secs(10),
+            "Convenience function taking too long: {:?}",
+            avg_convenience
+        );
     }
 }
 
@@ -215,7 +260,10 @@ async fn test_memory_usage_stability() {
         // Perform repeated operations to check for memory stability
         for i in 0..100 {
             let table_name = format!("temp_table_{}", i);
-            let create_query = format!("CREATE TEMPORARY TABLE {} (id INTEGER, value TEXT)", table_name);
+            let create_query = format!(
+                "CREATE TEMPORARY TABLE {} (id INTEGER, value TEXT)",
+                table_name
+            );
             let insert_query = format!("INSERT INTO {} (id, value) VALUES (1, 'test')", table_name);
             let select_query = format!("SELECT COUNT(*) FROM {}", table_name);
             let drop_query = format!("DROP TABLE {}", table_name);
@@ -229,7 +277,10 @@ async fn test_memory_usage_stability() {
             // Occasional checks to ensure the database is still responsive
             if i % 25 == 0 {
                 let health_check = db.execute_query("SELECT 1").await;
-                assert!(health_check.is_ok(), "Database should remain responsive during repeated operations");
+                assert!(
+                    health_check.is_ok(),
+                    "Database should remain responsive during repeated operations"
+                );
             }
         }
 
@@ -265,10 +316,18 @@ async fn test_rapid_database_creation_and_destruction() {
         println!("Cycle {} completed in {:?}", i + 1, cycle_time);
 
         // Each cycle should complete reasonably quickly
-        assert!(cycle_time < Duration::from_secs(30), "Cycle {} took too long: {:?}", i + 1, cycle_time);
+        assert!(
+            cycle_time < Duration::from_secs(30),
+            "Cycle {} took too long: {:?}",
+            i + 1,
+            cycle_time
+        );
     }
 
-    println!("✓ Rapid creation/destruction: {}/{} cycles succeeded", success_count, num_cycles);
+    println!(
+        "✓ Rapid creation/destruction: {}/{} cycles succeeded",
+        success_count, num_cycles
+    );
 }
 
 // Helper function for tests

@@ -1,6 +1,6 @@
+use anyhow::{ensure, Result};
 use reqwest::Client;
 use serde_json::Value;
-use anyhow::{Result, ensure};
 
 pub struct TestClient {
     base_url: String,
@@ -30,7 +30,11 @@ impl TestClient {
         }
         let resp = req.send().await?;
         let status = resp.status();
-        ensure!(status.is_success(), "Request failed with status: {}", status);
+        ensure!(
+            status.is_success(),
+            "Request failed with status: {}",
+            status
+        );
         let json: Value = resp.json().await.unwrap_or(Value::Null);
         Ok(json)
     }
@@ -43,18 +47,23 @@ impl TestClient {
         }
         let resp = req.send().await?;
         let status = resp.status();
-        
+
         let body_text = resp.text().await.unwrap_or_default();
         println!("TestClient: Response Body: '{}'", body_text);
 
         if !status.is_success() {
-             ensure!(false, "Request failed with status: {} | Body: {}", status, body_text);
+            ensure!(
+                false,
+                "Request failed with status: {} | Body: {}",
+                status,
+                body_text
+            );
         }
-        
+
         let json: Value = serde_json::from_str(&body_text).unwrap_or(Value::Null);
         Ok(json)
     }
-    
+
     pub async fn put(&self, path: &str, body: &Value) -> Result<Value> {
         let url = format!("{}{}", self.base_url, path);
         let mut req = self.client.put(&url).json(body);
@@ -65,13 +74,23 @@ impl TestClient {
         let status = resp.status();
         let body_text = resp.text().await.unwrap_or_default();
         if !status.is_success() {
-             ensure!(false, "Request failed with status: {} | Body: {}", status, body_text);
+            ensure!(
+                false,
+                "Request failed with status: {} | Body: {}",
+                status,
+                body_text
+            );
         }
         let json: Value = serde_json::from_str(&body_text).unwrap_or(Value::Null);
         Ok(json)
     }
 
-    pub async fn post_expect_error(&self, path: &str, body: &Value, expected_status: u16) -> Result<()> {
+    pub async fn post_expect_error(
+        &self,
+        path: &str,
+        body: &Value,
+        expected_status: u16,
+    ) -> Result<()> {
         let url = format!("{}{}", self.base_url, path);
         let mut req = self.client.post(&url).json(body);
         if let Some(token) = &self.token {
@@ -79,7 +98,12 @@ impl TestClient {
         }
         let resp = req.send().await?;
         let status = resp.status();
-        ensure!(status.as_u16() == expected_status, "Expected status {}, got {}", expected_status, status);
+        ensure!(
+            status.as_u16() == expected_status,
+            "Expected status {}, got {}",
+            expected_status,
+            status
+        );
         Ok(())
     }
 
@@ -93,7 +117,7 @@ impl TestClient {
         let status = resp.status();
         let body_text = resp.text().await.unwrap_or_default();
         if !status.is_success() {
-             ensure!(false, "Delete failed: {} | {}", status, body_text);
+            ensure!(false, "Delete failed: {} | {}", status, body_text);
         }
         let json: Value = serde_json::from_str(&body_text).unwrap_or(Value::Null);
         Ok(json)

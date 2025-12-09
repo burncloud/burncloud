@@ -1,5 +1,5 @@
-use burncloud_service_models::{get_data_dir, build_download_url};
 use burncloud_download::DownloadManager;
+use burncloud_service_models::{build_download_url, get_data_dir};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 使用一个小文件进行测试
     println!("=== 测试下载小文件 ===");
     let model_id = "Qwen/Qwen2.5-7B-Instruct-GGUF";
-    let path = "README.md";  // 通常 README 文件很小
+    let path = "README.md"; // 通常 README 文件很小
 
     println!("模型: {}", model_id);
     println!("文件: {}", path);
@@ -51,8 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let completed_kb = completed as f64 / 1024.0;
                 let speed_kb = speed as f64 / 1024.0;
 
-                print!("\r状态: {} | 进度: {:.2}% | 已下载: {:.2} KB / {:.2} KB | 速度: {:.2} KB/s",
-                    status.status, progress, completed_kb, total_kb, speed_kb);
+                print!(
+                    "\r状态: {} | 进度: {:.2}% | 已下载: {:.2} KB / {:.2} KB | 速度: {:.2} KB/s",
+                    status.status, progress, completed_kb, total_kb, speed_kb
+                );
 
                 // 刷新输出
                 use std::io::Write;

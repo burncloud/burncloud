@@ -1,13 +1,13 @@
+use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
     response::Json,
     routing::get,
     Router,
 };
+use burncloud_database_router::RouterDatabase;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use crate::AppState;
-use burncloud_database_router::RouterDatabase;
 
 #[derive(Deserialize)]
 pub struct Pagination {
@@ -21,10 +21,7 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/usage/{user_id}", get(get_user_usage))
 }
 
-async fn list_logs(
-    State(state): State<AppState>, 
-    Query(params): Query<Pagination>
-) -> Json<Value> {
+async fn list_logs(State(state): State<AppState>, Query(params): Query<Pagination>) -> Json<Value> {
     let page = params.page.unwrap_or(1);
     let page_size = params.page_size.unwrap_or(50);
     let offset = (page - 1) * page_size;
@@ -39,10 +36,7 @@ async fn list_logs(
     }
 }
 
-async fn get_user_usage(
-    State(state): State<AppState>, 
-    Path(user_id): Path<String>
-) -> Json<Value> {
+async fn get_user_usage(State(state): State<AppState>, Path(user_id): Path<String>) -> Json<Value> {
     match RouterDatabase::get_usage_by_user(&state.db, &user_id).await {
         Ok((prompt, completion)) => Json(json!({
             "user_id": user_id,

@@ -1,8 +1,8 @@
-use dioxus::prelude::*;
-use burncloud_client_shared::auth_service::AuthService;
-use burncloud_client_shared::use_toast;
-use burncloud_client_shared::components::{BCButton, BCInput, BCCard};
 use crate::app::Route;
+use burncloud_client_shared::auth_service::AuthService;
+use burncloud_client_shared::components::{BCButton, BCCard, BCInput};
+use burncloud_client_shared::use_toast;
+use dioxus::prelude::*;
 
 #[component]
 pub fn LoginPage() -> Element {
@@ -21,7 +21,7 @@ pub fn LoginPage() -> Element {
                     toast.success("登录成功");
                     // Redirect to Dashboard
                     navigator.push(Route::Dashboard {});
-                },
+                }
                 Err(e) => {
                     loading.set(false);
                     println!("LoginPage: Login error: {}", e);
@@ -38,7 +38,7 @@ pub fn LoginPage() -> Element {
                 div { class: "text-center mb-xl",
                     h2 { class: "text-title font-bold", "登录 BurnCloud" }
                 }
-                
+
                 BCInput {
                     label: Some("用户名".to_string()),
                     value: "{username}",
@@ -55,11 +55,11 @@ pub fn LoginPage() -> Element {
                 }
 
                 div { class: "mt-lg",
-                    BCButton { 
+                    BCButton {
                         class: "w-full",
                         loading: loading(),
                         onclick: handle_login,
-                        "登录" 
+                        "登录"
                     }
                 }
 

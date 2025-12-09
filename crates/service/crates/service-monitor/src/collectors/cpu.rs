@@ -75,13 +75,13 @@ impl CpuCollector {
 
     #[cfg(windows)]
     fn read_cpu_info_from_registry(&self) -> (u64, String) {
-        use winapi::um::winreg::*;
-        use winapi::shared::minwindef::{HKEY, DWORD};
-        use winapi::shared::winerror::ERROR_SUCCESS;
         use std::ffi::OsStr;
+        use std::mem;
         use std::os::windows::ffi::OsStrExt;
         use std::ptr;
-        use std::mem;
+        use winapi::shared::minwindef::{DWORD, HKEY};
+        use winapi::shared::winerror::ERROR_SUCCESS;
+        use winapi::um::winreg::*;
 
         let mut frequency = 0u64;
         let mut brand = String::from("Windows CPU");
@@ -99,8 +99,8 @@ impl CpuCollector {
                 0,
                 winapi::um::winnt::KEY_READ,
                 &mut hkey,
-            ) == ERROR_SUCCESS as i32 {
-
+            ) == ERROR_SUCCESS as i32
+            {
                 // 读取处理器名称
                 let mut buffer = [0u16; 256];
                 let mut buffer_size = (buffer.len() * 2) as DWORD;
@@ -116,10 +116,11 @@ impl CpuCollector {
                     ptr::null_mut(),
                     buffer.as_mut_ptr() as *mut u8,
                     &mut buffer_size,
-                ) == ERROR_SUCCESS as i32 {
+                ) == ERROR_SUCCESS as i32
+                {
                     let len = (buffer_size as usize / 2).min(buffer.len());
                     if len > 0 {
-                        let processor_name = String::from_utf16_lossy(&buffer[..len-1]);
+                        let processor_name = String::from_utf16_lossy(&buffer[..len - 1]);
                         brand = processor_name.trim().to_string();
                     }
                 }
@@ -139,7 +140,8 @@ impl CpuCollector {
                     ptr::null_mut(),
                     &mut freq_mhz as *mut DWORD as *mut u8,
                     &mut freq_size,
-                ) == ERROR_SUCCESS as i32 {
+                ) == ERROR_SUCCESS as i32
+                {
                     frequency = freq_mhz as u64;
                 }
 
@@ -152,8 +154,9 @@ impl CpuCollector {
 
     #[cfg(unix)]
     async fn collect_unix(&mut self) -> Result<CpuInfo, MonitorError> {
-        let stat_content = fs::read_to_string("/proc/stat")
-            .map_err(|e| MonitorError::CollectionFailed(format!("Failed to read /proc/stat: {}", e)))?;
+        let stat_content = fs::read_to_string("/proc/stat").map_err(|e| {
+            MonitorError::CollectionFailed(format!("Failed to read /proc/stat: {}", e))
+        })?;
 
         let cpu_line = stat_content
             .lines()
@@ -162,7 +165,9 @@ impl CpuCollector {
 
         let parts: Vec<&str> = cpu_line.split_whitespace().collect();
         if parts.len() < 8 || parts[0] != "cpu" {
-            return Err(MonitorError::InvalidData("Invalid /proc/stat format".to_string()));
+            return Err(MonitorError::InvalidData(
+                "Invalid /proc/stat format".to_string(),
+            ));
         }
 
         let user: u64 = parts[1].parse().unwrap_or(0);
@@ -193,7 +198,9 @@ impl CpuCollector {
 
         // 获取CPU核心数
         let core_count = fs::read_to_string("/proc/cpuinfo")
-            .map_err(|e| MonitorError::CollectionFailed(format!("Failed to read /proc/cpuinfo: {}", e)))?
+            .map_err(|e| {
+                MonitorError::CollectionFailed(format!("Failed to read /proc/cpuinfo: {}", e))
+            })?
             .lines()
             .filter(|line| line.starts_with("processor"))
             .count();

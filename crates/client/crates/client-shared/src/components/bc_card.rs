@@ -2,10 +2,8 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn BCCard(
-    #[props(default)]
-    header: Option<String>,
-    #[props(default)]
-    class: String,
+    #[props(default)] header: Option<String>,
+    #[props(default)] class: String,
     children: Element,
 ) -> Element {
     rsx! {

@@ -1,13 +1,12 @@
-use dioxus::prelude::*;
 use burncloud_client_shared::components::{BCButton, BCCard, BCInput};
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::user_service::UserService;
+use dioxus::prelude::*;
 
 #[component]
 pub fn UserPage() -> Element {
-    let mut users = use_resource(move || async move {
-        UserService::list().await.unwrap_or(vec![])
-    });
+    let mut users =
+        use_resource(move || async move { UserService::list().await.unwrap_or(vec![]) });
 
     let mut is_topup_open = use_signal(|| false);
     let mut selected_user_id = use_signal(|| String::new());
@@ -15,7 +14,7 @@ pub fn UserPage() -> Element {
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();
 
-    // Fix: make closure mutable to satisfy EventHandler requirements if needed, 
+    // Fix: make closure mutable to satisfy EventHandler requirements if needed,
     // though for simple signal updates it might not be strictly required by logic, the compiler complains.
     let mut handle_topup_click = move |id: String| {
         selected_user_id.set(id);
@@ -31,7 +30,7 @@ pub fn UserPage() -> Element {
                     toast.success(&format!("充值成功，当前余额: ¥ {:.2}", new_balance));
                     is_topup_open.set(false);
                     users.restart();
-                },
+                }
                 Err(e) => toast.error(&format!("充值失败: {}", e)),
             }
             is_loading.set(false);
@@ -75,15 +74,15 @@ pub fn UserPage() -> Element {
                                 for user in list {
                                     tr { class: "hover:bg-subtle transition-colors", "data-testid": "user-row",
                                         td { class: "p-md text-secondary border-b border-subtle", "{user.id}" }
-                                        td { class: "p-md font-medium border-b border-subtle", 
+                                        td { class: "p-md font-medium border-b border-subtle",
                                             div { class: "flex items-center gap-sm", "data-testid": "user-username",
-                                                div { class: "w-8 h-8 rounded-full bg-primary-light text-primary flex items-center justify-center font-bold", 
-                                                    "{user.username.chars().next().unwrap_or('?')}" 
+                                                div { class: "w-8 h-8 rounded-full bg-primary-light text-primary flex items-center justify-center font-bold",
+                                                    "{user.username.chars().next().unwrap_or('?')}"
                                                 }
                                                 "{user.username}"
                                             }
                                         }
-                                        td { class: "p-md border-b border-subtle", 
+                                        td { class: "p-md border-b border-subtle",
                                             span { class: "px-sm py-xs rounded bg-surface-variant text-caption", "{user.role}" }
                                         }
                                         td { class: "p-md text-secondary border-b border-subtle", "{user.group}" }
@@ -96,10 +95,10 @@ pub fn UserPage() -> Element {
                                             }
                                         }
                                         td { class: "p-md text-right border-b border-subtle",
-                                            BCButton { 
-                                                variant: burncloud_client_shared::components::ButtonVariant::Ghost, 
+                                            BCButton {
+                                                variant: burncloud_client_shared::components::ButtonVariant::Ghost,
                                                 onclick: move |_| handle_topup_click(user.id.clone()),
-                                                "充值" 
+                                                "充值"
                                             }
                                             BCButton { variant: burncloud_client_shared::components::ButtonVariant::Ghost, class: "text-secondary", "✏️" }
                                         }
@@ -114,22 +113,22 @@ pub fn UserPage() -> Element {
             }
 
             // Topup Modal (Inline)
-            div { 
+            div {
                 class: "modal-overlay",
                 style: if is_topup_open() { "display: flex" } else { "display: none" },
                 onclick: move |_| is_topup_open.set(false),
-                
-                div { 
+
+                div {
                     class: "modal-content",
                     onclick: |e| e.stop_propagation(),
-                    
+
                     div { class: "modal-header",
                         h3 { class: "modal-title-text text-title font-bold m-0", "用户充值" }
                     }
                     div { class: "modal-body",
                         div { class: "vstack gap-3",
                             div { class: "text-secondary mb-2", "用户 ID: {selected_user_id}" }
-                            
+
                             BCInput {
                                 label: Some("充值金额 (¥)".to_string()),
                                 value: "{topup_amount}",
@@ -139,16 +138,16 @@ pub fn UserPage() -> Element {
                         }
                     }
                     div { class: "modal-footer",
-                        BCButton { 
-                            variant: burncloud_client_shared::components::ButtonVariant::Secondary, 
+                        BCButton {
+                            variant: burncloud_client_shared::components::ButtonVariant::Secondary,
                             class: "me-2",
-                            onclick: move |_| is_topup_open.set(false), 
-                            "取消" 
+                            onclick: move |_| is_topup_open.set(false),
+                            "取消"
                         }
-                        BCButton { 
+                        BCButton {
                             loading: is_loading(),
-                            onclick: handle_confirm_topup, 
-                            "确认充值" 
+                            onclick: handle_confirm_topup,
+                            "确认充值"
                         }
                     }
                 }

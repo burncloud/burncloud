@@ -1,4 +1,4 @@
-use burncloud_service_monitor::{SystemMonitorService, SystemMonitor};
+use burncloud_service_monitor::{SystemMonitor, SystemMonitorService};
 
 fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
@@ -48,14 +48,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 显示磁盘信息
     println!("\n💿 Disk Information:");
     for (i, disk) in metrics.disks.iter().enumerate() {
-        println!("   Disk {}: {} ({:.1}% used)",
-                i + 1,
-                disk.mount_point,
-                disk.usage_percent);
-        println!("      Total: {} | Used: {} | Available: {}",
-                format_bytes(disk.total),
-                format_bytes(disk.used),
-                format_bytes(disk.available));
+        println!(
+            "   Disk {}: {} ({:.1}% used)",
+            i + 1,
+            disk.mount_point,
+            disk.usage_percent
+        );
+        println!(
+            "      Total: {} | Used: {} | Available: {}",
+            format_bytes(disk.total),
+            format_bytes(disk.used),
+            format_bytes(disk.available)
+        );
     }
 
     println!("\n✅ Tool monitor test completed!");

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{AwsConfig, aws_uri_encode}; // Absolute path within crate
+    use crate::{aws_uri_encode, AwsConfig}; // Absolute path within crate
 
     #[test]
     fn test_aws_config_parsing() {
@@ -19,9 +19,15 @@ mod tests {
         // Space
         assert_eq!(aws_uri_encode("hello world", false), "hello%20world");
         // Slash preserved
-        assert_eq!(aws_uri_encode("/path/to/resource", false), "/path/to/resource");
+        assert_eq!(
+            aws_uri_encode("/path/to/resource", false),
+            "/path/to/resource"
+        );
         // Slash encoded
-        assert_eq!(aws_uri_encode("/path/to/resource", true), "%2Fpath%2Fto%2Fresource");
+        assert_eq!(
+            aws_uri_encode("/path/to/resource", true),
+            "%2Fpath%2Fto%2Fresource"
+        );
         // Colon
         assert_eq!(aws_uri_encode("v1:0", false), "v1%3A0");
     }

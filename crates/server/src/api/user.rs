@@ -1,14 +1,14 @@
+use crate::AppState;
 use axum::{
-    extract::{State, Json},
+    extract::{Json, State},
     response::Json as AxumJson,
     routing::{get, post},
     Router,
 };
+use bcrypt::{hash, verify, DEFAULT_COST};
+use burncloud_database_user::{DbUser, UserDatabase};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use crate::AppState;
-use burncloud_database_user::{UserDatabase, DbUser};
-use bcrypt::{hash, verify, DEFAULT_COST};
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -36,13 +36,10 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/user/login", post(login))
         .route("/console/api/user/topup", post(topup))
         .route("/console/api/list_users", get(list_users))
-        // .route("/console/api/user/me", get(get_current_user)) // Needs auth middleware context
+    // .route("/console/api/user/me", get(get_current_user)) // Needs auth middleware context
 }
 
-async fn topup(
-    State(state): State<AppState>,
-    Json(payload): Json<TopupDto>,
-) -> AxumJson<Value> {
+async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> AxumJson<Value> {
     match UserDatabase::update_balance(&state.db, &payload.user_id, payload.amount).await {
         Ok(new_balance) => AxumJson(json!({ "success": true, "data": { "balance": new_balance } })),
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
@@ -55,7 +52,9 @@ async fn register(
 ) -> AxumJson<Value> {
     // 1. Check if user exists
     match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
-        Ok(Some(_)) => return AxumJson(json!({ "success": false, "message": "Username already exists" })),
+        Ok(Some(_)) => {
+            return AxumJson(json!({ "success": false, "message": "Username already exists" }))
+        }
         Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
         _ => {}
     }
@@ -81,16 +80,15 @@ async fn register(
         Ok(_) => {
             // Assign default role
             let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
-            AxumJson(json!({ "success": true, "data": { "id": user.id, "username": user.username } }))
-        },
+            AxumJson(
+                json!({ "success": true, "data": { "id": user.id, "username": user.username } }),
+            )
+        }
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
     }
 }
 
-async fn login(
-    State(state): State<AppState>,
-    Json(payload): Json<LoginDto>,
-) -> AxumJson<Value> {
+async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> AxumJson<Value> {
     match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(user)) => {
             if let Some(hash_str) = user.password_hash {
@@ -98,34 +96,36 @@ async fn login(
                     // Success
                     // In a real app, generate JWT here.
                     // For now, return user info.
-                    let roles = UserDatabase::get_user_roles(&state.db, &user.id).await.unwrap_or_default();
-                    return AxumJson(json!({ 
-                        "success": true, 
-                        "data": { 
-                            "id": user.id, 
+                    let roles = UserDatabase::get_user_roles(&state.db, &user.id)
+                        .await
+                        .unwrap_or_default();
+                    return AxumJson(json!({
+                        "success": true,
+                        "data": {
+                            "id": user.id,
                             "username": user.username,
                             "roles": roles,
-                            "token": "mock-token-for-now" 
-                        } 
+                            "token": "mock-token-for-now"
+                        }
                     }));
                 }
             }
             AxumJson(json!({ "success": false, "message": "Invalid credentials" }))
-        },
+        }
         Ok(None) => AxumJson(json!({ "success": false, "message": "User not found" })),
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
     }
 }
 
-async fn list_users(
-    State(state): State<AppState>,
-) -> AxumJson<Value> {
+async fn list_users(State(state): State<AppState>) -> AxumJson<Value> {
     match UserDatabase::list_users(&state.db).await {
         Ok(users) => {
             let mut safe_users = Vec::new();
             for u in users {
                 // Fetch role (N+1 query for MVP)
-                let roles = UserDatabase::get_user_roles(&state.db, &u.id).await.unwrap_or_default();
+                let roles = UserDatabase::get_user_roles(&state.db, &u.id)
+                    .await
+                    .unwrap_or_default();
                 let role = roles.first().map(|s| s.as_str()).unwrap_or("user");
 
                 safe_users.push(json!({
@@ -138,9 +138,9 @@ async fn list_users(
                     "group": "default" // Placeholder for group
                 }));
             }
-            
+
             AxumJson(json!({ "success": true, "data": safe_users }))
-        },
+        }
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
     }
 }

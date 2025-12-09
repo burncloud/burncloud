@@ -1,4 +1,4 @@
-use burncloud_database::{Database, DatabaseError, Result, create_default_database};
+use burncloud_database::{create_default_database, Database, DatabaseError, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -17,7 +17,10 @@ async fn test_cross_platform_path_generation() {
             println!("Generated path: {}", path_str);
 
             // Verify basic path structure
-            assert!(path_str.ends_with("data.db"), "Path should end with data.db");
+            assert!(
+                path_str.ends_with("data.db"),
+                "Path should end with data.db"
+            );
             assert!(!path_str.is_empty(), "Path should not be empty");
             assert!(path.is_absolute(), "Path should be absolute");
 
@@ -29,7 +32,10 @@ async fn test_cross_platform_path_generation() {
             validate_unix_path(&path);
         }
         Err(e) => {
-            println!("Path generation failed (may be acceptable in test environment): {}", e);
+            println!(
+                "Path generation failed (may be acceptable in test environment): {}",
+                e
+            );
             match e {
                 DatabaseError::PathResolution(_) => {
                     // This is acceptable in environments without proper home directories
@@ -52,7 +58,10 @@ fn validate_unix_path(path: &Path) {
     );
 
     // Should use forward slashes
-    assert!(path_str.contains('/'), "Unix path should contain forward slashes");
+    assert!(
+        path_str.contains('/'),
+        "Unix path should contain forward slashes"
+    );
 
     // Should start with root or home
     assert!(
@@ -67,13 +76,18 @@ fn validate_windows_path(path: &Path) {
 
     // Should contain Windows-specific path components
     assert!(
-        path_str.contains("AppData") && path_str.contains("Local") && path_str.contains("BurnCloud"),
+        path_str.contains("AppData")
+            && path_str.contains("Local")
+            && path_str.contains("BurnCloud"),
         "Windows path should contain AppData\\Local\\BurnCloud, got: {}",
         path_str
     );
 
     // Should use Windows path separators
-    assert!(path_str.contains('\\'), "Windows path should contain backslashes");
+    assert!(
+        path_str.contains('\\'),
+        "Windows path should contain backslashes"
+    );
 
     // Should start with a drive letter (in most cases)
     if let Some(first_char) = path_str.chars().next() {
@@ -98,7 +112,10 @@ fn validate_unix_path(path: &Path) {
     );
 
     // Should use forward slashes
-    assert!(path_str.contains('/'), "Unix path should contain forward slashes");
+    assert!(
+        path_str.contains('/'),
+        "Unix path should contain forward slashes"
+    );
 
     // Should start with root or home
     assert!(
@@ -119,7 +136,9 @@ async fn test_path_edge_cases() {
         if std::env::set_current_dir(temp_dir.path()).is_ok() {
             // Path generation should still work regardless of current directory
             let path_result = get_test_default_path();
-            assert!(path_result.is_ok() || matches!(path_result, Err(DatabaseError::PathResolution(_))));
+            assert!(
+                path_result.is_ok() || matches!(path_result, Err(DatabaseError::PathResolution(_)))
+            );
 
             // Restore original working directory
             if let Some(original) = original_cwd {
@@ -167,7 +186,9 @@ async fn test_file_system_permissions() {
             println!("Directory creation failed due to permissions: {}", msg);
             // This is acceptable - the error should be informative
             assert!(
-                msg.contains("Permission denied") || msg.contains("Access is denied") || msg.len() > 10,
+                msg.contains("Permission denied")
+                    || msg.contains("Access is denied")
+                    || msg.len() > 10,
                 "Error message should be informative: {}",
                 msg
             );
@@ -213,7 +234,10 @@ async fn test_concurrent_directory_creation() {
         }
     }
 
-    println!("✓ Concurrent directory creation: {}/{} tasks succeeded", success_count, num_tasks);
+    println!(
+        "✓ Concurrent directory creation: {}/{} tasks succeeded",
+        success_count, num_tasks
+    );
 
     // Clean up all databases
     for db in databases {
@@ -232,10 +256,17 @@ fn test_environment_variable_handling() {
         std::env::remove_var("USERPROFILE");
 
         let path_result = get_test_default_path();
-        assert!(path_result.is_err(), "Should fail when USERPROFILE is missing");
+        assert!(
+            path_result.is_err(),
+            "Should fail when USERPROFILE is missing"
+        );
 
         if let Err(DatabaseError::PathResolution(msg)) = path_result {
-            assert!(msg.contains("USERPROFILE"), "Error should mention USERPROFILE: {}", msg);
+            assert!(
+                msg.contains("USERPROFILE"),
+                "Error should mention USERPROFILE: {}",
+                msg
+            );
         }
 
         // Restore original value
@@ -335,7 +366,11 @@ async fn test_very_long_paths() {
         println!("Default path length: {} characters", path_length);
 
         // Most file systems support at least 260 characters, many support much more
-        assert!(path_length < 1000, "Path is unreasonably long: {} chars", path_length);
+        assert!(
+            path_length < 1000,
+            "Path is unreasonably long: {} chars",
+            path_length
+        );
 
         // The path should be reasonable for most use cases
         assert!(path_length > 10, "Path is unreasonably short: {}", path_str);
@@ -356,7 +391,9 @@ fn get_test_default_path() -> Result<PathBuf> {
             profile_path
         } else {
             std::env::current_dir()
-                .map_err(|e| DatabaseError::PathResolution(format!("Cannot get current directory: {}", e)))?
+                .map_err(|e| {
+                    DatabaseError::PathResolution(format!("Cannot get current directory: {}", e))
+                })?
                 .join(profile_path)
         };
 

@@ -49,12 +49,8 @@ impl From<anyhow::Error> for UpdateError {
 impl From<self_update::errors::Error> for UpdateError {
     fn from(error: self_update::errors::Error) -> Self {
         match error {
-            self_update::errors::Error::Network(_) => {
-                UpdateError::Network(error.to_string())
-            }
-            self_update::errors::Error::Release(_) => {
-                UpdateError::GitHub(error.to_string())
-            }
+            self_update::errors::Error::Network(_) => UpdateError::Network(error.to_string()),
+            self_update::errors::Error::Release(_) => UpdateError::GitHub(error.to_string()),
             _ => UpdateError::Unknown(error.to_string()),
         }
     }

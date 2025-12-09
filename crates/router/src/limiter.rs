@@ -1,5 +1,5 @@
-use std::time::Instant;
 use dashmap::DashMap;
+use std::time::Instant;
 
 /// 令牌桶算法实现的限流器
 /// Token Bucket implementation for Rate Limiting
@@ -41,11 +41,11 @@ impl RateLimiter {
 
         let bucket = bucket_entry.value_mut();
         let now = Instant::now();
-        
+
         // 计算时间增量并补充令牌
         let duration = now.duration_since(bucket.last_update).as_secs_f64();
         let new_tokens = duration * self.default_refill_rate;
-        
+
         bucket.tokens = (bucket.tokens + new_tokens).min(self.default_capacity);
         bucket.last_update = now;
 

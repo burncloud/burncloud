@@ -1,7 +1,4 @@
-use burncloud_database::{
-    Database, DatabaseError,
-    create_default_database
-};
+use burncloud_database::{create_default_database, Database, DatabaseError};
 use tempfile::TempDir;
 
 /// API compatibility and regression tests
@@ -15,7 +12,10 @@ async fn test_database_creation_methods() {
     let db_result = Database::new().await;
     if db_result.is_ok() {
         let db = db_result.unwrap();
-        assert!(db.connection().is_ok(), "Default database should be initialized");
+        assert!(
+            db.connection().is_ok(),
+            "Default database should be initialized"
+        );
         let _ = db.close().await;
     }
 
@@ -24,7 +24,10 @@ async fn test_database_creation_methods() {
     let default_db_result = Database::new().await;
     if default_db_result.is_ok() {
         let explicit_db = default_db_result.unwrap();
-        assert!(explicit_db.connection().is_ok(), "Default database should be initialized");
+        assert!(
+            explicit_db.connection().is_ok(),
+            "Default database should be initialized"
+        );
         let _ = explicit_db.close().await;
     }
 
@@ -32,7 +35,10 @@ async fn test_database_creation_methods() {
     let default_convenience_result = create_default_database().await;
 
     if let Ok(default_convenience_db) = default_convenience_result {
-        assert!(default_convenience_db.connection().is_ok(), "Default convenience database should be initialized");
+        assert!(
+            default_convenience_db.connection().is_ok(),
+            "Default convenience database should be initialized"
+        );
         let _ = default_convenience_db.close().await;
     }
 
@@ -50,19 +56,31 @@ async fn test_database_operation_consistency() {
 
         // Test basic query execution
         let basic_query_result = db.execute_query("SELECT 1 as test_value").await;
-        assert!(basic_query_result.is_ok(), "{} database should support basic queries", db_type);
+        assert!(
+            basic_query_result.is_ok(),
+            "{} database should support basic queries",
+            db_type
+        );
 
         // Test table creation
         let create_table_result = db.execute_query(
             "CREATE TABLE IF NOT EXISTS api_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)"
         ).await;
-        assert!(create_table_result.is_ok(), "{} database should support table creation", db_type);
+        assert!(
+            create_table_result.is_ok(),
+            "{} database should support table creation",
+            db_type
+        );
 
         // Test data insertion
-        let insert_result = db.execute_query(
-            "INSERT INTO api_test (name, value) VALUES ('test_name', 42)"
-        ).await;
-        assert!(insert_result.is_ok(), "{} database should support data insertion", db_type);
+        let insert_result = db
+            .execute_query("INSERT INTO api_test (name, value) VALUES ('test_name', 42)")
+            .await;
+        assert!(
+            insert_result.is_ok(),
+            "{} database should support data insertion",
+            db_type
+        );
 
         // Test fetch_one
         #[derive(sqlx::FromRow)]
@@ -72,8 +90,14 @@ async fn test_database_operation_consistency() {
             value: i64,
         }
 
-        let fetch_one_result = db.fetch_one::<ApiTestRow>("SELECT id, name, value FROM api_test LIMIT 1").await;
-        assert!(fetch_one_result.is_ok(), "{} database should support fetch_one", db_type);
+        let fetch_one_result = db
+            .fetch_one::<ApiTestRow>("SELECT id, name, value FROM api_test LIMIT 1")
+            .await;
+        assert!(
+            fetch_one_result.is_ok(),
+            "{} database should support fetch_one",
+            db_type
+        );
 
         if let Ok(row) = fetch_one_result {
             assert_eq!(row.name, "test_name");
@@ -81,26 +105,46 @@ async fn test_database_operation_consistency() {
         }
 
         // Test fetch_all
-        let fetch_all_result = db.fetch_all::<ApiTestRow>("SELECT id, name, value FROM api_test").await;
-        assert!(fetch_all_result.is_ok(), "{} database should support fetch_all", db_type);
+        let fetch_all_result = db
+            .fetch_all::<ApiTestRow>("SELECT id, name, value FROM api_test")
+            .await;
+        assert!(
+            fetch_all_result.is_ok(),
+            "{} database should support fetch_all",
+            db_type
+        );
 
         if let Ok(rows) = fetch_all_result {
             assert!(!rows.is_empty(), "{} database should return data", db_type);
         }
 
         // Test fetch_optional
-        let fetch_optional_result = db.fetch_optional::<ApiTestRow>(
-            "SELECT id, name, value FROM api_test WHERE name = 'nonexistent'"
-        ).await;
-        assert!(fetch_optional_result.is_ok(), "{} database should support fetch_optional", db_type);
+        let fetch_optional_result = db
+            .fetch_optional::<ApiTestRow>(
+                "SELECT id, name, value FROM api_test WHERE name = 'nonexistent'",
+            )
+            .await;
+        assert!(
+            fetch_optional_result.is_ok(),
+            "{} database should support fetch_optional",
+            db_type
+        );
 
         if let Ok(optional_row) = fetch_optional_result {
-            assert!(optional_row.is_none(), "{} database should return None for non-existent data", db_type);
+            assert!(
+                optional_row.is_none(),
+                "{} database should return None for non-existent data",
+                db_type
+            );
         }
 
         // Test connection access
         let connection_result = db.connection();
-        assert!(connection_result.is_ok(), "{} database should provide connection access", db_type);
+        assert!(
+            connection_result.is_ok(),
+            "{} database should provide connection access",
+            db_type
+        );
     }
 
     // Clean up
@@ -133,7 +177,10 @@ async fn test_error_type_consistency() {
         let create_default_error = create_default_database().await;
 
         // Should return PathResolution error
-        assert!(matches!(create_default_error, Err(DatabaseError::PathResolution(_))));
+        assert!(matches!(
+            create_default_error,
+            Err(DatabaseError::PathResolution(_))
+        ));
 
         // Restore environment
         if let Some(original) = original_userprofile {
@@ -154,7 +201,9 @@ async fn test_backward_compatibility() {
     if default_db_result.is_ok() {
         let path_db = default_db_result.unwrap();
         // Should work as before
-        let result = path_db.execute_query("CREATE TABLE test (id INTEGER)").await;
+        let result = path_db
+            .execute_query("CREATE TABLE test (id INTEGER)")
+            .await;
         if result.is_ok() {
             println!("✓ Default database pattern works");
         }
@@ -164,17 +213,25 @@ async fn test_backward_compatibility() {
     // Pattern 2: Default database usage (now simplified)
     match Database::new().await {
         Ok(default_db) => {
-            let result = default_db.execute_query("CREATE TABLE test (id INTEGER)").await;
+            let result = default_db
+                .execute_query("CREATE TABLE test (id INTEGER)")
+                .await;
             if result.is_ok() {
                 println!("✓ Default database pattern works");
             } else {
-                println!("⚠ Default database operations failed (may be due to permissions): {:?}", result);
+                println!(
+                    "⚠ Default database operations failed (may be due to permissions): {:?}",
+                    result
+                );
             }
 
             let _ = default_db.close().await;
         }
         Err(e) => {
-            println!("⚠ Default database creation failed (may be due to environment): {}", e);
+            println!(
+                "⚠ Default database creation failed (may be due to environment): {}",
+                e
+            );
             // This is acceptable in test environments
         }
     }
@@ -212,11 +269,19 @@ async fn test_database_connection_consistency() {
         if let Ok(connection) = db.connection() {
             // Test pool access
             let pool = connection.pool();
-            assert!(!pool.is_closed(), "{} connection pool should be open", db_type);
+            assert!(
+                !pool.is_closed(),
+                "{} connection pool should be open",
+                db_type
+            );
 
             // Test that we can execute queries through the pool
             let direct_result = sqlx::query("SELECT 1").execute(pool).await;
-            assert!(direct_result.is_ok(), "{} should allow direct pool access", db_type);
+            assert!(
+                direct_result.is_ok(),
+                "{} should allow direct pool access",
+                db_type
+            );
 
             println!("✓ {} database connection is consistent", db_type);
         }

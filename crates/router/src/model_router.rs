@@ -1,8 +1,8 @@
-use burncloud_database::Database;
-use burncloud_common::types::Channel;
-use rand::Rng;
 use anyhow::Result;
-use burncloud_database::sqlx; // Use re-exported sqlx
+use burncloud_common::types::Channel;
+use burncloud_database::sqlx;
+use burncloud_database::Database;
+use rand::Rng; // Use re-exported sqlx
 
 pub struct ModelRouter {
     db: std::sync::Arc<Database>,
@@ -17,7 +17,7 @@ impl ModelRouter {
     }
 
     /// Routes a request to a suitable channel based on user group and requested model.
-    /// 
+    ///
     /// Logic:
     /// 1. Find all enabled abilities matching (group, model).
     /// 2. Group them by priority (High priority first).
@@ -31,11 +31,15 @@ impl ModelRouter {
         // 1. Get max priority for this group/model pair
         // Note: "group" is a keyword, quoted as "group" (Postgres) or `group` (SQLite)
         // We need to handle dialect difference or use simple SQL compatible with both if possible.
-        // Since our Schema uses quotes for Postgres and backticks for SQLite, accessing it might be tricky via raw SQL 
+        // Since our Schema uses quotes for Postgres and backticks for SQLite, accessing it might be tricky via raw SQL
         // if we don't know the dialect here.
         // However, `Database` knows the kind.
-        
-        let group_col = if self.db.kind() == "postgres" { "\"group\"" } else { "`group`" };
+
+        let group_col = if self.db.kind() == "postgres" {
+            "\"group\""
+        } else {
+            "`group`"
+        };
 
         let query = format!(
             r#"
@@ -47,8 +51,11 @@ impl ModelRouter {
             "#,
             group_col
         );
-        
-        println!("ModelRouter: Querying priority with Group='{}', Model='{}'", group, model);
+
+        println!(
+            "ModelRouter: Querying priority with Group='{}', Model='{}'",
+            group, model
+        );
 
         let max_priority: Option<i64> = sqlx::query_scalar(&query)
             .bind(group)
@@ -97,7 +104,9 @@ impl ModelRouter {
                 let mut r = rand::thread_rng().gen_range(0..total_weight);
                 let mut selected = candidates[0].0;
                 for (id, weight) in candidates {
-                    if weight <= 0 { continue; }
+                    if weight <= 0 {
+                        continue;
+                    }
                     if r < weight {
                         selected = id;
                         break;
@@ -111,15 +120,18 @@ impl ModelRouter {
         // 4. Fetch Channel Details
         // We use the standard columns defined in our Schema
         let channel_query = match self.db.kind().as_str() {
-            "postgres" => r#"
+            "postgres" => {
+                r#"
                 SELECT 
                     id, type as "type_", key, status, name, weight, created_time, test_time, 
                     response_time, base_url, models, "group", used_quota, model_mapping, 
                     priority, auto_ban, other_info, tag, setting, param_override, 
                     header_override, remark 
                 FROM channels WHERE id = ?
-            "#,
-            _ => r#"
+            "#
+            }
+            _ => {
+                r#"
                 SELECT 
                     id, type as type_, key, status, name, weight, created_time, test_time, 
                     response_time, base_url, models, `group`, used_quota, model_mapping, 
@@ -127,6 +139,7 @@ impl ModelRouter {
                     header_override, remark 
                 FROM channels WHERE id = ?
             "#
+            }
         };
 
         let channel: Option<Channel> = sqlx::query_as(channel_query)

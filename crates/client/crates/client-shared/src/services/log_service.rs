@@ -17,19 +17,16 @@ impl LogService {
         let url = format!("http://127.0.0.1:{}/console/api/logs?limit={}", port, limit);
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
         }
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-        
+
         if let Some(data) = json.get("data") {
-             serde_json::from_value(data.clone()).map_err(|e| e.to_string())
+            serde_json::from_value(data.clone()).map_err(|e| e.to_string())
         } else {
             Ok(vec![])
         }

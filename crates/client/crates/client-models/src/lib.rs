@@ -1,5 +1,5 @@
-pub mod models;
 pub mod detail;
+pub mod models;
 
-pub use models::ModelManagement;
 pub use detail::ModelDetail;
+pub use models::ModelManagement;

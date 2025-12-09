@@ -9,7 +9,9 @@ mod tests {
         // 添加下载任务
         let gid = "test_gid_123";
         let uris = vec!["http://example.com/file1.zip".to_string()];
-        db.add(gid, uris, Some("/test/download"), Some("file1.zip")).await.unwrap();
+        db.add(gid, uris, Some("/test/download"), Some("file1.zip"))
+            .await
+            .unwrap();
 
         // 获取任务
         let download = db.get(gid).await.unwrap().unwrap();
@@ -50,11 +52,15 @@ mod tests {
         let gid1 = "test_gid_1";
         let uris = vec!["http://example.com/file.zip".to_string()];
         let download_dir = Some("/test/download");
-        db.add(gid1, uris.clone(), download_dir, Some("file.zip")).await.unwrap();
+        db.add(gid1, uris.clone(), download_dir, Some("file.zip"))
+            .await
+            .unwrap();
 
         // 尝试添加相同uris和download_dir的任务，应该返回OK但不插入
         let gid2 = "test_gid_2";
-        db.add(gid2, uris, download_dir, Some("file.zip")).await.unwrap();
+        db.add(gid2, uris, download_dir, Some("file.zip"))
+            .await
+            .unwrap();
 
         // 验证只有第一个任务存在
         let task1 = db.get(gid1).await.unwrap();

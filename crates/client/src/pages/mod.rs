@@ -1,10 +1,10 @@
-pub mod dashboard;
-pub mod models;
-pub mod deploy;
-pub mod monitor;
 pub mod api;
-pub mod settings;
 pub mod channels;
+pub mod dashboard;
+pub mod deploy;
 pub mod login;
+pub mod models;
+pub mod monitor;
 pub mod register;
+pub mod settings;
 pub mod user;

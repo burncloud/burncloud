@@ -35,22 +35,22 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
         // Navigation
         (Language::Zh, "nav.dashboard") => "仪表盘",
         (Language::En, "nav.dashboard") => "Dashboard",
-        
+
         (Language::Zh, "nav.models") => "模型管理",
         (Language::En, "nav.models") => "Models",
-        
+
         (Language::Zh, "nav.deploy") => "部署配置",
         (Language::En, "nav.deploy") => "Deployment",
-        
+
         (Language::Zh, "nav.monitor") => "监控日志",
         (Language::En, "nav.monitor") => "Monitor",
-        
+
         (Language::Zh, "nav.api") => "API管理",
         (Language::En, "nav.api") => "API Keys",
-        
+
         (Language::Zh, "nav.channels") => "渠道管理",
         (Language::En, "nav.channels") => "Channels",
-        
+
         (Language::Zh, "nav.users") => "用户管理",
         (Language::En, "nav.users") => "Users",
 
@@ -75,7 +75,7 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
 
         (Language::Zh, "dashboard.token_usage") => "Token 消耗",
         (Language::En, "dashboard.token_usage") => "Token Usage",
-        
+
         (Language::Zh, "dashboard.storage_usage") => "存储使用",
         (Language::En, "dashboard.storage_usage") => "Storage",
 
@@ -109,7 +109,7 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
                 "nav.api" => "API Keys",
                 "nav.channels" => "Channels",
                 "nav.settings" => "Settings",
-                _ => key
+                _ => key,
             }
         }
     }

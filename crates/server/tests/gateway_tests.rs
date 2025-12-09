@@ -26,29 +26,40 @@ async fn test_unified_gateway_routing() -> anyhow::Result<()> {
     assert!(html_text.contains("BurnCloud"), "Should contain App Title");
 
     // 2. Test Management API (/console/api/channels)
-    let resp_api = client.get(format!("{}/console/api/channels", base_url)).send().await?;
+    let resp_api = client
+        .get(format!("{}/console/api/channels", base_url))
+        .send()
+        .await?;
     assert_eq!(resp_api.status(), 200);
     // Should return JSON array
     let _channels: serde_json::Value = resp_api.json().await?;
 
     // 3. Test Router Fallback (/v1/chat/completions)
-    let resp_llm = client.post(format!("{}/v1/chat/completions", base_url))
+    let resp_llm = client
+        .post(format!("{}/v1/chat/completions", base_url))
         .body("{}")
-        .send().await?;
-    
+        .send()
+        .await?;
+
     let status = resp_llm.status();
     let body = resp_llm.text().await?;
     println!("LLM Response ({}): {}", status, body);
 
     // Expect 401 because we didn't provide Bearer token
-    assert_eq!(status, 401, "Router should intercept LLM path and demand Auth. Got: {}", body);
+    assert_eq!(
+        status, 401,
+        "Router should intercept LLM path and demand Auth. Got: {}",
+        body
+    );
 
     // 4. Test Router Fallback with Auth (Invalid Token)
-    let resp_llm_auth = client.post(format!("{}/v1/chat/completions", base_url))
+    let resp_llm_auth = client
+        .post(format!("{}/v1/chat/completions", base_url))
         .header("Authorization", "Bearer invalid-sk")
         .body("{}")
-        .send().await?;
-    
+        .send()
+        .await?;
+
     assert_eq!(resp_llm_auth.status(), 401);
 
     Ok(())

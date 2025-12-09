@@ -1,19 +1,19 @@
-use dioxus::prelude::*;
-use burncloud_client_shared::channel_service::{ChannelService, Channel};
+use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::{
-    BCButton, BCInput, BCCard, BCModal, BCBadge, BCTable, BCPagination,
-    ButtonVariant, BadgeVariant
+    BCBadge, BCButton, BCCard, BCInput, BCModal, BCPagination, BCTable, BadgeVariant, ButtonVariant,
 };
 use burncloud_client_shared::use_toast;
+use dioxus::prelude::*;
 
 #[component]
 pub fn ChannelPage() -> Element {
     let mut page = use_signal(|| 1);
     let limit = 10; // Default items per page
-    
-    let mut channels = use_resource(move || async move {
-        ChannelService::list(page(), limit).await.unwrap_or(vec![])
-    });
+
+    let mut channels =
+        use_resource(
+            move || async move { ChannelService::list(page(), limit).await.unwrap_or(vec![]) },
+        );
 
     let mut is_modal_open = use_signal(|| false);
     let mut form_id = use_signal(|| 0i64);
@@ -40,7 +40,7 @@ pub fn ChannelPage() -> Element {
     let handle_save = move |_| {
         spawn(async move {
             is_loading.set(true);
-            
+
             let ch = Channel {
                 id: form_id(),
                 type_: form_type(),
@@ -65,7 +65,7 @@ pub fn ChannelPage() -> Element {
                     is_modal_open.set(false);
                     channels.restart();
                     toast.success("保存成功");
-                },
+                }
                 Err(e) => toast.error(&format!("保存失败: {}", e)),
             }
             is_loading.set(false);
@@ -154,11 +154,11 @@ pub fn ChannelPage() -> Element {
                                                 }
                                             }
                                             td { class: "text-right",
-                                                BCButton { 
-                                                    variant: ButtonVariant::Ghost, 
+                                                BCButton {
+                                                    variant: ButtonVariant::Ghost,
                                                     class: "text-error btn-delete-channel",
-                                                    onclick: move |_| handle_delete(channel.id), 
-                                                    "🗑️" 
+                                                    onclick: move |_| handle_delete(channel.id),
+                                                    "🗑️"
                                                 }
                                             }
                                         }
@@ -176,7 +176,7 @@ pub fn ChannelPage() -> Element {
                 open: is_modal_open(),
                 title: "渠道配置".to_string(),
                 onclose: move |_| is_modal_open.set(false),
-                
+
                 div { class: "vstack gap-3",
                     BCInput {
                         label: Some("渠道名称".to_string()),
@@ -184,7 +184,7 @@ pub fn ChannelPage() -> Element {
                         placeholder: "例如: OpenAI 主账号".to_string(),
                         oninput: move |e: FormEvent| form_name.set(e.value())
                     }
-                    
+
                     div { class: "form-group",
                         label { class: "form-label fw-bold mb-1", "渠道类型" }
                         select { class: "form-control", // Changed from form-select to form-control for consistency
@@ -216,19 +216,19 @@ pub fn ChannelPage() -> Element {
                         oninput: move |e: FormEvent| form_models.set(e.value())
                     }
                 }
-                
+
                 div { class: "modal-footer",
-                    BCButton { 
-                        variant: ButtonVariant::Secondary, 
+                    BCButton {
+                        variant: ButtonVariant::Secondary,
                         class: "me-2",
-                        onclick: move |_| is_modal_open.set(false), 
-                        "取消" 
+                        onclick: move |_| is_modal_open.set(false),
+                        "取消"
                     }
-                    BCButton { 
+                    BCButton {
                         class: "btn-save-channel",
                         loading: is_loading(),
-                        onclick: handle_save, 
-                        "保存" 
+                        onclick: handle_save,
+                        "保存"
                     }
                 }
             }

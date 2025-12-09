@@ -18,10 +18,7 @@ impl UsageService {
         let url = format!("http://127.0.0.1:{}/console/api/usage/{}", port, user_id);
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));

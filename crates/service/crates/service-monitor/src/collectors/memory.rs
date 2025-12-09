@@ -34,7 +34,9 @@ impl MemoryCollector {
             mem_status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
 
             if GlobalMemoryStatusEx(&mut mem_status) == 0 {
-                return Err(MonitorError::CollectionFailed("Failed to get memory status".to_string()));
+                return Err(MonitorError::CollectionFailed(
+                    "Failed to get memory status".to_string(),
+                ));
             }
 
             let total = mem_status.ullTotalPhys;
@@ -47,8 +49,9 @@ impl MemoryCollector {
 
     #[cfg(unix)]
     async fn collect_unix(&self) -> Result<MemoryInfo, MonitorError> {
-        let meminfo_content = fs::read_to_string("/proc/meminfo")
-            .map_err(|e| MonitorError::CollectionFailed(format!("Failed to read /proc/meminfo: {}", e)))?;
+        let meminfo_content = fs::read_to_string("/proc/meminfo").map_err(|e| {
+            MonitorError::CollectionFailed(format!("Failed to read /proc/meminfo: {}", e))
+        })?;
 
         let mut total_kb = 0u64;
         let mut available_kb = 0u64;
@@ -118,8 +121,9 @@ impl MemoryCollector {
 
     #[cfg(unix)]
     async fn get_detailed_info_unix(&self) -> Result<DetailedMemoryInfo, MonitorError> {
-        let meminfo_content = fs::read_to_string("/proc/meminfo")
-            .map_err(|e| MonitorError::CollectionFailed(format!("Failed to read /proc/meminfo: {}", e)))?;
+        let meminfo_content = fs::read_to_string("/proc/meminfo").map_err(|e| {
+            MonitorError::CollectionFailed(format!("Failed to read /proc/meminfo: {}", e))
+        })?;
 
         let mut total_kb = 0u64;
         let mut available_kb = 0u64;

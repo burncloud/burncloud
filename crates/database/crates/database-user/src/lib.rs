@@ -1,6 +1,6 @@
 use burncloud_database::{Database, Result};
 use serde::{Deserialize, Serialize};
-use sqlx::{Row, FromRow};
+use sqlx::{FromRow, Row};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct DbUser {
@@ -35,7 +35,7 @@ impl UserDatabase {
     pub async fn init(db: &Database) -> Result<()> {
         let conn = db.get_connection()?;
         let kind = db.kind();
-        
+
         // Table definitions
         let (users_sql, roles_sql, user_roles_sql) = match kind.as_str() {
             "sqlite" => (
@@ -66,7 +66,7 @@ impl UserDatabase {
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
                     FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
                 );
-                "#
+                "#,
             ),
             "postgres" => (
                 r#"
@@ -96,7 +96,7 @@ impl UserDatabase {
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
                     FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
                 );
-                "#
+                "#,
             ),
             _ => unreachable!("Unsupported database kind"),
         };
@@ -104,16 +104,24 @@ impl UserDatabase {
         sqlx::query(users_sql).execute(conn.pool()).await?;
         sqlx::query(roles_sql).execute(conn.pool()).await?;
         println!("UserDatabase: tables created/verified.");
-        
+
         sqlx::query(user_roles_sql).execute(conn.pool()).await?;
 
         // Migrations for SQLite (Add columns if missing)
         if kind == "sqlite" {
-             // Ignoring errors as "duplicate column name" is the expected error if it exists
-             let _ = sqlx::query("ALTER TABLE users ADD COLUMN password_hash TEXT").execute(conn.pool()).await;
-             let _ = sqlx::query("ALTER TABLE users ADD COLUMN github_id TEXT").execute(conn.pool()).await;
-             let _ = sqlx::query("ALTER TABLE users ADD COLUMN status INTEGER DEFAULT 1").execute(conn.pool()).await;
-             let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0").execute(conn.pool()).await;
+            // Ignoring errors as "duplicate column name" is the expected error if it exists
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN password_hash TEXT")
+                .execute(conn.pool())
+                .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN github_id TEXT")
+                .execute(conn.pool())
+                .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN status INTEGER DEFAULT 1")
+                .execute(conn.pool())
+                .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0")
+                .execute(conn.pool())
+                .await;
         }
 
         // Initialize default roles
@@ -121,7 +129,7 @@ impl UserDatabase {
             .fetch_one(conn.pool())
             .await?
             .get(0);
-        
+
         if role_count == 0 {
             println!("UserDatabase: inserting default roles...");
             sqlx::query("INSERT INTO roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')")
@@ -130,11 +138,12 @@ impl UserDatabase {
         }
 
         // Ensure demo user exists
-        let user_count: i64 = sqlx::query("SELECT COUNT(*) FROM users WHERE username = 'demo-user'")
-            .fetch_one(conn.pool())
-            .await?
-            .get(0);
-            
+        let user_count: i64 =
+            sqlx::query("SELECT COUNT(*) FROM users WHERE username = 'demo-user'")
+                .fetch_one(conn.pool())
+                .await?
+                .get(0);
+
         if user_count == 0 {
             println!("UserDatabase: inserting demo user...");
             // Password: "123456"
@@ -145,9 +154,11 @@ impl UserDatabase {
                 .await?;
             // Assign admin role
             println!("UserDatabase: assigning admin role...");
-            sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES ('demo-user', 'role-admin')")
-                .execute(conn.pool())
-                .await?;
+            sqlx::query(
+                "INSERT INTO user_roles (user_id, role_id) VALUES ('demo-user', 'role-admin')",
+            )
+            .execute(conn.pool())
+            .await?;
         }
 
         println!("UserDatabase: init complete.");
@@ -184,7 +195,7 @@ impl UserDatabase {
             .bind(user_id)
             .fetch_all(conn.pool())
             .await?;
-        
+
         let roles = rows.iter().map(|r| r.get(0)).collect();
         Ok(roles)
     }
@@ -196,14 +207,14 @@ impl UserDatabase {
             .fetch_optional(conn.pool())
             .await?
             .map(|r| r.get(0));
-            
+
         if let Some(rid) = role_id {
             let res = sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
                 .bind(user_id)
                 .bind(rid)
                 .execute(conn.pool())
                 .await;
-            
+
             if let Err(e) = res {
                 println!("Role assignment skipped (maybe already exists): {}", e);
             }
@@ -226,13 +237,13 @@ impl UserDatabase {
             .bind(user_id)
             .execute(conn.pool())
             .await?;
-            
+
         let new_balance: f64 = sqlx::query("SELECT balance FROM users WHERE id = ?")
             .bind(user_id)
             .fetch_one(conn.pool())
             .await?
             .get(0);
-            
+
         Ok(new_balance)
     }
 }

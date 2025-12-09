@@ -1,4 +1,4 @@
-use burncloud_database::{Result, Database, create_default_database};
+use burncloud_database::{create_default_database, Database, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -11,10 +11,18 @@ async fn main() -> Result<()> {
             println!("✓ Default database created successfully!");
 
             // Perform some basic operations
-            let result = db.execute_query("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)").await?;
+            let result = db
+                .execute_query(
+                    "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)",
+                )
+                .await?;
             println!("✓ Settings table created: {:?}", result);
 
-            let insert_result = db.execute_query("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_version', '1.0.0')").await?;
+            let insert_result = db
+                .execute_query(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_version', '1.0.0')",
+                )
+                .await?;
             println!("✓ Setting inserted: {:?}", insert_result);
 
             db.close().await?;
@@ -33,7 +41,9 @@ async fn main() -> Result<()> {
             println!("✓ Database created and initialized in one step!");
 
             // Perform a quick test
-            let result = db.execute_query("CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY)").await?;
+            let result = db
+                .execute_query("CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY)")
+                .await?;
             println!("✓ Test table created: {:?}", result);
 
             db.close().await?;
@@ -46,17 +56,24 @@ async fn main() -> Result<()> {
 
     // Show the default path that would be used
     println!("\n3. Default database location:");
-    println!("Platform: {}", if cfg!(target_os = "windows") { "Windows" } else { "Linux/Unix" });
+    println!(
+        "Platform: {}",
+        if cfg!(target_os = "windows") {
+            "Windows"
+        } else {
+            "Linux/Unix"
+        }
+    );
 
     // This uses internal function logic to show the path
     let expected_path = if cfg!(target_os = "windows") {
-        std::env::var("USERPROFILE").map(|profile|
-            format!("{}\\AppData\\Local\\BurnCloud\\data.db", profile)
-        ).unwrap_or_else(|_| "Could not determine USERPROFILE".to_string())
+        std::env::var("USERPROFILE")
+            .map(|profile| format!("{}\\AppData\\Local\\BurnCloud\\data.db", profile))
+            .unwrap_or_else(|_| "Could not determine USERPROFILE".to_string())
     } else {
-        dirs::home_dir().map(|home|
-            format!("{}/.burncloud/data.db", home.display())
-        ).unwrap_or_else(|| "Could not determine home directory".to_string())
+        dirs::home_dir()
+            .map(|home| format!("{}/.burncloud/data.db", home.display()))
+            .unwrap_or_else(|| "Could not determine home directory".to_string())
     };
 
     println!("Default path: {}", expected_path);

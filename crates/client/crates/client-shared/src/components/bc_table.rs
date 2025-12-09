@@ -2,10 +2,8 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn BCTable(
-    #[props(default)]
-    class: String,
-    #[props(default)]
-    pagination: Option<Element>,
+    #[props(default)] class: String,
+    #[props(default)] pagination: Option<Element>,
     children: Element,
 ) -> Element {
     rsx! {
@@ -25,11 +23,7 @@ pub fn BCTable(
 }
 
 #[component]
-pub fn BCPagination(
-    page: usize,
-    total_pages: usize,
-    on_change: EventHandler<usize>,
-) -> Element {
+pub fn BCPagination(page: usize, total_pages: usize, on_change: EventHandler<usize>) -> Element {
     rsx! {
         div { class: "flex items-center gap-sm",
             button {

@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
             let url: String = r.get("base_url");
             println!("✅ Found existing Base URL: {}", url);
             url
-        },
+        }
         None => {
             let default = "https://bedrock-runtime.us-east-1.amazonaws.com".to_string();
             println!("⚠️ No existing config found. Using default: {}", default);
@@ -32,12 +32,15 @@ async fn main() -> anyhow::Result<()> {
     let id = "test-aws-apikey";
     let name = "AWS API Key Test";
     let api_key = "YOUR_API_KEY_HERE"; // Placeholder
-    let match_path = "/aws-key-test"; 
-    let auth_type = "Header:x-api-key"; 
+    let match_path = "/aws-key-test";
+    let auth_type = "Header:x-api-key";
     let priority = 5;
 
-    println!("💾 Inserting configuration for '{}' with priority {}...", id, priority);
-    
+    println!(
+        "💾 Inserting configuration for '{}' with priority {}...",
+        id, priority
+    );
+
     sqlx::query(
         r#"
         INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority)
@@ -47,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
             base_url = excluded.base_url,
             auth_type = excluded.auth_type,
             priority = excluded.priority
-        "#
+        "#,
     )
     .bind(id)
     .bind(name)

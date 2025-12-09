@@ -2,16 +2,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AuthType {
-    Bearer,             // Authorization: Bearer <key>
-    Header(String),     // <custom-header>: <key>
-    Query(String),      // ?<param>=<key>
-    AwsSigV4,           // AWS Signature Version 4
-    Azure,              // Azure OpenAI (api-key header)
-    GoogleAI,           // Google AI Studio (x-goog-api-key header)
-    Vertex,             // Google Vertex AI (Bearer token, usually short-lived)
-    DeepSeek,           // DeepSeek API (Bearer token)
-    Qwen,               // Alibaba Cloud Qwen (Bearer token)
-    Claude,             // Anthropic Claude (x-api-key header)
+    Bearer,         // Authorization: Bearer <key>
+    Header(String), // <custom-header>: <key>
+    Query(String),  // ?<param>=<key>
+    AwsSigV4,       // AWS Signature Version 4
+    Azure,          // Azure OpenAI (api-key header)
+    GoogleAI,       // Google AI Studio (x-goog-api-key header)
+    Vertex,         // Google Vertex AI (Bearer token, usually short-lived)
+    DeepSeek,       // DeepSeek API (Bearer token)
+    Qwen,           // Alibaba Cloud Qwen (Bearer token)
+    Claude,         // Anthropic Claude (x-api-key header)
 }
 
 impl From<&str> for AuthType {
@@ -128,7 +128,7 @@ impl RouterConfig {
 
         candidates.first().cloned()
     }
-    
+
     // Helper to find upstream by ID (for Group resolution)
     pub fn get_upstream(&self, id: &str) -> Option<&Upstream> {
         self.upstreams.iter().find(|u| u.id == id)

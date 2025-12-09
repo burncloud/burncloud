@@ -12,11 +12,11 @@ pub use app::launch_gui_with_tray;
 #[cfg(feature = "liveview")]
 use axum::Router;
 #[cfg(feature = "liveview")]
+use burncloud_database::Database;
+#[cfg(feature = "liveview")]
 use dioxus_liveview::LiveViewPool;
 #[cfg(feature = "liveview")]
 use std::sync::Arc;
-#[cfg(feature = "liveview")]
-use burncloud_database::Database;
 
 #[cfg(feature = "liveview")]
 use burncloud_common::constants::WS_PATH;
@@ -26,7 +26,10 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
     let view = LiveViewPool::new();
 
     let html_handler = axum::routing::get(move |headers: axum::http::HeaderMap| async move {
-        let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("localhost:3000");
+        let host = headers
+            .get("host")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("localhost:3000");
         axum::response::Html(format!(
             r#"
             <!DOCTYPE html>
@@ -59,11 +62,19 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
         .route("/channels", html_handler.clone())
         .route("/users", html_handler.clone())
         .route("/settings", html_handler.clone())
-        .route(WS_PATH, axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {
-            ws.on_upgrade(move |socket| async move {
-                _ = view.launch(dioxus_liveview::axum_socket(socket), app::App as fn() -> dioxus::prelude::Element).await;
-            })
-        }));
+        .route(
+            WS_PATH,
+            axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {
+                ws.on_upgrade(move |socket| async move {
+                    _ = view
+                        .launch(
+                            dioxus_liveview::axum_socket(socket),
+                            app::App as fn() -> dioxus::prelude::Element,
+                        )
+                        .await;
+                })
+            }),
+        );
 
     app
 }

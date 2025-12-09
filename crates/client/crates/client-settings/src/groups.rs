@@ -1,7 +1,7 @@
-use dioxus::prelude::*;
-use serde::{Deserialize, Serialize};
-use reqwest::Client;
 use crate::channels::Channel;
+use dioxus::prelude::*;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Group {
@@ -24,7 +24,7 @@ pub fn GroupManager() -> Element {
     let mut all_channels = use_signal::<Vec<Channel>>(|| vec![]);
     let mut loading = use_signal(|| true);
     let _error_msg = use_signal(|| String::new());
-    
+
     // Editor State
     let mut selected_group_id = use_signal::<Option<String>>(|| None);
     let mut selected_group_members = use_signal::<Vec<GroupMember>>(|| vec![]);
@@ -38,26 +38,36 @@ pub fn GroupManager() -> Element {
     let fetch_data = move || async move {
         loading.set(true);
         let client = Client::new();
-        
+
         // Fetch Groups
-        if let Ok(resp) = client.get("http://127.0.0.1:3000/console/api/groups").send().await {
+        if let Ok(resp) = client
+            .get("http://127.0.0.1:3000/console/api/groups")
+            .send()
+            .await
+        {
             if let Ok(data) = resp.json::<Vec<Group>>().await {
                 groups.set(data);
             }
         }
-        
+
         // Fetch Channels (for selection)
-        if let Ok(resp) = client.get("http://127.0.0.1:3000/console/api/channels").send().await {
-             if let Ok(data) = resp.json::<Vec<Channel>>().await {
+        if let Ok(resp) = client
+            .get("http://127.0.0.1:3000/console/api/channels")
+            .send()
+            .await
+        {
+            if let Ok(data) = resp.json::<Vec<Channel>>().await {
                 all_channels.set(data);
             }
         }
-        
+
         loading.set(false);
     };
 
     use_effect(move || {
-        spawn(async move { fetch_data().await; });
+        spawn(async move {
+            fetch_data().await;
+        });
     });
 
     // Actions
@@ -70,7 +80,12 @@ pub fn GroupManager() -> Element {
             match_path: form_match_path(),
         };
 
-        if let Ok(resp) = client.post("http://127.0.0.1:3000/console/api/groups").json(&new_group).send().await {
+        if let Ok(resp) = client
+            .post("http://127.0.0.1:3000/console/api/groups")
+            .json(&new_group)
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 fetch_data().await;
                 form_name.set(String::new());
@@ -80,7 +95,11 @@ pub fn GroupManager() -> Element {
 
     let delete_group = move |id: String| async move {
         let client = Client::new();
-        if let Ok(resp) = client.delete(format!("http://127.0.0.1:3000/console/api/groups/{}", id)).send().await {
+        if let Ok(resp) = client
+            .delete(format!("http://127.0.0.1:3000/console/api/groups/{}", id))
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 fetch_data().await;
                 if selected_group_id() == Some(id) {
@@ -89,14 +108,21 @@ pub fn GroupManager() -> Element {
             }
         }
     };
-    
+
     let select_group = move |id: String| async move {
         selected_group_id.set(Some(id.clone()));
         let client = Client::new();
-        if let Ok(resp) = client.get(format!("http://127.0.0.1:3000/console/api/groups/{}/members", id)).send().await {
-             if let Ok(members) = resp.json::<Vec<GroupMember>>().await {
-                 selected_group_members.set(members);
-             }
+        if let Ok(resp) = client
+            .get(format!(
+                "http://127.0.0.1:3000/console/api/groups/{}/members",
+                id
+            ))
+            .send()
+            .await
+        {
+            if let Ok(members) = resp.json::<Vec<GroupMember>>().await {
+                selected_group_members.set(members);
+            }
         }
     };
 
@@ -113,25 +139,34 @@ pub fn GroupManager() -> Element {
             }
         }
     };
-    
+
     let mut remove_member = move |upstream_id: String| {
-         let mut members = selected_group_members();
-         members.retain(|m| m.upstream_id != upstream_id);
-         selected_group_members.set(members);
+        let mut members = selected_group_members();
+        members.retain(|m| m.upstream_id != upstream_id);
+        selected_group_members.set(members);
     };
 
     let save_members = move |_| async move {
         if let Some(gid) = selected_group_id() {
-             let client = Client::new();
-             let body: Vec<serde_json::Value> = selected_group_members().iter().map(|m| {
-                 serde_json::json!({ "upstream_id": m.upstream_id, "weight": m.weight })
-             }).collect();
-             
-             if let Ok(resp) = client.put(format!("http://127.0.0.1:3000/console/api/groups/{}/members", gid)).json(&body).send().await {
-                 if resp.status().is_success() {
-                     // success toast?
-                 }
-             }
+            let client = Client::new();
+            let body: Vec<serde_json::Value> = selected_group_members()
+                .iter()
+                .map(|m| serde_json::json!({ "upstream_id": m.upstream_id, "weight": m.weight }))
+                .collect();
+
+            if let Ok(resp) = client
+                .put(format!(
+                    "http://127.0.0.1:3000/console/api/groups/{}/members",
+                    gid
+                ))
+                .json(&body)
+                .send()
+                .await
+            {
+                if resp.status().is_success() {
+                    // success toast?
+                }
+            }
         }
     };
 
@@ -169,13 +204,13 @@ pub fn GroupManager() -> Element {
                             let gid1 = group.id.clone();
                             let gid2 = group.id.clone();
                             rsx! {
-                                div { 
+                                div {
                                     class: if selected_group_id() == Some(group.id.clone()) { "p-sm bg-primary-light rounded cursor-pointer border border-primary" } else { "p-sm bg-hover rounded cursor-pointer border border-transparent" },
                                     onclick: move |_| select_group(gid1.clone()),
                                     div { class: "flex justify-between items-center",
                                         span { class: "font-medium", "{group.name}" }
-                                        button { class: "btn-icon text-error", onclick: move |e| { 
-                                            e.stop_propagation(); 
+                                        button { class: "btn-icon text-error", onclick: move |e| {
+                                            e.stop_propagation();
                                             let id = gid2.clone();
                                             spawn(async move { delete_group(id).await; });
                                         }, "🗑️" }
@@ -191,7 +226,7 @@ pub fn GroupManager() -> Element {
                 div { class: "card p-lg",
                     if let Some(gid) = selected_group_id() {
                         h3 { class: "text-subtitle font-semibold mb-md", "编辑成员: {gid}" }
-                        
+
                         // Current Members
                         div { class: "mb-lg",
                             h4 { class: "text-caption font-bold text-secondary mb-sm", "当前成员" }
@@ -201,7 +236,7 @@ pub fn GroupManager() -> Element {
                                     let uid2 = member.upstream_id.clone();
                                     rsx! {
                                         div { class: "flex items-center justify-between p-sm border rounded bg-surface",
-                                            span { 
+                                            span {
                                                 // Find channel name
                                                 if let Some(ch) = all_channels().iter().find(|c| c.id == member.upstream_id) {
                                                     "{ch.name}"
@@ -211,8 +246,8 @@ pub fn GroupManager() -> Element {
                                             }
                                             div { class: "flex gap-sm items-center",
                                                 span { class: "text-caption", "权重:" }
-                                                input { class: "input py-0 px-sm w-16 text-center", 
-                                                    type: "number", 
+                                                input { class: "input py-0 px-sm w-16 text-center",
+                                                    type: "number",
                                                     value: "{member.weight}",
                                                     oninput: move |e| {
                                                         let w = e.value().parse().unwrap_or(1);
@@ -241,15 +276,15 @@ pub fn GroupManager() -> Element {
                              div { class: "flex flex-wrap gap-sm",
                                 for channel in all_channels() {
                                     if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
-                                        button { class: "btn btn-secondary btn-sm", 
+                                        button { class: "btn btn-secondary btn-sm",
                                             onclick: move |_| add_member(channel.id.clone()),
-                                            "+ {channel.name}" 
+                                            "+ {channel.name}"
                                         }
                                     }
                                 }
                              }
                         }
-                        
+
                         div { class: "flex justify-end",
                              button { class: "btn btn-primary", onclick: save_members, "保存更改" }
                         }

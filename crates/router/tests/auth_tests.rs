@@ -1,7 +1,7 @@
 mod common;
 
-use common::{setup_db, start_test_server};
 use burncloud_database::sqlx;
+use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
@@ -11,7 +11,7 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
     let ak = env::var("TEST_AWS_AK").unwrap_or_default();
     let sk = env::var("TEST_AWS_SK").unwrap_or_default();
     let region = env::var("TEST_AWS_REGION").unwrap_or("us-east-1".to_string());
-    
+
     if ak.is_empty() || sk.is_empty() {
         println!("Skipping AWS Bedrock test: TEST_AWS_AK or TEST_AWS_SK not set.");
         return Ok(());
@@ -33,18 +33,26 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
         ON CONFLICT(id) DO UPDATE SET 
             api_key = excluded.api_key,
             base_url = excluded.base_url
-        "#
+        "#,
     )
-    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(api_key)
+    .bind(match_path)
+    .bind(auth_type)
     .execute(&pool)
     .await?;
 
-    let port = 3002; 
+    let port = 3002;
     start_test_server(port).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke", port);
-    
+    let url = format!(
+        "http://localhost:{}/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
+        port
+    );
+
     let body = json!({
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 200,
@@ -53,7 +61,8 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
         ]
     });
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
         .json(&body)
         .send()
@@ -85,9 +94,14 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
             api_key = excluded.api_key,
             base_url = excluded.base_url,
             auth_type = excluded.auth_type
-        "#
+        "#,
     )
-    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(api_key)
+    .bind(match_path)
+    .bind(auth_type)
     .execute(&pool)
     .await?;
 
@@ -97,7 +111,8 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
         .body("deepseek body")
         .send()
@@ -105,9 +120,12 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
 
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await?;
-    
+
     let headers = json.get("headers").unwrap();
-    let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
+    let auth_header = headers
+        .get("Authorization")
+        .or(headers.get("authorization"))
+        .unwrap();
     assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-deepseek-mock-key");
 
     Ok(())
@@ -132,9 +150,14 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
             api_key = excluded.api_key,
             base_url = excluded.base_url,
             auth_type = excluded.auth_type
-        "#
+        "#,
     )
-    .bind(id).bind(name).bind(base_url).bind(api_key).bind(match_path).bind(auth_type)
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(api_key)
+    .bind(match_path)
+    .bind(auth_type)
     .execute(&pool)
     .await?;
 
@@ -142,9 +165,13 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     start_test_server(port).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}/api/v1/services/aigc/text-generation/generation", port);
+    let url = format!(
+        "http://localhost:{}/api/v1/services/aigc/text-generation/generation",
+        port
+    );
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
         .body("qwen body")
         .send()
@@ -152,9 +179,12 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
 
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await?;
-    
+
     let headers = json.get("headers").unwrap();
-    let auth_header = headers.get("Authorization").or(headers.get("authorization")).unwrap();
+    let auth_header = headers
+        .get("Authorization")
+        .or(headers.get("authorization"))
+        .unwrap();
     assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-qwen-mock-key");
 
     Ok(())

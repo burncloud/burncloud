@@ -1,13 +1,13 @@
+use crate::AppState;
 use axum::{
     extract::{Path, State},
     response::Json,
     routing::{get, post},
     Router,
 };
+use burncloud_database_router::{DbGroup, DbGroupMember, RouterDatabase};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use crate::AppState;
-use burncloud_database_router::{RouterDatabase, DbGroup, DbGroupMember};
 
 #[derive(Deserialize, Serialize)]
 pub struct GroupDto {
@@ -57,19 +57,19 @@ async fn create_group(State(state): State<AppState>, Json(payload): Json<GroupDt
 }
 
 async fn get_group(State(state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
-     // For now, get_all_groups filtering is simple enough, 
-     // but efficient implementation would use a direct DB call if added.
-     // Assuming we only need metadata here.
-     match RouterDatabase::get_all_groups(&state.db).await {
-         Ok(groups) => {
-             if let Some(g) = groups.into_iter().find(|g| g.id == id) {
-                 Json(json!(g))
-             } else {
-                 Json(json!({ "error": "Not Found" }))
-             }
-         }
-         Err(e) => Json(json!({ "error": e.to_string() })),
-     }
+    // For now, get_all_groups filtering is simple enough,
+    // but efficient implementation would use a direct DB call if added.
+    // Assuming we only need metadata here.
+    match RouterDatabase::get_all_groups(&state.db).await {
+        Ok(groups) => {
+            if let Some(g) = groups.into_iter().find(|g| g.id == id) {
+                Json(json!(g))
+            } else {
+                Json(json!({ "error": "Not Found" }))
+            }
+        }
+        Err(e) => Json(json!({ "error": e.to_string() })),
+    }
 }
 
 async fn delete_group(State(state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
@@ -86,13 +86,20 @@ async fn get_members(State(state): State<AppState>, Path(id): Path<String>) -> J
     }
 }
 
-async fn set_members(State(state): State<AppState>, Path(id): Path<String>, Json(payload): Json<Vec<GroupMemberDto>>) -> Json<Value> {
-    let members: Vec<DbGroupMember> = payload.into_iter().map(|m| DbGroupMember {
-        group_id: id.clone(),
-        upstream_id: m.upstream_id,
-        weight: m.weight,
-    }).collect();
-    
+async fn set_members(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<Vec<GroupMemberDto>>,
+) -> Json<Value> {
+    let members: Vec<DbGroupMember> = payload
+        .into_iter()
+        .map(|m| DbGroupMember {
+            group_id: id.clone(),
+            upstream_id: m.upstream_id,
+            weight: m.weight,
+        })
+        .collect();
+
     match RouterDatabase::set_group_members(&state.db, &id, members).await {
         Ok(_) => Json(json!({ "status": "updated" })),
         Err(e) => Json(json!({ "error": e.to_string() })),

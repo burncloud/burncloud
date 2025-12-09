@@ -2,11 +2,14 @@ use dioxus::prelude::*;
 use dioxus_router::components::Outlet;
 use dioxus_router::Routable;
 
-use crate::styles::FLUENT_CSS;
+#[allow(unused_imports)]
+use super::placeholders::{
+    ApiManagement, ChannelPage, Dashboard, DeployConfig, ModelManagement, ServiceMonitor,
+    SystemSettings, UserPage,
+};
 use super::sidebar::Sidebar;
 use super::title_bar::TitleBar;
-#[allow(unused_imports)]
-use super::placeholders::{Dashboard, ModelManagement, DeployConfig, ServiceMonitor, ApiManagement, SystemSettings, ChannelPage, UserPage};
+use crate::styles::FLUENT_CSS;
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum CoreRoute {

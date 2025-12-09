@@ -1,13 +1,13 @@
 use crate::types::{DiskInfo, MonitorError};
 
 #[cfg(windows)]
-use winapi::um::fileapi::GetDiskFreeSpaceExW;
-#[cfg(windows)]
 use std::ffi::OsStr;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 #[cfg(windows)]
 use std::ptr;
+#[cfg(windows)]
+use winapi::um::fileapi::GetDiskFreeSpaceExW;
 
 #[cfg(unix)]
 use std::fs;
@@ -61,8 +61,12 @@ impl DiskCollector {
                 &mut free_bytes as *mut u64 as *mut _,
                 &mut total_bytes as *mut u64 as *mut _,
                 ptr::null_mut(),
-            ) == 0 {
-                return Err(MonitorError::CollectionFailed(format!("Failed to get disk space for {}", path)));
+            ) == 0
+            {
+                return Err(MonitorError::CollectionFailed(format!(
+                    "Failed to get disk space for {}",
+                    path
+                )));
             }
 
             let used = total_bytes - free_bytes;
@@ -84,8 +88,9 @@ impl DiskCollector {
 
     #[cfg(unix)]
     async fn collect_all_unix(&self) -> Result<Vec<DiskInfo>, MonitorError> {
-        let mounts_content = fs::read_to_string("/proc/mounts")
-            .map_err(|e| MonitorError::CollectionFailed(format!("Failed to read /proc/mounts: {}", e)))?;
+        let mounts_content = fs::read_to_string("/proc/mounts").map_err(|e| {
+            MonitorError::CollectionFailed(format!("Failed to read /proc/mounts: {}", e))
+        })?;
 
         let mut disks = Vec::new();
 
@@ -109,8 +114,8 @@ impl DiskCollector {
 
     #[cfg(unix)]
     async fn get_disk_info_unix(&self, mount_point: &str) -> Result<DiskInfo, MonitorError> {
-        use std::mem;
         use std::ffi::CString;
+        use std::mem;
 
         let path = CString::new(mount_point)
             .map_err(|e| MonitorError::InvalidData(format!("Invalid path: {}", e)))?;
@@ -118,7 +123,10 @@ impl DiskCollector {
         unsafe {
             let mut statvfs: libc::statvfs = mem::zeroed();
             if libc::statvfs(path.as_ptr(), &mut statvfs) != 0 {
-                return Err(MonitorError::CollectionFailed(format!("Failed to get filesystem stats for {}", mount_point)));
+                return Err(MonitorError::CollectionFailed(format!(
+                    "Failed to get filesystem stats for {}",
+                    mount_point
+                )));
             }
 
             let block_size = statvfs.f_frsize as u64;
@@ -147,21 +155,33 @@ impl DiskCollector {
 
     #[cfg(unix)]
     fn is_local_filesystem(&self, fs_type: &str) -> bool {
-        matches!(fs_type,
-            "ext2" | "ext3" | "ext4" | "xfs" | "btrfs" | "zfs" |
-            "reiserfs" | "jfs" | "ntfs" | "vfat" | "exfat" | "hfs" | "apfs"
+        matches!(
+            fs_type,
+            "ext2"
+                | "ext3"
+                | "ext4"
+                | "xfs"
+                | "btrfs"
+                | "zfs"
+                | "reiserfs"
+                | "jfs"
+                | "ntfs"
+                | "vfat"
+                | "exfat"
+                | "hfs"
+                | "apfs"
         )
     }
 
     #[cfg(unix)]
     fn is_valid_mount_point(&self, mount_point: &str) -> bool {
         // 排除特殊的挂载点
-        !mount_point.starts_with("/proc") &&
-        !mount_point.starts_with("/sys") &&
-        !mount_point.starts_with("/dev") &&
-        !mount_point.starts_with("/run") &&
-        mount_point != "/tmp" &&
-        mount_point != "/var/tmp"
+        !mount_point.starts_with("/proc")
+            && !mount_point.starts_with("/sys")
+            && !mount_point.starts_with("/dev")
+            && !mount_point.starts_with("/run")
+            && mount_point != "/tmp"
+            && mount_point != "/var/tmp"
     }
 
     /// 收集系统主磁盘信息 (通常是根目录所在磁盘)
@@ -169,7 +189,8 @@ impl DiskCollector {
         let all_disks = self.collect_all().await?;
 
         // 查找根目录磁盘或第一个磁盘
-        let main_disk = all_disks.iter()
+        let main_disk = all_disks
+            .iter()
             .find(|disk| {
                 let mount_point = disk.mount_point.as_str();
                 mount_point == "/" || mount_point.starts_with("C:")

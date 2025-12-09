@@ -23,7 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         widget_data: "[]".to_string(),
         card_data: "{}".to_string(),
         transformers_info: "{}".to_string(),
-        siblings: r#"[{"rfilename": "config.json"}, {"rfilename": "model.safetensors"}]"#.to_string(),
+        siblings: r#"[{"rfilename": "config.json"}, {"rfilename": "model.safetensors"}]"#
+            .to_string(),
         spaces: "[]".to_string(),
         safetensors: "{}".to_string(),
         used_storage: 548000000,
@@ -58,7 +59,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let popular_models = db.get_popular_models(5).await?;
     println!("🔥 热门模型前5名:");
     for (i, model) in popular_models.iter().enumerate() {
-        println!("   {}. {} (下载量: {})", i + 1, model.model_id, model.downloads);
+        println!(
+            "   {}. {} (下载量: {})",
+            i + 1,
+            model.model_id,
+            model.downloads
+        );
     }
 
     // 关闭数据库

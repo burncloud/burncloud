@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
 use burncloud_service_models::ModelInfo;
+use dioxus::prelude::*;
 
 #[component]
 pub fn ModelDetail(model_id: String) -> Element {

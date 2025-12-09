@@ -17,16 +17,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 监控任务直到完成
     loop {
         let status = manager.get_status(&gid).await?;
-        println!("状态: {}, 进度: {}/{}, 速度: {}",
-            status.status,
-            status.completed_length,
-            status.total_length,
-            status.download_speed
+        println!(
+            "状态: {}, 进度: {}/{}, 速度: {}",
+            status.status, status.completed_length, status.total_length, status.download_speed
         );
 
         if status.status == "complete" || status.status == "error" {
-            println!("下载{}: {}",
-                if status.status == "complete" { "完成" } else { "失败" },
+            println!(
+                "下载{}: {}",
+                if status.status == "complete" {
+                    "完成"
+                } else {
+                    "失败"
+                },
                 gid
             );
             break;

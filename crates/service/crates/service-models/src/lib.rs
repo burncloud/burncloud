@@ -61,31 +61,41 @@ impl ModelService {
         // 尝试清理物理文件
         if let Ok(Some(model)) = self.get(model_id).await {
             // 忽略文件清理错误，确保数据库记录被删除
-            let _ = self.cleanup_files(model_id, model.filename.as_deref()).await;
+            let _ = self
+                .cleanup_files(model_id, model.filename.as_deref())
+                .await;
         }
         self.db.delete(model_id).await
     }
 
     /// 清理文件辅助函数
-    async fn cleanup_files(&self, model_id: &str, filename: Option<&str>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    async fn cleanup_files(
+        &self,
+        model_id: &str,
+        filename: Option<&str>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let base_dir = get_data_dir().await?;
         let model_dir = std::path::Path::new(&base_dir).join(model_id);
-        
+
         if !model_dir.exists() {
             return Ok(());
         }
 
         if let Some(fname) = filename {
-            if fname.trim().is_empty() { return Ok(()); }
-            
+            if fname.trim().is_empty() {
+                return Ok(());
+            }
+
             // 去掉 .gguf 后缀
             let prefix = if fname.to_lowercase().ends_with(".gguf") {
                 &fname[..fname.len() - 5]
             } else {
                 fname
             };
-            
-            if prefix.is_empty() { return Ok(()); }
+
+            if prefix.is_empty() {
+                return Ok(());
+            }
 
             let mut entries = tokio::fs::read_dir(&model_dir).await?;
             while let Some(entry) = entries.next_entry().await? {
@@ -108,7 +118,10 @@ impl ModelService {
     }
 
     /// 根据ID查询模型
-    pub async fn get(&self, model_id: &str) -> Result<Option<burncloud_database_models::ModelInfo>> {
+    pub async fn get(
+        &self,
+        model_id: &str,
+    ) -> Result<Option<burncloud_database_models::ModelInfo>> {
         self.db.get_model(model_id).await
     }
 
@@ -118,12 +131,18 @@ impl ModelService {
     }
 
     /// 根据管道类型搜索
-    pub async fn search_by_pipeline(&self, pipeline_tag: &str) -> Result<Vec<burncloud_database_models::ModelInfo>> {
+    pub async fn search_by_pipeline(
+        &self,
+        pipeline_tag: &str,
+    ) -> Result<Vec<burncloud_database_models::ModelInfo>> {
         self.db.search_by_pipeline(pipeline_tag).await
     }
 
     /// 获取热门模型
-    pub async fn get_popular(&self, limit: i64) -> Result<Vec<burncloud_database_models::ModelInfo>> {
+    pub async fn get_popular(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<burncloud_database_models::ModelInfo>> {
         self.db.get_popular_models(limit).await
     }
 
@@ -133,7 +152,8 @@ impl ModelService {
     }
 
     /// 从 HuggingFace API 获取模型列表
-    pub async fn fetch_from_huggingface() -> std::result::Result<Vec<HfApiModel>, Box<dyn std::error::Error>> {
+    pub async fn fetch_from_huggingface(
+    ) -> std::result::Result<Vec<HfApiModel>, Box<dyn std::error::Error>> {
         let host = get_huggingface_host().await?;
         let api_url = format!("{}api/models", host);
 
@@ -167,7 +187,9 @@ pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::
 }
 
 /// 获取模型的所有文件列表（递归遍历）
-pub async fn get_model_files(model_id: &str) -> std::result::Result<Vec<Vec<String>>, Box<dyn std::error::Error>> {
+pub async fn get_model_files(
+    model_id: &str,
+) -> std::result::Result<Vec<Vec<String>>, Box<dyn std::error::Error>> {
     let host = get_huggingface_host().await?;
     let mut result = Vec::new();
     fetch_files_recursive(&host, model_id, "main", &mut result).await?;
@@ -179,7 +201,9 @@ fn fetch_files_recursive<'a>(
     model_id: &'a str,
     path: &'a str,
     result: &'a mut Vec<Vec<String>>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::result::Result<(), Box<dyn std::error::Error>>> + 'a>> {
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = std::result::Result<(), Box<dyn std::error::Error>>> + 'a>,
+> {
     Box::pin(async move {
         let url = format!("{}api/models/{}/tree/{}", host, model_id, path);
         let response = reqwest::get(&url).await?;
@@ -205,7 +229,8 @@ fn fetch_files_recursive<'a>(
 
 /// 从文件列表中筛选出所有 GGUF 文件
 pub fn filter_gguf_files(files: &[Vec<String>]) -> Vec<Vec<String>> {
-    files.iter()
+    files
+        .iter()
         .filter(|f| f[3].to_lowercase().ends_with(".gguf"))
         .cloned()
         .collect()
@@ -225,13 +250,22 @@ pub async fn get_data_dir() -> std::result::Result<String, Box<dyn std::error::E
 }
 
 /// 构建下载 URL
-pub async fn build_download_url(model_id: &str, path: &str) -> std::result::Result<String, Box<dyn std::error::Error>> {
+pub async fn build_download_url(
+    model_id: &str,
+    path: &str,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let host = get_huggingface_host().await?;
-    Ok(format!("{}{}/resolve/main/{}?download=true", host, model_id, path))
+    Ok(format!(
+        "{}{}/resolve/main/{}?download=true",
+        host, model_id, path
+    ))
 }
 
 /// 下载模型文件
-pub async fn download_model_file(model_id: &str, path: &str) -> std::result::Result<String, Box<dyn std::error::Error>> {
+pub async fn download_model_file(
+    model_id: &str,
+    path: &str,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let url = build_download_url(model_id, path).await?;
     let base_dir = get_data_dir().await?;
     let download_dir = format!("{}/{}", base_dir, model_id);

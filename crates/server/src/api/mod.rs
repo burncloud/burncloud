@@ -1,11 +1,11 @@
-use axum::Router;
 use crate::AppState;
+use axum::Router;
 
 pub mod channel;
 pub mod group;
-pub mod token;
 pub mod log;
 pub mod monitor;
+pub mod token;
 pub mod user;
 
 pub fn routes(state: AppState) -> Router {

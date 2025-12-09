@@ -33,17 +33,14 @@ impl ChannelService {
     pub async fn list(page: usize, limit: usize) -> Result<Vec<Channel>, String> {
         let url = format!("{}?page={}&limit={}", Self::get_base_url(), page, limit);
         let client = reqwest::Client::new();
-        let resp = client.get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
         }
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-        
+
         if let Some(data) = json.get("data") {
             serde_json::from_value(data.clone()).map_err(|e| e.to_string())
         } else {
@@ -54,15 +51,16 @@ impl ChannelService {
     pub async fn create(channel: &Channel) -> Result<(), String> {
         let url = Self::get_base_url();
         let client = reqwest::Client::new();
-        let resp = client.post(&url)
+        let resp = client
+            .post(&url)
             .json(channel)
             .send()
             .await
             .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
-             let text = resp.text().await.unwrap_or_default();
-             return Err(format!("Create failed: {}", text));
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!("Create failed: {}", text));
         }
         Ok(())
     }
@@ -70,14 +68,15 @@ impl ChannelService {
     pub async fn update(channel: &Channel) -> Result<(), String> {
         let url = Self::get_base_url();
         let client = reqwest::Client::new();
-        let resp = client.put(&url)
+        let resp = client
+            .put(&url)
             .json(channel)
             .send()
             .await
             .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
-             return Err(format!("Update failed: {}", resp.status()));
+            return Err(format!("Update failed: {}", resp.status()));
         }
         Ok(())
     }
@@ -85,13 +84,14 @@ impl ChannelService {
     pub async fn delete(id: i64) -> Result<(), String> {
         let url = format!("{}/{}", Self::get_base_url(), id);
         let client = reqwest::Client::new();
-        let resp = client.delete(&url)
+        let resp = client
+            .delete(&url)
             .send()
             .await
             .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
-             return Err(format!("Delete failed: {}", resp.status()));
+            return Err(format!("Delete failed: {}", resp.status()));
         }
         Ok(())
     }

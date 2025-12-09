@@ -1,4 +1,7 @@
-use sqlx::{AnyPool, any::{AnyPoolOptions, AnyRow, AnyConnectOptions}};
+use sqlx::{
+    any::{AnyConnectOptions, AnyPoolOptions, AnyRow},
+    AnyPool,
+};
 use std::str::FromStr;
 
 use crate::error::{DatabaseError, Result};
@@ -13,9 +16,9 @@ impl DatabaseConnection {
         // Handle SQLite specific options via URL string modification if needed.
         // For AnyPool, parsing the URL usually sets up the correct options.
         // We rely on the caller to provide a correct URL (e.g. with ?mode=rwc).
-        
-        let options = AnyConnectOptions::from_str(database_url)
-            .map_err(|e| DatabaseError::Connection(e))?;
+
+        let options =
+            AnyConnectOptions::from_str(database_url).map_err(|e| DatabaseError::Connection(e))?;
 
         let pool = AnyPoolOptions::new()
             .max_connections(10)
@@ -48,12 +51,15 @@ impl Database {
             // Default to local SQLite
             let default_path = get_default_database_path()?;
             create_directory_if_not_exists(&default_path)?;
-            let normalized_path = default_path.to_string_lossy().to_string().replace('\\', "/");
+            let normalized_path = default_path
+                .to_string_lossy()
+                .to_string()
+                .replace('\\', "/");
             // Ensure we use mode=rwc for SQLite to create file
             if is_windows() && !normalized_path.starts_with('/') {
-                 format!("sqlite:///{}?mode=rwc", normalized_path)
+                format!("sqlite:///{}?mode=rwc", normalized_path)
             } else {
-                 format!("sqlite://{}?mode=rwc", normalized_path)
+                format!("sqlite://{}?mode=rwc", normalized_path)
             }
         };
 
@@ -69,15 +75,17 @@ impl Database {
         sqlx::any::install_default_drivers();
         let connection = DatabaseConnection::new(&self.database_url).await?;
         self.connection = Some(connection);
-        
+
         // Enable WAL mode for SQLite performance and concurrency
         if self.kind() == "sqlite" {
-            let _ = sqlx::query("PRAGMA journal_mode=WAL;").execute(self.connection.as_ref().unwrap().pool()).await;
+            let _ = sqlx::query("PRAGMA journal_mode=WAL;")
+                .execute(self.connection.as_ref().unwrap().pool())
+                .await;
         }
-        
+
         // Initialize New API Schema
         crate::schema::Schema::init(self).await?;
-        
+
         Ok(())
     }
 
@@ -113,7 +121,11 @@ impl Database {
         Ok(result)
     }
 
-    pub async fn execute_query_with_params(&self, query: &str, params: Vec<String>) -> Result<sqlx::any::AnyQueryResult> {
+    pub async fn execute_query_with_params(
+        &self,
+        query: &str,
+        params: Vec<String>,
+    ) -> Result<sqlx::any::AnyQueryResult> {
         let conn = self.get_connection()?;
         let mut query_builder = sqlx::query(query);
 
@@ -166,7 +178,9 @@ impl Database {
         T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
         let conn = self.get_connection()?;
-        let result = sqlx::query_as::<_, T>(query).fetch_optional(conn.pool()).await?;
+        let result = sqlx::query_as::<_, T>(query)
+            .fetch_optional(conn.pool())
+            .await?;
         Ok(result)
     }
 }
@@ -203,8 +217,9 @@ pub fn get_default_database_path() -> Result<std::path::PathBuf> {
 fn create_directory_if_not_exists(path: &std::path::Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.exists() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| DatabaseError::DirectoryCreation(format!("{}: {}", parent.display(), e)))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                DatabaseError::DirectoryCreation(format!("{}: {}", parent.display(), e))
+            })?;
         }
     }
     Ok(())

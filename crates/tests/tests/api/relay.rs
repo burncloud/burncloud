@@ -1,6 +1,6 @@
 use burncloud_tests::TestClient;
-use serde_json::json;
 use dotenvy::dotenv;
+use serde_json::json;
 use std::env;
 use uuid::Uuid;
 
@@ -16,10 +16,10 @@ async fn test_e2e_real_upstream() {
             return;
         }
     };
-    
+
     let admin_client = TestClient::new(&base_url);
     let channel_name = format!("Real E2E {}", Uuid::new_v4());
-    
+
     let body = json!({
         "type": 1,
         "key": upstream_key,
@@ -30,19 +30,25 @@ async fn test_e2e_real_upstream() {
         "weight": 10,
         "priority": 100
     });
-    
-    let res = admin_client.post("/console/api/channel", &body).await.expect("Create channel failed");
+
+    let res = admin_client
+        .post("/console/api/channel", &body)
+        .await
+        .expect("Create channel failed");
     assert_eq!(res["success"], true);
-    
+
     let user_client = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
     let chat_body = json!({
         "model": "gpt-3.5-turbo",
         "messages": [{"role": "user", "content": "Hello"}]
     });
-    
+
     println!("Sending chat request to {}", base_url);
-    let chat_res = user_client.post("/v1/chat/completions", &chat_body).await.expect("Chat failed");
-    
+    let chat_res = user_client
+        .post("/v1/chat/completions", &chat_body)
+        .await
+        .expect("Chat failed");
+
     println!("Chat Response: {:?}", chat_res);
     let choices = chat_res.get("choices").and_then(|c| c.as_array());
     if let Some(c) = choices {
@@ -66,11 +72,11 @@ async fn test_gemini_adaptor() {
             return;
         }
     };
-    
+
     let base_url = common_mod::spawn_app().await;
     let admin_client = TestClient::new(&base_url);
     let channel_name = format!("Gemini Test {}", Uuid::new_v4());
-    
+
     let body = json!({
         "type": 24, // Gemini
         "key": gemini_key,
@@ -81,20 +87,30 @@ async fn test_gemini_adaptor() {
         "weight": 10,
         "priority": 100
     });
-    
-    let res = admin_client.post("/console/api/channel", &body).await.expect("Create channel failed");
+
+    let res = admin_client
+        .post("/console/api/channel", &body)
+        .await
+        .expect("Create channel failed");
     assert_eq!(res["success"], true);
-    
+
     let user_client = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
     let chat_body = json!({
         "model": "gemini-pro",
         "messages": [{"role": "user", "content": "Say 'Hello Gemini'"}]
     });
-    
+
     println!("Sending Gemini request...");
-    let chat_res = user_client.post("/v1/chat/completions", &chat_body).await.expect("Chat failed");
-    
+    let chat_res = user_client
+        .post("/v1/chat/completions", &chat_body)
+        .await
+        .expect("Chat failed");
+
     let content = chat_res["choices"][0]["message"]["content"].as_str();
-    assert!(content.is_some(), "Gemini response conversion failed: {:?}", chat_res);
+    assert!(
+        content.is_some(),
+        "Gemini response conversion failed: {:?}",
+        chat_res
+    );
     println!("Gemini Response: {}", content.unwrap());
 }

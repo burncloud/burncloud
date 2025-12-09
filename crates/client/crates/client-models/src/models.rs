@@ -1,8 +1,8 @@
-use dioxus::prelude::*;
-use burncloud_service_models::{ModelInfo, HfApiModel};
+use burncloud_client_shared::components::{BCBadge, BCTable, BadgeVariant};
 use burncloud_service_inference::InstanceStatus;
+use burncloud_service_models::{HfApiModel, ModelInfo};
+use dioxus::prelude::*;
 use std::collections::HashMap;
-use burncloud_client_shared::components::{BCBadge, BadgeVariant, BCTable};
 
 #[component]
 pub fn ModelManagement() -> Element {
@@ -257,30 +257,30 @@ fn ModelCard(
 
                 // 操作按钮
                 div { class: "flex gap-sm pt-md",
-                    button { 
+                    button {
                         class: "btn btn-secondary flex-1",
                         onclick: move |_| on_details.call(mid_details.clone()),
-                        "📄 详情" 
+                        "📄 详情"
                     }
-                    
+
                     if status == InstanceStatus::Running || status == InstanceStatus::Starting {
-                        button { 
-                            class: "btn btn-danger flex-1", 
+                        button {
+                            class: "btn btn-danger flex-1",
                             onclick: move |_| on_stop.call(mid_stop.clone()),
-                            "🛑 停止" 
+                            "🛑 停止"
                         }
                     } else {
-                        button { 
+                        button {
                             class: "btn btn-secondary flex-1",
                             onclick: move |_| on_deploy.call(mid_deploy.clone()),
-                            "🚀 部署" 
+                            "🚀 部署"
                         }
                     }
 
-                    button { 
+                    button {
                         class: "btn btn-danger-outline",
                         onclick: move |_| on_delete.call(mid_delete.clone()),
-                        "🗑️" 
+                        "🗑️"
                     }
                 }
             }
@@ -289,7 +289,11 @@ fn ModelCard(
 }
 
 #[component]
-fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success: EventHandler<()>) -> Element {
+fn DeployDialog(
+    model_id: String,
+    on_close: EventHandler<()>,
+    on_deploy_success: EventHandler<()>,
+) -> Element {
     let mut files = use_signal(Vec::<String>::new);
     let mut selected_file = use_signal(|| None::<String>);
     let mut port = use_signal(|| 8080);
@@ -306,17 +310,18 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
             match burncloud_service_models::get_model_files(&id).await {
                 Ok(file_list) => {
                     // Filter only .gguf files
-                    let ggufs: Vec<String> = burncloud_service_models::filter_gguf_files(&file_list)
-                        .iter()
-                        .map(|f| f[3].clone()) // path is index 3
-                        .collect();
-                    
+                    let ggufs: Vec<String> =
+                        burncloud_service_models::filter_gguf_files(&file_list)
+                            .iter()
+                            .map(|f| f[3].clone()) // path is index 3
+                            .collect();
+
                     if !ggufs.is_empty() {
                         selected_file.set(Some(ggufs[0].clone()));
                     }
                     files.set(ggufs);
                     loading.set(false);
-                },
+                }
                 Err(e) => {
                     error_msg.set(Some(format!("Failed to load files: {}", e)));
                     loading.set(false);
@@ -329,11 +334,11 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
     let on_start = move |_| {
         let m_id = m_id_start.clone();
         let f_path = match selected_file() {
-             Some(f) => f,
-             None => {
-                 error_msg.set(Some("请选择一个 GGUF 文件".to_string()));
-                 return;
-             }
+            Some(f) => f,
+            None => {
+                error_msg.set(Some("请选择一个 GGUF 文件".to_string()));
+                return;
+            }
         };
         // ... logic ...
         let p = port();
@@ -342,7 +347,7 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
 
         spawn(async move {
             deploy_status.set(Some("正在启动服务...".to_string()));
-            
+
             // Resolve absolute path
             let base_dir = match burncloud_service_models::get_data_dir().await {
                 Ok(d) => d,
@@ -351,18 +356,18 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
                     return;
                 }
             };
-            
+
             // Construct absolute path (simple join for now, need to handle OS specific)
             let abs_path = if std::path::Path::new(&base_dir).is_absolute() {
-                 std::path::Path::new(&base_dir).join(&m_id).join(&f_path)
+                std::path::Path::new(&base_dir).join(&m_id).join(&f_path)
             } else {
-                 match std::env::current_dir() {
-                     Ok(cwd) => cwd.join(&base_dir).join(&m_id).join(&f_path),
-                     Err(e) => {
-                         error_msg.set(Some(format!("Path Error: {}", e)));
-                         return;
-                     }
-                 }
+                match std::env::current_dir() {
+                    Ok(cwd) => cwd.join(&base_dir).join(&m_id).join(&f_path),
+                    Err(e) => {
+                        error_msg.set(Some(format!("Path Error: {}", e)));
+                        return;
+                    }
+                }
             };
 
             let config = burncloud_service_inference::InferenceConfig {
@@ -374,20 +379,18 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
             };
 
             match burncloud_service_inference::InferenceService::new().await {
-                Ok(service) => {
-                    match service.start_instance(config).await {
-                        Ok(_) => {
-                             deploy_status.set(Some("服务启动成功!".to_string()));
-                             on_deploy_success.call(());
-                        },
-                        Err(e) => {
-                             error_msg.set(Some(format!("启动失败: {}", e)));
-                             deploy_status.set(None);
-                        }
+                Ok(service) => match service.start_instance(config).await {
+                    Ok(_) => {
+                        deploy_status.set(Some("服务启动成功!".to_string()));
+                        on_deploy_success.call(());
+                    }
+                    Err(e) => {
+                        error_msg.set(Some(format!("启动失败: {}", e)));
+                        deploy_status.set(None);
                     }
                 },
                 Err(e) => {
-                     error_msg.set(Some(format!("Service Init Failed: {}", e)));
+                    error_msg.set(Some(format!("Service Init Failed: {}", e)));
                 }
             }
         });
@@ -417,7 +420,7 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
                         // File Selection
                         div {
                             label { class: "block text-sm font-medium mb-xs", "选择文件 (GGUF)" }
-                            select { 
+                            select {
                                 class: "input w-full",
                                 onchange: move |evt| selected_file.set(Some(evt.value())),
                                 {
@@ -434,7 +437,7 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
                         // Port
                         div {
                             label { class: "block text-sm font-medium mb-xs", "端口 (Port)" }
-                            input { 
+                            input {
                                 class: "input w-full",
                                 r#type: "number",
                                 value: "{port}",
@@ -466,25 +469,25 @@ fn DeployDialog(model_id: String, on_close: EventHandler<()>, on_deploy_success:
                                 oninput: move |evt| gpu_layers.set(evt.value().parse().unwrap_or(0))
                             }
                         }
-                        
+
                         if let Some(err) = error_msg() {
                             div { class: "text-danger text-sm", "{err}" }
                         }
-                        
+
                         if let Some(status) = deploy_status() {
                             div { class: "text-info text-sm", "{status}" }
                         }
 
                         div { class: "flex justify-end gap-sm mt-md",
-                            button { 
-                                class: "btn btn-secondary", 
+                            button {
+                                class: "btn btn-secondary",
                                 onclick: move |_| on_close.call(()),
-                                "取消" 
+                                "取消"
                             }
-                            button { 
+                            button {
                                 class: "btn btn-primary",
                                 onclick: on_start,
-                                "启动服务" 
+                                "启动服务"
                             }
                         }
                     }
@@ -510,7 +513,7 @@ fn FileDownloadDialog(model_id: String, on_close: EventHandler<()>) -> Element {
                 Ok(f) => {
                     files.set(f);
                     loading.set(false);
-                },
+                }
                 Err(e) => {
                     error_msg.set(Some(format!("获取文件列表失败: {}", e)));
                     loading.set(false);
@@ -563,8 +566,8 @@ fn FileDownloadDialog(model_id: String, on_close: EventHandler<()>) -> Element {
                                             // file format: [type, oid, size, path]
                                             tr { class: "border-b",
                                                 td { "{file[3]}" }
-                                                td { class: "text-secondary", 
-                                                    "{format_size(file[2].parse::<i64>().unwrap_or(0))}" 
+                                                td { class: "text-secondary",
+                                                    "{format_size(file[2].parse::<i64>().unwrap_or(0))}"
                                                 }
                                                 td { class: "text-right",
                                                     if file[3].ends_with(".gguf") {
@@ -780,9 +783,9 @@ async fn import_model_to_database(hf_model: HfApiModel) -> Result<(), Box<dyn st
         used_storage: 0,
         filename: None,
         size: 0,
-        created_at: hf_model.created_at.unwrap_or_else(|| {
-            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
-        }),
+        created_at: hf_model
+            .created_at
+            .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()),
         updated_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     };
 

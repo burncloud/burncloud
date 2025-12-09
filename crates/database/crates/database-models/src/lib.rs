@@ -1,7 +1,7 @@
-use burncloud_database::{Database, Result};
 use burncloud_common::types::Channel;
-use sqlx::Row;
+use burncloud_database::{Database, Result};
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 
 pub use burncloud_database::DatabaseError;
 
@@ -39,20 +39,36 @@ pub struct ModelDatabase {
 
 impl ModelDatabase {
     pub async fn new() -> Result<Self> {
-        Ok(Self { db: Database::new().await? })
+        Ok(Self {
+            db: Database::new().await?,
+        })
     }
 
     pub async fn close(self) -> Result<()> {
         self.db.close().await
     }
 
-    pub async fn add_model(&self, _model: &ModelInfo) -> Result<()> { Ok(()) }
-    pub async fn update(&self, _model: &ModelInfo) -> Result<()> { Ok(()) }
-    pub async fn get_model(&self, _model_id: &str) -> Result<Option<ModelInfo>> { Ok(None) }
-    pub async fn list_models(&self) -> Result<Vec<ModelInfo>> { Ok(vec![]) }
-    pub async fn search_by_pipeline(&self, _pipeline_tag: &str) -> Result<Vec<ModelInfo>> { Ok(vec![]) }
-    pub async fn get_popular_models(&self, _limit: i64) -> Result<Vec<ModelInfo>> { Ok(vec![]) }
-    pub async fn delete(&self, _model_id: &str) -> Result<()> { Ok(()) }
+    pub async fn add_model(&self, _model: &ModelInfo) -> Result<()> {
+        Ok(())
+    }
+    pub async fn update(&self, _model: &ModelInfo) -> Result<()> {
+        Ok(())
+    }
+    pub async fn get_model(&self, _model_id: &str) -> Result<Option<ModelInfo>> {
+        Ok(None)
+    }
+    pub async fn list_models(&self) -> Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    pub async fn search_by_pipeline(&self, _pipeline_tag: &str) -> Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    pub async fn get_popular_models(&self, _limit: i64) -> Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    pub async fn delete(&self, _model_id: &str) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub struct ChannelModel;
@@ -61,13 +77,21 @@ impl ChannelModel {
     pub async fn create(db: &Database, channel: &mut Channel) -> Result<i32> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
-        
-        let group_col = if db.kind() == "postgres" { "\"group\"" } else { "`group`" };
-        let type_col = if db.kind() == "postgres" { "\"type\"" } else { "type" };
+
+        let group_col = if db.kind() == "postgres" {
+            "\"group\""
+        } else {
+            "`group`"
+        };
+        let type_col = if db.kind() == "postgres" {
+            "\"type\""
+        } else {
+            "type"
+        };
 
         // Basic Insert
         let sql = if db.kind() == "postgres" {
-             format!(
+            format!(
                 r#"
                 INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -76,7 +100,7 @@ impl ChannelModel {
                 type_col, group_col
             )
         } else {
-             format!(
+            format!(
                 r#"
                 INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -85,7 +109,10 @@ impl ChannelModel {
             )
         };
 
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         channel.created_time = Some(now);
 
         // Use transaction to ensure last_insert_rowid works on the same connection
@@ -109,24 +136,34 @@ impl ChannelModel {
         } else {
             query.execute(&mut *tx).await?;
             // For SQLite with AnyPool, we need a separate query to get ID on the SAME connection (transaction)
-            let row: (i64,) = sqlx::query_as("SELECT last_insert_rowid()").fetch_one(&mut *tx).await?;
+            let row: (i64,) = sqlx::query_as("SELECT last_insert_rowid()")
+                .fetch_one(&mut *tx)
+                .await?;
             row.0 as i32
         };
-        
+
         tx.commit().await?;
-        
+
         channel.id = id;
-        
+
         Self::sync_abilities(db, channel).await?;
-        
+
         Ok(id)
     }
 
     pub async fn update(db: &Database, channel: &Channel) -> Result<()> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
-        let group_col = if db.kind() == "postgres" { "\"group\"" } else { "`group`" };
-        let type_col = if db.kind() == "postgres" { "\"type\"" } else { "type" };
+        let group_col = if db.kind() == "postgres" {
+            "\"group\""
+        } else {
+            "`group`"
+        };
+        let type_col = if db.kind() == "postgres" {
+            "\"type\""
+        } else {
+            "type"
+        };
 
         let sql = format!(
             r#"
@@ -158,34 +195,37 @@ impl ChannelModel {
     pub async fn delete(db: &Database, id: i32) -> Result<()> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
-        
+
         // Delete Abilities first
         sqlx::query("DELETE FROM abilities WHERE channel_id = ?")
             .bind(id)
             .execute(pool)
             .await?;
-            
+
         // Delete Channel
         sqlx::query("DELETE FROM channels WHERE id = ?")
             .bind(id)
             .execute(pool)
             .await?;
-            
+
         Ok(())
     }
 
     pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => r#"
+            "postgres" => {
+                r#"
                 SELECT 
                     id, type as "type_", key, status, name, weight, created_time, test_time, 
                     response_time, base_url, models, "group", used_quota, model_mapping, 
                     priority, auto_ban, other_info, tag, setting, param_override, 
                     header_override, remark 
                 FROM channels WHERE id = $1
-            "#,
-            _ => r#"
+            "#
+            }
+            _ => {
+                r#"
                 SELECT 
                     id, type as type_, key, status, name, weight, created_time, test_time, 
                     response_time, base_url, models, `group`, used_quota, model_mapping, 
@@ -193,28 +233,32 @@ impl ChannelModel {
                     header_override, remark 
                 FROM channels WHERE id = ?
             "#
+            }
         };
-        
+
         let channel = sqlx::query_as(sql)
             .bind(id)
             .fetch_optional(conn.pool())
             .await?;
-            
+
         Ok(channel)
     }
 
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Channel>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => r#"
+            "postgres" => {
+                r#"
                 SELECT 
                     id, type as "type_", key, status, name, weight, created_time, test_time, 
                     response_time, base_url, models, "group", used_quota, model_mapping, 
                     priority, auto_ban, other_info, tag, setting, param_override, 
                     header_override, remark 
                 FROM channels ORDER BY id DESC LIMIT $1 OFFSET $2
-            "#,
-            _ => r#"
+            "#
+            }
+            _ => {
+                r#"
                 SELECT 
                     id, type as type_, key, status, name, weight, created_time, test_time, 
                     response_time, base_url, models, `group`, used_quota, model_mapping, 
@@ -222,36 +266,51 @@ impl ChannelModel {
                     header_override, remark 
                 FROM channels ORDER BY id DESC LIMIT ? OFFSET ?
             "#
+            }
         };
-        
+
         let channels = sqlx::query_as(sql)
             .bind(limit)
             .bind(offset)
             .fetch_all(conn.pool())
             .await?;
-            
+
         Ok(channels)
     }
 
     pub async fn sync_abilities(db: &Database, channel: &Channel) -> Result<()> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
-        
+
         // 1. Delete existing abilities for this channel
         sqlx::query("DELETE FROM abilities WHERE channel_id = ?")
             .bind(channel.id)
             .execute(pool)
             .await?;
-            
+
         // 2. Add new abilities
         if channel.status != 1 {
             // If channel disabled, don't add abilities
             return Ok(());
         }
 
-        let models: Vec<&str> = channel.models.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-        let groups: Vec<&str> = channel.group.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-        let group_col = if db.kind() == "postgres" { "\"group\"" } else { "`group`" };
+        let models: Vec<&str> = channel
+            .models
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let groups: Vec<&str> = channel
+            .group
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let group_col = if db.kind() == "postgres" {
+            "\"group\""
+        } else {
+            "`group`"
+        };
 
         let sql = format!(
             r#"
@@ -263,7 +322,10 @@ impl ChannelModel {
 
         for model in models {
             for group in &groups {
-                println!("ChannelModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}", model, group, channel.id);
+                println!(
+                    "ChannelModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
+                    model, group, channel.id
+                );
                 sqlx::query(&sql)
                     .bind(group)
                     .bind(model)

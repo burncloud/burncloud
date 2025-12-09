@@ -2,8 +2,8 @@
 //!
 //! Redis 服务层，提供连接池管理和常用操作封装
 
-use std::sync::Arc;
 use redis::AsyncCommands;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -43,7 +43,10 @@ impl RedisService {
 
     /// 获取异步连接
     pub async fn get_connection(&self) -> Result<redis::aio::MultiplexedConnection> {
-        self.client.get_multiplexed_async_connection().await.map_err(RedisError::Connection)
+        self.client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(RedisError::Connection)
     }
 
     /// 设置键值对 (Set)
@@ -89,7 +92,7 @@ mod tests {
         // We can assume CI has redis or skip
         // For local dev, we might not have redis running.
         // Let's check connectivity first.
-        
+
         let service = match RedisService::from_env().await {
             Ok(s) => s,
             Err(_) => {

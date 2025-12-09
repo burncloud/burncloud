@@ -1,8 +1,8 @@
-use dioxus::prelude::*;
 use crate::channels::ChannelManager;
-use crate::tokens::TokenManager;
 use crate::groups::GroupManager;
-use burncloud_client_shared::i18n::{use_i18n, t, Language};
+use crate::tokens::TokenManager;
+use burncloud_client_shared::i18n::{t, use_i18n, Language};
+use dioxus::prelude::*;
 
 #[component]
 pub fn SystemSettings() -> Element {
@@ -23,22 +23,22 @@ pub fn SystemSettings() -> Element {
         div { class: "page-content",
             // Tab Navigation
             div { class: "flex gap-md mb-lg border-b border-border",
-                button { 
+                button {
                     class: if active_tab() == "general" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("general"),
                     "General"
                 }
-                button { 
+                button {
                     class: if active_tab() == "channels" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("channels"),
                     "{t(*lang, \"nav.channels\")}"
                 }
-                button { 
+                button {
                     class: if active_tab() == "groups" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("groups"),
                     "Groups"
                 }
-                button { 
+                button {
                     class: if active_tab() == "tokens" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("tokens"),
                     "Tokens"

@@ -2,18 +2,12 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn BCInput(
-    #[props(default)]
-    value: String,
-    #[props(default)]
-    label: Option<String>,
-    #[props(default = "text".to_string())]
-    r#type: String,
-    #[props(default)]
-    placeholder: String,
-    #[props(default)]
-    error: Option<String>,
-    #[props(default)]
-    oninput: EventHandler<FormEvent>,
+    #[props(default)] value: String,
+    #[props(default)] label: Option<String>,
+    #[props(default = "text".to_string())] r#type: String,
+    #[props(default)] placeholder: String,
+    #[props(default)] error: Option<String>,
+    #[props(default)] oninput: EventHandler<FormEvent>,
 ) -> Element {
     let error_class = if error.is_some() { "is-invalid" } else { "" };
 
