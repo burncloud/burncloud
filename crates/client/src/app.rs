@@ -7,6 +7,7 @@ use crate::pages::{
     settings::SystemSettings, user::UserPage,
 };
 pub use burncloud_client_tray::{should_show_window, start_tray};
+use burncloud_client_shared::DesktopMode;
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {
@@ -72,6 +73,7 @@ pub fn launch_gui_with_tray() {
 #[cfg(feature = "desktop")]
 #[component]
 fn AppWithTray() -> Element {
+    use_context_provider(|| DesktopMode);
     let window = dioxus::desktop::use_window();
 
     let window_setup = window.clone();
