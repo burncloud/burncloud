@@ -28,7 +28,6 @@ impl AutoUpdater {
         self.sync_update()
     }
 
-
     pub fn current_version(&self) -> &str {
         &self.config.current_version
     }
@@ -59,7 +58,10 @@ impl AutoUpdater {
             .map_err(UpdateError::from)?;
 
         if let Some(latest_release) = releases.first() {
-            Ok(Some((latest_release.version.clone(), latest_release.name.clone())))
+            Ok(Some((
+                latest_release.version.clone(),
+                latest_release.name.clone(),
+            )))
         } else {
             Ok(None)
         }
@@ -148,4 +150,3 @@ impl AutoUpdater {
         }
     }
 }
-

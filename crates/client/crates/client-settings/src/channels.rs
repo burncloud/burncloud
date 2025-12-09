@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
-use serde::{Deserialize, Serialize};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Channel {
@@ -18,7 +18,7 @@ pub fn ChannelManager() -> Element {
     let mut channels = use_signal::<Vec<Channel>>(|| vec![]);
     let mut loading = use_signal(|| true);
     let mut error_msg = use_signal(|| String::new());
-    
+
     // Form state
     let mut form_name = use_signal(|| String::new());
     let mut form_base_url = use_signal(|| "https://api.openai.com".to_string());
@@ -29,14 +29,18 @@ pub fn ChannelManager() -> Element {
     // Fetch channels
     let _ = use_resource(move || async move {
         let client = Client::new();
-        match client.get("http://127.0.0.1:3000/console/api/channels").send().await {
+        match client
+            .get("http://127.0.0.1:3000/console/api/channels")
+            .send()
+            .await
+        {
             Ok(resp) => {
                 if let Ok(data) = resp.json::<Vec<Channel>>().await {
                     channels.set(data);
                 } else {
                     error_msg.set("Failed to parse channels".to_string());
                 }
-            },
+            }
             Err(e) => error_msg.set(format!("Failed to fetch: {}", e)),
         }
         loading.set(false);
@@ -54,19 +58,21 @@ pub fn ChannelManager() -> Element {
             priority: 0,
         };
 
-        if let Ok(resp) = client.post("http://127.0.0.1:3000/console/api/channels")
+        if let Ok(resp) = client
+            .post("http://127.0.0.1:3000/console/api/channels")
             .json(&new_channel)
-            .send().await 
+            .send()
+            .await
         {
-             if resp.status().is_success() {
-                 // Refresh list locally
-                 channels.write().push(new_channel);
-                 // Clear form
-                 form_name.set(String::new());
-                 form_api_key.set(String::new());
-             } else {
-                 error_msg.set("Failed to create channel".to_string());
-             }
+            if resp.status().is_success() {
+                // Refresh list locally
+                channels.write().push(new_channel);
+                // Clear form
+                form_name.set(String::new());
+                form_api_key.set(String::new());
+            } else {
+                error_msg.set("Failed to create channel".to_string());
+            }
         }
     };
 
@@ -88,9 +94,9 @@ pub fn ChannelManager() -> Element {
                 div { class: "grid gap-md", style: "grid-template-columns: 1fr 1fr;",
                     div { class: "flex flex-col gap-sm",
                         label { class: "text-caption text-secondary", "名称" }
-                        input { class: "input", 
-                            value: "{form_name}", 
-                            oninput: move |e| form_name.set(e.value()) 
+                        input { class: "input",
+                            value: "{form_name}",
+                            oninput: move |e| form_name.set(e.value())
                         }
                     }
                     div { class: "flex flex-col gap-sm",
@@ -105,23 +111,23 @@ pub fn ChannelManager() -> Element {
                     }
                     div { class: "flex flex-col gap-sm",
                         label { class: "text-caption text-secondary", "Base URL" }
-                        input { class: "input", 
-                            value: "{form_base_url}", 
-                            oninput: move |e| form_base_url.set(e.value()) 
+                        input { class: "input",
+                            value: "{form_base_url}",
+                            oninput: move |e| form_base_url.set(e.value())
                         }
                     }
                     div { class: "flex flex-col gap-sm",
                         label { class: "text-caption text-secondary", "匹配路径" }
-                        input { class: "input", 
-                            value: "{form_match_path}", 
-                            oninput: move |e| form_match_path.set(e.value()) 
+                        input { class: "input",
+                            value: "{form_match_path}",
+                            oninput: move |e| form_match_path.set(e.value())
                         }
                     }
                     div { class: "flex flex-col gap-sm", style: "grid-column: span 2;",
                         label { class: "text-caption text-secondary", "API Key" }
                         input { class: "input", type: "password",
-                            value: "{form_api_key}", 
-                            oninput: move |e| form_api_key.set(e.value()) 
+                            value: "{form_api_key}",
+                            oninput: move |e| form_api_key.set(e.value())
                         }
                     }
                 }
@@ -149,9 +155,9 @@ pub fn ChannelManager() -> Element {
                                     }
                                     div { class: "flex gap-sm",
                                         span { class: "tag", "{channel.auth_type}" }
-                                        button { class: "btn-icon text-error", 
+                                        button { class: "btn-icon text-error",
                                             onclick: move |_| handle_delete(channel.id.clone()),
-                                            "🗑️" 
+                                            "🗑️"
                                         }
                                     }
                                 }

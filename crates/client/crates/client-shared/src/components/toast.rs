@@ -20,7 +20,7 @@ pub struct Toast {
 }
 
 // Global signal for Toasts
-// In Dioxus 0.5+, we can use a Signal in a Context or just a global/static if appropriate, 
+// In Dioxus 0.5+, we can use a Signal in a Context or just a global/static if appropriate,
 // but Context is safer for multiple windows/instances.
 // We'll use a Context approach.
 
@@ -34,8 +34,11 @@ impl ToastManager {
 
     pub fn add(mut self, message: String, type_: ToastType) {
         let id = Uuid::new_v4().to_string();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-        
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
         let toast = Toast {
             id: id.clone(),
             message,
@@ -50,11 +53,19 @@ impl ToastManager {
     pub fn remove(mut self, id: &str) {
         self.0.write().retain(|t| t.id != id);
     }
-    
-    pub fn success(self, msg: &str) { self.add(msg.to_string(), ToastType::Success); }
-    pub fn error(self, msg: &str) { self.add(msg.to_string(), ToastType::Error); }
-    pub fn info(self, msg: &str) { self.add(msg.to_string(), ToastType::Info); }
-    pub fn warning(self, msg: &str) { self.add(msg.to_string(), ToastType::Warning); }
+
+    pub fn success(self, msg: &str) {
+        self.add(msg.to_string(), ToastType::Success);
+    }
+    pub fn error(self, msg: &str) {
+        self.add(msg.to_string(), ToastType::Error);
+    }
+    pub fn info(self, msg: &str) {
+        self.add(msg.to_string(), ToastType::Info);
+    }
+    pub fn warning(self, msg: &str) {
+        self.add(msg.to_string(), ToastType::Warning);
+    }
 }
 
 pub fn use_toast() -> ToastManager {
@@ -77,12 +88,15 @@ pub fn ToastContainer() -> Element {
             let mut timer = interval;
             loop {
                 timer.tick().await;
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-                
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+
                 // We need to check if we need to write to avoid unnecessary locks/updates
                 // Using a read lock first
                 let should_cleanup = toasts.read().iter().any(|t| now > t.timestamp + t.duration);
-                
+
                 if should_cleanup {
                     toasts.write().retain(|t| now <= t.timestamp + t.duration);
                 }
@@ -97,11 +111,11 @@ pub fn ToastContainer() -> Element {
             {current_toasts.iter().map(|toast| {
                 let id = toast.id.clone();
                 rsx! {
-                    div { 
+                    div {
                         key: "{toast.id}",
                         class: "toast toast-{toast.type_.to_string().to_lowercase()}",
                         onclick: move |_| toast_manager.remove(&id),
-                        div { class: "toast-icon", 
+                        div { class: "toast-icon",
                             match toast.type_ {
                                 ToastType::Success => "✓",
                                 ToastType::Error => "✕",

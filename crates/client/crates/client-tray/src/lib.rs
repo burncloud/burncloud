@@ -1,9 +1,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod desktop {
-    use systray::Application;
-    use std::process;
     use std::fmt;
+    use std::process;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use systray::Application;
 
     // 嵌入图标数据
     static ICON_DATA: &[u8] = include_bytes!("../res/burncloud.ico");
@@ -47,24 +47,27 @@ mod desktop {
                         println!("Icon set successfully");
                         // 设置成功后清理临时文件
                         let _ = std::fs::remove_file(&temp_icon_path);
-                    },
+                    }
                     Err(e) => {
                         println!("Warning: Failed to set icon: {:?}", e);
                         // 清理临时文件
                         let _ = std::fs::remove_file(&temp_icon_path);
                     }
                 }
-            },
+            }
             Err(e) => {
                 println!("Warning: Failed to create temporary icon file: {:?}", e);
             }
         }
 
         // 添加启动界面菜单项
-        app.add_menu_item(&"显示界面".to_string(), move |_| -> Result<(), SimpleError> {
-            SHOULD_SHOW.store(true, Ordering::Relaxed);
-            Ok(())
-        })?;
+        app.add_menu_item(
+            &"显示界面".to_string(),
+            move |_| -> Result<(), SimpleError> {
+                SHOULD_SHOW.store(true, Ordering::Relaxed);
+                Ok(())
+            },
+        )?;
 
         // 添加分隔符
         app.add_menu_separator()?;
@@ -85,7 +88,11 @@ mod desktop {
 pub use desktop::*;
 
 #[cfg(target_arch = "wasm32")]
-pub fn should_show_window() -> bool { false }
+pub fn should_show_window() -> bool {
+    false
+}
 
 #[cfg(target_arch = "wasm32")]
-pub fn start_tray() -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
+pub fn start_tray() -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}

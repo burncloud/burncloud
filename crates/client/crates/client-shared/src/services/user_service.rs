@@ -31,18 +31,15 @@ impl UserService {
         let client = reqwest::Client::new();
         // In a real app, we need to attach the Bearer token here
         // For now, we assume the backend might be open or we use a root token from a global state
-        // But since this is client-side code running in LiveView (server-side), 
+        // But since this is client-side code running in LiveView (server-side),
         // we might need a way to pass the current user's context.
         // For MVP, we'll try a simple GET.
-        
-        let resp = client.get(&url)
-            .send()
-            .await
-            .map_err(|e| {
-                let err = e.to_string();
-                println!("UserService: Network error: {}", err);
-                err
-            })?;
+
+        let resp = client.get(&url).send().await.map_err(|e| {
+            let err = e.to_string();
+            println!("UserService: Network error: {}", err);
+            err
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -51,7 +48,7 @@ impl UserService {
         }
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-        
+
         if let Some(data) = json.get("data") {
             serde_json::from_value(data.clone()).map_err(|e| e.to_string())
         } else {
@@ -67,14 +64,15 @@ impl UserService {
             "password": password
         });
 
-        let resp = client.post(&url)
+        let resp = client
+            .post(&url)
             .json(&body)
             .send()
             .await
             .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
-             return Err(format!("Create failed: {}", resp.status()));
+            return Err(format!("Create failed: {}", resp.status()));
         }
         Ok(())
     }
@@ -87,24 +85,26 @@ impl UserService {
             "amount": amount
         });
 
-        let resp = client.post(&url)
+        let resp = client
+            .post(&url)
             .json(&body)
             .send()
             .await
             .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
-             return Err(format!("Topup failed: {}", resp.status()));
+            return Err(format!("Topup failed: {}", resp.status()));
         }
-        
+
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-        let new_balance = json.get("data")
+        let new_balance = json
+            .get("data")
             .and_then(|d| d.get("balance"))
             .and_then(|b| b.as_f64())
             .unwrap_or(0.0);
-            
+
         Ok(new_balance)
     }
-    
+
     // Add update/delete/quota methods as needed
 }

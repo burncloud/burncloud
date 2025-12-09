@@ -17,12 +17,18 @@ use serde_json::Value;
 const DEFAULT_PORT: u16 = 6800;
 const MAX_PORT_RANGE: u16 = 100;
 const ARIA2_MAIN_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip";
-const ARIA2_BACKUP_URL: &str = "https://gitee.com/burncloud/aria2/raw/master/aria2-1.37.0-win-64bit-build1.zip";
+const ARIA2_BACKUP_URL: &str =
+    "https://gitee.com/burncloud/aria2/raw/master/aria2-1.37.0-win-64bit-build1.zip";
 
 /// 获取 BurnCloud 目录路径
 fn get_burncloud_dir() -> PathBuf {
     std::env::var("USERPROFILE")
-        .map(|profile| PathBuf::from(profile).join("AppData").join("Local").join("BurnCloud"))
+        .map(|profile| {
+            PathBuf::from(profile)
+                .join("AppData")
+                .join("Local")
+                .join("BurnCloud")
+        })
         .unwrap_or_else(|_| PathBuf::from(r"C:\Users\Default\AppData\Local\BurnCloud"))
 }
 
@@ -76,7 +82,9 @@ impl Default for Aria2Config {
         Self {
             port: DEFAULT_PORT,
             secret: None,
-            download_dir: std::env::current_dir().unwrap_or_default().join("downloads"),
+            download_dir: std::env::current_dir()
+                .unwrap_or_default()
+                .join("downloads"),
             max_connections: 16,
             split_size: "1M".to_string(),
             aria2_path: get_burncloud_dir().join("aria2c.exe"),
@@ -92,7 +100,10 @@ pub struct DownloadOptions {
     pub out: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub split: Option<u8>,
-    #[serde(rename = "max-connection-per-server", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "max-connection-per-server",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_connection_per_server: Option<u8>,
     #[serde(rename = "continue", skip_serializing_if = "Option::is_none")]
     pub continue_download: Option<bool>,
@@ -147,9 +158,11 @@ impl Aria2Instance {
     }
 
     pub fn kill(&mut self) -> Aria2Result<()> {
-        self.process.kill()
+        self.process
+            .kill()
             .map_err(|e| Aria2Error::ProcessError(e.to_string()))?;
-        self.process.wait()
+        self.process
+            .wait()
             .map_err(|e| Aria2Error::ProcessError(e.to_string()))?;
         Ok(())
     }
@@ -183,7 +196,8 @@ pub async fn download_aria2() -> Aria2Result<PathBuf> {
         Ok(_) => println!("从主链接下载成功"),
         Err(_) => {
             println!("主链接下载失败，尝试备用链接...");
-            download_file(&client, ARIA2_BACKUP_URL, &zip_path).await
+            download_file(&client, ARIA2_BACKUP_URL, &zip_path)
+                .await
                 .map_err(|e| Aria2Error::DownloadError(format!("所有下载链接均失败: {}", e)))?;
             println!("从备用链接下载成功");
         }
@@ -198,36 +212,46 @@ pub async fn download_aria2() -> Aria2Result<PathBuf> {
     if exe_path.exists() {
         Ok(exe_path)
     } else {
-        Err(Aria2Error::DownloadError("解压后未找到 aria2c.exe".to_string()))
+        Err(Aria2Error::DownloadError(
+            "解压后未找到 aria2c.exe".to_string(),
+        ))
     }
 }
 
 async fn download_file(client: &Client, url: &str, path: &Path) -> Aria2Result<()> {
-    let response = client.get(url).send().await
+    let response = client
+        .get(url)
+        .send()
+        .await
         .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
     if !response.status().is_success() {
-        return Err(Aria2Error::DownloadError(format!("HTTP错误: {}", response.status())));
+        return Err(Aria2Error::DownloadError(format!(
+            "HTTP错误: {}",
+            response.status()
+        )));
     }
 
-    let bytes = response.bytes().await
+    let bytes = response
+        .bytes()
+        .await
         .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
-    std::fs::write(path, &bytes)
-        .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
+    std::fs::write(path, &bytes).map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
     Ok(())
 }
 
 fn extract_aria2(zip_path: &Path, target_dir: &Path) -> Aria2Result<()> {
-    let file = std::fs::File::open(zip_path)
-        .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
+    let file =
+        std::fs::File::open(zip_path).map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
+        let mut file = archive
+            .by_index(i)
             .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
         if file.name().ends_with("aria2c.exe") {
@@ -239,7 +263,9 @@ fn extract_aria2(zip_path: &Path, target_dir: &Path) -> Aria2Result<()> {
         }
     }
 
-    Err(Aria2Error::DownloadError("ZIP文件中未找到 aria2c.exe".to_string()))
+    Err(Aria2Error::DownloadError(
+        "ZIP文件中未找到 aria2c.exe".to_string(),
+    ))
 }
 
 // ============================================================================
@@ -263,7 +289,9 @@ pub fn find_available_port() -> Aria2Result<u16> {
 
 /// 终止所有aria2c.exe进程
 pub fn kill_existing_aria2() {
-    let _ = Command::new("taskkill").args(["/F", "/IM", "aria2c.exe"]).output();
+    let _ = Command::new("taskkill")
+        .args(["/F", "/IM", "aria2c.exe"])
+        .output();
 }
 
 /// 启动 aria2 RPC 服务
@@ -373,8 +401,8 @@ impl Aria2RpcClient {
         }
 
         // 添加其他参数
-        let param_value = serde_json::to_value(&params)
-            .map_err(|e| Aria2Error::RpcError(e.to_string()))?;
+        let param_value =
+            serde_json::to_value(&params).map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
         // 如果参数是数组，则展开每个元素作为单独的参数
         if let Value::Array(array) = param_value {
@@ -391,14 +419,17 @@ impl Aria2RpcClient {
             "params": rpc_params
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.base_url)
             .json(&request)
             .send()
             .await
             .map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
-        let rpc_response: Value = response.json().await
+        let rpc_response: Value = response
+            .json()
+            .await
             .map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
         if let Some(error) = rpc_response.get("error") {
@@ -406,13 +437,16 @@ impl Aria2RpcClient {
         }
 
         let result = rpc_response["result"].clone();
-        serde_json::from_value(result)
-            .map_err(|e| Aria2Error::RpcError(e.to_string()))
+        serde_json::from_value(result).map_err(|e| Aria2Error::RpcError(e.to_string()))
     }
 
     /// 添加 URI 下载任务
-    pub async fn add_uri(&self, uris: Vec<String>, options: Option<DownloadOptions>) -> Aria2Result<String> {
-         // 检查是否存在相同URI和存储路径的任务
+    pub async fn add_uri(
+        &self,
+        uris: Vec<String>,
+        options: Option<DownloadOptions>,
+    ) -> Aria2Result<String> {
+        // 检查是否存在相同URI和存储路径的任务
         if let Some(existing_gid) = self.find_existing_task(&uris, &options).await? {
             return Ok(existing_gid);
         }
@@ -425,7 +459,11 @@ impl Aria2RpcClient {
     }
 
     /// 查找具有相同URI和存储路径的现有任务
-    async fn find_existing_task(&self, uris: &[String], options: &Option<DownloadOptions>) -> Aria2Result<Option<String>> {
+    async fn find_existing_task(
+        &self,
+        uris: &[String],
+        options: &Option<DownloadOptions>,
+    ) -> Aria2Result<Option<String>> {
         // 获取所有任务（活跃、等待、已停止）
         let mut all_tasks = Vec::new();
 
@@ -457,7 +495,12 @@ impl Aria2RpcClient {
     }
 
     /// 检查任务是否具有相同的URI和存储路径
-    async fn is_same_task(&self, status: &DownloadStatus, uris: &[String], options: &Option<DownloadOptions>) -> Aria2Result<bool> {
+    async fn is_same_task(
+        &self,
+        status: &DownloadStatus,
+        uris: &[String],
+        options: &Option<DownloadOptions>,
+    ) -> Aria2Result<bool> {
         // 获取详细信息需要调用其他方法，这里简化比较
         // 实际实现中可能需要调用 aria2.getFiles 等方法获取完整信息
 
@@ -609,9 +652,8 @@ impl Aria2Daemon {
 
     pub fn get_rpc_client(&self) -> Option<Aria2RpcClient> {
         let lock = self.instance.lock().unwrap();
-        lock.as_ref().map(|instance| {
-            Aria2RpcClient::new(instance.port, self.config.secret.clone())
-        })
+        lock.as_ref()
+            .map(|instance| Aria2RpcClient::new(instance.port, self.config.secret.clone()))
     }
 
     pub fn is_running(&self) -> bool {

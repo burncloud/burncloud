@@ -1,11 +1,11 @@
 use dotenvy::dotenv;
-use std::env;
-use std::process::{Command, Child, Stdio};
-use std::path::PathBuf;
-use std::time::Duration;
-use std::net::TcpListener;
-use std::sync::OnceLock;
 use reqwest::Client;
+use std::env;
+use std::net::TcpListener;
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
+use std::time::Duration;
 
 static SERVER_HANDLE: OnceLock<ServerHandle> = OnceLock::new();
 
@@ -34,7 +34,7 @@ pub async fn spawn_app() -> String {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
         let manifest_path = PathBuf::from(manifest_dir);
         let root_dir = manifest_path.parent().unwrap().parent().unwrap();
-            
+
         let binary_path = if cfg!(target_os = "windows") {
             root_dir.join("target/debug/burncloud.exe")
         } else {
@@ -42,7 +42,10 @@ pub async fn spawn_app() -> String {
         };
 
         if !binary_path.exists() {
-            panic!("Binary not found at {:?}. Run 'cargo build --bin burncloud' first.", binary_path);
+            panic!(
+                "Binary not found at {:?}. Run 'cargo build --bin burncloud' first.",
+                binary_path
+            );
         }
 
         // 3. Pick Port & Spawn
@@ -54,7 +57,7 @@ pub async fn spawn_app() -> String {
             .arg("start")
             .env("PORT", port.to_string())
             .env("RUST_LOG", "burncloud=info") // Enable info logs for debugging
-            .stdout(Stdio::inherit()) 
+            .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
             .expect("Failed to spawn server");
@@ -85,8 +88,14 @@ fn get_free_port() -> u16 {
 
 async fn wait_for_server(url: &str) {
     let client = Client::new();
-    for _ in 0..50 { // 5s timeout
-        if client.get(format!("{}/api/status", url)).send().await.is_ok() {
+    for _ in 0..50 {
+        // 5s timeout
+        if client
+            .get(format!("{}/api/status", url))
+            .send()
+            .await
+            .is_ok()
+        {
             return;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -108,7 +117,8 @@ pub fn get_demo_token() -> String {
 pub fn get_openai_config() -> Option<(String, String)> {
     dotenv().ok();
     let key = env::var("TEST_OPENAI_KEY").ok().filter(|k| !k.is_empty())?;
-    let url = env::var("TEST_OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com".to_string());
+    let url =
+        env::var("TEST_OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com".to_string());
     Some((key, url))
 }
 

@@ -1,7 +1,7 @@
 mod common;
 
-use common::{setup_db, start_test_server};
 use burncloud_database::sqlx;
+use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::Value;
 
@@ -12,7 +12,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     // 1. Create Upstreams
     let u1_id = "u1";
     let u1_url = "https://httpbin.org/anything/u1";
-    
+
     let u2_id = "u2";
     let u2_url = "https://httpbin.org/anything/u2";
 
@@ -25,16 +25,19 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
         VALUES 
         (?, 'Upstream 1', ?, 'key1', '/u1-direct', 'Bearer'),
         (?, 'Upstream 2', ?, 'key2', '/u2-direct', 'Bearer')
-        "#
+        "#,
     )
-    .bind(u1_id).bind(u1_url)
-    .bind(u2_id).bind(u2_url)
-    .execute(&pool).await?;
+    .bind(u1_id)
+    .bind(u1_url)
+    .bind(u2_id)
+    .bind(u2_url)
+    .execute(&pool)
+    .await?;
 
     // 2. Create Group
     let group_id = "g1";
     let match_path = "/group-test";
-    
+
     sqlx::query(
         "INSERT INTO router_groups (id, name, strategy, match_path) VALUES (?, 'Test Group', 'round_robin', ?)"
     )
@@ -61,14 +64,16 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     let mut hits_u2 = 0;
 
     for i in 0..4 {
-        let resp = client.get(&url)
+        let resp = client
+            .get(&url)
             .header("Authorization", "Bearer sk-burncloud-demo")
-            .send().await?;
-        
+            .send()
+            .await?;
+
         assert_eq!(resp.status(), 200);
         let json: Value = resp.json().await?;
         let target_url = json["url"].as_str().unwrap();
-        
+
         println!("Request {} hit: {}", i, target_url);
 
         if target_url.contains("/u1") {

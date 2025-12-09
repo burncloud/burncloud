@@ -20,9 +20,9 @@
 //! ```
 
 pub mod config;
-pub mod updater;
 pub mod error;
+pub mod updater;
 
 pub use config::UpdateConfig;
-pub use updater::AutoUpdater;
 pub use error::{UpdateError, UpdateResult};
+pub use updater::AutoUpdater;

@@ -8,7 +8,7 @@ pub async fn setup_db() -> anyhow::Result<(Database, Pool<Sqlite>)> {
     RouterDatabase::init(&db).await?;
     let conn = db.connection()?;
     // Clone the pool properly
-    let pool = conn.pool().clone(); 
+    let pool = conn.pool().clone();
     Ok((db, pool))
 }
 

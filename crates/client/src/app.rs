@@ -2,18 +2,11 @@ use dioxus::prelude::*;
 
 use crate::components::layout::Layout;
 use crate::pages::{
-    dashboard::Dashboard,
-    models::ModelManagement,
-    deploy::DeployConfig,
-    monitor::ServiceMonitor,
-    api::ApiManagement,
-    settings::SystemSettings,
-    channels::ChannelPage,
-    login::LoginPage,
-    register::RegisterPage,
-    user::UserPage,
+    api::ApiManagement, channels::ChannelPage, dashboard::Dashboard, deploy::DeployConfig,
+    login::LoginPage, models::ModelManagement, monitor::ServiceMonitor, register::RegisterPage,
+    settings::SystemSettings, user::UserPage,
 };
-pub use burncloud_client_tray::{start_tray, should_show_window};
+pub use burncloud_client_tray::{should_show_window, start_tray};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {

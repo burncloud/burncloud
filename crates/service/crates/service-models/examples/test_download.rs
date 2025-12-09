@@ -1,5 +1,5 @@
-use burncloud_service_models::{get_data_dir, build_download_url};
 use burncloud_download::DownloadManager;
+use burncloud_service_models::{build_download_url, get_data_dir};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,8 +58,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let completed_mb = completed as f64 / 1024.0 / 1024.0;
                 let speed_mb = speed as f64 / 1024.0 / 1024.0;
 
-                print!("\r状态: {} | 进度: {:.2}% | 已下载: {:.2} MB / {:.2} MB | 速度: {:.2} MB/s",
-                    status.status, progress, completed_mb, total_mb, speed_mb);
+                print!(
+                    "\r状态: {} | 进度: {:.2}% | 已下载: {:.2} MB / {:.2} MB | 速度: {:.2} MB/s",
+                    status.status, progress, completed_mb, total_mb, speed_mb
+                );
 
                 // 刷新输出
                 use std::io::Write;

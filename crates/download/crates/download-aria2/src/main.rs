@@ -61,7 +61,10 @@ async fn test_download(client: &Aria2RpcClient) -> Aria2Result<()> {
         max_connection_per_server: None,
         continue_download: None,
     };
-    match client.add_uri(vec![test_url.to_string()], Some(options)).await {
+    match client
+        .add_uri(vec![test_url.to_string()], Some(options))
+        .await
+    {
         Ok(gid) => {
             println!("  - 添加下载任务成功，GID: {}", gid);
 

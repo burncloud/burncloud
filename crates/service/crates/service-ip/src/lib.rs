@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use burncloud_service_setting::SettingService;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 struct IpApiResponse {

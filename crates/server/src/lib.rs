@@ -1,14 +1,14 @@
 pub mod api;
 
 use axum::Router;
-use std::net::SocketAddr;
-use tower_http::cors::CorsLayer;
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
-use std::sync::Arc;
 use burncloud_router::create_router_app;
 use burncloud_service_monitor::SystemMonitorService;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,9 +31,8 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
 
     // 3. Data Plane Router (Fallback)
     let router_app = create_router_app(db.clone()).await?;
-    
-    let mut app = Router::new()
-        .merge(api_router);
+
+    let mut app = Router::new().merge(api_router);
 
     if enable_liveview {
         // 2. LiveView Router
@@ -43,7 +42,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
 
     // Note: If LiveView is disabled, "/" requests will hit the fallback (router_app)
     // which usually returns 404 for unknown paths, or handles LLM requests.
-    
+
     let app = app
         .fallback_service(router_app)
         .layer(CorsLayer::permissive());

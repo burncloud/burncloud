@@ -16,17 +16,12 @@ impl Default for ButtonVariant {
 
 #[component]
 pub fn BCButton(
-    #[props(default)]
-    variant: ButtonVariant,
-    #[props(default)]
-    loading: bool,
-    #[props(default)]
-    class: String,
-    #[props(default)]
-    onclick: EventHandler<MouseEvent>,
+    #[props(default)] variant: ButtonVariant,
+    #[props(default)] loading: bool,
+    #[props(default)] class: String,
+    #[props(default)] onclick: EventHandler<MouseEvent>,
     children: Element,
-    #[props(default)]
-    r#type: Option<String>,
+    #[props(default)] r#type: Option<String>,
 ) -> Element {
     let base_class = "btn";
     let variant_class = match variant {
@@ -35,9 +30,13 @@ pub fn BCButton(
         ButtonVariant::Danger => "btn-danger",
         ButtonVariant::Ghost => "btn-ghost",
     };
-    
+
     let btn_type = r#type.unwrap_or("button".to_string());
-    let loading_class = if loading { "opacity-75 cursor-not-allowed" } else { "" };
+    let loading_class = if loading {
+        "opacity-75 cursor-not-allowed"
+    } else {
+        ""
+    };
 
     rsx! {
         button {

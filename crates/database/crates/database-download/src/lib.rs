@@ -30,7 +30,9 @@ impl DownloadDB {
     }
 
     async fn init_tables(&self) -> Result<()> {
-        self.db.execute_query("
+        self.db
+            .execute_query(
+                "
             CREATE TABLE IF NOT EXISTS downloads (
                 gid TEXT PRIMARY KEY,
                 status TEXT NOT NULL DEFAULT 'waiting',
@@ -46,11 +48,19 @@ impl DownloadDB {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
-        ").await?;
+        ",
+            )
+            .await?;
         Ok(())
     }
 
-    pub async fn add(&self, gid: &str, uris: Vec<String>, download_dir: Option<&str>, filename: Option<&str>) -> Result<()> {
+    pub async fn add(
+        &self,
+        gid: &str,
+        uris: Vec<String>,
+        download_dir: Option<&str>,
+        filename: Option<&str>,
+    ) -> Result<()> {
         if self.get(gid).await?.is_some() {
             return Ok(());
         }
@@ -59,31 +69,47 @@ impl DownloadDB {
         let download_dir_str = download_dir.unwrap_or("").to_string();
 
         // 检查相同的uris和download_dir组合是否已存在
-        let existing = self.db.fetch_optional::<Download>(
-            &format!("SELECT * FROM downloads WHERE uris = '{}' AND download_dir = '{}'",
-                uris_json.replace("'", "''"), download_dir_str.replace("'", "''"))
-        ).await?;
+        let existing = self
+            .db
+            .fetch_optional::<Download>(&format!(
+                "SELECT * FROM downloads WHERE uris = '{}' AND download_dir = '{}'",
+                uris_json.replace("'", "''"),
+                download_dir_str.replace("'", "''")
+            ))
+            .await?;
 
         if existing.is_some() {
-            return self.db.execute_query_with_params(
-                "UPDATE downloads SET gid = ? WHERE uris = ? AND download_dir = ?",
-                vec![gid.to_string(), uris_json.clone(), download_dir_str.clone()]
-            ).await.map(|_| ());
+            return self
+                .db
+                .execute_query_with_params(
+                    "UPDATE downloads SET gid = ? WHERE uris = ? AND download_dir = ?",
+                    vec![gid.to_string(), uris_json.clone(), download_dir_str.clone()],
+                )
+                .await
+                .map(|_| ());
         }
 
-        self.db.execute_query_with_params(
-            "INSERT INTO downloads (gid, uris, download_dir, filename) VALUES (?, ?, ?, ?)",
-            vec![
-                gid.to_string(),
-                uris_json,
-                download_dir_str,
-                filename.unwrap_or("").to_string()
-            ]
-        ).await?;
+        self.db
+            .execute_query_with_params(
+                "INSERT INTO downloads (gid, uris, download_dir, filename) VALUES (?, ?, ?, ?)",
+                vec![
+                    gid.to_string(),
+                    uris_json,
+                    download_dir_str,
+                    filename.unwrap_or("").to_string(),
+                ],
+            )
+            .await?;
         Ok(())
     }
 
-    pub async fn update_progress(&self, gid: &str, total: i64, completed: i64, speed: i64) -> Result<()> {
+    pub async fn update_progress(
+        &self,
+        gid: &str,
+        total: i64,
+        completed: i64,
+        speed: i64,
+    ) -> Result<()> {
         self.db.execute_query_with_params(
             "UPDATE downloads SET total_length = ?, completed_length = ?, download_speed = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
             vec![total.to_string(), completed.to_string(), speed.to_string(), gid.to_string()]
@@ -92,40 +118,46 @@ impl DownloadDB {
     }
 
     pub async fn update_status(&self, gid: &str, status: &str) -> Result<()> {
-        self.db.execute_query_with_params(
-            "UPDATE downloads SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
-            vec![status.to_string(), gid.to_string()]
-        ).await?;
+        self.db
+            .execute_query_with_params(
+                "UPDATE downloads SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
+                vec![status.to_string(), gid.to_string()],
+            )
+            .await?;
         Ok(())
     }
 
     pub async fn update_gid(&self, old_gid: &str, new_gid: &str) -> Result<()> {
-        self.db.execute_query_with_params(
-            "UPDATE downloads SET gid = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
-            vec![new_gid.to_string(), old_gid.to_string()]
-        ).await?;
+        self.db
+            .execute_query_with_params(
+                "UPDATE downloads SET gid = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
+                vec![new_gid.to_string(), old_gid.to_string()],
+            )
+            .await?;
         Ok(())
     }
 
     pub async fn get(&self, gid: &str) -> Result<Option<Download>> {
-        self.db.fetch_optional::<Download>(
-            &format!("SELECT * FROM downloads WHERE gid = '{}'", gid)
-        ).await
+        self.db
+            .fetch_optional::<Download>(&format!("SELECT * FROM downloads WHERE gid = '{}'", gid))
+            .await
     }
 
     pub async fn list(&self, status: Option<&str>) -> Result<Vec<Download>> {
         let query = match status {
-            Some(s) => format!("SELECT * FROM downloads WHERE status = '{}' ORDER BY created_at DESC", s),
+            Some(s) => format!(
+                "SELECT * FROM downloads WHERE status = '{}' ORDER BY created_at DESC",
+                s
+            ),
             None => "SELECT * FROM downloads ORDER BY created_at DESC".to_string(),
         };
         self.db.fetch_all::<Download>(&query).await
     }
 
     pub async fn delete(&self, gid: &str) -> Result<()> {
-        self.db.execute_query_with_params(
-            "DELETE FROM downloads WHERE gid = ?",
-            vec![gid.to_string()]
-        ).await?;
+        self.db
+            .execute_query_with_params("DELETE FROM downloads WHERE gid = ?", vec![gid.to_string()])
+            .await?;
         Ok(())
     }
 }

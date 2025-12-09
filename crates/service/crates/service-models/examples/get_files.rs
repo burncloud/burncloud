@@ -11,7 +11,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("共找到 {} 个文件:\n", files.len());
 
     for (i, file) in files.iter().enumerate() {
-        println!("{}. {} | {} bytes | {}",
+        println!(
+            "{}. {} | {} bytes | {}",
             i + 1,
             file[3], // path
             file[2], // size

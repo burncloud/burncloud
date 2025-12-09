@@ -50,10 +50,10 @@ pub fn Layout() -> Element {
                 "
             }
         }
-        
+
         // Main App Container - macOS Split View Style
         div { class: "flex h-screen w-screen bg-base-100 text-base-content overflow-hidden select-none relative", "data-theme": "light",
-            
+
             // Floating TitleBar (Z-Index 50)
             div { class: "absolute top-0 left-0 w-full z-50 pointer-events-none",
                 // TitleBar needs pointer-events-auto for buttons to work
@@ -65,7 +65,7 @@ pub fn Layout() -> Element {
             // Sidebar Panel
             div { class: "w-64 flex-shrink-0 flex flex-col border-r border-base-300/50 bg-base-200/50 backdrop-blur-xl pt-8", // pt-8 for TitleBar space
                 div { class: "flex-1 overflow-y-auto px-2 py-4",
-                    Sidebar {} 
+                    Sidebar {}
                 }
             }
 

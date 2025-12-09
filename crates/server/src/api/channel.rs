@@ -1,14 +1,14 @@
+use crate::AppState;
 use axum::{
     extract::{Path, State},
     response::Json,
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use crate::AppState;
 use burncloud_common::types::Channel;
 use burncloud_database_models::ChannelModel;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct ChannelDto {
@@ -34,7 +34,7 @@ impl ChannelDto {
             name: self.name,
             weight: self.weight,
             created_time: None,
-            test_time: None, // Initial state
+            test_time: None,     // Initial state
             response_time: None, // Initial state
             base_url: self.base_url,
             models: self.models,
@@ -55,8 +55,14 @@ impl ChannelDto {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/console/api/channel", post(create_channel).put(update_channel).get(list_channels))
-        .route("/console/api/channel/{id}", get(get_channel).delete(delete_channel))
+        .route(
+            "/console/api/channel",
+            post(create_channel).put(update_channel).get(list_channels),
+        )
+        .route(
+            "/console/api/channel/{id}",
+            get(get_channel).delete(delete_channel),
+        )
 }
 
 async fn list_channels(
@@ -96,7 +102,7 @@ async fn update_channel(
 ) -> Json<Value> {
     let channel = payload.into_channel();
     if channel.id == 0 {
-         return Json(json!({ "success": false, "message": "id is required" }));
+        return Json(json!({ "success": false, "message": "id is required" }));
     }
     match ChannelModel::update(&state.db, &channel).await {
         Ok(_) => Json(json!({
@@ -111,10 +117,7 @@ async fn update_channel(
     }
 }
 
-async fn delete_channel(
-    State(state): State<AppState>,
-    Path(id): Path<i32>,
-) -> Json<Value> {
+async fn delete_channel(State(state): State<AppState>, Path(id): Path<i32>) -> Json<Value> {
     match ChannelModel::delete(&state.db, id).await {
         Ok(_) => Json(json!({
             "success": true,
@@ -127,10 +130,7 @@ async fn delete_channel(
     }
 }
 
-async fn get_channel(
-    State(state): State<AppState>,
-    Path(id): Path<i32>,
-) -> Json<Value> {
+async fn get_channel(State(state): State<AppState>, Path(id): Path<i32>) -> Json<Value> {
     match ChannelModel::get_by_id(&state.db, id).await {
         Ok(Some(c)) => Json(json!({
             "success": true,

@@ -52,7 +52,8 @@ impl ClaudeAdaptor {
 
     pub fn convert_response(claude_resp: Value, model: &str) -> Value {
         // Claude Response: { "content": [ { "text": "..." } ], ... }
-        let text = claude_resp.get("content")
+        let text = claude_resp
+            .get("content")
             .and_then(|c| c.get(0))
             .and_then(|c| c.get("text"))
             .and_then(|t| t.as_str())
@@ -88,8 +89,14 @@ mod tests {
         let req = OpenAIChatRequest {
             model: "gpt-4".to_string(),
             messages: vec![
-                OpenAIChatMessage { role: "system".to_string(), content: "Be helpful".to_string() },
-                OpenAIChatMessage { role: "user".to_string(), content: "Hi".to_string() }
+                OpenAIChatMessage {
+                    role: "system".to_string(),
+                    content: "Be helpful".to_string(),
+                },
+                OpenAIChatMessage {
+                    role: "user".to_string(),
+                    content: "Hi".to_string(),
+                },
             ],
             temperature: Some(0.5),
             max_tokens: Some(200),
@@ -97,7 +104,7 @@ mod tests {
         };
 
         let claude_val = ClaudeAdaptor::convert_request(req);
-        
+
         // Validate extraction of system prompt
         assert_eq!(claude_val["system"], "Be helpful");
         // Validate messages (system should be removed from messages array)
@@ -127,7 +134,10 @@ mod tests {
 
         let openai_val = ClaudeAdaptor::convert_response(claude_resp, "claude-3");
 
-        assert_eq!(openai_val["choices"][0]["message"]["content"], "Hello from Claude");
+        assert_eq!(
+            openai_val["choices"][0]["message"]["content"],
+            "Hello from Claude"
+        );
         assert_eq!(openai_val["model"], "claude-3");
     }
 }

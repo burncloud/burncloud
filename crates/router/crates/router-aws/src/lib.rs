@@ -17,7 +17,9 @@ impl AwsConfig {
     pub fn from_colon_string(s: &str) -> Result<Self> {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() < 3 {
-            return Err(anyhow::anyhow!("Invalid AWS credential string. Expected: ACCESS_KEY:SECRET_KEY:REGION"));
+            return Err(anyhow::anyhow!(
+                "Invalid AWS credential string. Expected: ACCESS_KEY:SECRET_KEY:REGION"
+            ));
         }
         Ok(Self {
             access_key: parts[0].to_string(),
@@ -60,8 +62,10 @@ pub fn sign_request(
     let service = "bedrock";
 
     // 1. Add required headers
-    request.headers_mut().insert("x-amz-date", amz_date.parse()?);
-    
+    request
+        .headers_mut()
+        .insert("x-amz-date", amz_date.parse()?);
+
     let host = request.url().host_str().unwrap_or_default().to_string();
     if !request.headers().contains_key("host") {
         request.headers_mut().insert("host", host.parse()?);
@@ -70,12 +74,12 @@ pub fn sign_request(
     // 2. Canonical Request
     let method = request.method().as_str();
     let uri = request.url().path();
-    
+
     // AWS requires normalized URI. Empty path is "/".
     // Importantly: Path segments must be URI encoded.
     // reqwest::Url::path() returns decoded path segments joined by /.
     // We need to encode them.
-    
+
     let canonical_uri = if uri.is_empty() {
         "/".to_string()
     } else {
@@ -84,13 +88,13 @@ pub fn sign_request(
         // Simpler: encode the whole path, but preserve '/'.
         aws_uri_encode(uri, false)
     };
-    
+
     let query = request.url().query().unwrap_or("");
     let mut query_pairs: Vec<&str> = query.split('&').filter(|s| !s.is_empty()).collect();
     query_pairs.sort();
     // Query param names and values must also be encoded, but assume reqwest gives us encoded query string?
     // Actually reqwest::Url::query() returns the raw query string (encoded).
-    // But AWS requires sorting by byte value. 
+    // But AWS requires sorting by byte value.
     // If we just split '&', we might split inside a value if it's not encoded? No, '&' is separator.
     // For safety, we should parse and re-encode, but for simple cases (chat), query is usually empty or simple.
     // Let's stick to simple sort for now.
@@ -100,17 +104,17 @@ pub fn sign_request(
     let mut headers_to_sign = BTreeMap::new();
     for (k, v) in request.headers() {
         let key = k.as_str().to_lowercase();
-        if key == "x-amz-date" || key == "host" || key == "content-type" { 
-             if let Ok(val) = v.to_str() {
-                 // Trim whitespace
-                 let trim_val = val.trim();
-                 // Compress multiple spaces? AWS spec says trim leading/trailing and convert sequential spaces to single space.
-                 // For now, simple trim is usually enough.
-                 headers_to_sign.insert(key, trim_val.to_string());
-             }
+        if key == "x-amz-date" || key == "host" || key == "content-type" {
+            if let Ok(val) = v.to_str() {
+                // Trim whitespace
+                let trim_val = val.trim();
+                // Compress multiple spaces? AWS spec says trim leading/trailing and convert sequential spaces to single space.
+                // For now, simple trim is usually enough.
+                headers_to_sign.insert(key, trim_val.to_string());
+            }
         }
     }
-    
+
     if !headers_to_sign.contains_key("host") {
         headers_to_sign.insert("host".to_string(), host.to_string());
     }
@@ -152,7 +156,10 @@ pub fn sign_request(
     );
 
     // 4. Calculate Signature
-    let k_date = hmac_sha256(format!("AWS4{}", config.secret_key).as_bytes(), date_stamp.as_bytes())?;
+    let k_date = hmac_sha256(
+        format!("AWS4{}", config.secret_key).as_bytes(),
+        date_stamp.as_bytes(),
+    )?;
     let k_region = hmac_sha256(&k_date, config.region.as_bytes())?;
     let k_service = hmac_sha256(&k_region, service.as_bytes())?;
     let k_signing = hmac_sha256(&k_service, b"aws4_request")?;
@@ -161,14 +168,12 @@ pub fn sign_request(
     // 5. Add Authorization Header
     let authorization_header = format!(
         "{} Credential={}/{}, SignedHeaders={}, Signature={}",
-        algorithm,
-        config.access_key,
-        credential_scope,
-        signed_headers,
-        signature
+        algorithm, config.access_key, credential_scope, signed_headers, signature
     );
 
-    request.headers_mut().insert("authorization", authorization_header.parse()?);
+    request
+        .headers_mut()
+        .insert("authorization", authorization_header.parse()?);
 
     Ok(())
 }

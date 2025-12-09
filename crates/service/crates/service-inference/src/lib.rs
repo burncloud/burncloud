@@ -2,14 +2,14 @@
 //!
 //! 本地推理服务管理模块，负责 `llama-server` 等推理后端的进程管理。
 
-use std::process::Stdio;
-use tokio::process::{Command, Child};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use std::collections::HashMap;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use burncloud_database::Database;
-use burncloud_database_router::{RouterDatabase, DbUpstream};
+use burncloud_database_router::{DbUpstream, RouterDatabase};
+use std::collections::HashMap;
+use std::process::Stdio;
+use std::sync::Arc;
+use tokio::process::{Child, Command};
+use tokio::sync::Mutex;
 
 /// 推理实例状态
 #[derive(Debug, Clone, serde::Serialize, PartialEq)]
@@ -45,7 +45,7 @@ impl InferenceService {
         let db = Database::new().await?;
         // Ensure tables exist
         RouterDatabase::init(&db).await?;
-        
+
         Ok(Self {
             processes: Arc::new(Mutex::new(HashMap::new())),
             statuses: Arc::new(Mutex::new(HashMap::new())),
@@ -66,7 +66,8 @@ impl InferenceService {
         }
 
         // 2. 更新状态为 Starting
-        self.set_status(&config.model_id, InstanceStatus::Starting).await;
+        self.set_status(&config.model_id, InstanceStatus::Starting)
+            .await;
 
         // 3. 查找 llama-server 可执行文件
         let server_bin = self.find_server_binary().await?;
@@ -74,14 +75,18 @@ impl InferenceService {
         // 4. 构建命令
         // llama-server -m <model_path> --port <port> -c <ctx> -ngl <gpu_layers>
         let mut cmd = Command::new(server_bin);
-        cmd.arg("-m").arg(&config.file_path)
-           .arg("--port").arg(config.port.to_string())
-           .arg("-c").arg(config.context_size.to_string())
-           .arg("-ngl").arg(config.gpu_layers.to_string())
-           // 禁用 web ui，只提供 API
-           .arg("--nobrowser") 
-           .stdout(Stdio::piped())
-           .stderr(Stdio::piped());
+        cmd.arg("-m")
+            .arg(&config.file_path)
+            .arg("--port")
+            .arg(config.port.to_string())
+            .arg("-c")
+            .arg(config.context_size.to_string())
+            .arg("-ngl")
+            .arg(config.gpu_layers.to_string())
+            // 禁用 web ui，只提供 API
+            .arg("--nobrowser")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         println!("Starting inference: {:?}", cmd);
 
@@ -90,19 +95,21 @@ impl InferenceService {
                 // 保存进程句柄
                 let mut processes = self.processes.lock().await;
                 processes.insert(config.model_id.clone(), child);
-                
+
                 // 更新状态为 Running
                 // TODO: 这里应该等待 health check 成功才标记为 Running
-                self.set_status(&config.model_id, InstanceStatus::Running).await;
+                self.set_status(&config.model_id, InstanceStatus::Running)
+                    .await;
 
                 // 5. 注册到 Router
                 self.register_upstream(&config).await?;
-                
+
                 Ok(())
             }
             Err(e) => {
                 let err_msg = format!("Failed to spawn process: {}", e);
-                self.set_status(&config.model_id, InstanceStatus::Failed(err_msg.clone())).await;
+                self.set_status(&config.model_id, InstanceStatus::Failed(err_msg.clone()))
+                    .await;
                 Err(anyhow::anyhow!(err_msg))
             }
         }
@@ -115,7 +122,7 @@ impl InferenceService {
             // 尝试优雅停止
             child.kill().await.context("Failed to kill process")?;
             self.set_status(model_id, InstanceStatus::Stopped).await;
-            
+
             // 从 Router 注销
             self.unregister_upstream(model_id).await?;
         }
@@ -125,7 +132,10 @@ impl InferenceService {
     /// 获取实例状态
     pub async fn get_status(&self, model_id: &str) -> InstanceStatus {
         let statuses = self.statuses.lock().await;
-        statuses.get(model_id).cloned().unwrap_or(InstanceStatus::Stopped)
+        statuses
+            .get(model_id)
+            .cloned()
+            .unwrap_or(InstanceStatus::Stopped)
     }
 
     async fn set_status(&self, model_id: &str, status: InstanceStatus) {
@@ -138,7 +148,7 @@ impl InferenceService {
         if let Ok(path) = std::env::var("BURNCLOUD_LLAMA_BIN") {
             return Ok(path);
         }
-        
+
         // Windows 默认查找路径
         let possible_paths = vec![
             "./bin/llama-server.exe",
@@ -160,16 +170,16 @@ impl InferenceService {
     async fn register_upstream(&self, config: &InferenceConfig) -> Result<()> {
         let upstream_id = format!("local-{}", config.model_id);
         let base_url = format!("http://127.0.0.1:{}", config.port);
-        
+
         // 构建 Upstream 对象
         let upstream = DbUpstream {
             id: upstream_id.clone(),
             name: format!("Local: {}", config.model_id),
             base_url,
-            api_key: "".to_string(), // 无需鉴权
+            api_key: "".to_string(),                        // 无需鉴权
             match_path: "/v1/chat/completions".to_string(), // 默认 OpenAI 兼容路径
             auth_type: "Bearer".to_string(), // 占位，实际上不需要，但 Router 需要非空
-            priority: 100, // 本地模型优先级高
+            priority: 100,                   // 本地模型优先级高
             protocol: "openai".to_string(),
         };
 
@@ -177,7 +187,7 @@ impl InferenceService {
         // 这里简单处理：DELETE 然后 INSERT，确保是最新的
         let _ = RouterDatabase::delete_upstream(&self.db, &upstream_id).await;
         RouterDatabase::create_upstream(&self.db, &upstream).await?;
-        
+
         println!("Registered local upstream: {}", upstream_id);
         Ok(())
     }

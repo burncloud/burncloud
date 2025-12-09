@@ -1,4 +1,4 @@
-use burncloud_database::{Database, DatabaseError, Result, create_default_database};
+use burncloud_database::{create_default_database, Database, DatabaseError, Result};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -17,17 +17,19 @@ async fn test_create_default_database_end_to_end() {
             let _ = db.execute_query("DROP TABLE IF EXISTS test_table").await;
 
             // Verify the database is functional by performing operations
-            let create_result = db.execute_query(
-                "CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)"
-            ).await;
+            let create_result = db
+                .execute_query(
+                    "CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)",
+                )
+                .await;
             if let Err(e) = &create_result {
                 eprintln!("Failed to create table: {:?}", e);
             }
             assert!(create_result.is_ok(), "Should be able to create tables");
 
-            let insert_result = db.execute_query(
-                "INSERT INTO test_table (name) VALUES ('test_data')"
-            ).await;
+            let insert_result = db
+                .execute_query("INSERT INTO test_table (name) VALUES ('test_data')")
+                .await;
             assert!(insert_result.is_ok(), "Should be able to insert data");
 
             // Verify data can be retrieved
@@ -41,7 +43,10 @@ async fn test_create_default_database_end_to_end() {
             assert!(rows.is_ok(), "Should be able to fetch data");
             let rows = rows.unwrap();
             assert_eq!(rows.len(), 1, "Should have exactly one row");
-            assert_eq!(rows[0].name, "test_data", "Data should match what was inserted");
+            assert_eq!(
+                rows[0].name, "test_data",
+                "Data should match what was inserted"
+            );
 
             // Clean up
             let _ = db.close().await;
@@ -51,10 +56,16 @@ async fn test_create_default_database_end_to_end() {
             // at least verify that it's a reasonable error
             match e {
                 DatabaseError::PathResolution(_) => {
-                    println!("Path resolution failed (acceptable in some environments): {}", e);
+                    println!(
+                        "Path resolution failed (acceptable in some environments): {}",
+                        e
+                    );
                 }
                 DatabaseError::DirectoryCreation(_) => {
-                    println!("Directory creation failed (acceptable in some environments): {}", e);
+                    println!(
+                        "Directory creation failed (acceptable in some environments): {}",
+                        e
+                    );
                 }
                 DatabaseError::Connection(_) => {
                     println!("Connection failed (acceptable in some environments): {}", e);
@@ -84,7 +95,10 @@ async fn test_database_initialization_patterns() {
             let _ = db.close().await;
         }
         Err(e) => {
-            println!("Database::new() failed (acceptable in some environments): {}", e);
+            println!(
+                "Database::new() failed (acceptable in some environments): {}",
+                e
+            );
         }
     }
 
@@ -97,7 +111,10 @@ async fn test_database_initialization_patterns() {
             let _ = db.close().await;
         }
         Err(e) => {
-            println!("create_default_database() failed (acceptable in some environments): {}", e);
+            println!(
+                "create_default_database() failed (acceptable in some environments): {}",
+                e
+            );
         }
     }
 }
@@ -117,7 +134,9 @@ async fn test_platform_specific_paths() {
             if cfg!(target_os = "windows") {
                 // Windows should use AppData\Local\BurnCloud
                 assert!(
-                    path_str.contains("AppData") && path_str.contains("Local") && path_str.contains("BurnCloud"),
+                    path_str.contains("AppData")
+                        && path_str.contains("Local")
+                        && path_str.contains("BurnCloud"),
                     "Windows path should contain AppData\\Local\\BurnCloud, got: {}",
                     path_str
                 );
@@ -133,7 +152,10 @@ async fn test_platform_specific_paths() {
             println!("Platform-specific default path: {}", path_str);
         }
         Err(e) => {
-            println!("Path resolution failed (acceptable in some environments): {}", e);
+            println!(
+                "Path resolution failed (acceptable in some environments): {}",
+                e
+            );
         }
     }
 }
@@ -148,7 +170,10 @@ async fn test_directory_creation_and_permissions() {
             // If database creation succeeded, verify the directory exists
             if let Ok(default_path) = get_test_default_path() {
                 if let Some(parent_dir) = default_path.parent() {
-                    assert!(parent_dir.exists(), "Parent directory should have been created");
+                    assert!(
+                        parent_dir.exists(),
+                        "Parent directory should have been created"
+                    );
 
                     // Test that we can write to the directory
                     let test_file = parent_dir.join("test_write.tmp");
@@ -165,7 +190,10 @@ async fn test_directory_creation_and_permissions() {
             }
         }
         Err(e) => {
-            println!("Database creation failed (acceptable in some environments): {}", e);
+            println!(
+                "Database creation failed (acceptable in some environments): {}",
+                e
+            );
         }
     }
 }
@@ -203,14 +231,19 @@ async fn test_database_persistence() {
     // Create first database instance and insert data
     let db1_result = Database::new().await;
     if let Ok(db1) = db1_result {
-        let create_result = db1.execute_query(
-            "CREATE TABLE IF NOT EXISTS persistence_test (id INTEGER PRIMARY KEY, value TEXT)"
-        ).await;
+        let create_result = db1
+            .execute_query(
+                "CREATE TABLE IF NOT EXISTS persistence_test (id INTEGER PRIMARY KEY, value TEXT)",
+            )
+            .await;
 
         if create_result.is_ok() {
-            let insert_result = db1.execute_query(&format!(
-                "INSERT INTO persistence_test (value) VALUES ('{}')", test_value
-            )).await;
+            let insert_result = db1
+                .execute_query(&format!(
+                    "INSERT INTO persistence_test (value) VALUES ('{}')",
+                    test_value
+                ))
+                .await;
 
             if insert_result.is_ok() {
                 let _ = db1.close().await;
@@ -223,13 +256,15 @@ async fn test_database_persistence() {
                         value: String,
                     }
 
-                    let rows: Result<Vec<PersistenceRow>> = db2.fetch_all(
-                        "SELECT value FROM persistence_test"
-                    ).await;
+                    let rows: Result<Vec<PersistenceRow>> =
+                        db2.fetch_all("SELECT value FROM persistence_test").await;
 
                     if let Ok(rows) = rows {
                         assert!(!rows.is_empty(), "Data should persist between instances");
-                        assert_eq!(rows[0].value, test_value, "Data should match what was inserted");
+                        assert_eq!(
+                            rows[0].value, test_value,
+                            "Data should match what was inserted"
+                        );
                         println!("✓ Data persistence verified");
                     }
 
@@ -249,7 +284,10 @@ async fn test_backward_compatibility() {
     let default_db_result = Database::new().await;
     if let Ok(default_db) = default_db_result {
         let query_result = default_db.execute_query("SELECT 1 as test").await;
-        assert!(query_result.is_ok(), "Default database should be functional");
+        assert!(
+            query_result.is_ok(),
+            "Default database should be functional"
+        );
         let _ = default_db.close().await;
     }
 
@@ -284,10 +322,16 @@ fn test_error_handling_scenarios() {
         std::env::remove_var("USERPROFILE");
 
         let path_result = get_test_default_path();
-        assert!(path_result.is_err(), "Should fail when USERPROFILE is missing");
+        assert!(
+            path_result.is_err(),
+            "Should fail when USERPROFILE is missing"
+        );
 
         if let Err(DatabaseError::PathResolution(msg)) = path_result {
-            assert!(msg.contains("USERPROFILE"), "Error should mention USERPROFILE");
+            assert!(
+                msg.contains("USERPROFILE"),
+                "Error should mention USERPROFILE"
+            );
         }
 
         // Restore original value
@@ -305,7 +349,10 @@ fn test_error_handling_scenarios() {
             assert!(path.to_string_lossy().contains("data.db"));
         }
         Err(e) => {
-            println!("Path resolution failed (acceptable in test environments): {}", e);
+            println!(
+                "Path resolution failed (acceptable in test environments): {}",
+                e
+            );
         }
     }
 }

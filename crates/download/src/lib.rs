@@ -1,8 +1,8 @@
 use burncloud_database_download::DownloadDB;
 use burncloud_download_aria2::{quick_start, Aria2Manager};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::time::{sleep, Duration};
-use std::sync::Arc;
 
 /// 从 URL 中提取文件名
 fn extract_filename_from_url(url: &str) -> Option<String> {
@@ -45,8 +45,11 @@ impl DownloadManager {
     }
 
     pub async fn add_download(&self, url: &str, download_dir: Option<&str>) -> Result<String> {
-        let client = self.aria2.create_rpc_client().ok_or_else(||
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError("客户端未就绪".to_string())))?;
+        let client = self.aria2.create_rpc_client().ok_or_else(|| {
+            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
+                "客户端未就绪".to_string(),
+            ))
+        })?;
 
         let dir = download_dir.unwrap_or("./downloads").to_string();
 
@@ -62,7 +65,9 @@ impl DownloadManager {
         };
 
         let gid = client.add_uri(vec![url.to_string()], Some(options)).await?;
-        self.db.add(&gid, vec![url.to_string()], Some(&dir), None).await?;
+        self.db
+            .add(&gid, vec![url.to_string()], Some(&dir), None)
+            .await?;
 
         // 启动进度监控
         self.start_progress_monitor(&gid).await;
@@ -71,8 +76,11 @@ impl DownloadManager {
     }
 
     pub async fn get_status(&self, gid: &str) -> Result<burncloud_download_aria2::DownloadStatus> {
-        let client = self.aria2.create_rpc_client().ok_or_else(||
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError("客户端未就绪".to_string())))?;
+        let client = self.aria2.create_rpc_client().ok_or_else(|| {
+            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
+                "客户端未就绪".to_string(),
+            ))
+        })?;
 
         let status = client.tell_status(gid).await?;
 
@@ -81,14 +89,19 @@ impl DownloadManager {
         let total: i64 = status.total_length.parse().unwrap_or(0);
         let completed: i64 = status.completed_length.parse().unwrap_or(0);
         let speed: i64 = status.download_speed.parse().unwrap_or(0);
-        self.db.update_progress(gid, total, completed, speed).await?;
+        self.db
+            .update_progress(gid, total, completed, speed)
+            .await?;
 
         Ok(status)
     }
 
     pub async fn pause(&self, gid: &str) -> Result<()> {
-        let client = self.aria2.create_rpc_client().ok_or_else(||
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError("客户端未就绪".to_string())))?;
+        let client = self.aria2.create_rpc_client().ok_or_else(|| {
+            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
+                "客户端未就绪".to_string(),
+            ))
+        })?;
 
         client.pause(gid).await?;
         self.db.update_status(gid, "paused").await?;
@@ -96,8 +109,11 @@ impl DownloadManager {
     }
 
     pub async fn resume(&self, gid: &str) -> Result<()> {
-        let client = self.aria2.create_rpc_client().ok_or_else(||
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError("客户端未就绪".to_string())))?;
+        let client = self.aria2.create_rpc_client().ok_or_else(|| {
+            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
+                "客户端未就绪".to_string(),
+            ))
+        })?;
 
         client.unpause(gid).await?;
         self.db.update_status(gid, "active").await?;
@@ -105,8 +121,11 @@ impl DownloadManager {
     }
 
     pub async fn remove(&self, gid: &str) -> Result<()> {
-        let client = self.aria2.create_rpc_client().ok_or_else(||
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError("客户端未就绪".to_string())))?;
+        let client = self.aria2.create_rpc_client().ok_or_else(|| {
+            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
+                "客户端未就绪".to_string(),
+            ))
+        })?;
 
         client.remove(gid).await?;
         self.db.delete(gid).await?;
@@ -142,8 +161,11 @@ impl DownloadManager {
     }
 
     async fn restore_incomplete_downloads(&self) -> Result<Vec<String>> {
-        let client = self.aria2.create_rpc_client().ok_or_else(||
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError("客户端未就绪".to_string())))?;
+        let client = self.aria2.create_rpc_client().ok_or_else(|| {
+            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
+                "客户端未就绪".to_string(),
+            ))
+        })?;
 
         let incomplete = self.db.list(Some("active")).await?;
         let mut restored = Vec::new();
@@ -151,7 +173,11 @@ impl DownloadManager {
         for download in incomplete {
             let uris: Vec<String> = serde_json::from_str(&download.uris).unwrap_or_default();
             if !uris.is_empty() {
-                let dir = download.download_dir.as_deref().unwrap_or("./downloads").to_string();
+                let dir = download
+                    .download_dir
+                    .as_deref()
+                    .unwrap_or("./downloads")
+                    .to_string();
                 let options = burncloud_download_aria2::DownloadOptions {
                     dir: Some(dir),
                     out: download.filename,

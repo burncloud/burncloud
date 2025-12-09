@@ -97,7 +97,8 @@ impl SystemMonitorService {
                     &cpu_collector,
                     &memory_collector,
                     &disk_collector,
-                ).await;
+                )
+                .await;
 
                 if let Ok(metrics) = result {
                     // 更新缓存
@@ -117,7 +118,8 @@ impl SystemMonitorService {
             &self.cpu_collector,
             &self.memory_collector,
             &self.disk_collector,
-        ).await
+        )
+        .await
     }
 
     /// 内部方法：收集系统指标

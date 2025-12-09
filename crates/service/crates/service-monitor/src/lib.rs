@@ -1,24 +1,10 @@
-pub mod types;
 pub mod collectors;
 pub mod service;
+pub mod types;
 
 // 重新导出主要的公共API
-pub use types::{
-    MonitorError,
-    SystemMetrics,
-    MemoryInfo,
-    CpuInfo,
-    DiskInfo
-};
+pub use types::{CpuInfo, DiskInfo, MemoryInfo, MonitorError, SystemMetrics};
 
-pub use service::{
-    SystemMonitorService,
-    SystemMonitor
-};
+pub use service::{SystemMonitor, SystemMonitorService};
 
-pub use collectors::{
-    CpuCollector,
-    MemoryCollector,
-    DiskCollector,
-    DetailedMemoryInfo
-};
+pub use collectors::{CpuCollector, DetailedMemoryInfo, DiskCollector, MemoryCollector};

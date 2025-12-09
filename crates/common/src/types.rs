@@ -23,7 +23,7 @@ impl Default for Config {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(3000);
-            
+
         Self {
             models_dir: "models".to_string(),
             server_port: port,
@@ -242,7 +242,7 @@ pub struct User {
     pub github_id: Option<String>,
     pub wechat_id: Option<String>,
     pub access_token: Option<String>,
-    pub quota: i64,      // 500000 = $1
+    pub quota: i64, // 500000 = $1
     pub used_quota: i64,
     pub request_count: i32,
     pub group: String,

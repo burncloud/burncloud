@@ -1,4 +1,4 @@
-use burncloud_database::{Database, DatabaseError, Result, create_default_database};
+use burncloud_database::{create_default_database, Database, DatabaseError, Result};
 use std::path::PathBuf;
 
 /// Comprehensive error handling and edge case tests
@@ -40,7 +40,10 @@ async fn test_uninitialized_database_operations() {
         Ok(db) => {
             // If initialization succeeded, verify it works correctly
             let connection_result = db.connection();
-            assert!(connection_result.is_ok(), "Initialized database should have connection");
+            assert!(
+                connection_result.is_ok(),
+                "Initialized database should have connection"
+            );
             let _ = db.close().await;
         }
         Err(_) => {
@@ -65,14 +68,24 @@ async fn test_invalid_sql_operations() {
         assert!(non_existent_table_result.is_err());
 
         // Test invalid column reference
-        let _ = db.execute_query("CREATE TABLE test_invalid (id INTEGER)").await;
-        let invalid_column_result = db.execute_query("SELECT non_existent_column FROM test_invalid").await;
+        let _ = db
+            .execute_query("CREATE TABLE test_invalid (id INTEGER)")
+            .await;
+        let invalid_column_result = db
+            .execute_query("SELECT non_existent_column FROM test_invalid")
+            .await;
         assert!(invalid_column_result.is_err());
 
         // Test constraint violation
-        let _ = db.execute_query("CREATE TABLE test_constraint (id INTEGER PRIMARY KEY)").await;
-        let _ = db.execute_query("INSERT INTO test_constraint (id) VALUES (1)").await;
-        let constraint_violation_result = db.execute_query("INSERT INTO test_constraint (id) VALUES (1)").await;
+        let _ = db
+            .execute_query("CREATE TABLE test_constraint (id INTEGER PRIMARY KEY)")
+            .await;
+        let _ = db
+            .execute_query("INSERT INTO test_constraint (id) VALUES (1)")
+            .await;
+        let constraint_violation_result = db
+            .execute_query("INSERT INTO test_constraint (id) VALUES (1)")
+            .await;
         assert!(constraint_violation_result.is_err());
 
         println!("✓ Invalid SQL operations correctly generate errors");
@@ -94,7 +107,10 @@ async fn test_connection_pool_exhaustion() {
         let num_operations = 50; // More than the default pool size of 10
 
         for i in 0..num_operations {
-            let connection = db.connection().expect("Database should be initialized").clone();
+            let connection = db
+                .connection()
+                .expect("Database should be initialized")
+                .clone();
             let handle = tokio::spawn(async move {
                 // Perform a long-running operation
                 let result = sqlx::query(&format!("SELECT {} as operation_id", i))
@@ -119,7 +135,10 @@ async fn test_connection_pool_exhaustion() {
             }
         }
 
-        println!("✓ Pool stress test: {} successes, {} errors", success_count, error_count);
+        println!(
+            "✓ Pool stress test: {} successes, {} errors",
+            success_count, error_count
+        );
 
         // Should handle the load gracefully - either by queueing or returning errors
         assert!(success_count > 0, "At least some operations should succeed");
@@ -138,7 +157,10 @@ async fn test_database_close_scenarios() {
     let db_result = create_default_database().await;
     if let Ok(db) = db_result {
         let close_result = db.close().await;
-        assert!(close_result.is_ok(), "Closing initialized database should succeed");
+        assert!(
+            close_result.is_ok(),
+            "Closing initialized database should succeed"
+        );
     }
 
     // Test with create_default_database
@@ -206,16 +228,25 @@ async fn test_race_conditions_in_initialization() {
         }
     }
 
-    println!("✓ Concurrent initialization: {}/{} succeeded", success_count, num_concurrent);
+    println!(
+        "✓ Concurrent initialization: {}/{} succeeded",
+        success_count, num_concurrent
+    );
 
     // SQLite file databases may have concurrent access limitations during initialization
     // This is expected behavior - at least some operations should complete (either succeed or fail gracefully)
     let total_completed = success_count + (num_concurrent - success_count);
-    assert_eq!(total_completed, num_concurrent, "All concurrent operations should complete (either succeed or fail gracefully)");
+    assert_eq!(
+        total_completed, num_concurrent,
+        "All concurrent operations should complete (either succeed or fail gracefully)"
+    );
 
     // If any succeeded, they should be functional
     if success_count > 0 {
-        println!("✓ {} concurrent initializations succeeded as expected", success_count);
+        println!(
+            "✓ {} concurrent initializations succeeded as expected",
+            success_count
+        );
     } else {
         println!("✓ All concurrent initializations failed gracefully (expected with file SQLite)");
     }
@@ -244,7 +275,8 @@ fn test_error_message_quality() {
     assert!(error_msg.len() > 20); // Should be reasonably descriptive
 
     // Test DirectoryCreation error formatting
-    let dir_error = DatabaseError::DirectoryCreation("/protected/path: Permission denied".to_string());
+    let dir_error =
+        DatabaseError::DirectoryCreation("/protected/path: Permission denied".to_string());
     let error_msg = format!("{}", dir_error);
     assert!(error_msg.contains("Failed to create"));
     assert!(error_msg.contains("Permission denied"));
@@ -269,7 +301,10 @@ async fn test_resource_cleanup_on_errors() {
 
             // Database should still be usable for valid operations
             let valid_operation = db.execute_query("SELECT 1").await;
-            assert!(valid_operation.is_ok(), "Database should remain usable after failed operations");
+            assert!(
+                valid_operation.is_ok(),
+                "Database should remain usable after failed operations"
+            );
 
             let _ = db.close().await;
         }
@@ -287,7 +322,10 @@ async fn test_resource_cleanup_on_errors() {
 
         // Database should still be usable for valid operations
         let valid_operation = db.execute_query("SELECT 1").await;
-        assert!(valid_operation.is_ok(), "Database should remain usable after failed operations");
+        assert!(
+            valid_operation.is_ok(),
+            "Database should remain usable after failed operations"
+        );
 
         let _ = db.close().await;
     }

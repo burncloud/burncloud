@@ -12,7 +12,8 @@ impl Schema {
         // Note: 'group' is a reserved keyword in SQL, so we quote it or use a different name in DB if needed.
         // But New API uses 'group' in GORM. In raw SQL, we should quote it: "group" or `group`.
         let users_sql = match kind.as_str() {
-            "sqlite" => r#"
+            "sqlite" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
@@ -36,8 +37,10 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-            "#,
-            "postgres" => r#"
+            "#
+            }
+            "postgres" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     username VARCHAR(191) UNIQUE NOT NULL,
@@ -61,13 +64,15 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-            "#,
+            "#
+            }
             _ => "",
         };
 
         // 2. Channels Table
         let channels_sql = match kind.as_str() {
-            "sqlite" => r#"
+            "sqlite" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS channels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     type INTEGER DEFAULT 0,
@@ -94,8 +99,10 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_channels_name ON channels(name);
                 CREATE INDEX IF NOT EXISTS idx_channels_tag ON channels(tag);
-            "#,
-            "postgres" => r#"
+            "#
+            }
+            "postgres" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS channels (
                     id SERIAL PRIMARY KEY,
                     type INTEGER DEFAULT 0,
@@ -122,14 +129,16 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_channels_name ON channels(name);
                 CREATE INDEX IF NOT EXISTS idx_channels_tag ON channels(tag);
-            "#,
+            "#
+            }
             _ => "",
         };
 
         // 3. Abilities Table (The routing core)
         // New API uses a composite primary key (group, model, channel_id)
         let abilities_sql = match kind.as_str() {
-            "sqlite" => r#"
+            "sqlite" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS abilities (
                     `group` VARCHAR(64) NOT NULL,
                     model VARCHAR(255) NOT NULL,
@@ -142,8 +151,10 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_abilities_model ON abilities(model);
                 CREATE INDEX IF NOT EXISTS idx_abilities_channel_id ON abilities(channel_id);
-            "#,
-            "postgres" => r#"
+            "#
+            }
+            "postgres" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS abilities (
                     "group" VARCHAR(64) NOT NULL,
                     model VARCHAR(255) NOT NULL,
@@ -156,13 +167,15 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_abilities_model ON abilities(model);
                 CREATE INDEX IF NOT EXISTS idx_abilities_channel_id ON abilities(channel_id);
-            "#,
+            "#
+            }
             _ => "",
         };
 
         // 4. Tokens Table (App Tokens)
         let tokens_sql = match kind.as_str() {
-            "sqlite" => r#"
+            "sqlite" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS tokens (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
@@ -178,8 +191,10 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key);
                 CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
-            "#,
-            "postgres" => r#"
+            "#
+            }
+            "postgres" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS tokens (
                     id SERIAL PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -195,15 +210,24 @@ impl Schema {
                 );
                 CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key);
                 CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
-            "#,
+            "#
+            }
             _ => "",
         };
 
         // Execute all
-        if !users_sql.is_empty() { pool.execute(users_sql).await?; }
-        if !channels_sql.is_empty() { pool.execute(channels_sql).await?; }
-        if !abilities_sql.is_empty() { pool.execute(abilities_sql).await?; }
-        if !tokens_sql.is_empty() { pool.execute(tokens_sql).await?; }
+        if !users_sql.is_empty() {
+            pool.execute(users_sql).await?;
+        }
+        if !channels_sql.is_empty() {
+            pool.execute(channels_sql).await?;
+        }
+        if !abilities_sql.is_empty() {
+            pool.execute(abilities_sql).await?;
+        }
+        if !tokens_sql.is_empty() {
+            pool.execute(tokens_sql).await?;
+        }
 
         // Init Root User if not exists
         // Username: root, Password: 123456 (Should be changed)
@@ -211,9 +235,15 @@ impl Schema {
         // Using a simple check
         let check_root_sql = "SELECT count(*) FROM users WHERE username = 'root'";
         let count: i64 = match kind.as_str() {
-            "sqlite" => sqlx::query_scalar(check_root_sql).fetch_one(pool).await.unwrap_or(0),
-            "postgres" => sqlx::query_scalar(check_root_sql).fetch_one(pool).await.unwrap_or(0),
-            _ => 0
+            "sqlite" => sqlx::query_scalar(check_root_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            "postgres" => sqlx::query_scalar(check_root_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            _ => 0,
         };
 
         if count == 0 {
@@ -224,15 +254,24 @@ impl Schema {
         // Init Default Token
         let check_token_sql = "SELECT count(*) FROM tokens WHERE key = 'sk-burncloud-demo'";
         let t_count: i64 = match kind.as_str() {
-            "sqlite" => sqlx::query_scalar(check_token_sql).fetch_one(pool).await.unwrap_or(0),
-            "postgres" => sqlx::query_scalar(check_token_sql).fetch_one(pool).await.unwrap_or(0),
-            _ => 0
+            "sqlite" => sqlx::query_scalar(check_token_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            "postgres" => sqlx::query_scalar(check_token_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            _ => 0,
         };
 
         if t_count == 0 {
             // User 'demo-user' must exist (created by UserDatabase::init)
             // created_time, accessed_time use current timestamp
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
             let insert_token_sql = match kind.as_str() {
                 "sqlite" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, ?, ?, -1)",
                 "postgres" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, TRUE, 0, $1, $2, -1)",
@@ -242,7 +281,8 @@ impl Schema {
                 sqlx::query(insert_token_sql)
                     .bind(now)
                     .bind(now)
-                    .execute(pool).await?;
+                    .execute(pool)
+                    .await?;
                 println!("Initialized demo token: sk-burncloud-demo");
             }
         }

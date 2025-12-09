@@ -15,10 +15,10 @@ pub struct GeminiPart {
 }
 
 #[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")] // This handles generationConfig -> generation_config automatically if we use snake_case in struct? No, rename_all works on fields. 
-// Wait, Gemini API expects camelCase "generationConfig". 
-// Rust standard is snake_case "generation_config".
-// Serde can map this.
+#[serde(rename_all = "camelCase")] // This handles generationConfig -> generation_config automatically if we use snake_case in struct? No, rename_all works on fields.
+                                   // Wait, Gemini API expects camelCase "generationConfig".
+                                   // Rust standard is snake_case "generation_config".
+                                   // Serde can map this.
 pub struct GeminiRequest {
     pub contents: Vec<GeminiContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,14 +38,22 @@ pub struct GeminiAdaptor;
 
 impl GeminiAdaptor {
     pub fn convert_request(req: OpenAIChatRequest) -> Value {
-        let contents: Vec<GeminiContent> = req.messages.into_iter().map(|msg| {
-            // Gemini roles: "user" or "model" (OpenAI "assistant" -> "model")
-            let role = if msg.role == "assistant" { "model" } else { "user" };
-            GeminiContent {
-                role: role.to_string(),
-                parts: vec![GeminiPart { text: msg.content }],
-            }
-        }).collect();
+        let contents: Vec<GeminiContent> = req
+            .messages
+            .into_iter()
+            .map(|msg| {
+                // Gemini roles: "user" or "model" (OpenAI "assistant" -> "model")
+                let role = if msg.role == "assistant" {
+                    "model"
+                } else {
+                    "user"
+                };
+                GeminiContent {
+                    role: role.to_string(),
+                    parts: vec![GeminiPart { text: msg.content }],
+                }
+            })
+            .collect();
 
         let config = GeminiGenerationConfig {
             temperature: req.temperature,
@@ -64,9 +72,8 @@ impl GeminiAdaptor {
     // NOTE: This handles non-streaming response only for now.
     pub fn convert_response(gemini_resp: Value, model: &str) -> Value {
         // TODO: Robust error handling if gemini_resp is error
-        let candidate = gemini_resp.get("candidates")
-            .and_then(|c| c.get(0));
-        
+        let candidate = gemini_resp.get("candidates").and_then(|c| c.get(0));
+
         let text = candidate
             .and_then(|c| c.get("content"))
             .and_then(|c| c.get("parts"))
@@ -104,16 +111,17 @@ mod tests {
     fn test_openai_to_gemini_request() {
         let req = OpenAIChatRequest {
             model: "gpt-4".to_string(),
-            messages: vec![
-                OpenAIChatMessage { role: "user".to_string(), content: "Hello".to_string() }
-            ],
+            messages: vec![OpenAIChatMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
             temperature: Some(0.5),
             max_tokens: Some(100),
             stream: false,
         };
 
         let gemini_val = GeminiAdaptor::convert_request(req);
-        
+
         // Validate structure
         assert_eq!(gemini_val["contents"][0]["role"], "user");
         assert_eq!(gemini_val["contents"][0]["parts"][0]["text"], "Hello");

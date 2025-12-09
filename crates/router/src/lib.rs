@@ -1,31 +1,31 @@
-mod config;
 mod adaptor;
 mod balancer;
-mod limiter;
 mod circuit_breaker;
+mod config;
+mod limiter;
 mod model_router;
 
 use axum::{
     body::Body,
     extract::State,
-    http::{HeaderMap, Method, Uri, StatusCode},
+    http::{HeaderMap, Method, StatusCode, Uri},
     response::Response,
     routing::post,
     Router,
 };
-use burncloud_database::Database;
-use burncloud_database_router::{RouterDatabase, DbRouterLog};
-use burncloud_common::types::OpenAIChatRequest;
 use balancer::RoundRobinBalancer;
-use limiter::RateLimiter;
+use burncloud_common::types::OpenAIChatRequest;
+use burncloud_database::Database;
+use burncloud_database_router::{DbRouterLog, RouterDatabase};
 use circuit_breaker::CircuitBreaker;
+use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
+use http_body_util::BodyExt;
+use limiter::RateLimiter;
 use model_router::ModelRouter;
-use config::{AuthType, RouterConfig, Upstream, Group, GroupMember, RouteTarget};
 use reqwest::Client;
 use std::{sync::Arc, time::Instant};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
-use http_body_util::BodyExt;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -43,38 +43,45 @@ struct AppState {
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
     // Load Upstreams
     let db_upstreams = RouterDatabase::get_all_upstreams(db).await?;
-    let upstreams: Vec<Upstream> = db_upstreams.into_iter().map(|u| Upstream {
-        id: u.id,
-        name: u.name,
-        base_url: u.base_url,
-        api_key: u.api_key,
-        match_path: u.match_path,
-        auth_type: AuthType::from(u.auth_type.as_str()),
-        priority: u.priority,
-        protocol: u.protocol,
-    }).collect();
+    let upstreams: Vec<Upstream> = db_upstreams
+        .into_iter()
+        .map(|u| Upstream {
+            id: u.id,
+            name: u.name,
+            base_url: u.base_url,
+            api_key: u.api_key,
+            match_path: u.match_path,
+            auth_type: AuthType::from(u.auth_type.as_str()),
+            priority: u.priority,
+            protocol: u.protocol,
+        })
+        .collect();
 
     // Load Groups
     let db_groups = RouterDatabase::get_all_groups(db).await?;
     let db_members = RouterDatabase::get_group_members(db).await?;
 
-    let groups = db_groups.into_iter().map(|g| {
-        let members = db_members.iter()
-            .filter(|m| m.group_id == g.id)
-            .map(|m| GroupMember {
-                upstream_id: m.upstream_id.clone(),
-                weight: m.weight,
-            })
-            .collect();
-        
-        Group {
-            id: g.id,
-            name: g.name,
-            strategy: g.strategy,
-            match_path: g.match_path,
-            members,
-        }
-    }).collect();
+    let groups = db_groups
+        .into_iter()
+        .map(|g| {
+            let members = db_members
+                .iter()
+                .filter(|m| m.group_id == g.id)
+                .map(|m| GroupMember {
+                    upstream_id: m.upstream_id.clone(),
+                    weight: m.weight,
+                })
+                .collect();
+
+            Group {
+                id: g.id,
+                name: g.name,
+                strategy: g.strategy,
+                match_path: g.match_path,
+                members,
+            }
+        })
+        .collect();
 
     Ok(RouterConfig { upstreams, groups })
 }
@@ -106,7 +113,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         }
     });
 
-    let state = AppState { 
+    let state = AppState {
         client,
         config: Arc::new(RwLock::new(config)),
         db: db, // Arc<Database>
@@ -119,7 +126,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
 
     use burncloud_common::constants::INTERNAL_PREFIX;
 
-// ...
+    // ...
 
     let reload_path = format!("{}/reload", INTERNAL_PREFIX);
     let health_path = format!("{}/health", INTERNAL_PREFIX);
@@ -137,27 +144,27 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
 
 // ...
 
-async fn reload_handler(
-    State(state): State<AppState>,
-) -> Response {
+async fn reload_handler(State(state): State<AppState>) -> Response {
     match load_router_config(&state.db).await {
         Ok(new_config) => {
             let mut config_write = state.config.write().await;
             *config_write = new_config;
-            Response::builder().status(200).body(Body::from("Reloaded")).unwrap()
-        },
-        Err(e) => {
-            Response::builder().status(500).body(Body::from(format!("Reload Failed: {}", e))).unwrap()
+            Response::builder()
+                .status(200)
+                .body(Body::from("Reloaded"))
+                .unwrap()
         }
+        Err(e) => Response::builder()
+            .status(500)
+            .body(Body::from(format!("Reload Failed: {}", e)))
+            .unwrap(),
     }
 }
 
-async fn models_handler(
-    State(state): State<AppState>,
-) -> Response {
+async fn models_handler(State(state): State<AppState>) -> Response {
     // Fetch all upstreams and groups to list as available "models"
     // This allows clients like WebUI to auto-discover available backends
-    
+
     let mut model_entries = Vec::new();
     let current_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -204,12 +211,10 @@ async fn models_handler(
         .unwrap()
 }
 
-async fn health_status_handler(
-    State(state): State<AppState>,
-) -> Response {
+async fn health_status_handler(State(state): State<AppState>) -> Response {
     let status_map = state.circuit_breaker.get_status_map();
     let json = serde_json::to_string(&status_map).unwrap_or_else(|_| "{}".to_string());
-    
+
     Response::builder()
         .status(200)
         .header("content-type", "application/json")
@@ -226,22 +231,23 @@ async fn proxy_handler(
 ) -> Response {
     let start_time = Instant::now();
     let request_id = Uuid::new_v4().to_string();
-    
+
     // DEBUG: Immediate return
     // return Response::builder().status(200).body(Body::from("DEBUG_OK")).unwrap();
     let path = uri.path().to_string();
-    
+
     println!("Proxy Handler: {} {}, Headers: {:?}", method, path, headers);
 
     // 0. Authenticate User
-    let user_auth = headers.get("authorization")
+    let user_auth = headers
+        .get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "));
-        
+
     let user_token = match user_auth {
         Some(token) => token,
         None => {
-             return Response::builder()
+            return Response::builder()
                 .status(401)
                 .body(Body::from("Unauthorized: Missing Bearer Token"))
                 .unwrap();
@@ -249,20 +255,39 @@ async fn proxy_handler(
     };
 
     // Check against DB
-    let (user_id, user_group, quota_limit, used_quota) = match RouterDatabase::validate_token_and_get_info(&state.db, user_token).await {
-        Ok(Some(info)) => (info.0.to_string(), info.1, info.2, info.3),
-        Ok(None) => {
-             // Fallback to old token table logic
-             match RouterDatabase::validate_token(&state.db, user_token).await {
-                 Ok(Some(t)) => (t.user_id, "default".to_string(), t.quota_limit, t.used_quota),
-                 _ => return Response::builder().status(401).body(Body::from("Unauthorized: Invalid Token")).unwrap(),
-             }
-        },
-        Err(e) => return Response::builder().status(500).body(Body::from(format!("Internal Auth Error: {}", e))).unwrap(),
-    };
+    let (user_id, user_group, quota_limit, used_quota) =
+        match RouterDatabase::validate_token_and_get_info(&state.db, user_token).await {
+            Ok(Some(info)) => (info.0.to_string(), info.1, info.2, info.3),
+            Ok(None) => {
+                // Fallback to old token table logic
+                match RouterDatabase::validate_token(&state.db, user_token).await {
+                    Ok(Some(t)) => (
+                        t.user_id,
+                        "default".to_string(),
+                        t.quota_limit,
+                        t.used_quota,
+                    ),
+                    _ => {
+                        return Response::builder()
+                            .status(401)
+                            .body(Body::from("Unauthorized: Invalid Token"))
+                            .unwrap()
+                    }
+                }
+            }
+            Err(e) => {
+                return Response::builder()
+                    .status(500)
+                    .body(Body::from(format!("Internal Auth Error: {}", e)))
+                    .unwrap()
+            }
+        };
 
     if quota_limit >= 0 && used_quota >= quota_limit {
-         return Response::builder().status(429).body(Body::from("Quota Exceeded")).unwrap();
+        return Response::builder()
+            .status(429)
+            .body(Body::from("Quota Exceeded"))
+            .unwrap();
     }
 
     // Rate Limiting Check
@@ -276,7 +301,12 @@ async fn proxy_handler(
     // Buffer body for token counting and retries
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
-        Err(e) => return Response::builder().status(400).body(Body::from(format!("Body Read Error: {}", e))).unwrap(),
+        Err(e) => {
+            return Response::builder()
+                .status(400)
+                .body(Body::from(format!("Body Read Error: {}", e)))
+                .unwrap()
+        }
     };
 
     // Estimate Prompt Tokens (Simple approximation: 1 token ~= 4 bytes)
@@ -284,11 +314,12 @@ async fn proxy_handler(
     let prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status) = proxy_logic(&state, method, uri, headers, body_bytes, &path, &user_group).await;
+    let (response, upstream_id, final_status) =
+        proxy_logic(&state, method, uri, headers, body_bytes, &path, &user_group).await;
 
     // Estimate Completion Tokens (If header present, else 0 for streaming)
     // For streaming, we can't easily know without wrapping the stream.
-    let completion_tokens = 0; 
+    let completion_tokens = 0;
 
     // Async Log
     let log = DbRouterLog {
@@ -320,46 +351,54 @@ async fn proxy_logic(
     user_group: &str,
 ) -> (Response, Option<String>, StatusCode) {
     let config = state.config.read().await;
-    
+
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
-    
+
     if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
         if let Some(model) = json.get("model").and_then(|v| v.as_str()) {
-             println!("ProxyLogic: Attempting to route model '{}' for group '{}'", model, user_group);
-             match state.model_router.route(user_group, model).await {
-                 Ok(Some(channel)) => {
-                     println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
-                     // Map Channel Type
-                     let channel_type = ChannelType::from(channel.type_);
-                     
-                     // Map Channel Type to AuthType/Protocol (Still needed for legacy config struct compatibility if used elsewhere)
-                     // But AdaptorFactory will handle logic based on ChannelType.
-                     let (auth_type, protocol) = match channel_type {
-                         ChannelType::OpenAI => (AuthType::Bearer, "openai".to_string()),
-                         ChannelType::Anthropic => (AuthType::Claude, "claude".to_string()),
-                         ChannelType::Gemini | ChannelType::VertexAi => (AuthType::GoogleAI, "gemini".to_string()),
-                         _ => (AuthType::Bearer, "openai".to_string()),
-                     };
-                     
-                     candidates.push(Upstream {
-                         id: channel.id.to_string(),
-                         name: channel.name,
-                         base_url: channel.base_url.unwrap_or_default(),
-                         api_key: channel.key,
-                         match_path: "".to_string(),
-                         auth_type,
-                         priority: channel.priority as i32,
-                         protocol, // Ideally we should store ChannelType in Upstream too
-                     });
-                 },
-                 Ok(None) => {
-                     println!("ModelRouter: No route found for {} (Group: {})", model, user_group);
-                 },
-                 Err(e) => {
-                     println!("ModelRouter: Error querying DB: {}", e);
-                 }
-             }
+            println!(
+                "ProxyLogic: Attempting to route model '{}' for group '{}'",
+                model, user_group
+            );
+            match state.model_router.route(user_group, model).await {
+                Ok(Some(channel)) => {
+                    println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
+                    // Map Channel Type
+                    let channel_type = ChannelType::from(channel.type_);
+
+                    // Map Channel Type to AuthType/Protocol (Still needed for legacy config struct compatibility if used elsewhere)
+                    // But AdaptorFactory will handle logic based on ChannelType.
+                    let (auth_type, protocol) = match channel_type {
+                        ChannelType::OpenAI => (AuthType::Bearer, "openai".to_string()),
+                        ChannelType::Anthropic => (AuthType::Claude, "claude".to_string()),
+                        ChannelType::Gemini | ChannelType::VertexAi => {
+                            (AuthType::GoogleAI, "gemini".to_string())
+                        }
+                        _ => (AuthType::Bearer, "openai".to_string()),
+                    };
+
+                    candidates.push(Upstream {
+                        id: channel.id.to_string(),
+                        name: channel.name,
+                        base_url: channel.base_url.unwrap_or_default(),
+                        api_key: channel.key,
+                        match_path: "".to_string(),
+                        auth_type,
+                        priority: channel.priority as i32,
+                        protocol, // Ideally we should store ChannelType in Upstream too
+                    });
+                }
+                Ok(None) => {
+                    println!(
+                        "ModelRouter: No route found for {} (Group: {})",
+                        model, user_group
+                    );
+                }
+                Err(e) => {
+                    println!("ModelRouter: Error querying DB: {}", e);
+                }
+            }
         } else {
             println!("ProxyLogic: No 'model' field in JSON body");
         }
@@ -369,27 +408,44 @@ async fn proxy_logic(
 
     // 2. Path Routing (Fallback)
     if candidates.is_empty() {
-        println!("ProxyLogic: Model routing failed/skipped, trying path routing for {}", path);
+        println!(
+            "ProxyLogic: Model routing failed/skipped, trying path routing for {}",
+            path
+        );
         let route = match config.find_route(path) {
             Some(r) => r,
             None => {
-                return (Response::builder()
-                    .status(404)
-                    .body(Body::from(format!("No matching upstream found for path: {}", path)))
-                    .unwrap(), None, StatusCode::NOT_FOUND);
+                return (
+                    Response::builder()
+                        .status(404)
+                        .body(Body::from(format!(
+                            "No matching upstream found for path: {}",
+                            path
+                        )))
+                        .unwrap(),
+                    None,
+                    StatusCode::NOT_FOUND,
+                );
             }
         };
-        
+
         match route {
             RouteTarget::Upstream(u) => candidates.push(u.clone()),
             RouteTarget::Group(g) => {
                 if g.members.is_empty() {
-                     return (Response::builder()
-                        .status(503)
-                        .body(Body::from(format!("Group '{}' has no healthy members", g.name)))
-                        .unwrap(), None, StatusCode::SERVICE_UNAVAILABLE);
+                    return (
+                        Response::builder()
+                            .status(503)
+                            .body(Body::from(format!(
+                                "Group '{}' has no healthy members",
+                                g.name
+                            )))
+                            .unwrap(),
+                        None,
+                        StatusCode::SERVICE_UNAVAILABLE,
+                    );
                 }
-                
+
                 let start_idx = state.balancer.next_index(&g.id, g.members.len());
                 for i in 0..g.members.len() {
                     let idx = (start_idx + i) % g.members.len();
@@ -401,14 +457,18 @@ async fn proxy_logic(
             }
         };
     }
-    
+
     if candidates.is_empty() {
-         return (Response::builder()
-            .status(500)
-            .body(Body::from("Configuration Error: No upstreams available"))
-            .unwrap(), None, StatusCode::INTERNAL_SERVER_ERROR);
+        return (
+            Response::builder()
+                .status(500)
+                .body(Body::from("Configuration Error: No upstreams available"))
+                .unwrap(),
+            None,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
     }
-    
+
     let mut last_error = String::new();
     #[allow(unused_assignments)]
     let mut last_upstream_id = None;
@@ -428,7 +488,14 @@ async fn proxy_logic(
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
         let target_url = format!("{}{}{}", upstream.base_url, path, query);
 
-        println!("Proxying {} -> {} (via {}) [Attempt {}] Protocol: {}", path, target_url, upstream.name, attempt + 1, upstream.protocol);
+        println!(
+            "Proxying {} -> {} (via {}) [Attempt {}] Protocol: {}",
+            path,
+            target_url,
+            upstream.name,
+            attempt + 1,
+            upstream.protocol
+        );
 
         // Determine Adaptor
         // Currently Upstream struct stores protocol string. We should map it to ChannelType.
@@ -438,30 +505,33 @@ async fn proxy_logic(
             "gemini" => ChannelType::Gemini,
             _ => ChannelType::OpenAI,
         };
-        
+
         let adaptor = AdaptorFactory::get_adaptor(channel_type);
 
         // 3. Prepare Request Body
-        let request_body_json: Option<serde_json::Value> = if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
-            adaptor.convert_request(&req).or_else(|| Some(serde_json::json!(req))) // Use converted or original
-        } else {
-            // Failed to parse as OpenAI request, use raw bytes if possible?
-            // Adaptor interface expects Value for build_request.
-            // If body is not valid JSON, we might fail here for complex adaptors.
-            // For OpenAI passthrough, we might want raw bytes.
-            // Let's assume it's JSON for now as most LLM APIs are.
-            serde_json::from_slice(&body_bytes).ok()
-        };
+        let request_body_json: Option<serde_json::Value> =
+            if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
+                adaptor
+                    .convert_request(&req)
+                    .or_else(|| Some(serde_json::json!(req))) // Use converted or original
+            } else {
+                // Failed to parse as OpenAI request, use raw bytes if possible?
+                // Adaptor interface expects Value for build_request.
+                // If body is not valid JSON, we might fail here for complex adaptors.
+                // For OpenAI passthrough, we might want raw bytes.
+                // Let's assume it's JSON for now as most LLM APIs are.
+                serde_json::from_slice(&body_bytes).ok()
+            };
 
         if request_body_json.is_none() {
-             // If we can't parse body and we need to (implied by using adaptors), fail?
-             // Or just pass empty?
-             // If protocol is "openai", maybe we don't need to parse?
-             // But `build_request` takes Value.
-             // We should probably update `build_request` to take Option<Value> or Bytes?
-             // For now, fail if not JSON.
-             last_error = "Invalid JSON body".to_string();
-             continue;
+            // If we can't parse body and we need to (implied by using adaptors), fail?
+            // Or just pass empty?
+            // If protocol is "openai", maybe we don't need to parse?
+            // But `build_request` takes Value.
+            // We should probably update `build_request` to take Option<Value> or Bytes?
+            // For now, fail if not JSON.
+            last_error = "Invalid JSON body".to_string();
+            continue;
         }
         let request_body_json = request_body_json.unwrap();
 
@@ -475,61 +545,80 @@ async fn proxy_logic(
                 if resp.status().is_server_error() {
                     last_error = format!("Upstream returned {}", resp.status());
                     state.circuit_breaker.record_failure(&upstream.id);
-                    continue; 
+                    continue;
                 }
-                
+
                 state.circuit_breaker.record_success(&upstream.id);
 
                 if resp.status().is_success() {
-                     let status = resp.status();
-                     // 6. Handle Response Conversion
-                     // Read body to memory to convert
-                     let resp_json: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
-                     
-                     let response_body = if let Some(converted) = adaptor.convert_response(resp_json.clone(), &upstream.name) {
-                         serde_json::to_string(&converted).unwrap_or_else(|_| "{}".to_string())
-                     } else {
-                         // No conversion needed (e.g. OpenAI), return original body
-                         serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string())
-                     };
-                     
-                     return (Response::builder()
-                        .status(status)
-                        .header("content-type", "application/json")
-                        .body(Body::from(response_body))
-                        .unwrap(), last_upstream_id, status);
+                    let status = resp.status();
+                    // 6. Handle Response Conversion
+                    // Read body to memory to convert
+                    let resp_json: serde_json::Value =
+                        resp.json().await.unwrap_or(serde_json::json!({}));
+
+                    let response_body = if let Some(converted) =
+                        adaptor.convert_response(resp_json.clone(), &upstream.name)
+                    {
+                        serde_json::to_string(&converted).unwrap_or_else(|_| "{}".to_string())
+                    } else {
+                        // No conversion needed (e.g. OpenAI), return original body
+                        serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string())
+                    };
+
+                    return (
+                        Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(Body::from(response_body))
+                            .unwrap(),
+                        last_upstream_id,
+                        status,
+                    );
                 } else {
                     let status = resp.status();
                     return (handle_response(resp), last_upstream_id, status);
                 }
-            },
+            }
             Err(e) => {
                 last_error = format!("Network Error: {}", e);
                 state.circuit_breaker.record_failure(&upstream.id);
-                eprintln!("Failover: {} failed with {}, trying next...", upstream.name, e);
+                eprintln!(
+                    "Failover: {} failed with {}, trying next...",
+                    upstream.name, e
+                );
                 continue;
             }
         }
     }
 
-    (Response::builder()
-        .status(502)
-        .body(Body::from(format!("All upstreams failed. Last error: {}", last_error)))
-        .unwrap(), None, StatusCode::BAD_GATEWAY)
+    (
+        Response::builder()
+            .status(502)
+            .body(Body::from(format!(
+                "All upstreams failed. Last error: {}",
+                last_error
+            )))
+            .unwrap(),
+        None,
+        StatusCode::BAD_GATEWAY,
+    )
 }
 
 fn handle_response(resp: reqwest::Response) -> Response {
     let status = resp.status();
     let mut response_builder = Response::builder().status(status);
-    
+
     if let Some(headers_mut) = response_builder.headers_mut() {
         for (k, v) in resp.headers() {
             headers_mut.insert(k, v.clone());
         }
     }
-    
+
     let stream = resp.bytes_stream();
     let body = Body::from_stream(stream);
-    
-    response_builder.body(body).unwrap_or_else(|_| Response::new(Body::empty()))
+
+    response_builder
+        .body(body)
+        .unwrap_or_else(|_| Response::new(Body::empty()))
 }

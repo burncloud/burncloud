@@ -1,13 +1,13 @@
+use crate::AppState;
 use axum::{
     extract::{Path, State},
     response::Json,
     routing::{get, post},
     Router,
 };
+use burncloud_database_router::{DbToken, RouterDatabase};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use crate::AppState;
-use burncloud_database_router::{RouterDatabase, DbToken};
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize)]
@@ -29,10 +29,13 @@ async fn list_tokens(State(state): State<AppState>) -> Json<Value> {
     }
 }
 
-async fn create_token(State(state): State<AppState>, Json(payload): Json<CreateTokenRequest>) -> Json<Value> {
+async fn create_token(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateTokenRequest>,
+) -> Json<Value> {
     // Generate a random sk- key
     let token = format!("sk-burncloud-{}", Uuid::new_v4());
-    
+
     let db_token = DbToken {
         token: token.clone(),
         user_id: payload.user_id,

@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginResponse {
     pub id: String,
@@ -22,16 +21,21 @@ impl AuthService {
     pub async fn login(username: &str, password: &str) -> Result<LoginResponse, String> {
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/console/api/user/login", port);
-        
-        println!("AuthService: Logging in {} with password length {}", username, password.len());
-        
+
+        println!(
+            "AuthService: Logging in {} with password length {}",
+            username,
+            password.len()
+        );
+
         let body = serde_json::json!({
             "username": username,
             "password": password
         });
 
         let client = reqwest::Client::new();
-        let resp = client.post(&url)
+        let resp = client
+            .post(&url)
             .json(&body)
             .send()
             .await
@@ -53,10 +57,14 @@ impl AuthService {
         }
     }
 
-    pub async fn register(username: &str, password: &str, email: Option<&str>) -> Result<String, String> {
+    pub async fn register(
+        username: &str,
+        password: &str,
+        email: Option<&str>,
+    ) -> Result<String, String> {
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/console/api/user/register", port);
-        
+
         let body = serde_json::json!({
             "username": username,
             "password": password,
@@ -64,7 +72,8 @@ impl AuthService {
         });
 
         let client = reqwest::Client::new();
-        let resp = client.post(&url)
+        let resp = client
+            .post(&url)
             .json(&body)
             .send()
             .await
@@ -75,7 +84,10 @@ impl AuthService {
         if json["success"].as_bool().unwrap_or(false) {
             Ok("Registration successful".to_string())
         } else {
-            Err(json["message"].as_str().unwrap_or("Registration failed").to_string())
+            Err(json["message"]
+                .as_str()
+                .unwrap_or("Registration failed")
+                .to_string())
         }
     }
 }

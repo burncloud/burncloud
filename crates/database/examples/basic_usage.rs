@@ -1,4 +1,4 @@
-use burncloud_database::{Result, Database};
+use burncloud_database::{Database, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -7,10 +7,16 @@ async fn main() -> Result<()> {
 
     println!("Database created successfully!");
 
-    let result = db.execute_query("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)").await?;
+    let result = db
+        .execute_query(
+            "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)",
+        )
+        .await?;
     println!("Table created with result: {:?}", result);
 
-    let insert_result = db.execute_query("INSERT INTO users (name, email) VALUES ('Test User', 'test@example.com')").await?;
+    let insert_result = db
+        .execute_query("INSERT INTO users (name, email) VALUES ('Test User', 'test@example.com')")
+        .await?;
     println!("Insert result: {:?}", insert_result);
 
     println!("Database operations completed successfully!");

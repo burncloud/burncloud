@@ -1,6 +1,6 @@
-use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 struct UpstreamState {
@@ -35,9 +35,9 @@ impl CircuitBreaker {
     /// Checks if a request is allowed to proceed to the given upstream.
     pub fn allow_request(&self, upstream_id: &str) -> bool {
         let entry = self.states.entry(upstream_id.to_string()).or_default();
-        
+
         let current_failures = entry.failure_count.load(Ordering::Relaxed);
-        
+
         if current_failures < self.failure_threshold {
             return true; // Closed state
         }
@@ -71,28 +71,34 @@ impl CircuitBreaker {
         let mut entry = self.states.entry(upstream_id.to_string()).or_default();
         let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
         entry.last_failure_time = Some(Instant::now());
-        
+
         if new_count >= self.failure_threshold {
-            println!("Circuit Breaker: Upstream {} tripped! (Failures: {})", upstream_id, new_count);
+            println!(
+                "Circuit Breaker: Upstream {} tripped! (Failures: {})",
+                upstream_id, new_count
+            );
         }
     }
-    
+
     /// Get current health status map for monitoring
     pub fn get_status_map(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         for r in self.states.iter() {
             let count = r.value().failure_count.load(Ordering::Relaxed);
             let status = if count >= self.failure_threshold {
-                 // Check if in cooldown
-                 if let Some(last) = r.value().last_failure_time {
-                     if last.elapsed() < self.cooldown_duration {
-                         format!("Open (Tripped, {}s left)", (self.cooldown_duration - last.elapsed()).as_secs())
-                     } else {
-                         "Half-Open (Probing)".to_string()
-                     }
-                 } else {
-                     "Open".to_string()
-                 }
+                // Check if in cooldown
+                if let Some(last) = r.value().last_failure_time {
+                    if last.elapsed() < self.cooldown_duration {
+                        format!(
+                            "Open (Tripped, {}s left)",
+                            (self.cooldown_duration - last.elapsed()).as_secs()
+                        )
+                    } else {
+                        "Half-Open (Probing)".to_string()
+                    }
+                } else {
+                    "Open".to_string()
+                }
             } else {
                 "Closed (Healthy)".to_string()
             };
