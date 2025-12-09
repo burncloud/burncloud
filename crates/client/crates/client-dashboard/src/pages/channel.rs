@@ -1,6 +1,6 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::{
-    BCBadge, BCButton, BCCard, BCInput, BCModal, BCPagination, BCTable, BadgeVariant, ButtonVariant,
+    BCButton, BCModal, BCInput, ButtonVariant,
 };
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 #[component]
 pub fn ChannelPage() -> Element {
     let mut page = use_signal(|| 1);
-    let limit = 10; // Default items per page
+    let limit = 10;
 
     let mut channels =
         use_resource(
@@ -25,6 +25,11 @@ pub fn ChannelPage() -> Element {
     let mut form_group = use_signal(|| "default".to_string());
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();
+
+    // Mock Financial Data
+    let total_spend = "¥ 12,450.00";
+    let balance = "¥ 5,230.00";
+    let projected = "¥ 18,000.00";
 
     let open_create_modal = move |_| {
         form_id.set(0);
@@ -83,111 +88,133 @@ pub fn ChannelPage() -> Element {
         });
     };
 
-    // Clone data to avoid lifetime issues in RSX
     let channels_data = channels.read().clone();
 
-    // Mock total pages for now since API might not return count yet
-    // In real scenario, list() should return (Vec<Channel>, total_count)
-    let total_pages = 5; // Placeholder
-
     rsx! {
-        div { class: "channel-page-wrapper",
-            div { class: "page-header",
-                div { class: "flex justify-between items-center",
-                    div {
-                        h1 { class: "text-large-title font-bold text-primary m-0", "渠道管理" }
-                        p { class: "text-secondary m-0 mt-sm", "管理上游模型供应商与API Key" }
+        div { class: "flex flex-col h-full gap-8",
+            // Header
+            div { class: "flex justify-between items-end",
+                div {
+                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "财务总览" }
+                    p { class: "text-sm text-base-content/60 font-medium", "成本分析与渠道支出管理" }
+                }
+                BCButton {
+                    class: "btn-neutral btn-sm px-6 shadow-sm text-white",
+                    onclick: open_create_modal,
+                    "添加渠道"
+                }
+            }
+
+            // Financial Cards
+            div { class: "grid grid-cols-3 gap-6",
+                // Spend
+                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
+                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "本月支出" }
+                    div { class: "flex items-baseline gap-2",
+                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{total_spend}" }
+                        span { class: "text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded", "+15%" }
                     }
-                    BCButton {
-                        class: "btn-create-channel",
-                        onclick: open_create_modal,
-                        "新建渠道"
+                }
+                // Balance
+                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
+                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "账户余额" }
+                    div { class: "flex items-baseline gap-2",
+                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{balance}" }
+                    }
+                }
+                // Projected
+                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
+                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "预估下月" }
+                    div { class: "flex items-baseline gap-2",
+                        span { class: "text-3xl font-bold text-base-content/60 tracking-tight", "{projected}" }
                     }
                 }
             }
 
-            div { class: "page-content mt-lg",
-                BCCard {
-                    class: "p-0 overflow-hidden",
-                    BCTable {
-                        pagination: rsx! {
-                            BCPagination {
-                                page: page(),
-                                total_pages: total_pages,
-                                on_change: move |p| page.set(p)
-                            }
-                        },
-                        thead {
+            // Cost Center Table (Channels)
+            div { class: "flex flex-col gap-4",
+                h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "渠道成本明细" }
+                
+                div { class: "overflow-x-auto border border-base-200 rounded-lg",
+                    table { class: "table w-full text-sm",
+                        thead { class: "bg-base-50 text-base-content/60",
                             tr {
-                                th { "ID" }
-                                th { "名称" }
-                                th { "类型" }
-                                th { "模型" }
-                                th { "状态" }
-                                th { class: "text-right", "操作" }
+                                th { class: "font-medium", "供应商" }
+                                th { class: "font-medium", "类型" }
+                                th { class: "font-medium", "本月消耗 (Token)" }
+                                th { class: "font-medium", "费用估算" }
+                                th { class: "font-medium", "状态" }
+                                th { class: "text-right font-medium", "操作" }
                             }
                         }
                         tbody {
                             match channels_data {
                                 Some(list) if !list.is_empty() => rsx! {
                                     for channel in list {
-                                        tr { class: "hover:bg-subtle transition-colors channel-row",
-                                            td { class: "text-secondary", "{channel.id}" }
-                                            td { class: "font-medium channel-name", "{channel.name}" }
+                                        tr { class: "hover:bg-base-50/50 transition-colors group",
                                             td {
-                                                BCBadge {
-                                                    variant: BadgeVariant::Info,
-                                                    match channel.type_ {
-                                                        1 => "OpenAI",
-                                                        14 => "Anthropic",
-                                                        24 => "Google Gemini",
-                                                        _ => "Unknown"
+                                                div { class: "font-semibold text-base-content", "{channel.name}" }
+                                                div { class: "text-xs text-base-content/40", "ID: {channel.id}" }
+                                            }
+                                            td {
+                                                match channel.type_ {
+                                                    1 => "OpenAI",
+                                                    14 => "Anthropic",
+                                                    24 => "Google Gemini",
+                                                    _ => "Custom"
+                                                }
+                                            }
+                                            // Mock Data columns
+                                            td { class: "font-mono text-base-content/80", "1.2M" }
+                                            td { class: "font-mono font-medium", "¥ 45.20" }
+                                            td {
+                                                if channel.status == 1 {
+                                                    span { class: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700",
+                                                        span { class: "w-1.5 h-1.5 rounded-full bg-emerald-500" }
+                                                        "正常"
+                                                    }
+                                                } else {
+                                                    span { class: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-base-200 text-base-content/60",
+                                                        span { class: "w-1.5 h-1.5 rounded-full bg-base-400" }
+                                                        "禁用"
                                                     }
                                                 }
                                             }
-                                            td { class: "text-secondary text-caption truncate", style: "max-width: 200px;", "{channel.models}" }
-                                            td {
-                                                if channel.status == 1 {
-                                                    BCBadge { variant: BadgeVariant::Success, dot: true, "启用" }
-                                                } else {
-                                                    BCBadge { variant: BadgeVariant::Neutral, dot: true, "禁用" }
-                                                }
-                                            }
                                             td { class: "text-right",
-                                                BCButton {
-                                                    variant: ButtonVariant::Ghost,
-                                                    class: "text-error btn-delete-channel",
+                                                button {
+                                                    class: "btn btn-ghost btn-xs text-base-content/40 group-hover:text-error transition-colors",
                                                     onclick: move |_| handle_delete(channel.id),
-                                                    "🗑️"
+                                                    "删除"
                                                 }
                                             }
                                         }
                                     }
                                 },
-                                Some(_) => rsx! { tr { td { colspan: "6", class: "p-xl text-center text-secondary", "暂无渠道，请点击右上角创建" } } },
-                                None => rsx! { tr { td { colspan: "6", class: "p-xl text-center text-secondary", "加载中..." } } }
+                                Some(_) => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "暂无渠道数据" } } },
+                                None => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "加载财务数据中..." } } }
                             }
                         }
                     }
                 }
             }
 
+            // Modal
             BCModal {
                 open: is_modal_open(),
-                title: "渠道配置".to_string(),
+                title: "添加供应商渠道".to_string(),
                 onclose: move |_| is_modal_open.set(false),
 
-                div { class: "vstack gap-3",
+                div { class: "flex flex-col gap-4 py-2",
                     BCInput {
                         label: Some("渠道名称".to_string()),
                         value: "{form_name}",
-                        placeholder: "例如: OpenAI 主账号".to_string(),
+                        placeholder: "例如: OpenAI 生产环境".to_string(),
                         oninput: move |e: FormEvent| form_name.set(e.value())
                     }
 
-                    div { class: "form-group",
-                        label { class: "form-label fw-bold mb-1", "渠道类型" }
-                        select { class: "form-control", // Changed from form-select to form-control for consistency
+                    div { class: "flex flex-col gap-1.5",
+                        label { class: "text-sm font-medium text-base-content/80", "供应商类型" }
+                        select { class: "select select-bordered w-full select-sm",
                             onchange: move |e: FormEvent| form_type.set(e.value().parse().unwrap_or(1)),
                             option { value: "1", "OpenAI" }
                             option { value: "14", "Anthropic Claude" }
@@ -203,32 +230,31 @@ pub fn ChannelPage() -> Element {
                     }
 
                     BCInput {
-                        label: Some("Base URL".to_string()),
+                        label: Some("代理地址 (Base URL)".to_string()),
                         value: "{form_base_url}",
                         placeholder: "https://api.openai.com".to_string(),
                         oninput: move |e: FormEvent| form_base_url.set(e.value())
                     }
 
                     BCInput {
-                        label: Some("支持模型".to_string()),
+                        label: Some("可用模型".to_string()),
                         value: "{form_models}",
-                        placeholder: "gpt-3.5-turbo,gpt-4".to_string(),
+                        placeholder: "gpt-4,gpt-3.5-turbo".to_string(),
                         oninput: move |e: FormEvent| form_models.set(e.value())
                     }
                 }
 
-                div { class: "modal-footer",
+                div { class: "modal-footer flex justify-end gap-3 mt-6",
                     BCButton {
-                        variant: ButtonVariant::Secondary,
-                        class: "me-2",
+                        variant: ButtonVariant::Ghost,
                         onclick: move |_| is_modal_open.set(false),
                         "取消"
                     }
                     BCButton {
-                        class: "btn-save-channel",
+                        class: "btn-neutral text-white",
                         loading: is_loading(),
                         onclick: handle_save,
-                        "保存"
+                        "保存配置"
                     }
                 }
             }

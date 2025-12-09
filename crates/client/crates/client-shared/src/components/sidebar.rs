@@ -21,12 +21,12 @@ fn SidebarItem(props: SidebarItemProps) -> Element {
     rsx! {
         Link {
             to: props.to,
-            class: format!("flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 group {}",
-                if active { "bg-base-content/10 font-semibold text-base-content" }
-                else { "text-base-content/70 hover:bg-base-content/5 hover:text-base-content" }
+            class: format!("flex items-center gap-3 px-4 py-2.5 mx-2 rounded-md text-sm transition-all duration-200 group {}",
+                if active { "bg-base-content/5 text-base-content font-medium shadow-sm" }
+                else { "text-base-content/60 hover:bg-base-content/5 hover:text-base-content" }
             ),
             // Icon
-            div { class: format!("w-5 h-5 {}", if active { "text-primary" } else { "opacity-70 group-hover:opacity-100" }),
+            div { class: format!("w-5 h-5 {}", if active { "text-base-content" } else { "opacity-70 group-hover:opacity-100" }),
                 {props.icon}
             }
             // Label
@@ -41,27 +41,27 @@ pub fn Sidebar() -> Element {
     let lang = i18n.language.read();
 
     rsx! {
-        div { class: "flex flex-col h-full gap-6 select-none",
+        div { class: "flex flex-col h-full gap-6 select-none pt-4",
 
             // Brand Area - Minimalist & Premium
-            div { class: "px-2 pt-2 pb-4",
+            div { class: "px-6 pb-2",
                 div { class: "flex items-center gap-3",
-                    div { class: "w-8 h-8 bg-gradient-to-tr from-orange-500 to-red-600 rounded-lg shadow-sm flex items-center justify-center text-white",
-                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2.5",
+                    div { class: "w-8 h-8 bg-black rounded-lg shadow-sm flex items-center justify-center text-white",
+                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                             path { stroke_linecap: "round", stroke_linejoin: "round", d: "M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" }
                             path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" }
                         }
                     }
                     div { class: "flex flex-col",
-                        span { class: "text-sm font-bold tracking-tight leading-none", "BurnCloud" }
-                        span { class: "text-[10px] font-medium opacity-50 uppercase tracking-widest leading-none mt-1", "Enterprise" }
+                        span { class: "text-base font-semibold tracking-tight leading-none text-base-content", "BurnCloud" }
+                        span { class: "text-[11px] font-medium text-base-content/40 uppercase tracking-widest leading-none mt-1", "Enterprise" }
                     }
                 }
             }
 
                         // Section 1: Core Assets (Was Intelligence)
                         div { class: "flex flex-col gap-1",
-                            div { class: "px-3 text-[10px] font-bold text-base-content/40 uppercase tracking-widest mb-1", "核心资产" }
+                            div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2", "核心资产" }
 
                             SidebarItem {
                                 to: CoreRoute::Dashboard {},
@@ -75,14 +75,14 @@ pub fn Sidebar() -> Element {
                             }
                             SidebarItem {
                                 to: CoreRoute::DeployConfig {},
-                                label: "配额管理", // Quota Manager
+                                label: "配额管理", // Quota Management
                                 icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" } path { stroke_linecap: "round", stroke_linejoin: "round", d: "M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" } } }
                             }
                         }
 
                         // Section 2: Operations (Was Network)
                         div { class: "flex flex-col gap-1",
-                            div { class: "px-3 text-[10px] font-bold text-base-content/40 uppercase tracking-widest mb-1 mt-2", "运营中心" }
+                            div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "运营中心" }
 
                             SidebarItem {
                                 to: CoreRoute::ChannelPage {},
