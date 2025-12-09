@@ -6,13 +6,23 @@ pub fn ServiceMonitor() -> Element {
     let security_score = 94;
     let blocked_attacks = "1,204";
     let active_threats = 0;
-    
+
     // Mock Threat Feed
     let threats = vec![
         ("10:42:15", "SQL Injection Attempt", "192.168.1.105", "High"),
-        ("10:41:03", "Prompt Injection (Jailbreak)", "10.0.0.24", "Medium"),
+        (
+            "10:41:03",
+            "Prompt Injection (Jailbreak)",
+            "10.0.0.24",
+            "Medium",
+        ),
         ("10:35:22", "Rate Limit Exceeded", "172.16.0.4", "Low"),
-        ("10:28:11", "NSFW Content Filtered", "192.168.1.200", "Medium"),
+        (
+            "10:28:11",
+            "NSFW Content Filtered",
+            "192.168.1.200",
+            "Medium",
+        ),
         ("10:15:00", "Unknown User Agent", "45.33.22.11", "Low"),
     ];
 
@@ -27,8 +37,8 @@ pub fn ServiceMonitor() -> Element {
                 div { class: "flex gap-3",
                     button { class: "btn btn-ghost btn-sm text-base-content/70", "黑名单管理" }
                     button { class: "btn btn-error btn-sm px-6 text-white shadow-sm",
-                        span { class: "loading loading-spinner loading-xs hidden" } 
-                        "紧急熔断" 
+                        span { class: "loading loading-spinner loading-xs hidden" }
+                        "紧急熔断"
                     }
                 }
             }
@@ -74,11 +84,11 @@ pub fn ServiceMonitor() -> Element {
 
             // Main Content Grid
             div { class: "grid grid-cols-3 gap-8",
-                
+
                 // Left: Live Threat Feed
                 div { class: "col-span-2 flex flex-col gap-4",
                     h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "实时威胁感知 (Live Threat Feed)" }
-                    
+
                     div { class: "flex flex-col gap-2",
                         for threat in threats {
                             div { class: "flex items-center justify-between p-3 bg-base-50/50 rounded-lg border border-base-200/50 hover:bg-white hover:shadow-sm transition-all group",
@@ -105,7 +115,7 @@ pub fn ServiceMonitor() -> Element {
                 // Right: Content Safety Filters
                 div { class: "col-span-1 flex flex-col gap-4",
                     h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "内容风控策略" }
-                    
+
                     div { class: "flex flex-col gap-3",
                         // Filter 1
                         div { class: "p-4 border border-base-200 rounded-lg flex items-center justify-between",

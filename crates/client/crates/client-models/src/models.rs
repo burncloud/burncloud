@@ -60,7 +60,7 @@ pub fn ModelManagement() -> Element {
                 }
             }
         }
-        
+
         // Dialogs (Kept functionality, renamed visually where possible)
         if show_search_dialog() {
             SearchDialog {
@@ -98,7 +98,7 @@ pub fn ModelManagement() -> Element {
             // Business Metrics - Liberated Numbers (No Borders, High Padding)
             div { class: "grid mb-12",
                 style: "grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 2rem;",
-                
+
                 div { class: "flex flex-col p-4",
                     span { class: "text-xs font-bold text-gray-400 uppercase tracking-widest mb-3", "活跃账号组" }
                     span { class: "text-4xl font-bold text-base-content tracking-tight", "{models.read().len()}" }
@@ -106,13 +106,13 @@ pub fn ModelManagement() -> Element {
                 div { class: "flex flex-col p-4 border-l border-base-200/50", // Subtle divider instead of box
                     span { class: "text-xs font-bold text-gray-400 uppercase tracking-widest mb-3", "总调用次数" }
                     span { class: "text-4xl font-bold text-base-content tracking-tight",
-                        "{format_number(models.read().iter().map(|m| m.downloads).sum::<i64>() * 124)}" 
+                        "{format_number(models.read().iter().map(|m| m.downloads).sum::<i64>() * 124)}"
                     }
                 }
                 div { class: "flex flex-col p-4 border-l border-base-200/50",
                     span { class: "text-xs font-bold text-gray-400 uppercase tracking-widest mb-3", "本月预估消耗" }
                     span { class: "text-4xl font-bold text-base-content tracking-tight",
-                        "$ {format_number(models.read().iter().map(|m| m.size).sum::<i64>() / 1000000)}.00" 
+                        "$ {format_number(models.read().iter().map(|m| m.size).sum::<i64>() / 1000000)}.00"
                     }
                 }
             }
@@ -131,10 +131,10 @@ pub fn ModelManagement() -> Element {
                             div { class: "text-7xl opacity-20 grayscale filter", "🗄️" }
                             div {
                                 h3 { class: "text-xl font-bold text-base-content mb-2", "您的金库是空的" }
-                                p { class: "text-sm text-gray-500 max-w-md mx-auto leading-relaxed", 
+                                p { class: "text-sm text-gray-500 max-w-md mx-auto leading-relaxed",
                                     "立即点击上方 “采购资源” 填充您的资产矩阵，"
                                     br {}
-                                    "开始构建您的自动化盈利引擎。" 
+                                    "开始构建您的自动化盈利引擎。"
                                 }
                             }
                             button {
@@ -214,7 +214,7 @@ fn ModelCard(
 
     // Mocking Business Data from Technical Data
     let api_calls = downloads * 124;
-    let success_rate = 99.9; 
+    let success_rate = 99.9;
     let monthly_spend = size as f64 / 1000000.0; // Fake calculation
 
     rsx! {
@@ -241,7 +241,7 @@ fn ModelCard(
                     }
                     // Provider Badge (Mock)
                     div {
-                        BCBadge { variant: BadgeVariant::Neutral, "AWS" } 
+                        BCBadge { variant: BadgeVariant::Neutral, "AWS" }
                     }
                 }
 

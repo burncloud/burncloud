@@ -1,7 +1,5 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
-use burncloud_client_shared::components::{
-    BCButton, BCModal, BCInput, ButtonVariant,
-};
+use burncloud_client_shared::components::{BCButton, BCInput, BCModal, ButtonVariant};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
@@ -134,7 +132,7 @@ pub fn ChannelPage() -> Element {
             // Cost Center Table (Channels)
             div { class: "flex flex-col gap-4",
                 h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "渠道成本明细" }
-                
+
                 div { class: "overflow-x-auto border border-base-200 rounded-lg",
                     table { class: "table w-full text-sm",
                         thead { class: "bg-base-50 text-base-content/60",
