@@ -1,9 +1,17 @@
 use dioxus::prelude::*;
+use crate::DesktopMode;
 
 #[component]
 pub fn TitleBar() -> Element {
-    let window = dioxus::desktop::use_window();
+    // Safety check: TitleBar is only for Desktop.
+    // In LiveView, this context will be missing, and we should bail out
+    // BEFORE calling `use_window` which would panic.
+    if try_use_context::<DesktopMode>().is_none() {
+        return rsx! {};
+    }
 
+    let window = dioxus::desktop::use_window();
+    
     // Clones for Mac handlers
     let mac_close = window.clone();
     let mac_min = window.clone();
@@ -16,25 +24,25 @@ pub fn TitleBar() -> Element {
 
     rsx! {
         div { class: "w-full h-8 flex items-center justify-between select-none app-drag-region px-4",
-
+            
             // MacOS: Traffic Lights on the Left
             if cfg!(target_os = "macos") {
                 div { class: "flex items-center gap-2 app-no-drag group",
                     // Close (Red)
-                    button {
-                        class: "w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center text-[8px] text-[#4E0002] opacity-100 hover:opacity-100",
+                    button { 
+                        class: "w-3 h-3 rounded-full bg-macos-red border border-macos-red flex items-center justify-center text-xxxs text-macos-red-dark opacity-100 hover:opacity-100",
                         onclick: move |_| mac_close.set_visible(false),
                         div { class: "opacity-0 group-hover:opacity-100", "✕" }
                     }
                     // Minimize (Yellow)
-                    button {
-                        class: "w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#E1A325] flex items-center justify-center text-[8px] text-[#594119] opacity-100 hover:opacity-100",
+                    button { 
+                        class: "w-3 h-3 rounded-full bg-macos-yellow border border-macos-yellow flex items-center justify-center text-xxxs text-macos-yellow-dark opacity-100 hover:opacity-100",
                         onclick: move |_| mac_min.set_minimized(true),
                         div { class: "opacity-0 group-hover:opacity-100", "−" }
                     }
                     // Maximize (Green)
-                    button {
-                        class: "w-3 h-3 rounded-full bg-[#27C93F] border border-[#1FA22E] flex items-center justify-center text-[8px] text-[#0A5016] opacity-100 hover:opacity-100",
+                    button { 
+                        class: "w-3 h-3 rounded-full bg-macos-green border border-macos-green flex items-center justify-center text-xxxs text-macos-green-dark opacity-100 hover:opacity-100",
                         onclick: move |_| {
                             let is_max = mac_max.is_maximized();
                             mac_max.set_maximized(!is_max);

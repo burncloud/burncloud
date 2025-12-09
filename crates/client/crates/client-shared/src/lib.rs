@@ -14,3 +14,6 @@ pub use services::monitor_service;
 pub use services::usage_service;
 pub use services::user_service;
 pub use styles::*;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct DesktopMode;
