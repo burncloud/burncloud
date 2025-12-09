@@ -21,137 +21,116 @@ pub fn Dashboard() -> Element {
     let usage_data = usage.read().clone();
     let monitor_data = monitor.read().clone();
 
-    rsx! {
-        div { class: "h-full flex flex-col max-w-6xl mx-auto animate-fade-in select-none",
-
-            // 1. Hero Header
-            div { class: "flex items-end justify-between mb-16",
-                div {
-                    h1 { class: "text-4xl font-bold tracking-tight text-base-content/90",
-                        "{t(*lang, \"dashboard.title\")}"
-                    }
-                    div { class: "flex items-center gap-2 mt-3 pl-1",
-                        div { class: "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" }
-                        span { class: "text-xs font-medium tracking-wide opacity-50 uppercase", "Pulse Normal" }
-                    }
-                }
-                div {
-                    button { class: "btn btn-neutral text-white btn-sm rounded-full px-6 font-medium shadow-sm hover:shadow-md transition-all normal-case border-none",
-                        "+ {t(*lang, \"nav.deploy\")}"
-                    }
-                }
-            }
-
-            // 2. Main Content Grid
-            div { class: "grid grid-cols-1 lg:grid-cols-3 gap-12 h-full",
-
-                // Left Column: The Brain & Stats (Spans 2 columns)
-                div { class: "lg:col-span-2 flex flex-col gap-10",
-
-                    // The "Brain" Card - Floating, minimal
-                    div { class: "flex items-start gap-6 group",
-                        div { class: "w-24 h-24 rounded-3xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 flex items-center justify-center text-4xl shadow-inner",
-                            "🧠"
+        rsx! {
+            div { class: "h-full flex flex-col max-w-6xl mx-auto animate-fade-in select-none",
+                
+                // 1. Enterprise Header
+                div { class: "flex items-end justify-between mb-12",
+                    div {
+                        h1 { class: "text-4xl font-bold tracking-tight text-base-content/90", 
+                            "企业控制台" 
                         }
-                        div { class: "pt-2",
-                            h2 { class: "text-3xl font-bold text-base-content/90 tracking-tight", "Coding Expert" }
-                            div { class: "flex items-center gap-3 mt-2",
-                                span { class: "badge badge-neutral badge-sm font-mono opacity-80", "Qwen2.5-7B" }
-                                span { class: "text-sm text-base-content/40", "CUDA Accelerated" }
-                            }
+                        div { class: "flex items-center gap-2 mt-3 pl-1",
+                            div { class: "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" }
+                            span { class: "text-xs font-medium tracking-wide opacity-50 uppercase", "实时交易流" }
                         }
                     }
-
-                    // Usage Data - The "Bank Account" view
-                    div { class: "grid grid-cols-2 gap-12 pt-8 border-t border-base-200/50",
-                        div {
-                            div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-30 mb-2", "TOKEN USAGE" }
-                            match usage_data {
-                                Some(Some(stats)) => rsx! {
-                                    div { class: "text-5xl font-bold tabular-nums tracking-tighter text-base-content/90", "{stats.total_tokens}" }
-                                },
-                                _ => rsx! { div { class: "h-12 bg-base-200/50 rounded w-32 animate-pulse" } }
-                            }
-                        }
-                        div {
-                            div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-30 mb-2", "EST. COST" }
-                            div { class: "text-5xl font-bold tracking-tighter text-base-content/90", "$0.00" }
-                        }
-                    }
-
-                    // Micro Metrics (CPU/RAM) - Almost invisible
-                    div { class: "grid grid-cols-2 gap-8 pt-4",
-                        match &monitor_data {
-                            Some(Some(m)) => rsx! {
-                                div { class: "space-y-2",
-                                    div { class: "flex justify-between items-end",
-                                        span { class: "text-[10px] font-bold tracking-widest opacity-30", "NEURAL LOAD" }
-                                        span { class: "text-xs font-mono opacity-50", "{m.cpu.usage_percent:.0}%" }
-                                    }
-                                    div { class: "w-full h-0.5 bg-base-200 rounded-full overflow-hidden",
-                                        div { class: "h-full bg-base-content/20 transition-all duration-500", style: "width: {m.cpu.usage_percent}%" }
-                                    }
-                                }
-                                div { class: "space-y-2",
-                                    div { class: "flex justify-between items-end",
-                                        span { class: "text-[10px] font-bold tracking-widest opacity-30", "CONTEXT MEMORY" }
-                                        span { class: "text-xs font-mono opacity-50", "{m.memory.usage_percent:.0}%" }
-                                    }
-                                    div { class: "w-full h-0.5 bg-base-200 rounded-full overflow-hidden",
-                                        div { class: "h-full bg-base-content/20 transition-all duration-500", style: "width: {m.memory.usage_percent}%" }
-                                    }
-                                }
-                            },
-                            _ => rsx! {
-                                div { class: "skeleton h-4 w-full" }
-                                div { class: "skeleton h-4 w-full" }
-                            }
+                    div {
+                        button { class: "btn btn-neutral text-white btn-sm rounded-full px-6 font-medium shadow-sm hover:shadow-md transition-all normal-case border-none", 
+                            "+ 添加云账号" 
                         }
                     }
                 }
-
-                // Right Column: Activity Stream (Timeline)
-                div { class: "flex flex-col pl-8", // Removed border-l dashed
-                    h3 { class: "text-[10px] font-bold opacity-30 uppercase tracking-[0.2em] mb-8", "最近活动" } // Translated
-
-                    div { class: "flex-1 flex flex-col gap-6",
-                        match logs_data {
-                            Some(Some(list)) if !list.is_empty() => rsx! {
-                                for log in list {
-                                    div { class: "relative pl-4 border-l-2 border-base-200 hover:border-primary/50 transition-colors py-1 group",
-                                        div { class: "text-sm font-medium text-base-content/80 truncate", "{log.path}" }
-                                        div { class: "flex justify-between items-center mt-1",
-                                            span { class: "text-[10px] font-mono opacity-40", "{log.latency_ms}ms" }
-                                            span {
-                                                class: if log.status_code >= 400 { "text-[10px] font-bold text-error opacity-60" } else { "text-[10px] font-bold text-success opacity-60" },
-                                                "{log.status_code}"
-                                            }
-                                        }
-                                    }
+    
+                // 2. Main Content Grid
+                div { class: "grid grid-cols-1 lg:grid-cols-3 gap-12 h-full",
+                    
+                    // Left Column: Financials & Infrastructure (Spans 2 columns)
+                    div { class: "lg:col-span-2 flex flex-col gap-10",
+                        
+                        // Financial Hero Section - The "Money"
+                        div { class: "grid grid-cols-2 gap-12 pb-8 border-b border-base-200/50",
+                            div {
+                                div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-40 mb-2", "今日流水 (USD)" }
+                                div { class: "text-5xl font-bold tabular-nums tracking-tighter text-base-content/90", "$128,432.00" }
+                                div { class: "text-xs font-medium text-success mt-2 flex items-center gap-1", 
+                                    span { "▲ 12.4%" }
+                                    span { class: "opacity-50", "vs yesterday" }
                                 }
-                            },
-                            _ => rsx! {
-                                // Empty State - Friendly & Visual
-                                div { class: "h-full flex flex-col items-center justify-center opacity-40 gap-4 mt-[-40px]",
-                                    div { class: "text-4xl grayscale", "🍃" }
-                                    div { class: "text-xs font-medium text-center leading-relaxed",
-                                        "这里静悄悄的..."
-                                        br {}
-                                        "或许该去部署一个模型？"
+                            }
+                            div {
+                                div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-40 mb-2", "预计营收 (USD)" }
+                                div { class: "text-5xl font-bold tracking-tighter text-success/90", "$160,540.00" }
+                                div { class: "text-xs font-medium text-base-content/40 mt-2", "净利率: 20.0%" }
+                            }
+                        }
+    
+                        // Cloud Provider Health - The "Assets"
+                        div { class: "flex flex-col gap-4",
+                            div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-40 mb-2", "供应商健康度" }
+                            
+                            div { class: "grid grid-cols-3 gap-4",
+                                // AWS Card
+                                div { class: "p-4 bg-base-200/30 rounded-xl border border-base-200 hover:border-orange-500/30 transition-colors group cursor-pointer",
+                                    div { class: "flex justify-between items-start mb-4",
+                                        span { class: "font-bold text-lg", "AWS" }
+                                        div { class: "w-2 h-2 rounded-full bg-success" }
                                     }
+                                    div { class: "text-2xl font-bold tabular-nums", "1,204" }
+                                    div { class: "text-[10px] opacity-40 uppercase tracking-wider mt-1", "Active Accounts" }
+                                }
+                                
+                                // Google Cloud Card
+                                div { class: "p-4 bg-base-200/30 rounded-xl border border-base-200 hover:border-blue-500/30 transition-colors group cursor-pointer",
+                                    div { class: "flex justify-between items-start mb-4",
+                                        span { class: "font-bold text-lg", "Google" }
+                                        div { class: "w-2 h-2 rounded-full bg-success" }
+                                    }
+                                    div { class: "text-2xl font-bold tabular-nums", "892" }
+                                    div { class: "text-[10px] opacity-40 uppercase tracking-wider mt-1", "Active Accounts" }
+                                }
+    
+                                // Azure Card
+                                div { class: "p-4 bg-base-200/30 rounded-xl border border-base-200 hover:border-sky-500/30 transition-colors group cursor-pointer",
+                                    div { class: "flex justify-between items-start mb-4",
+                                        span { class: "font-bold text-lg", "Azure" }
+                                        div { class: "w-2 h-2 rounded-full bg-warning animate-pulse" } // Warning state demo
+                                    }
+                                    div { class: "text-2xl font-bold tabular-nums", "450" }
+                                    div { class: "text-[10px] opacity-40 uppercase tracking-wider mt-1", "3 Flags Detected" }
                                 }
                             }
                         }
                     }
-
-                    div { class: "mt-auto pt-4",
-                        button { class: "btn btn-ghost btn-xs w-full text-[10px] opacity-30 hover:opacity-100 uppercase tracking-widest",
-                            onclick: move |_| logs.restart(),
-                            "Refresh"
+    
+                    // Right Column: Risk Radar (Activity)
+                    div { class: "flex flex-col pl-8", 
+                        h3 { class: "text-[10px] font-bold opacity-30 uppercase tracking-[0.2em] mb-8 text-error", "风控预警 (RISK ALERTS)" } 
+                        
+                        div { class: "flex-1 flex flex-col gap-4",
+                            // Mock Alerts for Enterprise Demo
+                            div { class: "relative pl-4 border-l-2 border-warning py-1",
+                                div { class: "text-xs font-bold text-base-content/80", "Azure Account #8821" }
+                                div { class: "text-[10px] opacity-60 mt-0.5", "Quota Usage > 90%" }
+                            }
+                            div { class: "relative pl-4 border-l-2 border-error py-1",
+                                div { class: "text-xs font-bold text-base-content/80", "GCP-US-EAST-1" }
+                                div { class: "text-[10px] opacity-60 mt-0.5", "API Response Timeout (500ms)" }
+                            }
+                             div { class: "relative pl-4 border-l-2 border-base-200 py-1 opacity-50",
+                                div { class: "text-xs font-bold text-base-content/80", "AWS IAM Policy Update" }
+                                div { class: "text-[10px] opacity-60 mt-0.5", "Routine Security Check" }
+                            }
+                        }
+                        
+                        div { class: "mt-auto pt-4 p-4 bg-base-200/30 rounded-xl",
+                            div { class: "text-[10px] font-bold opacity-40 uppercase mb-2", "System Status" }
+                            div { class: "flex items-center gap-2",
+                                div { class: "badge badge-success badge-xs" }
+                                span { class: "text-xs font-medium", "All Gateways Operational" }
+                            }
                         }
                     }
                 }
             }
-        }
-    }
-}
+        }}
