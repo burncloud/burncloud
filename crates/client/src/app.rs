@@ -6,8 +6,8 @@ use crate::pages::{
     login::LoginPage, models::ModelManagement, monitor::ServiceMonitor, register::RegisterPage,
     settings::SystemSettings, user::UserPage,
 };
-pub use burncloud_client_tray::{should_show_window, start_tray};
 use burncloud_client_shared::DesktopMode;
+pub use burncloud_client_tray::{should_show_window, start_tray};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {

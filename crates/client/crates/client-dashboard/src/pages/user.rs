@@ -1,5 +1,5 @@
 use burncloud_client_shared::components::{
-    BCButton, BCInput, BCModal, BCBadge, BadgeVariant, ButtonVariant,
+    BCBadge, BCButton, BCInput, BCModal, BadgeVariant, ButtonVariant,
 };
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::user_service::UserService;
@@ -88,25 +88,25 @@ pub fn UserPage() -> Element {
                     // Tabs
                     div { class: "flex gap-4",
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}", 
+                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
                                 if *active_tab.read() == "all" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
                             onclick: move |_| active_tab.set("all".to_string()),
                             "全部客户"
                         }
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}", 
+                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
                                 if *active_tab.read() == "vip" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
                             onclick: move |_| active_tab.set("vip".to_string()),
                             "VIP客户"
                         }
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}", 
+                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
                                 if *active_tab.read() == "new" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
                             onclick: move |_| active_tab.set("new".to_string()),
                             "新注册"
                         }
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}", 
+                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
                                 if *active_tab.read() == "churn" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
                             onclick: move |_| active_tab.set("churn".to_string()),
                             "流失预警"
@@ -206,7 +206,7 @@ pub fn UserPage() -> Element {
                         placeholder: "0.00".to_string(),
                         oninput: move |e: FormEvent| topup_amount.set(e.value().parse().unwrap_or(0.0))
                     }
-                    
+
                     div { class: "flex gap-2",
                         button { class: "btn btn-xs btn-outline flex-1", onclick: move |_| topup_amount.set(100.0), "¥100" }
                         button { class: "btn btn-xs btn-outline flex-1", onclick: move |_| topup_amount.set(500.0), "¥500" }

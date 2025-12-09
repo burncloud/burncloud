@@ -31,7 +31,7 @@ pub fn DeployConfig() -> Element {
 
             // Main Content
             div { class: "w-full max-w-4xl flex flex-col gap-10",
-                
+
                 // Section 1: KPI Overview
                 div { class: "grid grid-cols-3 gap-6",
                     // Card 1: Requests
@@ -66,7 +66,7 @@ pub fn DeployConfig() -> Element {
                 // Section 2: Quota Policies
                 div { class: "flex flex-col gap-4",
                      h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2 mb-2", "生效中的限制策略" }
-                     
+
                      div { class: "flex flex-col gap-3",
                         // Policy Item 1
                         div { class: "flex items-center justify-between p-4 bg-base-50/50 rounded-lg border border-base-200/50 hover:bg-base-50 transition-colors",
