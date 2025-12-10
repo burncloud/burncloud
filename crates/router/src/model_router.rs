@@ -7,9 +7,6 @@ use rand::Rng; // Use re-exported sqlx
 pub struct ModelRouter {
     db: std::sync::Arc<Database>,
 }
-// ... (rest of code)
-// No changes needed for sqlx::query usage if `use burncloud_database::sqlx;` is present,
-// but since I used `sqlx::query` in the body, I need `use burncloud_database::sqlx` to bring the module into scope as `sqlx`.
 
 impl ModelRouter {
     pub fn new(db: std::sync::Arc<Database>) -> Self {
@@ -17,40 +14,37 @@ impl ModelRouter {
     }
 
     /// Routes a request to a suitable channel based on user group and requested model.
-    ///
-    /// Logic:
-    /// 1. Find all enabled abilities matching (group, model).
-    /// 2. Group them by priority (High priority first).
-    /// 3. Select the highest priority tier.
-    /// 4. Within that tier, use weighted random selection to pick a channel.
-    /// 5. Return the full Channel details.
     pub async fn route(&self, group: &str, model: &str) -> Result<Option<Channel>> {
         let conn = self.db.get_connection()?;
         let pool = conn.pool();
+        let is_postgres = self.db.kind() == "postgres";
 
-        // 1. Get max priority for this group/model pair
-        // Note: "group" is a keyword, quoted as "group" (Postgres) or `group` (SQLite)
-        // We need to handle dialect difference or use simple SQL compatible with both if possible.
-        // Since our Schema uses quotes for Postgres and backticks for SQLite, accessing it might be tricky via raw SQL
-        // if we don't know the dialect here.
-        // However, `Database` knows the kind.
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
-        let group_col = if self.db.kind() == "postgres" {
-            "\"group\""
+        // 1. Get max priority
+        let query = if is_postgres {
+            format!(
+                r#"
+                SELECT priority 
+                FROM abilities 
+                WHERE {} = $1 AND model = $2 AND enabled = true
+                ORDER BY priority DESC 
+                LIMIT 1
+                "#,
+                group_col
+            )
         } else {
-            "`group`"
+            format!(
+                r#"
+                SELECT priority 
+                FROM abilities 
+                WHERE {} = ? AND model = ? AND enabled = 1
+                ORDER BY priority DESC 
+                LIMIT 1
+                "#,
+                group_col
+            )
         };
-
-        let query = format!(
-            r#"
-            SELECT priority 
-            FROM abilities 
-            WHERE {} = ? AND model = ? AND enabled = 1
-            ORDER BY priority DESC 
-            LIMIT 1
-            "#,
-            group_col
-        );
 
         println!(
             "ModelRouter: Querying priority with Group='{}', Model='{}'",
@@ -69,16 +63,27 @@ impl ModelRouter {
         };
 
         // 2. Get all candidates with this priority
-        let query_candidates = format!(
-            r#"
-            SELECT channel_id, weight 
-            FROM abilities 
-            WHERE {} = ? AND model = ? AND enabled = 1 AND priority = ?
-            "#,
-            group_col
-        );
+        let query_candidates = if is_postgres {
+            format!(
+                r#"
+                SELECT channel_id, weight 
+                FROM abilities 
+                WHERE {} = $1 AND model = $2 AND enabled = true AND priority = $3
+                "#,
+                group_col
+            )
+        } else {
+            format!(
+                r#"
+                SELECT channel_id, weight 
+                FROM abilities 
+                WHERE {} = ? AND model = ? AND enabled = 1 AND priority = ?
+                "#,
+                group_col
+            )
+        };
 
-        let candidates: Vec<(i32, i32)> = sqlx::query_as::<_, (i32, i64)>(&query_candidates) // weight is stored as int in DB, read as i64
+        let candidates: Vec<(i32, i32)> = sqlx::query_as::<_, (i32, i64)>(&query_candidates)
             .bind(group)
             .bind(model)
             .bind(priority)
@@ -118,28 +123,24 @@ impl ModelRouter {
         };
 
         // 4. Fetch Channel Details
-        // We use the standard columns defined in our Schema
-        let channel_query = match self.db.kind().as_str() {
-            "postgres" => {
-                r#"
-                SELECT 
-                    id, type as "type_", key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, "group", used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
-                FROM channels WHERE id = ?
+        let channel_query = if is_postgres {
+            r#"
+            SELECT 
+                id, type as "type_", key, status, name, weight, created_time, test_time, 
+                response_time, base_url, models, "group", used_quota, model_mapping, 
+                priority, auto_ban, other_info, tag, setting, param_override, 
+                header_override, remark 
+            FROM channels WHERE id = $1
             "#
-            }
-            _ => {
-                r#"
-                SELECT 
-                    id, type as type_, key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, `group`, used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
-                FROM channels WHERE id = ?
+        } else {
+            r#"
+            SELECT 
+                id, type as type_, key, status, name, weight, created_time, test_time, 
+                response_time, base_url, models, `group`, used_quota, model_mapping, 
+                priority, auto_ban, other_info, tag, setting, param_override, 
+                header_override, remark 
+            FROM channels WHERE id = ?
             "#
-            }
         };
 
         let channel: Option<Channel> = sqlx::query_as(channel_query)

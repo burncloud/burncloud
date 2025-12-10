@@ -154,25 +154,30 @@ impl ChannelModel {
     pub async fn update(db: &Database, channel: &Channel) -> Result<()> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
-        let group_col = if db.kind() == "postgres" {
-            "\"group\""
-        } else {
-            "`group`"
-        };
-        let type_col = if db.kind() == "postgres" {
-            "\"type\""
-        } else {
-            "type"
-        };
+        let is_postgres = db.kind() == "postgres";
 
-        let sql = format!(
-            r#"
-            UPDATE channels 
-            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?
-            WHERE id = ?
-            "#,
-            type_col, group_col
-        );
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
+        let type_col = if is_postgres { "\"type\"" } else { "type" };
+
+        let sql = if is_postgres {
+            format!(
+                r#"
+                UPDATE channels 
+                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9
+                WHERE id = $10
+                "#,
+                type_col, group_col
+            )
+        } else {
+            format!(
+                r#"
+                UPDATE channels 
+                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?
+                WHERE id = ?
+                "#,
+                type_col, group_col
+            )
+        };
 
         sqlx::query(&sql)
             .bind(channel.type_)
@@ -195,15 +200,18 @@ impl ChannelModel {
     pub async fn delete(db: &Database, id: i32) -> Result<()> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
+        let is_postgres = db.kind() == "postgres";
 
         // Delete Abilities first
-        sqlx::query("DELETE FROM abilities WHERE channel_id = ?")
+        let sql_abilities = if is_postgres { "DELETE FROM abilities WHERE channel_id = $1" } else { "DELETE FROM abilities WHERE channel_id = ?" };
+        sqlx::query(sql_abilities)
             .bind(id)
             .execute(pool)
             .await?;
 
         // Delete Channel
-        sqlx::query("DELETE FROM channels WHERE id = ?")
+        let sql_channels = if is_postgres { "DELETE FROM channels WHERE id = $1" } else { "DELETE FROM channels WHERE id = ?" };
+        sqlx::query(sql_channels)
             .bind(id)
             .execute(pool)
             .await?;
@@ -281,9 +289,11 @@ impl ChannelModel {
     pub async fn sync_abilities(db: &Database, channel: &Channel) -> Result<()> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
+        let is_postgres = db.kind() == "postgres";
 
         // 1. Delete existing abilities for this channel
-        sqlx::query("DELETE FROM abilities WHERE channel_id = ?")
+        let sql_delete = if is_postgres { "DELETE FROM abilities WHERE channel_id = $1" } else { "DELETE FROM abilities WHERE channel_id = ?" };
+        sqlx::query(sql_delete)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -306,19 +316,25 @@ impl ChannelModel {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
-        let group_col = if db.kind() == "postgres" {
-            "\"group\""
-        } else {
-            "`group`"
-        };
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
-        let sql = format!(
-            r#"
-            INSERT INTO abilities ({}, model, channel_id, enabled, priority, weight)
-            VALUES (?, ?, ?, ?, ?, ?)
-            "#,
-            group_col
-        );
+        let sql_insert = if is_postgres {
+            format!(
+                r#"
+                INSERT INTO abilities ({}, model, channel_id, enabled, priority, weight)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                "#,
+                group_col
+            )
+        } else {
+            format!(
+                r#"
+                INSERT INTO abilities ({}, model, channel_id, enabled, priority, weight)
+                VALUES (?, ?, ?, ?, ?, ?)
+                "#,
+                group_col
+            )
+        };
 
         for model in models {
             for group in &groups {
@@ -326,11 +342,11 @@ impl ChannelModel {
                     "ChannelModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
                     model, group, channel.id
                 );
-                sqlx::query(&sql)
+                sqlx::query(&sql_insert)
                     .bind(group)
                     .bind(model)
                     .bind(channel.id)
-                    .bind(1) // Bind as integer 1 for SQLite compatibility (instead of true)
+                    .bind(true) // sqlx handles boolean mapping
                     .bind(channel.priority)
                     .bind(channel.weight)
                     .execute(pool)

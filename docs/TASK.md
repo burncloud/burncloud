@@ -24,4 +24,28 @@
     - [x] `router`: 更新 `proxy_logic` 以支持基于 `Upstream` 配置的自动协议转换。
 
 ---
+
+## 📅 Phase 15: 核心重构与系统点火 (Core Refactor & System Ignition)
+> 目标: 抛弃脆弱的强类型绑定，建立“泛型透传”机制；实现基于 Ability 的路由引擎，打通 Client 到 Upstream 的全链路。
+
+- [x] **Task 15.1: Router 重构 - 泛型透传 (Generic Passthrough)**
+    - [x] `common`: 定义 `GenericRequest` 结构体，只保留 `model`, `messages`, `stream` 为强类型，其余字段使用 `HashMap<String, serde_json::Value>` 透传。
+    - [x] `router`: 修改核心转发逻辑，不再试图解析所有参数，确保上游新参数（如 Google `thinking`）能无缝通过。
+    - [ ] `router`: 引入 `rhai` 或 `mlua` (可选) 为未来处理复杂参数映射做准备。
+
+- [x] **Task 15.2: Ability 路由引擎 (The Ability Engine)**
+    - [x] `database`: 设计 `abilities` 表结构 (Group + Model + ChannelId)，用于扁平化快速查询。
+    - [x] `router`: 实现基于 Ability 的路由查找算法 (Priority -> Weight -> Random)。
+    - [x] `router`: 实现 `Group` 逻辑，确保用户只能访问其权限组内的模型。
+
+- [ ] **Task 15.3: 通用适配器与协议降级 (Generic Adaptor)**
+    - [ ] `router`: 创建 `UniversalAdaptor`，支持通过配置定义 Header/Body 的覆写 (Override)。
+    - [ ] `router`: 确保在无法识别特定协议参数时，能够安全降级并透传原始 JSON。
+
+- [ ] **Task 15.4: 全链路点火 (End-to-End Ignition)**
+    - [ ] `server`: 将 API Gateway (Axum/Gin) 与新的 Router 逻辑完全打通。
+    - [ ] `database`: 初始化测试用的 `channels` (如 OpenAI, Gemini) 和 `models` 数据。
+    - [ ] `client`: 验证聊天界面 (Chat UI) 能成功发起请求并接收流式响应。
+
+---
 *Updated by AI Agent - LiveView Strategy*

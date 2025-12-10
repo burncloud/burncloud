@@ -19,7 +19,7 @@ async fn test_user_management_lifecycle() -> anyhow::Result<()> {
 
     let res = client.post("/console/api/user/register", &body).await?;
     assert!(res["success"].as_bool().unwrap_or(false));
-    let user_id = res["data"]["id"].as_str().unwrap();
+    let _user_id = res["data"]["id"].as_str().unwrap();
 
     // 3. Login
     let login_body = json!({

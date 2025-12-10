@@ -54,6 +54,8 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             auth_type: AuthType::from(u.auth_type.as_str()),
             priority: u.priority,
             protocol: u.protocol,
+            param_override: None,
+            header_override: None,
         })
         .collect();
 
@@ -387,6 +389,8 @@ async fn proxy_logic(
                         auth_type,
                         priority: channel.priority as i32,
                         protocol, // Ideally we should store ChannelType in Upstream too
+                        param_override: channel.param_override.clone(),
+                        header_override: channel.header_override.clone(),
                     });
                 }
                 Ok(None) => {
@@ -533,10 +537,37 @@ async fn proxy_logic(
             last_error = "Invalid JSON body".to_string();
             continue;
         }
-        let request_body_json = request_body_json.unwrap();
+        let mut request_body_json = request_body_json.unwrap();
+
+        // Apply param_override
+        if let Some(ref override_str) = upstream.param_override {
+            if let Ok(serde_json::Value::Object(override_map)) =
+                serde_json::from_str::<serde_json::Value>(override_str)
+            {
+                if let serde_json::Value::Object(ref mut body_map) = request_body_json {
+                    for (k, v) in override_map {
+                        body_map.insert(k, v);
+                    }
+                    println!("Applied param_override for {}", upstream.name);
+                }
+            }
+        }
 
         // 4. Build Request via Adaptor
-        let req_builder = state.client.request(method.clone(), &target_url);
+        let mut req_builder = state.client.request(method.clone(), &target_url);
+
+        // Apply header_override
+        if let Some(ref override_str) = upstream.header_override {
+            if let Ok(header_map) =
+                serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
+            {
+                for (k, v) in header_map {
+                    req_builder = req_builder.header(k, v);
+                }
+                println!("Applied header_override for {}", upstream.name);
+            }
+        }
+
         let req_builder = adaptor.build_request(req_builder, &upstream.api_key, &request_body_json);
 
         // 5. Execute
@@ -552,6 +583,13 @@ async fn proxy_logic(
 
                 if resp.status().is_success() {
                     let status = resp.status();
+
+                    // Optimization: If protocol is OpenAI, we can stream directly without parsing/buffering
+                    // This satisfies the "Passthrough Principle" and enables streaming.
+                    if upstream.protocol == "openai" {
+                        return (handle_response(resp), last_upstream_id, status);
+                    }
+
                     // 6. Handle Response Conversion
                     // Read body to memory to convert
                     let resp_json: serde_json::Value =

@@ -51,6 +51,10 @@ pub struct Upstream {
     pub priority: i32,
     #[serde(default)]
     pub protocol: String,
+    #[serde(default)]
+    pub param_override: Option<String>,
+    #[serde(default)]
+    pub header_override: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

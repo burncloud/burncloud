@@ -101,6 +101,7 @@ mod tests {
             temperature: Some(0.5),
             max_tokens: Some(200),
             stream: false,
+            extra: std::collections::HashMap::new(),
         };
 
         let claude_val = ClaudeAdaptor::convert_request(req);

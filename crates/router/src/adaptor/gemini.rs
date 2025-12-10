@@ -118,6 +118,7 @@ mod tests {
             temperature: Some(0.5),
             max_tokens: Some(100),
             stream: false,
+            extra: std::collections::HashMap::new(),
         };
 
         let gemini_val = GeminiAdaptor::convert_request(req);
