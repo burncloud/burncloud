@@ -1,3 +1,4 @@
+pub mod ability_routing;
 pub mod auth;
 pub mod channel;
 pub mod claude_relay;
@@ -6,4 +7,3 @@ pub mod monitor;
 pub mod relay;
 pub mod status;
 pub mod user;
-pub mod ability_routing;
