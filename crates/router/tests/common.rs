@@ -19,10 +19,14 @@ pub async fn start_test_server(port: u16) {
     let db = create_default_database().await.expect("Failed to open DB");
     let db_arc = Arc::new(db);
 
-    let app = burncloud_router::create_router_app(db_arc).await.expect("Failed to create app");
+    let app = burncloud_router::create_router_app(db_arc)
+        .await
+        .expect("Failed to create app");
 
     tokio::spawn(async move {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await.unwrap();
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
+            .await
+            .unwrap();
         axum::serve(listener, app).await.unwrap();
     });
     // Give server a moment to start

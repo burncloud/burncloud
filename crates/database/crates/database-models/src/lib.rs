@@ -203,18 +203,20 @@ impl ChannelModel {
         let is_postgres = db.kind() == "postgres";
 
         // Delete Abilities first
-        let sql_abilities = if is_postgres { "DELETE FROM abilities WHERE channel_id = $1" } else { "DELETE FROM abilities WHERE channel_id = ?" };
-        sqlx::query(sql_abilities)
-            .bind(id)
-            .execute(pool)
-            .await?;
+        let sql_abilities = if is_postgres {
+            "DELETE FROM abilities WHERE channel_id = $1"
+        } else {
+            "DELETE FROM abilities WHERE channel_id = ?"
+        };
+        sqlx::query(sql_abilities).bind(id).execute(pool).await?;
 
         // Delete Channel
-        let sql_channels = if is_postgres { "DELETE FROM channels WHERE id = $1" } else { "DELETE FROM channels WHERE id = ?" };
-        sqlx::query(sql_channels)
-            .bind(id)
-            .execute(pool)
-            .await?;
+        let sql_channels = if is_postgres {
+            "DELETE FROM channels WHERE id = $1"
+        } else {
+            "DELETE FROM channels WHERE id = ?"
+        };
+        sqlx::query(sql_channels).bind(id).execute(pool).await?;
 
         Ok(())
     }
@@ -292,7 +294,11 @@ impl ChannelModel {
         let is_postgres = db.kind() == "postgres";
 
         // 1. Delete existing abilities for this channel
-        let sql_delete = if is_postgres { "DELETE FROM abilities WHERE channel_id = $1" } else { "DELETE FROM abilities WHERE channel_id = ?" };
+        let sql_delete = if is_postgres {
+            "DELETE FROM abilities WHERE channel_id = $1"
+        } else {
+            "DELETE FROM abilities WHERE channel_id = ?"
+        };
         sqlx::query(sql_delete)
             .bind(channel.id)
             .execute(pool)
