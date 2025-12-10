@@ -84,21 +84,38 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
 
     let (_db, pool) = setup_db().await?;
 
+    // Start Mock Upstream
+    let mock_port = 3014;
+    tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port)).await.unwrap();
+        axum::serve(listener, axum::Router::new().route("/anything", axum::routing::post(|body: String| async move {
+             // Echo back in a format that looks like what we might expect, or just return success
+             // For Claude adaptor verification, we want to see the request body was transformed.
+             // But we can't easily assert here unless we use a shared state or print.
+             println!("MOCK RECEIVED: {}", body);
+             // Return a dummy Claude-like response so conversion doesn't fail
+             serde_json::json!({
+                 "content": [ { "text": "Mock Claude Response" } ]
+             }).to_string()
+        }))).await.unwrap();
+    });
+
     let id = "claude-adaptor-test";
     let name = "claude-3-opus";
-    let base_url = "https://httpbin.org";
+    let base_url = format!("http://localhost:{}", mock_port);
     let match_path = "/anything";
     let auth_type = "Claude";
     let api_key = "sk-ant-mock-key";
 
     sqlx::query(
         r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET 
             api_key = excluded.api_key,
             base_url = excluded.base_url,
-            auth_type = excluded.auth_type
+            auth_type = excluded.auth_type,
+            protocol = excluded.protocol
         "#,
     )
     .bind(id)
@@ -107,6 +124,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     .bind(api_key)
     .bind(match_path)
     .bind(auth_type)
+    .bind("claude") // Force protocol to claude
     .execute(&pool)
     .await?;
 
