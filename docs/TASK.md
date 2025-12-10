@@ -38,13 +38,13 @@
     - [x] `router`: 实现基于 Ability 的路由查找算法 (Priority -> Weight -> Random)。
     - [x] `router`: 实现 `Group` 逻辑，确保用户只能访问其权限组内的模型。
 
-- [ ] **Task 15.3: 通用适配器与协议降级 (Generic Adaptor)**
-    - [ ] `router`: 创建 `UniversalAdaptor`，支持通过配置定义 Header/Body 的覆写 (Override)。
-    - [ ] `router`: 确保在无法识别特定协议参数时，能够安全降级并透传原始 JSON。
+- [x] **Task 15.3: 通用适配器与协议降级 (Generic Adaptor)**
+    - [x] `router`: 创建 `UniversalAdaptor` (Integrated into `proxy_logic`), 支持通过配置定义 Header/Body 的覆写 (Override)。
+    - [x] `router`: 确保在无法识别特定协议参数时，能够安全降级并透传原始 JSON。
 
 - [ ] **Task 15.4: 全链路点火 (End-to-End Ignition)**
-    - [ ] `server`: 将 API Gateway (Axum/Gin) 与新的 Router 逻辑完全打通。
-    - [ ] `database`: 初始化测试用的 `channels` (如 OpenAI, Gemini) 和 `models` 数据。
+    - [x] `server`: 将 API Gateway (Axum/Gin) 与新的 Router 逻辑完全打通。
+    - [x] `database`: 初始化测试用的 `channels` (如 OpenAI, Gemini) 和 `models` 数据。
     - [ ] `client`: 验证聊天界面 (Chat UI) 能成功发起请求并接收流式响应。
 
 ---

@@ -57,6 +57,7 @@ pub async fn spawn_app() -> String {
             .arg("start")
             .env("PORT", port.to_string())
             .env("RUST_LOG", "burncloud=info") // Enable info logs for debugging
+            .env("NO_PROXY", "*") // Prevent proxy issues
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()

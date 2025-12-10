@@ -21,13 +21,10 @@ pub fn ChannelPage() -> Element {
     let mut form_base_url = use_signal(|| String::new());
     let mut form_models = use_signal(|| String::new());
     let mut form_group = use_signal(|| "default".to_string());
+    let mut form_param_override = use_signal(|| String::new());
+    let mut form_header_override = use_signal(|| String::new());
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();
-
-    // Mock Financial Data
-    let total_spend = "¥ 12,450.00";
-    let balance = "¥ 5,230.00";
-    let projected = "¥ 18,000.00";
 
     let open_create_modal = move |_| {
         form_id.set(0);
@@ -37,12 +34,17 @@ pub fn ChannelPage() -> Element {
         form_base_url.set("https://api.openai.com".to_string());
         form_models.set("gpt-3.5-turbo,gpt-4".to_string());
         form_group.set("default".to_string());
+        form_param_override.set(String::new());
+        form_header_override.set(String::new());
         is_modal_open.set(true);
     };
 
     let handle_save = move |_| {
         spawn(async move {
             is_loading.set(true);
+            
+            let p_override = form_param_override();
+            let h_override = form_header_override();
 
             let ch = Channel {
                 id: form_id(),
@@ -55,6 +57,8 @@ pub fn ChannelPage() -> Element {
                 status: 1,
                 priority: 0,
                 weight: 0,
+                param_override: if p_override.is_empty() { None } else { Some(p_override) },
+                header_override: if h_override.is_empty() { None } else { Some(h_override) },
             };
 
             let result = if ch.id == 0 {
@@ -93,54 +97,28 @@ pub fn ChannelPage() -> Element {
             // Header
             div { class: "flex justify-between items-end",
                 div {
-                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "财务总览" }
-                    p { class: "text-sm text-base-content/60 font-medium", "成本分析与渠道支出管理" }
+                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "模型网络" }
+                    p { class: "text-sm text-base-content/60 font-medium", "配置与管理您的 AI 算力来源" }
                 }
                 BCButton {
                     class: "btn-neutral btn-sm px-6 shadow-sm text-white",
                     onclick: open_create_modal,
-                    "添加渠道"
+                    "添加连接"
                 }
             }
 
-            // Financial Cards
-            div { class: "grid grid-cols-3 gap-6",
-                // Spend
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "本月支出" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{total_spend}" }
-                        span { class: "text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded", "+15%" }
-                    }
-                }
-                // Balance
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "账户余额" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{balance}" }
-                    }
-                }
-                // Projected
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "预估下月" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content/60 tracking-tight", "{projected}" }
-                    }
-                }
-            }
-
-            // Cost Center Table (Channels)
+            // Active Connections List
             div { class: "flex flex-col gap-4",
-                h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "渠道成本明细" }
+                h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "活跃连接" }
 
                 div { class: "overflow-x-auto border border-base-200 rounded-lg",
                     table { class: "table w-full text-sm",
                         thead { class: "bg-base-50 text-base-content/60",
                             tr {
-                                th { class: "font-medium", "供应商" }
-                                th { class: "font-medium", "类型" }
-                                th { class: "font-medium", "本月消耗 (Token)" }
-                                th { class: "font-medium", "费用估算" }
+                                th { class: "font-medium", "名称" }
+                                th { class: "font-medium", "协议" }
+                                th { class: "font-medium", "模型" }
+                                th { class: "font-medium", "优先级" }
                                 th { class: "font-medium", "状态" }
                                 th { class: "text-right font-medium", "操作" }
                             }
@@ -162,9 +140,8 @@ pub fn ChannelPage() -> Element {
                                                     _ => "Custom"
                                                 }
                                             }
-                                            // Mock Data columns
-                                            td { class: "font-mono text-base-content/80", "1.2M" }
-                                            td { class: "font-mono font-medium", "¥ 45.20" }
+                                            td { class: "font-mono text-xs text-base-content/70 max-w-xs truncate", title: "{channel.models}", "{channel.models}" }
+                                            td { class: "font-mono font-medium", "{channel.priority}" }
                                             td {
                                                 if channel.status == 1 {
                                                     span { class: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700",
@@ -188,8 +165,8 @@ pub fn ChannelPage() -> Element {
                                         }
                                     }
                                 },
-                                Some(_) => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "暂无渠道数据" } } },
-                                None => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "加载财务数据中..." } } }
+                                Some(_) => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "暂无连接数据" } } },
+                                None => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "加载中..." } } }
                             }
                         }
                     }
@@ -239,6 +216,26 @@ pub fn ChannelPage() -> Element {
                         value: "{form_models}",
                         placeholder: "gpt-4,gpt-3.5-turbo".to_string(),
                         oninput: move |e: FormEvent| form_models.set(e.value())
+                    }
+
+                    div { class: "flex flex-col gap-1.5",
+                        label { class: "text-sm font-medium text-base-content/80", "参数覆写 (JSON)" }
+                        textarea { 
+                            class: "textarea textarea-bordered h-24 font-mono text-xs",
+                            value: "{form_param_override}",
+                            placeholder: "{{ \"temperature\": 0.5 }}",
+                            oninput: move |e: FormEvent| form_param_override.set(e.value())
+                        }
+                    }
+
+                    div { class: "flex flex-col gap-1.5",
+                        label { class: "text-sm font-medium text-base-content/80", "Header 覆写 (JSON)" }
+                        textarea { 
+                            class: "textarea textarea-bordered h-24 font-mono text-xs",
+                            value: "{form_header_override}",
+                            placeholder: "{{ \"X-Custom-Header\": \"value\" }}",
+                            oninput: move |e: FormEvent| form_header_override.set(e.value())
+                        }
                     }
                 }
 
