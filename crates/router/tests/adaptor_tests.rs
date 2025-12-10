@@ -87,17 +87,28 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     // Start Mock Upstream
     let mock_port = 3014;
     tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port)).await.unwrap();
-        axum::serve(listener, axum::Router::new().route("/anything", axum::routing::post(|body: String| async move {
-             // Echo back in a format that looks like what we might expect, or just return success
-             // For Claude adaptor verification, we want to see the request body was transformed.
-             // But we can't easily assert here unless we use a shared state or print.
-             println!("MOCK RECEIVED: {}", body);
-             // Return a dummy Claude-like response so conversion doesn't fail
-             serde_json::json!({
-                 "content": [ { "text": "Mock Claude Response" } ]
-             }).to_string()
-        }))).await.unwrap();
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
+            .await
+            .unwrap();
+        axum::serve(
+            listener,
+            axum::Router::new().route(
+                "/anything",
+                axum::routing::post(|body: String| async move {
+                    // Echo back in a format that looks like what we might expect, or just return success
+                    // For Claude adaptor verification, we want to see the request body was transformed.
+                    // But we can't easily assert here unless we use a shared state or print.
+                    println!("MOCK RECEIVED: {}", body);
+                    // Return a dummy Claude-like response so conversion doesn't fail
+                    serde_json::json!({
+                        "content": [ { "text": "Mock Claude Response" } ]
+                    })
+                    .to_string()
+                }),
+            ),
+        )
+        .await
+        .unwrap();
     });
 
     let id = "claude-adaptor-test";
