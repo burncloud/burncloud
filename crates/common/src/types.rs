@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::FromRow;
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelInfo {
@@ -50,6 +52,10 @@ pub struct OpenAIChatRequest {
     pub max_tokens: Option<u32>,
     #[serde(default)]
     pub stream: bool,
+    
+    // Capture all other fields (Generic Passthrough)
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

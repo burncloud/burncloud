@@ -6,7 +6,7 @@ use sqlx::Row;
 async fn main() -> anyhow::Result<()> {
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
-    let conn = db.connection()?;
+    let conn = db.get_connection()?;
 
     println!("🔍 Searching for existing Bedrock configuration...");
 

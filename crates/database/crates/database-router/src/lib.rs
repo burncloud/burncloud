@@ -339,7 +339,7 @@ impl RouterDatabase {
     pub async fn validate_token_and_get_info(
         db: &Database,
         token: &str,
-    ) -> Result<Option<(i32, String, i64, i64)>> {
+    ) -> Result<Option<(String, String, i64, i64)>> {
         let conn = db.get_connection()?;
         let group_col = if db.kind() == "postgres" {
             "\"group\""
@@ -360,7 +360,7 @@ impl RouterDatabase {
         );
 
         // Use query_as to map to a tuple
-        let result: Option<(i32, String, i64, i64)> = sqlx::query_as(&query)
+        let result: Option<(String, String, i64, i64)> = sqlx::query_as(&query)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
