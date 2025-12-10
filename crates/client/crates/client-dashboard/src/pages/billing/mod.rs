@@ -47,7 +47,7 @@ pub fn BillingPage() -> Element {
             // Transaction History Placeholder
             div { class: "flex flex-col gap-4",
                 h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "近期交易" }
-                
+
                 div { class: "overflow-x-auto border border-base-200 rounded-lg",
                     table { class: "table w-full text-sm",
                         thead { class: "bg-base-50 text-base-content/60",
