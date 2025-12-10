@@ -52,7 +52,7 @@ pub struct OpenAIChatRequest {
     pub max_tokens: Option<u32>,
     #[serde(default)]
     pub stream: bool,
-    
+
     // Capture all other fields (Generic Passthrough)
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
