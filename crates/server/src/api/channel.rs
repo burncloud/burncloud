@@ -22,6 +22,8 @@ pub struct ChannelDto {
     pub group: String,
     pub weight: i32,
     pub priority: i64,
+    pub param_override: Option<String>,
+    pub header_override: Option<String>,
 }
 
 impl ChannelDto {
@@ -46,8 +48,8 @@ impl ChannelDto {
             other_info: None,
             tag: None,
             setting: None,
-            param_override: None,
-            header_override: None,
+            param_override: self.param_override,
+            header_override: self.header_override,
             remark: None,
         }
     }

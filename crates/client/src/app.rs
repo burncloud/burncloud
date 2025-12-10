@@ -2,9 +2,9 @@ use dioxus::prelude::*;
 
 use crate::components::layout::Layout;
 use crate::pages::{
-    api::ApiManagement, channels::ChannelPage, dashboard::Dashboard, deploy::DeployConfig,
-    login::LoginPage, models::ModelManagement, monitor::ServiceMonitor, register::RegisterPage,
-    settings::SystemSettings, user::UserPage,
+    api::ApiManagement, billing::BillingPage, channels::ChannelPage, dashboard::Dashboard,
+    deploy::DeployConfig, login::LoginPage, models::ModelManagement, monitor::ServiceMonitor,
+    register::RegisterPage, settings::SystemSettings, user::UserPage,
 };
 use burncloud_client_shared::DesktopMode;
 pub use burncloud_client_tray::{should_show_window, start_tray};
@@ -33,6 +33,8 @@ pub enum Route {
     UserPage {},
     #[route("/settings")]
     SystemSettings {},
+    #[route("/billing")]
+    BillingPage {},
 }
 
 #[component]

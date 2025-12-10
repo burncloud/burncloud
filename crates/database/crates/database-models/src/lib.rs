@@ -93,8 +93,8 @@ impl ChannelModel {
         let sql = if db.kind() == "postgres" {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 RETURNING id
                 "#,
                 type_col, group_col
@@ -102,8 +102,8 @@ impl ChannelModel {
         } else {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
                 type_col, group_col
             )
@@ -128,7 +128,9 @@ impl ChannelModel {
             .bind(&channel.models)
             .bind(&channel.group)
             .bind(channel.priority)
-            .bind(channel.created_time);
+            .bind(channel.created_time)
+            .bind(&channel.param_override)
+            .bind(&channel.header_override);
 
         let id = if db.kind() == "postgres" {
             let row = query.fetch_one(&mut *tx).await?;
@@ -163,8 +165,8 @@ impl ChannelModel {
             format!(
                 r#"
                 UPDATE channels 
-                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9
-                WHERE id = $10
+                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11
+                WHERE id = $12
                 "#,
                 type_col, group_col
             )
@@ -172,7 +174,7 @@ impl ChannelModel {
             format!(
                 r#"
                 UPDATE channels 
-                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?
+                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?
                 WHERE id = ?
                 "#,
                 type_col, group_col
@@ -189,6 +191,8 @@ impl ChannelModel {
             .bind(&channel.models)
             .bind(&channel.group)
             .bind(channel.priority)
+            .bind(&channel.param_override)
+            .bind(&channel.header_override)
             .bind(channel.id)
             .execute(pool)
             .await?;

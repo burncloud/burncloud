@@ -20,6 +20,8 @@ pub struct Channel {
     pub priority: i32,
     #[serde(default)]
     pub weight: i32,
+    pub param_override: Option<String>,
+    pub header_override: Option<String>,
 }
 
 pub struct ChannelService;
