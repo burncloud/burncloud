@@ -42,7 +42,7 @@ pub fn ChannelPage() -> Element {
     let handle_save = move |_| {
         spawn(async move {
             is_loading.set(true);
-            
+
             let p_override = form_param_override();
             let h_override = form_header_override();
 
@@ -57,8 +57,16 @@ pub fn ChannelPage() -> Element {
                 status: 1,
                 priority: 0,
                 weight: 0,
-                param_override: if p_override.is_empty() { None } else { Some(p_override) },
-                header_override: if h_override.is_empty() { None } else { Some(h_override) },
+                param_override: if p_override.is_empty() {
+                    None
+                } else {
+                    Some(p_override)
+                },
+                header_override: if h_override.is_empty() {
+                    None
+                } else {
+                    Some(h_override)
+                },
             };
 
             let result = if ch.id == 0 {
@@ -220,7 +228,7 @@ pub fn ChannelPage() -> Element {
 
                     div { class: "flex flex-col gap-1.5",
                         label { class: "text-sm font-medium text-base-content/80", "参数覆写 (JSON)" }
-                        textarea { 
+                        textarea {
                             class: "textarea textarea-bordered h-24 font-mono text-xs",
                             value: "{form_param_override}",
                             placeholder: "{{ \"temperature\": 0.5 }}",
@@ -230,7 +238,7 @@ pub fn ChannelPage() -> Element {
 
                     div { class: "flex flex-col gap-1.5",
                         label { class: "text-sm font-medium text-base-content/80", "Header 覆写 (JSON)" }
-                        textarea { 
+                        textarea {
                             class: "textarea textarea-bordered h-24 font-mono text-xs",
                             value: "{form_header_override}",
                             placeholder: "{{ \"X-Custom-Header\": \"value\" }}",
