@@ -1,3 +1,14 @@
+仪表盘：全局概览。显示核心指标（请求数、成功率、总消费）、系统健康状态。
+模型网络：核心路由配置。添加上游渠道（OpenAI, Gemini 等），设置 API Key、代理地址、模型映射、优先级、权重。
+BurnGrid：账号购买渠道。
+访问凭证：生成访问密钥。
+演练场：测试中心。
+风控雷达：监控日志、错误率、异常 IP。
+日志审查：查看每条日志的消费记录，以及错误原因。
+用户管理：管理下游用户（User）。创建账号、封禁用户、充值额度、查看用户组。
+财务中心：查看充值记录、个人余额（如果是以用户视角登录）或系统营收（如果是管理员视角）。
+
+
 方案三：泛型透传与协议降级 (Generic Passthrough & Protocol Degradation)
 
   这个方案承认一个事实：网关永远追不上上游的变化。所以，网关不应该试图去“理解”每一个参数。
@@ -96,6 +107,92 @@
    * 安全：不像脚本那样能执行任意逻辑，只允许移动/改名/映射值。
    * 可视化：前端可以做一个“拖拽连线”的界面，让非技术运营也能配置参数映射。
 
+
+在 BurnCloud 的界面设计（Jobs Design Philosophy）中，我们不能用冰冷的技术术语（如 Key Exchange, Handshake）。我们需要隐喻 (Metaphor)。
+
+  我为你设计了 BurnGrid "Handshake" (握手) 交互方案，旨在让“达成共识”变得像交换名片一样自然。
+
+  ---
+
+  1. 核心隐喻：星际通行证 (Star Pass) & 握手 (Handshake)
+
+  我们不再叫它“配置节点”，我们叫它 “建立连接 (Making a Connection)”。
+
+  A. 你的身份：BurnID 卡片
+   * 在 BurnGrid 界面，用户首先看到的是一张类似 Apple Wallet 登机牌 或 黑卡 的数字卡片。
+   * 卡片内容:
+       * BurnID: 你的唯一节点标识 (Hash)。
+       * Availability: 闲置算力状态 (e.g., "Idle - 2x H100 Available").
+       * Reputation: 你的信誉分 (基于历史履约率)。
+   * 动作: 只有“复制链接”或“展示二维码”。
+
+  B. 达成共识的过程：The Handshake UI
+
+  想象两个企业主（或两个朋友）想要互联：
+
+   1. 发起方 (Inviter):
+       * 点击 "Invite Partner" (邀请伙伴)。
+       * 系统生成一个 "Invitation Link" (邀请函)。这个链接包含了一次性的握手密钥和自己的公钥。
+       * 界面隐喻: 这就像发送一个 AirDrop 请求。
+
+   2. 接收方 (Invitee):
+       * 点击链接或扫描二维码。
+       * Dashboard 弹出一个精美的模态框：
+          > "Elon's Node" 想要连接到您的 BurnGrid。
+          > *   对方提供: GPT-4 (Via Azure), Llama-3 (Local)
+          > *   对方请求: 您的闲置 GPU 算力
+          >    信用额度*: 建议给予 1M Token 初始额度
+       * 动作: 用户拖动一个滑块 "Trust & Connect" (信任并连接)。
+
+   3. 共识达成 (Consensus Established):
+       * 瞬间，界面上两点之间连成一条发光的线。
+       * 视觉反馈: 屏幕上出现 "Handshake Complete" 字样，伴随轻微的触觉反馈（如果是在移动端）或悦耳的音效。
+       * 这意味着：密钥交换已在后台自动完成，互信额度已建立。
+
+  ---
+
+  2. 界面呈现：信任圈可视化 (Trust Circle View)
+
+  在 Model Network -> BurnGrid 页面：
+
+   * 中心: 你自己的节点。
+   * 内圈 (Trusted): 那些你手动“握手”过的节点（Guild 成员）。
+       * 显示为绿色的实线连接。
+       * 无需实时扣费，走“月结/信用”模式。
+   * 外圈 (Public): 你从未见过的节点（通过 Marketplace 发现）。
+       * 显示为灰色的虚线连接。
+       * 必须“预付费”或“实时结算”。
+
+  共识的调节器 (The Consensus Slider):
+   * 点击任意一个连接的朋友，会弹出一个简单的控制面板：
+       * 信任等级 (Trust Level): 滑块从 "Zero Trust" (实时结算) 到 "Full Trust" (无限制)。
+       * 资源共享 (Resource Sharing): 开关 "Allow them to use my GPU" (允许他们用我的卡)。
+
+  ---
+
+  3. 文案与话术 (Copywriting)
+
+  不要说：“配置 P2P 互信证书。”
+  要说：“邀请朋友加入您的算力圈。” (Invite a friend to your Compute Circle.)
+
+  不要说：“设置最大透支额度。”
+  要说：“设置信任额度。” (Set Trust Limit.)
+
+  不要说：“分布式账本同步成功。”
+  要说：“你们已达成共识。” (You are now in sync.)
+
+  ---
+
+  4. 总结
+
+  BurnGrid 在界面上达成共识的方式，就是将“社交网络的关注逻辑”引入到“服务器网络”中。
+
+   * 建立连接 = 关注/互粉 (Follow/Connect)
+   * 信任额度 = 亲密程度 (Close Friends)
+   * 共识 = 握手成功 (Handshake)
+
+  通过这种拟人化的设计，复杂的技术共识（密钥交换、白名单、路由表同步）被封装在了一个充满人情味的“握手”动作背后。这正是 Constitution 1.5
+  要求的“优雅交互”。
 
 
 # 导出下线分成数据报表

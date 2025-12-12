@@ -55,3 +55,17 @@ pub fn UserPage() -> Element {
         div { "User Placeholder" }
     }
 }
+
+#[component]
+pub fn BillingPage() -> Element {
+    rsx! {
+        div { "Billing Placeholder" }
+    }
+}
+
+#[component]
+pub fn LogPage() -> Element {
+    rsx! {
+        div { "Logs Placeholder" }
+    }
+}
