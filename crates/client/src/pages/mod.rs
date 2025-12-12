@@ -4,6 +4,7 @@ pub mod channels;
 pub mod dashboard;
 pub mod deploy;
 pub mod login;
+pub mod logs;
 pub mod models;
 pub mod monitor;
 pub mod register;

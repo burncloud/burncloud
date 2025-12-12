@@ -59,50 +59,66 @@ pub fn Sidebar() -> Element {
                 }
             }
 
-                        // Section 1: Core Assets (Was Intelligence)
+                        // Section 1: Core Assets
                         div { class: "flex flex-col gap-1",
-                            div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2", "核心资产" }
+                            div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "核心资产" }
 
                             SidebarItem {
                                 to: CoreRoute::Dashboard {},
-                                label: "控制台", // Dashboard
+                                label: "仪表盘", // Dashboard
                                 icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" } } }
                             }
                             SidebarItem {
-                                to: CoreRoute::ModelManagement {},
-                                label: "账号矩阵", // Account Matrix
-                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" } } }
-                            }
-                            SidebarItem {
-                                to: CoreRoute::DeployConfig {},
-                                label: "配额管理", // Quota Management
-                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" } path { stroke_linecap: "round", stroke_linejoin: "round", d: "M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" } } }
-                            }
-                        }
-
-                        // Section 2: Operations (Was Network)
-                        div { class: "flex flex-col gap-1",
-                            div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "运营中心" }
-
-                            SidebarItem {
                                 to: CoreRoute::ChannelPage {},
-                                label: "财务总览", // Financials
-                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" } } }
+                                label: "模型网络", // Model Network
+                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" } } }
+                            }
+                            SidebarItem {
+                                to: CoreRoute::ModelManagement {},
+                                label: "BurnGrid", // BurnGrid
+                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" } } }
                             }
                             SidebarItem {
                                 to: CoreRoute::ApiManagement {},
-                                label: "API 网关", // API Gateway
-                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" } } }
+                                label: "访问凭证", // API KEY
+                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" } } }
                             }
+                        }
+
+                        // Section 2: Application Center
+                        div { class: "flex flex-col gap-1",
+                            div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "应用中心" }
+                            
+                            SidebarItem {
+                                to: CoreRoute::DeployConfig {}, // Placeholder for Chat
+                                label: "演练场", // Chat
+                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" } } }
+                            }
+                        }
+
+                        // Section 3: Operations
+                        div { class: "flex flex-col gap-1",
+                            div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "运营中心" }
+
                             SidebarItem {
                                 to: CoreRoute::ServiceMonitor {},
                                 label: "风控雷达", // Risk Radar
                                 icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" } } }
                             }
                              SidebarItem {
+                                to: CoreRoute::LogPage {}, 
+                                label: "日志审查", // Log Review
+                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" } } }
+                            }
+                             SidebarItem {
                                 to: CoreRoute::UserPage {},
-                                label: "客户列表", // Client List
+                                label: "用户管理", // Client List
                                 icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" } } }
+                            }
+                            SidebarItem {
+                                to: CoreRoute::BillingPage {},
+                                label: "财务中心", // Billing
+                                icon: rsx! { svg { fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" } } }
                             }
                         }
             // Bottom Section: Settings
