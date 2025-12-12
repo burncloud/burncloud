@@ -10,7 +10,7 @@
 **The Next-Gen High-Performance AI Gateway & Aggregator**
 **下一代高性能大模型聚合网关与管理平台**
 
-[Feature Requests](https://github.com/your-repo/burncloud/issues) · [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) · [Documentation](docs/)
+[Feature Requests](https://github.com/burncloud/burncloud/issues) · [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) · [Documentation](docs/)
 
 [English](README.md) | [简体中文](README_CN.md)
 
