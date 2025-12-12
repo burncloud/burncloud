@@ -1,5 +1,5 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
-use burncloud_client_shared::components::{BCButton, BCInput, BCModal, ButtonVariant};
+use burncloud_client_shared::components::{BCButton, BCInput, ButtonVariant};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
@@ -14,6 +14,9 @@ pub fn ChannelPage() -> Element {
         );
 
     let mut is_modal_open = use_signal(|| false);
+    let mut is_delete_modal_open = use_signal(|| false);
+    let mut delete_channel_id = use_signal(|| 0i64);
+    let mut delete_channel_name = use_signal(|| String::new());
     let mut form_id = use_signal(|| 0i64);
     let mut form_name = use_signal(|| String::new());
     let mut form_type = use_signal(|| 1);
@@ -87,11 +90,13 @@ pub fn ChannelPage() -> Element {
         });
     };
 
-    let handle_delete = move |id: i64| {
+    let handle_confirm_delete = move |_| {
         spawn(async move {
+            let id = delete_channel_id();
             if ChannelService::delete(id).await.is_ok() {
                 channels.restart();
                 toast.success("渠道已删除");
+                is_delete_modal_open.set(false);
             } else {
                 toast.error("删除失败");
             }
@@ -161,7 +166,11 @@ pub fn ChannelPage() -> Element {
                                         // Actions (Delete)
                                         button {
                                             class: "btn btn-circle btn-sm btn-ghost text-base-content/20 hover:text-error hover:bg-error/5 transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 duration-200",
-                                            onclick: move |_| handle_delete(channel.id),
+                                            onclick: move |_| {
+                                                delete_channel_id.set(channel.id);
+                                                delete_channel_name.set(channel.name.clone());
+                                                is_delete_modal_open.set(true);
+                                            },
                                             title: "移除连接",
                                             svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                                 path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
@@ -198,7 +207,7 @@ pub fn ChannelPage() -> Element {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
                     // Backdrop
                     div {
-                        class: "absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity",
+                        class: "absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity",
                         onclick: move |_| is_modal_open.set(false)
                     }
 
@@ -290,6 +299,59 @@ pub fn ChannelPage() -> Element {
                                 loading: is_loading(),
                                 onclick: handle_save,
                                 "保存配置"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Delete Confirmation Modal
+            if is_delete_modal_open() {
+                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
+                    // Backdrop
+                    div {
+                        class: "absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity",
+                        onclick: move |_| is_delete_modal_open.set(false)
+                    }
+
+                    // Modal Content
+                    div {
+                        class: "relative w-full max-w-md bg-base-100 rounded-2xl shadow-2xl border border-base-200 overflow-hidden",
+                        onclick: |e| e.stop_propagation(),
+
+                        // Header with Warning Icon
+                        div { class: "flex items-center gap-4 px-6 py-5 bg-error/5 border-b border-error/10",
+                            div { class: "w-12 h-12 rounded-full bg-error/10 flex items-center justify-center",
+                                svg { class: "w-6 h-6 text-error", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
+                                }
+                            }
+                            div { class: "flex-1",
+                                h3 { class: "text-lg font-bold text-base-content", "确认删除" }
+                                p { class: "text-sm text-base-content/60 mt-1", "此操作无法撤销" }
+                            }
+                        }
+
+                        // Message
+                        div { class: "px-6 py-4",
+                            p { class: "text-base-content/80",
+                                "确定要删除连接 \""
+                                span { class: "font-semibold text-base-content", "{delete_channel_name()}" }
+                                "\" 吗？删除后所有相关配置将被永久清除。"
+                            }
+                        }
+
+                        // Footer
+                        div { class: "flex justify-end gap-3 px-6 py-4 bg-base-50/50 border-t border-base-200",
+                            BCButton {
+                                variant: ButtonVariant::Ghost,
+                                onclick: move |_| is_delete_modal_open.set(false),
+                                "取消"
+                            }
+                            BCButton {
+                                class: "btn-error text-white shadow-md",
+                                onclick: handle_confirm_delete,
+                                "确认删除"
                             }
                         }
                     }
