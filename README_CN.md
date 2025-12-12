@@ -1,6 +1,6 @@
-# BurnCloud (奔云)
-
 <div align="center">
+
+# BurnCloud (奔云)
 
 ![Rust](https://img.shields.io/badge/Built_with-Rust-orange?style=for-the-badge&logo=rust)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)

@@ -1,6 +1,5 @@
-# BurnCloud
-
 <div align="center">
+# BurnCloud
 
 ![Rust](https://img.shields.io/badge/Built_with-Rust-orange?style=for-the-badge&logo=rust)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
