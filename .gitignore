@@ -8,6 +8,10 @@ MESSAGE.md
 *.sh
 *.bat
 
+# LLM files
+GEMINI.md
+CLAUDE.md
+
 # nodejs
 package-lock.json
 yarn.lock

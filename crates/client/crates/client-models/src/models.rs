@@ -12,6 +12,7 @@ pub fn ModelManagement() -> Element {
     let mut show_search_dialog = use_signal(|| false);
     let mut active_model_id = use_signal(|| None::<String>);
     let mut active_deploy_model_id = use_signal(|| None::<String>);
+    let mut active_delete_model_id = use_signal(|| None::<String>);
 
     // Load models (Simulating Account Groups)
     use_effect(move || {
@@ -94,6 +95,26 @@ pub fn ModelManagement() -> Element {
             }
         }
 
+        if let Some(model_id) = active_delete_model_id() {
+            DeleteConfirmDialog {
+                model_id: model_id.clone(),
+                on_close: move |_| active_delete_model_id.set(None),
+                on_confirm: move |_| {
+                    let id_clone = model_id.clone();
+                    spawn(async move {
+                        if let Ok(service) = burncloud_service_models::ModelService::new().await {
+                            if let Ok(_) = service.delete(&id_clone).await {
+                                if let Ok(list) = service.list().await {
+                                    models.set(list);
+                                }
+                            }
+                        }
+                        active_delete_model_id.set(None);
+                    });
+                }
+            }
+        }
+
         div { class: "page-content",
             // Business Metrics - Liberated Numbers (No Borders, High Padding)
             div { class: "grid mb-12",
@@ -172,16 +193,7 @@ pub fn ModelManagement() -> Element {
                                 });
                             },
                             on_delete: move |id: String| {
-                                let id_clone = id.clone();
-                                spawn(async move {
-                                    if let Ok(service) = burncloud_service_models::ModelService::new().await {
-                                        if let Ok(_) = service.delete(&id_clone).await {
-                                            if let Ok(list) = service.list().await {
-                                                models.set(list);
-                                            }
-                                        }
-                                    }
-                                });
+                                active_delete_model_id.set(Some(id));
                             }
                         }
                     }
@@ -495,6 +507,51 @@ fn DeployDialog(
                                 onclick: on_start,
                                 "启动服务"
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn DeleteConfirmDialog(
+    model_id: String,
+    on_close: EventHandler<()>,
+    on_confirm: EventHandler<()>,
+) -> Element {
+    rsx! {
+        div {
+            style: "position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;",
+            onclick: move |_| on_close.call(()),
+
+            div {
+                class: "card",
+                style: "width: 400px; background: white;",
+                onclick: move |e| e.stop_propagation(),
+
+                div { class: "p-lg border-b",
+                    h2 { class: "text-title font-semibold m-0", "确认删除?" }
+                }
+
+                div { class: "p-lg",
+                    p { class: "mb-lg",
+                        "您确定要删除模型 "
+                        span { class: "font-bold", "{model_id}" }
+                        " 吗？此操作无法撤销。"
+                    }
+
+                    div { class: "flex justify-end gap-sm",
+                        button {
+                            class: "btn btn-secondary",
+                            onclick: move |_| on_close.call(()),
+                            "取消"
+                        }
+                        button {
+                            class: "btn btn-error",
+                            onclick: move |_| on_confirm.call(()),
+                            "确认删除"
                         }
                     }
                 }
