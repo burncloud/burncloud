@@ -103,161 +103,195 @@ pub fn ChannelPage() -> Element {
     rsx! {
         div { class: "flex flex-col h-full gap-8",
             // Header
-            div { class: "flex justify-between items-end",
+            div { class: "flex justify-between items-end px-1",
                 div {
                     h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "模型网络" }
-                    p { class: "text-sm text-base-content/60 font-medium", "配置与管理您的 AI 算力来源" }
+                    p { class: "text-sm text-base-content/60 font-medium", "您的 AI 算力中枢" }
                 }
-                BCButton {
-                    class: "btn-neutral btn-sm px-6 shadow-sm text-white",
-                    onclick: open_create_modal,
-                    "添加连接"
+                div { class: "flex gap-3",
+                    BCButton {
+                        class: "btn-neutral btn-sm px-6 shadow-sm text-white",
+                        onclick: open_create_modal,
+                        "添加连接"
+                    }
                 }
             }
 
-            // Active Connections List
-            div { class: "flex flex-col gap-4",
-                h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "活跃连接" }
+            // Cards Grid
+            div { class: "flex-1 overflow-y-auto min-h-0", // Scroll container
+                match channels_data {
+                    Some(list) => rsx! {
+                        div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10",
+                            for channel in list {
+                                div { class: "group relative flex flex-col justify-between p-6 h-[200px] bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
+                                    // Status Indicator (Breathing Light)
+                                    div { class: "absolute top-6 right-6",
+                                        if channel.status == 1 {
+                                            span { class: "relative flex h-3 w-3",
+                                                span { class: "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" }
+                                                span { class: "relative inline-flex rounded-full h-3 w-3 bg-emerald-500" }
+                                            }
+                                        } else {
+                                            span { class: "h-3 w-3 rounded-full bg-base-300" }
+                                        }
+                                    }
 
-                div { class: "overflow-x-auto border border-base-200 rounded-lg",
-                    table { class: "table w-full text-sm",
-                        thead { class: "bg-base-50 text-base-content/60",
-                            tr {
-                                th { class: "font-medium", "名称" }
-                                th { class: "font-medium", "协议" }
-                                th { class: "font-medium", "模型" }
-                                th { class: "font-medium", "优先级" }
-                                th { class: "font-medium", "状态" }
-                                th { class: "text-right font-medium", "操作" }
-                            }
-                        }
-                        tbody {
-                            match channels_data {
-                                Some(list) if !list.is_empty() => rsx! {
-                                    for channel in list {
-                                        tr { class: "hover:bg-base-50/50 transition-colors group",
-                                            td {
-                                                div { class: "font-semibold text-base-content", "{channel.name}" }
-                                                div { class: "text-xs text-base-content/40", "ID: {channel.id}" }
+                                    // Card Header
+                                    div {
+                                        div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
+                                            match channel.type_ {
+                                                1 => "OpenAI",
+                                                14 => "Anthropic",
+                                                24 => "Google",
+                                                _ => "Custom"
                                             }
-                                            td {
-                                                match channel.type_ {
-                                                    1 => "OpenAI",
-                                                    14 => "Anthropic",
-                                                    24 => "Google Gemini",
-                                                    _ => "Custom"
-                                                }
+                                        }
+                                        h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4", "{channel.name}" }
+                                    }
+
+                                    // Card Footer
+                                    div { class: "flex items-end justify-between mt-4",
+                                        div { class: "flex flex-col gap-1.5",
+                                            span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
+                                            div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-fit max-w-[180px] truncate",
+                                                "{channel.models}"
                                             }
-                                            td { class: "font-mono text-xs text-base-content/70 max-w-xs truncate", title: "{channel.models}", "{channel.models}" }
-                                            td { class: "font-mono font-medium", "{channel.priority}" }
-                                            td {
-                                                if channel.status == 1 {
-                                                    span { class: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700",
-                                                        span { class: "w-1.5 h-1.5 rounded-full bg-emerald-500" }
-                                                        "正常"
-                                                    }
-                                                } else {
-                                                    span { class: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-base-200 text-base-content/60",
-                                                        span { class: "w-1.5 h-1.5 rounded-full bg-base-400" }
-                                                        "禁用"
-                                                    }
-                                                }
-                                            }
-                                            td { class: "text-right",
-                                                button {
-                                                    class: "btn btn-ghost btn-xs text-base-content/40 group-hover:text-error transition-colors",
-                                                    onclick: move |_| handle_delete(channel.id),
-                                                    "删除"
-                                                }
+                                        }
+
+                                        // Actions (Delete)
+                                        button {
+                                            class: "btn btn-circle btn-sm btn-ghost text-base-content/20 hover:text-error hover:bg-error/5 transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 duration-200",
+                                            onclick: move |_| handle_delete(channel.id),
+                                            title: "移除连接",
+                                            svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
                                             }
                                         }
                                     }
-                                },
-                                Some(_) => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "暂无连接数据" } } },
-                                None => rsx! { tr { td { colspan: "6", class: "p-8 text-center text-base-content/40", "加载中..." } } }
+                                }
                             }
+
+                            // The "Add Connection" Card (Invitation)
+                            div {
+                                class: "flex flex-col items-center justify-center h-[200px] rounded-2xl border-2 border-dashed border-base-200 hover:border-primary/30 hover:bg-base-50/50 transition-all duration-300 cursor-pointer gap-4 group",
+                                onclick: open_create_modal,
+                                div { class: "h-12 w-12 rounded-full bg-base-100 group-hover:bg-white flex items-center justify-center shadow-sm border border-base-200 group-hover:scale-110 transition-transform duration-300",
+                                    svg { class: "w-6 h-6 text-base-content/40 group-hover:text-primary transition-colors", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 4v16m8-8H4" }
+                                    }
+                                }
+                                span { class: "text-sm font-semibold text-base-content/50 group-hover:text-primary transition-colors", "添加新连接" }
+                            }
+                        }
+                    },
+                    None => rsx! {
+                        div { class: "flex flex-col items-center justify-center h-64 gap-4 opacity-50 animate-pulse",
+                            div { class: "w-12 h-12 rounded-full bg-base-200" }
+                            div { class: "text-sm font-medium", "正在搜索神经网络..." }
                         }
                     }
                 }
             }
 
-            // Modal
-            BCModal {
-                open: is_modal_open(),
-                title: "添加供应商渠道".to_string(),
-                onclose: move |_| is_modal_open.set(false),
-
-                div { class: "flex flex-col gap-4 py-2",
-                    BCInput {
-                        label: Some("渠道名称".to_string()),
-                        value: "{form_name}",
-                        placeholder: "例如: OpenAI 生产环境".to_string(),
-                        oninput: move |e: FormEvent| form_name.set(e.value())
+            // Modal (Custom Implementation for stability)
+            if is_modal_open() {
+                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
+                    // Backdrop
+                    div {
+                        class: "absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity",
+                        onclick: move |_| is_modal_open.set(false)
                     }
 
-                    div { class: "flex flex-col gap-1.5",
-                        label { class: "text-sm font-medium text-base-content/80", "供应商类型" }
-                        select { class: "select select-bordered w-full select-sm",
-                            onchange: move |e: FormEvent| form_type.set(e.value().parse().unwrap_or(1)),
-                            option { value: "1", "OpenAI" }
-                            option { value: "14", "Anthropic Claude" }
-                            option { value: "24", "Google Gemini" }
+                    // Modal Content
+                    div {
+                        class: "relative bg-base-100 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] border border-base-200 flex flex-col animate-[scale-in_0.2s_ease-out] overflow-hidden",
+                        onclick: |e| e.stop_propagation(), // Prevent click through
+
+                        // Header
+                        div { class: "flex justify-between items-center px-6 py-4 border-b border-base-200 shrink-0 bg-base-100",
+                            h3 { class: "text-lg font-bold text-base-content tracking-tight", "添加供应商渠道" }
+                            button {
+                                class: "btn btn-sm btn-circle btn-ghost text-base-content/50 hover:bg-base-200",
+                                onclick: move |_| is_modal_open.set(false),
+                                "✕"
+                            }
                         }
-                    }
 
-                    BCInput {
-                        label: Some("API Key".to_string()),
-                        value: "{form_key}",
-                        placeholder: "sk-xxxxxxxx".to_string(),
-                        oninput: move |e: FormEvent| form_key.set(e.value())
-                    }
+                        // Form Body
+                        div { class: "flex-1 overflow-y-auto p-6 flex flex-col gap-4 min-h-0",
+                            BCInput {
+                                label: Some("渠道名称".to_string()),
+                                value: "{form_name}",
+                                placeholder: "例如: OpenAI 生产环境".to_string(),
+                                oninput: move |e: FormEvent| form_name.set(e.value())
+                            }
 
-                    BCInput {
-                        label: Some("代理地址 (Base URL)".to_string()),
-                        value: "{form_base_url}",
-                        placeholder: "https://api.openai.com".to_string(),
-                        oninput: move |e: FormEvent| form_base_url.set(e.value())
-                    }
+                            div { class: "flex flex-col gap-1.5",
+                                label { class: "text-sm font-medium text-base-content/80", "供应商类型" }
+                                select { class: "select select-bordered w-full select-sm",
+                                    onchange: move |e: FormEvent| form_type.set(e.value().parse().unwrap_or(1)),
+                                    option { value: "1", "OpenAI" }
+                                    option { value: "14", "Anthropic Claude" }
+                                    option { value: "24", "Google Gemini" }
+                                }
+                            }
 
-                    BCInput {
-                        label: Some("可用模型".to_string()),
-                        value: "{form_models}",
-                        placeholder: "gpt-4,gpt-3.5-turbo".to_string(),
-                        oninput: move |e: FormEvent| form_models.set(e.value())
-                    }
+                            BCInput {
+                                label: Some("API Key".to_string()),
+                                value: "{form_key}",
+                                placeholder: "sk-xxxxxxxx".to_string(),
+                                oninput: move |e: FormEvent| form_key.set(e.value())
+                            }
 
-                    div { class: "flex flex-col gap-1.5",
-                        label { class: "text-sm font-medium text-base-content/80", "参数覆写 (JSON)" }
-                        textarea {
-                            class: "textarea textarea-bordered h-24 font-mono text-xs",
-                            value: "{form_param_override}",
-                            placeholder: "{{ \"temperature\": 0.5 }}",
-                            oninput: move |e: FormEvent| form_param_override.set(e.value())
+                            BCInput {
+                                label: Some("代理地址 (Base URL)".to_string()),
+                                value: "{form_base_url}",
+                                placeholder: "https://api.openai.com".to_string(),
+                                oninput: move |e: FormEvent| form_base_url.set(e.value())
+                            }
+
+                            BCInput {
+                                label: Some("可用模型".to_string()),
+                                value: "{form_models}",
+                                placeholder: "gpt-4,gpt-3.5-turbo".to_string(),
+                                oninput: move |e: FormEvent| form_models.set(e.value())
+                            }
+
+                            div { class: "flex flex-col gap-1.5",
+                                label { class: "text-sm font-medium text-base-content/80", "参数覆写 (JSON)" }
+                                textarea {
+                                    class: "textarea textarea-bordered h-24 font-mono text-xs leading-relaxed",
+                                    value: "{form_param_override}",
+                                    placeholder: "{{ \"temperature\": 0.5 }}",
+                                    oninput: move |e: FormEvent| form_param_override.set(e.value())
+                                }
+                            }
+
+                            div { class: "flex flex-col gap-1.5",
+                                label { class: "text-sm font-medium text-base-content/80", "Header 覆写 (JSON)" }
+                                textarea {
+                                    class: "textarea textarea-bordered h-24 font-mono text-xs leading-relaxed",
+                                    value: "{form_header_override}",
+                                    placeholder: "{{ \"X-Custom-Header\": \"value\" }}",
+                                    oninput: move |e: FormEvent| form_header_override.set(e.value())
+                                }
+                            }
                         }
-                    }
 
-                    div { class: "flex flex-col gap-1.5",
-                        label { class: "text-sm font-medium text-base-content/80", "Header 覆写 (JSON)" }
-                        textarea {
-                            class: "textarea textarea-bordered h-24 font-mono text-xs",
-                            value: "{form_header_override}",
-                            placeholder: "{{ \"X-Custom-Header\": \"value\" }}",
-                            oninput: move |e: FormEvent| form_header_override.set(e.value())
+                        // Footer
+                        div { class: "flex justify-end gap-3 px-6 py-4 border-t border-base-200 bg-base-50/50 shrink-0",
+                            BCButton {
+                                variant: ButtonVariant::Ghost,
+                                onclick: move |_| is_modal_open.set(false),
+                                "取消"
+                            }
+                            BCButton {
+                                class: "btn-neutral text-white shadow-md",
+                                loading: is_loading(),
+                                onclick: handle_save,
+                                "保存配置"
+                            }
                         }
-                    }
-                }
-
-                div { class: "modal-footer flex justify-end gap-3 mt-6",
-                    BCButton {
-                        variant: ButtonVariant::Ghost,
-                        onclick: move |_| is_modal_open.set(false),
-                        "取消"
-                    }
-                    BCButton {
-                        class: "btn-neutral text-white",
-                        loading: is_loading(),
-                        onclick: handle_save,
-                        "保存配置"
                     }
                 }
             }
