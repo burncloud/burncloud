@@ -1,4 +1,5 @@
 <div align="center">
+
 # BurnCloud
 
 ![Rust](https://img.shields.io/badge/Built_with-Rust-orange?style=for-the-badge&logo=rust)

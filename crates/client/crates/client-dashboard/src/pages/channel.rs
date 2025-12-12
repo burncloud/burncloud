@@ -195,7 +195,7 @@ pub fn ChannelPage() -> Element {
 
             // Modal (Custom Implementation for stability)
             if is_modal_open() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
+                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
                     // Backdrop
                     div {
                         class: "absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity",
@@ -204,7 +204,7 @@ pub fn ChannelPage() -> Element {
 
                     // Modal Content
                     div {
-                        class: "relative bg-base-100 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] border border-base-200 flex flex-col animate-[scale-in_0.2s_ease-out] overflow-hidden",
+                        class: "fixed inset-0 sm:relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-base-100 sm:rounded-2xl shadow-2xl border border-base-200 flex flex-col overflow-hidden",
                         onclick: |e| e.stop_propagation(), // Prevent click through
 
                         // Header
