@@ -18,7 +18,7 @@ impl DatabaseConnection {
         // We rely on the caller to provide a correct URL (e.g. with ?mode=rwc).
 
         let options =
-            AnyConnectOptions::from_str(database_url).map_err(|e| DatabaseError::Connection(e))?;
+            AnyConnectOptions::from_str(database_url).map_err(DatabaseError::Connection)?;
 
         let pool = AnyPoolOptions::new()
             .max_connections(10)
