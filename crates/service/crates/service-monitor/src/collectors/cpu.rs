@@ -66,7 +66,7 @@ impl CpuCollector {
         let cpu_usage: f32 = 25.0;
 
         Ok(CpuInfo {
-            usage_percent: cpu_usage.max(0.0).min(100.0),
+            usage_percent: cpu_usage.clamp(0.0, 100.0),
             core_count,
             frequency,
             brand,
@@ -215,7 +215,7 @@ impl CpuCollector {
             .unwrap_or_else(|| "Unknown CPU".to_string());
 
         Ok(CpuInfo {
-            usage_percent: usage_percent.max(0.0).min(100.0),
+            usage_percent: usage_percent.clamp(0.0, 100.0),
             core_count,
             frequency: 0,
             brand,

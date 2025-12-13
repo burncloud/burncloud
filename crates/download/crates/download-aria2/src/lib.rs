@@ -151,10 +151,7 @@ pub struct Aria2Instance {
 
 impl Aria2Instance {
     pub fn is_running(&mut self) -> bool {
-        match self.process.try_wait() {
-            Ok(None) => true,
-            _ => false,
-        }
+        matches!(self.process.try_wait(), Ok(None))
     }
 
     pub fn kill(&mut self) -> Aria2Result<()> {
@@ -317,7 +314,7 @@ pub async fn start_aria2_rpc(config: &Aria2Config) -> Aria2Result<Aria2Instance>
     ]);
 
     if let Some(secret) = &config.secret {
-        cmd.arg(&format!("--rpc-secret={}", secret));
+        cmd.arg(format!("--rpc-secret={}", secret));
     }
 
     let child = cmd
@@ -732,7 +729,7 @@ impl Aria2Manager {
 
     /// 检查是否运行中
     pub fn is_running(&self) -> bool {
-        self.daemon.as_ref().map_or(false, |d| d.is_running())
+        self.daemon.as_ref().is_some_and(|d| d.is_running())
     }
 }
 

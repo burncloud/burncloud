@@ -51,7 +51,7 @@ impl AutoUpdater {
         let releases = github::ReleaseList::configure()
             .repo_owner(&self.config.github_owner)
             .repo_name(&self.config.github_repo)
-            .with_target(&target)
+            .with_target(target)
             .build()
             .map_err(UpdateError::from)?
             .fetch()
@@ -74,7 +74,7 @@ impl AutoUpdater {
         let releases = github::ReleaseList::configure()
             .repo_owner(&self.config.github_owner)
             .repo_name(&self.config.github_repo)
-            .with_target(&target)
+            .with_target(target)
             .build()
             .map_err(UpdateError::from)?
             .fetch()
@@ -109,7 +109,7 @@ impl AutoUpdater {
         let update = github::Update::configure()
             .repo_owner(&self.config.github_owner)
             .repo_name(&self.config.github_repo)
-            .target(&target)
+            .target(target)
             .bin_name(&self.config.bin_name)
             .current_version(&self.config.current_version)
             .show_download_progress(false)
@@ -133,7 +133,7 @@ impl AutoUpdater {
         let releases = github::ReleaseList::configure()
             .repo_owner(&self.config.github_owner)
             .repo_name(&self.config.github_repo)
-            .with_target(&target)
+            .with_target(target)
             .build()
             .map_err(UpdateError::from)?
             .fetch()

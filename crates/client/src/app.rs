@@ -106,9 +106,9 @@ fn AppWithTray() -> Element {
 
                 if should_show_window() {
                     // 强制显示窗口
-                    let _ = window_clone.set_visible(false);
-                    let _ = window_clone.set_visible(true);
-                    let _ = window_clone.set_focus();
+                    window_clone.set_visible(false);
+                    window_clone.set_visible(true);
+                    window_clone.set_focus();
                 }
             }
         });

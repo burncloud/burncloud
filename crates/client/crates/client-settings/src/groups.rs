@@ -20,17 +20,17 @@ pub struct GroupMember {
 
 #[component]
 pub fn GroupManager() -> Element {
-    let mut groups = use_signal::<Vec<Group>>(|| vec![]);
-    let mut all_channels = use_signal::<Vec<Channel>>(|| vec![]);
+    let mut groups = use_signal::<Vec<Group>>(Vec::new);
+    let mut all_channels = use_signal::<Vec<Channel>>(Vec::new);
     let mut loading = use_signal(|| true);
-    let _error_msg = use_signal(|| String::new());
+    let _error_msg = use_signal(String::new);
 
     // Editor State
     let mut selected_group_id = use_signal::<Option<String>>(|| None);
-    let mut selected_group_members = use_signal::<Vec<GroupMember>>(|| vec![]);
+    let mut selected_group_members = use_signal::<Vec<GroupMember>>(Vec::new);
 
     // Form State (New Group)
-    let mut form_name = use_signal(|| String::new());
+    let mut form_name = use_signal(String::new);
     let mut form_strategy = use_signal(|| "round_robin".to_string());
     let mut form_match_path = use_signal(|| "/v1/chat/completions".to_string());
 
