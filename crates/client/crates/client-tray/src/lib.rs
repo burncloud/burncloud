@@ -61,13 +61,10 @@ mod desktop {
         }
 
         // 添加启动界面菜单项
-        app.add_menu_item(
-            "显示界面",
-            move |_| -> Result<(), SimpleError> {
-                SHOULD_SHOW.store(true, Ordering::Relaxed);
-                Ok(())
-            },
-        )?;
+        app.add_menu_item("显示界面", move |_| -> Result<(), SimpleError> {
+            SHOULD_SHOW.store(true, Ordering::Relaxed);
+            Ok(())
+        })?;
 
         // 添加分隔符
         app.add_menu_separator()?;
