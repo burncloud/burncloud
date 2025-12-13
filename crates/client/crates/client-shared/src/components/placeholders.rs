@@ -69,3 +69,17 @@ pub fn LogPage() -> Element {
         div { "Logs Placeholder" }
     }
 }
+
+#[component]
+pub fn BurnGridPage() -> Element {
+    rsx! {
+        div { "BurnGrid Placeholder" }
+    }
+}
+
+#[component]
+pub fn PlaygroundPage() -> Element {
+    rsx! {
+        div { "Playground Placeholder" }
+    }
+}

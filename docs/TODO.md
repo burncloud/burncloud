@@ -9,6 +9,9 @@ BurnGrid：账号购买渠道。
 财务中心：查看充值记录、个人余额（如果是以用户视角登录）或系统营收（如果是管理员视角）。
 
 
+所有页面统一存放在/crates/client/crates下面。仪表盘：client-dashboard。模型网络：client-models。BurnGrid：client-burngrid。访问凭证：client-access。演练场：client-playground。风控雷达：client-monitor。日志审查：client-log。用户管理：client-users。财务中心：client-finance。同时修改相应的访问路由
+
+
 方案三：泛型透传与协议降级 (Generic Passthrough & Protocol Degradation)
 
   这个方案承认一个事实：网关永远追不上上游的变化。所以，网关不应该试图去“理解”每一个参数。

@@ -1,5 +1,6 @@
 pub mod api;
 pub mod billing;
+pub mod burngrid;
 pub mod channels;
 pub mod dashboard;
 pub mod deploy;
@@ -7,6 +8,7 @@ pub mod login;
 pub mod logs;
 pub mod models;
 pub mod monitor;
+pub mod playground;
 pub mod register;
 pub mod settings;
 pub mod user;

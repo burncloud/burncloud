@@ -53,7 +53,7 @@ impl RedisService {
     pub async fn set(&self, key: &str, value: &str, expire_seconds: Option<u64>) -> Result<()> {
         let mut conn = self.get_connection().await?;
         if let Some(ex) = expire_seconds {
-            conn.set_ex(key, value, ex as usize).await?;
+            conn.set_ex(key, value, ex).await?;
         } else {
             conn.set(key, value).await?;
         }

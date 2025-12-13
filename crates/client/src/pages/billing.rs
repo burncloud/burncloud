@@ -1,1 +1,1 @@
-pub use burncloud_client_dashboard::pages::billing::BillingPage;
+pub use burncloud_client_finance::BillingPage;
