@@ -11,7 +11,7 @@ pub fn RegisterPage() -> Element {
     let mut confirm_password = use_signal(|| "".to_string());
     let mut email = use_signal(|| "".to_string());
     let mut loading = use_signal(|| false);
-    
+
     let toast = use_toast();
     let navigator = use_navigator();
 

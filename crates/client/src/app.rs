@@ -13,14 +13,13 @@ pub use burncloud_client_tray::{should_show_window, start_tray};
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {
     #[layout(GuestLayout)]
-        #[route("/")]
-        HomePage {},
-        #[route("/login")]
-        LoginPage {},
-        #[route("/register")]
-        RegisterPage {},
+    #[route("/")]
+    HomePage {},
+    #[route("/login")]
+    LoginPage {},
+    #[route("/register")]
+    RegisterPage {},
     #[end_layout]
-
     #[layout(Layout)]
     #[route("/console/dashboard")]
     Dashboard {},
