@@ -12,7 +12,7 @@ pub fn HomePage() -> Element {
     rsx! {
         // 主容器：明亮、通透、现代
         div { class: "h-full w-full overflow-hidden bg-base-100 text-base-content relative selection:bg-primary selection:text-primary-content animate-fade-in",
-            
+
             // 背景装饰：极光渐变 (Aurora Gradient) - 微妙且高级
             div { class: "absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-blue-100 rounded-full blur-[128px] opacity-60 pointer-events-none" }
             div { class: "absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-purple-100 rounded-full blur-[128px] opacity-60 pointer-events-none" }
@@ -28,7 +28,7 @@ pub fn HomePage() -> Element {
                     }
                     span { class: "font-semibold text-lg tracking-tight", "BurnCloud" }
                 }
-                
+
                 // 登录按钮
                 Link {
                     to: Route::LoginPage {},
@@ -39,7 +39,7 @@ pub fn HomePage() -> Element {
 
             // 主要内容区：左侧大字报，右侧 Bento Grid
             div { class: "relative z-10 max-w-7xl mx-auto px-8 pt-12 flex flex-col lg:flex-row gap-16 items-center",
-                
+
                 // Left Column: Value Proposition (Macro Typography)
                 div { class: "flex-1 text-center lg:text-left",
                     h1 { class: "text-6xl lg:text-7xl font-bold tracking-tight mb-8 leading-[1.1]",
@@ -49,7 +49,7 @@ pub fn HomePage() -> Element {
                     p { class: "text-xl text-base-content/60 mb-10 max-w-md mx-auto lg:mx-0 leading-relaxed",
                         "The unified operating system for your AI infrastructure. Manage models, route traffic, and monetize idle compute."
                     }
-                    
+
                     div { class: "flex flex-col sm:flex-row gap-4 justify-center lg:justify-start",
                         Link {
                             to: Route::RegisterPage {},
@@ -68,7 +68,7 @@ pub fn HomePage() -> Element {
                 // Right Column: The Bento Grid (Functional Aesthetics)
                 div { class: "flex-1 w-full max-w-lg",
                     div { class: "grid grid-cols-2 gap-4 auto-rows-[minmax(140px,auto)]",
-                        
+
                         // Card 1: Main Stats (Large)
                         div { class: "col-span-2 row-span-1",
                             BCCard {
