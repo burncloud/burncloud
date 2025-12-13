@@ -14,7 +14,7 @@ use crate::styles::FLUENT_CSS;
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum CoreRoute {
     #[layout(Layout)]
-    #[route("/")]
+    #[route("/console/dashboard")]
     Dashboard {},
     #[route("/console/models")]
     ModelManagement {},

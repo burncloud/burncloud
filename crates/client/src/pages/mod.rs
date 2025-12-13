@@ -4,6 +4,7 @@ pub mod burngrid;
 pub mod channels;
 pub mod dashboard;
 pub mod deploy;
+pub mod home;
 pub mod login;
 pub mod logs;
 pub mod models;
