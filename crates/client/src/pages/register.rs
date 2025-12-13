@@ -1,5 +1,7 @@
 use crate::app::Route;
 use burncloud_client_shared::auth_service::AuthService;
+use burncloud_client_shared::components::{BCButton, BCCard, BCInput};
+use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
 #[component]
@@ -8,16 +10,17 @@ pub fn RegisterPage() -> Element {
     let mut password = use_signal(|| "".to_string());
     let mut confirm_password = use_signal(|| "".to_string());
     let mut email = use_signal(|| "".to_string());
-    let mut error_msg = use_signal(|| "".to_string());
-    let mut success_msg = use_signal(|| "".to_string());
+    let mut loading = use_signal(|| false);
+    
+    let toast = use_toast();
     let navigator = use_navigator();
 
     let handle_register = move |_| {
+        loading.set(true);
         spawn(async move {
-            error_msg.set("".to_string());
-
             if password() != confirm_password() {
-                error_msg.set("两次输入的密码不一致".to_string());
+                toast.error("两次输入的密码不一致");
+                loading.set(false);
                 return;
             }
 
@@ -30,12 +33,14 @@ pub fn RegisterPage() -> Element {
 
             match AuthService::register(&username(), &password(), email_opt).await {
                 Ok(_) => {
-                    success_msg.set("注册成功，正在跳转登录...".to_string());
+                    toast.success("注册成功，正在跳转登录...");
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    loading.set(false);
                     navigator.push(Route::LoginPage {});
                 }
                 Err(e) => {
-                    error_msg.set(e);
+                    loading.set(false);
+                    toast.error(&e);
                 }
             }
         });
@@ -43,64 +48,55 @@ pub fn RegisterPage() -> Element {
 
     rsx! {
         div { class: "auth-container",
-            div { class: "auth-card",
-                h2 { class: "text-title font-bold text-center mb-xl", "注册账号" }
-
-                if !error_msg().is_empty() {
-                    div { class: "alert alert-error mb-lg", "{error_msg}" }
-                }
-                if !success_msg().is_empty() {
-                    div { class: "alert alert-success mb-lg", "{success_msg}" }
+            BCCard {
+                class: "auth-card",
+                div { class: "text-center mb-xl",
+                    h2 { class: "text-title font-bold", "加入 BurnCloud" }
+                    p { class: "text-sm text-base-content/60 mt-2", "连接您的本地算力专家" }
                 }
 
-                div { class: "form-group",
-                    label { "用户名" }
-                    input {
-                        r#type: "text",
-                        class: "form-control",
-                        value: "{username}",
-                        oninput: move |e| username.set(e.value())
+                BCInput {
+                    label: Some("用户名".to_string()),
+                    value: "{username}",
+                    placeholder: "设置您的唯一标识".to_string(),
+                    oninput: move |e: FormEvent| username.set(e.value())
+                }
+
+                BCInput {
+                    label: Some("邮箱 (可选)".to_string()),
+                    value: "{email}",
+                    placeholder: "用于接收 BurnGrid 通知".to_string(),
+                    r#type: "email".to_string(),
+                    oninput: move |e: FormEvent| email.set(e.value())
+                }
+
+                BCInput {
+                    label: Some("密码".to_string()),
+                    r#type: "password".to_string(),
+                    value: "{password}",
+                    placeholder: "设置强密码".to_string(),
+                    oninput: move |e: FormEvent| password.set(e.value())
+                }
+
+                BCInput {
+                    label: Some("确认密码".to_string()),
+                    r#type: "password".to_string(),
+                    value: "{confirm_password}",
+                    placeholder: "再次输入密码".to_string(),
+                    oninput: move |e: FormEvent| confirm_password.set(e.value())
+                }
+
+                div { class: "mt-lg",
+                    BCButton {
+                        class: "w-full",
+                        loading: loading(),
+                        onclick: handle_register,
+                        "立即注册"
                     }
-                }
-
-                div { class: "form-group",
-                    label { "邮箱 (可选)" }
-                    input {
-                        r#type: "email",
-                        class: "form-control",
-                        value: "{email}",
-                        oninput: move |e| email.set(e.value())
-                    }
-                }
-
-                div { class: "form-group",
-                    label { "密码" }
-                    input {
-                        r#type: "password",
-                        class: "form-control",
-                        value: "{password}",
-                        oninput: move |e| password.set(e.value())
-                    }
-                }
-
-                div { class: "form-group",
-                    label { "确认密码" }
-                    input {
-                        r#type: "password",
-                        class: "form-control",
-                        value: "{confirm_password}",
-                        oninput: move |e| confirm_password.set(e.value())
-                    }
-                }
-
-                button {
-                    class: "btn btn-primary w-full mt-lg",
-                    onclick: handle_register,
-                    "注册"
                 }
 
                 div { class: "text-center mt-lg",
-                    Link { to: Route::LoginPage {}, "已有账号？去登录" }
+                    Link { to: Route::LoginPage {}, class: "text-sm link link-hover opacity-70", "已有账号？返回登录" }
                 }
             }
         }
