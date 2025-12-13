@@ -12,7 +12,7 @@
 
 [Feature Requests](https://github.com/burncloud/burncloud/issues) · [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) · [Documentation](docs/)
 
-[English](README.md) | [简体中文](README_CN.md)
+[English](../README.md) | [简体中文](README_CN.md)
 
 </div>
 
