@@ -68,12 +68,18 @@ impl ToastManager {
     }
 }
 
+impl Default for ToastManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn use_toast() -> ToastManager {
     use_context::<ToastManager>()
 }
 
 pub fn use_init_toast() -> ToastManager {
-    use_context_provider(|| ToastManager::new())
+    use_context_provider(ToastManager::new)
 }
 
 #[component]

@@ -118,7 +118,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let state = AppState {
         client,
         config: Arc::new(RwLock::new(config)),
-        db: db, // Arc<Database>
+        db, // Arc<Database>
         balancer,
         limiter,
         circuit_breaker,

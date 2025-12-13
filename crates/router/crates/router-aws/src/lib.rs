@@ -35,9 +35,13 @@ impl AwsConfig {
 fn aws_uri_encode(s: &str, encode_slash: bool) -> String {
     let mut encoded = String::new();
     for c in s.chars() {
-        if c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '~' {
-            encoded.push(c);
-        } else if c == '/' && !encode_slash {
+        if c.is_ascii_alphanumeric()
+            || c == '-'
+            || c == '.'
+            || c == '_'
+            || c == '~'
+            || (c == '/' && !encode_slash)
+        {
             encoded.push(c);
         } else {
             // Percent encode

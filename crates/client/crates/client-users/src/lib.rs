@@ -11,8 +11,8 @@ pub fn UserPage() -> Element {
         use_resource(move || async move { UserService::list().await.unwrap_or(vec![]) });
 
     let mut is_topup_open = use_signal(|| false);
-    let mut selected_user_id = use_signal(|| String::new());
-    let mut selected_username = use_signal(|| String::new());
+    let mut selected_user_id = use_signal(String::new);
+    let mut selected_username = use_signal(String::new);
     let mut topup_amount = use_signal(|| 0.0);
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();

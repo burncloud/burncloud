@@ -196,6 +196,7 @@ pub async fn get_model_files(
     Ok(result)
 }
 
+#[allow(clippy::type_complexity)]
 fn fetch_files_recursive<'a>(
     host: &'a str,
     model_id: &'a str,

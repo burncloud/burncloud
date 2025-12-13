@@ -15,19 +15,19 @@ pub struct Channel {
 
 #[component]
 pub fn ChannelManager() -> Element {
-    let mut channels = use_signal::<Vec<Channel>>(|| vec![]);
+    let mut channels = use_signal::<Vec<Channel>>(Vec::new);
     let mut loading = use_signal(|| true);
-    let mut error_msg = use_signal(|| String::new());
+    let mut error_msg = use_signal(String::new);
 
     // Form state
-    let mut form_name = use_signal(|| String::new());
+    let mut form_name = use_signal(String::new);
     let mut form_base_url = use_signal(|| "https://api.openai.com".to_string());
-    let mut form_api_key = use_signal(|| String::new());
+    let mut form_api_key = use_signal(String::new);
     let mut form_match_path = use_signal(|| "/v1/chat/completions".to_string());
     let mut form_auth_type = use_signal(|| "Bearer".to_string());
 
     // Fetch channels
-    let _ = use_resource(move || async move {
+    use_resource(move || async move {
         let client = Client::new();
         match client
             .get("http://127.0.0.1:3000/console/api/channels")

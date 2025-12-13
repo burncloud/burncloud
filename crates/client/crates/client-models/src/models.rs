@@ -103,7 +103,7 @@ pub fn ModelManagement() -> Element {
                     let id_clone = model_id.clone();
                     spawn(async move {
                         if let Ok(service) = burncloud_service_models::ModelService::new().await {
-                            if let Ok(_) = service.delete(&id_clone).await {
+                            if service.delete(&id_clone).await.is_ok() {
                                 if let Ok(list) = service.list().await {
                                     models.set(list);
                                 }
@@ -220,7 +220,7 @@ fn ModelCard(
     on_delete: EventHandler<String>,
 ) -> Element {
     let mid_details = model_id.clone();
-    let mid_stop = model_id.clone();
+    let _mid_stop = model_id.clone();
     let mid_deploy = model_id.clone();
     let mid_delete = model_id.clone();
 

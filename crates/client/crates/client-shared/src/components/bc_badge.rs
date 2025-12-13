@@ -1,18 +1,13 @@
 use dioxus::prelude::*;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, Default)]
 pub enum BadgeVariant {
     Success,
     Warning,
     Danger,
     Info,
+    #[default]
     Neutral,
-}
-
-impl Default for BadgeVariant {
-    fn default() -> Self {
-        Self::Neutral
-    }
 }
 
 #[component]

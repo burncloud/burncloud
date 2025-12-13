@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn ChannelPage() -> Element {
-    let mut page = use_signal(|| 1);
+    let page = use_signal(|| 1);
     let limit = 10;
 
     let mut channels =
@@ -16,16 +16,16 @@ pub fn ChannelPage() -> Element {
     let mut is_modal_open = use_signal(|| false);
     let mut is_delete_modal_open = use_signal(|| false);
     let mut delete_channel_id = use_signal(|| 0i64);
-    let mut delete_channel_name = use_signal(|| String::new());
+    let mut delete_channel_name = use_signal(String::new);
     let mut form_id = use_signal(|| 0i64);
-    let mut form_name = use_signal(|| String::new());
+    let mut form_name = use_signal(String::new);
     let mut form_type = use_signal(|| 1);
-    let mut form_key = use_signal(|| String::new());
-    let mut form_base_url = use_signal(|| String::new());
-    let mut form_models = use_signal(|| String::new());
+    let mut form_key = use_signal(String::new);
+    let mut form_base_url = use_signal(String::new);
+    let mut form_models = use_signal(String::new);
     let mut form_group = use_signal(|| "default".to_string());
-    let mut form_param_override = use_signal(|| String::new());
-    let mut form_header_override = use_signal(|| String::new());
+    let mut form_param_override = use_signal(String::new);
+    let mut form_header_override = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();
 

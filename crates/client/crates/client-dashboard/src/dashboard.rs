@@ -1,4 +1,4 @@
-use burncloud_client_shared::i18n::{t, use_i18n};
+use burncloud_client_shared::i18n::use_i18n;
 use burncloud_client_shared::log_service::LogService;
 use burncloud_client_shared::monitor_service::MonitorService;
 use burncloud_client_shared::usage_service::UsageService;
@@ -7,9 +7,9 @@ use dioxus::prelude::*;
 #[component]
 pub fn Dashboard() -> Element {
     let i18n = use_i18n();
-    let lang = i18n.language.read();
+    let _lang = i18n.language.read();
 
-    let mut logs = use_resource(move || async move { LogService::list(5).await.ok() });
+    let logs = use_resource(move || async move { LogService::list(5).await.ok() });
 
     let usage =
         use_resource(move || async move { UsageService::get_user_usage("demo-user").await.ok() });
@@ -17,9 +17,9 @@ pub fn Dashboard() -> Element {
     let monitor =
         use_resource(move || async move { MonitorService::get_system_metrics().await.ok() });
 
-    let logs_data = logs.read().clone();
-    let usage_data = usage.read().clone();
-    let monitor_data = monitor.read().clone();
+    let _logs_data = logs.read().clone();
+    let _usage_data = usage.read().clone();
+    let _monitor_data = monitor.read().clone();
 
     rsx! {
         div { class: "h-full flex flex-col max-w-6xl mx-auto animate-fade-in select-none",

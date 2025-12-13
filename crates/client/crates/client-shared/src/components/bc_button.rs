@@ -1,17 +1,12 @@
 use dioxus::prelude::*;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, Default)]
 pub enum ButtonVariant {
+    #[default]
     Primary,
     Secondary,
     Danger,
     Ghost,
-}
-
-impl Default for ButtonVariant {
-    fn default() -> Self {
-        Self::Primary
-    }
 }
 
 #[component]

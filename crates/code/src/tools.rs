@@ -16,6 +16,12 @@ impl CodeGenerator {
     }
 }
 
+impl Default for CodeGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct CodeAnalyzer;
 
 impl CodeAnalyzer {
@@ -25,6 +31,12 @@ impl CodeAnalyzer {
 
     pub fn analyze_file(&self, _path: &str) -> Result<String> {
         Ok("代码分析结果".to_string())
+    }
+}
+
+impl Default for CodeAnalyzer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -38,5 +50,11 @@ impl CodeFormatter {
     pub fn format_rust(&self, code: &str) -> Result<String> {
         // 简单的格式化逻辑
         Ok(code.trim().to_string())
+    }
+}
+
+impl Default for CodeFormatter {
+    fn default() -> Self {
+        Self::new()
     }
 }

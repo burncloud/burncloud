@@ -50,9 +50,8 @@ pub fn ApiManagement() -> Element {
                                     key: "{channel.id}",
                                     channel: channel.clone(),
                                     on_delete: move |id| {
-                                        let delete_fn = delete_channel.clone(); // Clone closure logic? No, just spawn
                                         spawn(async move {
-                                            delete_fn(id).await;
+                                            delete_channel(id).await;
                                         });
                                     }
                                 }
@@ -106,17 +105,17 @@ fn ChannelRow(channel: ChannelDto, on_delete: EventHandler<String>) -> Element {
 #[component]
 
 fn CreateChannelModal(on_close: EventHandler<()>, on_create: EventHandler<()>) -> Element {
-    let mut name = use_signal(|| String::new());
+    let mut name = use_signal(String::new);
 
     let mut base_url = use_signal(|| String::from("https://api.openai.com"));
 
-    let mut api_key = use_signal(|| String::new());
+    let mut api_key = use_signal(String::new);
 
     let mut match_path = use_signal(|| String::from("/v1/chat/completions"));
 
     let mut auth_type = use_signal(|| String::from("Bearer"));
 
-    let id = use_signal(|| String::new());
+    let id = use_signal(String::new);
 
     let handle_submit = move |_| {
         let new_channel = ChannelDto {
