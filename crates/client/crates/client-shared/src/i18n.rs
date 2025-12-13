@@ -1,15 +1,10 @@
 use dioxus::prelude::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Language {
     En,
+    #[default]
     Zh,
-}
-
-impl Default for Language {
-    fn default() -> Self {
-        Language::Zh
-    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -18,7 +13,7 @@ pub struct I18nContext {
 }
 
 pub fn use_init_i18n() -> I18nContext {
-    let language = use_signal(|| Language::default());
+    let language = use_signal(Language::default);
     let ctx = I18nContext { language };
     use_context_provider(|| ctx);
     ctx

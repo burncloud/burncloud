@@ -13,9 +13,9 @@ pub fn ApiManagement() -> Element {
     let mut show_create_modal = use_signal(|| false);
 
     // Form signals
-    let mut form_name = use_signal(|| String::new());
+    let mut form_name = use_signal(String::new);
     let mut form_base_url = use_signal(|| String::from("https://api.openai.com"));
-    let mut form_api_key = use_signal(|| String::new());
+    let mut form_api_key = use_signal(String::new);
     let mut form_match_path = use_signal(|| String::from("/v1/chat/completions"));
     let mut form_auth_type = use_signal(|| String::from("Bearer"));
 
@@ -160,8 +160,7 @@ pub fn ApiManagement() -> Element {
                                                             class: "btn btn-ghost btn-xs text-base-content/40 group-hover:text-error transition-colors",
                                                             onclick: move |_| {
                                                                 let id = channel_id.clone();
-                                                                let delete_fn = delete_channel.clone();
-                                                                spawn(async move { delete_fn(id).await; });
+                                                                spawn(async move { delete_channel(id).await; });
                                                             },
                                                             "移除"
                                                         }

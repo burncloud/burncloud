@@ -13,12 +13,12 @@ pub struct Token {
 
 #[component]
 pub fn TokenManager() -> Element {
-    let mut tokens = use_signal::<Vec<Token>>(|| vec![]);
+    let mut tokens = use_signal::<Vec<Token>>(Vec::new);
     let mut loading = use_signal(|| true);
-    let mut error_msg = use_signal(|| String::new());
+    let mut error_msg = use_signal(String::new);
 
     // Form
-    let mut form_user_id = use_signal(|| String::new());
+    let mut form_user_id = use_signal(String::new);
     let mut form_quota = use_signal(|| "-1".to_string()); // String for input
 
     let fetch_tokens = move || async move {

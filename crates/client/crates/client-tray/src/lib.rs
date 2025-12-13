@@ -62,7 +62,7 @@ mod desktop {
 
         // 添加启动界面菜单项
         app.add_menu_item(
-            &"显示界面".to_string(),
+            "显示界面",
             move |_| -> Result<(), SimpleError> {
                 SHOULD_SHOW.store(true, Ordering::Relaxed);
                 Ok(())
@@ -73,7 +73,7 @@ mod desktop {
         app.add_menu_separator()?;
 
         // 添加退出菜单项
-        app.add_menu_item(&"退出程序".to_string(), |_| -> Result<(), SimpleError> {
+        app.add_menu_item("退出程序", |_| -> Result<(), SimpleError> {
             process::exit(0);
         })?;
 

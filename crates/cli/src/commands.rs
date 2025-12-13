@@ -152,7 +152,7 @@ fn handle_update_command(check_only: bool) -> Result<()> {
 
 pub fn show_help() {
     println!("BurnCloud - AI模型部署和管理平台");
-    println!("");
+    println!();
     println!("用法:");
     println!("  burncloud                     - 启动GUI (Windows) / 显示帮助 (Linux)");
     println!("  burncloud client              - 启动GUI客户端");
@@ -163,7 +163,7 @@ pub fn show_help() {
     println!("  burncloud list                - 列出模型");
     println!("  burncloud update              - 更新应用程序");
     println!("  burncloud update --check-only - 仅检查更新");
-    println!("");
+    println!();
     println!("示例:");
     println!("  burncloud client");
     println!("  burncloud pull llama3.2");
