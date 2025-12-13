@@ -2,9 +2,10 @@ use dioxus::prelude::*;
 
 use crate::components::layout::Layout;
 use crate::pages::{
-    api::ApiManagement, billing::BillingPage, channels::ChannelPage, dashboard::Dashboard,
-    deploy::DeployConfig, login::LoginPage, logs::LogPage, models::ModelManagement,
-    monitor::ServiceMonitor, register::RegisterPage, settings::SystemSettings, user::UserPage,
+    api::ApiManagement, billing::BillingPage, burngrid::BurnGridPage, channels::ChannelPage,
+    dashboard::Dashboard, deploy::DeployConfig, login::LoginPage, logs::LogPage,
+    models::ModelManagement, monitor::ServiceMonitor, playground::PlaygroundPage,
+    register::RegisterPage, settings::SystemSettings, user::UserPage,
 };
 use burncloud_client_shared::DesktopMode;
 pub use burncloud_client_tray::{should_show_window, start_tray};
@@ -19,24 +20,28 @@ pub enum Route {
     #[layout(Layout)]
     #[route("/")]
     Dashboard {},
-    #[route("/models")]
+    #[route("/console/models")]
     ModelManagement {},
-    #[route("/deploy")]
+    #[route("/console/deploy")]
     DeployConfig {},
-    #[route("/monitor")]
+    #[route("/console/monitor")]
     ServiceMonitor {},
-    #[route("/api")]
+    #[route("/console/access")]
     ApiManagement {},
-    #[route("/channels")]
+    #[route("/console/channels")]
     ChannelPage {},
-    #[route("/users")]
+    #[route("/console/users")]
     UserPage {},
-    #[route("/settings")]
+    #[route("/console/settings")]
     SystemSettings {},
-    #[route("/billing")]
+    #[route("/console/finance")]
     BillingPage {},
-    #[route("/logs")]
+    #[route("/console/logs")]
     LogPage {},
+    #[route("/console/burngrid")]
+    BurnGridPage {},
+    #[route("/console/playground")]
+    PlaygroundPage {},
 }
 
 #[component]

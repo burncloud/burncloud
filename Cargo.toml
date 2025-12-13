@@ -11,6 +11,12 @@ members = [
     "crates/client/crates/client-settings",
     "crates/client/crates/client-shared",
     "crates/client/crates/client-tray",
+    "crates/client/crates/client-users",
+    "crates/client/crates/client-finance",
+    "crates/client/crates/client-access",
+    "crates/client/crates/client-log",
+    "crates/client/crates/client-burngrid",
+    "crates/client/crates/client-playground",
     "crates/code",
     "crates/common",
     "crates/core",
@@ -112,6 +118,12 @@ burncloud-client-monitor = { path = "crates/client/crates/client-monitor" }
 burncloud-client-settings = { path = "crates/client/crates/client-settings" }
 burncloud-client-shared = { path = "crates/client/crates/client-shared" }
 burncloud-client-tray = { path = "crates/client/crates/client-tray" }
+burncloud-client-users = { path = "crates/client/crates/client-users" }
+burncloud-client-finance = { path = "crates/client/crates/client-finance" }
+burncloud-client-access = { path = "crates/client/crates/client-access" }
+burncloud-client-log = { path = "crates/client/crates/client-log" }
+burncloud-client-burngrid = { path = "crates/client/crates/client-burngrid" }
+burncloud-client-playground = { path = "crates/client/crates/client-playground" }
 burncloud-code = { path = "crates/code" }
 burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }

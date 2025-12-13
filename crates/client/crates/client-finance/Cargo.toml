@@ -1,0 +1,8 @@
+[package]
+name = "burncloud-client-finance"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dioxus.workspace = true
+burncloud-client-shared = { path = "../client-shared" }
