@@ -607,23 +607,89 @@ html, body {
     color: #a5a5a5;
 }
 
-/* Scrollbar styles */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+/* macOS-style scrollbars - completely hidden by default */
+
+/* Hide all scrollbars by default - set width to 0 */
+*::-webkit-scrollbar {
+    width: 0px !important;
+    height: 0px !important;
+    background: transparent !important;
+    display: none !important;
 }
 
-::-webkit-scrollbar-track {
-    background: var(--neutral-secondary);
+*::-webkit-scrollbar-track {
+    background: transparent !important;
+    border: none !important;
+    display: none !important;
 }
 
-::-webkit-scrollbar-thumb {
-    background: var(--neutral-quinary);
-    border-radius: var(--radius-medium);
+*::-webkit-scrollbar-thumb {
+    background: transparent !important;
+    border-radius: 3px !important;
+    border: none !important;
+    display: none !important;
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: var(--neutral-senary);
+*::-webkit-scrollbar-corner {
+    background: transparent !important;
+    display: none !important;
+}
+
+/* Show scrollbars only when hovering over scrollable containers */
+html .overflow-y-auto:hover::-webkit-scrollbar,
+html .overflow-x-auto:hover::-webkit-scrollbar,
+html .overflow-y-scroll:hover::-webkit-scrollbar,
+html .overflow-x-scroll:hover::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+    display: block !important;
+}
+
+html .overflow-y-auto:hover::-webkit-scrollbar-track,
+html .overflow-x-auto:hover::-webkit-scrollbar-track,
+html .overflow-y-scroll:hover::-webkit-scrollbar-track,
+html .overflow-x-scroll:hover::-webkit-scrollbar-track {
+    background: transparent !important;
+    display: block !important;
+}
+
+html .overflow-y-auto:hover::-webkit-scrollbar-thumb,
+html .overflow-x-auto:hover::-webkit-scrollbar-thumb,
+html .overflow-y-scroll:hover::-webkit-scrollbar-thumb,
+html .overflow-x-scroll:hover::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2) !important;
+    display: block !important;
+    transition: background 0.2s ease !important;
+}
+
+/* Darken on thumb hover */
+html .overflow-y-auto:hover::-webkit-scrollbar-thumb:hover,
+html .overflow-x-auto:hover::-webkit-scrollbar-thumb:hover,
+html .overflow-y-scroll:hover::-webkit-scrollbar-thumb:hover,
+html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Alternative: Show scrollbar when hovering over any element with scrollbar */
+*:hover::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+    display: block !important;
+}
+
+*:hover::-webkit-scrollbar-track {
+    background: transparent !important;
+    display: block !important;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15) !important;
+    display: block !important;
+    transition: background 0.2s ease !important;
+}
+
+*:hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3) !important;
 }
 
 /* Dark theme support */
