@@ -12,6 +12,8 @@ struct IpInfoResponse {
     country: String,
 }
 
+use std::str::FromStr;
+
 pub enum Region {
     CN,
     WORLD,
@@ -24,12 +26,16 @@ impl Region {
             Region::WORLD => "WORLD",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for Region {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "CN" => Some(Region::CN),
-            "WORLD" => Some(Region::WORLD),
-            _ => None,
+            "CN" => Ok(Region::CN),
+            "WORLD" => Ok(Region::WORLD),
+            _ => Err(()),
         }
     }
 }
