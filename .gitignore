@@ -3,15 +3,22 @@
 **/*.rs.bk
 *.pdb
 Cargo.lock
+
+# Root
+/.playwright-mcp
+/nul
+/*.log
+/*.png
+/*.js
+/*.py
+/*.sh
+/*.bat
 MESSAGE.md
-*.py
-*.sh
-*.bat
-/image.png
 
 # LLM files
 GEMINI.md
 CLAUDE.md
+.geminiignore
 
 # nodejs
 package-lock.json
