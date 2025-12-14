@@ -25,11 +25,10 @@ pub fn HomePage() -> Element {
                 // Layer 4: Bottom accent
                 div { class: "absolute bottom-[20%] left-[20%] w-[300px] h-[300px] bg-gradient-to-tr from-[#FF9500]/10 to-[#FF2D55]/10 rounded-full blur-[50px] animate-float [animation-delay:4s]" }
 
-                // Orbiting particles
-                div { class: "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]",
-                    div { class: "absolute top-1/2 left-1/2 w-3 h-3 bg-[#007AFF]/40 rounded-full blur-[2px] animate-orbit" }
-                    div { class: "absolute top-1/2 left-1/2 w-2 h-2 bg-[#AF52DE]/40 rounded-full blur-[1px] animate-orbit [animation-duration:15s] [animation-delay:5s]" }
-                    div { class: "absolute top-1/2 left-1/2 w-2 h-2 bg-[#34C759]/40 rounded-full blur-[1px] animate-orbit [animation-duration:25s] [animation-delay:10s]" }
+                // Orbiting particles - subtle and minimal
+                div { class: "absolute top-1/2 left-1/3 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] opacity-60",
+                    div { class: "absolute top-1/2 left-1/2 w-2 h-2 bg-[#007AFF]/25 rounded-full blur-[3px] animate-orbit [animation-duration:20s]" }
+                    div { class: "absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-[#AF52DE]/20 rounded-full blur-[2px] animate-orbit [animation-duration:30s] [animation-delay:10s]" }
                 }
 
                 // Grid pattern overlay
@@ -63,9 +62,23 @@ pub fn HomePage() -> Element {
             div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-16 lg:pt-24 pb-16 flex flex-col lg:flex-row gap-20 items-center lg:items-start",
 
                 // ========== LEFT: Typography ==========
-                div { class: "flex-1 text-center lg:text-left pt-6",
+                div { class: "flex-1 text-center lg:text-left pt-6 relative",
+                    // Floating decorative dots around headline - Jobs-level precision
+                    div { class: "absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible",
+                        // Primary purple dot - after "Interface" period
+                        div { class: "absolute top-[12%] lg:left-[88%] left-[85%] w-3.5 h-3.5 rounded-full bg-[#AF52DE] shadow-[0_0_12px_rgba(175,82,222,0.6)] animate-float [animation-duration:8s]" }
+                        // Smaller purple accent - near purple
+                        div { class: "absolute top-[9%] lg:left-[92%] left-[90%] w-2 h-2 rounded-full bg-[#5856D6] shadow-[0_0_8px_rgba(88,86,214,0.5)] animate-float [animation-duration:9s] [animation-delay:1s]" }
+                        // Blue dot - after "Intelligence" period
+                        div { class: "absolute top-[34%] lg:left-[95%] left-[92%] w-3 h-3 rounded-full bg-[#007AFF] shadow-[0_0_12px_rgba(0,122,255,0.6)] animate-float [animation-duration:10s] [animation-delay:2s]" }
+                        // Green dot - near bottom right
+                        div { class: "absolute top-[58%] lg:left-[90%] left-[88%] w-2.5 h-2.5 rounded-full bg-[#34C759] shadow-[0_0_10px_rgba(52,199,89,0.5)] animate-float [animation-duration:12s] [animation-delay:1s]" }
+                        // Light blue accent
+                        div { class: "absolute top-[42%] lg:left-[85%] left-[83%] w-2 h-2 rounded-full bg-[#5AC8FA] shadow-[0_0_8px_rgba(90,200,250,0.5)] animate-float [animation-duration:11s] [animation-delay:3s]" }
+                    }
+
                     // Main headline with staggered animation
-                    h1 { class: "text-6xl lg:text-7xl xl:text-8xl font-semibold tracking-tighter mb-8 leading-[1.0] text-[#1D1D1F] animate-slide-up animate-delay-100",
+                    h1 { class: "text-6xl lg:text-7xl xl:text-8xl font-semibold tracking-tighter mb-8 leading-[1.0] text-[#1D1D1F] animate-slide-up animate-delay-100 relative z-10",
                         span { class: "block", "One Interface." }
                         span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow",
                             "Every Intelligence."
@@ -73,12 +86,12 @@ pub fn HomePage() -> Element {
                     }
 
                     // Subtitle
-                    p { class: "text-[20px] lg:text-[22px] text-[#86868B] mb-10 max-w-lg mx-auto lg:mx-0 font-normal leading-relaxed animate-slide-up animate-delay-200",
+                    p { class: "text-[20px] lg:text-[22px] text-[#86868B] mb-10 max-w-lg mx-auto lg:mx-0 font-normal leading-relaxed animate-slide-up animate-delay-200 relative z-10",
                         "Connect to the world's leading AI models—GPT, Claude, Gemini—with the simplicity of a single tap."
                     }
 
                     // CTA Buttons with enhanced effects
-                    div { class: "flex flex-col sm:flex-row gap-4 justify-center lg:justify-start items-center animate-slide-up animate-delay-300",
+                    div { class: "flex flex-col sm:flex-row gap-4 justify-center lg:justify-start items-center animate-slide-up animate-delay-300 relative z-10",
                         // Primary CTA with glow pulse
                         Link {
                             to: Route::RegisterPage {},
@@ -95,22 +108,33 @@ pub fn HomePage() -> Element {
                         // Secondary CTA
                         Link {
                             to: Route::LoginPage {},
-                            class: "group inline-flex items-center justify-center px-10 py-4 text-[17px] font-medium text-[#1D1D1F] transition-all duration-300 hover:text-[#0071E3]",
+                            class: "group inline-flex items-center justify-center px-8 py-4 text-[17px] font-medium text-[#1D1D1F] transition-all duration-300 hover:text-[#0071E3]",
                             span { "Learn More" }
-                            span { class: "ml-1 transition-transform duration-300 group-hover:translate-x-2", "→" }
+                            svg {
+                                class: "w-5 h-5 ml-1.5 transition-transform duration-300 group-hover:translate-x-1.5",
+                                fill: "none",
+                                stroke: "currentColor",
+                                view_box: "0 0 24 24",
+                                path {
+                                    stroke_linecap: "round",
+                                    stroke_linejoin: "round",
+                                    stroke_width: "2",
+                                    d: "M17 8l4 4m0 0l-4 4m4-4H3"
+                                }
+                            }
                         }
                     }
 
                     // Trust indicators
-                    div { class: "mt-12 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400",
-                        div { class: "flex items-center gap-2 text-[13px] text-[#86868B]",
-                            div { class: "w-2 h-2 rounded-full bg-[#34C759] animate-pulse" }
+                    div { class: "mt-14 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400 relative z-10",
+                        div { class: "flex items-center gap-2 text-[13px] text-[#6E6E73] font-medium",
+                            div { class: "w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_6px_rgba(52,199,89,0.4)]" }
                             "Enterprise Ready"
                         }
-                        div { class: "w-px h-4 bg-[#D2D2D7]" }
-                        div { class: "text-[13px] text-[#86868B]", "SOC 2 Compliant" }
-                        div { class: "w-px h-4 bg-[#D2D2D7]" }
-                        div { class: "text-[13px] text-[#86868B]", "Open Source" }
+                        div { class: "w-[1px] h-4 bg-[#C7C7CC]" }
+                        div { class: "text-[13px] text-[#6E6E73] font-medium", "SOC 2 Compliant" }
+                        div { class: "w-[1px] h-4 bg-[#C7C7CC]" }
+                        div { class: "text-[13px] text-[#6E6E73] font-medium", "Open Source" }
                     }
                 }
 
@@ -131,8 +155,8 @@ pub fn HomePage() -> Element {
                                     span { class: "text-[12px] font-semibold text-[#86868B] uppercase tracking-[0.15em]", "Global Network" }
                                     // Pulsing live indicator
                                     div { class: "relative",
-                                        div { class: "w-2.5 h-2.5 rounded-full bg-[#34C759]" }
-                                        div { class: "absolute inset-0 w-2.5 h-2.5 rounded-full bg-[#34C759] animate-ripple" }
+                                        div { class: "w-3 h-3 rounded-full bg-[#34C759] shadow-[0_0_8px_rgba(52,199,89,0.5)]" }
+                                        div { class: "absolute inset-0 w-3 h-3 rounded-full bg-[#34C759] animate-ripple" }
                                     }
                                 }
 
@@ -185,7 +209,7 @@ pub fn HomePage() -> Element {
                                     }
                                 }
                                 // Lightning Icon with glow
-                                div { class: "relative z-10 mt-4 w-11 h-11 rounded-full bg-gradient-to-br from-[#AF52DE]/15 to-[#5856D6]/15 flex items-center justify-center text-[#AF52DE] transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_20px_rgba(175,82,222,0.4)]",
+                                div { class: "relative z-10 mt-4 w-11 h-11 rounded-full bg-[#DDD6FE] flex items-center justify-center text-[#7C3AED] transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_20px_rgba(124,58,237,0.4)]",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M13 10V3L4 14h7v7l9-11h-7z" }
                                     }
@@ -207,7 +231,7 @@ pub fn HomePage() -> Element {
                                     }
                                 }
                                 // Checkmark Icon with glow
-                                div { class: "relative z-10 mt-4 w-11 h-11 rounded-full bg-gradient-to-br from-[#34C759]/15 to-[#30D158]/15 flex items-center justify-center text-[#34C759] transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_20px_rgba(52,199,89,0.4)]",
+                                div { class: "relative z-10 mt-4 w-11 h-11 rounded-full bg-[#BBF7D0] flex items-center justify-center text-[#16A34A] transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_20px_rgba(22,163,74,0.4)]",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" }
                                     }
@@ -238,7 +262,7 @@ pub fn HomePage() -> Element {
                                         "Gem"
                                     }
                                     // More indicator
-                                    div { class: "w-10 h-10 rounded-xl bg-[#E8E8ED] flex items-center justify-center text-[#86868B] text-[13px] font-medium transition-all duration-300 hover:scale-110 hover:bg-[#D2D2D7]",
+                                    div { class: "w-10 h-10 rounded-xl bg-gradient-to-br from-[#8E8E93] to-[#636366] flex items-center justify-center text-white text-[13px] font-semibold transition-all duration-300 hover:scale-110 shadow-lg",
                                         "+9"
                                     }
                                 }
@@ -249,10 +273,10 @@ pub fn HomePage() -> Element {
             }
 
             // ========== FOOTER: Subtle ==========
-            div { class: "absolute bottom-6 w-full text-center pointer-events-none animate-slide-up animate-delay-500",
-                span { class: "text-[11px] font-medium text-[#86868B]/40 tracking-[0.2em] uppercase",
+            div { class: "absolute bottom-8 w-full text-center pointer-events-none animate-slide-up animate-delay-500",
+                span { class: "text-[13px] font-medium text-[#86868B] tracking-[0.12em] uppercase",
                     "Engineered with "
-                    span { class: "text-[#FF6B35]", "🦀" }
+                    span { class: "text-[#D97757] text-[14px]", "🦀" }
                     " Rust"
                 }
             }
