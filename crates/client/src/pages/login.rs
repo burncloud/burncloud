@@ -69,11 +69,17 @@ pub fn LoginPage() -> Element {
                             }
                         }
 
-                        h1 { class: "text-3xl font-semibold tracking-tight text-[#1D1D1F] mb-2",
-                            "Welcome back"
+                        // Header Slogan
+                        div { class: "flex flex-col items-center justify-center space-y-1 mb-4",
+                            h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
+                                "One Interface."
+                            }
+                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#007AFF] to-[#5856D6]",
+                                "Every Intelligence."
+                            }
                         }
                         p { class: "text-[15px] text-[#86868B]",
-                            "继续您的智能之旅"
+                            "登录以连接您的本地算力节点"
                         }
                     }
 

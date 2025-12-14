@@ -9,7 +9,7 @@ pub fn HomePage() -> Element {
 
     rsx! {
         // Container: White Ceramic Base
-        div { class: "h-full w-full overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans",
+        div { class: "h-full w-full bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans",
 
             // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
@@ -59,7 +59,7 @@ pub fn HomePage() -> Element {
             }
 
             // ========== MAIN STAGE: Asymmetrical Balance ==========
-            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-16 lg:pt-24 pb-16 flex flex-col lg:flex-row gap-20 items-center lg:items-start",
+            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-16 lg:pt-20 pb-16 flex flex-col lg:flex-row gap-16 lg:gap-20 items-center lg:items-start",
 
                 // ========== LEFT: Typography ==========
                 div { class: "flex-1 text-center lg:text-left pt-6 relative",
@@ -78,15 +78,17 @@ pub fn HomePage() -> Element {
                     }
 
                     // Main headline with staggered animation
-                    h1 { class: "text-6xl lg:text-7xl xl:text-8xl font-semibold tracking-tighter mb-8 leading-[1.0] text-[#1D1D1F] animate-slide-up animate-delay-100 relative z-10",
-                        span { class: "block", "One Interface." }
-                        span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow",
-                            "Every Intelligence."
+                    h1 { class: "text-5xl lg:text-6xl xl:text-7xl font-semibold tracking-tight mb-7 text-[#1D1D1F] animate-slide-up animate-delay-100 relative z-10",
+                        span { class: "block leading-tight pb-1 mb-4", "One Interface." }
+                        div { class: "block pb-4",
+                            span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow leading-tight pb-2",
+                                "Every Intelligence."
+                            }
                         }
                     }
 
                     // Subtitle
-                    p { class: "text-[20px] lg:text-[22px] text-[#86868B] mb-10 max-w-lg mx-auto lg:mx-0 font-normal leading-relaxed animate-slide-up animate-delay-200 relative z-10",
+                    p { class: "text-[20px] lg:text-[22px] text-[#86868B] mb-9 max-w-lg mx-auto lg:mx-0 font-normal leading-[1.7] animate-slide-up animate-delay-200 relative z-10",
                         "Connect to the world's leading AI models—GPT, Claude, Gemini—with the simplicity of a single tap."
                     }
 
@@ -126,7 +128,7 @@ pub fn HomePage() -> Element {
                     }
 
                     // Trust indicators
-                    div { class: "mt-14 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400 relative z-10",
+                    div { class: "mt-12 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400 relative z-10",
                         div { class: "flex items-center gap-2 text-[13px] text-[#6E6E73] font-medium",
                             div { class: "w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_6px_rgba(52,199,89,0.4)]" }
                             "Enterprise Ready"

@@ -92,8 +92,14 @@ pub fn RegisterPage() -> Element {
                             }
                         }
 
-                        h1 { class: "text-3xl font-semibold tracking-tight text-[#1D1D1F] mb-2",
-                            "Join the Intelligence"
+                        // Header Slogan
+                        div { class: "flex flex-col items-center justify-center space-y-1 mb-4",
+                            h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
+                                "One Interface."
+                            }
+                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#5856D6] to-[#AF52DE]",
+                                "Every Intelligence."
+                            }
                         }
                         p { class: "text-[15px] text-[#86868B]",
                             "开启本地优先的 AI 体验"

@@ -12,12 +12,12 @@ test('capture home page', async ({ page }) => {
   await page.waitForSelector('main', { timeout: 5000 });
   await page.waitForTimeout(2000);
 
-  // 截图
+  // 截图（只截取可见区域，避免超过 2000px 限制）
   await page.screenshot({
     path: 'home-current.jpeg',
     type: 'jpeg',
     quality: 90,
-    fullPage: true
+    fullPage: false
   });
 
   console.log('Screenshot saved to home-current.jpeg');

@@ -122,7 +122,7 @@ fn ChannelRow(channel: ChannelDto, on_delete: EventHandler<String>) -> Element {
                     div { class: "text-xs text-base-content/50", "ID: {&channel.id[0..8]}..." }
                 }
             }
-            
+
             // Endpoint Column
             div { class: "col-span-5 flex flex-col justify-center",
                 div { class: "flex items-center gap-2",
@@ -192,9 +192,9 @@ fn CreateChannelModal(on_close: EventHandler<()>, on_create: EventHandler<()>) -
     rsx! {
         div { class: "fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6",
             // Backdrop
-            div { 
+            div {
                 class: "absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity",
-                onclick: move |_| on_close.call(()) 
+                onclick: move |_| on_close.call(())
             }
 
             // Modal Panel
@@ -205,10 +205,10 @@ fn CreateChannelModal(on_close: EventHandler<()>, on_create: EventHandler<()>) -
                         h2 { class: "text-lg font-bold text-base-content", "新建渠道" }
                         p { class: "text-xs text-base-content/60", "添加新的 API 上游提供商" }
                     }
-                    button { 
-                        class: "btn btn-sm btn-circle btn-ghost", 
+                    button {
+                        class: "btn btn-sm btn-circle btn-ghost",
                         onclick: move |_| on_close.call(()),
-                        "✕" 
+                        "✕"
                     }
                 }
 
@@ -218,7 +218,7 @@ fn CreateChannelModal(on_close: EventHandler<()>, on_create: EventHandler<()>) -
                         label { class: "label pt-0", span { class: "label-text font-medium text-base-content", "名称 (Name)" } }
                         input { class: "input input-bordered w-full focus:input-primary transition-all bg-base-50 focus:bg-base-100", value: "{name}", oninput: move |e| name.set(e.value()), placeholder: "例如: OpenAI Main" }
                     }
-                    
+
                     div { class: "grid grid-cols-2 gap-4",
                         div { class: "form-control w-full",
                             label { class: "label pt-0", span { class: "label-text font-medium text-base-content", "Base URL" } }
