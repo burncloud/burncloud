@@ -175,7 +175,7 @@ All AI agents assisting in development must adhere to the following reporting pr
 *   This helps maintain consistency in project documentation and communication (the core project language is Chinese).
 
 ### 6.2 Git Message Generation
-*   **Write to File**: In every response involving code changes, the AI agent must **overwrite** the generated Git Commit Message to the `docs/MESSAGE.md` file in the project root.
+*   **Write to File**: In every response involving code changes, the AI agent must **overwrite** the generated Git Commit Message to the `MESSAGE.md` file in the project root.
 *   **No Chat Output**: The Git Commit Message will **no longer** be displayed directly in the chat window.
 *   **Formatting Standards**:
     *   Language: **English**.
