@@ -1,20 +1,9 @@
+
+任务系统应该任务拆分，多个小模型完成任务并投票，再纠错循环完成任务。
 获取SOC 2, HIPAA, FedRAMP认证，未获取之前需要删除相关的信息
 
 全自动获取最新的模型以及格式，这一部分不应该是硬编码，使用数据库增量同步
-
-仪表盘：全局概览。显示核心指标（请求数、成功率、总消费）、系统健康状态。
-模型网络：核心路由配置。添加上游渠道（OpenAI, Gemini 等），设置 API Key、代理地址、模型映射、优先级、权重。
-BurnGrid：账号购买渠道。
-访问凭证：生成访问密钥。
-演练场：测试中心。
-风控雷达：监控日志、错误率、异常 IP。
-日志审查：查看每条日志的消费记录，以及错误原因。
-用户管理：管理下游用户（User）。创建账号、封禁用户、充值额度、查看用户组。
-财务中心：查看充值记录、个人余额（如果是以用户视角登录）或系统营收（如果是管理员视角）。
-
-
-所有页面统一存放在/crates/client/crates下面。仪表盘：client-dashboard。模型网络：client-models。BurnGrid：client-burngrid。访问凭证：client-access。演练场：client-playground。风控雷达：client-monitor。日志审查：client-log。用户管理：client-users。财务中心：client-finance。同时修改相应的访问路由
-
+# [complete] 菜单页面整理
 
 方案三：泛型透传与协议降级 (Generic Passthrough & Protocol Degradation)
 
@@ -207,9 +196,8 @@ BurnGrid：账号购买渠道。
 # 增加ai分析功能，让ai去管理平台和渠道。用户做最终决策。
 # 上游数据只提取部分，应该做到泛型透传与协议降级 (Generic Passthrough & Protocol Degradation)
 # 目标是减少管理员的工作，管理员不应该每天去看日志错误报告，应该由系统来分析当前的渠道质量和错误情况。
-# 账号的原始性，不允许管理员填写上游渠道
-# 上游倍率问题，由平台全自动提供
-# 平台与平台之间对接，错误过多，使用客户应该直接访问到平台
+# 账号的原始性，不允许管理员填写非正规上游渠道
+# 平台与平台之间对接，错误过多，终端应该直接访问到最终持有账号的平台
 # 
 
 # 路径请求为 /openai/deployments/{deployment-id}/chat/completions?api-version={version} 判定为azure
