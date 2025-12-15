@@ -1,4 +1,5 @@
 use crate::app::Route;
+use crate::components::logo::Logo;
 use dioxus::prelude::*;
 
 #[component]
@@ -42,10 +43,8 @@ pub fn HomePage() -> Element {
             nav { class: "relative z-50 flex items-center justify-between px-8 py-6 max-w-[1200px] mx-auto w-full animate-slide-up",
                 // Logo: Pure Symbol
                 div { class: "flex items-center gap-3 select-none group",
-                    div { class: "w-10 h-10 bg-black/90 text-white rounded-[14px] flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-md transition-all duration-500 group-hover:scale-110 group-hover:shadow-[0_8px_24px_rgba(0,0,0,0.25)] group-hover:rotate-6",
-                        svg { class: "w-5 h-5 transition-transform duration-500 group-hover:scale-110", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2.5",
-                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" }
-                        }
+                    div { class: "flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-6",
+                        Logo { class: "w-10 h-10 fill-current" }
                     }
                     span { class: "font-semibold text-xl tracking-tight text-[#1D1D1F] transition-all duration-300 group-hover:tracking-wide", "BurnCloud" }
                 }
@@ -59,7 +58,7 @@ pub fn HomePage() -> Element {
             }
 
             // ========== MAIN STAGE: Asymmetrical Balance ==========
-            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-16 lg:pt-20 pb-16 flex flex-col lg:flex-row gap-16 lg:gap-20 items-center lg:items-start",
+            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-6 lg:pt-8 pb-16 flex flex-col lg:flex-row gap-16 lg:gap-20 items-center lg:items-start",
 
                 // ========== LEFT: Typography ==========
                 div { class: "flex-1 text-center lg:text-left pt-6 relative",
@@ -133,8 +132,6 @@ pub fn HomePage() -> Element {
                             div { class: "w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_6px_rgba(52,199,89,0.4)]" }
                             "Enterprise Ready"
                         }
-                        div { class: "w-[1px] h-4 bg-[#C7C7CC]" }
-                        div { class: "text-[13px] text-[#6E6E73] font-medium", "SOC 2 Compliant" }
                         div { class: "w-[1px] h-4 bg-[#C7C7CC]" }
                         div { class: "text-[13px] text-[#6E6E73] font-medium", "Open Source" }
                     }
