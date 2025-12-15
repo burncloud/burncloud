@@ -252,7 +252,7 @@ pub fn HomePage() -> Element {
                                         "Gem"
                                     }
                                     // More indicator
-                                    div { class: "w-10 h-10 rounded-xl bg-gradient-to-br from-[#8E8E93] to-[#636366] flex items-center justify-center text-white text-[13px] font-semibold transition-all duration-300 hover:scale-110 shadow-lg",
+                                    div { class: "w-10 h-10 rounded-xl bg-[#F2F2F7] border border-[#D1D1D6]/50 flex items-center justify-center text-[#86868B] text-[13px] font-semibold transition-all duration-300 hover:scale-110 hover:bg-[#E5E5EA] hover:text-[#1D1D1F] shadow-sm",
                                         "+9"
                                     }
                                 }
