@@ -15,6 +15,14 @@ pub fn RegisterPage() -> Element {
     let toast = use_toast();
     let navigator = use_navigator();
 
+    let logo_margin = if cfg!(feature = "liveview") {
+        "mb-6"
+    } else if cfg!(feature = "desktop") {
+        "mb-10"
+    } else {
+        "mb-6"
+    };
+
     let handle_register = move |_| {
         loading.set(true);
         spawn(async move {
@@ -80,7 +88,7 @@ pub fn RegisterPage() -> Element {
                     // Logo & Header
                     div { class: "text-center mb-8 relative z-10",
                         // Logo with gradient ring
-                        div { class: "relative inline-flex items-center justify-center w-16 h-16 mb-6",
+                        div { class: "relative inline-flex items-center justify-center w-16 h-16 {logo_margin}",
                             // Gradient ring
                             div { class: "absolute inset-0 rounded-[20px] bg-gradient-to-br from-[#007AFF] via-[#5856D6] to-[#AF52DE] p-[2px]",
                                 div { class: "w-full h-full rounded-[18px] bg-white" }
