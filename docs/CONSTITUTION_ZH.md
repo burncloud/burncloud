@@ -175,7 +175,7 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 *   这有助于保持项目文档和沟通的一致性（项目核心语言为中文）。
 
 ### 6.2 提交信息生成 (Git Message Generation)
-*   **写入文件 (Write to File)**：在每次涉及代码变更的回复中，AI 代理必须将生成的 Git Commit Message **覆盖写入**到项目根目录的 `docs/MESSAGE.md` 文件中。
+*   **写入文件 (Write to File)**：在每次涉及代码变更的回复中，AI 代理必须将生成的 Git Commit Message **覆盖写入**到项目根目录的 `MESSAGE.md` 文件中。
 *   **禁止输出 (No Chat Output)**：Git Commit Message **不再**直接显示在聊天窗口中。
 *   **格式规范**：
     *   语言：**英文**。
@@ -185,7 +185,7 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
 
 ### 6.3 严禁自动提交 (Strictly No Auto-Commit)
 *   **铁律**：AI 代理/编程工具 **绝对禁止** 直接执行 `git commit` 命令。
-*   **仅生成**：AI 代理只能生成提交信息（通过 `docs/MESSAGE.md`），**必须由人类用户** 亲自确认并执行提交操作。
+*   **仅生成**：AI 代理只能生成提交信息（通过 `MESSAGE.md`），**必须由人类用户** 亲自确认并执行提交操作。
 
 ---
 

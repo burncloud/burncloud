@@ -12,6 +12,14 @@ pub fn LoginPage() -> Element {
     let toast = use_toast();
     let navigator = use_navigator();
 
+    let logo_margin = if cfg!(feature = "liveview") {
+        "mb-6"
+    } else if cfg!(feature = "desktop") {
+        "mb-10"
+    } else {
+        "mb-6"
+    };
+
     let handle_login = move |_| {
         loading.set(true);
         spawn(async move {
@@ -64,7 +72,7 @@ pub fn LoginPage() -> Element {
                     // Logo & Header
                     div { class: "text-center mb-10 relative z-10",
                         // Logo
-                        div { class: "inline-flex items-center justify-center mb-6 transition-transform duration-500 hover:scale-110 hover:rotate-6",
+                        div { class: "inline-flex items-center justify-center {logo_margin} transition-transform duration-500 hover:scale-110 hover:rotate-6",
                             Logo { class: "w-16 h-16 fill-current" }
                         }
 

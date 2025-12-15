@@ -1,5 +1,6 @@
 use crate::app::Route;
 use crate::components::logo::Logo;
+use burncloud_client_shared::DesktopMode;
 use dioxus::prelude::*;
 
 #[component]
@@ -7,6 +8,14 @@ pub fn HomePage() -> Element {
     let active_nodes = use_signal(|| 842);
     let response_time = use_signal(|| "12");
     let uptime = use_signal(|| "99.9");
+
+    // Check if running in desktop mode to adjust padding for window controls
+    let is_desktop = try_use_context::<DesktopMode>().is_some();
+    let nav_padding = if is_desktop {
+        "relative z-40 flex items-center justify-between pl-8 pr-8 pt-14 pb-6 max-w-[1200px] mx-auto w-full animate-slide-up"
+    } else {
+        "relative z-40 flex items-center justify-between px-8 py-6 max-w-[1200px] mx-auto w-full animate-slide-up"
+    };
 
     rsx! {
         // Container: White Ceramic Base
@@ -40,7 +49,7 @@ pub fn HomePage() -> Element {
             }
 
             // ========== NAVBAR: Minimalist Totem ==========
-            nav { class: "relative z-50 flex items-center justify-between px-8 py-6 max-w-[1200px] mx-auto w-full animate-slide-up",
+            nav { class: "{nav_padding}",
                 // Logo: Pure Symbol
                 div { class: "flex items-center gap-3 select-none group",
                     div { class: "flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-6",
@@ -103,24 +112,6 @@ pub fn HomePage() -> Element {
                                 "Get Started"
                                 svg { class: "w-4 h-4 transition-transform duration-300 group-hover:translate-x-1", fill: "none", stroke: "currentColor", view_box: "0 0 24 24",
                                     path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2.5", d: "M9 5l7 7-7 7" }
-                                }
-                            }
-                        }
-                        // Secondary CTA
-                        Link {
-                            to: Route::LoginPage {},
-                            class: "group inline-flex items-center justify-center px-8 py-4 text-[17px] font-medium text-[#1D1D1F] transition-all duration-300 hover:text-[#0071E3]",
-                            span { "Learn More" }
-                            svg {
-                                class: "w-5 h-5 ml-1.5 transition-transform duration-300 group-hover:translate-x-1.5",
-                                fill: "none",
-                                stroke: "currentColor",
-                                view_box: "0 0 24 24",
-                                path {
-                                    stroke_linecap: "round",
-                                    stroke_linejoin: "round",
-                                    stroke_width: "2",
-                                    d: "M17 8l4 4m0 0l-4 4m4-4H3"
                                 }
                             }
                         }
