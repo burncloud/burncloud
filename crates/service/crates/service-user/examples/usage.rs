@@ -6,6 +6,7 @@
 use burncloud_database::create_default_database;
 use burncloud_database_user::UserDatabase;
 use burncloud_service_user::UserService;
+use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,16 +21,20 @@ async fn main() -> anyhow::Result<()> {
     let service = UserService::new();
     println!("✓ UserService created\n");
 
+    // Use a unique username for this run
+    let username = format!("user_{}", Uuid::new_v4().to_string().split('-').next().unwrap());
+    let email = format!("{}@example.com", username);
+
     // Register a new user
-    println!("Registering user 'alice'...");
+    println!("Registering user '{}'...", username);
     let user_id = service
-        .register_user(&db, "alice", "secure_password", Some("alice@example.com".to_string()))
+        .register_user(&db, &username, "secure_password", Some(email))
         .await?;
     println!("✓ User registered with ID: {}\n", user_id);
 
     // Login
-    println!("Logging in as 'alice'...");
-    let auth_token = service.login_user(&db, "alice", "secure_password").await?;
+    println!("Logging in as '{}'...", username);
+    let auth_token = service.login_user(&db, &username, "secure_password").await?;
     println!("✓ Login successful!");
     println!("  Token: {}", auth_token.token);
     println!("  User ID: {}", auth_token.user_id);
@@ -45,15 +50,15 @@ async fn main() -> anyhow::Result<()> {
 
     // Demonstrate failed login
     println!("Attempting login with wrong password...");
-    match service.login_user(&db, "alice", "wrong_password").await {
+    match service.login_user(&db, &username, "wrong_password").await {
         Ok(_) => println!("✗ Should have failed!"),
         Err(e) => println!("✓ Login failed as expected: {}\n", e),
     }
 
     // Demonstrate duplicate registration
-    println!("Attempting to register 'alice' again...");
+    println!("Attempting to register '{}' again...", username);
     match service
-        .register_user(&db, "alice", "password", None)
+        .register_user(&db, &username, "password", None)
         .await
     {
         Ok(_) => println!("✗ Should have failed!"),
