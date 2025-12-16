@@ -79,7 +79,7 @@ The middleware will:
 
 ```rust
 use axum::Extension;
-use burncloud_server::api::auth::Claims;
+use burncloud_server::Claims;
 
 async fn protected_handler(Extension(claims): Extension<Claims>) -> String {
     format!("Hello, {}! Your user ID is: {}", claims.username, claims.sub)
