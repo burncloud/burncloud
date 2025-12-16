@@ -249,7 +249,7 @@ html, body {
     outline: none;
     background: rgba(255, 255, 255, 0.8);
     border-color: var(--accent-color);
-    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-color) 15%, transparent);
     transform: scale(1.02);
 }
 
@@ -262,7 +262,6 @@ html, body {
 /* Dark theme adjustments for BCInput */
 @media (prefers-color-scheme: dark) {
     .bc-input {
-        background: rgba(255, 255, 255, 0.05);
         color: #ffffff;
     }
     
@@ -272,7 +271,7 @@ html, body {
     
     .bc-input:focus {
         background: rgba(255, 255, 255, 0.12);
-        box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.25);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-color) 25%, transparent);
     }
     
     .bc-input::placeholder {
