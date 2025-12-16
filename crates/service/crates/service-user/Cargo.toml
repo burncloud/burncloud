@@ -1,0 +1,19 @@
+[package]
+name = "burncloud-service-user"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database-user.workspace = true
+burncloud-database.workspace = true
+burncloud-common.workspace = true
+bcrypt = "0.17.1"
+uuid.workspace = true
+jsonwebtoken = "9.3"
+serde.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
