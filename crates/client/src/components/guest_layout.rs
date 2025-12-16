@@ -308,6 +308,9 @@ pub fn GuestLayout() -> Element {
                 .shadow-\\[0_20px_40px_-5px_rgba\\(0\\,113\\,227\\,0\\.5\\)\\] {{ box-shadow: 0 20px 40px -5px rgba(0,113,227,0.5); }}
                 .shadow-\\[0_20px_50px_-12px_rgba\\(0\\,0\\,0\\,0\\.08\\)\\] {{ box-shadow: 0 20px 50px -12px rgba(0,0,0,0.08); }}
                 .shadow-\\[0_30px_60px_-12px_rgba\\(0\\,0\\,0\\,0\\.15\\)\\] {{ box-shadow: 0 30px 60px -12px rgba(0,0,0,0.15); }}
+                .shadow-\\[0_4px_14px_-2px_rgba\\(29\\,29\\,31\\,0\\.25\\)\\,0_12px_32px_-4px_rgba\\(29\\,29\\,31\\,0\\.15\\)\\] {{ box-shadow: 0 4px 14px -2px rgba(29,29,31,0.25), 0 12px 32px -4px rgba(29,29,31,0.15); }}
+                .hover\\:shadow-\\[0_8px_24px_-4px_rgba\\(29\\,29\\,31\\,0\\.35\\)\\,0_16px_40px_-8px_rgba\\(29\\,29\\,31\\,0\\.2\\)\\]:hover {{ box-shadow: 0 8px 24px -4px rgba(29,29,31,0.35), 0 16px 40px -8px rgba(29,29,31,0.2); }}
+                .shadow-\\[0_8px_32px_-4px_rgba\\(0\\,0\\,0\\,0\\.08\\)\\,0_24px_56px_-8px_rgba\\(88\\,86\\,214\\,0\\.12\\)\\] {{ box-shadow: 0 8px 32px -4px rgba(0,0,0,0.08), 0 24px 56px -8px rgba(88,86,214,0.12); }}
 
                 /* Hover glow effects */
                 .hover\\:shadow-\\[0_0_20px_rgba\\(175\\,82\\,222\\,0\\.4\\)\\]:hover {{ box-shadow: 0 0 20px rgba(175,82,222,0.4); }}
@@ -322,6 +325,7 @@ pub fn GuestLayout() -> Element {
 
                 /* Rounded utilities */
                 .rounded-\\[14px\\] {{ border-radius: 14px; }}
+                .rounded-\\[24px\\] {{ border-radius: 24px; }}
                 .rounded-\\[28px\\] {{ border-radius: 28px; }}
                 .rounded-\\[32px\\] {{ border-radius: 32px; }}
 
@@ -330,8 +334,11 @@ pub fn GuestLayout() -> Element {
                 .bg-\\[\\#E8E8ED\\] {{ background-color: #E8E8ED; }}
                 .bg-\\[\\#D2D2D7\\] {{ background-color: #D2D2D7; }}
                 .bg-\\[\\#1D1D1F\\] {{ background-color: #1D1D1F; }}
+                .bg-\\[\\#2C2C2E\\] {{ background-color: #2C2C2E; }}
+                .hover\\:bg-\\[\\#2C2C2E\\]:hover {{ background-color: #2C2C2E; }}
                 .bg-black\\/90 {{ background-color: rgba(0, 0, 0, 0.9); }}
                 .text-\\[\\#1D1D1F\\] {{ color: #1D1D1F; }}
+                .text-\\[\\#6E6E73\\] {{ color: #6E6E73; }}
                 .text-\\[\\#86868B\\] {{ color: #86868B; }}
                 .text-\\[\\#0071E3\\] {{ color: #0071E3; }}
                 .text-\\[\\#AF52DE\\] {{ color: #AF52DE; }}
@@ -365,15 +372,18 @@ pub fn GuestLayout() -> Element {
                 .selection\\:text-white ::selection {{ color: white; }}
 
                 /* Opacity utilities */
+                .opacity-\\[0\\.015\\] {{ opacity: 0.015; }}
                 .opacity-\\[0\\.03\\] {{ opacity: 0.03; }}
                 .text-\\[\\#86868B\\]\\/30 {{ color: rgba(134, 134, 139, 0.3); }}
                 .text-\\[\\#86868B\\]\\/40 {{ color: rgba(134, 134, 139, 0.4); }}
 
                 /* Scale transforms */
                 .hover\\:scale-\\[1\\.02\\]:hover {{ transform: scale(1.02); }}
+                .hover\\:scale-\\[1\\.015\\]:hover {{ transform: scale(1.015); }}
                 .hover\\:scale-\\[1\\.05\\]:hover {{ transform: scale(1.05); }}
                 .hover\\:scale-105:hover {{ transform: scale(1.05); }}
                 .hover\\:scale-110:hover {{ transform: scale(1.10); }}
+                .active\\:scale-\\[0\\.985\\]:active {{ transform: scale(0.985); }}
                 .group:hover .group-hover\\:scale-110 {{ transform: scale(1.10); }}
                 .group:hover .group-hover\\:opacity-100 {{ opacity: 1; }}
                 .group:hover .group-hover\\:opacity-20 {{ opacity: 0.2; }}
@@ -386,7 +396,10 @@ pub fn GuestLayout() -> Element {
                 .group-hover\\:rotate-6 {{ }}
                 .group:hover .group-hover\\:rotate-6 {{ transform: rotate(6deg); }}
 
-                /* Hover translate */
+                /* Hover/Active translate */
+                .hover\\:-translate-y-0\\.5:hover {{ transform: translateY(-0.125rem); }}
+                .active\\:translate-y-0:active {{ transform: translateY(0); }}
+                .disabled\\:hover\\:translate-y-0:disabled:hover {{ transform: translateY(0); }}
                 .group:hover .group-hover\\:translate-x-1 {{ transform: translateX(0.25rem); }}
                 .group:hover .group-hover\\:translate-x-2 {{ transform: translateX(0.5rem); }}
                 "
