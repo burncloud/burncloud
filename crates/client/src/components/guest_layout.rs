@@ -372,7 +372,7 @@ pub fn GuestLayout() -> Element {
                 .selection\\:text-white ::selection {{ color: white; }}
 
                 /* Opacity utilities */
-                .opacity-\\[0\\.008\\] {{ opacity: 0.008; }}
+                .opacity-\\[0\\.015\\] {{ opacity: 0.015; }}
                 .opacity-\\[0\\.03\\] {{ opacity: 0.03; }}
                 .text-\\[\\#86868B\\]\\/30 {{ color: rgba(134, 134, 139, 0.3); }}
                 .text-\\[\\#86868B\\]\\/40 {{ color: rgba(134, 134, 139, 0.4); }}
