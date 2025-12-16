@@ -83,14 +83,14 @@ impl UserService {
         let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
             #[cfg(not(debug_assertions))]
             panic!("JWT_SECRET environment variable must be set in production");
-
+            
             #[cfg(debug_assertions)]
             {
                 eprintln!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
                 "default-secret-key-change-in-production".to_string()
             }
         });
-
+        
         Self {
             jwt_secret,
             token_expiration_hours: DEFAULT_TOKEN_EXPIRATION_HOURS,
@@ -137,8 +137,8 @@ impl UserService {
         }
 
         // Hash the password
-        let password_hash =
-            hash(password, DEFAULT_COST).map_err(|e| UserServiceError::HashError(e.to_string()))?;
+        let password_hash = hash(password, DEFAULT_COST)
+            .map_err(|e| UserServiceError::HashError(e.to_string()))?;
 
         // Create user
         let user = DbUser {
@@ -152,13 +152,10 @@ impl UserService {
         };
 
         UserDatabase::create_user(db, &user).await?;
-
+        
         // Assign default role - log warning if it fails but don't fail registration
         if let Err(e) = UserDatabase::assign_role(db, &user.id, "user").await {
-            eprintln!(
-                "Warning: Failed to assign default role to user {}: {}",
-                user.id, e
-            );
+            eprintln!("Warning: Failed to assign default role to user {}: {}", user.id, e);
         }
 
         Ok(user.id)
@@ -271,21 +268,16 @@ mod tests {
     async fn test_register_user() -> anyhow::Result<()> {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
-
+        
         let service = UserService::new();
         let username = format!("testuser_{}", Uuid::new_v4());
-
+        
         let user_id = service
-            .register_user(
-                &db,
-                &username,
-                "password123",
-                Some("test@example.com".to_string()),
-            )
+            .register_user(&db, &username, "password123", Some("test@example.com".to_string()))
             .await?;
 
         assert!(!user_id.is_empty());
-
+        
         // Verify user exists
         let user = UserDatabase::get_user_by_username(&db, &username).await?;
         assert!(user.is_some());
@@ -298,10 +290,10 @@ mod tests {
     async fn test_register_duplicate_user() -> anyhow::Result<()> {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
-
+        
         let service = UserService::new();
         let username = format!("testuser_{}", Uuid::new_v4());
-
+        
         // First registration should succeed
         service
             .register_user(&db, &username, "password123", None)
@@ -313,10 +305,7 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::UserAlreadyExists
-        ));
+        assert!(matches!(result.unwrap_err(), UserServiceError::UserAlreadyExists));
 
         Ok(())
     }
@@ -325,11 +314,11 @@ mod tests {
     async fn test_login_user_success() -> anyhow::Result<()> {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
-
+        
         let service = UserService::new();
         let username = format!("testuser_{}", Uuid::new_v4());
         let password = "password123";
-
+        
         // Register user
         service
             .register_user(&db, &username, password, None)
@@ -337,7 +326,7 @@ mod tests {
 
         // Login should succeed
         let token = service.login_user(&db, &username, password).await?;
-
+        
         assert!(!token.token.is_empty());
         assert_eq!(token.username, username);
         assert!(token.expires_at > Utc::now().timestamp());
@@ -349,10 +338,10 @@ mod tests {
     async fn test_login_user_wrong_password() -> anyhow::Result<()> {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
-
+        
         let service = UserService::new();
         let username = format!("testuser_{}", Uuid::new_v4());
-
+        
         // Register user
         service
             .register_user(&db, &username, "password123", None)
@@ -360,12 +349,9 @@ mod tests {
 
         // Login with wrong password should fail
         let result = service.login_user(&db, &username, "wrongpassword").await;
-
+        
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::InvalidCredentials
-        ));
+        assert!(matches!(result.unwrap_err(), UserServiceError::InvalidCredentials));
 
         Ok(())
     }
@@ -374,17 +360,14 @@ mod tests {
     async fn test_login_user_not_found() -> anyhow::Result<()> {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
-
+        
         let service = UserService::new();
-
+        
         // Login non-existent user should fail
         let result = service.login_user(&db, "nonexistent", "password").await;
-
+        
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::UserNotFound
-        ));
+        assert!(matches!(result.unwrap_err(), UserServiceError::UserNotFound));
 
         Ok(())
     }
@@ -392,9 +375,9 @@ mod tests {
     #[test]
     fn test_generate_token() {
         let service = UserService::with_secret("test-secret".to_string());
-
+        
         let token = service.generate_token("user123", "testuser").unwrap();
-
+        
         assert!(!token.token.is_empty());
         assert_eq!(token.user_id, "user123");
         assert_eq!(token.username, "testuser");
@@ -404,11 +387,11 @@ mod tests {
     #[test]
     fn test_validate_token_success() {
         let service = UserService::with_secret("test-secret".to_string());
-
+        
         let token = service.generate_token("user123", "testuser").unwrap();
-
+        
         let (user_id, username) = service.validate_token(&token.token).unwrap();
-
+        
         assert_eq!(user_id, "user123");
         assert_eq!(username, "testuser");
     }
@@ -416,30 +399,24 @@ mod tests {
     #[test]
     fn test_validate_token_invalid() {
         let service = UserService::with_secret("test-secret".to_string());
-
+        
         let result = service.validate_token("invalid.token.here");
-
+        
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::TokenValidationError(_)
-        ));
+        assert!(matches!(result.unwrap_err(), UserServiceError::TokenValidationError(_)));
     }
 
     #[test]
     fn test_validate_token_wrong_secret() {
         let service1 = UserService::with_secret("secret1".to_string());
         let service2 = UserService::with_secret("secret2".to_string());
-
+        
         let token = service1.generate_token("user123", "testuser").unwrap();
-
+        
         // Validating with a different secret should fail
         let result = service2.validate_token(&token.token);
-
+        
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::TokenValidationError(_)
-        ));
+        assert!(matches!(result.unwrap_err(), UserServiceError::TokenValidationError(_)));
     }
 }
