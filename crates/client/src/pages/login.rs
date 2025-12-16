@@ -70,7 +70,7 @@ pub fn LoginPage() -> Element {
             }
 
             // ========== LOGIN CARD: Glass Morphism ==========
-            div { class: "relative z-10 w-full max-w-[420px] mx-4 animate-slide-up",
+            div { class: "relative z-10 w-full max-w-[420px] mx-4 animate-in",
 
                 // Glass Card
                 div { class: "backdrop-blur-xl bg-white/70 rounded-[32px] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.12)] border border-white/50 p-10 relative overflow-hidden",
