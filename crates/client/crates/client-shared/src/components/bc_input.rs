@@ -36,7 +36,13 @@ pub fn BCInput(
     // Combine all classes
     let input_class = format!(
         "{} {} {} {} {} {} {}",
-        base_classes, input_padding, bg_classes, text_classes, transition_classes, focus_classes, border_classes
+        base_classes,
+        input_padding,
+        bg_classes,
+        text_classes,
+        transition_classes,
+        focus_classes,
+        border_classes
     );
 
     // Label positioning classes

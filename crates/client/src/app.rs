@@ -9,7 +9,7 @@ use crate::pages::{
 };
 #[cfg(feature = "desktop")]
 use burncloud_client_shared::DesktopMode;
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", target_os = "windows"))]
 pub use burncloud_client_tray::{should_show_window, start_tray};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
@@ -86,7 +86,7 @@ pub fn launch_gui_with_tray() {
         .launch(AppWithTray);
 }
 
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", target_os = "windows"))]
 #[component]
 fn AppWithTray() -> Element {
     use_context_provider(|| DesktopMode);
@@ -119,6 +119,19 @@ fn AppWithTray() -> Element {
                 }
             }
         });
+    });
+
+    rsx! { App {} }
+}
+
+#[cfg(all(feature = "desktop", not(target_os = "windows")))]
+#[component]
+fn AppWithTray() -> Element {
+    use_context_provider(|| DesktopMode);
+    let window = dioxus::desktop::use_window();
+
+    use_effect(move || {
+        window.set_maximized(true);
     });
 
     rsx! { App {} }

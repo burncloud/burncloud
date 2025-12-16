@@ -20,5 +20,5 @@ path = "src/lib.rs"
 name = "burncloud-client-tray"
 path = "src/main.rs"
 
-[dependencies]
+[target.'cfg(windows)'.dependencies]
 systray.workspace = true
