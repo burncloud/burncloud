@@ -7,7 +7,9 @@ use crate::pages::{
     models::ModelManagement, monitor::ServiceMonitor, playground::PlaygroundPage,
     register::RegisterPage, settings::SystemSettings, user::UserPage,
 };
+#[cfg(feature = "desktop")]
 use burncloud_client_shared::DesktopMode;
+#[cfg(feature = "desktop")]
 pub use burncloud_client_tray::{should_show_window, start_tray};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
@@ -53,6 +55,8 @@ pub fn App() -> Element {
     burncloud_client_shared::i18n::use_init_i18n();
     // Initialize Toast
     burncloud_client_shared::use_init_toast();
+    // Initialize Auth Context
+    burncloud_client_shared::use_init_auth();
 
     rsx! {
         burncloud_client_shared::ToastContainer {}
