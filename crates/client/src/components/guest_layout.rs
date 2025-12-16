@@ -16,7 +16,7 @@ pub fn GuestLayout() -> Element {
             style {
                 "
                 :root {{
-                    --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                    --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                 }}
                 html, body {{
                     font-family: var(--font-sans);
