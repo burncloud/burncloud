@@ -32,6 +32,9 @@ pub fn sanitize_input(input: &str) -> String {
 - **Format**: 3-20 characters, alphanumeric and underscore only
 - **Regex**: `^[a-zA-Z0-9_]{3,20}$`
 - **Availability Check**: Async endpoint to check if username is taken before submission
+  - **Security Note**: Username availability checking can enable username enumeration attacks
+  - **Mitigation**: Rate limiting on the check endpoint is critical (see rate limiting section)
+  - **Alternative**: Consider removing real-time checking or adding deliberate delays
 
 ### 4. Email Validation
 - **Format**: RFC 5322-compliant email validation
@@ -56,8 +59,13 @@ Recommended limits for /console/api/user/register:
 ```
 Recommended limits for /console/api/user/check_username:
 - 30 requests per IP per minute
+- 100 requests per IP per hour
 - Implement caching for repeated username checks
+- Add small random delay (50-200ms) to prevent timing attacks
+- Consider implementing CAPTCHA after 20 requests in 5 minutes
 ```
+
+**Security Consideration**: Username availability checking can enable username enumeration attacks where an attacker can discover which usernames exist in the system. Rate limiting and delays are critical mitigations.
 
 #### C. Login Attempt Rate Limiting
 ```

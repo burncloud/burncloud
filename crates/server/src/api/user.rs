@@ -83,17 +83,21 @@ async fn register(
             let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
             
             // Return login data for auto-login
+            // NOTE: This is a behavior change - register now returns login data
+            // This enables auto-login feature without requiring separate login call
             let roles = UserDatabase::get_user_roles(&state.db, &user.id)
                 .await
                 .unwrap_or_default();
             
+            // TODO: Generate proper JWT token instead of mock token
+            // For production, implement JWT signing with secret key and expiration
             AxumJson(json!({
                 "success": true,
                 "data": {
                     "id": user.id,
                     "username": user.username,
                     "roles": roles,
-                    "token": "mock-token-for-now"
+                    "token": "mock-token-for-now"  // SECURITY: Replace with real JWT
                 }
             }))
         }
@@ -143,13 +147,15 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
                     let roles = UserDatabase::get_user_roles(&state.db, &user.id)
                         .await
                         .unwrap_or_default();
+                    // TODO: Generate proper JWT token instead of mock token
+                    // For production, implement JWT signing with secret key and expiration
                     return AxumJson(json!({
                         "success": true,
                         "data": {
                             "id": user.id,
                             "username": user.username,
                             "roles": roles,
-                            "token": "mock-token-for-now"
+                            "token": "mock-token-for-now"  // SECURITY: Replace with real JWT
                         }
                     }));
                 }
