@@ -86,15 +86,18 @@ pub fn HomePage() -> Element {
                     }
 
                     // Main headline with staggered animation
-                    h1 { class: "text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight mb-7 text-[#1D1D1F] animate-slide-up animate-delay-100 relative z-10",
-                        span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow leading-tight pb-2",
-                            "Welcome to BurnCloud"
+                    h1 { class: "text-5xl lg:text-6xl xl:text-7xl font-semibold tracking-tight mb-7 text-[#1D1D1F] animate-slide-up animate-delay-100 relative z-10",
+                        span { class: "block leading-tight pb-1 mb-4", "One Interface." }
+                        div { class: "block pb-4",
+                            span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow leading-tight pb-2",
+                                "Every Intelligence."
+                            }
                         }
                     }
 
                     // Subtitle
-                    p { class: "text-[20px] lg:text-[22px] text-[#1D1D1F] opacity-60 mb-9 max-w-lg mx-auto lg:mx-0 font-normal leading-[1.7] animate-slide-up animate-delay-200 relative z-10",
-                        "Your Local AI Powerhouse"
+                    p { class: "text-[20px] lg:text-[22px] text-[#86868B] mb-9 max-w-lg mx-auto lg:mx-0 font-normal leading-[1.7] animate-slide-up animate-delay-200 relative z-10",
+                        "Connect to the world's leading AI models—GPT, Claude, Gemini—with the simplicity of a single tap."
                     }
 
                     // CTA Buttons with enhanced effects
