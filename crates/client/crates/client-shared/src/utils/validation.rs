@@ -140,8 +140,8 @@ pub fn get_password_error(password: &str) -> Option<String> {
         return Some("密码不能为空".to_string());
     }
     
-    if password.len() < 6 {
-        return Some("密码至少需要6个字符".to_string());
+    if password.len() < 8 {
+        return Some("密码至少需要8个字符".to_string());
     }
     
     None
@@ -187,6 +187,14 @@ mod tests {
         assert_eq!(calculate_password_strength("password"), PasswordStrength::Weak);
         assert_eq!(calculate_password_strength("Password1"), PasswordStrength::Medium);
         assert_eq!(calculate_password_strength("Password123!"), PasswordStrength::Strong);
+    }
+
+    #[test]
+    fn test_password_validation() {
+        // Should require minimum 8 characters
+        assert!(get_password_error("short").is_some());
+        assert!(get_password_error("12345678").is_none());
+        assert!(get_password_error("LongPassword123").is_none());
     }
 
     #[test]
