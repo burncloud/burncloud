@@ -39,7 +39,7 @@ jobs:
       run: cargo fmt --all -- --check
 
     - name: Clippy Lint
-      run: cargo clippy --all-targets --all-features
+      run: cargo clippy --all-targets --all-features -- -D warnings
 
     - name: Run Tests
       run: cargo test --all-features
