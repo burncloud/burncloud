@@ -94,6 +94,31 @@ pub fn GuestLayout() -> Element {
                 .animate-slide-up {{
                     animation: slide-up-fade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
                 }}
+
+                /* ========== ANIMATE-IN - Combined fade-in, zoom-in, slide-up (Micro-Interaction Delight) ========== */
+                @keyframes animate-in {{
+                    0% {{ 
+                        opacity: 0; 
+                        transform: translateY(16px) scale(0.95); 
+                    }}
+                    100% {{ 
+                        opacity: 1; 
+                        transform: translateY(0) scale(1); 
+                    }}
+                }}
+                .animate-in {{
+                    animation: animate-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }}
+
+                /* ========== SHAKE - Error feedback animation ========== */
+                @keyframes shake {{
+                    0%, 100% {{ transform: translateX(0); }}
+                    10%, 30%, 50%, 70%, 90% {{ transform: translateX(-4px); }}
+                    20%, 40%, 60%, 80% {{ transform: translateX(4px); }}
+                }}
+                .animate-shake {{
+                    animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+                }}
                 .animate-delay-100 {{ animation-delay: 0.1s; opacity: 0; }}
                 .animate-delay-200 {{ animation-delay: 0.2s; opacity: 0; }}
                 .animate-delay-300 {{ animation-delay: 0.3s; opacity: 0; }}
