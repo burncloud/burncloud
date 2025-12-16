@@ -69,18 +69,18 @@ pub fn RegisterPage() -> Element {
                 // Layer 3: Accent Orb
                 div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s]" }
 
-                // Grid pattern overlay
+                // Grid pattern overlay - reduced opacity for cleaner background
                 div {
-                    class: "absolute inset-0 opacity-[0.02]",
-                    style: "background-image: radial-gradient(circle at 1px 1px, #1D1D1F 1px, transparent 0); background-size: 40px 40px;"
+                    class: "absolute inset-0 opacity-[0.015]",
+                    style: "background-image: radial-gradient(circle at 1px 1px, #1D1D1F 0.5px, transparent 0); background-size: 48px 48px;"
                 }
             }
 
             // ========== REGISTER CARD: Glass Morphism ==========
-            div { class: "relative z-10 w-full max-w-[460px] mx-4 animate-in",
+            div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
 
-                // Glass Card
-                div { class: "backdrop-blur-xl bg-white/70 rounded-[32px] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.12)] border border-white/50 p-10 relative overflow-hidden",
+                // Glass Card - refined aesthetics with sophisticated shadow
+                div { class: "backdrop-blur-xl bg-white/75 rounded-[24px] shadow-[0_8px_32px_-4px_rgba(0,0,0,0.08),0_24px_56px_-8px_rgba(88,86,214,0.12)] border border-white/60 p-8 relative overflow-hidden",
 
                     // Glossy reflection
                     div { class: "absolute top-0 left-0 w-56 h-56 bg-gradient-to-br from-white/80 to-transparent opacity-60 pointer-events-none rounded-full blur-2xl -translate-y-1/2 -translate-x-1/2" }
@@ -108,7 +108,7 @@ pub fn RegisterPage() -> Element {
                                 "Every Intelligence."
                             }
                         }
-                        p { class: "text-[15px] text-[#86868B]",
+                        p { class: "text-[15px] text-[#6E6E73] font-medium",
                             "开启本地优先的 AI 体验"
                         }
                     }
@@ -200,14 +200,11 @@ pub fn RegisterPage() -> Element {
                             }
                         }
 
-                        // Register Button - Purple Gradient CTA
+                        // Register Button - Primary Action with high visual weight
                         button {
-                            class: "group relative w-full h-14 mt-6 text-[17px] font-semibold text-white transition-all duration-500 bg-gradient-to-r from-[#5856D6] to-[#AF52DE] rounded-2xl hover:from-[#6E6AE8] hover:to-[#C969E8] shadow-[0_10px_30px_-5px_rgba(88,86,214,0.4)] hover:shadow-[0_20px_40px_-5px_rgba(88,86,214,0.5)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden",
+                            class: "group relative w-full h-14 mt-6 text-[17px] font-semibold text-white transition-all duration-300 bg-[#1D1D1F] rounded-2xl hover:bg-[#2C2C2E] shadow-[0_4px_14px_-2px_rgba(29,29,31,0.25),0_12px_32px_-4px_rgba(29,29,31,0.15)] hover:shadow-[0_8px_24px_-4px_rgba(29,29,31,0.35),0_16px_40px_-8px_rgba(29,29,31,0.2)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
                             disabled: loading(),
                             onclick: handle_register,
-
-                            // Shimmer effect
-                            div { class: "absolute inset-0 animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-300" }
 
                             span { class: "relative z-10 flex items-center justify-center gap-2",
                                 if loading() {
