@@ -23,13 +23,13 @@ impl AuthContext {
     }
 
     pub fn set_auth(mut self, token: String, user: CurrentUser) {
-        self.token.set(Some(token));
-        self.current_user.set(Some(user));
+        *self.token.write() = Some(token);
+        *self.current_user.write() = Some(user);
     }
 
     pub fn clear_auth(mut self) {
-        self.token.set(None);
-        self.current_user.set(None);
+        *self.token.write() = None;
+        *self.current_user.write() = None;
     }
 
     pub fn is_authenticated(&self) -> bool {
