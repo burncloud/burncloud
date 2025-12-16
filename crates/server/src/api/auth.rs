@@ -37,7 +37,8 @@ pub struct Claims {
 }
 
 fn get_jwt_secret() -> String {
-    env::var("JWT_SECRET").unwrap_or_else(|_| "burncloud-default-secret-change-in-production".to_string())
+    env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "burncloud-default-secret-change-in-production".to_string())
 }
 
 fn generate_jwt(user_id: &str, username: &str) -> Result<String, jsonwebtoken::errors::Error> {
@@ -45,16 +46,20 @@ fn generate_jwt(user_id: &str, username: &str) -> Result<String, jsonwebtoken::e
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as usize;
-    
+
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.to_string(),
         exp: now + 86400 * 7, // 7 days
         iat: now,
     };
-    
+
     let secret = get_jwt_secret();
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
 }
 
 pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
@@ -113,7 +118,7 @@ async fn create_user(
         Ok(_) => {
             // Assign default role
             let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
-            
+
             // Generate JWT
             match generate_jwt(&user.id, &user.username) {
                 Ok(token) => AxumJson(json!({
@@ -126,7 +131,9 @@ async fn create_user(
                 })),
                 Err(e) => {
                     eprintln!("JWT generation failed: {}", e);
-                    AxumJson(json!({ "success": false, "message": "Failed to generate authentication token" }))
+                    AxumJson(
+                        json!({ "success": false, "message": "Failed to generate authentication token" }),
+                    )
                 }
             }
         }
@@ -147,7 +154,7 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
                         let roles = UserDatabase::get_user_roles(&state.db, &user.id)
                             .await
                             .unwrap_or_default();
-                        
+
                         match generate_jwt(&user.id, &user.username) {
                             Ok(token) => {
                                 return AxumJson(json!({
@@ -162,7 +169,9 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
                             }
                             Err(e) => {
                                 eprintln!("JWT generation failed: {}", e);
-                                return AxumJson(json!({ "success": false, "message": "Failed to generate authentication token" }));
+                                return AxumJson(
+                                    json!({ "success": false, "message": "Failed to generate authentication token" }),
+                                );
                             }
                         }
                     }
