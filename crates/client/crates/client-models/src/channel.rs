@@ -27,6 +27,7 @@ pub fn ChannelPage() -> Element {
     let mut form_param_override = use_signal(String::new);
     let mut form_header_override = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
+    let mut show_advanced = use_signal(|| false);
     let toast = use_toast();
 
     let open_create_modal = move |_| {
@@ -211,9 +212,9 @@ pub fn ChannelPage() -> Element {
                         onclick: move |_| is_modal_open.set(false)
                     }
 
-                    // Modal Content
+                    // Modal Content - Widened for better data presentation
                     div {
-                        class: "fixed inset-0 sm:relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-base-100 sm:rounded-2xl shadow-2xl border border-base-200 flex flex-col overflow-hidden",
+                        class: "fixed inset-0 sm:relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl bg-base-100 sm:rounded-2xl shadow-2xl border border-base-200 flex flex-col overflow-hidden",
                         onclick: |e| e.stop_propagation(), // Prevent click through
 
                         // Header
@@ -226,8 +227,8 @@ pub fn ChannelPage() -> Element {
                             }
                         }
 
-                        // Form Body
-                        div { class: "flex-1 overflow-y-auto p-6 flex flex-col gap-4 min-h-0",
+                        // Form Body - Improved vertical spacing using 16px/24px grid
+                        div { class: "flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-6 min-h-0",
                             BCInput {
                                 label: Some("渠道名称".to_string()),
                                 value: "{form_name}",
@@ -235,9 +236,11 @@ pub fn ChannelPage() -> Element {
                                 oninput: move |e: FormEvent| form_name.set(e.value())
                             }
 
-                            div { class: "flex flex-col gap-1.5",
-                                label { class: "text-sm font-medium text-base-content/80", "供应商类型" }
-                                select { class: "select select-bordered w-full select-sm",
+                            // Unified select styling to match BCInput
+                            div { class: "flex flex-col gap-2",
+                                label { class: "text-sm font-medium text-base-content/70", "供应商类型" }
+                                select { 
+                                    class: "w-full h-12 px-4 rounded-xl text-[15px] bg-white/5 hover:bg-white/8 focus:bg-white/80 text-base-content border border-transparent focus:border-accent focus:ring-4 focus:ring-accent/15 focus:outline-none transition-all duration-200 ease-out focus:scale-[1.02]",
                                     onchange: move |e: FormEvent| form_type.set(e.value().parse().unwrap_or(1)),
                                     option { value: "1", "OpenAI" }
                                     option { value: "14", "Anthropic Claude" }
@@ -266,23 +269,48 @@ pub fn ChannelPage() -> Element {
                                 oninput: move |e: FormEvent| form_models.set(e.value())
                             }
 
-                            div { class: "flex flex-col gap-1.5",
-                                label { class: "text-sm font-medium text-base-content/80", "参数覆写 (JSON)" }
-                                textarea {
-                                    class: "textarea textarea-bordered h-24 font-mono text-xs leading-relaxed",
-                                    value: "{form_param_override}",
-                                    placeholder: "{{ \"temperature\": 0.5 }}",
-                                    oninput: move |e: FormEvent| form_param_override.set(e.value())
+                            // Advanced Settings - Collapsible section
+                            div { class: "flex flex-col gap-4 mt-2",
+                                // Collapsible header
+                                button {
+                                    class: "flex items-center gap-2 text-sm font-medium text-base-content/70 hover:text-base-content transition-colors",
+                                    r#type: "button",
+                                    onclick: move |_| show_advanced.set(!show_advanced()),
+                                    // Chevron icon
+                                    svg {
+                                        class: if show_advanced() { "w-4 h-4 transform rotate-90 transition-transform" } else { "w-4 h-4 transition-transform" },
+                                        fill: "none",
+                                        view_box: "0 0 24 24",
+                                        stroke: "currentColor",
+                                        stroke_width: "2",
+                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 5l7 7-7 7" }
+                                    }
+                                    span { "高级设置" }
                                 }
-                            }
 
-                            div { class: "flex flex-col gap-1.5",
-                                label { class: "text-sm font-medium text-base-content/80", "Header 覆写 (JSON)" }
-                                textarea {
-                                    class: "textarea textarea-bordered h-24 font-mono text-xs leading-relaxed",
-                                    value: "{form_header_override}",
-                                    placeholder: "{{ \"X-Custom-Header\": \"value\" }}",
-                                    oninput: move |e: FormEvent| form_header_override.set(e.value())
+                                // Advanced fields - shown only when expanded
+                                if show_advanced() {
+                                    div { class: "flex flex-col gap-6 pl-6 border-l-2 border-base-200",
+                                        div { class: "flex flex-col gap-2",
+                                            label { class: "text-sm font-medium text-base-content/70", "参数覆写 (JSON)" }
+                                            textarea {
+                                                class: "w-full h-24 px-4 py-3 rounded-xl text-xs font-mono leading-relaxed bg-white/5 hover:bg-white/8 focus:bg-white/80 text-base-content border border-transparent focus:border-accent focus:ring-4 focus:ring-accent/15 focus:outline-none transition-all duration-200 ease-out resize-none",
+                                                value: "{form_param_override}",
+                                                placeholder: "{{ \"temperature\": 0.5 }}",
+                                                oninput: move |e: FormEvent| form_param_override.set(e.value())
+                                            }
+                                        }
+
+                                        div { class: "flex flex-col gap-2",
+                                            label { class: "text-sm font-medium text-base-content/70", "Header 覆写 (JSON)" }
+                                            textarea {
+                                                class: "w-full h-24 px-4 py-3 rounded-xl text-xs font-mono leading-relaxed bg-white/5 hover:bg-white/8 focus:bg-white/80 text-base-content border border-transparent focus:border-accent focus:ring-4 focus:ring-accent/15 focus:outline-none transition-all duration-200 ease-out resize-none",
+                                                value: "{form_header_override}",
+                                                placeholder: "{{ \"X-Custom-Header\": \"value\" }}",
+                                                oninput: move |e: FormEvent| form_header_override.set(e.value())
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -79,10 +79,10 @@ pub fn BCInput(
                 // Floating Label
                 if let Some(l) = label {
                     label {
-                        class: "absolute text-secondary transition-all duration-200 ease-out pointer-events-none \
+                        class: "absolute text-base-content/60 transition-all duration-200 ease-out pointer-events-none \
                                 {label_left} \
                                 peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-[15px] \
-                                peer-focus:top-1 peer-focus:translate-y-0 peer-focus:text-[11px] peer-focus:text-accent peer-focus:font-medium \
+                                peer-focus:top-1 peer-focus:translate-y-0 peer-focus:text-[11px] peer-focus:text-base-content/70 peer-focus:font-medium \
                                 {label_value_state}",
                         "{l}"
                     }
