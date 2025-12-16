@@ -4,6 +4,7 @@ pub mod components;
 pub mod i18n;
 pub mod services;
 pub mod styles;
+pub mod utils;
 
 pub use api_client::*;
 pub use auth_context::{use_auth, use_init_auth, AuthContext, CurrentUser};
@@ -16,6 +17,7 @@ pub use services::monitor_service;
 pub use services::usage_service;
 pub use services::user_service;
 pub use styles::*;
+pub use utils::*;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct DesktopMode;
