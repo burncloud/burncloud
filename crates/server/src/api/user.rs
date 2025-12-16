@@ -1,6 +1,6 @@
 use crate::AppState;
 use axum::{
-    extract::{Json, State},
+    extract::{Json, Query, State},
     response::Json as AxumJson,
     routing::{get, post},
     Router,
@@ -35,6 +35,7 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/user/register", post(register))
         .route("/console/api/user/login", post(login))
         .route("/console/api/user/topup", post(topup))
+        .route("/console/api/user/check_username", get(check_username))
         .route("/console/api/list_users", get(list_users))
     // .route("/console/api/user/me", get(get_current_user)) // Needs auth middleware context
 }
@@ -53,7 +54,7 @@ async fn register(
     // 1. Check if user exists
     match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(_)) => {
-            return AxumJson(json!({ "success": false, "message": "Username already exists" }))
+            return AxumJson(json!({ "success": false, "message": "用户名已存在" }))
         }
         Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
         _ => {}
@@ -68,7 +69,7 @@ async fn register(
     // 3. Create user
     let user = DbUser {
         id: Uuid::new_v4().to_string(),
-        username: payload.username,
+        username: payload.username.clone(),
         email: payload.email,
         password_hash: Some(password_hash),
         github_id: None,
@@ -80,11 +81,58 @@ async fn register(
         Ok(_) => {
             // Assign default role
             let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
-            AxumJson(
-                json!({ "success": true, "data": { "id": user.id, "username": user.username } }),
-            )
+            
+            // Return login data for auto-login
+            // NOTE: This is a behavior change - register now returns login data
+            // This enables auto-login feature without requiring separate login call
+            let roles = UserDatabase::get_user_roles(&state.db, &user.id)
+                .await
+                .unwrap_or_default();
+            
+            // TODO: Generate proper JWT token instead of mock token
+            // For production, implement JWT signing with secret key and expiration
+            AxumJson(json!({
+                "success": true,
+                "data": {
+                    "id": user.id,
+                    "username": user.username,
+                    "roles": roles,
+                    "token": "mock-token-for-now"  // SECURITY: Replace with real JWT
+                }
+            }))
         }
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CheckUsernameQuery {
+    username: String,
+}
+
+async fn check_username(
+    State(state): State<AppState>,
+    Query(params): Query<CheckUsernameQuery>,
+) -> AxumJson<Value> {
+    match UserDatabase::get_user_by_username(&state.db, &params.username).await {
+        Ok(Some(_)) => {
+            // Username exists
+            AxumJson(json!({
+                "success": true,
+                "data": { "available": false }
+            }))
+        }
+        Ok(None) => {
+            // Username available
+            AxumJson(json!({
+                "success": true,
+                "data": { "available": true }
+            }))
+        }
+        Err(e) => AxumJson(json!({
+            "success": false,
+            "message": e.to_string()
+        })),
     }
 }
 
@@ -99,13 +147,15 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
                     let roles = UserDatabase::get_user_roles(&state.db, &user.id)
                         .await
                         .unwrap_or_default();
+                    // TODO: Generate proper JWT token instead of mock token
+                    // For production, implement JWT signing with secret key and expiration
                     return AxumJson(json!({
                         "success": true,
                         "data": {
                             "id": user.id,
                             "username": user.username,
                             "roles": roles,
-                            "token": "mock-token-for-now"
+                            "token": "mock-token-for-now"  // SECURITY: Replace with real JWT
                         }
                     }));
                 }
