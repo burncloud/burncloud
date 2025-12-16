@@ -225,6 +225,61 @@ html, body {
     cursor: not-allowed;
 }
 
+/* BCInput - Modern Input with Physics */
+.bc-input-group {
+    position: relative;
+}
+
+.bc-input {
+    display: block;
+    width: 100%;
+    font-family: var(--font-family);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid transparent;
+    border-radius: var(--radius-large);
+    transition: all 200ms cubic-bezier(0.33, 0, 0.67, 1);
+    transform-origin: center;
+}
+
+.bc-input:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.bc-input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.8);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+    transform: scale(1.02);
+}
+
+.bc-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Dark theme adjustments for BCInput */
+@media (prefers-color-scheme: dark) {
+    .bc-input {
+        background: rgba(255, 255, 255, 0.05);
+        color: #ffffff;
+    }
+    
+    .bc-input:hover {
+        background: rgba(255, 255, 255, 0.08);
+    }
+    
+    .bc-input:focus {
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.25);
+    }
+    
+    .bc-input::placeholder {
+        color: rgba(255, 255, 255, 0.4);
+    }
+}
+
 /* Progress bar styles */
 .progress {
     width: 100%;
