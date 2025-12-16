@@ -118,10 +118,16 @@ async fn create_user(
                         "token": token
                     }
                 })),
-                Err(e) => AxumJson(json!({ "success": false, "message": format!("JWT generation failed: {}", e) })),
+                Err(e) => {
+                    eprintln!("JWT generation failed: {}", e);
+                    AxumJson(json!({ "success": false, "message": "Failed to generate authentication token" }))
+                }
             }
         }
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+        Err(e) => {
+            eprintln!("Failed to create user: {}", e);
+            AxumJson(json!({ "success": false, "message": "Failed to create user account" }))
+        }
     }
 }
 
@@ -129,34 +135,47 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
     match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(user)) => {
             if let Some(hash_str) = user.password_hash {
-                if verify(&payload.password, &hash_str).unwrap_or(false) {
-                    // Success - generate JWT
-                    let roles = UserDatabase::get_user_roles(&state.db, &user.id)
-                        .await
-                        .unwrap_or_default();
-                    
-                    match generate_jwt(&user.id, &user.username) {
-                        Ok(token) => {
-                            return AxumJson(json!({
-                                "success": true,
-                                "data": {
-                                    "id": user.id,
-                                    "username": user.username,
-                                    "roles": roles,
-                                    "token": token
-                                }
-                            }));
+                match verify(&payload.password, &hash_str) {
+                    Ok(true) => {
+                        // Success - generate JWT
+                        let roles = UserDatabase::get_user_roles(&state.db, &user.id)
+                            .await
+                            .unwrap_or_default();
+                        
+                        match generate_jwt(&user.id, &user.username) {
+                            Ok(token) => {
+                                return AxumJson(json!({
+                                    "success": true,
+                                    "data": {
+                                        "id": user.id,
+                                        "username": user.username,
+                                        "roles": roles,
+                                        "token": token
+                                    }
+                                }));
+                            }
+                            Err(e) => {
+                                eprintln!("JWT generation failed: {}", e);
+                                return AxumJson(json!({ "success": false, "message": "Failed to generate authentication token" }));
+                            }
                         }
-                        Err(e) => {
-                            return AxumJson(json!({ "success": false, "message": format!("JWT generation failed: {}", e) }));
-                        }
+                    }
+                    Ok(false) => {
+                        // Invalid password
+                    }
+                    Err(e) => {
+                        eprintln!("Password verification error: {}", e);
+                        // Treat as invalid password for security
                     }
                 }
             }
             AxumJson(json!({ "success": false, "message": "Invalid credentials" }))
         }
         Ok(None) => AxumJson(json!({ "success": false, "message": "User not found" })),
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+        Err(e) => {
+            eprintln!("Database error during login: {}", e);
+            AxumJson(json!({ "success": false, "message": "Login failed" }))
+        }
     }
 }
 
