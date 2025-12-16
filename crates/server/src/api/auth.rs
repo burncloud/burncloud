@@ -196,10 +196,7 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
 }
 
 // Auth Middleware
-pub async fn auth_middleware(
-    mut req: Request<Body>,
-    next: Next,
-) -> Result<Response, StatusCode> {
+pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
     let auth_header = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
