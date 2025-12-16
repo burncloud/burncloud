@@ -256,6 +256,8 @@ pub struct User {
     pub aff_count: i32,
     pub aff_quota: i64,
     pub inviter_id: Option<String>,
+    #[sqlx(default)]
+    pub created_at: Option<i64>, // Unix timestamp
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
