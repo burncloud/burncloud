@@ -1,9 +1,10 @@
 use crate::AppState;
 use axum::{
+    body::Body,
     extract::{Json, State},
     http::{Request, StatusCode},
     middleware::Next,
-    response::{IntoResponse, Json as AxumJson, Response},
+    response::{Json as AxumJson, Response},
     routing::post,
     Router,
 };
@@ -28,7 +29,7 @@ pub struct LoginDto {
     pub password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String,      // Subject (user ID)
     pub username: String, // Username
@@ -195,9 +196,9 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
 }
 
 // Auth Middleware
-pub async fn auth_middleware<B>(
-    mut req: Request<B>,
-    next: Next<B>,
+pub async fn auth_middleware(
+    mut req: Request<Body>,
+    next: Next,
 ) -> Result<Response, StatusCode> {
     let auth_header = req
         .headers()

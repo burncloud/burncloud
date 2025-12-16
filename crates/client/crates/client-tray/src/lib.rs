@@ -1,4 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "windows")]
 mod desktop {
     use std::fmt;
     use std::process;
@@ -81,15 +81,20 @@ mod desktop {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "windows")]
 pub use desktop::*;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(target_os = "windows"))]
 pub fn should_show_window() -> bool {
     false
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(target_os = "windows"))]
+pub fn should_hide_window() -> bool {
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
 pub fn start_tray() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
