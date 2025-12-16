@@ -531,6 +531,13 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Shake animation for error toasts (Micro-Interaction Delight) */
+@keyframes toastShake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
 .toast-icon {
     font-size: 18px;
     font-weight: bold;
@@ -544,7 +551,10 @@ body {
 .toast-success { border-left: 4px solid var(--status-success-bg); }
 .toast-success .toast-icon { color: var(--status-success-bg); }
 
-.toast-error { border-left: 4px solid var(--status-danger-bg); }
+.toast-error { 
+    border-left: 4px solid var(--status-danger-bg); 
+    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1), toastShake 0.5s 0.3s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
 .toast-error .toast-icon { color: var(--status-danger-bg); }
 
 .toast-warning { border-left: 4px solid var(--status-warning-bg); }
