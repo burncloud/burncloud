@@ -7,7 +7,9 @@ use crate::pages::{
     models::ModelManagement, monitor::ServiceMonitor, playground::PlaygroundPage,
     register::RegisterPage, settings::SystemSettings, user::UserPage,
 };
+#[cfg(feature = "desktop")]
 use burncloud_client_shared::DesktopMode;
+#[cfg(feature = "desktop")]
 pub use burncloud_client_tray::{should_show_window, start_tray};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
