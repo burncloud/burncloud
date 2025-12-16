@@ -2,9 +2,20 @@ use dioxus::prelude::*;
 
 use crate::app::Route;
 use burncloud_client_shared::components::{Sidebar, TitleBar};
+use burncloud_client_shared::use_auth;
 
 #[component]
 pub fn Layout() -> Element {
+    let auth = use_auth();
+    let navigator = use_navigator();
+
+    // Route guard: Check if user is authenticated
+    use_effect(move || {
+        if !auth.is_authenticated() {
+            navigator.push(Route::LoginPage {});
+        }
+    });
+
     rsx! {
         head {
             // Embed Tailwind v2 and DaisyUI v4 CSS locally for offline stability

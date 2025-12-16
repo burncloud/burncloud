@@ -53,6 +53,8 @@ pub fn App() -> Element {
     burncloud_client_shared::i18n::use_init_i18n();
     // Initialize Toast
     burncloud_client_shared::use_init_toast();
+    // Initialize Auth Context
+    burncloud_client_shared::use_init_auth();
 
     rsx! {
         burncloud_client_shared::ToastContainer {}
