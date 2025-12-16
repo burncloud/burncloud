@@ -11,22 +11,22 @@ pub enum GlassVariant {
 }
 
 /// Glass Card container component with glassmorphism effects.
-/// 
+///
 /// This component creates a "frosted glass" container effect with:
 /// - Backdrop blur effect (`backdrop-blur-md`)
 /// - Low opacity background (white or black)
 /// - Subtle border (`border-white/10`)
 /// - Rounded corners and shadow
-/// 
+///
 /// # Properties
-/// 
+///
 /// - `variant`: Light (white) or Dark (black) glass effect
 /// - `class`: Additional CSS classes to apply
 /// - `blur_intensity`: Blur intensity - "sm", "md" (default), "lg", "xl"
 /// - `children`: Child elements to render inside the card
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// rsx! {
 ///     GlassCard {
@@ -83,17 +83,17 @@ pub fn GlassCard(
 }
 
 /// Zen Mode container that ensures absolute centering of its contents.
-/// 
+///
 /// This component provides a full-screen container with perfect vertical
 /// and horizontal centering for its children, creating a focused "Zen Mode" layout.
-/// 
+///
 /// # Properties
-/// 
+///
 /// - `class`: Additional CSS classes to apply
 /// - `children`: Child elements to center
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// rsx! {
 ///     ZenContainer {
@@ -104,10 +104,7 @@ pub fn GlassCard(
 /// }
 /// ```
 #[component]
-pub fn ZenContainer(
-    #[props(default)] class: String,
-    children: Element,
-) -> Element {
+pub fn ZenContainer(#[props(default)] class: String, children: Element) -> Element {
     rsx! {
         div {
             class: "h-full w-full min-h-screen flex items-center justify-center {class}",

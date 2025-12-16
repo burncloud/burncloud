@@ -13,18 +13,18 @@ pub enum AuroraVariant {
 }
 
 /// Aurora mesh gradient background component that creates depth and atmosphere.
-/// 
+///
 /// This component renders an animated mesh gradient background with multiple
 /// flowing gradient blobs, creating a "Deep Space" or "Aurora" visual effect.
-/// 
+///
 /// # Properties
-/// 
+///
 /// - `variant`: The color theme variant (DeepSpace, Aurora, Warm)
 /// - `with_grid`: Whether to show a subtle dot grid overlay (default: true)
 /// - `class`: Additional CSS classes to apply
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// rsx! {
 ///     AuroraBackground {
