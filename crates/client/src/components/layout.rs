@@ -10,6 +10,7 @@ pub fn Layout() -> Element {
     let navigator = use_navigator();
 
     // Route guard: Check if user is authenticated
+    // Only redirect on initial mount, not on every render
     use_effect(move || {
         if !auth.is_authenticated() {
             navigator.push(Route::LoginPage {});
