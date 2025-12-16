@@ -22,7 +22,10 @@ async fn main() -> anyhow::Result<()> {
     println!("✓ UserService created\n");
 
     // Use a unique username for this run
-    let username = format!("user_{}", Uuid::new_v4().to_string().split('-').next().unwrap());
+    let username = format!(
+        "user_{}",
+        Uuid::new_v4().to_string().split('-').next().unwrap()
+    );
     let email = format!("{}@example.com", username);
 
     // Register a new user
@@ -34,7 +37,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Login
     println!("Logging in as '{}'...", username);
-    let auth_token = service.login_user(&db, &username, "secure_password").await?;
+    let auth_token = service
+        .login_user(&db, &username, "secure_password")
+        .await?;
     println!("✓ Login successful!");
     println!("  Token: {}", auth_token.token);
     println!("  User ID: {}", auth_token.user_id);

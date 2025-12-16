@@ -36,7 +36,7 @@ mod tests {
     fn test_hash_password() {
         let password = "test_password_123";
         let hash = hash_password(password).expect("Failed to hash password");
-        
+
         // Bcrypt hashes should start with $2 (bcrypt identifier)
         assert!(hash.starts_with("$2"));
         // Bcrypt hashes are typically 60 characters
@@ -47,7 +47,7 @@ mod tests {
     fn test_verify_password_success() {
         let password = "correct_password";
         let hash = hash_password(password).expect("Failed to hash password");
-        
+
         let result = verify_password(password, &hash).expect("Failed to verify password");
         assert!(result, "Password verification should succeed");
     }
@@ -57,9 +57,12 @@ mod tests {
         let password = "correct_password";
         let wrong_password = "wrong_password";
         let hash = hash_password(password).expect("Failed to hash password");
-        
+
         let result = verify_password(wrong_password, &hash).expect("Failed to verify password");
-        assert!(!result, "Password verification should fail for wrong password");
+        assert!(
+            !result,
+            "Password verification should fail for wrong password"
+        );
     }
 
     #[test]
@@ -67,10 +70,10 @@ mod tests {
         let password = "same_password";
         let hash1 = hash_password(password).expect("Failed to hash password");
         let hash2 = hash_password(password).expect("Failed to hash password");
-        
+
         // Same password should produce different hashes due to random salt
         assert_ne!(hash1, hash2);
-        
+
         // But both should verify successfully
         assert!(verify_password(password, &hash1).expect("Failed to verify"));
         assert!(verify_password(password, &hash2).expect("Failed to verify"));
