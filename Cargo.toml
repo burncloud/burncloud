@@ -38,6 +38,7 @@ members = [
     "crates/service/crates/service-setting",
     "crates/service/crates/service-inference",
     "crates/service/crates/service-redis",
+    "crates/service/crates/service-user",
     "crates/tests",
 ]
 
@@ -145,6 +146,7 @@ burncloud-service-monitor = { path = "crates/service/crates/service-monitor" }
 burncloud-service-setting = { path = "crates/service/crates/service-setting" }
 burncloud-service-inference = { path = "crates/service/crates/service-inference" }
 burncloud-service-redis = { path = "crates/service/crates/service-redis" }
+burncloud-service-user = { path = "crates/service/crates/service-user" }
 
 [package]
 name = "burncloud"
