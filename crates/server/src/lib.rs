@@ -1,5 +1,5 @@
 pub mod api;
-pub use api::auth::auth_middleware;
+pub use api::auth::{auth_middleware, Claims};
 
 use axum::Router;
 use burncloud_database::{create_default_database, Database};
