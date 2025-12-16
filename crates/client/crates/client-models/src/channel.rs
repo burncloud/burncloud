@@ -239,7 +239,7 @@ pub fn ChannelPage() -> Element {
                             // Unified select styling to match BCInput
                             div { class: "flex flex-col gap-2",
                                 label { class: "text-sm font-medium text-base-content/70", "供应商类型" }
-                                select { 
+                                select {
                                     class: "w-full h-12 px-4 rounded-xl text-[15px] bg-white/5 hover:bg-white/8 focus:bg-white/80 text-base-content border border-transparent focus:border-accent focus:ring-4 focus:ring-accent/15 focus:outline-none transition-all duration-200 ease-out focus:scale-[1.02]",
                                     onchange: move |e: FormEvent| form_type.set(e.value().parse().unwrap_or(1)),
                                     option { value: "1", "OpenAI" }
