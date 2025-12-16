@@ -11,6 +11,15 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+/// Default user status when created
+const ACTIVE_STATUS: i32 = 1;
+
+/// Default signup bonus for new users
+const SIGNUP_BONUS: f64 = 10.0;
+
+/// Default token expiration time in hours
+const DEFAULT_TOKEN_EXPIRATION_HOURS: i64 = 24;
+
 /// Errors that can occur in the user service
 #[derive(Debug, Error)]
 pub enum UserServiceError {
@@ -34,6 +43,9 @@ pub enum UserServiceError {
 
     #[error("Token validation error: {0}")]
     TokenValidationError(String),
+
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
 }
 
 pub type Result<T> = std::result::Result<T, UserServiceError>;
@@ -59,22 +71,46 @@ struct Claims {
 /// User service providing business logic for user operations
 pub struct UserService {
     jwt_secret: String,
+    token_expiration_hours: i64,
 }
 
 impl UserService {
     /// Create a new UserService instance
+    ///
+    /// # Panics
+    /// Panics if JWT_SECRET environment variable is not set in production builds
     pub fn new() -> Self {
-        // In production, this should come from environment/config
         let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
-            "default-secret-key-change-in-production".to_string()
+            #[cfg(not(debug_assertions))]
+            panic!("JWT_SECRET environment variable must be set in production");
+            
+            #[cfg(debug_assertions)]
+            {
+                eprintln!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
+                "default-secret-key-change-in-production".to_string()
+            }
         });
         
-        Self { jwt_secret }
+        Self {
+            jwt_secret,
+            token_expiration_hours: DEFAULT_TOKEN_EXPIRATION_HOURS,
+        }
     }
 
     /// Create a new UserService instance with a custom JWT secret
     pub fn with_secret(jwt_secret: String) -> Self {
-        Self { jwt_secret }
+        Self {
+            jwt_secret,
+            token_expiration_hours: DEFAULT_TOKEN_EXPIRATION_HOURS,
+        }
+    }
+
+    /// Create a new UserService instance with custom JWT secret and token expiration
+    pub fn with_config(jwt_secret: String, token_expiration_hours: i64) -> Self {
+        Self {
+            jwt_secret,
+            token_expiration_hours,
+        }
     }
 
     /// Register a new user
@@ -111,14 +147,16 @@ impl UserService {
             email,
             password_hash: Some(password_hash),
             github_id: None,
-            status: 1, // Active
-            balance: 10.0, // Signup bonus
+            status: ACTIVE_STATUS,
+            balance: SIGNUP_BONUS,
         };
 
         UserDatabase::create_user(db, &user).await?;
         
-        // Assign default role
-        let _ = UserDatabase::assign_role(db, &user.id, "user").await;
+        // Assign default role - log warning if it fails but don't fail registration
+        if let Err(e) = UserDatabase::assign_role(db, &user.id, "user").await {
+            eprintln!("Warning: Failed to assign default role to user {}: {}", user.id, e);
+        }
 
         Ok(user.id)
     }
@@ -171,7 +209,7 @@ impl UserService {
     /// * `Err(UserServiceError)` - If token generation fails
     pub fn generate_token(&self, user_id: &str, username: &str) -> Result<AuthToken> {
         let now = Utc::now();
-        let expiration = now + Duration::hours(24); // Token valid for 24 hours
+        let expiration = now + Duration::hours(self.token_expiration_hours);
 
         let claims = Claims {
             sub: user_id.to_string(),
