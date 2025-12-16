@@ -23,6 +23,9 @@ pub fn RegisterPage() -> Element {
         "mb-6"
     };
 
+    let label_class = "block text-[13px] font-medium text-[#7B7B80] mb-1.5 uppercase tracking-wider transition-all duration-200 group-focus-within:text-[#5856D6]";
+    let input_class = "w-full h-13 pl-12 pr-4 rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#B0B0B5] bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_12px_40px_-22px_rgba(88,86,214,0.25),inset_0_1px_0_rgba(255,255,255,0.7)] transition-all duration-300 focus:outline-none focus:border-transparent focus:ring-2 focus:ring-[#FF7A45]/50 focus:shadow-[0_18px_50px_-24px_rgba(255,122,69,0.35),0_14px_36px_-26px_rgba(88,86,214,0.45)] focus:bg-white/80";
+
     let handle_register = move |_| {
         loading.set(true);
         spawn(async move {
@@ -56,18 +59,18 @@ pub fn RegisterPage() -> Element {
 
     rsx! {
         // Container: Aurora Canvas
-        div { class: "h-full w-full min-h-screen overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans flex items-center justify-center py-12",
+        div { class: "h-full w-full min-h-screen overflow-hidden bg-gradient-to-br from-[#100c1a] via-[#0f1626] to-[#1a0f16] text-[#1D1D1F] relative selection:bg-[#FF7A45] selection:text-white font-sans flex items-center justify-center py-12",
 
             // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
                 // Layer 1: Primary Aurora Blob - shifted for variety
-                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[#5856D6]/15 via-[#AF52DE]/12 to-[#007AFF]/10 rounded-full blur-[100px] animate-aurora animate-morph" }
+                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[#FF7A45]/14 via-[#AF52DE]/12 to-[#007AFF]/10 rounded-full blur-[110px] animate-aurora animate-morph" }
 
                 // Layer 2: Secondary Flow
-                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[#34C759]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:5s] [animation-duration:22s]" }
+                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[#FF4D79]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[90px] animate-aurora [animation-delay:5s] [animation-duration:22s]" }
 
                 // Layer 3: Accent Orb
-                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s]" }
+                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/12 to-[#FF2D55]/10 rounded-full blur-[70px] animate-float [animation-delay:3s]" }
 
                 // Grid pattern overlay - reduced opacity for cleaner background
                 div {
@@ -77,10 +80,10 @@ pub fn RegisterPage() -> Element {
             }
 
             // ========== REGISTER CARD: Glass Morphism ==========
-            div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
+            div { class: "relative z-10 w-full max-w-[360px] md:max-w-[420px] mx-4 animate-in",
 
                 // Glass Card - refined aesthetics with sophisticated shadow
-                div { class: "backdrop-blur-xl bg-white/75 rounded-[24px] shadow-[0_8px_32px_-4px_rgba(0,0,0,0.08),0_24px_56px_-8px_rgba(88,86,214,0.12)] border border-white/60 p-8 relative overflow-hidden",
+                div { class: "backdrop-blur-2xl bg-white/75 rounded-[24px] shadow-[0_8px_32px_-4px_rgba(0,0,0,0.08),0_24px_56px_-8px_rgba(88,86,214,0.14)] border border-white/60 p-8 relative overflow-hidden",
 
                     // Glossy reflection
                     div { class: "absolute top-0 left-0 w-56 h-56 bg-gradient-to-br from-white/80 to-transparent opacity-60 pointer-events-none rounded-full blur-2xl -translate-y-1/2 -translate-x-1/2" }
@@ -102,22 +105,22 @@ pub fn RegisterPage() -> Element {
                         // Header Slogan
                         div { class: "flex flex-col items-center justify-center space-y-1 mb-4",
                             h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
-                                "One Interface."
+                                "Ignite."
                             }
-                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#5856D6] to-[#AF52DE]",
-                                "Every Intelligence."
+                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A45] via-[#FF5E8A] to-[#7B61FF]",
+                                "Your Gateway to Intelligence"
                             }
                         }
                         p { class: "text-[15px] text-[#6E6E73] font-medium",
-                            "开启本地优先的 AI 体验"
+                            "点燃本地优先的 AI 体验"
                         }
                     }
 
                     // Form
-                    div { class: "space-y-4 relative z-10",
+                    div { class: "space-y-3.5 relative z-10",
                         // Username Input
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "{label_class}",
                                 "用户名"
                             }
                             div { class: "relative",
@@ -127,7 +130,7 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                                 input {
-                                    class: "w-full h-13 pl-12 pr-4 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white",
+                                    class: "{input_class}",
                                     r#type: "text",
                                     value: "{username}",
                                     placeholder: "设置您的唯一标识",
@@ -138,7 +141,7 @@ pub fn RegisterPage() -> Element {
 
                         // Email Input (Optional)
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "{label_class}",
                                 "邮箱"
                                 span { class: "ml-2 text-[11px] text-[#C7C7CC] normal-case tracking-normal", "(可选)" }
                             }
@@ -149,10 +152,10 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                                 input {
-                                    class: "w-full h-13 pl-12 pr-4 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white",
+                                    class: "{input_class}",
                                     r#type: "email",
                                     value: "{email}",
-                                    placeholder: "用于接收通知",
+                                    placeholder: "保持联系，获取最新火花",
                                     oninput: move |e| email.set(e.value())
                                 }
                             }
@@ -160,7 +163,7 @@ pub fn RegisterPage() -> Element {
 
                         // Password Input
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "{label_class}",
                                 "密码"
                             }
                             div { class: "relative",
@@ -170,7 +173,7 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                                 input {
-                                    class: "w-full h-13 pl-12 pr-4 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white",
+                                    class: "{input_class}",
                                     r#type: "password",
                                     value: "{password}",
                                     placeholder: "设置强密码",
@@ -181,7 +184,7 @@ pub fn RegisterPage() -> Element {
 
                         // Confirm Password Input
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "{label_class}",
                                 "确认密码"
                             }
                             div { class: "relative",
@@ -191,7 +194,7 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                                 input {
-                                    class: "w-full h-13 pl-12 pr-4 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white",
+                                    class: "{input_class}",
                                     r#type: "password",
                                     value: "{confirm_password}",
                                     placeholder: "再次输入密码",
@@ -202,7 +205,7 @@ pub fn RegisterPage() -> Element {
 
                         // Register Button - Primary Action with high visual weight
                         button {
-                            class: "group relative w-full h-14 mt-6 text-[17px] font-semibold text-white transition-all duration-300 bg-[#1D1D1F] rounded-2xl hover:bg-[#2C2C2E] shadow-[0_4px_14px_-2px_rgba(29,29,31,0.25),0_12px_32px_-4px_rgba(29,29,31,0.15)] hover:shadow-[0_8px_24px_-4px_rgba(29,29,31,0.35),0_16px_40px_-8px_rgba(29,29,31,0.2)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
+                            class: "group relative w-full h-14 mt-6 text-[17px] font-semibold text-white transition-all duration-300 bg-gradient-to-r from-[#FF7A45] via-[#FF4D79] to-[#7B61FF] rounded-2xl shadow-[0_16px_48px_-20px_rgba(255,74,117,0.65),0_18px_52px_-26px_rgba(123,97,255,0.45)] hover:shadow-[0_18px_52px_-18px_rgba(255,122,69,0.7),0_24px_60px_-26px_rgba(123,97,255,0.55)] hover:scale-[1.02] hover:-translate-y-0.5 active:scale-[0.99] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden backdrop-blur-lg border border-white/10",
                             disabled: loading(),
                             onclick: handle_register,
 
@@ -237,7 +240,7 @@ pub fn RegisterPage() -> Element {
 
                 // Bottom branding
                 div { class: "text-center mt-8",
-                    span { class: "text-[13px] font-medium text-[#86868B]/60 tracking-wider",
+                    span { class: "text-[13px] font-medium text-white/70 tracking-wider",
                         "BurnCloud"
                     }
                 }
