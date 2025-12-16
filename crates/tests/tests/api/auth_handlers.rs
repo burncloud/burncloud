@@ -3,12 +3,17 @@ use burncloud_tests::TestClient;
 use serde_json::json;
 use uuid::Uuid;
 
+// Helper function to generate unique test usernames
+fn generate_test_username(prefix: &str) -> String {
+    format!("{}_{}", prefix, Uuid::new_v4().to_string().replace("-", "")[..8].to_string())
+}
+
 #[tokio::test]
 async fn test_auth_register_success() -> anyhow::Result<()> {
     let base_url = spawn_app().await;
     let client = TestClient::new(&base_url);
 
-    let username = format!("authuser_{}", Uuid::new_v4().to_string().replace("-", "")[..8].to_string());
+    let username = generate_test_username("authuser");
     let password = "SecurePass123!";
 
     let body = json!({
@@ -35,7 +40,7 @@ async fn test_auth_register_duplicate_username() -> anyhow::Result<()> {
     let base_url = spawn_app().await;
     let client = TestClient::new(&base_url);
 
-    let username = format!("dupuser_{}", Uuid::new_v4().to_string().replace("-", "")[..8].to_string());
+    let username = generate_test_username("dupuser");
     let password = "SecurePass123!";
 
     let body = json!({
@@ -61,7 +66,7 @@ async fn test_auth_login_success() -> anyhow::Result<()> {
     let base_url = spawn_app().await;
     let client = TestClient::new(&base_url);
 
-    let username = format!("loginuser_{}", Uuid::new_v4().to_string().replace("-", "")[..8].to_string());
+    let username = generate_test_username("loginuser");
     let password = "SecurePass123!";
 
     // Register first
@@ -96,7 +101,7 @@ async fn test_auth_login_invalid_credentials() -> anyhow::Result<()> {
     let base_url = spawn_app().await;
     let client = TestClient::new(&base_url);
 
-    let username = format!("testuser_{}", Uuid::new_v4().to_string().replace("-", "")[..8].to_string());
+    let username = generate_test_username("testuser");
     let password = "SecurePass123!";
 
     // Register first
@@ -142,7 +147,7 @@ async fn test_auth_complete_flow() -> anyhow::Result<()> {
     let base_url = spawn_app().await;
     let client = TestClient::new(&base_url);
 
-    let username = format!("flowuser_{}", Uuid::new_v4().to_string().replace("-", "")[..8].to_string());
+    let username = generate_test_username("flowuser");
     let password = "CompleteFlow123!";
 
     // 1. Register
