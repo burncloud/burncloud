@@ -1,5 +1,6 @@
 pub mod ability_routing;
 pub mod auth;
+pub mod auth_handlers;
 pub mod channel;
 pub mod claude_relay;
 pub mod log;
