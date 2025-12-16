@@ -82,14 +82,20 @@ async fn create_user(
         Ok(Some(_)) => {
             return AxumJson(json!({ "success": false, "message": "Username already exists" }))
         }
-        Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
+        Err(e) => {
+            eprintln!("Database error checking username: {}", e);
+            return AxumJson(json!({ "success": false, "message": "Registration failed" }));
+        }
         _ => {}
     }
 
     // 2. Hash password
     let password_hash = match hash(&payload.password, DEFAULT_COST) {
         Ok(h) => h,
-        Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
+        Err(e) => {
+            eprintln!("Password hashing error: {}", e);
+            return AxumJson(json!({ "success": false, "message": "Registration failed" }));
+        }
     };
 
     // 3. Create user

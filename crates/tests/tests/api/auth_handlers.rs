@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 // Helper function to generate unique test usernames
 fn generate_test_username(prefix: &str) -> String {
-    format!("{}_{}", prefix, Uuid::new_v4().to_string().replace("-", "")[..8].to_string())
+    format!("{}_{}", prefix, &Uuid::new_v4().to_string().replace("-", "")[..8])
 }
 
 #[tokio::test]
