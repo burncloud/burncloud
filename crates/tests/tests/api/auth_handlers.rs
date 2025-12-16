@@ -5,7 +5,11 @@ use uuid::Uuid;
 
 // Helper function to generate unique test usernames
 fn generate_test_username(prefix: &str) -> String {
-    format!("{}_{}", prefix, &Uuid::new_v4().to_string().replace("-", "")[..8])
+    format!(
+        "{}_{}",
+        prefix,
+        &Uuid::new_v4().to_string().replace("-", "")[..8]
+    )
 }
 
 #[tokio::test]
@@ -27,7 +31,7 @@ async fn test_auth_register_success() -> anyhow::Result<()> {
     assert!(!res["data"]["id"].is_null(), "Should return user ID");
     assert_eq!(res["data"]["username"], username);
     assert!(!res["data"]["token"].is_null(), "Should return JWT token");
-    
+
     // Verify token is a non-empty string
     let token = res["data"]["token"].as_str().unwrap();
     assert!(!token.is_empty(), "Token should not be empty");
@@ -88,7 +92,7 @@ async fn test_auth_login_success() -> anyhow::Result<()> {
     assert_eq!(res["data"]["username"], username);
     assert!(!res["data"]["token"].is_null(), "Should return JWT token");
     assert!(!res["data"]["roles"].is_null(), "Should return user roles");
-    
+
     // Verify token is a non-empty string
     let token = res["data"]["token"].as_str().unwrap();
     assert!(!token.is_empty(), "Token should not be empty");
@@ -119,8 +123,14 @@ async fn test_auth_login_invalid_credentials() -> anyhow::Result<()> {
     });
 
     let res = client.post("/api/auth/login", &login_body).await?;
-    assert_eq!(res["success"], false, "Login should fail with wrong password");
-    assert!(res["message"].as_str().unwrap().contains("Invalid credentials"));
+    assert_eq!(
+        res["success"], false,
+        "Login should fail with wrong password"
+    );
+    assert!(res["message"]
+        .as_str()
+        .unwrap()
+        .contains("Invalid credentials"));
 
     Ok(())
 }
@@ -136,7 +146,10 @@ async fn test_auth_login_nonexistent_user() -> anyhow::Result<()> {
     });
 
     let res = client.post("/api/auth/login", &login_body).await?;
-    assert_eq!(res["success"], false, "Login should fail for nonexistent user");
+    assert_eq!(
+        res["success"], false,
+        "Login should fail for nonexistent user"
+    );
     assert!(res["message"].as_str().unwrap().contains("not found"));
 
     Ok(())
@@ -174,10 +187,10 @@ async fn test_auth_complete_flow() -> anyhow::Result<()> {
     // Both tokens should be valid JWT tokens (non-empty strings)
     assert!(!reg_token.is_empty());
     assert!(!login_token.is_empty());
-    
+
     // Tokens should be different (different iat timestamps)
     // Note: In rare cases they might be the same if generated in the same second,
     // but this is unlikely in practice
-    
+
     Ok(())
 }
