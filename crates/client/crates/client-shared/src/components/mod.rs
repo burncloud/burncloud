@@ -1,21 +1,25 @@
+pub mod aurora_background;
 pub mod bc_badge;
 pub mod bc_button;
 pub mod bc_card;
 pub mod bc_input;
 pub mod bc_modal;
 pub mod bc_table;
+pub mod glass_card;
 pub mod layout;
 pub mod placeholders;
 pub mod sidebar;
 pub mod title_bar;
 pub mod toast;
 
+pub use aurora_background::{AuroraBackground, AuroraVariant};
 pub use bc_badge::*;
 pub use bc_button::*;
 pub use bc_card::*;
 pub use bc_input::*;
 pub use bc_modal::*;
 pub use bc_table::{BCPagination, BCTable};
+pub use glass_card::{GlassCard, GlassVariant, ZenContainer};
 pub use layout::*;
 pub use placeholders::*;
 pub use sidebar::*;
