@@ -2,6 +2,7 @@ use crate::app::Route;
 use crate::components::logo::Logo;
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::use_toast;
+use burncloud_client_shared::{use_auth, CurrentUser};
 use dioxus::prelude::*;
 
 #[component]
@@ -11,6 +12,7 @@ pub fn LoginPage() -> Element {
     let mut loading = use_signal(|| false);
     let toast = use_toast();
     let navigator = use_navigator();
+    let auth = use_auth();
 
     let logo_margin = if cfg!(feature = "liveview") {
         "mb-6"
@@ -24,8 +26,15 @@ pub fn LoginPage() -> Element {
         loading.set(true);
         spawn(async move {
             match AuthService::login(&username(), &password()).await {
-                Ok(_) => {
+                Ok(response) => {
                     loading.set(false);
+                    // Store auth state in context
+                    let user = CurrentUser {
+                        id: response.id,
+                        username: response.username,
+                        roles: response.roles,
+                    };
+                    auth.set_auth(response.token, user);
                     toast.success("登录成功");
                     navigator.push(Route::Dashboard {});
                 }
