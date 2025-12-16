@@ -71,7 +71,7 @@ pub fn RegisterPage() -> Element {
 
                 // Grid pattern overlay - reduced opacity for cleaner background
                 div {
-                    class: "absolute inset-0 opacity-[0.008]",
+                    class: "absolute inset-0 opacity-[0.015]",
                     style: "background-image: radial-gradient(circle at 1px 1px, #1D1D1F 0.5px, transparent 0); background-size: 48px 48px;"
                 }
             }
