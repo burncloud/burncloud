@@ -53,7 +53,7 @@ pub fn GlassCard(
 
     let border_class = match variant {
         GlassVariant::Light => "border-white/10",
-        GlassVariant::Dark => "border-white/10",
+        GlassVariant::Dark => "border-white/5",
     };
 
     // Map blur intensity to Tailwind classes
