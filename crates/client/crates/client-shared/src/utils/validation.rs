@@ -1,5 +1,5 @@
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -7,9 +7,7 @@ static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
     ).unwrap()
 });
 
-static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z0-9_]{3,20}$").unwrap()
-});
+static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_]{3,20}$").unwrap());
 
 /// Password strength levels
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,7 +48,7 @@ pub fn validate_email(email: &str) -> bool {
     if email.is_empty() {
         return true; // Email is optional
     }
-    
+
     EMAIL_REGEX.is_match(email)
 }
 
@@ -59,7 +57,7 @@ pub fn get_email_error(email: &str) -> Option<String> {
     if email.is_empty() {
         return None;
     }
-    
+
     if !validate_email(email) {
         Some("邮箱格式不正确".to_string())
     } else {
@@ -72,7 +70,7 @@ pub fn validate_username(username: &str) -> bool {
     if username.is_empty() {
         return false;
     }
-    
+
     USERNAME_REGEX.is_match(username)
 }
 
@@ -81,19 +79,19 @@ pub fn get_username_error(username: &str) -> Option<String> {
     if username.is_empty() {
         return Some("用户名不能为空".to_string());
     }
-    
+
     if username.len() < 3 {
         return Some("用户名至少需要3个字符".to_string());
     }
-    
+
     if username.len() > 20 {
         return Some("用户名不能超过20个字符".to_string());
     }
-    
+
     if !validate_username(username) {
         return Some("用户名只能包含字母、数字和下划线".to_string());
     }
-    
+
     None
 }
 
@@ -102,9 +100,9 @@ pub fn calculate_password_strength(password: &str) -> PasswordStrength {
     if password.is_empty() {
         return PasswordStrength::Weak;
     }
-    
+
     let mut score = 0;
-    
+
     // Length check
     if password.len() >= 8 {
         score += 1;
@@ -112,7 +110,7 @@ pub fn calculate_password_strength(password: &str) -> PasswordStrength {
     if password.len() >= 12 {
         score += 1;
     }
-    
+
     // Character variety checks
     if password.chars().any(|c| c.is_lowercase()) {
         score += 1;
@@ -126,7 +124,7 @@ pub fn calculate_password_strength(password: &str) -> PasswordStrength {
     if password.chars().any(|c| !c.is_alphanumeric()) {
         score += 1;
     }
-    
+
     match score {
         0..=2 => PasswordStrength::Weak,
         3..=4 => PasswordStrength::Medium,
@@ -139,11 +137,11 @@ pub fn get_password_error(password: &str) -> Option<String> {
     if password.is_empty() {
         return Some("密码不能为空".to_string());
     }
-    
+
     if password.len() < 8 {
         return Some("密码至少需要8个字符".to_string());
     }
-    
+
     None
 }
 
@@ -184,9 +182,18 @@ mod tests {
     fn test_password_strength() {
         assert_eq!(calculate_password_strength(""), PasswordStrength::Weak);
         assert_eq!(calculate_password_strength("abc"), PasswordStrength::Weak);
-        assert_eq!(calculate_password_strength("password"), PasswordStrength::Weak);
-        assert_eq!(calculate_password_strength("Password1"), PasswordStrength::Medium);
-        assert_eq!(calculate_password_strength("Password123!"), PasswordStrength::Strong);
+        assert_eq!(
+            calculate_password_strength("password"),
+            PasswordStrength::Weak
+        );
+        assert_eq!(
+            calculate_password_strength("Password1"),
+            PasswordStrength::Medium
+        );
+        assert_eq!(
+            calculate_password_strength("Password123!"),
+            PasswordStrength::Strong
+        );
     }
 
     #[test]
@@ -199,8 +206,10 @@ mod tests {
 
     #[test]
     fn test_sanitization() {
-        assert_eq!(sanitize_input("<script>alert('xss')</script>"), 
-                   "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;");
+        assert_eq!(
+            sanitize_input("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+        );
         assert_eq!(sanitize_input("normal text"), "normal text");
     }
 }
