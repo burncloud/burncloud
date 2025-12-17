@@ -22,13 +22,13 @@ pub fn RegisterPage() -> Element {
     let mut username_available = use_signal(|| None::<bool>);
     let mut username_checking = use_signal(|| false);
     let mut shake_form = use_signal(|| false);
-    
+
     // Validation errors
     let mut username_error = use_signal(|| None::<String>);
     let mut email_error = use_signal(|| None::<String>);
     let mut password_error = use_signal(|| None::<String>);
     let mut confirm_error = use_signal(|| None::<String>);
-    
+
     // Debounced validation
     let mut validation_timer = use_signal(|| None::<i32>);
 
@@ -46,8 +46,8 @@ pub fn RegisterPage() -> Element {
 
     // Calculate password strength
     let password_strength = calculate_password_strength(&password());
-    let passwords_match = !password().is_empty() 
-        && !confirm_password().is_empty() 
+    let passwords_match = !password().is_empty()
+        && !confirm_password().is_empty()
         && password() == confirm_password();
 
     // Check if form is valid
@@ -72,13 +72,13 @@ pub fn RegisterPage() -> Element {
         let value = e.value();
         let sanitized = sanitize_input(&value);
         username.set(sanitized.clone());
-        
+
         // Validate username format
         username_error.set(get_username_error(&sanitized));
-        
+
         // Reset availability check
         username_available.set(None);
-        
+
         // Debounced availability check
         if sanitized.len() >= 3 && get_username_error(&sanitized).is_none() {
             spawn(async move {
@@ -104,7 +104,7 @@ pub fn RegisterPage() -> Element {
         let value = e.value();
         let sanitized = sanitize_input(&value);
         email.set(sanitized.clone());
-        
+
         // Debounced validation
         spawn(async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
@@ -115,10 +115,10 @@ pub fn RegisterPage() -> Element {
     let handle_password_change = move |e: Event<FormData>| {
         let value = e.value();
         password.set(value.clone());
-        
+
         // Validate password
         password_error.set(get_password_error(&value));
-        
+
         // Check confirm password match
         if !confirm_password().is_empty() && value != confirm_password() {
             confirm_error.set(Some("两次输入的密码不一致".to_string()));
@@ -130,7 +130,7 @@ pub fn RegisterPage() -> Element {
     let handle_confirm_password_change = move |e: Event<FormData>| {
         let value = e.value();
         confirm_password.set(value.clone());
-        
+
         // Check password match
         if !password().is_empty() && value != password() {
             confirm_error.set(Some("两次输入的密码不一致".to_string()));
@@ -171,11 +171,11 @@ pub fn RegisterPage() -> Element {
                             roles: login_response.roles.clone(),
                         },
                     );
-                    
+
                     toast.success("注册成功！欢迎使用 BurnCloud");
                     tokio::time::sleep(Duration::from_millis(500)).await;
                     loading.set(false);
-                    
+
                     // Redirect to dashboard instead of login
                     navigator.push(Route::Dashboard {});
                 }
@@ -196,8 +196,8 @@ pub fn RegisterPage() -> Element {
     let handle_keydown = move |e: Event<KeyboardData>| {
         if e.key() == Key::Enter && form_valid && !loading() {
             // Manually call register logic since we can't easily construct MouseData
-             // Final validation
-             if !form_valid {
+            // Final validation
+            if !form_valid {
                 shake_form.set(true);
                 spawn(async move {
                     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -206,7 +206,7 @@ pub fn RegisterPage() -> Element {
                 toast.error("请检查表单填写是否正确");
                 return;
             }
-    
+
             loading.set(true);
             spawn(async move {
                 let email_val = email();
@@ -215,7 +215,7 @@ pub fn RegisterPage() -> Element {
                 } else {
                     Some(email_val.as_str())
                 };
-    
+
                 match AuthService::register(&username(), &password(), email_opt).await {
                     Ok(login_response) => {
                         // Auto-login: Save auth data
@@ -227,11 +227,11 @@ pub fn RegisterPage() -> Element {
                                 roles: login_response.roles.clone(),
                             },
                         );
-                        
+
                         toast.success("注册成功！欢迎使用 BurnCloud");
                         tokio::time::sleep(Duration::from_millis(500)).await;
                         loading.set(false);
-                        
+
                         // Redirect to dashboard instead of login
                         navigator.push(Route::Dashboard {});
                     }

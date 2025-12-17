@@ -79,7 +79,10 @@ impl AuthService {
             .await
             .map_err(|e| format!("网络错误: {}", e))?;
 
-        let json: AuthResult = resp.json().await.map_err(|e| format!("响应解析错误: {}", e))?;
+        let json: AuthResult = resp
+            .json()
+            .await
+            .map_err(|e| format!("响应解析错误: {}", e))?;
 
         if json.success {
             if let Some(data) = json.data {
@@ -94,24 +97,20 @@ impl AuthService {
 
     pub async fn check_username_availability(username: &str) -> Result<bool, String> {
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
-        let url = format!("http://127.0.0.1:{}/console/api/user/check_username?username={}", port, username);
+        let url = format!(
+            "http://127.0.0.1:{}/console/api/user/check_username?username={}",
+            port, username
+        );
 
         let client = reqwest::Client::new();
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
         if json["success"].as_bool().unwrap_or(false) {
             Ok(json["data"]["available"].as_bool().unwrap_or(false))
         } else {
-            Err(json["message"]
-                .as_str()
-                .unwrap_or("检查失败")
-                .to_string())
+            Err(json["message"].as_str().unwrap_or("检查失败").to_string())
         }
     }
 }
