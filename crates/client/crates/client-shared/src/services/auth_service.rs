@@ -88,10 +88,7 @@ impl AuthService {
                 Err("注册成功但未返回用户数据".to_string())
             }
         } else {
-            Err(json["message"]
-                .as_str()
-                .unwrap_or("注册失败")
-                .to_string())
+            Err(json.message.unwrap_or_else(|| "注册失败".to_string()))
         }
     }
 

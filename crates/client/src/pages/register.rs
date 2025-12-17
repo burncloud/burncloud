@@ -1,6 +1,6 @@
 use crate::app::Route;
 use crate::components::logo::Logo;
-use burncloud_client_shared::auth_context::use_auth;
+use burncloud_client_shared::auth_context::{use_auth, CurrentUser};
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::utils::{
@@ -139,7 +139,7 @@ pub fn RegisterPage() -> Element {
         }
     };
 
-    let handle_register = move |_| {
+    let handle_register = move |_: Event<MouseData>| {
         // Final validation
         if !form_valid {
             shake_form.set(true);
@@ -163,10 +163,13 @@ pub fn RegisterPage() -> Element {
             match AuthService::register(&username(), &password(), email_opt).await {
                 Ok(login_response) => {
                     // Auto-login: Save auth data
-                    auth.login(
-                        login_response.username.clone(),
-                        login_response.id.clone(),
+                    auth.set_auth(
                         login_response.token.clone(),
+                        CurrentUser {
+                            id: login_response.id.clone(),
+                            username: login_response.username.clone(),
+                            roles: login_response.roles.clone(),
+                        },
                     );
                     
                     toast.success("注册成功！欢迎使用 BurnCloud");
@@ -174,7 +177,7 @@ pub fn RegisterPage() -> Element {
                     loading.set(false);
                     
                     // Redirect to dashboard instead of login
-                    navigator.push(Route::DashboardPage {});
+                    navigator.push(Route::Dashboard {});
                 }
                 Err(e) => {
                     loading.set(false);
@@ -192,7 +195,57 @@ pub fn RegisterPage() -> Element {
     // Handle Enter key submission
     let handle_keydown = move |e: Event<KeyboardData>| {
         if e.key() == Key::Enter && form_valid && !loading() {
-            handle_register(());
+            // Manually call register logic since we can't easily construct MouseData
+             // Final validation
+             if !form_valid {
+                shake_form.set(true);
+                spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    shake_form.set(false);
+                });
+                toast.error("请检查表单填写是否正确");
+                return;
+            }
+    
+            loading.set(true);
+            spawn(async move {
+                let email_val = email();
+                let email_opt = if email_val.is_empty() {
+                    None
+                } else {
+                    Some(email_val.as_str())
+                };
+    
+                match AuthService::register(&username(), &password(), email_opt).await {
+                    Ok(login_response) => {
+                        // Auto-login: Save auth data
+                        auth.set_auth(
+                            login_response.token.clone(),
+                            CurrentUser {
+                                id: login_response.id.clone(),
+                                username: login_response.username.clone(),
+                                roles: login_response.roles.clone(),
+                            },
+                        );
+                        
+                        toast.success("注册成功！欢迎使用 BurnCloud");
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        loading.set(false);
+                        
+                        // Redirect to dashboard instead of login
+                        navigator.push(Route::Dashboard {});
+                    }
+                    Err(e) => {
+                        loading.set(false);
+                        shake_form.set(true);
+                        spawn(async move {
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            shake_form.set(false);
+                        });
+                        toast.error(&e);
+                    }
+                }
+            });
         }
     };
 
