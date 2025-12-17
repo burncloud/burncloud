@@ -297,10 +297,10 @@ pub fn RegisterPage() -> Element {
                         // Header Slogan
                         div { class: "flex flex-col items-center justify-center space-y-1 mb-4",
                             h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
-                                "One Interface."
+                                "Unleash Intelligence."
                             }
                             h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#5856D6] to-[#AF52DE]",
-                                "Every Intelligence."
+                                "Your Second Brain."
                             }
                         }
                         p { class: "text-[15px] text-[#6E6E73] font-medium",
@@ -319,42 +319,43 @@ pub fn RegisterPage() -> Element {
 
                         // Username Input with availability check
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "用户名"
                             }
-                            div { class: "relative",
-                                div { class: "absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B] group-focus-within:text-[#5856D6] transition-colors",
+                            div {
+                                class: if username_error().is_some() {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                } else {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                },
+                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" }
                                     }
                                 }
-                                // Availability indicator
-                                if username_checking() {
-                                    div { class: "absolute right-4 top-1/2 -translate-y-1/2",
-                                        svg { class: "w-5 h-5 animate-spin text-[#5856D6]", fill: "none", view_box: "0 0 24 24",
-                                            circle { class: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", stroke_width: "4" }
-                                            path { class: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" }
-                                        }
-                                    }
-                                } else if username_available() == Some(true) && username_error().is_none() {
-                                    div { class: "absolute right-4 top-1/2 -translate-y-1/2 text-green-500",
-                                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
-                                        }
-                                    }
-                                }
                                 input {
-                                    class: if username_error().is_some() {
-                                        "w-full h-13 pl-12 pr-12 bg-white/60 border border-red-500/50 rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-red-500 focus:ring-4 focus:ring-red-500/10 focus:bg-white"
-                                    } else {
-                                        "w-full h-13 pl-12 pr-12 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white"
-                                    },
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "text",
                                     value: "{username}",
                                     placeholder: "设置您的唯一标识",
                                     autofocus: true,
                                     tabindex: "1",
                                     oninput: handle_username_change
+                                }
+                                // Availability indicator
+                                if username_checking() {
+                                    div { class: "pr-4 flex-shrink-0",
+                                        svg { class: "w-5 h-5 animate-spin text-[#007AFF]", fill: "none", view_box: "0 0 24 24",
+                                            circle { class: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", stroke_width: "4" }
+                                            path { class: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" }
+                                        }
+                                    }
+                                } else if username_available() == Some(true) && username_error().is_none() {
+                                    div { class: "pr-4 text-green-500 flex-shrink-0",
+                                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
+                                        }
+                                    }
                                 }
                             }
                             if let Some(err) = username_error() {
@@ -366,22 +367,23 @@ pub fn RegisterPage() -> Element {
 
                         // Email Input with validation
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "邮箱"
                                 span { class: "ml-2 text-[11px] text-[#C7C7CC] normal-case tracking-normal", "(可选)" }
                             }
-                            div { class: "relative",
-                                div { class: "absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B] group-focus-within:text-[#5856D6] transition-colors",
+                            div {
+                                class: if email_error().is_some() {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                } else {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                },
+                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" }
                                     }
                                 }
                                 input {
-                                    class: if email_error().is_some() {
-                                        "w-full h-13 pl-12 pr-4 bg-white/60 border border-red-500/50 rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-red-500 focus:ring-4 focus:ring-red-500/10 focus:bg-white"
-                                    } else {
-                                        "w-full h-13 pl-12 pr-4 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white"
-                                    },
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "email",
                                     value: "{email}",
                                     placeholder: "用于接收通知",
@@ -398,18 +400,31 @@ pub fn RegisterPage() -> Element {
 
                         // Password Input with strength meter and visibility toggle
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "密码"
                             }
-                            div { class: "relative",
-                                div { class: "absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B] group-focus-within:text-[#5856D6] transition-colors",
+                            div {
+                                class: if password_error().is_some() {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                } else {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                },
+                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" }
                                     }
                                 }
+                                input {
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    r#type: if show_password() { "text" } else { "password" },
+                                    value: "{password}",
+                                    placeholder: "设置强密码",
+                                    tabindex: "3",
+                                    oninput: handle_password_change
+                                }
                                 // Visibility toggle
                                 button {
-                                    class: "absolute right-4 top-1/2 -translate-y-1/2 text-[#86868B] hover:text-[#5856D6] transition-colors",
+                                    class: "pr-4 text-[#86868B] hover:text-[#007AFF] transition-colors flex-shrink-0",
                                     r#type: "button",
                                     tabindex: "-1",
                                     onclick: move |_| show_password.set(!show_password()),
@@ -423,18 +438,6 @@ pub fn RegisterPage() -> Element {
                                             path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 12a3 3 0 11-6 0 3 3 0 016 0z" }
                                         }
                                     }
-                                }
-                                input {
-                                    class: if password_error().is_some() {
-                                        "w-full h-13 pl-12 pr-12 bg-white/60 border border-red-500/50 rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-red-500 focus:ring-4 focus:ring-red-500/10 focus:bg-white"
-                                    } else {
-                                        "w-full h-13 pl-12 pr-12 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white"
-                                    },
-                                    r#type: if show_password() { "text" } else { "password" },
-                                    value: "{password}",
-                                    placeholder: "设置强密码",
-                                    tabindex: "3",
-                                    oninput: handle_password_change
                                 }
                             }
                             // Password strength meter
@@ -459,55 +462,53 @@ pub fn RegisterPage() -> Element {
 
                         // Confirm Password Input with match indicator
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "确认密码"
                             }
-                            div { class: "relative",
-                                div { class: "absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B] group-focus-within:text-[#5856D6] transition-colors",
+                            div {
+                                class: if confirm_error().is_some() {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                } else {
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                },
+                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" }
                                     }
                                 }
-                                // Match indicator
-                                if passwords_match {
-                                    div { class: "absolute right-4 top-1/2 -translate-y-1/2 text-green-500",
-                                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
-                                        }
-                                    }
-                                }
-                                // Visibility toggle
-                                button {
-                                    class: if passwords_match {
-                                        "absolute right-12 top-1/2 -translate-y-1/2 text-[#86868B] hover:text-[#5856D6] transition-colors"
-                                    } else {
-                                        "absolute right-4 top-1/2 -translate-y-1/2 text-[#86868B] hover:text-[#5856D6] transition-colors"
-                                    },
-                                    r#type: "button",
-                                    tabindex: "-1",
-                                    onclick: move |_| show_confirm_password.set(!show_confirm_password()),
-                                    if show_confirm_password() {
-                                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" }
-                                        }
-                                    } else {
-                                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" }
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 12a3 3 0 11-6 0 3 3 0 016 0z" }
-                                        }
-                                    }
-                                }
                                 input {
-                                    class: if confirm_error().is_some() {
-                                        "w-full h-13 pl-12 pr-12 bg-white/60 border border-red-500/50 rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-red-500 focus:ring-4 focus:ring-red-500/10 focus:bg-white"
-                                    } else {
-                                        "w-full h-13 pl-12 pr-12 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#5856D6] focus:ring-4 focus:ring-[#5856D6]/10 focus:bg-white"
-                                    },
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: if show_confirm_password() { "text" } else { "password" },
                                     value: "{confirm_password}",
                                     placeholder: "再次输入密码",
                                     tabindex: "4",
                                     oninput: handle_confirm_password_change
+                                }
+                                // Match indicator
+                                if passwords_match {
+                                    div { class: "pr-4 text-green-500 flex-shrink-0",
+                                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
+                                        }
+                                    }
+                                } else {
+                                    // Visibility toggle when no match/empty
+                                    button {
+                                        class: "pr-4 text-[#86868B] hover:text-[#007AFF] transition-colors flex-shrink-0",
+                                        r#type: "button",
+                                        tabindex: "-1",
+                                        onclick: move |_| show_confirm_password.set(!show_confirm_password()),
+                                        if show_confirm_password() {
+                                            svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
+                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" }
+                                            }
+                                        } else {
+                                            svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
+                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" }
+                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 12a3 3 0 11-6 0 3 3 0 016 0z" }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             if let Some(err) = confirm_error() {
@@ -517,9 +518,10 @@ pub fn RegisterPage() -> Element {
                             }
                         }
 
+
                         // Register Button - Primary Action with high visual weight
                         button {
-                            class: "group relative w-full h-14 mt-6 text-[17px] font-semibold text-white transition-all duration-300 bg-[#1D1D1F] rounded-2xl hover:bg-[#2C2C2E] shadow-[0_4px_14px_-2px_rgba(29,29,31,0.25),0_12px_32px_-4px_rgba(29,29,31,0.15)] hover:shadow-[0_8px_24px_-4px_rgba(29,29,31,0.35),0_16px_40px_-8px_rgba(29,29,31,0.2)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
+                            class: "group relative w-full h-12 mt-6 text-[16px] font-semibold text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-xl shadow-[0_4px_14px_-2px_rgba(88,86,214,0.4),0_8px_24px_-4px_rgba(0,122,255,0.3)] hover:shadow-[0_8px_24px_-4px_rgba(88,86,214,0.5),0_12px_32px_-8px_rgba(0,122,255,0.4)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
                             disabled: loading() || !form_valid,
                             tabindex: "5",
                             onclick: handle_register,
@@ -547,7 +549,7 @@ pub fn RegisterPage() -> Element {
                         span { class: "text-[15px] text-[#86868B]", "已有账号？" }
                         Link {
                             to: Route::LoginPage {},
-                            class: "text-[15px] font-medium text-[#5856D6] hover:text-[#6E6AE8] transition-colors ml-1",
+                            class: "text-[15px] font-medium text-[#007AFF] hover:text-[#0077ED] transition-colors ml-1",
                             "返回登录"
                         }
                     }

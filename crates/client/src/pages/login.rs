@@ -88,10 +88,10 @@ pub fn LoginPage() -> Element {
                         // Header Slogan
                         div { class: "flex flex-col items-center justify-center space-y-1 mb-4",
                             h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
-                                "One Interface."
+                                "Unleash Intelligence."
                             }
                             h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#007AFF] to-[#5856D6]",
-                                "Every Intelligence."
+                                "Your Second Brain."
                             }
                         }
                         p { class: "text-[15px] text-[#86868B]",
@@ -103,17 +103,18 @@ pub fn LoginPage() -> Element {
                     div { class: "space-y-5 relative z-10",
                         // Username Input
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "用户名"
                             }
-                            div { class: "relative",
-                                div { class: "absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors",
+                            div {
+                                class: "relative flex items-center w-full h-14 bg-[#F5F5F7]/80 rounded-2xl transition-all duration-300 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]",
+                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-14 pl-12 pr-4 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 focus:bg-white",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[16px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "text",
                                     value: "{username}",
                                     placeholder: "请输入用户名",
@@ -124,17 +125,18 @@ pub fn LoginPage() -> Element {
 
                         // Password Input
                         div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "密码"
                             }
-                            div { class: "relative",
-                                div { class: "absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors",
+                            div {
+                                class: "relative flex items-center w-full h-14 bg-[#F5F5F7]/80 rounded-2xl transition-all duration-300 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]",
+                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-14 pl-12 pr-4 bg-white/60 border border-[#E5E5EA] rounded-2xl text-[16px] text-[#1D1D1F] placeholder-[#C7C7CC] transition-all duration-300 focus:outline-none focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 focus:bg-white",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[16px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "password",
                                     value: "{password}",
                                     placeholder: "请输入密码",
