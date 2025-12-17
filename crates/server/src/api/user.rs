@@ -53,9 +53,7 @@ async fn register(
 ) -> AxumJson<Value> {
     // 1. Check if user exists
     match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
-        Ok(Some(_)) => {
-            return AxumJson(json!({ "success": false, "message": "用户名已存在" }))
-        }
+        Ok(Some(_)) => return AxumJson(json!({ "success": false, "message": "用户名已存在" })),
         Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
         _ => {}
     }
@@ -81,14 +79,14 @@ async fn register(
         Ok(_) => {
             // Assign default role
             let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
-            
+
             // Return login data for auto-login
             // NOTE: This is a behavior change - register now returns login data
             // This enables auto-login feature without requiring separate login call
             let roles = UserDatabase::get_user_roles(&state.db, &user.id)
                 .await
                 .unwrap_or_default();
-            
+
             // TODO: Generate proper JWT token instead of mock token
             // For production, implement JWT signing with secret key and expiration
             AxumJson(json!({
