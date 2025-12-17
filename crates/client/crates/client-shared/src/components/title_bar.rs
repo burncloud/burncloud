@@ -57,7 +57,7 @@ pub fn TitleBar() -> Element {
 
             // Windows/Linux: Controls on the Right
             if !cfg!(target_os = "macos") {
-                div { class: "flex items-center app-no-drag h-full",
+                div { class: "flex items-center app-no-drag h-full mr-2",
                     // Minimize
                     button {
                         class: "h-full px-4 hover:bg-base-content/10 flex items-center justify-center transition-colors",
