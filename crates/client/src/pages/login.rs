@@ -10,6 +10,7 @@ pub fn LoginPage() -> Element {
     let mut username = use_signal(|| "".to_string());
     let mut password = use_signal(|| "".to_string());
     let mut loading = use_signal(|| false);
+    let mut login_error = use_signal(|| None::<String>);
     let toast = use_toast();
     let navigator = use_navigator();
     let auth = use_auth();
@@ -24,6 +25,7 @@ pub fn LoginPage() -> Element {
 
     let handle_login = move |_| {
         loading.set(true);
+        login_error.set(None);
         spawn(async move {
             match AuthService::login(&username(), &password()).await {
                 Ok(response) => {
@@ -41,7 +43,8 @@ pub fn LoginPage() -> Element {
                 Err(e) => {
                     loading.set(false);
                     println!("LoginPage: Login error: {}", e);
-                    toast.error(&e);
+                    // toast.error(&e); // Use inline error instead
+                    login_error.set(Some("用户名或密码错误".to_string()));
                 }
             }
         });
@@ -51,7 +54,7 @@ pub fn LoginPage() -> Element {
         // Container: Aurora Canvas
         div { class: "h-full w-full min-h-screen overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans flex items-center justify-center py-12",
 
-            // ========== BACKGROUND: Liquid Light Field ==========
+            // ========== BACKGROUND: Liquid Light Field ========== 
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
                 // Draggable Region
                 div { class: "absolute top-0 left-0 w-full h-16 z-50 cursor-default", style: "-webkit-app-region: drag;" }
@@ -65,14 +68,14 @@ pub fn LoginPage() -> Element {
                 // Layer 3: Accent Orb - slower
                 div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s] [animation-duration:20s]" }
 
-                // Noise Texture
+                // Noise Texture (Removed quotes from url() to avoid string escaping issues)
                 div {
                     class: "absolute inset-0 opacity-[0.03] mix-blend-overlay",
-                    style: "background-image: url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\");"
+                    style: "background-image: url(data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E);"
                 }
             }
 
-            // ========== LOGIN CONTAINER (Transparent) ==========
+            // ========== LOGIN CONTAINER (Transparent) ========== 
             div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
 
                 div { class: "p-8 relative",
@@ -119,7 +122,10 @@ pub fn LoginPage() -> Element {
                                     value: "{username}",
                                     placeholder: "请输入用户名",
                                     autofocus: true,
-                                    oninput: move |e| username.set(e.value())
+                                    oninput: move |e| {
+                                        username.set(e.value());
+                                        login_error.set(None);
+                                    }
                                 }
                             }
                         }
@@ -128,7 +134,11 @@ pub fn LoginPage() -> Element {
                         div { class: "group relative",
                             label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1", "密码" }
                             div {
-                                class: "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white",
+                                class: if login_error().is_some() {
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                } else {
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white"
+                                },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" }
@@ -139,7 +149,22 @@ pub fn LoginPage() -> Element {
                                     r#type: "password",
                                     value: "{password}",
                                     placeholder: "请输入密码",
-                                    oninput: move |e| password.set(e.value())
+                                    oninput: move |e| {
+                                        password.set(e.value());
+                                        login_error.set(None);
+                                    }
+                                }
+                            }
+                            // Floating Error Message
+                            div {
+                                class: if login_error().is_some() {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-100 z-20 pointer-events-none"
+                                } else {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
+                                },
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
+                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                    "{login_error().unwrap_or_default()}"
                                 }
                             }
                         }
@@ -172,7 +197,7 @@ pub fn LoginPage() -> Element {
                         Link {
                             to: Route::RegisterPage {},
                             class: "text-[15px] font-medium text-[#86868B] hover:text-[#1D1D1F] transition-colors",
-                            "还没有账号？立即注册"
+                            "还没有账号? 立即注册"
                         }
                     }
                 }
