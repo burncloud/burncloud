@@ -277,14 +277,11 @@ pub fn RegisterPage() -> Element {
                 }
             }
 
-            // ========== REGISTER CARD: Glass Morphism ==========
+            // ========== REGISTER CARD: Transparent Container ==========
             div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
 
-                // Glass Card - refined aesthetics with sophisticated shadow
-                div { class: "backdrop-blur-xl bg-white/60 rounded-[24px] shadow-[0_8px_32px_-4px_rgba(0,0,0,0.08),0_24px_56px_-8px_rgba(88,86,214,0.12)] p-8 relative overflow-hidden",
-
-                    // Glossy reflection
-                    div { class: "absolute top-0 left-0 w-56 h-56 bg-gradient-to-br from-white/80 to-transparent opacity-60 pointer-events-none rounded-full blur-2xl -translate-y-1/2 -translate-x-1/2" }
+                // Form Container (No Background/Border)
+                div { class: "p-8 relative",
 
                     // Logo & Header
                     div { class: "text-center mb-8 relative z-10",
