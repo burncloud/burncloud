@@ -319,7 +319,7 @@ pub fn RegisterPage() -> Element {
                         onkeydown: handle_keydown,
 
                         // Username Input with availability check
-                        div { class: "group",
+                        div { class: "group relative",
                             label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "用户名"
                             }
@@ -359,18 +359,21 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                             }
-                            if let Some(err) = username_error() {
-                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
-                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
-                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
-                                        "{err}"
-                                    }
+                            div {
+                                class: if username_error().is_some() {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-100 z-20 pointer-events-none"
+                                } else {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
+                                },
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                    "{username_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
                         }
 
                         // Email Input with validation
-                        div { class: "group",
+                        div { class: "group relative",
                             label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "邮箱"
                                 span { class: "ml-2 text-[11px] text-[#C7C7CC] normal-case tracking-normal", "(可选)" }
@@ -395,18 +398,21 @@ pub fn RegisterPage() -> Element {
                                     oninput: handle_email_change
                                 }
                             }
-                            if let Some(err) = email_error() {
-                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
-                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
-                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
-                                        "{err}"
-                                    }
+                            div {
+                                class: if email_error().is_some() {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-100 z-20 pointer-events-none"
+                                } else {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
+                                },
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                    "{email_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
                         }
 
                         // Password Input with strength meter and visibility toggle
-                        div { class: "group",
+                        div { class: "group relative",
                             label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "密码"
                             }
@@ -447,18 +453,21 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                             }
-                            if let Some(err) = password_error() {
-                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
-                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
-                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
-                                        "{err}"
-                                    }
+                            div {
+                                class: if password_error().is_some() {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-100 z-20 pointer-events-none"
+                                } else {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
+                                },
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                    "{password_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
                         }
 
                         // Confirm Password Input with match indicator
-                        div { class: "group",
+                        div { class: "group relative",
                             label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "确认密码"
                             }
@@ -508,12 +517,15 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                             }
-                            if let Some(err) = confirm_error() {
-                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
-                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
-                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
-                                        "{err}"
-                                    }
+                            div {
+                                class: if confirm_error().is_some() {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-100 z-20 pointer-events-none"
+                                } else {
+                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
+                                },
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                    "{confirm_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
                         }
