@@ -288,7 +288,7 @@ pub fn RegisterPage() -> Element {
                         // Logo (Force Field / Soap Bubble)
                         div { class: "relative inline-flex items-center justify-center w-24 h-24 {logo_margin}",
                             div {
-                                class: "w-full h-full rounded-full bg-white/10 border border-white/20 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(88,86,214,0.12)] flex items-center justify-center",
+                                class: "w-full h-full rounded-full bg-white/20 border border-white/30 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(88,86,214,0.12)] flex items-center justify-center",
                                 Logo { class: "w-10 h-10 text-[#5856D6] fill-current translate-y-0.5" }
                             }
                         }
@@ -323,9 +323,9 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if username_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white"
                                 },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
@@ -377,9 +377,9 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if email_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white"
                                 },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
@@ -415,9 +415,9 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if password_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "{password_glow_class} relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "{password_glow_class} relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:bg-white hover:bg-white"
                                 },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
@@ -470,9 +470,9 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if confirm_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white"
                                 },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
