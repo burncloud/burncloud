@@ -54,7 +54,7 @@ pub fn LoginPage() -> Element {
         // Container: Aurora Canvas
         div { class: "h-full w-full min-h-screen overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans flex items-center justify-center py-12",
 
-            // ========== BACKGROUND: Liquid Light Field ========== 
+            // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
                 // Draggable Region
                 div { class: "absolute top-0 left-0 w-full h-16 z-50 cursor-default", style: "-webkit-app-region: drag;" }
@@ -75,7 +75,7 @@ pub fn LoginPage() -> Element {
                 }
             }
 
-            // ========== LOGIN CONTAINER (Transparent) ========== 
+            // ========== LOGIN CONTAINER (Transparent) ==========
             div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
 
                 div { class: "p-8 relative",
