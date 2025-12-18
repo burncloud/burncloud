@@ -432,6 +432,7 @@ pub fn GuestLayout() -> Element {
                 .bg-white\\/20 {{ background-color: rgba(255, 255, 255, 0.2); }}
                 .bg-white\\/90 {{ background-color: rgba(255, 255, 255, 0.9); }}
                 .border-white\\/30 {{ border-color: rgba(255, 255, 255, 0.3); }}
+                .active\\:brightness-90:active {{ filter: brightness(0.9); }}
                 "
             }
         }
