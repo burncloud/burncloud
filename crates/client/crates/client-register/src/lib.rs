@@ -40,7 +40,7 @@ pub fn RegisterPage() -> Element {
     // Calculate password strength
     let password_strength = calculate_password_strength(&password());
     let password_glow_class = if password().is_empty() {
-        "focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)]"
+        "focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)]"
     } else {
         match password_strength {
             PasswordStrength::Weak => "focus-within:shadow-[0_0_0_2px_rgba(255,59,48,0.4)]",
@@ -327,7 +327,7 @@ pub fn RegisterPage() -> Element {
                                 class: if username_error().is_some() {
                                     "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
                                 },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
@@ -365,7 +365,7 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
                                 span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
                                     "{username_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
@@ -376,13 +376,12 @@ pub fn RegisterPage() -> Element {
                         div { class: "group relative",
                             label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
                                 "邮箱"
-                                span { class: "ml-2 text-[11px] text-[#C7C7CC] normal-case tracking-normal", "(可选)" }
                             }
                             div {
                                 class: if email_error().is_some() {
                                     "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
                                 },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
@@ -393,7 +392,7 @@ pub fn RegisterPage() -> Element {
                                     class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "email",
                                     value: "{email}",
-                                    placeholder: "用于接收通知",
+                                    placeholder: "用于接收通知 (可选)",
                                     tabindex: "2",
                                     oninput: handle_email_change
                                 }
@@ -404,7 +403,7 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
                                 span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
                                     "{email_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
@@ -459,7 +458,7 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
                                 span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
                                     "{password_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
@@ -475,7 +474,7 @@ pub fn RegisterPage() -> Element {
                                 class: if confirm_error().is_some() {
                                     "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
                                 },
                                 div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
@@ -523,7 +522,7 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
                                 span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
                                     "{confirm_error().unwrap_or_else(|| \" \".to_string())}"
                                 }

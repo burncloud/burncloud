@@ -405,8 +405,8 @@ pub fn GuestLayout() -> Element {
 
                 /* ========== NEW REGISTER PAGE CLASSES ========== */
                 .shadow-\\[0_8px_24px_-4px_rgba\\(88\\,86\\,214\\,0\\.15\\)\\] {{ box-shadow: 0 8px 24px -4px rgba(88,86,214,0.15); }}
-                .shadow-\\[0_0_6px_rgba\\(255\\,59\\,48\\,0\\.6\\)\\] {{ box-shadow: 0 0 6px rgba(255,59,48,0.6); }}
-                .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(0\\,122\\,255\\,0\\.3\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(0,122,255,0.3); }}
+                .shadow-\\[0_0_8px_rgba\\(255\\,59\\,48\\,0\\.8\\)\\] {{ box-shadow: 0 0 8px rgba(255,59,48,0.8); }}
+                .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(88\\,86\\,214\\,0\\.3\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(88,86,214,0.3); }}
                 .shadow-\\[0_0_0_2px_rgba\\(255\\,59\\,48\\,0\\.3\\)\\] {{ box-shadow: 0 0 0 2px rgba(255,59,48,0.3); }}
                 .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(255\\,59\\,48\\,0\\.4\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(255,59,48,0.4); }}
                 .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(255\\,149\\,0\\,0\\.5\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(255,149,0,0.5); }}
