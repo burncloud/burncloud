@@ -402,6 +402,20 @@ pub fn GuestLayout() -> Element {
                 .disabled\\:hover\\:translate-y-0:disabled:hover {{ transform: translateY(0); }}
                 .group:hover .group-hover\\:translate-x-1 {{ transform: translateX(0.25rem); }}
                 .group:hover .group-hover\\:translate-x-2 {{ transform: translateX(0.5rem); }}
+
+                /* ========== NEW REGISTER PAGE CLASSES ========== */
+                .shadow-\\[0_8px_24px_-4px_rgba\\(88\\,86\\,214\\,0\\.15\\)\\] {{ box-shadow: 0 8px 24px -4px rgba(88,86,214,0.15); }}
+                .shadow-\\[0_0_6px_rgba\\(255\\,59\\,48\\,0\\.6\\)\\] {{ box-shadow: 0 0 6px rgba(255,59,48,0.6); }}
+                .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(0\\,122\\,255\\,0\\.3\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(0,122,255,0.3); }}
+                .shadow-\\[0_0_0_2px_rgba\\(255\\,59\\,48\\,0\\.3\\)\\] {{ box-shadow: 0 0 0 2px rgba(255,59,48,0.3); }}
+                .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(255\\,59\\,48\\,0\\.4\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(255,59,48,0.4); }}
+                .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(255\\,149\\,0\\,0\\.5\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(255,149,0,0.5); }}
+                .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(52\\,199\\,89\\,0\\.5\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(52,199,89,0.5); }}
+                .shadow-\\[0_10px_30px_-10px_rgba\\(0\\,122\\,255\\,0\\.5\\)\\] {{ box-shadow: 0 10px 30px -10px rgba(0,122,255,0.5); }}
+                .hover\\:shadow-\\[0_20px_40px_-10px_rgba\\(0\\,122\\,255\\,0\\.6\\)\\]:hover {{ box-shadow: 0 20px 40px -10px rgba(0,122,255,0.6); }}
+                .translate-y-\\[0\\.5px\\] {{ transform: translateY(0.5px); }}
+                .group:focus-within .group-focus-within\\:scale-110 {{ transform: scale(1.10); }}
+                .group:focus-within .group-focus-within\\:text-\\[\\#007AFF\\] {{ color: #007AFF; }}
                 "
             }
         }

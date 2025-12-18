@@ -4,7 +4,7 @@ use burncloud_client_shared::components::logo::Logo;
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::utils::{
     calculate_password_strength, get_email_error, get_password_error, get_username_error,
-    sanitize_input,
+    sanitize_input, PasswordStrength,
 };
 use dioxus::prelude::*;
 use std::time::Duration;
@@ -39,6 +39,16 @@ pub fn RegisterPage() -> Element {
 
     // Calculate password strength
     let password_strength = calculate_password_strength(&password());
+    let password_glow_class = if password().is_empty() {
+        "focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)]"
+    } else {
+        match password_strength {
+            PasswordStrength::Weak => "focus-within:shadow-[0_0_0_2px_rgba(255,59,48,0.4)]",
+            PasswordStrength::Medium => "focus-within:shadow-[0_0_0_2px_rgba(255,149,0,0.5)]",
+            PasswordStrength::Strong => "focus-within:shadow-[0_0_0_2px_rgba(52,199,89,0.5)]",
+        }
+    };
+
     let passwords_match = !password().is_empty()
         && !confirm_password().is_empty()
         && password() == confirm_password();
@@ -248,19 +258,22 @@ pub fn RegisterPage() -> Element {
 
             // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
-                // Layer 1: Primary Aurora Blob - shifted for variety
-                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[#5856D6]/15 via-[#AF52DE]/12 to-[#007AFF]/10 rounded-full blur-[100px] animate-aurora animate-morph" }
+                // Draggable Region
+                div { class: "absolute top-0 left-0 w-full h-16 z-50", style: "-webkit-app-region: drag;" }
 
-                // Layer 2: Secondary Flow
-                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[#34C759]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:5s] [animation-duration:22s]" }
+                // Layer 1: Primary Aurora Blob - slower
+                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[#5856D6]/15 via-[#AF52DE]/12 to-[#007AFF]/10 rounded-full blur-[100px] animate-aurora animate-morph [animation-duration:30s]" }
 
-                // Layer 3: Accent Orb
-                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s]" }
+                // Layer 2: Secondary Flow - slower
+                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[#34C759]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:5s] [animation-duration:40s]" }
 
-                // Grid pattern overlay - reduced opacity for cleaner background
+                // Layer 3: Accent Orb - slower
+                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s] [animation-duration:20s]" }
+
+                // Noise Texture
                 div {
-                    class: "absolute inset-0 opacity-[0.015]",
-                    style: "background-image: radial-gradient(circle at 1px 1px, #1D1D1F 0.5px, transparent 0); background-size: 48px 48px;"
+                    class: "absolute inset-0 opacity-[0.03] mix-blend-overlay",
+                    style: "background-image: url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\");"
                 }
             }
 
@@ -268,22 +281,17 @@ pub fn RegisterPage() -> Element {
             div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
 
                 // Glass Card - refined aesthetics with sophisticated shadow
-                div { class: "backdrop-blur-xl bg-white/75 rounded-[24px] shadow-[0_8px_32px_-4px_rgba(0,0,0,0.08),0_24px_56px_-8px_rgba(88,86,214,0.12)] border border-white/60 p-8 relative overflow-hidden",
+                div { class: "backdrop-blur-xl bg-white/60 rounded-[24px] shadow-[0_8px_32px_-4px_rgba(0,0,0,0.08),0_24px_56px_-8px_rgba(88,86,214,0.12)] p-8 relative overflow-hidden",
 
                     // Glossy reflection
                     div { class: "absolute top-0 left-0 w-56 h-56 bg-gradient-to-br from-white/80 to-transparent opacity-60 pointer-events-none rounded-full blur-2xl -translate-y-1/2 -translate-x-1/2" }
 
                     // Logo & Header
                     div { class: "text-center mb-8 relative z-10",
-                        // Logo with gradient ring
+                        // Logo (Simplified - Zen)
                         div { class: "relative inline-flex items-center justify-center w-16 h-16 {logo_margin}",
-                            // Gradient ring
-                            div { class: "absolute inset-0 rounded-[20px] bg-gradient-to-br from-[#007AFF] via-[#5856D6] to-[#AF52DE] p-[2px]",
-                                div { class: "w-full h-full rounded-[18px] bg-white" }
-                            }
-                            // Icon
-                            div { class: "absolute inset-0 flex items-center justify-center overflow-hidden",
-                                Logo { class: "w-7 h-7 text-[#5856D6] fill-current" }
+                            div { class: "w-full h-full rounded-[20px] bg-white shadow-[0_8px_24px_-4px_rgba(88,86,214,0.15)] flex items-center justify-center",
+                                Logo { class: "w-8 h-8 text-[#5856D6] fill-current" }
                             }
                         }
 
@@ -317,17 +325,17 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if username_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
                                 },
-                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
+                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "text",
                                     value: "{username}",
                                     placeholder: "设置您的唯一标识",
@@ -352,8 +360,11 @@ pub fn RegisterPage() -> Element {
                                 }
                             }
                             if let Some(err) = username_error() {
-                                div { class: "mt-1.5 text-[12px] text-red-500 font-medium pl-1",
-                                    "{err}"
+                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
+                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                        "{err}"
+                                    }
                                 }
                             }
                         }
@@ -366,17 +377,17 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if email_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
                                 },
-                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
+                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "email",
                                     value: "{email}",
                                     placeholder: "用于接收通知",
@@ -385,8 +396,11 @@ pub fn RegisterPage() -> Element {
                                 }
                             }
                             if let Some(err) = email_error() {
-                                div { class: "mt-1.5 text-[12px] text-red-500 font-medium pl-1",
-                                    "{err}"
+                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
+                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                        "{err}"
+                                    }
                                 }
                             }
                         }
@@ -398,17 +412,17 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if password_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "{password_glow_class} relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:bg-white hover:bg-[#F5F5F7]"
                                 },
-                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
+                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: if show_password() { "text" } else { "password" },
                                     value: "{password}",
                                     placeholder: "设置强密码",
@@ -433,22 +447,12 @@ pub fn RegisterPage() -> Element {
                                     }
                                 }
                             }
-                            // Password strength meter
-                            if !password().is_empty() {
-                                div { class: "mt-2 flex items-center gap-2",
-                                    div { class: "flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden",
-                                        div {
-                                            class: "h-full transition-all duration-300 {password_strength.color_class()} {password_strength.width_class()}"
-                                        }
-                                    }
-                                    span { class: "text-[11px] font-medium text-[#86868B]",
-                                        "强度: {password_strength.as_str()}"
-                                    }
-                                }
-                            }
                             if let Some(err) = password_error() {
-                                div { class: "mt-1.5 text-[12px] text-red-500 font-medium pl-1",
-                                    "{err}"
+                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
+                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                        "{err}"
+                                    }
                                 }
                             }
                         }
@@ -460,17 +464,17 @@ pub fn RegisterPage() -> Element {
                             }
                             div {
                                 class: if confirm_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 ring-2 ring-red-500/50 bg-white"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]"
+                                    "relative flex items-center w-full h-12 bg-[#F5F5F7]/80 rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(0,122,255,0.3)] focus-within:bg-white hover:bg-[#F5F5F7]"
                                 },
-                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
+                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: if show_confirm_password() { "text" } else { "password" },
                                     value: "{confirm_password}",
                                     placeholder: "再次输入密码",
@@ -505,8 +509,11 @@ pub fn RegisterPage() -> Element {
                                 }
                             }
                             if let Some(err) = confirm_error() {
-                                div { class: "mt-1.5 text-[12px] text-red-500 font-medium pl-1",
-                                    "{err}"
+                                div { class: "mt-2 flex items-center gap-1.5 pl-1 animate-in slide-in-from-top-1 fade-in duration-200",
+                                    div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.6)] translate-y-[0.5px]" }
+                                    span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                        "{err}"
+                                    }
                                 }
                             }
                         }
@@ -514,7 +521,7 @@ pub fn RegisterPage() -> Element {
 
                         // Register Button - Primary Action with high visual weight
                         button {
-                            class: "group relative w-full h-12 mt-6 text-[16px] font-semibold text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-xl shadow-[0_4px_14px_-2px_rgba(88,86,214,0.4),0_8px_24px_-4px_rgba(0,122,255,0.3)] hover:shadow-[0_8px_24px_-4px_rgba(88,86,214,0.5),0_12px_32px_-8px_rgba(0,122,255,0.4)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
+                            class: "group relative w-full h-12 mt-6 text-[16px] font-semibold text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-xl shadow-[0_10px_30px_-10px_rgba(0,122,255,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(0,122,255,0.6)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
                             disabled: loading() || !form_valid,
                             tabindex: "5",
                             onclick: handle_register,
@@ -528,7 +535,7 @@ pub fn RegisterPage() -> Element {
                                     }
                                     "注册中..."
                                 } else {
-                                    "创建账号"
+                                    "开始体验"
                                     svg { class: "w-5 h-5 transition-transform duration-300 group-hover:translate-x-1", fill: "none", stroke: "currentColor", view_box: "0 0 24 24",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M13 7l5 5m0 0l-5 5m5-5H6" }
                                     }
@@ -539,19 +546,11 @@ pub fn RegisterPage() -> Element {
 
                     // Footer Link
                     div { class: "text-center mt-8 relative z-10",
-                        span { class: "text-[15px] text-[#86868B]", "已有账号？" }
                         Link {
                             to: "/login",
-                            class: "text-[15px] font-medium text-[#007AFF] hover:text-[#0077ED] transition-colors ml-1",
-                            "返回登录"
+                            class: "text-[15px] font-medium text-[#86868B] hover:text-[#1D1D1F] transition-colors",
+                            "已有账号？返回登录"
                         }
-                    }
-                }
-
-                // Bottom branding
-                div { class: "text-center mt-8",
-                    span { class: "text-[13px] font-medium text-[#86868B]/60 tracking-wider",
-                        "BurnCloud"
                     }
                 }
             }
