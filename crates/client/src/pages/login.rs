@@ -49,94 +49,93 @@ pub fn LoginPage() -> Element {
 
     rsx! {
         // Container: Aurora Canvas
-        div { class: "h-full w-full min-h-screen overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans flex items-center justify-center",
+        div { class: "h-full w-full min-h-screen overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans flex items-center justify-center py-12",
 
             // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
-                // Layer 1: Primary Aurora Blob
-                div { class: "absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[#FF2D55]/12 via-[#AF52DE]/10 to-[#007AFF]/12 rounded-full blur-[100px] animate-aurora animate-morph" }
+                // Draggable Region
+                div { class: "absolute top-0 left-0 w-full h-16 z-50 cursor-default", style: "-webkit-app-region: drag;" }
 
-                // Layer 2: Secondary Flow
-                div { class: "absolute bottom-[-15%] right-[-10%] w-[700px] h-[700px] bg-gradient-to-l from-[#30B0C7]/15 via-[#5856D6]/12 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:7s] [animation-duration:25s]" }
+                // Layer 1: Primary Aurora Blob - slower
+                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[#5856D6]/15 via-[#AF52DE]/12 to-[#007AFF]/10 rounded-full blur-[100px] animate-aurora animate-morph [animation-duration:30s]" }
 
-                // Layer 3: Accent Orb
-                div { class: "absolute top-[20%] right-[20%] w-[300px] h-[300px] bg-gradient-to-br from-[#5AC8FA]/15 to-[#007AFF]/8 rounded-full blur-[60px] animate-float [animation-delay:2s]" }
+                // Layer 2: Secondary Flow - slower
+                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[#34C759]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:5s] [animation-duration:40s]" }
 
-                // Grid pattern overlay
+                // Layer 3: Accent Orb - slower
+                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s] [animation-duration:20s]" }
+
+                // Noise Texture
                 div {
-                    class: "absolute inset-0 opacity-[0.02]",
-                    style: "background-image: radial-gradient(circle at 1px 1px, #1D1D1F 1px, transparent 0); background-size: 40px 40px;"
+                    class: "absolute inset-0 opacity-[0.03] mix-blend-overlay",
+                    style: "background-image: url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\");"
                 }
             }
 
-            // ========== LOGIN CARD: Glass Morphism ==========
-            div { class: "relative z-10 w-full max-w-[420px] mx-4 animate-in",
+            // ========== LOGIN CONTAINER (Transparent) ==========
+            div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
 
-                // Glass Card
-                div { class: "backdrop-blur-xl bg-white/70 rounded-[32px] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.12)] border border-white/50 p-10 relative overflow-hidden",
-
-                    // Glossy reflection
-                    div { class: "absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-white/80 to-transparent opacity-60 pointer-events-none rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" }
+                div { class: "p-8 relative",
 
                     // Logo & Header
-                    div { class: "text-center mb-10 relative z-10",
-                        // Logo
-                        div { class: "inline-flex items-center justify-center {logo_margin} transition-transform duration-500 hover:scale-110 hover:rotate-6",
-                            Logo { class: "w-16 h-16 fill-current" }
+                    div { class: "text-center mb-8 relative z-10",
+                        // Logo (Force Field)
+                        div { class: "relative inline-flex items-center justify-center w-24 h-24 {logo_margin}",
+                            div {
+                                class: "w-full h-full rounded-full bg-white/20 border border-white/30 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(88,86,214,0.12)] flex items-center justify-center",
+                                Logo { class: "w-10 h-10 text-[#5856D6] fill-current translate-y-0.5" }
+                            }
                         }
 
                         // Header Slogan
-                        div { class: "flex flex-col items-center justify-center space-y-1 mb-4",
+                        div { class: "flex flex-col items-center justify-center space-y-2 mb-6",
                             h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
                                 "Unleash Intelligence."
                             }
-                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#007AFF] to-[#5856D6]",
+                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#5856D6] to-[#AF52DE]",
                                 "Your Second Brain."
                             }
                         }
-                        p { class: "text-[15px] text-[#86868B]",
+                        p { class: "text-[15px] text-[#1D1D1F]/60 font-semibold tracking-wide",
                             "登录以连接您的本地算力节点"
                         }
                     }
 
                     // Form
-                    div { class: "space-y-5 relative z-10",
+                    div { class: "space-y-4 relative z-10",
                         // Username Input
-                        div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
-                                "用户名"
-                            }
+                        div { class: "group relative",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1", "用户名" }
                             div {
-                                class: "relative flex items-center w-full h-14 bg-[#F5F5F7]/80 rounded-2xl transition-all duration-300 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]",
-                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
+                                class: "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white",
+                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[16px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "text",
                                     value: "{username}",
                                     placeholder: "请输入用户名",
+                                    autofocus: true,
                                     oninput: move |e| username.set(e.value())
                                 }
                             }
                         }
 
                         // Password Input
-                        div { class: "group",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
-                                "密码"
-                            }
+                        div { class: "group relative",
+                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1", "密码" }
                             div {
-                                class: "relative flex items-center w-full h-14 bg-[#F5F5F7]/80 rounded-2xl transition-all duration-300 focus-within:ring-2 focus-within:ring-[#007AFF]/50 focus-within:bg-white hover:bg-[#F5F5F7]",
-                                div { class: "pl-4 text-[#86868B] group-focus-within:text-[#007AFF] transition-colors flex-shrink-0",
+                                class: "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white",
+                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-3 text-[16px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
                                     r#type: "password",
                                     value: "{password}",
                                     placeholder: "请输入密码",
@@ -145,18 +144,14 @@ pub fn LoginPage() -> Element {
                             }
                         }
 
-                        // Login Button - Gradient CTA
+                        // Login Button
                         button {
-                            class: "group relative w-full h-14 mt-8 text-[17px] font-semibold text-white transition-all duration-500 bg-gradient-to-r from-[#0071E3] to-[#5856D6] rounded-2xl hover:from-[#0077ED] hover:to-[#6E6AE8] shadow-[0_10px_30px_-5px_rgba(0,113,227,0.4)] hover:shadow-[0_20px_40px_-5px_rgba(0,113,227,0.5)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden",
+                            class: "group relative w-full h-12 mt-6 text-[16px] font-medium text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-2xl shadow-[0_10px_30px_-10px_rgba(0,122,255,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(0,122,255,0.6)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
                             disabled: loading(),
                             onclick: handle_login,
 
-                            // Shimmer effect
-                            div { class: "absolute inset-0 animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-300" }
-
                             span { class: "relative z-10 flex items-center justify-center gap-2",
                                 if loading() {
-                                    // Loading spinner
                                     svg { class: "w-5 h-5 animate-spin", fill: "none", view_box: "0 0 24 24",
                                         circle { class: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", stroke_width: "4" }
                                         path { class: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" }
@@ -165,7 +160,7 @@ pub fn LoginPage() -> Element {
                                 } else {
                                     "登录"
                                     svg { class: "w-5 h-5 transition-transform duration-300 group-hover:translate-x-1", fill: "none", stroke: "currentColor", view_box: "0 0 24 24",
-                                        path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M9 5l7 7-7 7" }
+                                        path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M13 7l5 5m0 0l-5 5m5-5H6" }
                                     }
                                 }
                             }
@@ -174,19 +169,11 @@ pub fn LoginPage() -> Element {
 
                     // Footer Link
                     div { class: "text-center mt-8 relative z-10",
-                        span { class: "text-[15px] text-[#86868B]", "还没有账号？" }
                         Link {
                             to: Route::RegisterPage {},
-                            class: "text-[15px] font-medium text-[#007AFF] hover:text-[#0077ED] transition-colors ml-1",
-                            "立即注册"
+                            class: "text-[15px] font-medium text-[#86868B] hover:text-[#1D1D1F] transition-colors",
+                            "还没有账号？立即注册"
                         }
-                    }
-                }
-
-                // Bottom branding
-                div { class: "text-center mt-8",
-                    span { class: "text-[13px] font-medium text-[#86868B]/60 tracking-wider",
-                        "BurnCloud"
                     }
                 }
             }
