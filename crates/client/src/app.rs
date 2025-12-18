@@ -5,8 +5,9 @@ use crate::pages::{
     api::ApiManagement, billing::BillingPage, burngrid::BurnGridPage, channels::ChannelPage,
     dashboard::Dashboard, deploy::DeployConfig, home::HomePage, login::LoginPage, logs::LogPage,
     models::ModelManagement, monitor::ServiceMonitor, playground::PlaygroundPage,
-    register::RegisterPage, settings::SystemSettings, user::UserPage,
+    settings::SystemSettings, user::UserPage,
 };
+use burncloud_client_register::RegisterPage;
 #[cfg(feature = "desktop")]
 use burncloud_client_shared::DesktopMode;
 #[cfg(all(feature = "desktop", target_os = "windows"))]

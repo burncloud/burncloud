@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-const LOGO_SVG: &str = include_str!("../assets/logo.svg");
+const LOGO_SVG: &str = include_str!("../../assets/logo.svg");
 
 #[component]
 pub fn Logo(class: Option<String>) -> Element {

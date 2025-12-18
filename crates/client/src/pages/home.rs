@@ -1,5 +1,5 @@
 use crate::app::Route;
-use crate::components::logo::Logo;
+use burncloud_client_shared::components::logo::Logo;
 use burncloud_client_shared::DesktopMode;
 use dioxus::prelude::*;
 

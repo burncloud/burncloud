@@ -8,6 +8,7 @@ pub mod bc_modal;
 pub mod bc_table;
 pub mod glass_card;
 pub mod layout;
+pub mod logo;
 pub mod placeholders;
 pub mod sidebar;
 pub mod title_bar;

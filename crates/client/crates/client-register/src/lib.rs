@@ -1,11 +1,10 @@
-use crate::app::Route;
-use crate::components::logo::Logo;
 use burncloud_client_shared::auth_context::{use_auth, CurrentUser};
 use burncloud_client_shared::auth_service::AuthService;
+use burncloud_client_shared::components::logo::Logo;
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::utils::{
     calculate_password_strength, get_email_error, get_password_error, get_username_error,
-    sanitize_input, PasswordStrength,
+    sanitize_input,
 };
 use dioxus::prelude::*;
 use std::time::Duration;
@@ -30,19 +29,13 @@ pub fn RegisterPage() -> Element {
     let mut confirm_error = use_signal(|| None::<String>);
 
     // Debounced validation
-    let mut validation_timer = use_signal(|| None::<i32>);
+    // let mut validation_timer = use_signal(|| None::<i32>); // Unused
 
     let toast = use_toast();
     let navigator = use_navigator();
     let auth = use_auth();
 
-    let logo_margin = if cfg!(feature = "liveview") {
-        "mb-6"
-    } else if cfg!(feature = "desktop") {
-        "mb-10"
-    } else {
-        "mb-6"
-    };
+    let logo_margin = "mb-10";
 
     // Calculate password strength
     let password_strength = calculate_password_strength(&password());
@@ -177,7 +170,7 @@ pub fn RegisterPage() -> Element {
                     loading.set(false);
 
                     // Redirect to dashboard instead of login
-                    navigator.push(Route::Dashboard {});
+                    navigator.push("/console/dashboard");
                 }
                 Err(e) => {
                     loading.set(false);
@@ -233,7 +226,7 @@ pub fn RegisterPage() -> Element {
                         loading.set(false);
 
                         // Redirect to dashboard instead of login
-                        navigator.push(Route::Dashboard {});
+                        navigator.push("/console/dashboard");
                     }
                     Err(e) => {
                         loading.set(false);
@@ -548,7 +541,7 @@ pub fn RegisterPage() -> Element {
                     div { class: "text-center mt-8 relative z-10",
                         span { class: "text-[15px] text-[#86868B]", "已有账号？" }
                         Link {
-                            to: Route::LoginPage {},
+                            to: "/login",
                             class: "text-[15px] font-medium text-[#007AFF] hover:text-[#0077ED] transition-colors ml-1",
                             "返回登录"
                         }
