@@ -428,6 +428,7 @@ pub fn GuestLayout() -> Element {
                 .backdrop-blur-sm {{ backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }}
                 .from-\\[\\#5856D6\\] {{ --tw-gradient-from: #5856D6; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent); }}
                 .translate-y-0\\.5 {{ transform: translateY(0.125rem); }}
+                .bg-white\\/40 {{ background-color: rgba(255, 255, 255, 0.4); }}
                 "
             }
         }
