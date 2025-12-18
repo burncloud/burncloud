@@ -259,7 +259,7 @@ pub fn RegisterPage() -> Element {
             // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
                 // Draggable Region
-                div { class: "absolute top-0 left-0 w-full h-16 z-50", style: "-webkit-app-region: drag;" }
+                div { class: "absolute top-0 left-0 w-full h-16 z-50 cursor-default", style: "-webkit-app-region: drag;" }
 
                 // Layer 1: Primary Aurora Blob - slower
                 div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[#5856D6]/15 via-[#AF52DE]/12 to-[#007AFF]/10 rounded-full blur-[100px] animate-aurora animate-morph [animation-duration:30s]" }
@@ -288,15 +288,16 @@ pub fn RegisterPage() -> Element {
 
                     // Logo & Header
                     div { class: "text-center mb-8 relative z-10",
-                        // Logo (Simplified - Zen)
-                        div { class: "relative inline-flex items-center justify-center w-16 h-16 {logo_margin}",
-                            div { class: "w-full h-full rounded-[20px] bg-white shadow-[0_8px_24px_-4px_rgba(88,86,214,0.15)] flex items-center justify-center",
-                                Logo { class: "w-8 h-8 text-[#5856D6] fill-current" }
+                        // Logo (Force Field / Soap Bubble)
+                        div { class: "relative inline-flex items-center justify-center w-24 h-24 {logo_margin}",
+                            div {
+                                class: "w-full h-full rounded-full bg-white/10 border border-white/20 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(88,86,214,0.12)] flex items-center justify-center",
+                                Logo { class: "w-10 h-10 text-[#5856D6] fill-current translate-y-0.5" }
                             }
                         }
 
                         // Header Slogan
-                        div { class: "flex flex-col items-center justify-center space-y-1 mb-4",
+                        div { class: "flex flex-col items-center justify-center space-y-2 mb-6",
                             h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
                                 "Unleash Intelligence."
                             }
@@ -304,7 +305,7 @@ pub fn RegisterPage() -> Element {
                                 "Your Second Brain."
                             }
                         }
-                        p { class: "text-[15px] text-[#6E6E73] font-medium",
+                        p { class: "text-[15px] text-[#6E6E73] font-semibold tracking-wide",
                             "开启本地优先的 AI 体验"
                         }
                     }
@@ -532,7 +533,7 @@ pub fn RegisterPage() -> Element {
 
                         // Register Button - Primary Action with high visual weight
                         button {
-                            class: "group relative w-full h-12 mt-6 text-[16px] font-semibold text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-xl shadow-[0_10px_30px_-10px_rgba(0,122,255,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(0,122,255,0.6)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
+                            class: "group relative w-full h-12 mt-6 text-[16px] font-medium text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-2xl shadow-[0_10px_30px_-10px_rgba(0,122,255,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(0,122,255,0.6)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
                             disabled: loading() || !form_valid,
                             tabindex: "5",
                             onclick: handle_register,

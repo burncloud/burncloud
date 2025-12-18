@@ -404,6 +404,7 @@ pub fn GuestLayout() -> Element {
                 .group:hover .group-hover\\:translate-x-2 {{ transform: translateX(0.5rem); }}
 
                 /* ========== NEW REGISTER PAGE CLASSES ========== */
+                .shadow-\\[0_8px_30px_-6px_rgba\\(88\\,86\\,214\\,0\\.12\\)\\] {{ box-shadow: 0 8px 30px -6px rgba(88,86,214,0.12); }}
                 .shadow-\\[0_8px_24px_-4px_rgba\\(88\\,86\\,214\\,0\\.15\\)\\] {{ box-shadow: 0 8px 24px -4px rgba(88,86,214,0.15); }}
                 .shadow-\\[0_0_8px_rgba\\(255\\,59\\,48\\,0\\.8\\)\\] {{ box-shadow: 0 0 8px rgba(255,59,48,0.8); }}
                 .focus-within\\:shadow-\\[0_0_0_2px_rgba\\(88\\,86\\,214\\,0\\.3\\)\\]:focus-within {{ box-shadow: 0 0 0 2px rgba(88,86,214,0.3); }}
@@ -414,9 +415,19 @@ pub fn GuestLayout() -> Element {
                 .shadow-\\[0_10px_30px_-10px_rgba\\(0\\,122\\,255\\,0\\.5\\)\\] {{ box-shadow: 0 10px 30px -10px rgba(0,122,255,0.5); }}
                 .hover\\:shadow-\\[0_20px_40px_-10px_rgba\\(0\\,122\\,255\\,0\\.6\\)\\]:hover {{ box-shadow: 0 20px 40px -10px rgba(0,122,255,0.6); }}
                 .translate-y-\\[0\\.5px\\] {{ transform: translateY(0.5px); }}
+                .translate-y-px {{ transform: translateY(1px); }}
                 .group:focus-within .group-focus-within\\:scale-110 {{ transform: scale(1.10); }}
                 .group:focus-within .group-focus-within\\:text-\\[\\#007AFF\\] {{ color: #007AFF; }}
                 .min-h-\\[25px\\] {{ min-height: 25px; }}
+                .bg-white\\/80 {{ background-color: rgba(255, 255, 255, 0.8); }}
+                .border-white\\/50 {{ border-color: rgba(255, 255, 255, 0.5); }}
+                .backdrop-blur-md {{ backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }}
+                .drop-shadow-glow {{ filter: drop-shadow(0 0 15px rgba(88, 86, 214, 0.6)); }}
+                .bg-white\\/10 {{ background-color: rgba(255, 255, 255, 0.1); }}
+                .border-white\\/20 {{ border-color: rgba(255, 255, 255, 0.2); }}
+                .backdrop-blur-sm {{ backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }}
+                .from-\\[\\#5856D6\\] {{ --tw-gradient-from: #5856D6; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent); }}
+                .translate-y-0\\.5 {{ transform: translateY(0.125rem); }}
                 "
             }
         }
