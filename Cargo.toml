@@ -17,6 +17,7 @@ members = [
     "crates/client/crates/client-log",
     "crates/client/crates/client-burngrid",
     "crates/client/crates/client-playground",
+    "crates/client/crates/client-register",
     "crates/code",
     "crates/common",
     "crates/core",
@@ -125,6 +126,7 @@ burncloud-client-access = { path = "crates/client/crates/client-access" }
 burncloud-client-log = { path = "crates/client/crates/client-log" }
 burncloud-client-burngrid = { path = "crates/client/crates/client-burngrid" }
 burncloud-client-playground = { path = "crates/client/crates/client-playground" }
+burncloud-client-register = { path = "crates/client/crates/client-register" }
 burncloud-code = { path = "crates/code" }
 burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }

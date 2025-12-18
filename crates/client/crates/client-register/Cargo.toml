@@ -1,0 +1,11 @@
+[package]
+name = "burncloud-client-register"
+version = "0.1.0"
+edition = "2021"
+description = "Registration page for BurnCloud client"
+license = "MIT"
+
+[dependencies]
+dioxus = { workspace = true, features = ["router"] }
+tokio = { workspace = true, features = ["time"] }
+burncloud-client-shared = { path = "../client-shared" }

@@ -10,6 +10,5 @@ pub mod logs;
 pub mod models;
 pub mod monitor;
 pub mod playground;
-pub mod register;
 pub mod settings;
 pub mod user;
