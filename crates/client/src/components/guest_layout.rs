@@ -416,6 +416,7 @@ pub fn GuestLayout() -> Element {
                 .translate-y-\\[0\\.5px\\] {{ transform: translateY(0.5px); }}
                 .group:focus-within .group-focus-within\\:scale-110 {{ transform: scale(1.10); }}
                 .group:focus-within .group-focus-within\\:text-\\[\\#007AFF\\] {{ color: #007AFF; }}
+                .min-h-\\[25px\\] {{ min-height: 25px; }}
                 "
             }
         }
