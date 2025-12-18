@@ -1,6 +1,6 @@
 use crate::app::Route;
-use burncloud_client_shared::components::logo::Logo;
 use burncloud_client_shared::auth_service::AuthService;
+use burncloud_client_shared::components::logo::Logo;
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::{use_auth, CurrentUser};
 use dioxus::prelude::*;
