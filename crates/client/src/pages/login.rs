@@ -146,7 +146,7 @@ pub fn LoginPage() -> Element {
 
                         // Login Button
                         button {
-                            class: "group relative w-full h-12 mt-6 text-[16px] font-medium text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-2xl shadow-[0_10px_30px_-10px_rgba(0,122,255,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(0,122,255,0.6)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
+                            class: "group relative w-full h-12 mt-6 text-[16px] font-medium text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-2xl shadow-[0_10px_30px_-10px_rgba(0,122,255,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(0,122,255,0.6)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:brightness-90 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
                             disabled: loading(),
                             onclick: handle_login,
 
