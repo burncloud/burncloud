@@ -8,6 +8,7 @@ use burncloud_client_shared::components::TitleBar;
 pub fn GuestLayout() -> Element {
     rsx! {
         head {
+            link { rel: "icon", href: "favicon.ico" }
             // Embed Tailwind v2 and DaisyUI v4 CSS locally
             style { "{include_str!(\"../assets/tailwind.css\")}" }
             style { "{include_str!(\"../assets/daisyui.css\")}" }

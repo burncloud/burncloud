@@ -2,13 +2,16 @@ use crate::app::Route;
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::components::logo::Logo;
 use burncloud_client_shared::use_toast;
+use burncloud_client_shared::utils::storage::ClientState;
 use burncloud_client_shared::{use_auth, CurrentUser};
 use dioxus::prelude::*;
 
 #[component]
 pub fn LoginPage() -> Element {
-    let mut username = use_signal(|| "".to_string());
-    let mut password = use_signal(|| "".to_string());
+    // Load persisted state
+    let state = ClientState::load();
+    let mut username = use_signal(|| state.last_username.unwrap_or_default());
+    let mut password = use_signal(|| state.last_password.unwrap_or_default());
     let mut loading = use_signal(|| false);
     let mut login_error = use_signal(|| None::<String>);
     let toast = use_toast();
@@ -26,10 +29,23 @@ pub fn LoginPage() -> Element {
     let handle_login = move |_| {
         loading.set(true);
         login_error.set(None);
+        
+        // Capture for async and save
+        let u = username();
+        let p = password();
+
         spawn(async move {
-            match AuthService::login(&username(), &password()).await {
+            match AuthService::login(&u, &p).await {
                 Ok(response) => {
                     loading.set(false);
+                    
+                    // Save credentials on success
+                    let new_state = ClientState {
+                        last_username: Some(u.clone()),
+                        last_password: Some(p.clone()),
+                    };
+                    new_state.save();
+
                     // Store auth state in context
                     let user = CurrentUser {
                         id: response.id,

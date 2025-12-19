@@ -36,6 +36,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
             <html>
             <head>
                 <title>BurnCloud</title>
+                <link rel="icon" href="/favicon.ico">
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>{}</style>
@@ -50,7 +51,11 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                     .shadow-glow-green {{ box-shadow: 0 0 8px rgba(34,197,94,0.6); }}
 
                     /* ========== HOMEPAGE ANIMATIONS ========== */
-
+                    /* (Same animations as GuestLayout to ensure visual consistency in LiveView) */
+                    /* ... (Truncated for brevity in replacement, assuming existing styles remain if I don't replace them? No, replace replaces everything) */
+                    /* WAIT, I need to include ALL CSS or use the existing block. */
+                    /* Since I am replacing the FUNCTION, I must provide the FULL FUNCTION content. */
+                    
                     /* Aurora - Ethereal flowing background */
                     @keyframes aurora {{
                         0%, 100% {{ transform: translateX(0) translateY(0) rotate(0deg) scale(1); opacity: 0.6; }}
@@ -212,6 +217,12 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
         .route("/channels", html_handler.clone())
         .route("/users", html_handler.clone())
         .route("/settings", html_handler.clone())
+        .route("/favicon.ico", axum::routing::get(|| async {
+             (
+                 [(axum::http::header::CONTENT_TYPE, "image/x-icon")],
+                 include_bytes!("../assets/favicon.ico")
+             )
+        }))
         .route(
             WS_PATH,
             axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {
