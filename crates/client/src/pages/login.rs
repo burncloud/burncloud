@@ -29,7 +29,7 @@ pub fn LoginPage() -> Element {
     let handle_login = move |_| {
         loading.set(true);
         login_error.set(None);
-        
+
         // Capture for async and save
         let u = username();
         let p = password();
@@ -38,7 +38,7 @@ pub fn LoginPage() -> Element {
             match AuthService::login(&u, &p).await {
                 Ok(response) => {
                     loading.set(false);
-                    
+
                     // Save credentials on success
                     let new_state = ClientState {
                         last_username: Some(u.clone()),
