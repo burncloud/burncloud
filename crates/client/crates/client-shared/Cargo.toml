@@ -18,3 +18,5 @@ once_cell = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true }
 regex = "1.10"
+dirs = { workspace = true }
+gloo-storage = "0.3"
