@@ -217,12 +217,15 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
         .route("/channels", html_handler.clone())
         .route("/users", html_handler.clone())
         .route("/settings", html_handler.clone())
-        .route("/favicon.ico", axum::routing::get(|| async {
-             (
-                 [(axum::http::header::CONTENT_TYPE, "image/x-icon")],
-                 include_bytes!("../assets/favicon.ico")
-             )
-        }))
+        .route(
+            "/favicon.ico",
+            axum::routing::get(|| async {
+                (
+                    [(axum::http::header::CONTENT_TYPE, "image/x-icon")],
+                    include_bytes!("../assets/favicon.ico"),
+                )
+            }),
+        )
         .route(
             WS_PATH,
             axum::routing::get(move |ws: axum::extract::WebSocketUpgrade| async move {
