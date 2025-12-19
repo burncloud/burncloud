@@ -3,11 +3,14 @@ use dioxus::prelude::*;
 use crate::app::Route;
 use burncloud_client_shared::components::{Sidebar, TitleBar};
 use burncloud_client_shared::use_auth;
+use burncloud_client_shared::DesktopMode;
 
 #[component]
 pub fn Layout() -> Element {
     let auth = use_auth();
     let navigator = use_navigator();
+    let is_desktop = try_use_context::<DesktopMode>().is_some();
+    let top_padding = if is_desktop { "pt-8" } else { "pt-0" };
 
     // Route guard: Check if user is authenticated
     // Only redirect on initial mount, not on every render
@@ -172,14 +175,14 @@ pub fn Layout() -> Element {
             }
 
             // Sidebar Panel
-            div { class: "w-64 flex-shrink-0 flex flex-col border-r border-base-300/50 bg-base-200/50 backdrop-blur-xl pt-8",
+            div { class: "w-64 flex-shrink-0 flex flex-col border-r border-base-300/50 bg-base-200/50 backdrop-blur-xl {top_padding}",
                 div { class: "flex-1 overflow-y-auto px-2 py-4",
                     Sidebar {}
                 }
             }
 
             // Main Content Panel
-            div { class: "flex-1 flex flex-col bg-base-100 relative min-w-0 pt-8",
+            div { class: "flex-1 flex flex-col bg-base-100 relative min-w-0 {top_padding}",
                 main { class: "flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-10",
                     Outlet::<Route> {}
                 }
