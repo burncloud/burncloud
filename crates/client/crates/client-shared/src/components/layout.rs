@@ -5,7 +5,7 @@ use dioxus_router::Routable;
 #[allow(unused_imports)]
 use super::placeholders::{
     ApiManagement, BillingPage, BurnGridPage, ChannelPage, Dashboard, DeployConfig, LogPage,
-    ModelManagement, PlaygroundPage, ServiceMonitor, SystemSettings, UserPage,
+    PlaygroundPage, ServiceMonitor, SystemSettings, UserPage,
 };
 use super::sidebar::Sidebar;
 use super::title_bar::TitleBar;
@@ -16,8 +16,6 @@ pub enum CoreRoute {
     #[layout(Layout)]
     #[route("/console/dashboard")]
     Dashboard {},
-    #[route("/console/models")]
-    ModelManagement {},
     #[route("/console/deploy")]
     DeployConfig {},
     #[route("/console/monitor")]

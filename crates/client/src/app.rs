@@ -4,7 +4,7 @@ use crate::components::{guest_layout::GuestLayout, layout::Layout};
 use crate::pages::{
     api::ApiManagement, billing::BillingPage, burngrid::BurnGridPage, channels::ChannelPage,
     dashboard::Dashboard, deploy::DeployConfig, home::HomePage, login::LoginPage, logs::LogPage,
-    models::ModelManagement, monitor::ServiceMonitor, playground::PlaygroundPage,
+    monitor::ServiceMonitor, playground::PlaygroundPage,
     settings::SystemSettings, user::UserPage,
 };
 use burncloud_client_register::RegisterPage;
@@ -26,8 +26,6 @@ pub enum Route {
     #[layout(Layout)]
     #[route("/console/dashboard")]
     Dashboard {},
-    #[route("/console/models")]
-    ModelManagement {},
     #[route("/console/deploy")]
     DeployConfig {},
     #[route("/console/monitor")]
