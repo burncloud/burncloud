@@ -8,13 +8,6 @@ pub fn Dashboard() -> Element {
 }
 
 #[component]
-pub fn ModelManagement() -> Element {
-    rsx! {
-        div { "Model Placeholder" }
-    }
-}
-
-#[component]
 pub fn DeployConfig() -> Element {
     rsx! {
         div { "Deploy Placeholder" }
