@@ -2,9 +2,9 @@ use dioxus::prelude::*;
 
 use crate::components::{guest_layout::GuestLayout, layout::Layout};
 use crate::pages::{
-    api::ApiManagement, billing::BillingPage, burngrid::BurnGridPage,
-    dashboard::Dashboard, deploy::DeployConfig, home::HomePage, login::LoginPage, logs::LogPage,
-    models::ChannelPage, monitor::ServiceMonitor, playground::PlaygroundPage, settings::SystemSettings, user::UserPage,
+    api::ApiManagement, billing::BillingPage, burngrid::BurnGridPage, dashboard::Dashboard,
+    deploy::DeployConfig, home::HomePage, login::LoginPage, logs::LogPage, models::ChannelPage,
+    monitor::ServiceMonitor, playground::PlaygroundPage, settings::SystemSettings, user::UserPage,
 };
 use burncloud_client_register::RegisterPage;
 #[cfg(feature = "desktop")]
