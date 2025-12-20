@@ -35,11 +35,6 @@ pub fn Dashboard() -> Element {
                         span { class: "text-xs font-medium tracking-wide opacity-50 uppercase", "实时交易流" }
                     }
                 }
-                div {
-                    button { class: "btn btn-neutral text-white btn-sm rounded-full px-6 font-medium shadow-sm hover:shadow-md transition-all normal-case border-none",
-                        "+ 添加云账号"
-                    }
-                }
             }
 
             // 2. Main Content Grid
