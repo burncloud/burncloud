@@ -22,7 +22,7 @@ pub enum CoreRoute {
     ServiceMonitor {},
     #[route("/console/access")]
     ApiManagement {},
-    #[route("/console/channels")]
+    #[route("/console/models")]
     ChannelPage {},
     #[route("/console/users")]
     UserPage {},

@@ -1,3 +1,3 @@
-pub mod channel;
+pub mod models;
 
-pub use channel::ChannelPage;
+pub use models::ChannelPage;

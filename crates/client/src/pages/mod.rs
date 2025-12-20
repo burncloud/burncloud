@@ -1,7 +1,6 @@
 pub mod api;
 pub mod billing;
 pub mod burngrid;
-pub mod channels;
 pub mod dashboard;
 pub mod deploy;
 pub mod home;
