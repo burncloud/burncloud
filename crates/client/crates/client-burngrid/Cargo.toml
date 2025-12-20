@@ -5,3 +5,9 @@ edition = "2021"
 
 [dependencies]
 dioxus.workspace = true
+burncloud-client-shared = { workspace = true }
+tokio = { workspace = true }
+burncloud-service-models = { workspace = true }
+burncloud-service-inference = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
