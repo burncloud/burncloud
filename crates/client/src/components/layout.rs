@@ -20,6 +20,15 @@ pub fn Layout() -> Element {
         }
     });
 
+    // Prevent rendering protected content if not authenticated
+    if !auth.is_authenticated() {
+        return rsx! {
+            div { class: "h-screen w-screen flex items-center justify-center bg-base-100",
+                span { class: "loading loading-spinner loading-lg text-primary" }
+            }
+        };
+    }
+
     rsx! {
         head {
             // Embed Tailwind v2 and DaisyUI v4 CSS locally for offline stability
