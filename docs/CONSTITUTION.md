@@ -183,6 +183,10 @@ All AI agents assisting in development must adhere to the following reporting pr
     *   Content: Must include a **Simple functional update description**, clearly and accurately describing the changes.
     *   **Prohibit Markdown**: The generated Commit Message is strictly prohibited from using Markdown code block markers (such as ```), it must be plain text for easy copying.
 
+### 6.3 Strictly No Auto-Commit
+*   **Iron Rule**: AI agents/programming tools are **strictly prohibited** from directly executing the `git commit` command.
+*   **Generation Only**: The AI agent can only generate the commit message (via `MESSAGE.md`) and **must rely on the human user** to personally confirm and execute the commit operation.
+
 ---
 
 ## Appendix: Directory Structure Mapping
