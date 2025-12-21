@@ -5,7 +5,6 @@
 Cargo.lock
 
 # Root
-/conductor
 /.playwright-mcp
 /nul
 /*.log
