@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 #[component]
 pub fn Root() -> Element {
     let navigator = use_navigator();
-    
+
     use_effect(move || {
         spawn(async move {
             // Wait for Router to stabilize (handle hydration/initialization delay)
