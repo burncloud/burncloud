@@ -222,14 +222,6 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
         .route("/console/logs", html_handler.clone())
         .route("/console/burngrid", html_handler.clone())
         .route("/console/playground", html_handler.clone())
-        // Legacy Routes
-        .route("/models", html_handler.clone())
-        .route("/deploy", html_handler.clone())
-        .route("/monitor", html_handler.clone())
-        .route("/api", html_handler.clone())
-        .route("/channels", html_handler.clone())
-        .route("/users", html_handler.clone())
-        .route("/settings", html_handler.clone())
         .route(
             "/favicon.ico",
             axum::routing::get(|| async {
