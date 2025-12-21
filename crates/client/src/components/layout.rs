@@ -16,7 +16,7 @@ pub fn Layout() -> Element {
     // Only redirect on initial mount, not on every render
     use_effect(move || {
         if !auth.is_authenticated() {
-            navigator.push(Route::LoginPage {});
+            navigator.replace(Route::LoginPage {});
         }
     });
 
