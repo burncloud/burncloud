@@ -183,9 +183,9 @@ Git 提交信息必须遵循 **Emoji Prefix** 格式，并在描述中清晰说�
     *   内容：必须包含简单的功能更新说明 (Simple functional update description)。
     *   纯文本：文件中**严禁**包含 Markdown 代码块标记（如 ```），仅保留 Message 本身。
 
-### 6.3 严禁自动提交 (Strictly No Auto-Commit)
-*   **铁律**：AI 代理/编程工具 **绝对禁止** 直接执行 `git commit` 命令。
-*   **仅生成**：AI 代理只能生成提交信息（通过 `MESSAGE.md`），**必须由人类用户** 亲自确认并执行提交操作。
+### 6.3 严格自动提交 (Strictly Auto-Commit)
+*   **执行**：AI 代理在通过所有检查（编译、测试、格式化）后，**必须自动执行** `git commit` 命令。
+*   **效率**：为了提高开发效率，无需人工介入即可提交合规代码。
 
 ---
 
