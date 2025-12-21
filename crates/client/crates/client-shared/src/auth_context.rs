@@ -19,14 +19,15 @@ impl AuthContext {
     pub fn new() -> Self {
         // Try to load persisted state
         let state = ClientState::load();
-        let (initial_token, initial_user) = if let (Some(token), Some(user_json)) = (state.auth_token, state.user_info) {
-             match serde_json::from_str::<CurrentUser>(&user_json) {
-                 Ok(user) => (Some(token), Some(user)),
-                 Err(_) => (None, None),
-             }
-        } else {
-            (None, None)
-        };
+        let (initial_token, initial_user) =
+            if let (Some(token), Some(user_json)) = (state.auth_token, state.user_info) {
+                match serde_json::from_str::<CurrentUser>(&user_json) {
+                    Ok(user) => (Some(token), Some(user)),
+                    Err(_) => (None, None),
+                }
+            } else {
+                (None, None)
+            };
 
         Self {
             token: Signal::new(initial_token),
