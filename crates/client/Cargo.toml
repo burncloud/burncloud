@@ -32,6 +32,7 @@ dioxus = { workspace = true, features = ["desktop", "router"] }
 dioxus-router.workspace = true
 tokio.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 once_cell.workspace = true
 
 # LiveView specific dependencies

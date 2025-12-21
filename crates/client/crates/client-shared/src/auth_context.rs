@@ -1,3 +1,4 @@
+use crate::utils::storage::ClientState;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -16,9 +17,20 @@ pub struct AuthContext {
 
 impl AuthContext {
     pub fn new() -> Self {
+        // Try to load persisted state
+        let state = ClientState::load();
+        let (initial_token, initial_user) = if let (Some(token), Some(user_json)) = (state.auth_token, state.user_info) {
+             match serde_json::from_str::<CurrentUser>(&user_json) {
+                 Ok(user) => (Some(token), Some(user)),
+                 Err(_) => (None, None),
+             }
+        } else {
+            (None, None)
+        };
+
         Self {
-            token: Signal::new(None),
-            current_user: Signal::new(None),
+            token: Signal::new(initial_token),
+            current_user: Signal::new(initial_user),
         }
     }
 

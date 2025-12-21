@@ -210,18 +210,9 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
         .route("/", html_handler.clone())
         .route("/login", html_handler.clone())
         .route("/register", html_handler.clone())
-        // Console Routes
-        .route("/console/dashboard", html_handler.clone())
-        .route("/console/deploy", html_handler.clone())
-        .route("/console/monitor", html_handler.clone())
-        .route("/console/access", html_handler.clone())
-        .route("/console/models", html_handler.clone())
-        .route("/console/users", html_handler.clone())
-        .route("/console/settings", html_handler.clone())
-        .route("/console/finance", html_handler.clone())
-        .route("/console/logs", html_handler.clone())
-        .route("/console/burngrid", html_handler.clone())
-        .route("/console/playground", html_handler.clone())
+        // Console Routes (SPA Mode)
+        // Use a single wildcard to handle all /console/* paths including undefined ones (404s)
+        .route("/console/{*path}", html_handler.clone())
         .route(
             "/favicon.ico",
             axum::routing::get(|| async {

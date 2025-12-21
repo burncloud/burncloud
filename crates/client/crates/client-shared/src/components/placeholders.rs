@@ -76,3 +76,10 @@ pub fn PlaygroundPage() -> Element {
         div { "Playground Placeholder" }
     }
 }
+
+#[component]
+pub fn NotFoundPage(segments: Vec<String>) -> Element {
+    rsx! {
+        div { "Not Found Placeholder" }
+    }
+}

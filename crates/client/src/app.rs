@@ -11,55 +11,55 @@ use crate::pages::{
     login::LoginPage,
     logs::LogPage,
     models::ChannelPage,
-    monitor::ServiceMonitor,
-    playground::PlaygroundPage,
-    settings::SystemSettings,
-    user::UserPage,
-};
-use burncloud_client_register::RegisterPage;
-#[cfg(feature = "desktop")]
-use burncloud_client_shared::DesktopMode;
-#[cfg(all(feature = "desktop", target_os = "windows"))]
-pub use burncloud_client_tray::{should_show_window, start_tray};
-
-#[derive(Clone, Routable, Debug, PartialEq)]
-pub enum Route {
-    #[route("/")]
-    Root {},
-    #[layout(GuestLayout)]
-    #[route("/home")]
-    HomePage {},
-    #[route("/login")]
-    LoginPage {},
-    #[route("/register")]
-    RegisterPage {},
-    #[end_layout]
-    #[layout(Layout)]
-    #[route("/console/dashboard")]
-    Dashboard {},
-    #[route("/console/deploy")]
-    DeployConfig {},
-    #[route("/console/monitor")]
-    ServiceMonitor {},
-    #[route("/console/access")]
-    ApiManagement {},
-    #[route("/console/models")]
-    ChannelPage {},
-    #[route("/console/users")]
-    UserPage {},
-    #[route("/console/settings")]
-    SystemSettings {},
-    #[route("/console/finance")]
-    BillingPage {},
-    #[route("/console/logs")]
-    LogPage {},
-    #[route("/console/burngrid")]
-    BurnGridPage {},
-    #[route("/console/playground")]
-    PlaygroundPage {},
-}
-
-#[component]
+        monitor::ServiceMonitor, playground::PlaygroundPage, settings::SystemSettings, user::UserPage,
+        not_found::NotFoundPage,
+    };
+    use burncloud_client_register::RegisterPage;
+    #[cfg(feature = "desktop")]
+    use burncloud_client_shared::DesktopMode;
+    #[cfg(all(feature = "desktop", target_os = "windows"))]
+    pub use burncloud_client_tray::{should_show_window, start_tray};
+    
+    #[derive(Clone, Routable, Debug, PartialEq)]
+    pub enum Route {
+        #[route("/")]
+        Root {},
+        #[layout(GuestLayout)]
+        #[route("/home")]
+        HomePage {},
+        #[route("/login")]
+        LoginPage {},
+        #[route("/register")]
+        RegisterPage {},
+        #[end_layout]
+        #[layout(Layout)]
+        #[route("/console/dashboard")]
+        Dashboard {},
+        #[route("/console/deploy")]
+        DeployConfig {},
+        #[route("/console/monitor")]
+        ServiceMonitor {},
+        #[route("/console/access")]
+        ApiManagement {},
+        #[route("/console/models")]
+        ChannelPage {},
+        #[route("/console/users")]
+        UserPage {},
+        #[route("/console/settings")]
+        SystemSettings {},
+        #[route("/console/finance")]
+        BillingPage {},
+        #[route("/console/logs")]
+        LogPage {},
+        #[route("/console/burngrid")]
+        BurnGridPage {},
+        #[route("/console/playground")]
+        PlaygroundPage {},
+        #[route("/console/:..segments")]
+        NotFoundPage { segments: Vec<String> },
+    }
+    
+    #[component]
 pub fn App() -> Element {
     // Initialize i18n context
     burncloud_client_shared::i18n::use_init_i18n();
