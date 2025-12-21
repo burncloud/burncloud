@@ -8,6 +8,7 @@ pub mod login;
 pub mod logs;
 pub mod models;
 pub mod monitor;
+pub mod not_found;
 pub mod playground;
 pub mod settings;
 pub mod user;

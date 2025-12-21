@@ -11,7 +11,9 @@ use gloo_storage::{LocalStorage, Storage};
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ClientState {
     pub last_username: Option<String>,
-    pub last_password: Option<String>,
+    pub last_password: Option<String>, // TODO: Remove password storage in future
+    pub auth_token: Option<String>,
+    pub user_info: Option<String>, // JSON string of CurrentUser
 }
 
 impl ClientState {
