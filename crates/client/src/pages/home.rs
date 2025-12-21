@@ -4,6 +4,26 @@ use burncloud_client_shared::DesktopMode;
 use dioxus::prelude::*;
 
 #[component]
+pub fn Root() -> Element {
+    let navigator = use_navigator();
+    
+    use_effect(move || {
+        spawn(async move {
+            // Wait for Router to stabilize (handle hydration/initialization delay)
+            // This prevents false positives where Router momentarily thinks path is "/"
+            // before updating to the real URL (e.g. "/console/dashboard").
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            navigator.replace(Route::HomePage {});
+        });
+    });
+
+    // Render nothing (white screen) to avoid flashing
+    rsx! {
+        div { class: "h-screen w-screen bg-base-100" }
+    }
+}
+
+#[component]
 pub fn HomePage() -> Element {
     let active_nodes = use_signal(|| 842);
     let response_time = use_signal(|| "12");
