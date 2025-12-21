@@ -44,11 +44,14 @@ pub fn LoginPage() -> Element {
                         last_username: Some(u.clone()),
                         last_password: Some(p.clone()),
                         auth_token: Some(response.token.clone()),
-                        user_info: Some(serde_json::to_string(&CurrentUser {
-                            id: response.id.clone(),
-                            username: response.username.clone(),
-                            roles: response.roles.clone(),
-                        }).unwrap_or_default()),
+                        user_info: Some(
+                            serde_json::to_string(&CurrentUser {
+                                id: response.id.clone(),
+                                username: response.username.clone(),
+                                roles: response.roles.clone(),
+                            })
+                            .unwrap_or_default(),
+                        ),
                     };
                     new_state.save();
 
