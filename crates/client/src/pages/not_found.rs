@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
 use crate::app::Route;
+use dioxus::prelude::*;
 
 #[component]
 pub fn NotFoundPage(segments: Vec<String>) -> Element {
