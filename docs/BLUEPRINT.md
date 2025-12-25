@@ -13,61 +13,63 @@ This document outlines the detailed functional planning for the 10 core modules 
 **Module:** `client-dashboard`
 
 ### 核心理念
-抛弃传统运维面板的拥挤感，采用 "Zen Mode"（禅模式）。只在需要时展示细节，平时提供呼吸感的系统健康状态概览。
+抛弃传统运维面板的拥挤感，采用 "Zen Mode"（禅模式）。只在需要时展示细节，平时提供呼吸感的系统健康状态概览。目前设计融合了企业级控制台的严谨与 Consumer App 的流畅。
 
 ### 深度规划
-- **动态状态卡片 (Live Status Cards)**:
-    - **Neural Load (神经负载)**: 实时 CPU/GPU 使用率，使用波形图展示。
-    - **Synapses (活跃连接)**: 当前并发连接数 (QPS)，动态数字跳动。
-    - **Memory (上下文记忆)**: 向量数据库或 KV 缓存的占用情况。
-- **专家在线状态 (Active Expert)**:
-    - 展示当前加载的主模型（如 "Llama-3-70B is Active"）。
-    - 既然是“专家隐喻”，这里应该显示一个代表该模型的 Avatar 或图标。
-- **快速入口 (Quick Actions)**:
-    - "Summon Expert" (跳转模型加载)。
-    - "Emergency Stop" (一键切断所有连接，Panic Button)。
+- **成本与吞吐量监控 (Cost & Throughput Monitor)**:
+    - **今日流水**: 实时展示今日 API 调用的估算成本 (USD) 和 Token 消耗量。
+    - **实时交易流**: 顶部的呼吸灯指示器，直观展示当前的并发请求状态 (QPS)。
+- **上游健康矩阵 (Upstream Health Matrix)**:
+    - **供应商卡片**: 将 AWS, Google, Azure 等上游渠道可视化为独立的健康卡片。
+    - **状态指示**: 使用颜色 (Green/Yellow/Red) 和脉冲动画展示各渠道的连通性和错误率。
+    - **账户池监控**: 显示每个供应商下活跃的 API Key/Account 数量 (e.g., "AWS: 1,204 Active Accounts")。
+- **动态数据集成 (Real-time Integration)**:
+    - **[Next Step]**: 替换当前的硬编码 Mock 数据 (如 "$128,432.00")。
+    - **数据源**: 从 `Router` 获取实时的 Prometheus/Metrics 数据流。
+- **风控雷达缩略图 (Risk Radar Mini)**:
+    - 侧边栏实时滚动展示被拦截的异常请求或高风险行为，点击可跳转至完整风控页面。
 
 ---
 
 ## 2. 模型网络 (Model Network)
-**Codename:** *The Armory*
+**Codename:** *The Nexus*
 **Module:** `client-models` & `service-models`
 
 ### 核心理念
-本地主权 (Local Sovereignty)。管理本地的大脑（LLMs）和连接云端的大脑。
+全球大脑聚合 (Global Brain Aggregation)。无论模型运行在本地显卡、AWS 的机房还是 Google 的 TPU 上，在这里它们都是平等的“专家”。BurnCloud 是连接它们的统一神经中枢。
 
 ### 深度规划
+- **云端集成 (Cloud Integrations)**:
+    - **AWS Bedrock**: 深度集成 SigV4 签名。支持选择区域 (Region, e.g., us-east-1) 并自动列出该区域可用的 Claude/Titan 模型。
+    - **Azure OpenAI**: 支持配置 Deployment ID 和 API Version。自动映射 Azure 特有的 Endpoint 结构。
+    - **Google Vertex AI / Gemini**: 支持 Service Account JSON 导入，自动处理 OAuth2 Token 刷新。
+    - **Native API**: 标准支持 OpenAI, Anthropic, Groq 等直接提供的 API。
 - **本地仓库 (Local Repository)**:
-    - **GGUF Manager**: 自动扫描 `models/` 目录，解析 GGUF 元数据（量化等级、参数量）。
-    - **Version Control**: 智能处理同名模型的不同版本（如 `.1`, `.2` 后缀清理）。
-    - **One-Click Serve**: 针对任意 GGUF 文件，一键启动 `llama-server` 实例。
-- **云端市场 (Cloud Marketplace)**:
-    - **Mirror Integration**: 自动检测网络环境，中国用户自动走 `hf-mirror.com`。
-    - **Model Cards**: 渲染 HuggingFace Readme，提供富文本介绍。
-    - **断点续传**: 集成 Aria2 或类似下载器，提供可视化的下载进度和暂停/恢复功能。
-- **推理配置 (Inference Tuning)**:
-    - 图形化配置 Context Window (n_ctx), GPU Layers (n_gpu_layers), Threads。
+    - **GGUF Manager**: 扫描并管理本地 `models/` 目录下的量化模型。
+    - **One-Click Serve**: 针对 GGUF 文件一键启动本地推理服务 (llama-server)，并自动注册到路由表中。
+- **统一接口 (Unified Interface)**:
+    - **Model Standardization**: 无论上游是 Azure 还是本地，在列表中统一展示为标准的模型卡片 (Context Window, Max Tokens)。
+    - **Latency Test**: 一键测试所有已配置模型的连通性和延迟 (Ping)。
 
 ---
 
 ## 3. BurnGrid (分布式算力网)
-**Codename:** *The Constellation*
+**Codename:** *The Marketplace*
 **Module:** `client-burngrid`
 
 ### 核心理念
-基于“握手”与“信任”的社交化算力共享。拒绝冷冰冰的 IP 配置。
+全球算力采购与聚合中心。不再需要分别去 AWS、Azure 注册账号，BurnGrid 提供一站式的全球账号采购与接入服务，构建您的全球算力组合。
 
 ### 深度规划
-- **星际通行证 (Star Pass)**:
-    - 用户的数字身份卡片，包含 BurnID (Node Hash)、信誉分、闲置算力状态。
-    - 支持生成“邀请函” (Invite Link/QR Code)。
-- **信任圈拓扑 (Trust Circle Visualization)**:
-    - **内圈 (Inner Circle)**: 强信任节点（朋友/公司内部），绿色实线连接，信用记账。
-    - **外圈 (Outer Circle)**: 弱信任节点（公网/市场），灰色虚线连接，实时结算。
-    - **动画交互**: 节点之间的连线会有粒子流动，代表数据传输。
-- **握手协议 UI (Handshake UI)**:
-    - 收到连接请求时，弹出精美模态框，显示对方身份和算力报价。
-    - **信任滑块**: 用户拖动滑块决定信任等级 (从 "Zero Trust" 到 "Full Access")。
+- **全球资源采购 (Global Procurement)**:
+    - **Account Brokerage**: 直接在界面上浏览并采购带有高额 Quota 的 AWS Bedrock, Azure OpenAI, Google Vertex 企业级账号。
+    - **Instant Access**: 购买即用，自动将购买的凭证 (Credentials) 注入到系统的 Vault 中。
+- **资源池管理 (Resource Pool)**:
+    - **Active Nodes**: 可视化展示当前拥有的所有云端节点状态 (e.g., "AWS us-east-1: Active", "Azure Japan: Active")。
+    - **Quota Monitor**: 实时监控各账号的 TPM (Tokens Per Minute) 和 RPM (Requests Per Minute) 限制，自动预警。
+- **统一计费 (Unified Billing)**:
+    - **Single Wallet**: 使用单一的 BurnCloud 钱包支付所有上游供应商的费用。
+    - **Cost Optimization**: 智能建议购买哪种账号组合最划算。
 
 ---
 
