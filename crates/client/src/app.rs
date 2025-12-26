@@ -4,7 +4,7 @@ use crate::components::{guest_layout::GuestLayout, layout::Layout};
 use crate::pages::{
     api::ApiManagement,
     billing::BillingPage,
-    burngrid::BurnGridPage,
+    connect::ConnectPage,
     dashboard::Dashboard,
     deploy::DeployConfig,
     home::{HomePage, Root},
@@ -54,8 +54,8 @@ pub enum Route {
     BillingPage {},
     #[route("/console/logs")]
     LogPage {},
-    #[route("/console/burngrid")]
-    BurnGridPage {},
+    #[route("/console/connect")]
+    ConnectPage {},
     #[route("/console/playground")]
     PlaygroundPage {},
     #[route("/console/:..segments")]
