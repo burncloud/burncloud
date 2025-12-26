@@ -54,7 +54,9 @@ pub fn ConnectPage() -> Element {
                 name: name,
                 key: key,
                 base_url: format!("https://bedrock-runtime.{}.amazonaws.com", region),
-                models: "anthropic.claude-3-sonnet-20240229-v1:0,anthropic.claude-3-haiku-20240307-v1:0".to_string(),
+                models:
+                    "anthropic.claude-3-sonnet-20240229-v1:0,anthropic.claude-3-haiku-20240307-v1:0"
+                        .to_string(),
                 status: 1, // Active / Mining
                 priority: 0,
                 weight: 1,
@@ -136,7 +138,7 @@ pub fn ConnectPage() -> Element {
                                 h2 { class: "text-subtitle font-bold m-0", "本地资源矩阵" }
                                 span { class: "text-xs text-secondary", "当前节点贡献给网络的算力资源" }
                             }
-                            
+
                             if channels.read().is_empty() {
                                 div { class: "card border border-dashed border-base-300 bg-base-100 p-xl text-center",
                                     p { class: "text-secondary", "暂无本地资源。请接入 AWS 账号开始共享算力。" }
@@ -253,7 +255,7 @@ pub fn ConnectPage() -> Element {
                                     balance: "$ 12.50",
                                     is_featured: true
                                 }
-                                
+
                                 // Inventory within this pool
                                 div { class: "pl-xl border-l-2 border-base-200 ml-md",
                                     h3 { class: "text-sm font-bold uppercase text-secondary mb-md", "算力池实时可用资源" }
@@ -370,7 +372,7 @@ fn PoolCard(
                         div { class: "text-sm text-secondary font-mono mt-xs", "{url}" }
                     }
                 }
-                
+
                 div { class: "flex items-center gap-xl",
                     div { class: "text-right",
                         div { class: "text-xxs text-secondary uppercase", "Status" }
