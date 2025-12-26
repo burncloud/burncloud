@@ -64,9 +64,9 @@ pub fn LogPage() -> Element {
 }
 
 #[component]
-pub fn BurnGridPage() -> Element {
+pub fn ConnectPage() -> Element {
     rsx! {
-        div { "BurnGrid Placeholder" }
+        div { "Connect Placeholder" }
     }
 }
 
