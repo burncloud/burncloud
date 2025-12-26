@@ -4,7 +4,7 @@ use dioxus_router::Routable;
 
 #[allow(unused_imports)]
 use super::placeholders::{
-    ApiManagement, BillingPage, BurnGridPage, ChannelPage, Dashboard, DeployConfig, LogPage,
+    ApiManagement, BillingPage, ChannelPage, ConnectPage, Dashboard, DeployConfig, LogPage,
     NotFoundPage, PlaygroundPage, ServiceMonitor, SystemSettings, UserPage,
 };
 use super::sidebar::Sidebar;
@@ -32,8 +32,8 @@ pub enum CoreRoute {
     BillingPage {},
     #[route("/console/logs")]
     LogPage {},
-    #[route("/console/burngrid")]
-    BurnGridPage {},
+    #[route("/console/connect")]
+    ConnectPage {},
     #[route("/console/playground")]
     PlaygroundPage {},
     #[route("/console/:..segments")]

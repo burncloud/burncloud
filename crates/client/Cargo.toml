@@ -25,7 +25,7 @@ burncloud-client-users.workspace = true
 burncloud-client-finance.workspace = true
 burncloud-client-access.workspace = true
 burncloud-client-log.workspace = true
-burncloud-client-burngrid.workspace = true
+burncloud-client-connect.workspace = true
 burncloud-client-playground.workspace = true
 burncloud-client-register.workspace = true
 dioxus = { workspace = true, features = ["desktop", "router"] }
