@@ -61,15 +61,18 @@ This document outlines the detailed functional planning for the 10 core modules 
 **“算力接入点” (The Compute Access Point)**。从去中心化市场转型为**托管算力矿池 (Managed Compute Pool)**。我们构建基础设施（隧道与风控），由合规运营公司负责资金与服务管理。
 
 ### 深度规划
-- **供应端: 算力挖矿 (Supply: Mining)**
-    - **无感接入 (Invisible Connection)**: 用户仅需填入 AWS/Azure 凭证。凭证在本地加密存储，仅用于签名请求，**永不上传**。
-    - **隐形隧道 (Invisible Tunneling)**: 集成 P2P/QUIC 协议，无需公网 IP 即可将本地算力接入全球网络。
-    - **收益看板**: 实时展示“挖矿”收益 (USDT/Fiat)，按 Token 计费。
-- **采购端: 资源池采购 (Demand: Sourcing)**
-    - **托管池 (Managed Pools)**: 用户直接连接到官方认证的“高优算力池” (如 "SkyNet Prime")，享受企业级 SLA。
+- **供应端: 算力贡献 (Supply: Contribution)**
+    - **无感接入**: 用户仅需填入 AWS/Azure 凭证，凭证在本地加密存储。
+    - **隐形隧道**: 集成 P2P/QUIC 协议，无需公网 IP 即可将本地资源接入全球网络。
+    - **混合动力模式 (Hybrid Engine)**:
+        - **自营优先**: 优先调度用户自己填入的本地 API Key。
+        - **溢出采购 (Overflow Sourcing)**: 当自营 Key 配额耗尽或并发过高时，自动无缝切换至 BurnCloud 官方托管集群进行补货，赚取中间差价。
+- **采购端: 资源获取 (Demand: Sourcing)**
+    - **托管集群 (Managed Clusters)**: 用户直接连接到官方认证的“高优算力集群” (如 "SkyNet Prime")，享受企业级 SLA。
     - **透明消费**: 无需购买 Key，直接购买“额度包”。Router 自动在后台撮合请求到最优供应节点。
 - **风控雷达 (Risk Radar Integration)**
-    - **蜜罐探测**: 系统自动发送测试请求，识别虚假节点或低质量模型。
+    - **双向保护**: 既防止买家欺诈（虚假算力），也防止卖家被滥用（防炼丹、防非法内容）。
+    - **蜜罐探测**: 系统自动发送隐形测试请求，识别虚假节点或低质量模型。
     - **时序指纹**: 分析 TTFT (首字延迟) 和吐字速率，确保节点真实性。
     - **惩罚机制**: 对作弊节点执行“降权”或“断流”，保障网络纯净度。
 
@@ -163,18 +166,22 @@ This document outlines the detailed functional planning for the 10 core modules 
 **Module:** `client-users` & `client-register`
 
 ### 核心理念
-企业级 RBAC (基于角色的访问控制)。
+**虚拟运营商控制台 (Virtual Operator Console)**。不仅仅是管理内部员工，更是赋能用户成为独立的 AI 算力分销商 (Reseller)。
 
 ### 深度规划
+- **私有化运营 (Self-Hosted Operation)**:
+    - **多租户体系**: 支持创建完全独立的下游租户 (Tenants)，每个租户拥有独立的 Quota 和 API Key。
+    - **自定义费率**: 运营者可自定义对下游用户的计费倍率 (e.g., GPT-4 原价 x 1.2)。
 - **人员花名册 (Roster)**:
-    - 列表展示系统内所有用户。
-    - 状态指示: Online, Offline, Banned。
+    - 列表展示系统内所有用户（员工或下游客户）。
+    - 状态指示: Online, Offline, Banned, Over-Quota。
 - **角色分配 (Role Assignment)**:
-    - **Admin**: 全权访问。
-    - **Developer**: 仅访问 Playground, API Keys, Logs。
-    - **User**: 仅访问 Chat 接口。
-- **邀请机制**:
-    - 生成一次性注册链接，通过 BurnGrid 网络发送给新成员。
+    - **Owner**: 拥有最高权限，控制上游渠道和费率。
+    - **Reseller**: 代理商，可以发展自己的下级用户。
+    - **End-User**: 仅拥有 Chat/API 调用权限。
+- **邀请与注册**:
+    - 生成带有时效性的注册邀请码。
+    - 支持开启/关闭公开注册入口。
 
 ---
 
