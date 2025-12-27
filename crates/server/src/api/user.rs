@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use bcrypt::{hash, verify, DEFAULT_COST};
-use burncloud_database_user::{DbUser, UserDatabase};
+use burncloud_database_user::{DbRecharge, DbUser, UserDatabase};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -35,14 +35,26 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/user/register", post(register))
         .route("/console/api/user/login", post(login))
         .route("/console/api/user/topup", post(topup))
+        .route("/console/api/user/recharges", get(list_recharges))
         .route("/console/api/user/check_username", get(check_username))
         .route("/console/api/list_users", get(list_users))
-    // .route("/console/api/user/me", get(get_current_user)) // Needs auth middleware context
 }
 
 async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> AxumJson<Value> {
-    match UserDatabase::update_balance(&state.db, &payload.user_id, payload.amount).await {
-        Ok(new_balance) => AxumJson(json!({ "success": true, "data": { "balance": new_balance } })),
+    let recharge = DbRecharge {
+        id: 0,
+        user_id: payload.user_id.clone(),
+        amount: payload.amount,
+        description: Some("账户充值".to_string()),
+        created_at: None,
+    };
+    match UserDatabase::create_recharge(&state.db, &recharge).await {
+        Ok(_) => {
+            match UserDatabase::get_user_by_username(&state.db, "demo-user").await {
+                Ok(Some(u)) => AxumJson(json!({ "success": true, "data": { "balance": u.balance } })),
+                _ => AxumJson(json!({ "success": true })),
+            }
+        }
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
     }
 }
@@ -51,20 +63,17 @@ async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
 ) -> AxumJson<Value> {
-    // 1. Check if user exists
     match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(_)) => return AxumJson(json!({ "success": false, "message": "用户名已存在" })),
         Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
         _ => {}
     }
 
-    // 2. Hash password
     let password_hash = match hash(&payload.password, DEFAULT_COST) {
         Ok(h) => h,
         Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
     };
 
-    // 3. Create user
     let user = DbUser {
         id: Uuid::new_v4().to_string(),
         username: payload.username.clone(),
@@ -72,30 +81,23 @@ async fn register(
         password_hash: Some(password_hash),
         github_id: None,
         status: 1,
-        balance: 10.0, // Signup bonus
+        balance: 10.0,
     };
 
     match UserDatabase::create_user(&state.db, &user).await {
         Ok(_) => {
-            // Assign default role
             let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
-
-            // Return login data for auto-login
-            // NOTE: This is a behavior change - register now returns login data
-            // This enables auto-login feature without requiring separate login call
             let roles = UserDatabase::get_user_roles(&state.db, &user.id)
                 .await
                 .unwrap_or_default();
 
-            // TODO: Generate proper JWT token instead of mock token
-            // For production, implement JWT signing with secret key and expiration
             AxumJson(json!({
                 "success": true,
                 "data": {
                     "id": user.id,
                     "username": user.username,
                     "roles": roles,
-                    "token": "mock-token-for-now"  // SECURITY: Replace with real JWT
+                    "token": "mock-token-for-now"
                 }
             }))
         }
@@ -113,24 +115,15 @@ async fn check_username(
     Query(params): Query<CheckUsernameQuery>,
 ) -> AxumJson<Value> {
     match UserDatabase::get_user_by_username(&state.db, &params.username).await {
-        Ok(Some(_)) => {
-            // Username exists
-            AxumJson(json!({
-                "success": true,
-                "data": { "available": false }
-            }))
-        }
-        Ok(None) => {
-            // Username available
-            AxumJson(json!({
-                "success": true,
-                "data": { "available": true }
-            }))
-        }
-        Err(e) => AxumJson(json!({
-            "success": false,
-            "message": e.to_string()
+        Ok(Some(_)) => AxumJson(json!({
+            "success": true,
+            "data": { "available": false }
         })),
+        Ok(None) => AxumJson(json!({
+            "success": true,
+            "data": { "available": true }
+        })),
+        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
     }
 }
 
@@ -139,21 +132,16 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
         Ok(Some(user)) => {
             if let Some(hash_str) = user.password_hash {
                 if verify(&payload.password, &hash_str).unwrap_or(false) {
-                    // Success
-                    // In a real app, generate JWT here.
-                    // For now, return user info.
                     let roles = UserDatabase::get_user_roles(&state.db, &user.id)
                         .await
                         .unwrap_or_default();
-                    // TODO: Generate proper JWT token instead of mock token
-                    // For production, implement JWT signing with secret key and expiration
                     return AxumJson(json!({
                         "success": true,
                         "data": {
                             "id": user.id,
                             "username": user.username,
                             "roles": roles,
-                            "token": "mock-token-for-now"  // SECURITY: Replace with real JWT
+                            "token": "mock-token-for-now"
                         }
                     }));
                 }
@@ -170,7 +158,6 @@ async fn list_users(State(state): State<AppState>) -> AxumJson<Value> {
         Ok(users) => {
             let mut safe_users = Vec::new();
             for u in users {
-                // Fetch role (N+1 query for MVP)
                 let roles = UserDatabase::get_user_roles(&state.db, &u.id)
                     .await
                     .unwrap_or_default();
@@ -183,12 +170,22 @@ async fn list_users(State(state): State<AppState>) -> AxumJson<Value> {
                     "status": u.status,
                     "balance": u.balance,
                     "role": role,
-                    "group": "default" // Placeholder for group
+                    "group": "default"
                 }));
             }
-
             AxumJson(json!({ "success": true, "data": safe_users }))
         }
+        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+    }
+}
+
+async fn list_recharges(
+    State(state): State<AppState>,
+    Query(params): Query<Value>,
+) -> AxumJson<Value> {
+    let user_id = params.get("user_id").and_then(|v| v.as_str()).unwrap_or("demo-user");
+    match UserDatabase::list_recharges(&state.db, user_id).await {
+        Ok(recharges) => AxumJson(json!({ "success": true, "data": recharges })),
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
     }
 }

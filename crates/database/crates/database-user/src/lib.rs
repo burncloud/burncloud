@@ -29,6 +29,15 @@ pub struct DbUserRole {
     pub role_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DbRecharge {
+    pub id: i32,
+    pub user_id: String,
+    pub amount: f64,
+    pub description: Option<String>,
+    pub created_at: Option<String>, // SQL datetime string
+}
+
 pub struct UserDatabase;
 
 impl UserDatabase {
@@ -37,7 +46,7 @@ impl UserDatabase {
         let kind = db.kind();
 
         // Table definitions
-        let (users_sql, roles_sql, user_roles_sql) = match kind.as_str() {
+        let (users_sql, roles_sql, user_roles_sql, recharges_sql) = match kind.as_str() {
             "sqlite" => (
                 r#"
                 CREATE TABLE IF NOT EXISTS users (
@@ -65,6 +74,16 @@ impl UserDatabase {
                     PRIMARY KEY (user_id, role_id),
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
                     FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
+                );
+                "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS recharges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    description TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
                 "#,
             ),
@@ -97,6 +116,16 @@ impl UserDatabase {
                     FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
                 );
                 "#,
+                r#"
+                CREATE TABLE IF NOT EXISTS recharges (
+                    id SERIAL PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    amount DOUBLE PRECISION NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                "#,
             ),
             _ => unreachable!("Unsupported database kind"),
         };
@@ -106,6 +135,7 @@ impl UserDatabase {
         println!("UserDatabase: tables created/verified.");
 
         sqlx::query(user_roles_sql).execute(conn.pool()).await?;
+        sqlx::query(recharges_sql).execute(conn.pool()).await?;
 
         // Migrations for SQLite (Add columns if missing)
         if kind == "sqlite" {
@@ -245,5 +275,45 @@ impl UserDatabase {
             .get(0);
 
         Ok(new_balance)
+    }
+
+    pub async fn create_recharge(db: &Database, recharge: &DbRecharge) -> Result<i32> {
+        let conn = db.get_connection()?;
+        let id: i32 = match db.kind().as_str() {
+            "sqlite" => {
+                sqlx::query("INSERT INTO recharges (user_id, amount, description) VALUES (?, ?, ?)")
+                    .bind(&recharge.user_id)
+                    .bind(recharge.amount)
+                    .bind(&recharge.description)
+                    .execute(conn.pool())
+                    .await?
+                    .last_insert_id()
+                    .unwrap_or(0) as i32
+            }
+            "postgres" => {
+                sqlx::query("INSERT INTO recharges (user_id, amount, description) VALUES ($1, $2, $3) RETURNING id")
+                    .bind(&recharge.user_id)
+                    .bind(recharge.amount)
+                    .bind(&recharge.description)
+                    .fetch_one(conn.pool())
+                    .await?
+                    .get(0)
+            }
+            _ => unreachable!(),
+        };
+
+        // Also update user balance
+        Self::update_balance(db, &recharge.user_id, recharge.amount).await?;
+
+        Ok(id)
+    }
+
+    pub async fn list_recharges(db: &Database, user_id: &str) -> Result<Vec<DbRecharge>> {
+        let conn = db.get_connection()?;
+        let recharges = sqlx::query_as::<_, DbRecharge>("SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC")
+            .bind(user_id)
+            .fetch_all(conn.pool())
+            .await?;
+        Ok(recharges)
     }
 }
