@@ -310,10 +310,12 @@ impl UserDatabase {
 
     pub async fn list_recharges(db: &Database, user_id: &str) -> Result<Vec<DbRecharge>> {
         let conn = db.get_connection()?;
-        let recharges = sqlx::query_as::<_, DbRecharge>("SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC")
-            .bind(user_id)
-            .fetch_all(conn.pool())
-            .await?;
+        let recharges = sqlx::query_as::<_, DbRecharge>(
+            "SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(conn.pool())
+        .await?;
         Ok(recharges)
     }
 }

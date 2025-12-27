@@ -49,12 +49,10 @@ async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> 
         created_at: None,
     };
     match UserDatabase::create_recharge(&state.db, &recharge).await {
-        Ok(_) => {
-            match UserDatabase::get_user_by_username(&state.db, "demo-user").await {
-                Ok(Some(u)) => AxumJson(json!({ "success": true, "data": { "balance": u.balance } })),
-                _ => AxumJson(json!({ "success": true })),
-            }
-        }
+        Ok(_) => match UserDatabase::get_user_by_username(&state.db, "demo-user").await {
+            Ok(Some(u)) => AxumJson(json!({ "success": true, "data": { "balance": u.balance } })),
+            _ => AxumJson(json!({ "success": true })),
+        },
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
     }
 }
@@ -183,7 +181,10 @@ async fn list_recharges(
     State(state): State<AppState>,
     Query(params): Query<Value>,
 ) -> AxumJson<Value> {
-    let user_id = params.get("user_id").and_then(|v| v.as_str()).unwrap_or("demo-user");
+    let user_id = params
+        .get("user_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("demo-user");
     match UserDatabase::list_recharges(&state.db, user_id).await {
         Ok(recharges) => AxumJson(json!({ "success": true, "data": recharges })),
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
