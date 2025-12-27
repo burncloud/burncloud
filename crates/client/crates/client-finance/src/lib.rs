@@ -1,7 +1,10 @@
+use burncloud_client_shared::services::usage_service::UsageService;
 use dioxus::prelude::*;
 
 #[component]
 pub fn BillingPage() -> Element {
+    let recharges = use_resource(move || async move { UsageService::list_recharges("demo-user").await });
+
     // Mock Data for "Left Brain" Finance View
     let total_spend = "¥ 12,450.00";
     let balance = "¥ 5,230.00";
@@ -12,8 +15,8 @@ pub fn BillingPage() -> Element {
             // Header
             div { class: "flex justify-between items-end",
                 div {
-                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "账单与订阅" }
-                    p { class: "text-sm text-base-content/60 font-medium", "管理您的账户余额、充值记录与发票" }
+                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "财务中心" }
+                    p { class: "text-sm text-base-content/60 font-medium", "管理您的账户余额、充值记录与收支统计" }
                 }
                 button { class: "btn btn-primary btn-sm px-6 shadow-sm text-white", "充值余额" }
             }
@@ -44,9 +47,9 @@ pub fn BillingPage() -> Element {
                 }
             }
 
-            // Transaction History Placeholder
+            // Transaction History
             div { class: "flex flex-col gap-4",
-                h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "近期交易" }
+                h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "充值记录" }
 
                 div { class: "overflow-x-auto border border-base-200 rounded-lg",
                     table { class: "table w-full text-sm",
@@ -60,19 +63,22 @@ pub fn BillingPage() -> Element {
                             }
                         }
                         tbody {
-                            tr {
-                                td { class: "font-mono text-xs", "#TRX-8821" }
-                                td { "2025-12-09 14:30" }
-                                td { "API 调用费用 (OpenAI)" }
-                                td { class: "text-right font-medium", "- ¥ 120.50" }
-                                td { class: "text-right text-success text-xs font-bold", "成功" }
-                            }
-                            tr {
-                                td { class: "font-mono text-xs", "#TRX-8820" }
-                                td { "2025-12-08 09:15" }
-                                td { "账户充值" }
-                                td { class: "text-right font-medium text-success", "+ ¥ 1,000.00" }
-                                td { class: "text-right text-success text-xs font-bold", "成功" }
+                            if let Some(Ok(list)) = recharges.read().as_ref() {
+                                for item in list {
+                                    tr {
+                                        td { class: "font-mono text-xs", "#RECH-{item.id}" }
+                                        td { "{item.created_at.as_deref().unwrap_or(\"-\")}" }
+                                        td { "{item.description.as_deref().unwrap_or(\"账户充值\")}" }
+                                        td { class: "text-right font-medium text-success", "+ ¥ {item.amount:.2}" }
+                                        td { class: "text-right text-success text-xs font-bold", "成功" }
+                                    }
+                                }
+                            } else {
+                                tr {
+                                    td { colspan: 5, class: "text-center py-8 text-base-content/40",
+                                        if recharges.read().is_none() { "加载中..." } else { "暂无充值记录" }
+                                    }
+                                }
                             }
                         }
                     }

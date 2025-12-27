@@ -226,6 +226,15 @@ pub struct Channel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Recharge {
+    pub id: i32,
+    pub user_id: String,
+    pub amount: f64,
+    pub description: Option<String>,
+    pub created_at: Option<i64>, // Unix timestamp
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Ability {
     pub group: String,
     pub model: String,
