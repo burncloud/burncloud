@@ -3,7 +3,8 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn BillingPage() -> Element {
-    let recharges = use_resource(move || async move { UsageService::list_recharges("demo-user").await });
+    let recharges =
+        use_resource(move || async move { UsageService::list_recharges("demo-user").await });
 
     // Mock Data for "Left Brain" Finance View
     let total_spend = "¥ 12,450.00";
