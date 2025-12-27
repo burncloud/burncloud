@@ -53,23 +53,25 @@ This document outlines the detailed functional planning for the 10 core modules 
 
 ---
 
-## 3. BurnGrid (分布式算力网)
-**Codename:** *The Marketplace*
-**Module:** `client-burngrid`
+## 3. 算力互联 (BurnCloud Connect)
+**Codename:** *Fabric*
+**Module:** `client-connect`
 
 ### 核心理念
-全球算力采购与聚合中心。不再需要分别去 AWS、Azure 注册账号，BurnGrid 提供一站式的全球账号采购与接入服务，构建您的全球算力组合。
+**“算力接入点” (The Compute Access Point)**。从去中心化市场转型为**托管算力矿池 (Managed Compute Pool)**。我们构建基础设施（隧道与风控），由合规运营公司负责资金与服务管理。
 
 ### 深度规划
-- **全球资源采购 (Global Procurement)**:
-    - **Account Brokerage**: 直接在界面上浏览并采购带有高额 Quota 的 AWS Bedrock, Azure OpenAI, Google Vertex 企业级账号。
-    - **Instant Access**: 购买即用，自动将购买的凭证 (Credentials) 注入到系统的 Vault 中。
-- **资源池管理 (Resource Pool)**:
-    - **Active Nodes**: 可视化展示当前拥有的所有云端节点状态 (e.g., "AWS us-east-1: Active", "Azure Japan: Active")。
-    - **Quota Monitor**: 实时监控各账号的 TPM (Tokens Per Minute) 和 RPM (Requests Per Minute) 限制，自动预警。
-- **统一计费 (Unified Billing)**:
-    - **Single Wallet**: 使用单一的 BurnCloud 钱包支付所有上游供应商的费用。
-    - **Cost Optimization**: 智能建议购买哪种账号组合最划算。
+- **供应端: 算力挖矿 (Supply: Mining)**
+    - **无感接入 (Invisible Connection)**: 用户仅需填入 AWS/Azure 凭证。凭证在本地加密存储，仅用于签名请求，**永不上传**。
+    - **隐形隧道 (Invisible Tunneling)**: 集成 P2P/QUIC 协议，无需公网 IP 即可将本地算力接入全球网络。
+    - **收益看板**: 实时展示“挖矿”收益 (USDT/Fiat)，按 Token 计费。
+- **采购端: 资源池采购 (Demand: Sourcing)**
+    - **托管池 (Managed Pools)**: 用户直接连接到官方认证的“高优算力池” (如 "SkyNet Prime")，享受企业级 SLA。
+    - **透明消费**: 无需购买 Key，直接购买“额度包”。Router 自动在后台撮合请求到最优供应节点。
+- **风控雷达 (Risk Radar Integration)**
+    - **蜜罐探测**: 系统自动发送测试请求，识别虚假节点或低质量模型。
+    - **时序指纹**: 分析 TTFT (首字延迟) 和吐字速率，确保节点真实性。
+    - **惩罚机制**: 对作弊节点执行“降权”或“断流”，保障网络纯净度。
 
 ---
 
@@ -115,20 +117,23 @@ This document outlines the detailed functional planning for the 10 core modules 
 
 ## 6. 风控雷达 (Risk Radar)
 **Codename:** *Shield*
-**Module:** `client-radar`
+**Module:** `client-radar` & `client-monitor`
 
 ### 核心理念
-看不见的防线。主动防御与合规。
+**双向信任引擎 (Bidirectional Trust Engine)**。不仅是防火墙，更是维护算力互联生态秩序的维和部队。它既保护买家免受虚假算力欺诈，也保护卖家（供应商）免受恶意请求的侵害。
 
 ### 深度规划
-- **实时拦截地图 (Live Threat Map)**:
-    - 使用世界地图可视化展示被拦截的请求来源 (GeoIP)。
-    - 闪烁红点表示潜在的攻击或违规访问。
-- **内容安全策略 (Content Safety Policy)**:
-    - **敏感词库管理**: 本地维护敏感词列表，支持正则。
-    - **模型侧过滤**: 配置 LLM 的安全等级 (Safety Settings, e.g., Gemini HARM_CATEGORY)。
-- **审计追踪**:
-    - 列出最近触发风控规则的请求详情 (User, IP, Triggered Rule)。
+- **买家侧防御 (Consumer Protection)**:
+    - **真伪验证**: 结合蜜罐探测与时序指纹，实时拦截“货不对板”（如用 Llama 冒充 Claude）的虚假节点。
+    - **隐私漂白 (Privacy Bleaching)**: 在请求发出前，自动识别并脱敏 PII (个人敏感信息)，确保数据离境安全。
+    - **防二次转发**: 检测响应水印，防止请求被中间人二次转卖。
+- **卖家侧防御 (Supplier Protection)**:
+    - **炼丹阻断 (Anti-Training)**: 识别并拦截高并发、大数据量的训练类请求，防止账号因滥用被 AWS 封禁。
+    - **合规防火墙**: 本地预审入站 Prompt，自动拒接色情、暴力、诈骗等高风险内容，确保账号持有者的法律安全。
+    - **成本熔断**: 强制执行每小时/每日的成本硬红线，防止被意外刷爆信用卡。
+- **可视化情报 (Visual Intelligence)**:
+    - **信任等级 (Trust Rating)**: 实时展示当前连接节点的信誉分与蜜罐通过率。
+    - **双向威胁流**: 清晰区分“入站拦截”（保护卖家）与“出站清洗”（保护买家）的安全事件。
 
 ---
 
@@ -137,16 +142,19 @@ This document outlines the detailed functional planning for the 10 core modules 
 **Module:** `client-log`
 
 ### 核心理念
-AI 驱动的洞察，而非枯燥的文本堆砌。
+**全链路透明化 (End-to-End Transparency)**。日志不再是杂乱的文本，而是精准定位故障的“手术刀”。通过区分“入站”与“出站”两个关键跳 (Hops)，实现秒级定责与排障。
 
 ### 深度规划
-- **AI 每日简报 (AI Daily Brief)**:
-    - 每天自动分析日志，生成自然语言摘要：“昨日系统运行平稳，拦截了 5 次异常请求，GPT-4 渠道响应时间略有增加。”
-- **故障回溯 (Traceback)**:
-    - 当发生 500 错误时，提供完整的 Request ID 链路视图。
-    - 关联展示当时的系统负载和网络状态。
-- **智能筛选**:
-    - "Show only Errors", "Show Latency > 2s", "Show Cost > $1"。
+- **双跳日志策略 (Two-Hop Logging)**:
+    - **接入日志 (Inbound / Access Logs)**: 记录买家请求到 BurnCloud 客户端的记录。重点审计：鉴权状态 (401)、余额消耗、连接耗时 (Internal Latency)。解决“买家连不上”的问题。
+    - **上游日志 (Outbound / Upstream Logs)**: 记录 BurnCloud 代理请求到 AWS/Azure 的记录。重点记录：供应商 Request ID、上游状态码 (502/429)、真实成本。解决“账号是否挂了”的问题。
+- **全链路追踪 (Trace ID Integration)**:
+    - 为每个请求分配唯一的 `Trace ID`。管理员点击任意一条接入日志，即可瞬间展开其对应的上游请求详情，将内、外网络交互完美串联。
+- **自诊断定责**:
+    - **墙内/墙外判定**: 系统自动标记错误发生的物理位置——是本地配置/网络问题 (Inbound)，还是云服务商 API 报错 (Outbound)。
+    - **报错智能归类**: 自动聚合相似错误，例如：“检测到 5 次 AWS Bedrock 欠费报错，已自动暂停该账号”。
+- **可视化排障面板**:
+    - 提供瀑布流视图，直观展示请求在网关处理、隧道传输、上游响应三个阶段的时间分布。
 
 ---
 
