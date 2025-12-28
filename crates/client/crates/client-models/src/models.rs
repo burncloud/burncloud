@@ -171,7 +171,239 @@ pub fn ChannelPage() -> Element {
 
     let mut select_provider = move |p: ProviderType| {
         selected_provider.set(p);
-        form_name.set(p.name().to_string()); // Default name
+
+        // Google-Style Name Generator: {Adjective}-{Noun}-{Number}
+        // Vocabulary: Zen & Sci-Fi Tech
+        let adjectives = vec![
+            "cosmic",
+            "fluent",
+            "quantum",
+            "hyper",
+            "silent",
+            "pure",
+            "rapid",
+            "steady",
+            "active",
+            "neural",
+            "prime",
+            "noble",
+            "swift",
+            "calm",
+            "wild",
+            "bright",
+            "ancient",
+            "azure",
+            "bold",
+            "brave",
+            "crimson",
+            "crystal",
+            "dawn",
+            "dusk",
+            "early",
+            "faint",
+            "frozen",
+            "gentle",
+            "global",
+            "golden",
+            "hollow",
+            "infinite",
+            "inner",
+            "jade",
+            "keen",
+            "late",
+            "living",
+            "lost",
+            "lucky",
+            "misty",
+            "morning",
+            "neon",
+            "ocean",
+            "orange",
+            "pale",
+            "proud",
+            "purple",
+            "quiet",
+            "red",
+            "rising",
+            "round",
+            "royal",
+            "sharp",
+            "shining",
+            "small",
+            "snowy",
+            "solar",
+            "sparkling",
+            "spring",
+            "still",
+            "summer",
+            "super",
+            "sweet",
+            "throbbing",
+            "tight",
+            "tiny",
+            "twilight",
+            "vast",
+            "violet",
+            "wandering",
+            "falling",
+            "flying",
+            "hidden",
+            "broken",
+            "empty",
+            "heavy",
+        ];
+        let nouns = vec![
+            "flow",
+            "grid",
+            "core",
+            "nexus",
+            "pulse",
+            "link",
+            "node",
+            "sphere",
+            "spark",
+            "wave",
+            "beam",
+            "edge",
+            "mind",
+            "field",
+            "stream",
+            "gate",
+            "aurora",
+            "base",
+            "bird",
+            "block",
+            "boat",
+            "breeze",
+            "brook",
+            "bush",
+            "canopy",
+            "canyon",
+            "cell",
+            "cloud",
+            "cliff",
+            "creek",
+            "data",
+            "dew",
+            "dream",
+            "drive",
+            "dust",
+            "feather",
+            "fire",
+            "flame",
+            "forest",
+            "frog",
+            "frost",
+            "fume",
+            "glade",
+            "glen",
+            "grass",
+            "haze",
+            "hill",
+            "ice",
+            "island",
+            "lake",
+            "leaf",
+            "limit",
+            "log",
+            "loop",
+            "marsh",
+            "meadow",
+            "mode",
+            "moon",
+            "moss",
+            "mountain",
+            "network",
+            "night",
+            "oasis",
+            "paper",
+            "path",
+            "peak",
+            "pebble",
+            "pine",
+            "pond",
+            "port",
+            "rain",
+            "range",
+            "reef",
+            "resonance",
+            "river",
+            "rock",
+            "sea",
+            "shadow",
+            "shape",
+            "silence",
+            "sky",
+            "smoke",
+            "snow",
+            "sound",
+            "space",
+            "star",
+            "stone",
+            "storm",
+            "sun",
+            "sunset",
+            "surf",
+            "tide",
+            "tree",
+            "truth",
+            "union",
+            "valley",
+            "view",
+            "voice",
+            "water",
+            "way",
+            "web",
+            "wind",
+            "wing",
+            "wolf",
+            "wood",
+            "world",
+        ];
+
+        let existing_names: Vec<String> = channels
+            .read()
+            .as_ref()
+            .map(|list| list.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default();
+
+        let mut generated_name = String::new();
+
+        let mut rng = rand::thread_rng();
+        use rand::seq::SliceRandom;
+        use rand::Rng;
+
+        for _ in 0..10 {
+            let adj = adjectives.choose(&mut rng).unwrap_or(&"zen");
+            let noun = nouns.choose(&mut rng).unwrap_or(&"mode");
+            let suffix: u16 = rng.gen_range(100..999);
+
+            // Format: cosmic-flow-888 (Google Style)
+            // Or Capitalized: Cosmic Flow 888?
+            // User feedback "Google Project ID" implies kebab-case usually, but for UI display "Title Case" might be nicer.
+            // Let's use Title Case for "Name" field as it's a display name.
+            // "Cosmic Flow 888"
+
+            let candidate = format!(
+                "{} {} {}",
+                adj[0..1].to_uppercase() + &adj[1..],
+                noun[0..1].to_uppercase() + &noun[1..],
+                suffix
+            );
+
+            if !existing_names.contains(&candidate) {
+                generated_name = candidate;
+                break;
+            }
+        }
+
+        // Fallback
+        if generated_name.is_empty() {
+            let suffix: u16 = rng.gen_range(1000..9999);
+            generated_name = format!("{} Link {}", p.name(), suffix);
+        }
+
+        form_name.set(generated_name);
         modal_step.set(1);
     };
 
@@ -180,12 +412,12 @@ pub fn ChannelPage() -> Element {
             is_loading.set(true);
 
             let provider = selected_provider();
-            let mut final_type = provider as i32;
-            let mut final_base_url = String::new();
-            let mut final_models = String::new();
+            let final_type;
+            let final_base_url;
+            let final_models;
             let mut final_param_override = None;
             let mut final_header_override = None;
-            let mut final_key = form_key();
+            let final_key = form_key();
 
             match provider {
                 ProviderType::OpenAI => {
