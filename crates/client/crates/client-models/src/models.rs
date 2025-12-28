@@ -72,26 +72,26 @@ impl ProviderType {
                      // We will use the main shapes but force fill="currentColor" to match the theme, OR embed the full colorful version if preferred.
                      // Given the critique was "icon is ugly/empty", let's try the official path structure but use currentColor for consistency,
                      // OR use the multi-path structure.
-                     
+
                      // Let's use the main path from the official SVG for the "A" shape, simplified for single color if possible,
                      // or just embed the key path geometry.
                      // The Azure logo is essentially that "A" lambda shape.
-                     
+
                      // Using the "flat" vector path widely used for Azure icons (often just the 'A' shape).
                      // The official one downloaded has 4 paths and defs.
                      // Let's use a cleaner, standard "Azure A" path often found in icon sets if the complex one is too much.
                      // Actually, let's use the one from "iconarchive" or similar which is usually a single clean path or group.
                      // Since I cannot browse comfortably, I will take the main distinctive path from the downloaded file or a known clean path.
-                     
+
                      // Using the path from the downloaded file (Step 280), simplified:
                      // Path 4 (d="M66.595 9.364...") seems to be the right-hand leg/cross.
                      // Path 1 (d="M33.338 6.544...") seems to be the left-hand part.
                      // It's complex. Let's use a known clean "Azure A" path for reliable rendering.
-                     
+
                      fill: "currentColor",
-                     path { d: "M53.1 63.8h29.4l-7.9-24.3-13.8-3.7z M39.4 63.8H12L25.9 21.6 42.1 6.5z" } // Simplified geometric approximation if official is too complex? 
+                     path { d: "M53.1 63.8h29.4l-7.9-24.3-13.8-3.7z M39.4 63.8H12L25.9 21.6 42.1 6.5z" } // Simplified geometric approximation if official is too complex?
                      // No, user wants *official*. Let's stick to the "Microsoft Azure" icon commonly used.
-                     
+
                      // Re-reading Step 212/213: Simple Icons slug is `azure`.
                      // The previous download failed.
                      // Let's try to infer the path from a standard "Azure" icon which is typically:
@@ -101,13 +101,13 @@ impl ProviderType {
                      // or include the Defs if we want full color.
                      // PRO TIP: "Zen" UI usually implies single color.
                      // I will include the key geometric paths from the downloaded SVG (Step 280) but set fill="currentColor".
-                     
+
                      path { d: "M33.338 6.544h26.038l-27.03 80.087a4.152 4.152 0 0 1-3.933 2.824H8.149a4.145 4.145 0 0 1-3.928-5.47L29.404 9.368a4.152 4.152 0 0 1 3.934-2.825z" }
                      path { d: "M71.175 60.261h-41.29a1.911 1.911 0 0 0-1.305 3.309l26.532 24.764a4.171 4.171 0 0 0 2.846 1.121h23.38z" }
                      path { d: "M66.595 9.364a4.145 4.145 0 0 0-3.928-2.82H33.648a4.146 4.146 0 0 1 3.928 2.82l25.184 74.62a4.146 4.146 0 0 1-3.928 5.472h29.02a4.146 4.146 0 0 0 3.927-5.472z" }
                 }
             },
-             ProviderType::Local => rsx! {
+            ProviderType::Local => rsx! {
                 svg {
                     view_box: "0 0 24 24",
                     class: "w-8 h-8",
@@ -481,7 +481,7 @@ pub fn ChannelPage() -> Element {
                                         }
                                         BCInput {
                                             label: Some("Access Key ID".to_string()),
-                                            value: "{form_key}", 
+                                            value: "{form_key}",
                                             placeholder: "AKIA...".to_string(),
                                             error: if !form_key().is_empty() && !form_key().starts_with("AKIA") && !form_key().starts_with("ASIA") { Some("无效的 Access Key ID 格式".to_string()) } else { None },
                                             oninput: move |e: FormEvent| form_key.set(e.value())
