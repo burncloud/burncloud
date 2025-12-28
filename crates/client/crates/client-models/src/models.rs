@@ -2,6 +2,38 @@ use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::{BCButton, BCInput, ButtonVariant};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
+use serde_json::json;
+
+#[derive(PartialEq, Clone, Copy)]
+enum ProviderType {
+    OpenAI = 1,
+    Anthropic = 14,
+    Google = 24,
+    AWS = 99,   // Custom mapping for UI
+    Azure = 98, // Custom mapping for UI
+    Local = 97, // Custom mapping for UI
+}
+
+impl ProviderType {
+    fn name(&self) -> &'static str {
+        match self {
+            ProviderType::OpenAI => "OpenAI",
+            ProviderType::Anthropic => "Anthropic",
+            ProviderType::Google => "Google Gemini",
+            ProviderType::AWS => "AWS Bedrock",
+            ProviderType::Azure => "Azure OpenAI",
+            ProviderType::Local => "Local / GGUF",
+        }
+    }
+
+    fn icon(&self) -> &'static str {
+        // Simple SVG paths or unicode for now
+        match self {
+            ProviderType::OpenAI => "https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg", // Placeholder, will use text if image fails
+            _ => "",
+        }
+    }
+}
 
 #[component]
 pub fn ChannelPage() -> Element {
@@ -14,62 +46,135 @@ pub fn ChannelPage() -> Element {
         );
 
     let mut is_modal_open = use_signal(|| false);
+    let mut modal_step = use_signal(|| 0); // 0: Select Provider, 1: Configure
+    let mut selected_provider = use_signal(|| ProviderType::OpenAI);
+
     let mut is_delete_modal_open = use_signal(|| false);
     let mut delete_channel_id = use_signal(|| 0i64);
     let mut delete_channel_name = use_signal(String::new);
-    let mut form_id = use_signal(|| 0i64);
-    let mut form_name = use_signal(String::new);
-    let mut form_type = use_signal(|| 1);
-    let mut form_key = use_signal(String::new);
-    let mut form_base_url = use_signal(String::new);
-    let mut form_models = use_signal(String::new);
-    let mut form_group = use_signal(|| "default".to_string());
-    let mut form_param_override = use_signal(String::new);
-    let mut form_header_override = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();
 
+    // Form Fields
+    let mut form_id = use_signal(|| 0i64);
+    let mut form_name = use_signal(String::new);
+    // Common fields
+    let mut form_key = use_signal(String::new); // OpenAI Key, AWS AK, Azure Key
+    // AWS specific
+    let mut form_aws_sk = use_signal(String::new);
+    let mut form_aws_region = use_signal(|| "us-east-1".to_string());
+    // Azure specific
+    let mut form_azure_resource = use_signal(String::new);
+    let mut form_azure_deployment = use_signal(String::new);
+    let mut form_azure_api_version = use_signal(|| "2023-05-15".to_string());
+    // Local specific
+    let mut form_local_url = use_signal(|| "http://localhost:8080".to_string());
+
     let open_create_modal = move |_| {
         form_id.set(0);
+        modal_step.set(0); // Start at selection
+        // Reset fields
         form_name.set(String::new());
-        form_type.set(1);
         form_key.set(String::new());
-        form_base_url.set("https://api.openai.com".to_string());
-        form_models.set("gpt-3.5-turbo,gpt-4".to_string());
-        form_group.set("default".to_string());
-        form_param_override.set(String::new());
-        form_header_override.set(String::new());
+        form_aws_sk.set(String::new());
+        form_aws_region.set("us-east-1".to_string());
+        form_azure_resource.set(String::new());
+        form_azure_deployment.set(String::new());
         is_modal_open.set(true);
+    };
+
+    let mut select_provider = move |p: ProviderType| {
+        selected_provider.set(p);
+        form_name.set(p.name().to_string()); // Default name
+        modal_step.set(1);
     };
 
     let handle_save = move |_| {
         spawn(async move {
             is_loading.set(true);
 
-            let p_override = form_param_override();
-            let h_override = form_header_override();
+            let provider = selected_provider();
+            let mut final_type = provider as i32;
+            let mut final_base_url = String::new();
+            let mut final_models = String::new();
+            let mut final_param_override = None;
+            let mut final_header_override = None;
+            let mut final_key = form_key();
+
+            match provider {
+                ProviderType::OpenAI => {
+                    final_type = 1;
+                    final_base_url = "https://api.openai.com".to_string();
+                    final_models = "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string();
+                }
+                ProviderType::Anthropic => {
+                    final_type = 14;
+                    final_base_url = "https://api.anthropic.com".to_string();
+                    final_models = "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string();
+                }
+                ProviderType::Google => {
+                    final_type = 24;
+                    final_base_url = "https://generativelanguage.googleapis.com".to_string();
+                    final_models = "gemini-pro,gemini-1.5-pro".to_string();
+                }
+                ProviderType::AWS => {
+                    // Map AWS to Custom type for now, or Reuse 1 (OpenAI compatible) if router handles it?
+                    // Assuming Router handles AWS SigV4 via a specific flag.
+                    // For now, we use type=1 (OpenAI) but with backend magic, OR type=99 if backend supports it.
+                    // Reverting to generic type=1 for "OpenAI Compatible" interface usually used by adapters
+                    final_type = 1; 
+                    final_base_url = format!("https://bedrock-runtime.{}.amazonaws.com", form_aws_region());
+                    final_models = "anthropic.claude-3-sonnet-20240229-v1:0".to_string();
+                    
+                    // Pack secret into params
+                    let params = json!({
+                        "aws_secret_key": form_aws_sk(),
+                        "region": form_aws_region(),
+                        "auth_type": "aws_sigv4"
+                    });
+                    final_param_override = Some(params.to_string());
+                }
+                ProviderType::Azure => {
+                    final_type = 1; // Azure is often OpenAI compatible
+                    // https://{resource}.openai.azure.com/openai/deployments/{deployment}
+                    final_base_url = format!(
+                        "https://{}.openai.azure.com/openai/deployments/{}",
+                        form_azure_resource(),
+                        form_azure_deployment()
+                    );
+                    final_models = form_azure_deployment(); // Model name usually matches deployment
+                    
+                    let params = json!({
+                        "api_version": form_azure_api_version(),
+                        "auth_type": "azure_ad"
+                    });
+                    final_param_override = Some(params.to_string());
+                    
+                    let headers = json!({
+                        "api-key": form_key() // Azure expects api-key header, not Bearer usually
+                    });
+                    final_header_override = Some(headers.to_string());
+                }
+                ProviderType::Local => {
+                    final_type = 1;
+                    final_base_url = form_local_url();
+                    final_models = "local-model".to_string();
+                }
+            }
 
             let ch = Channel {
                 id: form_id(),
-                type_: form_type(),
+                type_: final_type,
                 name: form_name(),
-                key: form_key(),
-                base_url: form_base_url(),
-                models: form_models(),
-                group: Some(form_group()),
+                key: final_key,
+                base_url: final_base_url,
+                models: final_models,
+                group: Some("default".to_string()),
                 status: 1,
                 priority: 0,
                 weight: 0,
-                param_override: if p_override.is_empty() {
-                    None
-                } else {
-                    Some(p_override)
-                },
-                header_override: if h_override.is_empty() {
-                    None
-                } else {
-                    Some(h_override)
-                },
+                param_override: final_param_override,
+                header_override: final_header_override,
             };
 
             let result = if ch.id == 0 {
@@ -92,8 +197,7 @@ pub fn ChannelPage() -> Element {
 
     let handle_confirm_delete = move |_| {
         spawn(async move {
-            let id = delete_channel_id();
-            if ChannelService::delete(id).await.is_ok() {
+            if ChannelService::delete(delete_channel_id()).await.is_ok() {
                 channels.restart();
                 toast.success("渠道已删除");
                 is_delete_modal_open.set(false);
@@ -145,7 +249,7 @@ pub fn ChannelPage() -> Element {
                                     div {
                                         div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
                                             match channel.type_ {
-                                                1 => "OpenAI",
+                                                1 => "OpenAI / Bedrock / Azure",
                                                 14 => "Anthropic",
                                                 24 => "Google",
                                                 _ => "Custom"
@@ -218,7 +322,9 @@ pub fn ChannelPage() -> Element {
 
                         // Header
                         div { class: "flex justify-between items-center px-6 py-4 border-b border-base-200 shrink-0 bg-base-100",
-                            h3 { class: "text-lg font-bold text-base-content tracking-tight", "添加供应商渠道" }
+                            h3 { class: "text-lg font-bold text-base-content tracking-tight",
+                                if modal_step() == 0 { "选择供应商" } else { "配置连接" }
+                            }
                             button {
                                 class: "btn btn-sm btn-circle btn-ghost text-base-content/50 hover:bg-base-200",
                                 onclick: move |_| is_modal_open.set(false),
@@ -227,78 +333,154 @@ pub fn ChannelPage() -> Element {
                         }
 
                         // Form Body
-                        div { class: "flex-1 overflow-y-auto p-6 flex flex-col gap-4 min-h-0",
-                            BCInput {
-                                label: Some("渠道名称".to_string()),
-                                value: "{form_name}",
-                                placeholder: "例如: OpenAI 生产环境".to_string(),
-                                oninput: move |e: FormEvent| form_name.set(e.value())
-                            }
-
-                            div { class: "flex flex-col gap-1.5",
-                                label { class: "text-sm font-medium text-base-content/80", "供应商类型" }
-                                select { class: "select select-bordered w-full select-sm",
-                                    onchange: move |e: FormEvent| form_type.set(e.value().parse().unwrap_or(1)),
-                                    option { value: "1", "OpenAI" }
-                                    option { value: "14", "Anthropic Claude" }
-                                    option { value: "24", "Google Gemini" }
+                        div { class: "flex-1 overflow-y-auto p-6 min-h-0",
+                            if modal_step() == 0 {
+                                // Step 1: Provider Selection Grid
+                                div { class: "grid grid-cols-2 gap-4",
+                                    for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::AWS, ProviderType::Azure, ProviderType::Local] {
+                                        button {
+                                            class: "flex flex-col items-center justify-center gap-3 p-6 h-32 rounded-xl border border-base-200 bg-base-50/50 hover:border-primary/50 hover:bg-primary/5 hover:scale-[1.02] transition-all duration-200",
+                                            onclick: move |_| select_provider(p),
+                                            // Icon placeholder
+                                            div { class: "text-2xl font-bold opacity-30",
+                                                match p {
+                                                    ProviderType::OpenAI | ProviderType::Azure | ProviderType::Local => "🤖",
+                                                    ProviderType::Anthropic => "🧠",
+                                                    ProviderType::Google => "🌟",
+                                                    ProviderType::AWS => "☁️",
+                                                }
+                                            }
+                                            span { class: "font-semibold text-sm", "{p.name()}" }
+                                        }
+                                    }
                                 }
-                            }
+                            } else {
+                                // Step 2: Configuration Form
+                                div { class: "flex flex-col gap-4",
+                                    BCInput {
+                                        label: Some("连接名称".to_string()),
+                                        value: "{form_name}",
+                                        oninput: move |e: FormEvent| form_name.set(e.value())
+                                    }
 
-                            BCInput {
-                                label: Some("API Key".to_string()),
-                                value: "{form_key}",
-                                placeholder: "sk-xxxxxxxx".to_string(),
-                                oninput: move |e: FormEvent| form_key.set(e.value())
-                            }
+                                    if selected_provider() == ProviderType::OpenAI {
+                                        BCInput {
+                                            label: Some("API Key".to_string()),
+                                            value: "{form_key}",
+                                            placeholder: "sk-...".to_string(),
+                                            oninput: move |e: FormEvent| form_key.set(e.value())
+                                        }
+                                    }
 
-                            BCInput {
-                                label: Some("代理地址 (Base URL)".to_string()),
-                                value: "{form_base_url}",
-                                placeholder: "https://api.openai.com".to_string(),
-                                oninput: move |e: FormEvent| form_base_url.set(e.value())
-                            }
+                                    if selected_provider() == ProviderType::Anthropic {
+                                        BCInput {
+                                            label: Some("API Key".to_string()),
+                                            value: "{form_key}",
+                                            placeholder: "sk-ant-...".to_string(),
+                                            oninput: move |e: FormEvent| form_key.set(e.value())
+                                        }
+                                    }
 
-                            BCInput {
-                                label: Some("可用模型".to_string()),
-                                value: "{form_models}",
-                                placeholder: "gpt-4,gpt-3.5-turbo".to_string(),
-                                oninput: move |e: FormEvent| form_models.set(e.value())
-                            }
+                                    if selected_provider() == ProviderType::Google {
+                                        BCInput {
+                                            label: Some("API Key".to_string()),
+                                            value: "{form_key}",
+                                            placeholder: "AIza...".to_string(),
+                                            oninput: move |e: FormEvent| form_key.set(e.value())
+                                        }
+                                    }
 
-                            div { class: "flex flex-col gap-1.5",
-                                label { class: "text-sm font-medium text-base-content/80", "参数覆写 (JSON)" }
-                                textarea {
-                                    class: "textarea textarea-bordered h-24 font-mono text-xs leading-relaxed",
-                                    value: "{form_param_override}",
-                                    placeholder: "{{ \"temperature\": 0.5 }}",
-                                    oninput: move |e: FormEvent| form_param_override.set(e.value())
-                                }
-                            }
+                                    if selected_provider() == ProviderType::AWS {
+                                        div { class: "alert alert-info text-xs",
+                                            "注意: 您的密钥仅保存在本地，且通过 SigV4 签名请求，我们不会存储明文。"
+                                        }
+                                        BCInput {
+                                            label: Some("Access Key ID".to_string()),
+                                            value: "{form_key}", 
+                                            placeholder: "AKIA...".to_string(),
+                                            oninput: move |e: FormEvent| form_key.set(e.value())
+                                        }
+                                        BCInput {
+                                            label: Some("Secret Access Key".to_string()),
+                                            value: "{form_aws_sk}",
+                                            placeholder: "wJalrX...".to_string(),
+                                            oninput: move |e: FormEvent| form_aws_sk.set(e.value())
+                                        }
+                                        div { class: "flex flex-col gap-1.5",
+                                            label { class: "text-sm font-medium text-base-content/80", "区域 (Region)" }
+                                            select { class: "select select-bordered w-full select-sm",
+                                                onchange: move |e: FormEvent| form_aws_region.set(e.value()),
+                                                option { value: "us-east-1", "US East (N. Virginia)" }
+                                                option { value: "us-west-2", "US West (Oregon)" }
+                                                option { value: "ap-northeast-1", "Asia Pacific (Tokyo)" }
+                                                option { value: "eu-central-1", "Europe (Frankfurt)" }
+                                            }
+                                        }
+                                    }
 
-                            div { class: "flex flex-col gap-1.5",
-                                label { class: "text-sm font-medium text-base-content/80", "Header 覆写 (JSON)" }
-                                textarea {
-                                    class: "textarea textarea-bordered h-24 font-mono text-xs leading-relaxed",
-                                    value: "{form_header_override}",
-                                    placeholder: "{{ \"X-Custom-Header\": \"value\" }}",
-                                    oninput: move |e: FormEvent| form_header_override.set(e.value())
+                                    if selected_provider() == ProviderType::Azure {
+                                        BCInput {
+                                            label: Some("Resource Name".to_string()),
+                                            value: "{form_azure_resource}",
+                                            placeholder: "my-openai-resource".to_string(),
+                                            oninput: move |e: FormEvent| form_azure_resource.set(e.value())
+                                        }
+                                        BCInput {
+                                            label: Some("Deployment Name".to_string()),
+                                            value: "{form_azure_deployment}",
+                                            placeholder: "gpt-4-deployment".to_string(),
+                                            oninput: move |e: FormEvent| form_azure_deployment.set(e.value())
+                                        }
+                                        BCInput {
+                                            label: Some("API Key".to_string()),
+                                            value: "{form_key}",
+                                            placeholder: "32-char hex string".to_string(),
+                                            oninput: move |e: FormEvent| form_key.set(e.value())
+                                        }
+                                        div { class: "flex flex-col gap-1.5",
+                                            label { class: "text-sm font-medium text-base-content/80", "API Version" }
+                                            select { class: "select select-bordered w-full select-sm",
+                                                onchange: move |e: FormEvent| form_azure_api_version.set(e.value()),
+                                                option { value: "2023-05-15", "2023-05-15" }
+                                                option { value: "2023-12-01-preview", "2023-12-01-preview" }
+                                                option { value: "2024-02-15-preview", "2024-02-15-preview" }
+                                            }
+                                        }
+                                    }
+
+                                    if selected_provider() == ProviderType::Local {
+                                        BCInput {
+                                            label: Some("Local Server URL".to_string()),
+                                            value: "{form_local_url}",
+                                            placeholder: "http://localhost:8080".to_string(),
+                                            oninput: move |e: FormEvent| form_local_url.set(e.value())
+                                        }
+                                    }
                                 }
                             }
                         }
 
                         // Footer
                         div { class: "flex justify-end gap-3 px-6 py-4 border-t border-base-200 bg-base-50/50 shrink-0",
+                            if modal_step() == 1 {
+                                BCButton {
+                                    variant: ButtonVariant::Ghost,
+                                    onclick: move |_| modal_step.set(0),
+                                    "上一步"
+                                }
+                            }
                             BCButton {
                                 variant: ButtonVariant::Ghost,
                                 onclick: move |_| is_modal_open.set(false),
                                 "取消"
                             }
-                            BCButton {
-                                class: "btn-neutral text-white shadow-md",
-                                loading: is_loading(),
-                                onclick: handle_save,
-                                "保存配置"
+                            if modal_step() == 1 {
+                                BCButton {
+                                    class: "btn-neutral text-white shadow-md",
+                                    loading: is_loading(),
+                                    onclick: handle_save,
+                                    "保存"
+                                }
                             }
                         }
                     }
