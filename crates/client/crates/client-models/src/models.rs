@@ -298,98 +298,108 @@ pub fn ChannelPage() -> Element {
 
     let channels_data = channels.read().clone();
 
+    // Determine if any modal is open (retained for logic if needed, but styling is now handled by overlay)
+    let _any_modal_open = is_modal_open() || is_delete_modal_open();
+
     rsx! {
-        div { class: "flex flex-col h-full gap-8",
-            // Header
-            div { class: "flex justify-between items-end px-1",
-                div {
-                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "模型网络" }
-                    p { class: "text-sm text-base-content/60 font-medium", "您的 AI 算力中枢" }
-                }
-                div { class: "flex gap-3",
-                    BCButton {
-                        class: "btn-neutral btn-sm px-6 shadow-sm text-white",
-                        onclick: open_create_modal,
-                        "添加连接"
+        // Main Container for Page
+        div { class: "relative h-full",
+            // Background Content (Header + Grid)
+            // Removed local blur/scale to ensure consistent "whole screen blur" via modal overlay
+            div {
+                class: "flex flex-col h-full gap-8 transition-all duration-300 ease-out",
+                
+                // Header
+                div { class: "flex justify-between items-end px-1",
+                    div {
+                        h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "模型网络" }
+                        p { class: "text-sm text-base-content/60 font-medium", "您的 AI 算力中枢" }
+                    }
+                    div { class: "flex gap-3",
+                        BCButton {
+                            class: "btn-neutral btn-sm px-6 shadow-sm text-white",
+                            onclick: open_create_modal,
+                            "添加连接"
+                        }
                     }
                 }
-            }
 
-            // Cards Grid
-            div { class: "flex-1 overflow-y-auto min-h-0", // Scroll container
-                match channels_data {
-                    Some(list) => rsx! {
-                        div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10",
-                            for channel in list {
-                                div { class: "group relative flex flex-col justify-between p-6 h-[200px] bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
-                                    // Status Indicator (Breathing Light)
-                                    div { class: "absolute top-6 right-6",
-                                        if channel.status == 1 {
-                                            span { class: "relative flex h-3 w-3",
-                                                span { class: "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" }
-                                                span { class: "relative inline-flex rounded-full h-3 w-3 bg-emerald-500" }
-                                            }
-                                        } else {
-                                            span { class: "h-3 w-3 rounded-full bg-base-300" }
-                                        }
-                                    }
-
-                                    // Card Header
-                                    div {
-                                        div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
-                                            match channel.type_ {
-                                                1 => "OpenAI / Bedrock / Azure",
-                                                14 => "Anthropic",
-                                                24 => "Google",
-                                                _ => "Custom"
-                                            }
-                                        }
-                                        h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4", "{channel.name}" }
-                                    }
-
-                                    // Card Footer
-                                    div { class: "flex items-end justify-between mt-4",
-                                        div { class: "flex flex-col gap-1.5",
-                                            span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
-                                            div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-fit max-w-[180px] truncate",
-                                                "{channel.models}"
+                // Cards Grid
+                div { class: "flex-1 overflow-y-auto min-h-0", // Scroll container
+                    match channels_data {
+                        Some(list) => rsx! {
+                            div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10",
+                                for channel in list {
+                                    div { class: "group relative flex flex-col justify-between p-6 h-[200px] bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
+                                        // Status Indicator (Breathing Light)
+                                        div { class: "absolute top-6 right-6",
+                                            if channel.status == 1 {
+                                                span { class: "relative flex h-3 w-3",
+                                                    span { class: "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" }
+                                                    span { class: "relative inline-flex rounded-full h-3 w-3 bg-emerald-500" }
+                                                }
+                                            } else {
+                                                span { class: "h-3 w-3 rounded-full bg-base-300" }
                                             }
                                         }
 
-                                        // Actions (Delete)
-                                        button {
-                                            class: "btn btn-circle btn-sm btn-ghost text-base-content/20 hover:text-error hover:bg-error/5 transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 duration-200",
-                                            onclick: move |_| {
-                                                delete_channel_id.set(channel.id);
-                                                delete_channel_name.set(channel.name.clone());
-                                                is_delete_modal_open.set(true);
-                                            },
-                                            title: "移除连接",
-                                            svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
+                                        // Card Header
+                                        div {
+                                            div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
+                                                match channel.type_ {
+                                                    1 => "OpenAI / Bedrock / Azure",
+                                                    14 => "Anthropic",
+                                                    24 => "Google",
+                                                    _ => "Custom"
+                                                }
+                                            }
+                                            h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4", "{channel.name}" }
+                                        }
+
+                                        // Card Footer
+                                        div { class: "flex items-end justify-between mt-4",
+                                            div { class: "flex flex-col gap-1.5",
+                                                span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
+                                                div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-fit max-w-[180px] truncate",
+                                                    "{channel.models}"
+                                                }
+                                            }
+
+                                            // Actions (Delete)
+                                            button {
+                                                class: "btn btn-circle btn-sm btn-ghost text-base-content/20 hover:text-error hover:bg-error/5 transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 duration-200",
+                                                onclick: move |_| {
+                                                    delete_channel_id.set(channel.id);
+                                                    delete_channel_name.set(channel.name.clone());
+                                                    is_delete_modal_open.set(true);
+                                                },
+                                                title: "移除连接",
+                                                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            // The "Add Connection" Card (Invitation)
-                            div {
-                                class: "flex flex-col items-center justify-center h-[200px] rounded-2xl border-2 border-dashed border-base-200 hover:border-primary/30 hover:bg-base-50/50 transition-all duration-300 cursor-pointer gap-4 group",
-                                onclick: open_create_modal,
-                                div { class: "h-12 w-12 rounded-full bg-base-100 group-hover:bg-white flex items-center justify-center shadow-sm border border-base-200 group-hover:scale-110 transition-transform duration-300",
-                                    svg { class: "w-6 h-6 text-base-content/40 group-hover:text-primary transition-colors", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 4v16m8-8H4" }
+                                // The "Add Connection" Card (Invitation)
+                                div {
+                                    class: "flex flex-col items-center justify-center h-[200px] rounded-2xl border-2 border-dashed border-base-200 hover:border-primary/30 hover:bg-base-50/50 transition-all duration-300 cursor-pointer gap-4 group",
+                                    onclick: open_create_modal,
+                                    div { class: "h-12 w-12 rounded-full bg-base-100 group-hover:bg-white flex items-center justify-center shadow-sm border border-base-200 group-hover:scale-110 transition-transform duration-300",
+                                        svg { class: "w-6 h-6 text-base-content/40 group-hover:text-primary transition-colors", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 4v16m8-8H4" }
+                                        }
                                     }
+                                    span { class: "text-sm font-semibold text-base-content/50 group-hover:text-primary transition-colors", "添加新连接" }
                                 }
-                                span { class: "text-sm font-semibold text-base-content/50 group-hover:text-primary transition-colors", "添加新连接" }
                             }
-                        }
-                    },
-                    None => rsx! {
-                        div { class: "flex flex-col items-center justify-center h-64 gap-4 opacity-50 animate-pulse",
-                            div { class: "w-12 h-12 rounded-full bg-base-200" }
-                            div { class: "text-sm font-medium", "正在搜索神经网络..." }
+                        },
+                        None => rsx! {
+                            div { class: "flex flex-col items-center justify-center h-64 gap-4 opacity-50 animate-pulse",
+                                div { class: "w-12 h-12 rounded-full bg-base-200" }
+                                div { class: "text-sm font-medium", "正在搜索神经网络..." }
+                            }
                         }
                     }
                 }
@@ -398,19 +408,24 @@ pub fn ChannelPage() -> Element {
             // Modal (Custom Implementation for stability)
             if is_modal_open() {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
-                    // Backdrop
+                    // Backdrop (Global Blur)
+                    // Added styled backdrop-filter to ensure it hits the sidebar too (since it's fixed inset-0 over everything)
                     div {
-                        class: "absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity",
+                        class: "absolute inset-0 bg-black/30 transition-opacity",
+                        style: "backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| is_modal_open.set(false)
                     }
 
                     // Modal Content
                     div {
-                        class: "fixed inset-0 sm:relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-base-100 sm:rounded-2xl shadow-2xl border border-base-200 flex flex-col overflow-hidden",
-                        onclick: |e| e.stop_propagation(), // Prevent click through
+                        // Changed from fixed inset-0 to relative w-full h-full. 
+                        // The parent wrapper is already fixed inset-0, so h-full fills it.
+                        // Added pointer-events-auto to ensure interaction.
+                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-base-100 sm:rounded-2xl shadow-2xl border-0 sm:border border-base-200 flex flex-col overflow-hidden animate-[scale-in_0.2s_ease-out] pointer-events-auto overscroll-contain",
+                        onclick: |e| e.stop_propagation(), 
 
                         // Header
-                        div { class: "flex justify-between items-center px-6 py-4 border-b border-base-200 shrink-0 bg-base-100",
+                        div { class: "flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4 border-b border-base-200 shrink-0 bg-base-100",
                             h3 { class: "text-lg font-bold text-base-content tracking-tight",
                                 if modal_step() == 0 { "选择供应商" } else { "配置连接" }
                             }
@@ -422,7 +437,8 @@ pub fn ChannelPage() -> Element {
                         }
 
                         // Body
-                        div { class: "flex-1 overflow-y-auto p-6 min-h-0",
+                        // Added overscroll-y-contain to prevent scroll chaining
+                        div { class: "flex-1 overflow-y-auto p-4 sm:p-6 min-h-0 overscroll-y-contain",
                             if modal_step() == 0 {
                                 // Step 1: Provider Selection Grid
                                 div { class: "grid grid-cols-2 gap-4",
@@ -571,7 +587,7 @@ pub fn ChannelPage() -> Element {
                             }
                             BCButton {
                                 variant: ButtonVariant::Ghost,
-                                onclick: move |_| is_modal_open.set(false),
+                                    onclick: move |_| is_modal_open.set(false),
                                 "取消"
                             }
                             if modal_step() == 1 {
@@ -590,15 +606,16 @@ pub fn ChannelPage() -> Element {
             // Delete Confirmation Modal
             if is_delete_modal_open() {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
-                    // Backdrop
+                    // Backdrop (Transparent, clicks close)
                     div {
-                        class: "absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity",
+                        class: "absolute inset-0 bg-black/30 transition-opacity",
+                        style: "backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| is_delete_modal_open.set(false)
                     }
 
                     // Modal Content
                     div {
-                        class: "relative w-full max-w-md bg-base-100 rounded-2xl shadow-2xl border border-base-200 overflow-hidden",
+                        class: "relative w-full max-w-md bg-base-100 rounded-2xl shadow-2xl border border-base-200 overflow-hidden animate-[scale-in_0.2s_ease-out]",
                         onclick: |e| e.stop_propagation(),
 
                         // Header with Warning Icon
