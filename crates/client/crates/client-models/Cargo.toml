@@ -12,3 +12,4 @@ burncloud-service-models.workspace = true
 burncloud-service-inference.workspace = true
 burncloud-client-shared.workspace = true
 tokio.workspace = true
+rand.workspace = true
