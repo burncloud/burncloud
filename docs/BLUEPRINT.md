@@ -241,6 +241,12 @@ This document outlines the functional planning for the BurnCloud Client, designe
 - **智能调度策略 (Smart Routing Strategies)**:
     - **Lowest Latency (竞速模式)**: 同时向多个渠道发起 Ping 或预检，优先路由到响应最快的节点。
     - **Lowest Price (经济模式)**: 在满足 SLA 的前提下，优先选择 Token 单价最低的供应源（例如优先用 Azure Spot 实例或便宜的第三方渠道）。
+    - **Adaptive Hybrid Routing (自适应混合路由)**:
+        - **Global Configuration**: 用户可在系统设置中全局指定默认策略：`Adaptive` (默认), `Always Sticky` (一致性优先), `Always Speed` (速度优先)。
+        - **Smart Decision (Adaptive模式)**: Router 自动分析请求特征。
+            - **Short Context (< 4k)**: 走 **竞速/比价模式**，追求极致响应速度。
+            - **Long Context (> 4k)**: 自动切换为 **Sticky Mode**，锁定节点以复用 KV Cache，降低首字延迟 (TTFT) 和成本。
+        - **User Override**: 允许通过 HTTP Header (`X-Burn-Strategy`) 覆盖全局设置。
     - **Weighted Round Robin (加权轮询)**: 根据预设权重分发流量（如自建节点 80%，备份节点 20%）。
 - **高可用性 (High Availability)**:
     - **Automatic Failover (自动故障转移)**: 当主节点返回 5xx 错误或超时，Router 自动无缝重试下一个可用节点，用户对此毫无感知 (Seamless)。
