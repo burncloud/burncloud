@@ -42,6 +42,7 @@ This document outlines the functional planning for the BurnCloud Client, designe
     - **Azure OpenAI**: 支持配置 Deployment ID 和 API Version。自动映射 Azure 特有的 Endpoint 结构。
     - **Google Vertex AI / Gemini**: 支持 Service Account JSON 导入，自动处理 OAuth2 Token 刷新。
     - **Native API**: 标准支持 OpenAI, Anthropic, Groq 等直接提供的 API。
+    - **Model Auto-Discovery**: 模型添加应自动识别目标渠道具备哪些模型，或在用户请求时动态探查 (Probe-on-Demand)，严禁要求用户手动填写模型名称。
 - **本地仓库 (Local Repository)**:
     - **GGUF Manager**: 扫描并管理本地 `models/` 目录下的量化模型。
     - **One-Click Serve**: 针对 GGUF 文件一键启动本地推理服务 (llama-server)，并自动注册到路由表中。

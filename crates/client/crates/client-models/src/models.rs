@@ -330,7 +330,7 @@ pub fn ChannelPage() -> Element {
                         Some(list) => rsx! {
                             div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10",
                                 for channel in list {
-                                    div { class: "group relative flex flex-col justify-between p-6 h-[200px] bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
+                                    div { class: "group relative flex flex-col justify-between p-6 min-h-[200px] h-full bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
                                         // Status Indicator (Breathing Light)
                                         div { class: "absolute top-6 right-6",
                                             if channel.status == 1 {
@@ -360,7 +360,7 @@ pub fn ChannelPage() -> Element {
                                         div { class: "flex items-end justify-between mt-4",
                                             div { class: "flex flex-col gap-1.5",
                                                 span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
-                                                div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-fit max-w-[180px] truncate",
+                                                div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-full break-all line-clamp-2",
                                                     "{channel.models}"
                                                 }
                                             }
@@ -384,7 +384,7 @@ pub fn ChannelPage() -> Element {
 
                                 // The "Add Connection" Card (Invitation)
                                 div {
-                                    class: "flex flex-col items-center justify-center h-[200px] rounded-2xl border-2 border-dashed border-base-200 hover:border-primary/30 hover:bg-base-50/50 transition-all duration-300 cursor-pointer gap-4 group",
+                                    class: "flex flex-col items-center justify-center min-h-[200px] h-full rounded-2xl border-2 border-dashed border-base-200 hover:border-primary/30 hover:bg-base-50/50 transition-all duration-300 cursor-pointer gap-4 group",
                                     onclick: open_create_modal,
                                     div { class: "h-12 w-12 rounded-full bg-base-100 group-hover:bg-white flex items-center justify-center shadow-sm border border-base-200 group-hover:scale-110 transition-transform duration-300",
                                         svg { class: "w-6 h-6 text-base-content/40 group-hover:text-primary transition-colors", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
@@ -421,7 +421,7 @@ pub fn ChannelPage() -> Element {
                         // Changed from fixed inset-0 to relative w-full h-full.
                         // The parent wrapper is already fixed inset-0, so h-full fills it.
                         // Added pointer-events-auto to ensure interaction.
-                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-base-100 sm:rounded-2xl shadow-2xl border-0 sm:border border-base-200 flex flex-col overflow-hidden animate-[scale-in_0.2s_ease-out] pointer-events-auto overscroll-contain",
+                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl bg-base-100 sm:rounded-2xl shadow-2xl border-0 sm:border border-base-200 flex flex-col overflow-hidden animate-[scale-in_0.2s_ease-out] pointer-events-auto overscroll-contain",
                         onclick: |e| e.stop_propagation(),
 
                         // Header
@@ -441,16 +441,16 @@ pub fn ChannelPage() -> Element {
                         div { class: "flex-1 overflow-y-auto p-4 sm:p-6 min-h-0 overscroll-y-contain",
                             if modal_step() == 0 {
                                 // Step 1: Provider Selection Grid
-                                div { class: "grid grid-cols-2 gap-4",
+                                div { class: "grid grid-cols-2 sm:grid-cols-3 gap-4",
                                     for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::AWS, ProviderType::Azure, ProviderType::Local] {
                                         button {
-                                            class: "flex flex-col items-center justify-center gap-3 p-6 h-32 rounded-xl border border-base-200 bg-base-50/50 hover:border-primary/50 hover:bg-primary/5 hover:scale-[1.02] transition-all duration-200",
+                                            class: "group flex flex-col items-center justify-center gap-4 p-6 h-36 rounded-2xl border border-base-200 bg-base-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ease-out",
                                             onclick: move |_| select_provider(p),
                                             // Icon render
-                                            div { class: "text-base-content/80",
+                                            div { class: "text-base-content/80 group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
                                                 {p.icon()}
                                             }
-                                            span { class: "font-semibold text-sm", "{p.name()}" }
+                                            span { class: "font-medium text-sm text-base-content/70 group-hover:text-base-content", "{p.name()}" }
                                         }
                                     }
                                 }

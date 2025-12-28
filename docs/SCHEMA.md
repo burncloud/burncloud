@@ -88,6 +88,19 @@
 | `last_checked_at` | TEXT | | 上次健康检查时间 [Blueprint] |
 | `other_info` | TEXT | | JSON: 额外配置 |
 
+### `model_quotas` (模型配额表)
+> 对应 Blueprint: **模型网络 Auto-Discovery & Quota**
+> 记录每个渠道下具体模型的性能参数与级别。
+| 字段 (Column) | 类型 (Type) | 属性 (Attributes) | 说明 (Description) |
+| :--- | :--- | :--- | :--- |
+| `id` | INTEGER | PK, AUTOINC | |
+| `channel_id` | INTEGER | FK, NOT NULL | -> channels.id |
+| `model_id` | TEXT | NOT NULL | 标准模型 ID (e.g., `gpt-4`) |
+| `rpm` | INTEGER | DEFAULT 0 | Requests Per Minute (0=未知) |
+| `tpm` | INTEGER | DEFAULT 0 | Tokens Per Minute (0=未知) |
+| `tier` | INTEGER | DEFAULT 0 | 级别 (0: Free, 1: Tier-1, ..., 5: Enterprise) |
+| `updated_at` | TEXT | DEFAULT NOW | 上次更新时间 |
+
 ### `tokens` (访问凭证)
 > 代码对应: `crates/database/src/schema.rs` (tokens)
 > 对应 Blueprint: **4. 访问凭证**
