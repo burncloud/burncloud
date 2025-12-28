@@ -225,3 +225,25 @@ This document outlines the functional planning for the BurnCloud Client, designe
 - **关于与更新 (About & Update)**:
     - 集成 `auto-update` crate，检查 GitHub Release 更新。
     - 展示当前版本 Hash, 构建时间。
+
+---
+
+## 11. 智能路由内核 (Intelligent Router Core)
+**Codename:** *Flow*
+**Module:** `router` & `router-aws`
+
+### 核心理念
+**“看不见的手” (The Invisible Hand)**。这是系统的隐形引擎，负责将用户的请求以毫秒级的速度精准投递到最优的算力节点。
+
+### 深度规划
+- **透传原则 (Absolute Passthrough)**:
+    - **Don't Touch Body**: 除非必要（如 AWS SigV4 签名需要读取 Body 计算 Hash），否则 Router 绝不解析、修改 Request/Response Body。这保证了 **Zero-Latency Overhead**（零延迟开销）和 **100% Streaming Compatibility**（流式兼容）。
+- **智能调度策略 (Smart Routing Strategies)**:
+    - **Lowest Latency (竞速模式)**: 同时向多个渠道发起 Ping 或预检，优先路由到响应最快的节点。
+    - **Lowest Price (经济模式)**: 在满足 SLA 的前提下，优先选择 Token 单价最低的供应源（例如优先用 Azure Spot 实例或便宜的第三方渠道）。
+    - **Weighted Round Robin (加权轮询)**: 根据预设权重分发流量（如自建节点 80%，备份节点 20%）。
+- **高可用性 (High Availability)**:
+    - **Automatic Failover (自动故障转移)**: 当主节点返回 5xx 错误或超时，Router 自动无缝重试下一个可用节点，用户对此毫无感知 (Seamless)。
+    - **Circuit Breaker (熔断机制)**: 当某节点连续报错超过阈值，自动将其“熔断” (暂时踢出路由表) 60秒，避免拖累整体响应速度。
+- **协议适配 (Protocol Adaptor - On Demand)**:
+    - 仅在必要时（如 Client 是 OpenAI SDK，但目标是 Claude 原生 API）才启动极简的转换层。默认情况下，推荐使用各家原生 SDK 直连，Router 仅做鉴权与计费网关。
