@@ -1,10 +1,11 @@
 # BurnCloud Product Roadmap & Feature Specification
 
-> **Last Updated:** 2025-12-24
+> **Last Updated:** 2025-12-28
 > **Status:** Active Planning
-> **Philosophy:** Jobs Design (Metaphor-driven), Local First, Performance Oriented.
+> **Target Audience:** Operational Development Experts (懂运营的开发专家)
+> **Philosophy:** The Cockpit (Profit & Control), Business Engine, Developer Ergonomics.
 
-This document outlines the detailed functional planning for the 10 core modules of the BurnCloud Client.
+This document outlines the functional planning for the BurnCloud Client, designed as a **Business Engine** for developers who operate AI services.
 
 ---
 
@@ -13,21 +14,18 @@ This document outlines the detailed functional planning for the 10 core modules 
 **Module:** `client-dashboard`
 
 ### 核心理念
-抛弃传统运维面板的拥挤感，采用 "Zen Mode"（禅模式）。只在需要时展示细节，平时提供呼吸感的系统健康状态概览。目前设计融合了企业级控制台的严谨与 Consumer App 的流畅。
+**Profit Watch (利润监控)**。即使在睡觉时，也要让运营者一眼看到系统在赚钱。从“系统健康”转向“商业健康”。
 
 ### 深度规划
-- **成本与吞吐量监控 (Cost & Throughput Monitor)**:
-    - **今日流水**: 实时展示今日 API 调用的估算成本 (USD) 和 Token 消耗量。
-    - **实时交易流**: 顶部的呼吸灯指示器，直观展示当前的并发请求状态 (QPS)。
-- **上游健康矩阵 (Upstream Health Matrix)**:
-    - **供应商卡片**: 将 AWS, Google, Azure 等上游渠道可视化为独立的健康卡片。
-    - **状态指示**: 使用颜色 (Green/Yellow/Red) 和脉冲动画展示各渠道的连通性和错误率。
-    - **账户池监控**: 显示每个供应商下活跃的 API Key/Account 数量 (e.g., "AWS: 1,204 Active Accounts")。
-- **动态数据集成 (Real-time Integration)**:
-    - **[Next Step]**: 替换当前的硬编码 Mock 数据 (如 "$128,432.00")。
-    - **数据源**: 从 `Router` 获取实时的 Prometheus/Metrics 数据流。
-- **风控雷达缩略图 (Risk Radar Mini)**:
-    - 侧边栏实时滚动展示被拦截的异常请求或高风险行为，点击可跳转至完整风控页面。
+- **利润核心 (Profit Core)**:
+    - **三大指标**: 屏幕中央展示巨大的 **Net Margin (净利润)**，辅以 **Revenue (营收)** 和 **Cost (成本)**。
+    - **趋势线**: 实时 TPS (Tokens Per Second) 曲线，直观感受业务心跳。
+- **系统脉搏 (System Pulse)**:
+    - **极简状态**: 一个简单的呼吸灯。Green = Money Flowing. Red = Action Needed.
+    - **异常告警**: 仅在利润受损时（如渠道故障、高错误率）弹出醒目的 Action Item。
+- **资源概览**:
+    - 活跃的下游客户数量 (Active Customers)。
+    - 当前可用的上游算力池深度 (Pool Depth)。
 
 ---
 

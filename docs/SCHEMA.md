@@ -68,39 +68,61 @@
 | `pricing_in` | REAL | | 每 1M 输入 Token 价格 |
 | `pricing_out` | REAL | | 每 1M 输出 Token 价格 |
 
-### `router_upstreams` (供应商/上游)
-> 支持 Blueprint: **1. 仪表盘** (上游健康矩阵)
+### `channels` (供应商/上游)
+> 代码对应: `crates/database/src/schema.rs` (channels)
+> 对应 Blueprint: **1. 仪表盘** (上游健康矩阵)
 | 字段 (Column) | 类型 (Type) | 属性 (Attributes) | 说明 (Description) |
 | :--- | :--- | :--- | :--- |
-| `id` | TEXT | PK | 唯一上游 ID |
-| `name` | TEXT | NOT NULL | 显示名称 |
-| `base_url` | TEXT | NOT NULL | API 端点地址 |
-| `api_key` | TEXT | NOT NULL | **敏感信息** (应加密存储) |
-| `match_path` | TEXT | NOT NULL | 匹配路径, e.g., `/v1/chat/completions` |
-| `auth_type` | TEXT | NOT NULL | `Bearer`, `XApiKey`, `AwsSigV4` |
-| `priority` | INTEGER | DEFAULT 0 | 路由优先级 (数值越大越优先) |
-| `protocol` | TEXT | DEFAULT 'openai' | `openai`, `gemini`, `claude` |
-| `health_status` | TEXT | DEFAULT 'green' | `green` (正常), `yellow` (警告), `red` (故障) |
-| `error_rate_1h` | REAL | DEFAULT 0.0 | 最近一小时错误率 (0.0-1.0) |
-| `last_checked_at` | TEXT | | 上次健康检查时间戳 |
+| `id` | INTEGER | PK, AUTOINC | 渠道 ID |
+| `type` | INTEGER | DEFAULT 0 | 渠道类型 |
+| `key` | TEXT | NOT NULL | **敏感信息** (应加密存储) |
+| `name` | TEXT | | 显示名称 |
+| `base_url` | TEXT | | API 端点地址 |
+| `models` | TEXT | | 支持的模型列表 (逗号分隔 or JSON) |
+| `group` | TEXT | DEFAULT 'default' | 分组 (Legacy) |
+| `priority` | INTEGER | DEFAULT 0 | 路由优先级 |
+| `weight` | INTEGER | DEFAULT 0 | 权重 |
+| `status` | INTEGER | DEFAULT 1 | 1: 启用, 2: 禁用 |
+| `health_status` | TEXT | DEFAULT 'green' | `green`, `yellow`, `red` [Blueprint] |
+| `error_rate_1h` | REAL | DEFAULT 0.0 | 最近一小时错误率 [Blueprint] |
+| `last_checked_at` | TEXT | | 上次健康检查时间 [Blueprint] |
+| `other_info` | TEXT | | JSON: 额外配置 |
 
-### `router_tokens` (访问凭证)
-> 支持 Blueprint: **4. 访问凭证 (Access Credentials)**
+### `tokens` (访问凭证)
+> 代码对应: `crates/database/src/schema.rs` (tokens)
+> 对应 Blueprint: **4. 访问凭证**
 | 字段 (Column) | 类型 (Type) | 属性 (Attributes) | 说明 (Description) |
 | :--- | :--- | :--- | :--- |
-| `token` | TEXT | PK | 客户端使用的 `sk-...` 密钥 |
+| `id` | INTEGER | PK, AUTOINC | |
 | `user_id` | TEXT | FK, NOT NULL | -> users.id |
-| `status` | TEXT | NOT NULL | `active` (有效), `disabled` (禁用) |
-| `quota_limit` | INTEGER | DEFAULT -1 | 最大用量限制 (-1 = 无限) |
-| `used_quota` | INTEGER | DEFAULT 0 | 已累计用量 |
-| `name` | TEXT | | 密钥别名 (e.g. "CI/CD") |
-| `description` | TEXT | | 用途描述 |
-| `expired_at` | TEXT | | 过期时间戳 |
-| `allowed_models` | TEXT | | JSON 数组: 允许访问的模型 ID |
-| `ip_whitelist` | TEXT | | JSON 数组: 允许的 IP/CIDR |
-| `application_id` | TEXT | | 应用绑定 ID (Fail-Safe) |
+| `key` | CHAR(48) | NOT NULL, UNIQUE | `sk-...` 密钥 |
+| `status` | INTEGER | DEFAULT 1 | 1: 启用, 0: 禁用 |
+| `name` | VARCHAR(255) | | 别名 |
+| `remain_quota` | INTEGER | DEFAULT 0 | 剩余额度 |
+| `unlimited_quota` | BOOLEAN | DEFAULT 0 | 是否无限额度 |
+| `used_quota` | INTEGER | DEFAULT 0 | 已用额度 |
+| `created_time` | INTEGER | | 创建时间戳 |
+| `expired_time` | INTEGER | DEFAULT -1 | 过期时间戳 |
+| `allowed_models` | TEXT | | JSON 数组: 允许访问的模型 ID [Blueprint] |
+| `ip_whitelist` | TEXT | | JSON 数组: 允许的 IP/CIDR [Blueprint] |
+| `application_id` | TEXT | | 应用绑定 ID [Blueprint] |
 
-### `router_groups` (路由组)
+### `abilities` (路由能力表)
+> 代码对应: `crates/database/src/schema.rs` (abilities)
+> 说明: NewAPI 风格的核心路由表，映射 Group + Model -> Channel
+| 字段 (Column) | 类型 (Type) | 属性 (Attributes) | 说明 (Description) |
+| :--- | :--- | :--- | :--- |
+| `group` | VARCHAR(64) | PK | 分组名称 |
+| `model` | VARCHAR(255) | PK | 模型名称 |
+| `channel_id` | INTEGER | PK | -> channels.id |
+| `enabled` | BOOLEAN | DEFAULT 1 | 是否启用 |
+| `priority` | INTEGER | DEFAULT 0 | 优先级 |
+| `weight` | INTEGER | DEFAULT 0 | 权重 |
+
+### `router_groups` (路由组) [Planned/Redesign]
+> 对应 Blueprint: **路由策略** (更高级的策略组)
+*注意：目前代码主要使用 `abilities` 表进行路由，此表为未来更复杂的策略（如 A/B Test）预留。*
+
 | 字段 (Column) | 类型 (Type) | 属性 (Attributes) | 说明 (Description) |
 | :--- | :--- | :--- | :--- |
 | `id` | TEXT | PK | 组 ID |
