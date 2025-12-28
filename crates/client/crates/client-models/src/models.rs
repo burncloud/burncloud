@@ -308,7 +308,7 @@ pub fn ChannelPage() -> Element {
             // Removed local blur/scale to ensure consistent "whole screen blur" via modal overlay
             div {
                 class: "flex flex-col h-full gap-8 transition-all duration-300 ease-out",
-                
+
                 // Header
                 div { class: "flex justify-between items-end px-1",
                     div {
@@ -418,11 +418,11 @@ pub fn ChannelPage() -> Element {
 
                     // Modal Content
                     div {
-                        // Changed from fixed inset-0 to relative w-full h-full. 
+                        // Changed from fixed inset-0 to relative w-full h-full.
                         // The parent wrapper is already fixed inset-0, so h-full fills it.
                         // Added pointer-events-auto to ensure interaction.
                         class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-base-100 sm:rounded-2xl shadow-2xl border-0 sm:border border-base-200 flex flex-col overflow-hidden animate-[scale-in_0.2s_ease-out] pointer-events-auto overscroll-contain",
-                        onclick: |e| e.stop_propagation(), 
+                        onclick: |e| e.stop_propagation(),
 
                         // Header
                         div { class: "flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4 border-b border-base-200 shrink-0 bg-base-100",
@@ -447,7 +447,7 @@ pub fn ChannelPage() -> Element {
                                             class: "flex flex-col items-center justify-center gap-3 p-6 h-32 rounded-xl border border-base-200 bg-base-50/50 hover:border-primary/50 hover:bg-primary/5 hover:scale-[1.02] transition-all duration-200",
                                             onclick: move |_| select_provider(p),
                                             // Icon render
-                                            div { class: "text-primary",
+                                            div { class: "text-base-content/80",
                                                 {p.icon()}
                                             }
                                             span { class: "font-semibold text-sm", "{p.name()}" }
@@ -457,14 +457,14 @@ pub fn ChannelPage() -> Element {
                             } else {
                                 // Step 2: Configuration Form
                                 div { class: "flex flex-col gap-4",
-                                    BCInput {
+                                    BCInputSimple {
                                         label: Some("连接名称".to_string()),
                                         value: "{form_name}",
                                         oninput: move |e: FormEvent| form_name.set(e.value())
                                     }
 
                                     if selected_provider() == ProviderType::OpenAI {
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("API Key".to_string()),
                                             value: "{form_key}",
                                             placeholder: "sk-...".to_string(),
@@ -474,7 +474,7 @@ pub fn ChannelPage() -> Element {
                                     }
 
                                     if selected_provider() == ProviderType::Anthropic {
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("API Key".to_string()),
                                             value: "{form_key}",
                                             placeholder: "sk-ant-...".to_string(),
@@ -483,7 +483,7 @@ pub fn ChannelPage() -> Element {
                                     }
 
                                     if selected_provider() == ProviderType::Google {
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("API Key".to_string()),
                                             value: "{form_key}",
                                             placeholder: "AIza...".to_string(),
@@ -495,14 +495,14 @@ pub fn ChannelPage() -> Element {
                                         div { class: "alert alert-info text-xs",
                                             "注意: 您的密钥仅保存在本地，且通过 SigV4 签名请求，我们不会存储明文。"
                                         }
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("Access Key ID".to_string()),
                                             value: "{form_key}",
                                             placeholder: "AKIA...".to_string(),
                                             error: if !form_key().is_empty() && !form_key().starts_with("AKIA") && !form_key().starts_with("ASIA") { Some("无效的 Access Key ID 格式".to_string()) } else { None },
                                             oninput: move |e: FormEvent| form_key.set(e.value())
                                         }
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("Secret Access Key".to_string()),
                                             value: "{form_aws_sk}",
                                             placeholder: "wJalrX...".to_string(),
@@ -521,19 +521,19 @@ pub fn ChannelPage() -> Element {
                                     }
 
                                     if selected_provider() == ProviderType::Azure {
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("Resource Name".to_string()),
                                             value: "{form_azure_resource}",
                                             placeholder: "my-openai-resource".to_string(),
                                             oninput: move |e: FormEvent| form_azure_resource.set(e.value())
                                         }
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("Deployment Name".to_string()),
                                             value: "{form_azure_deployment}",
                                             placeholder: "gpt-4-deployment".to_string(),
                                             oninput: move |e: FormEvent| form_azure_deployment.set(e.value())
                                         }
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("API Key".to_string()),
                                             value: "{form_key}",
                                             placeholder: "32-char hex string".to_string(),
@@ -551,7 +551,7 @@ pub fn ChannelPage() -> Element {
                                     }
 
                                     if selected_provider() == ProviderType::Local {
-                                        BCInput {
+                                        BCInputSimple {
                                             label: Some("Local Server URL".to_string()),
                                             value: "{form_local_url}",
                                             placeholder: "http://localhost:8080".to_string(),
