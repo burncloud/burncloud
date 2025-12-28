@@ -29,7 +29,9 @@ impl ProviderType {
     fn icon(&self) -> &'static str {
         // Simple SVG paths or unicode for now
         match self {
-            ProviderType::OpenAI => "https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg", // Placeholder, will use text if image fails
+            ProviderType::OpenAI => {
+                "https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg"
+            } // Placeholder, will use text if image fails
             _ => "",
         }
     }
@@ -60,7 +62,7 @@ pub fn ChannelPage() -> Element {
     let mut form_name = use_signal(String::new);
     // Common fields
     let mut form_key = use_signal(String::new); // OpenAI Key, AWS AK, Azure Key
-    // AWS specific
+                                                // AWS specific
     let mut form_aws_sk = use_signal(String::new);
     let mut form_aws_region = use_signal(|| "us-east-1".to_string());
     // Azure specific
@@ -73,7 +75,7 @@ pub fn ChannelPage() -> Element {
     let open_create_modal = move |_| {
         form_id.set(0);
         modal_step.set(0); // Start at selection
-        // Reset fields
+                           // Reset fields
         form_name.set(String::new());
         form_key.set(String::new());
         form_aws_sk.set(String::new());
@@ -122,10 +124,13 @@ pub fn ChannelPage() -> Element {
                     // Assuming Router handles AWS SigV4 via a specific flag.
                     // For now, we use type=1 (OpenAI) but with backend magic, OR type=99 if backend supports it.
                     // Reverting to generic type=1 for "OpenAI Compatible" interface usually used by adapters
-                    final_type = 1; 
-                    final_base_url = format!("https://bedrock-runtime.{}.amazonaws.com", form_aws_region());
+                    final_type = 1;
+                    final_base_url = format!(
+                        "https://bedrock-runtime.{}.amazonaws.com",
+                        form_aws_region()
+                    );
                     final_models = "anthropic.claude-3-sonnet-20240229-v1:0".to_string();
-                    
+
                     // Pack secret into params
                     let params = json!({
                         "aws_secret_key": form_aws_sk(),
@@ -136,20 +141,20 @@ pub fn ChannelPage() -> Element {
                 }
                 ProviderType::Azure => {
                     final_type = 1; // Azure is often OpenAI compatible
-                    // https://{resource}.openai.azure.com/openai/deployments/{deployment}
+                                    // https://{resource}.openai.azure.com/openai/deployments/{deployment}
                     final_base_url = format!(
                         "https://{}.openai.azure.com/openai/deployments/{}",
                         form_azure_resource(),
                         form_azure_deployment()
                     );
                     final_models = form_azure_deployment(); // Model name usually matches deployment
-                    
+
                     let params = json!({
                         "api_version": form_azure_api_version(),
                         "auth_type": "azure_ad"
                     });
                     final_param_override = Some(params.to_string());
-                    
+
                     let headers = json!({
                         "api-key": form_key() // Azure expects api-key header, not Bearer usually
                     });
@@ -396,7 +401,7 @@ pub fn ChannelPage() -> Element {
                                         }
                                         BCInput {
                                             label: Some("Access Key ID".to_string()),
-                                            value: "{form_key}", 
+                                            value: "{form_key}",
                                             placeholder: "AKIA...".to_string(),
                                             oninput: move |e: FormEvent| form_key.set(e.value())
                                         }
