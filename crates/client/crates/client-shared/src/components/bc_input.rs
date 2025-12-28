@@ -28,7 +28,7 @@ pub fn BCInput(
     // Base input classes split for readability
     let base_classes = "bc-input peer w-full h-12 pr-4 rounded-xl text-[15px]";
     let bg_classes = "bg-white/5 focus:bg-white/80";
-    let text_classes = "text-primary placeholder-transparent";
+    let text_classes = "text-base-content placeholder-transparent";
     let transition_classes = "transition-all duration-200 ease-out";
     let focus_classes = "focus:outline-none focus:ring-4 focus:scale-[1.02] origin-center";
     let border_classes = format!("border {}", error_border);
@@ -79,7 +79,7 @@ pub fn BCInput(
                 // Floating Label
                 if let Some(l) = label {
                     label {
-                        class: "absolute text-secondary transition-all duration-200 ease-out pointer-events-none \
+                        class: "absolute text-base-content/60 transition-all duration-200 ease-out pointer-events-none \
                                 {label_left} \
                                 peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-[15px] \
                                 peer-focus:top-1 peer-focus:translate-y-0 peer-focus:text-[11px] peer-focus:text-accent peer-focus:font-medium \
