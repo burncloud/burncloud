@@ -136,6 +136,11 @@ This document outlines the functional planning for the BurnCloud Client, designe
 - **可视化情报 (Visual Intelligence)**:
     - **信任等级 (Trust Rating)**: 实时展示当前连接节点的信誉分与蜜罐通过率。
     - **双向威胁流**: 清晰区分“入站拦截”（保护卖家）与“出站清洗”（保护买家）的安全事件。
+    - **IP Compliance & MSP Governance (Anti-Ban Protocol)**:
+        - **MSP Proxy Pool**: MSP 运营者可在后台维护合规的静态 IP / 代理池 (Server IPs)。
+        - **Smart Allocation**: 系统根据添加的凭证类型 (Account Type) 和区域 (Region)，自动从池中分配一个专属 IP。
+        - **Isolation Policy**: 严格执行 "One Key, One IP" (一号一网) 原则，杜绝因 IP 复用导致的关联封号。
+        - **Pre-flight Check**: 连接建立前检测本地 IP 风险；若高风险 (Geo-Mismatch/DataCenter)，自动切换至 MSP 分配的合规隧道，确保流量特征“本地化”且“干净”。
 
 ---
 
