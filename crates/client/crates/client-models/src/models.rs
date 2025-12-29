@@ -149,6 +149,8 @@ pub fn ChannelPage() -> Element {
                                                 // AWS specific
     let mut form_aws_sk = use_signal(String::new);
     let mut form_aws_region = use_signal(|| "us-east-1".to_string());
+    let mut form_aws_model_id =
+        use_signal(|| "anthropic.claude-sonnet-4-5-20250929-v1:0".to_string());
     // Azure specific
     let mut form_azure_resource = use_signal(String::new);
     let mut form_azure_deployment = use_signal(String::new);
@@ -164,6 +166,7 @@ pub fn ChannelPage() -> Element {
         form_key.set(String::new());
         form_aws_sk.set(String::new());
         form_aws_region.set("us-east-1".to_string());
+        form_aws_model_id.set("anthropic.claude-sonnet-4-5-20250929-v1:0".to_string());
         form_azure_resource.set(String::new());
         form_azure_deployment.set(String::new());
         is_modal_open.set(true);
@@ -445,7 +448,7 @@ pub fn ChannelPage() -> Element {
                         "https://bedrock-runtime.{}.amazonaws.com",
                         form_aws_region()
                     );
-                    final_models = "anthropic.claude-3-sonnet-20240229-v1:0".to_string();
+                    final_models = form_aws_model_id();
 
                     // Pack secret into params
                     let params = json!({
@@ -557,104 +560,121 @@ pub fn ChannelPage() -> Element {
                 }
 
                 // Cards Grid
-                div { class: "flex-1 overflow-y-auto min-h-0", // Scroll container
-                    match channels_data {
-                        Some(list) => rsx! {
-                            div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10 w-full px-1",
-                                for channel in list {
-                                    div { class: "group relative flex flex-col justify-between p-6 min-h-[200px] h-full bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
-                                        // Status Indicator (Breathing Light)
-                                        div { class: "absolute top-6 right-6",
-                                            if channel.status == 1 {
-                                                span { class: "relative flex h-3 w-3",
-                                                    span { class: "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" }
-                                                    span { class: "relative inline-flex rounded-full h-3 w-3 bg-emerald-500" }
+                    div { class: "flex-1 overflow-y-auto min-h-0", // Scroll container
+                        match channels_data {
+                            Some(list) => {
+                                if list.is_empty() {
+                                    rsx! {
+                                        div { class: "flex flex-col items-center justify-center h-full text-center pb-20",
+                                            div { class: "p-6 rounded-full bg-base-200/50 mb-6",
+                                                svg {
+                                                    class: "w-12 h-12 text-base-content/20",
+                                                    fill: "none",
+                                                    view_box: "0 0 24 24",
+                                                    stroke: "currentColor",
+                                                    stroke_width: "1.5",
+                                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" }
                                                 }
-                                            } else {
-                                                span { class: "h-3 w-3 rounded-full bg-base-300" }
+                                            }
+                                            h3 { class: "text-xl font-bold text-base-content mb-2 tracking-tight", "暂无模型网络" }
+                                            p { class: "text-base text-base-content/60 max-w-sm mb-8 leading-relaxed",
+                                                "连接您的第一个 AI 服务提供商，构建专属的神经中枢。"
+                                            }
+                                            BCButton {
+                                                class: "btn-primary btn-md px-8 shadow-lg shadow-primary/20",
+                                                onclick: open_create_modal,
+                                                "开始连接"
                                             }
                                         }
-
-                                        // Card Header
-                                        div {
-                                            div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
-                                                match channel.type_ {
-                                                    1 => {
-                                                        if channel.base_url.contains("amazonaws.com") {
-                                                            "AWS Bedrock"
-                                                        } else if channel.base_url.contains("azure.com") {
-                                                            "Azure OpenAI"
+                                    }
+                                } else {
+                                    rsx! {
+                                        div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10 w-full px-1",
+                                            for channel in list {
+                                                div { class: "group relative flex flex-col justify-between p-6 min-h-[220px] h-full bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
+                                                    // Status Indicator (Breathing Light)
+                                                    div { class: "absolute top-6 right-6",
+                                                        if channel.status == 1 {
+                                                            span { class: "relative flex h-3 w-3",
+                                                                span { class: "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" }
+                                                                span { class: "relative inline-flex rounded-full h-3 w-3 bg-emerald-500" }
+                                                            }
                                                         } else {
-                                                            "OpenAI"
+                                                            span { class: "h-3 w-3 rounded-full bg-base-300" }
                                                         }
-                                                    },
-                                                    14 => "Anthropic",
-                                                    24 => "Google",
-                                                    _ => "Custom"
-                                                }
-                                            }
-                                            h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4 break-all line-clamp-2", "{channel.name}" }
-                                        }
+                                                    }
 
-                                        // Card Footer
-                                        div { class: "flex items-end justify-between mt-4",
-                                            div { class: "flex flex-col gap-1.5 min-w-0 flex-1",
-                                                span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
-                                                div {
-                                                    class: "tooltip tooltip-bottom w-full",
-                                                    "data-tip": "{channel.models}",
-                                                    div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-full break-all text-left",
-                                                        {
-                                                            let s = channel.models.clone();
-                                                            if s.len() > 60 {
-                                                                format!("{}...", &s[0..60])
-                                                            } else {
-                                                                s
+                                                    // Card Header
+                                                    div {
+                                                        div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
+                                                            match channel.type_ {
+                                                                1 => {
+                                                                    if channel.base_url.contains("amazonaws.com") {
+                                                                        "AWS Bedrock"
+                                                                    } else if channel.base_url.contains("azure.com") {
+                                                                        "Azure OpenAI"
+                                                                    } else {
+                                                                        "OpenAI"
+                                                                    }
+                                                                },
+                                                                14 => "Anthropic",
+                                                                24 => "Google",
+                                                                _ => "Custom"
+                                                            }
+                                                        }
+                                                        h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4 break-all line-clamp-2", "{channel.name}" }
+                                                    }
+
+                                                    // Card Footer
+                                                    div { class: "flex items-end justify-between mt-4",
+                                                        div { class: "flex flex-col gap-1.5 min-w-0 flex-1",
+                                                            span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
+                                                            div {
+                                                                class: "tooltip tooltip-bottom w-full",
+                                                                "data-tip": "{channel.models}",
+                                                                div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-full break-all text-left",
+                                                                    {
+                                                                        let s = channel.models.clone();
+                                                                        if s.len() > 60 {
+                                                                            format!("{}...", &s[0..60])
+                                                                        } else {
+                                                                            s
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Actions (Delete)
+                                                        button {
+                                                            class: "btn btn-circle btn-sm btn-ghost text-base-content/20 hover:text-error hover:bg-error/5 transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 duration-200",
+                                                            onclick: move |_| {
+                                                                delete_channel_id.set(channel.id);
+                                                                delete_channel_name.set(channel.name.clone());
+                                                                is_delete_modal_open.set(true);
+                                                            },
+                                                            title: "移除连接",
+                                                            svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
 
-                                            // Actions (Delete)
-                                            button {
-                                                class: "btn btn-circle btn-sm btn-ghost text-base-content/20 hover:text-error hover:bg-error/5 transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 duration-200",
-                                                onclick: move |_| {
-                                                    delete_channel_id.set(channel.id);
-                                                    delete_channel_name.set(channel.name.clone());
-                                                    is_delete_modal_open.set(true);
-                                                },
-                                                title: "移除连接",
-                                                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
-                                                }
-                                            }
                                         }
                                     }
                                 }
-
-                                // The "Add Connection" Card (Invitation)
-                                div {
-                                    class: "flex flex-col items-center justify-center min-h-[200px] h-full rounded-2xl border-2 border-dashed border-base-200 hover:border-primary/30 hover:bg-base-50/50 transition-all duration-300 cursor-pointer gap-4 group",
-                                    onclick: open_create_modal,
-                                    div { class: "h-12 w-12 rounded-full bg-base-100 group-hover:bg-white flex items-center justify-center shadow-sm border border-base-200 group-hover:scale-110 transition-transform duration-300",
-                                        svg { class: "w-6 h-6 text-base-content/40 group-hover:text-primary transition-colors", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 4v16m8-8H4" }
-                                        }
-                                    }
-                                    span { class: "text-sm font-semibold text-base-content/50 group-hover:text-primary transition-colors", "添加新连接" }
+                            },
+                            None => rsx! {
+                                div { class: "flex flex-col items-center justify-center h-full gap-4 opacity-50 animate-pulse pb-20",
+                                    div { class: "w-12 h-12 rounded-full bg-base-200" }
+                                    div { class: "text-sm font-medium", "正在搜索神经网络..." }
                                 }
-                            }
-                        },
-                        None => rsx! {
-                            div { class: "flex flex-col items-center justify-center h-64 gap-4 opacity-50 animate-pulse",
-                                div { class: "w-12 h-12 rounded-full bg-base-200" }
-                                div { class: "text-sm font-medium", "正在搜索神经网络..." }
                             }
                         }
                     }
                 }
-            }
 
             // Modal (Custom Implementation for stability)
             if is_modal_open() {
@@ -768,6 +788,12 @@ pub fn ChannelPage() -> Element {
                                                 option { value: "ap-northeast-1", "Asia Pacific (Tokyo)" }
                                                 option { value: "eu-central-1", "Europe (Frankfurt)" }
                                             }
+                                        }
+                                        BCInput {
+                                            label: Some("Model ID".to_string()),
+                                            value: "{form_aws_model_id}",
+                                            placeholder: "anthropic.claude-sonnet-4-5...".to_string(),
+                                            oninput: move |e: FormEvent| form_aws_model_id.set(e.value())
                                         }
                                     }
 
