@@ -560,7 +560,7 @@ pub fn ChannelPage() -> Element {
                 div { class: "flex-1 overflow-y-auto min-h-0", // Scroll container
                     match channels_data {
                         Some(list) => rsx! {
-                            div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10",
+                            div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10 w-full px-1",
                                 for channel in list {
                                     div { class: "group relative flex flex-col justify-between p-6 min-h-[200px] h-full bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
                                         // Status Indicator (Breathing Light)
@@ -579,21 +579,40 @@ pub fn ChannelPage() -> Element {
                                         div {
                                             div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
                                                 match channel.type_ {
-                                                    1 => "OpenAI / Bedrock / Azure",
+                                                    1 => {
+                                                        if channel.base_url.contains("amazonaws.com") {
+                                                            "AWS Bedrock"
+                                                        } else if channel.base_url.contains("azure.com") {
+                                                            "Azure OpenAI"
+                                                        } else {
+                                                            "OpenAI"
+                                                        }
+                                                    },
                                                     14 => "Anthropic",
                                                     24 => "Google",
                                                     _ => "Custom"
                                                 }
                                             }
-                                            h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4", "{channel.name}" }
+                                            h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4 break-all line-clamp-2", "{channel.name}" }
                                         }
 
                                         // Card Footer
                                         div { class: "flex items-end justify-between mt-4",
-                                            div { class: "flex flex-col gap-1.5",
+                                            div { class: "flex flex-col gap-1.5 min-w-0 flex-1",
                                                 span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
-                                                div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-full break-all line-clamp-2",
-                                                    "{channel.models}"
+                                                div {
+                                                    class: "tooltip tooltip-bottom w-full",
+                                                    "data-tip": "{channel.models}",
+                                                    div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-full break-all text-left",
+                                                        {
+                                                            let s = channel.models.clone();
+                                                            if s.len() > 60 {
+                                                                format!("{}...", &s[0..60])
+                                                            } else {
+                                                                s
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
 
