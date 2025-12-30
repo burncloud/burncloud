@@ -17,9 +17,11 @@ fn main() -> Result<()> {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
                         let port = std::env::var("PORT")
-                            .unwrap_or("3000".to_string())
+                            .unwrap_or_else(|_| {
+                                burncloud_common::constants::DEFAULT_PORT.to_string()
+                            })
                             .parse()
-                            .unwrap_or(3000);
+                            .unwrap_or(burncloud_common::constants::DEFAULT_PORT);
                         if let Err(e) = burncloud_server::start_server(port, false).await {
                             eprintln!("Server failed to start: {}", e);
                         }
@@ -64,9 +66,9 @@ fn main() -> Result<()> {
 #[tokio::main]
 async fn run_async_server() -> Result<()> {
     let port = std::env::var("PORT")
-        .unwrap_or("3000".to_string())
+        .unwrap_or_else(|_| burncloud_common::constants::DEFAULT_PORT.to_string())
         .parse()
-        .unwrap_or(3000);
+        .unwrap_or(burncloud_common::constants::DEFAULT_PORT);
     burncloud_server::start_server(port, true).await
 }
 
