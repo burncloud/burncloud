@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::components::{guest_layout::GuestLayout, layout::Layout};
 use crate::pages::{
-    api::ApiManagement,
+    api::AccessCredentialsPage,
     billing::BillingPage,
     connect::ConnectPage,
     dashboard::Dashboard,
@@ -43,7 +43,7 @@ pub enum Route {
     #[route("/console/monitor")]
     ServiceMonitor {},
     #[route("/console/access")]
-    ApiManagement {},
+    AccessCredentialsPage {},
     #[route("/console/models")]
     ChannelPage {},
     #[route("/console/users")]

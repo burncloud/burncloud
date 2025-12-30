@@ -18,14 +18,24 @@ pub struct CreateTokenRequest {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/tokens", post(create_token).get(list_tokens))
-        .route("/tokens/{token}", get(delete_token).delete(delete_token))
+        .route("/console/api/tokens", post(create_token).get(list_tokens))
+        .route(
+            "/console/api/tokens/{token}",
+            get(delete_token).delete(delete_token),
+        )
 }
 
 async fn list_tokens(State(state): State<AppState>) -> Json<Value> {
+    log::info!("[API] list_tokens request received");
     match RouterDatabase::list_tokens(&state.db).await {
-        Ok(tokens) => Json(json!(tokens)),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(tokens) => {
+            log::info!("[API] list_tokens success: found {} tokens", tokens.len());
+            Json(json!(tokens))
+        }
+        Err(e) => {
+            log::error!("[API] list_tokens error: {}", e);
+            Json(json!({ "error": e.to_string() }))
+        }
     }
 }
 
@@ -33,6 +43,12 @@ async fn create_token(
     State(state): State<AppState>,
     Json(payload): Json<CreateTokenRequest>,
 ) -> Json<Value> {
+    log::info!(
+        "[API] create_token request: user_id={}, quota={:?}",
+        payload.user_id,
+        payload.quota_limit
+    );
+
     // Generate a random sk- key
     let token = format!("sk-burncloud-{}", Uuid::new_v4());
 
@@ -45,14 +61,27 @@ async fn create_token(
     };
 
     match RouterDatabase::create_token(&state.db, &db_token).await {
-        Ok(_) => Json(json!({ "status": "created", "token": token })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(_) => {
+            log::info!("[API] create_token success: {}", token);
+            Json(json!({ "status": "created", "token": token }))
+        }
+        Err(e) => {
+            log::error!("[API] create_token error: {}", e);
+            Json(json!({ "error": e.to_string() }))
+        }
     }
 }
 
 async fn delete_token(State(state): State<AppState>, Path(token): Path<String>) -> Json<Value> {
+    log::info!("[API] delete_token request: {}", token);
     match RouterDatabase::delete_token(&state.db, &token).await {
-        Ok(_) => Json(json!({ "status": "deleted", "token": token })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(_) => {
+            log::info!("[API] delete_token success");
+            Json(json!({ "status": "deleted", "token": token }))
+        }
+        Err(e) => {
+            log::error!("[API] delete_token error: {}", e);
+            Json(json!({ "error": e.to_string() }))
+        }
     }
 }
