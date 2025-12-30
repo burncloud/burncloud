@@ -1,1 +1,1 @@
-pub use burncloud_client_access::ApiManagement;
+pub use burncloud_client_access::AccessCredentialsPage;
