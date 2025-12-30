@@ -80,14 +80,11 @@ pub fn AccessCredentialsPage() -> Element {
     };
 
     let handle_generate = move |_| {
-        println!("[Client] handle_generate clicked");
         spawn(async move {
-            println!("[Client] handle_generate spawned");
             let limit = if form_quota().is_empty() {
                 None
             } else {
                 let s = form_quota().replace("$", "");
-                println!("[Client] parsing quota: {}", s);
                 s.parse::<i64>().ok()
             };
 
@@ -96,30 +93,32 @@ pub fn AccessCredentialsPage() -> Element {
                 .as_ref()
                 .map(|u| u.id.clone())
                 .unwrap_or("demo-user".to_string());
-            println!(
-                "[Client] calling Service::create(uid={}, limit={:?})",
-                uid, limit
-            );
 
             match TokenService::create(&uid, limit).await {
                 Ok(token) => {
-                    println!("[Client] create success: {}", token);
                     new_full_key.set(token);
                     show_create_modal.set(false);
                     show_key_result_modal.set(true);
                     toast.success("访问凭证创建成功");
                     keys_resource.restart();
                 }
-                Err(e) => {
-                    println!("[Client] create error: {}", e);
-                    toast.error(&format!("创建失败: {}", e))
-                }
+                Err(e) => toast.error(&format!("创建失败: {}", e)),
             }
         });
     };
 
     let copy_key = move |_| {
-        toast.success("已复制到剪贴板");
+        let text = new_full_key();
+        match arboard::Clipboard::new() {
+            Ok(mut clipboard) => {
+                if let Err(e) = clipboard.set_text(text) {
+                    toast.error(&format!("复制失败: {}", e));
+                } else {
+                    toast.success("已复制到剪贴板");
+                }
+            }
+            Err(e) => toast.error(&format!("剪贴板不可用: {}", e)),
+        }
     };
 
     let mut toggle_status = move |token: String| {
