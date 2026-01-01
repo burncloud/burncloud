@@ -109,7 +109,7 @@ pub fn AccessCredentialsPage() -> Element {
 
     let mut is_copied = use_signal(|| false);
 
-    let mut copy_key = move |_| {
+    let copy_key = move |_| {
         let text = new_full_key();
         match arboard::Clipboard::new() {
             Ok(mut clipboard) => {
@@ -153,6 +153,23 @@ pub fn AccessCredentialsPage() -> Element {
         });
     };
 
+    let render_status_icon = |status: &str| {
+        if status == "Active" {
+            rsx! {
+                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" }
+                }
+            }
+        } else {
+            rsx! {
+                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" }
+                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M21 12a9 9 0 11-18 0 9 9 0 0118 0z" }
+                }
+            }
+        }
+    };
+
     rsx! {
         div { class: "flex flex-col h-full gap-8",
             // Header
@@ -187,54 +204,91 @@ pub fn AccessCredentialsPage() -> Element {
                     }
                 } else {
                     div { class: "grid gap-4",
-                        for (idx, key) in keys().into_iter().enumerate() {
-                            div { class: "group relative flex items-center justify-between p-5 bg-base-100 rounded-xl border border-base-200 hover:border-base-300 transition-all duration-200",
-                                // Left: Key Info
-                                div { class: "flex items-start gap-4",
-                                    div { class: "p-3 rounded-lg bg-base-200/50 text-base-content/70",
-                                        svg { class: "w-6 h-6", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
-                                        }
-                                    }
-                                    div { class: "flex flex-col gap-1",
-                                        div { class: "flex items-center gap-2",
-                                            span { class: "font-bold text-base-content text-lg", "{key.name}" }
-                                            if key.status == "Active" {
-                                                BCBadge { variant: BadgeVariant::Success, dot: true, "使用中" }
-                                            } else {
-                                                BCBadge { variant: BadgeVariant::Neutral, dot: true, "已吊销" }
+                        {
+                            keys().into_iter().enumerate().map(|(_idx, key)| {
+                                // Clone IDs for closures to avoid move errors
+                                let status_id = key.id.clone();
+                                let delete_id = key.id.clone();
+                                let current_status = key.status;
+
+                                rsx! {
+                                    div { class: "group relative flex items-center justify-between p-5 bg-base-100 rounded-xl border border-base-200 hover:border-base-300 transition-all duration-200",
+                                        // Left: Key Info
+                                        div { class: "flex items-start gap-4",
+                                            div { class: "p-3 rounded-lg bg-base-200/50 text-base-content/70",
+                                                svg { class: "w-6 h-6", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
+                                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
+                                                }
+                                            }
+                                            div { class: "flex flex-col gap-1",
+                                                div { class: "flex items-center gap-2",
+                                                    span { class: "font-bold text-base-content text-lg", "{key.name}" }
+                                                    if key.status == "Active" {
+                                                        BCBadge { variant: BadgeVariant::Success, dot: true, "使用中" }
+                                                    } else {
+                                                        BCBadge { variant: BadgeVariant::Neutral, dot: true, "已吊销" }
+                                                    }
+                                                }
+                                                div { class: "flex items-center gap-4 text-xs font-mono text-base-content/40 mt-1",
+                                                    span { class: "bg-base-200/50 px-1.5 py-0.5 rounded text-base-content/70", "{key.masked_key}" }
+                                                    span { "{key.created_at}" }
+                                                    if key.expires_at != "Never" {
+                                                        span { "Exp: {key.expires_at}" }
+                                                    }
+                                                }
                                             }
                                         }
-                                        div { class: "flex items-center gap-4 text-xs font-mono text-base-content/40 mt-1",
-                                            span { class: "bg-base-200/50 px-1.5 py-0.5 rounded text-base-content/70", "{key.masked_key}" }
-                                            span { "{key.created_at}" }
-                                            if key.expires_at != "Never" {
-                                                span { "Exp: {key.expires_at}" }
+
+                                        // Right: Actions & Scopes
+                                        div { class: "flex items-center gap-6",
+
+                                            // Quota display - Minimalist
+                                            if let Some(quota) = &key.quota_limit {
+                                                 div { class: "badge badge-ghost font-mono text-xs", "{quota}" }
+                                            }
+
+                                            // Action Buttons
+                                            div { class: "flex gap-2",
+                                                // Status Toggle Button
+                                                button {
+                                                    class: format!("btn btn-sm btn-ghost btn-square transition-colors {}",
+                                                        if key.status == "Active" { "text-warning hover:bg-warning/10" } else { "text-success hover:bg-success/10" }
+                                                    ),
+                                                    title: if key.status == "Active" { "禁用凭证" } else { "启用凭证" },
+                                                    onclick: move |_| {
+                                                        // Capture the cloned values
+                                                        let id = status_id.clone();
+                                                        let status_val = current_status;
+
+                                                        spawn(async move {
+                                                            let new_status_str = if status_val == "Active" { "disabled" } else { "active" };
+                                                            match TokenService::update_status(&id, new_status_str).await {
+                                                                Ok(_) => {
+                                                                    match new_status_str {
+                                                                        "active" => toast.success("凭证已启用"),
+                                                                        _ => toast.success("凭证已禁用"),
+                                                                    }
+                                                                    keys_resource.restart();
+                                                                },
+                                                                Err(e) => toast.error(&format!("操作失败: {}", e)),
+                                                            }
+                                                        });
+                                                    },
+                                                    {render_status_icon(&key.status)}
+                                                }
+
+                                                button {
+                                                    class: "btn btn-sm btn-ghost btn-square text-base-content/40 hover:text-error hover:bg-error/10 transition-colors",
+                                                    onclick: move |_| open_delete_modal(delete_id.clone()),
+                                                    svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
-
-                                // Right: Actions & Scopes
-                                div { class: "flex items-center gap-6",
-
-                                    // Quota display - Minimalist
-                                    if let Some(quota) = &key.quota_limit {
-                                         div { class: "badge badge-ghost font-mono text-xs", "{quota}" }
-                                    }
-
-                                    // Action Buttons
-                                    div { class: "flex gap-2",
-                                        button {
-                                            class: "btn btn-sm btn-ghost btn-square text-base-content/40 hover:text-error hover:bg-error/10 transition-colors",
-                                            onclick: move |_| open_delete_modal(key.id.clone()),
-                                            svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            })
                         }
                     }
                 }

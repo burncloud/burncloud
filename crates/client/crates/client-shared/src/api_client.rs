@@ -135,4 +135,17 @@ impl ApiClient {
         }
         Ok(())
     }
+
+    pub async fn update_token_status(&self, token: &str, status: &str) -> Result<()> {
+        let url = format!("{}/api/tokens/{}", self.base_url, token);
+        let body = serde_json::json!({
+            "status": status
+        });
+        let resp = self.client.put(&url).json(&body).send().await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!("Failed to update token: {}", resp.status()));
+        }
+        Ok(())
+    }
 }
