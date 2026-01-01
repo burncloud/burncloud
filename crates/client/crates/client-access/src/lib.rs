@@ -107,25 +107,45 @@ pub fn AccessCredentialsPage() -> Element {
         });
     };
 
-    let copy_key = move |_| {
+    let mut is_copied = use_signal(|| false);
+
+    let mut copy_key = move |_| {
         let text = new_full_key();
         match arboard::Clipboard::new() {
             Ok(mut clipboard) => {
                 if let Err(e) = clipboard.set_text(text) {
                     toast.error(&format!("复制失败: {}", e));
                 } else {
-                    toast.success("已复制到剪贴板");
+                    // toast.success("已复制到剪贴板"); // Removed according to Jobs: redundant if UI reacts
+                    is_copied.set(true);
+
+                    // Reset after 2 seconds
+                    spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                        is_copied.set(false);
+                    });
                 }
             }
             Err(e) => toast.error(&format!("剪贴板不可用: {}", e)),
         }
     };
 
-    let mut toggle_status = move |token: String| {
+    // Delete Modal State
+    let mut is_delete_modal_open = use_signal(|| false);
+    let mut delete_token_id = use_signal(|| String::new());
+
+    let mut open_delete_modal = move |token: String| {
+        delete_token_id.set(token);
+        is_delete_modal_open.set(true);
+    };
+
+    let handle_confirm_delete = move |_| {
         spawn(async move {
+            let token = delete_token_id();
             match TokenService::delete(&token).await {
                 Ok(_) => {
                     toast.success("凭证已删除");
+                    is_delete_modal_open.set(false);
                     keys_resource.restart();
                 }
                 Err(e) => toast.error(&format!("删除失败: {}", e)),
@@ -138,8 +158,8 @@ pub fn AccessCredentialsPage() -> Element {
             // Header
             div { class: "flex justify-between items-end",
                 div {
-                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "访问凭证 (Keymaster)" }
-                    p { class: "text-sm text-base-content/60 font-medium", "管理用于访问 BurnCloud 服务的 API 密钥" }
+                    h1 { class: "text-2xl font-bold text-base-content mb-1 tracking-tight", "访问凭证" }
+                    // Removed verbose description
                 }
                 BCButton {
                     class: "btn-neutral btn-sm px-6 text-white shadow-sm",
@@ -154,7 +174,7 @@ pub fn AccessCredentialsPage() -> Element {
                     div { class: "flex flex-col items-center justify-center h-full text-center pb-20",
                         div { class: "p-6 rounded-full bg-base-200/50 mb-6",
                             svg { class: "w-12 h-12 text-base-content/20", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11.536 17 9.229 17 9.229 14.771 9.229 17 6.914 17 4.607 17a2.001 2.001 0 01-1.996-1.854L2.61 7.427A6 6 0 019.229 4.607L11.536 7H15z" }
+                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
                             }
                         }
                         h3 { class: "text-xl font-bold text-base-content mb-2", "没有活跃的访问凭证" }
@@ -173,7 +193,7 @@ pub fn AccessCredentialsPage() -> Element {
                                 div { class: "flex items-start gap-4",
                                     div { class: "p-3 rounded-lg bg-base-200/50 text-base-content/70",
                                         svg { class: "w-6 h-6", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11.536 17 9.229 17 9.229 14.771 9.229 17 6.914 17 4.607 17a2.001 2.001 0 01-1.996-1.854L2.61 7.427A6 6 0 019.229 4.607L11.536 7H15z" }
+                                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
                                         }
                                     }
                                     div { class: "flex flex-col gap-1",
@@ -185,12 +205,12 @@ pub fn AccessCredentialsPage() -> Element {
                                                 BCBadge { variant: BadgeVariant::Neutral, dot: true, "已吊销" }
                                             }
                                         }
-                                        div { class: "flex items-center gap-3 text-sm font-mono text-base-content/60",
-                                            span { "{key.masked_key}" }
-                                            span { class: "text-base-content/30", "|" }
-                                            span { "Created: {key.created_at}" }
-                                            span { class: "text-base-content/30", "|" }
-                                            span { "Expires: {key.expires_at}" }
+                                        div { class: "flex items-center gap-4 text-xs font-mono text-base-content/40 mt-1",
+                                            span { class: "bg-base-200/50 px-1.5 py-0.5 rounded text-base-content/70", "{key.masked_key}" }
+                                            span { "{key.created_at}" }
+                                            if key.expires_at != "Never" {
+                                                span { "Exp: {key.expires_at}" }
+                                            }
                                         }
                                     }
                                 }
@@ -198,20 +218,19 @@ pub fn AccessCredentialsPage() -> Element {
                                 // Right: Actions & Scopes
                                 div { class: "flex items-center gap-6",
 
-                                    // Quota display
+                                    // Quota display - Minimalist
                                     if let Some(quota) = &key.quota_limit {
-                                         div { class: "text-right",
-                                            div { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wide", "预算上限" }
-                                            div { class: "text-sm font-mono font-medium", "{quota}" }
-                                         }
+                                         div { class: "badge badge-ghost font-mono text-xs", "{quota}" }
                                     }
 
                                     // Action Buttons
                                     div { class: "flex gap-2",
                                         button {
-                                            class: "btn btn-sm btn-ghost text-base-content/40 hover:text-base-content",
-                                            onclick: move |_| toggle_status(key.id.clone()),
-                                            "删除"
+                                            class: "btn btn-sm btn-ghost btn-square text-base-content/40 hover:text-error hover:bg-error/10 transition-colors",
+                                            onclick: move |_| open_delete_modal(key.id.clone()),
+                                            svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
+                                            }
                                         }
                                     }
                                 }
@@ -324,9 +343,14 @@ pub fn AccessCredentialsPage() -> Element {
                             div { class: "w-full p-4 bg-base-200 rounded-lg flex items-center justify-between gap-3 mt-4 font-mono text-sm break-all",
                                 span { class: "text-base-content select-all", "{new_full_key}" }
                                 button {
-                                    class: "btn btn-square btn-sm btn-ghost",
+                                    class: "btn btn-square btn-sm btn-ghost transition-all duration-200",
+                                    class: if is_copied() { "text-success bg-success/10 scale-110" } else { "" },
                                     onclick: copy_key,
-                                    svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" }}
+                                    if is_copied() {
+                                        svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2.5", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" } }
+                                    } else {
+                                        svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" }}
+                                    }
                                 }
                             }
 
@@ -334,6 +358,62 @@ pub fn AccessCredentialsPage() -> Element {
                                 class: "btn-neutral w-full mt-4",
                                 onclick: move |_| show_key_result_modal.set(false),
                                 "我已保存"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Delete Confirmation Modal
+            if is_delete_modal_open() {
+                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
+                    // Backdrop
+                    div {
+                        class: "absolute inset-0 bg-black/30 transition-opacity",
+                        style: "backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
+                        onclick: move |_| is_delete_modal_open.set(false)
+                    }
+
+                    // Modal Content
+                    div {
+                        class: "relative w-full max-w-md bg-base-100 rounded-2xl shadow-2xl border border-base-200 overflow-hidden animate-[scale-in_0.2s_ease-out]",
+                        onclick: |e| e.stop_propagation(),
+
+                        // Header with Warning Icon
+                        div { class: "flex items-center gap-4 px-6 py-5 bg-error/5 border-b border-error/10",
+                            div { class: "w-12 h-12 rounded-full bg-error/10 flex items-center justify-center",
+                                svg { class: "w-6 h-6 text-error", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
+                                }
+                            }
+                            div { class: "flex-1",
+                                h3 { class: "text-lg font-bold text-base-content", "确认吊销" }
+                                p { class: "text-sm text-base-content/60 mt-1", "此操作无法撤销" }
+                            }
+                        }
+
+                        // Message
+                        div { class: "px-6 py-4",
+                            p { class: "text-base-content/80",
+                                "确定要吊销此访问凭证吗？"
+                                br {}
+                                "所有使用此凭证的应用将"
+                                span { class: "font-bold text-error", "立即失去访问权限" }
+                                "。"
+                            }
+                        }
+
+                        // Footer
+                        div { class: "flex justify-end gap-3 px-6 py-4 bg-base-50/50 border-t border-base-200",
+                            BCButton {
+                                variant: ButtonVariant::Ghost,
+                                onclick: move |_| is_delete_modal_open.set(false),
+                                "取消"
+                            }
+                            BCButton {
+                                class: "btn-error text-white shadow-md",
+                                onclick: handle_confirm_delete,
+                                "确认吊销"
                             }
                         }
                     }
