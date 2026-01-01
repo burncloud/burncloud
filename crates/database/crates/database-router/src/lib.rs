@@ -224,21 +224,8 @@ impl RouterDatabase {
             .await?;
         }
 
-        let token_count: i64 = sqlx::query("SELECT COUNT(*) FROM router_tokens")
-            .fetch_one(conn.pool())
-            .await?
-            .get(0);
-
-        if token_count == 0 {
-            sqlx::query(
-                r#"
-                INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota)
-                VALUES ('sk-burncloud-demo', 'demo-user', 'active', -1, 0)
-                "#,
-            )
-            .execute(conn.pool())
-            .await?;
-        }
+        // Default demo token seeding removed to prevent "sk-burncloud-demo" from reappearing
+        // whenever the user clears their keys.
 
         Ok(())
     }

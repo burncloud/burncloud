@@ -7,3 +7,4 @@ edition = "2021"
 dioxus.workspace = true
 burncloud-client-shared = { path = "../client-shared" }
 arboard = "3.4"
+tokio = { workspace = true, features = ["time"] }
