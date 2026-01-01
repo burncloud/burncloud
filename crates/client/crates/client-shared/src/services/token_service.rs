@@ -21,4 +21,8 @@ impl TokenService {
     pub async fn delete(token: &str) -> Result<()> {
         API_CLIENT.delete_token(token).await
     }
+
+    pub async fn update_status(token: &str, status: &str) -> Result<()> {
+        API_CLIENT.update_token_status(token, status).await
+    }
 }

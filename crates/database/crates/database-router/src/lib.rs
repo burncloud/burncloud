@@ -483,6 +483,16 @@ impl RouterDatabase {
         Ok(())
     }
 
+    pub async fn update_token_status(db: &Database, token: &str, status: &str) -> Result<()> {
+        let conn = db.get_connection()?;
+        sqlx::query("UPDATE router_tokens SET status = ? WHERE token = ?")
+            .bind(status)
+            .bind(token)
+            .execute(conn.pool())
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
         let conn = db.get_connection()?;
         let logs = sqlx::query_as::<_, DbRouterLog>(

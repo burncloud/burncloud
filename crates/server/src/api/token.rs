@@ -16,12 +16,17 @@ pub struct CreateTokenRequest {
     pub quota_limit: Option<i64>,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct UpdateTokenRequest {
+    pub status: String,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/console/api/tokens", post(create_token).get(list_tokens))
         .route(
             "/console/api/tokens/{token}",
-            get(delete_token).delete(delete_token),
+            get(delete_token).delete(delete_token).put(update_token),
         )
 }
 
@@ -67,6 +72,28 @@ async fn create_token(
         }
         Err(e) => {
             log::error!("[API] create_token error: {}", e);
+            Json(json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+async fn update_token(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+    Json(payload): Json<UpdateTokenRequest>,
+) -> Json<Value> {
+    log::info!(
+        "[API] update_token request: {} -> {}",
+        token,
+        payload.status
+    );
+    match RouterDatabase::update_token_status(&state.db, &token, &payload.status).await {
+        Ok(_) => {
+            log::info!("[API] update_token success");
+            Json(json!({ "status": "updated", "token": token }))
+        }
+        Err(e) => {
+            log::error!("[API] update_token error: {}", e);
             Json(json!({ "error": e.to_string() }))
         }
     }
