@@ -4,25 +4,6 @@
 *.pdb
 Cargo.lock
 
-# Root
-/.playwright-mcp
-/nul
-/*.txt
-/*.log
-/*.png
-/*.js
-/*.py
-/*.sh
-/*.bat
-/*.json
-MESSAGE.md
-ISSUE.md
-home-current.jpeg
-
-# LLM files
-GEMINI.md
-CLAUDE.md
-
 # nodejs
 package-lock.json
 yarn.lock
@@ -80,3 +61,4 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+
