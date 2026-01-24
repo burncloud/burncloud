@@ -13,6 +13,7 @@ pub enum ButtonVariant {
 pub fn BCButton(
     #[props(default)] variant: ButtonVariant,
     #[props(default)] loading: bool,
+    #[props(default)] disabled: bool,
     #[props(default)] class: String,
     #[props(default)] onclick: EventHandler<MouseEvent>,
     children: Element,
@@ -27,7 +28,7 @@ pub fn BCButton(
     };
 
     let btn_type = r#type.unwrap_or("button".to_string());
-    let loading_class = if loading {
+    let loading_class = if loading || disabled {
         "opacity-75 cursor-not-allowed"
     } else {
         ""
@@ -37,10 +38,10 @@ pub fn BCButton(
         button {
             class: "{base_class} {variant_class} {class} {loading_class}",
             r#type: "{btn_type}",
-            onclick: move |e| if !loading { onclick.call(e) },
-            disabled: "{loading}",
+            onclick: move |e| if !loading && !disabled { onclick.call(e) },
+            disabled: "{loading || disabled}",
             if loading {
-                span { class: "spinner-border spinner-border-sm me-2", role: "status" }
+                span { class: "loading loading-spinner loading-xs me-2", role: "status" }
                 " "
             }
             {children}

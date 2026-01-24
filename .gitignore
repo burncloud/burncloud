@@ -21,6 +21,8 @@ ISSUE.md
 home-current.jpeg
 
 # LLM files
+/.ralph
+/.gemini
 GEMINI.md
 CLAUDE.md
 

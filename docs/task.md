@@ -24,7 +24,7 @@
             "点击 'Delete' 按钮，必须弹出确认Modal对话框",
             "在Modal中点击确认，验证该模型行从表格中消失"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "ui",
