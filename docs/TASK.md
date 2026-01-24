@@ -5,5 +5,5 @@
         "运行burncloud为server模式",
         "验证首页是否正常访问"
     ],
-    "passes": false
+    "passes": true
 }
