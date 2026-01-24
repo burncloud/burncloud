@@ -15,6 +15,7 @@ Cargo.lock
 /*.sh
 /*.bat
 /*.json
+/*.pid
 MESSAGE.md
 ISSUE.md
 home-current.jpeg
