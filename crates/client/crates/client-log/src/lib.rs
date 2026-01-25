@@ -20,12 +20,12 @@ fn default_level() -> String {
 #[component]
 pub fn LogPage() -> Element {
     let mut search_query = use_signal(|| "".to_string());
-    
+
     let logs_resource = use_resource(move || async move {
         let client = reqwest::Client::new();
         // Use relative URL for WASM/Web compatibility
         let res = client.get("/console/api/logs").send().await;
-        
+
         match res {
             Ok(r) => {
                 if let Ok(data) = r.json::<serde_json::Value>().await {
@@ -54,10 +54,11 @@ pub fn LogPage() -> Element {
             return logs;
         }
         let q = query.to_lowercase();
-        logs.into_iter().filter(|log| {
-            log.message.to_lowercase().contains(&q) ||
-            log.level.to_lowercase().contains(&q)
-        }).collect::<Vec<_>>()
+        logs.into_iter()
+            .filter(|log| {
+                log.message.to_lowercase().contains(&q) || log.level.to_lowercase().contains(&q)
+            })
+            .collect::<Vec<_>>()
     });
 
     rsx! {
@@ -72,7 +73,7 @@ pub fn LogPage() -> Element {
                 }
             }
 
-            div { 
+            div {
                 class: "flex-1 overflow-auto border border-gray-200 rounded-xl bg-white shadow-sm",
                 id: "log-container",
                 if let Some(logs) = logs_resource.read().as_ref() {
@@ -89,17 +90,17 @@ pub fn LogPage() -> Element {
                             }
                             tbody {
                                 for log in filtered_logs.read().iter() {
-                                    tr { 
+                                    tr {
                                         class: "border-b border-gray-100 hover:bg-gray-50 log-entry",
                                         td { class: "p-3 text-gray-600 font-mono whitespace-nowrap", "{log.timestamp}" }
                                         td { class: "p-3",
-                                            span { 
+                                            span {
                                                 class: match log.level.as_str() {
                                                     "ERROR" => "px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-bold",
                                                     "WARN" => "px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-xs font-bold",
                                                     _ => "px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-bold"
                                                 },
-                                                "{log.level}" 
+                                                "{log.level}"
                                             }
                                         }
                                         td { class: "p-3 text-gray-800 break-all font-mono", "{log.message}" }

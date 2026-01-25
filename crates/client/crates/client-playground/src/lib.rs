@@ -28,26 +28,26 @@ fn send_msg(
     mut messages: Signal<Vec<Message>>,
     mut input_text: Signal<String>,
     mut loading: Signal<bool>,
-    selected_model: Signal<String>
+    selected_model: Signal<String>,
 ) {
     let text = input_text();
     if text.trim().is_empty() {
         return;
     }
-    
+
     // Add user message locally
     messages.write().push(Message {
         role: "user".to_string(),
         content: text.clone(),
     });
-    
+
     input_text.set(String::new());
     loading.set(true);
 
     spawn(async move {
         let req_msgs = messages.read().clone();
         let model = selected_model.read().clone();
-        
+
         if model == "gpt2" {
             // Mock response for E2E testing
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -61,7 +61,8 @@ fn send_msg(
 
         let client = Client::new();
         // In a real app, use a configured base URL
-        let res = client.post("http://127.0.0.1:3000/v1/chat/completions")
+        let res = client
+            .post("http://127.0.0.1:3000/v1/chat/completions")
             .json(&ChatRequest {
                 model,
                 messages: req_msgs,
@@ -106,7 +107,7 @@ pub fn PlaygroundPage() -> Element {
                     option { value: "gpt-3.5-turbo", "gpt-3.5-turbo" }
                 }
             }
-            
+
             div { class: "flex-1 overflow-y-auto border rounded p-4 space-y-4 bg-gray-50",
                 for msg in messages() {
                     div { class: format!("flex w-full {}", if msg.role == "user" { "justify-end" } else { "justify-start" }),

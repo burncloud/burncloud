@@ -535,11 +535,11 @@ pub fn ChannelPage() -> Element {
         let mut new_c = c.clone();
         new_c.status = if c.status == 1 { 0 } else { 1 };
         spawn(async move {
-             if ChannelService::update(&new_c).await.is_ok() {
-                 channels.restart();
-             } else {
-                 toast.error("Failed to update status");
-             }
+            if ChannelService::update(&new_c).await.is_ok() {
+                channels.restart();
+            } else {
+                toast.error("Failed to update status");
+            }
         });
     };
 
@@ -630,7 +630,7 @@ pub fn ChannelPage() -> Element {
                                                                 div { class: "text-sm opacity-50", "{channel.models}" }
                                                             }
                                                             td {
-                                                                "1" 
+                                                                "1"
                                                             }
                                                             td {
                                                                 div { class: "flex gap-2",

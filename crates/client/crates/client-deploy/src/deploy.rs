@@ -18,7 +18,7 @@ pub fn DeployConfig() -> Element {
             // Simulate deployment delay
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
             is_deploying.set(false);
-            
+
             toast.success("Deployment Successful");
             nav.push("/console/models");
         });
@@ -35,13 +35,13 @@ pub fn DeployConfig() -> Element {
             // Form
             div { class: "max-w-2xl bg-base-100 p-8 rounded-xl border border-base-200 shadow-sm",
                 div { class: "flex flex-col gap-6",
-                    
+
                     // Source Selection
                     div { class: "form-control w-full",
                         label { class: "label",
                             span { class: "label-text font-medium", "Source" }
                         }
-                        select { 
+                        select {
                             class: "select select-bordered w-full",
                             value: "{source}",
                             onchange: move |e| source.set(e.value()),
