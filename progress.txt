@@ -24,3 +24,9 @@
 - Mocked Login, User Info, and Deploy endpoints.
 - Verified static analysis (Typecheck) passes.
 - Note: Runtime execution failed due to environment constraint (missing running frontend). Accepted as per project precedence.
+
+[2026-01-25] Implemented Playground E2E tests.
+- Rewrote 'crates/tests/tests/ui/playground.spec.ts' to use Mocks.
+- Mocked Login, User Info, and Chat Completions endpoints.
+- Verified static analysis (Typecheck) passes.
+- Note: Runtime execution failed due to environment constraint.

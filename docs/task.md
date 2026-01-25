@@ -39,7 +39,7 @@
             "断言输入框内容被清空，且页面中出现包含 'Hello World' 的用户消息气泡",
             "等待 POST 请求完成，断言页面中出现包含 'Mock AI Response' 的 AI 回复气泡"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "ui",

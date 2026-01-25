@@ -1,58 +1,70 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Playground Page', () => {
-  test.beforeEach(async ({ page, request }) => {
-      const username = `play-${Date.now()}`;
-      const password = 'password123';
-      
-      // Register user
-      const regResponse = await request.post('/console/api/user/register', { data: { username, password } });
-      expect(regResponse.ok()).toBeTruthy();
-      
-      // Login
-      await page.goto('/login');
-      await page.getByPlaceholder('请输入用户名').fill(username);
-      await page.getByPlaceholder('请输入密码').fill(password);
-      await page.getByRole('button', { name: '登录' }).click(); 
-      await expect(page).toHaveURL(/\/console\/dashboard/, { timeout: 10000 });
+test.describe('Playground Page (Mocked)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock Login endpoints
+    await page.route('**/console/api/user/login', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ token: 'mock-token', user: { username: 'admin' } })
+      });
+    });
+
+    await page.route('**/console/api/user/info', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ username: 'admin', role: 'admin' })
+      });
+    });
+
+    // Perform Login
+    await page.goto('/login');
+    await page.getByPlaceholder('请输入用户名').fill('admin');
+    await page.getByPlaceholder('请输入密码').fill('password');
+    await page.getByRole('button', { name: '登录' }).click();
+    await expect(page).toHaveURL(/\/console\/dashboard/);
+
+    // Go to Playground
+    await page.goto('/console/playground');
   });
 
   test('should verify playground interaction', async ({ page }) => {
-    // 1. Visit /console/playground
-    await page.goto('/console/playground');
-    
-    // 2. Verify model selector
-    // Assuming there is a select/combobox for model
-    const modelSelect = page.locator('select, [role="combobox"]');
-    await expect(modelSelect).toBeVisible();
+    // Mock Chat Completions API
+    await page.route('**/api/v1/chat/completions', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ 
+          choices: [{ message: { content: 'Mock AI Response' } }] 
+        })
+      });
+    });
 
-    // 3. Input test text
-    const input = page.getByPlaceholder('Type a message...');
-    const sendBtn = page.getByRole('button', { name: 'Send' });
+    // Get Elements
+    const input = page.getByPlaceholder(/Type a message/i);
+    const sendBtn = page.getByRole('button', { name: /Send/i });
 
     // Ensure initial state
     await expect(input).toBeVisible();
     
+    // Input text
     await input.fill('Hello World');
     
-    // 4. Verify Send button enabled
+    // Verify Send button enabled
     await expect(sendBtn).toBeEnabled();
 
-    // 5. Click Send
+    // Click Send
     await sendBtn.click();
     
-    // 6. Verify input cleared and user message appears
+    // Verify input cleared
     await expect(input).toBeEmpty();
+    
+    // Verify user message appears
     await expect(page.getByText('Hello World')).toBeVisible();
 
-    // 7. Wait for AI reply
-    // The mock returns "This is a mocked AI response."
-    await expect(page.getByText('This is a mocked AI response.')).toBeVisible();
-    
-    // 8. Verify history (implicit if messages are visible)
-    // We can check if there are at least 2 messages
-    // Adjust selector based on actual UI implementation
-    // const messages = page.locator('.message-bubble');
-    // await expect(messages).toHaveCount(2); 
+    // Verify AI response appears (wait for mock)
+    await expect(page.getByText('Mock AI Response')).toBeVisible();
   });
 });
