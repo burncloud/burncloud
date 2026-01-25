@@ -1,86 +1,85 @@
 [
     {
         "category": "ui",
-        "description": "实现模型部署(Deploy)页面的E2E测试",
+        "description": "实现模型部署(Deploy)页面的E2E测试（需登录态，全程Mock API）",
         "steps": [
-            "创建 deploy.spec.ts",
-            "访问 /deploy 路径，验证页面标题或面包屑包含'Deploy'",
-            "验证表单初始状态：在未填写Model ID或未选择Source时，'Deploy'按钮必须为Disabled状态",
-            "输入 Model ID (如 'gpt2') 并选择 Source (如 'HuggingFace')，验证'Deploy'按钮变为Enabled",
-            "点击部署按钮，验证页面跳转至 /models",
-            "验证出现'Deployment Successful'或类似成功的Toast提示消息",
-            "只修改e2e单元测试，不能修改其它代码"
+            "创建 deploy.spec.ts，在 beforeEach 中设置已登录的 Auth Token，并访问 /deploy",
+            "拦截 POST 请求 '/api/v1/models/deploy'，Mock 返回 { success: true, modelId: 'gpt2' }",
+            "验证页面标题包含 'Deploy'，且初始状态下 getByRole('button', { name: /Deploy/i }) 为 disabled",
+            "使用 getByPlaceholder 或 getByLabel 填写 Model ID 为 'gpt2'，并选择 Source 为 'HuggingFace'",
+            "断言 'Deploy' 按钮变为 enabled，点击该按钮",
+            "等待 Mock 接口调用完成，验证页面出现包含 'Deployment Successful' 文本的 Toast 提示",
+            "验证页面 URL 最终跳转至 '/models'"
         ],
-        "passes": true
+        "passes": false
     },
     {
         "category": "ui",
-        "description": "实现模型列表(Models)及管理的E2E测试",
+        "description": "实现模型列表(Models)及管理的E2E测试（需登录态，全程Mock API）",
         "steps": [
-            "创建 models.spec.ts",
-            "Mock模型数据列表，访问 /models 页面",
-            "验证表格包含必要列：'Status', 'Name', 'Replicas', 'Actions'",
-            "验证特定模型(如 'gpt2') 状态显示为 'Running' (绿色指示灯)",
-            "点击 'Stop' 按钮，验证状态变更为 'Stopped' 或出现加载状态",
-            "点击 'Delete' 按钮，必须弹出确认Modal对话框",
-            "在Modal中点击确认，验证该模型行从表格中消失",
-            "只修改e2e单元测试，不能修改其它代码"
+            "创建 models.spec.ts，在 beforeEach 中访问 /models",
+            "拦截 GET 请求 '/api/v1/models'，Mock 返回包含一个名为 'gpt2', 状态为 'Running' 的数据列表",
+            "拦截 DELETE 请求 '/api/v1/models/gpt2'，Mock 返回 { success: true }",
+            "验证页面渲染出的表格包含 'Status', 'Name', 'Replicas', 'Actions' 等列头",
+            "断言 'gpt2' 这一行的状态文本为 'Running'",
+            "点击 'gpt2' 这一行中 name='Delete' 的操作按钮",
+            "断言出现删除确认的 Modal 弹窗，点击 Modal 中的 'Confirm' 按钮",
+            "等待 DELETE 请求完成，断言 'gpt2' 这一行从 DOM 树中消失"
         ],
-        "passes": true
+        "passes": false
     },
     {
         "category": "ui",
-        "description": "实现Playground页面的E2E测试",
+        "description": "实现Playground页面的E2E测试（需登录态，全程Mock API）",
         "steps": [
-            "创建 playground.spec.ts",
-            "访问 /playground，验证模型选择下拉框默认选中或可选择",
-            "在输入框输入测试文本 'Hello World'，验证发送按钮可用",
-            "点击发送，验证输入框被清空，且对话区域出现用户消息气泡",
-            "等待并验证AI回复气泡出现，且内容不为空",
-            "验证对话历史中包含刚才的交互记录",
-            "只修改e2e单元测试，不能修改其它代码"
+            "创建 playground.spec.ts，在 beforeEach 中访问 /playground",
+            "拦截 POST 请求 '/api/v1/chat/completions'，Mock 返回 { choices: [{ message: { content: 'Mock AI Response' } }] }",
+            "使用 getByPlaceholder 定位聊天输入框，输入 'Hello World'",
+            "断言发送按钮(Role: button, Name: Send)可用，并点击发送",
+            "断言输入框内容被清空，且页面中出现包含 'Hello World' 的用户消息气泡",
+            "等待 POST 请求完成，断言页面中出现包含 'Mock AI Response' 的 AI 回复气泡"
         ],
-        "passes": true
+        "passes": false
     },
     {
         "category": "ui",
-        "description": "实现日志(Logs)页面的E2E测试",
+        "description": "实现日志(Logs)页面的E2E测试（需登录态，全程Mock API）",
         "steps": [
-            "创建 logs.spec.ts",
-            "访问 /logs 页面，验证日志容器(Container)内已有日志条目加载",
-            "在搜索框输入特定关键词(如 'ERROR')，记录当前行数",
-            "执行搜索过滤，验证显示行数减少，且剩余每一行都包含 'ERROR'",
-            "清除搜索条件，验证日志列表恢复显示所有条目",
-            "只修改e2e单元测试，不能修改其它代码"
+            "创建 logs.spec.ts，在 beforeEach 中访问 /logs",
+            "拦截 GET 请求 '/api/v1/logs'，Mock 返回包含 'INFO: App started' 和 'ERROR: Connection failed' 的日志列表",
+            "拦截 GET 请求 '/api/v1/logs?q=ERROR'，Mock 返回仅包含 'ERROR: Connection failed' 的数据",
+            "在页面加载后，断言页面中显示了 2 条日志记录",
+            "使用 getByPlaceholder 定位搜索框，输入 'ERROR' 并触发搜索/回车",
+            "等待查询请求完成，断言日志列表被过滤为 1 条，且文本包含 'ERROR'",
+            "点击清除搜索按钮，断言列表恢复为 2 条日志"
         ],
-        "passes": true
+        "passes": false
     },
     {
         "category": "ui",
-        "description": "实现账单(Billing)页面的E2E测试",
+        "description": "实现账单(Billing)页面的E2E测试（需登录态，全程Mock API）",
         "steps": [
-            "创建 billing.spec.ts",
-            "访问 /settings/billing (或对应路径)",
-            "验证余额(Balance)组件可见，且包含货币符号(如 '$' 或 '￥')",
-            "点击充值(Recharge)按钮，验证充值弹窗或表单展开",
-            "输入金额并提交，验证余额数值发生变化或显示'充值成功'提示",
-            "验证交易记录表格(Transaction History)至少包含一行数据",
-            "只修改e2e单元测试，不能修改其它代码"
+            "创建 billing.spec.ts，在 beforeEach 中访问 /settings/billing",
+            "拦截 GET 请求 '/api/v1/billing/balance'，Mock 返回 { balance: 50000, currency: 'USD' }",
+            "拦截 POST 请求 '/api/v1/billing/recharge'，Mock 返回 { success: true, new_balance: 51000 }",
+            "页面加载后，断言余额组件中显示文本 '$50,000'",
+            "点击 name='Recharge' 的按钮，断言弹窗打开，在金额输入框输入 1000，点击提交",
+            "等待 POST 请求完成，断言余额文本变更为 '$51,000' 或出现 '充值成功' 的提示"
         ],
-        "passes": true
+        "passes": false
     },
     {
         "category": "ui",
-        "description": "实现开发者设置(API Keys)的E2E测试",
+        "description": "实现开发者设置(API Keys)的E2E测试（需登录态，全程Mock API）",
         "steps": [
-            "创建 api_keys.spec.ts",
-            "访问开发者设置页面，验证 'Generate New Key' 按钮存在",
-            "点击生成，输入Key名称，提交",
-            "验证列表中新增一行，且Key Secret部分默认被掩码(如 'sk-***')或仅显示前缀",
-            "点击该Key的删除/撤销按钮，必须弹出二次确认警告",
-            "确认删除后，验证该Key从列表中移除",
-            "只修改e2e单元测试，不能修改其它代码"
+            "创建 api_keys.spec.ts，在 beforeEach 中访问 /settings/api-keys",
+            "拦截 GET 请求 '/api/v1/keys'，Mock 返回空列表 []",
+            "拦截 POST 请求 '/api/v1/keys'，Mock 返回 { id: 'key_1', name: 'Test Key', secret: 'sk-1234567890abcdef' }",
+            "点击 getByRole('button', { name: 'Generate New Key' }) 按钮",
+            "在弹出的表单中输入 Key 名称 'Test Key' 并提交",
+            "等待 POST 请求完成后，断言列表中新增一行 'Test Key'",
+            "断言该行的 Secret 部分被掩码处理，包含文本 'sk-***' 或 'sk-123...'"
         ],
-        "passes": true
+        "passes": false
     }
 ]
