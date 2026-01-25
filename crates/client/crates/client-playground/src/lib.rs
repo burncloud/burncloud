@@ -85,9 +85,13 @@ fn send_msg(
 
 #[component]
 pub fn PlaygroundPage() -> Element {
-    let mut messages = use_signal(|| Vec::<Message>::new());
-    let mut input_text = use_signal(|| String::new());
+    #[allow(unused_mut)]
+    let mut messages = use_signal(Vec::<Message>::new);
+    #[allow(unused_mut)]
+    let mut input_text = use_signal(String::new);
+    #[allow(unused_mut)]
     let mut loading = use_signal(|| false);
+    #[allow(unused_mut)]
     let mut selected_model = use_signal(|| "gpt2".to_string());
 
     rsx! {

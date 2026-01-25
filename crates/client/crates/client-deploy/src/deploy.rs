@@ -1,10 +1,10 @@
-use burncloud_client_shared::components::{BCButton, BCInput, ButtonVariant};
+use burncloud_client_shared::components::{BCButton, BCInput};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
 #[component]
 pub fn DeployConfig() -> Element {
-    let mut model_id = use_signal(|| String::new());
+    let mut model_id = use_signal(String::new);
     let mut source = use_signal(|| "HuggingFace".to_string());
     let mut is_deploying = use_signal(|| false);
     let nav = use_navigator();

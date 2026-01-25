@@ -9,7 +9,7 @@ enum ProviderType {
     OpenAI = 1,
     Anthropic = 14,
     Google = 24,
-    AWS = 99,   // Custom mapping for UI
+    Aws = 99,   // Custom mapping for UI
     Azure = 98, // Custom mapping for UI
     Local = 97, // Custom mapping for UI
 }
@@ -20,7 +20,7 @@ impl ProviderType {
             ProviderType::OpenAI => "OpenAI",
             ProviderType::Anthropic => "Anthropic",
             ProviderType::Google => "Google Gemini",
-            ProviderType::AWS => "AWS Bedrock",
+            ProviderType::Aws => "AWS Bedrock",
             ProviderType::Azure => "Azure OpenAI",
             ProviderType::Local => "Local / GGUF",
         }
@@ -52,7 +52,7 @@ impl ProviderType {
                     path { d: "M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" }
                 }
             },
-            ProviderType::AWS => rsx! {
+            ProviderType::Aws => rsx! {
                 svg {
                     view_box: "0 0 24 24",
                     class: "w-8 h-8",
@@ -438,7 +438,7 @@ pub fn ChannelPage() -> Element {
                     final_base_url = "https://generativelanguage.googleapis.com".to_string();
                     final_models = "gemini-pro,gemini-1.5-pro".to_string();
                 }
-                ProviderType::AWS => {
+                ProviderType::Aws => {
                     // Map AWS to Custom type for now, or Reuse 1 (OpenAI compatible) if router handles it?
                     // Assuming Router handles AWS SigV4 via a specific flag.
                     // For now, we use type=1 (OpenAI) but with backend magic, OR type=99 if backend supports it.
@@ -726,7 +726,7 @@ pub fn ChannelPage() -> Element {
                             if modal_step() == 0 {
                                 // Step 1: Provider Selection Grid
                                 div { class: "grid grid-cols-2 sm:grid-cols-3 gap-4",
-                                    for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::AWS, ProviderType::Azure, ProviderType::Local] {
+                                    for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
                                         button {
                                             class: "group flex flex-col items-center justify-center gap-4 p-6 h-36 rounded-2xl border border-base-200 bg-base-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ease-out",
                                             onclick: move |_| select_provider(p),
@@ -775,7 +775,7 @@ pub fn ChannelPage() -> Element {
                                         }
                                     }
 
-                                    if selected_provider() == ProviderType::AWS {
+                                    if selected_provider() == ProviderType::Aws {
                                         div { class: "alert alert-info text-xs",
                                             "注意: 您的密钥仅保存在本地，且通过 SigV4 签名请求，我们不会存储明文。"
                                         }
