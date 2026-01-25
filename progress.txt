@@ -30,3 +30,9 @@
 - Mocked Login, User Info, and Chat Completions endpoints.
 - Verified static analysis (Typecheck) passes.
 - Note: Runtime execution failed due to environment constraint.
+
+[2026-01-25] Implemented Logs E2E tests.
+- Rewrote 'crates/tests/tests/ui/logs.spec.ts' to use Mocks.
+- Mocked Login, User Info, and Logs endpoints (including search filtering).
+- Verified static analysis (Typecheck) passes.
+- Note: Runtime execution failed due to environment constraint.
