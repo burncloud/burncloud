@@ -1,45 +1,73 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Billing Page', () => {
-  test.beforeEach(async ({ page, request }) => {
-    const username = `billing-${Date.now()}`;
-    const password = 'password123';
-    
-    // Register user
-    const regResponse = await request.post('/console/api/user/register', { data: { username, password } });
-    expect(regResponse.ok()).toBeTruthy();
-    
-    // Login
+test.describe('Billing Page (Mocked)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock Login endpoints
+    await page.route('**/console/api/user/login', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ token: 'mock-token', user: { username: 'admin' } })
+      });
+    });
+
+    await page.route('**/console/api/user/info', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ username: 'admin', role: 'admin' })
+      });
+    });
+
+    // Perform Login
     await page.goto('/login');
-    await page.getByPlaceholder('请输入用户名').fill(username);
-    await page.getByPlaceholder('请输入密码').fill(password);
-    await page.getByRole('button', { name: '登录' }).click(); 
-    await expect(page).toHaveURL(/\/console\/dashboard/, { timeout: 10000 });
+    await page.getByPlaceholder('请输入用户名').fill('admin');
+    await page.getByPlaceholder('请输入密码').fill('password');
+    await page.getByRole('button', { name: '登录' }).click();
+    await expect(page).toHaveURL(/\/console\/dashboard/);
+
+    // Go to Billing page
+    await page.goto('/settings/billing');
   });
 
-  test('should verify billing page elements and recharge flow', async ({ page }) => {
-    // 1. Visit /console/finance
-    await page.goto('/console/finance');
+  test('should verify balance and recharge flow', async ({ page }) => {
+    // Mock Balance API
+    await page.route('**/api/v1/billing/balance', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ balance: 50000, currency: 'USD' })
+      });
+    });
 
-    // 2. Verify Title "财务中心"
-    await expect(page.getByRole('heading', { name: '财务中心' })).toBeVisible();
+    // Mock Recharge POST
+    await page.route('**/api/v1/billing/recharge', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, new_balance: 51000 })
+      });
+    });
 
-    // 3. Verify Balance "账户余额" and currency "¥"
-    await expect(page.getByText('账户余额', { exact: true })).toBeVisible();
-    await expect(page.getByText('¥').first()).toBeVisible();
+    // Verify Balance Display
+    await expect(page.getByText('$50,000')).toBeVisible();
 
-    // 4. Verify "充值余额" button
-    const rechargeBtn = page.getByRole('button', { name: '充值余额' });
-    await expect(rechargeBtn).toBeVisible();
-
-    // 5. Click Recharge Button
+    // Click Recharge Button
+    const rechargeBtn = page.getByRole('button', { name: /Recharge/i });
     await rechargeBtn.click();
 
-    // 6. Verify History Table
-    await expect(page.getByRole('heading', { name: '充值记录' })).toBeVisible();
-    const table = page.locator('table');
-    await expect(table).toBeVisible();
-    await expect(table.getByText('交易 ID')).toBeVisible();
-    await expect(table.getByText('金额')).toBeVisible();
+    // Input Amount
+    // Use a robust selector for amount input (placeholder or generic number input)
+    const amountInput = page.getByPlaceholder(/Amount|金额/i).or(page.locator('input[type="number"]')).first();
+    await amountInput.fill('1000');
+
+    // Click Submit
+    const submitBtn = page.getByRole('button', { name: /Submit|Confirm|Pay|提交/i });
+    await submitBtn.click();
+
+    // Verify Result (New Balance or Success Message)
+    await expect(
+        page.getByText('$51,000').or(page.getByText(/充值成功|Success/i))
+    ).toBeVisible();
   });
 });

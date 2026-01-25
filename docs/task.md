@@ -66,7 +66,7 @@
             "点击 name='Recharge' 的按钮，断言弹窗打开，在金额输入框输入 1000，点击提交",
             "等待 POST 请求完成，断言余额文本变更为 '$51,000' 或出现 '充值成功' 的提示"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "ui",

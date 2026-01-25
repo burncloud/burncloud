@@ -36,3 +36,9 @@
 - Mocked Login, User Info, and Logs endpoints (including search filtering).
 - Verified static analysis (Typecheck) passes.
 - Note: Runtime execution failed due to environment constraint.
+
+[2026-01-25] Implemented Billing E2E tests.
+- Rewrote 'crates/tests/tests/ui/billing.spec.ts' to use Mocks.
+- Mocked Login, User Info, Balance, and Recharge endpoints.
+- Verified static analysis (Typecheck) passes.
+- Note: Runtime execution failed due to environment constraint.
