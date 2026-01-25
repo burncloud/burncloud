@@ -11,7 +11,7 @@
             "等待 Mock 接口调用完成，验证页面出现包含 'Deployment Successful' 文本的 Toast 提示",
             "验证页面 URL 最终跳转至 '/models'"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "ui",

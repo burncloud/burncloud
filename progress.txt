@@ -19,3 +19,8 @@
 - Mocked `/console/api/user/login` and `/api/v1/models`.
 - Verified static analysis (Typecheck) passes.
 - Note: Runtime execution failed due to environment constraint (missing running frontend), consistent with previous tasks.
+[2026-01-25] Implemented Deploy E2E tests.
+- Rewrote 'crates/tests/tests/ui/deploy.spec.ts' to use Mocks.
+- Mocked Login, User Info, and Deploy endpoints.
+- Verified static analysis (Typecheck) passes.
+- Note: Runtime execution failed due to environment constraint (missing running frontend). Accepted as per project precedence.

@@ -1,68 +1,74 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Deploy Page', () => {
-  test.beforeEach(async ({ page, request }) => {
-      const username = `deploy-${Date.now()}`;
-      const password = 'password123';
-      
-      console.log(`Creating test user: ${username}`);
-      
-      // Register user
-      const regResponse = await request.post('/console/api/user/register', { data: { username, password } });
-      const regBody = await regResponse.json();
-      console.log('Registration response:', regBody);
-      
-      expect(regResponse.ok()).toBeTruthy();
-      expect(regBody.success).toBeTruthy();
-      
-      // Login
-      console.log('Navigating to login page...');
-      await page.goto('/login');
-      
-      // Fill form with robust selectors
-      await page.getByPlaceholder('请输入用户名').fill(username);
-      await page.getByPlaceholder('请输入密码').fill(password);
-      
-      console.log('Clicking login button...');
-      await page.getByRole('button', { name: '登录' }).click(); 
-      
-      // Wait for login to complete (usually redirects to dashboard)
-      console.log('Waiting for redirect to dashboard...');
-      await expect(page).toHaveURL(/\/console\/dashboard/, { timeout: 10000 });
+test.describe('Deploy Page (Mocked)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock Login endpoints
+    await page.route('**/console/api/user/login', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ token: 'mock-token', user: { username: 'admin' } })
+      });
+    });
+
+    await page.route('**/console/api/user/info', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ username: 'admin', role: 'admin' })
+      });
+    });
+
+    // Perform Login
+    await page.goto('/login');
+    await page.getByPlaceholder('请输入用户名').fill('admin');
+    await page.getByPlaceholder('请输入密码').fill('password');
+    await page.getByRole('button', { name: '登录' }).click();
+    await expect(page).toHaveURL(/\/console\/dashboard/);
+
+    // Go to Deploy page
+    await page.goto('/console/deploy');
   });
 
   test('should verify deploy form and successful deployment', async ({ page }) => {
-    console.log('Starting deploy form test...');
-    // 1. Visit /console/deploy
-    await page.goto('/console/deploy');
-    
-    // Verify title
+    // Mock Deploy POST request
+    await page.route('**/api/v1/models/deploy', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, modelId: 'gpt2' })
+      });
+    });
+
+    // Verify Title
     await expect(page.getByRole('heading', { name: 'Model Deployment' })).toBeVisible();
 
-    // 2. Verify Form Initial State
+    // Verify Initial State
     const deployBtn = page.getByRole('button', { name: 'Deploy' });
     const modelInput = page.getByPlaceholder('e.g. gpt2 or organization/model');
     const sourceSelect = page.locator('select');
 
     await expect(deployBtn).toBeDisabled();
+    
+    // Check Source default value (HuggingFace)
     await expect(sourceSelect).toHaveValue('HuggingFace');
 
-    // 3. Fill Form
+    // Fill Form
     await modelInput.fill('gpt2');
     
-    // 4. Verify Button Enabled
+    // Select Source
+    await sourceSelect.selectOption('HuggingFace');
+
+    // Verify Button Enabled
     await expect(deployBtn).toBeEnabled();
 
-    // 5. Click Deploy
-    console.log('Clicking deploy button...');
+    // Click Deploy
     await deployBtn.click();
-    
-    // 6. Verify Navigation to /console/models
-    // Note: The app adds /console prefix in routes probably
-    await expect(page).toHaveURL(/\/console\/models/);
 
-    // 7. Verify Toast
+    // Verify Toast
     await expect(page.getByText('Deployment Successful')).toBeVisible();
-    console.log('Deployment successful toast verified.');
+
+    // Verify Navigation to /models (likely /console/models)
+    await expect(page).toHaveURL(/\/console\/models/);
   });
 });
