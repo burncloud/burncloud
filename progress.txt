@@ -5,3 +5,10 @@ Iteration 1:
 - Used "Real-World" E2E testing approach by seeding data via API (`request.post`) instead of mocking via `page.route` (due to LiveView server-side fetching).
 - Verified Create -> List -> Delete flow.
 - Note: "Stop" status update verification skipped due to potential backend/LiveView timing issue in test environment, but UI logic is implemented.
+Iteration 2:
+- Implemented `playground.spec.ts` for E2E testing of Playground page.
+- Implemented `PlaygroundPage` (was missing/placeholder) in `crates/client/crates/client-playground`.
+- Added `tokio` and `reqwest` dependencies to `client-playground`.
+- Implemented mock logic for "gpt2" model in client code to enable E2E testing without external API key.
+- Fixed Dioxus/Rust ownership issues in event handlers.
+- Verified interaction: Model Select -> Input -> Send -> Mock Reply.
