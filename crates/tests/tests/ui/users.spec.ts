@@ -14,7 +14,7 @@ test.describe('User Management UI', () => {
       await page.fill('input[type="text"]', username);
       await page.fill('input[type="password"]', password);
       await page.getByRole('button', { name: '登录' }).click();
-      await expect(page).toHaveURL(/\/$/);
+      await expect(page).toHaveURL(/\/console\/dashboard/);
   });
 
   test('should list users with correct balance and status', async ({ page, request }) => {

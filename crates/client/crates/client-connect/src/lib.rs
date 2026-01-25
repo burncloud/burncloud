@@ -51,8 +51,8 @@ pub fn ConnectPage() -> Element {
             let key = format!("{}:{}:{}", ak, sk, region);
             let new_channel = Channel {
                 type_: ChannelType::Aws as i32,
-                name: name,
-                key: key,
+                name,
+                key,
                 base_url: format!("https://bedrock-runtime.{}.amazonaws.com", region),
                 models:
                     "anthropic.claude-3-sonnet-20240229-v1:0,anthropic.claude-3-haiku-20240307-v1:0"

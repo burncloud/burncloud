@@ -92,7 +92,11 @@ pub fn launch_gui_with_tray() {
         .with_resizable(true)
         .with_decorations(false);
 
-    let config = Config::new().with_window(window);
+    // Use a specific data directory in temp to avoid permission issues or path conflicts
+    let data_dir = std::env::temp_dir().join("burncloud_webview_data");
+    let config = Config::new()
+        .with_window(window)
+        .with_data_directory(data_dir);
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)

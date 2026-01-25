@@ -161,7 +161,7 @@ impl CpuCollector {
         let cpu_line = stat_content
             .lines()
             .next()
-            .ok_or_else(|| MonitorError::NotAvailable)?;
+            .ok_or(MonitorError::NotAvailable)?;
 
         let parts: Vec<&str> = cpu_line.split_whitespace().collect();
         if parts.len() < 8 || parts[0] != "cpu" {

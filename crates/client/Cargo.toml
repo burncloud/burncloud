@@ -10,6 +10,7 @@ authors = ["burncloud contributors"]
 [features]
 default = ["desktop"]
 desktop = ["dioxus/desktop"]
+web = ["dioxus/web"]
 liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
 
 [dependencies]

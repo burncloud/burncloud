@@ -10,7 +10,7 @@ test.describe('Channel Management UI', () => {
       await page.fill('input[type="text"]', username);
       await page.fill('input[type="password"]', password);
       await page.click('button');
-      await expect(page).toHaveURL(/\/$/);
+      await expect(page).toHaveURL(/\/console\/dashboard/);
       
       // Navigate to Channels page
       await page.goto('/channels'); // Adjust URL if necessary based on router

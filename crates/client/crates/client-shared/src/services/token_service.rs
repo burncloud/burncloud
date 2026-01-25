@@ -9,12 +9,7 @@ impl TokenService {
     }
 
     pub async fn create(user_id: &str, quota_limit: Option<i64>) -> Result<String> {
-        let quota = if let Some(q) = quota_limit {
-            // Ensure we handle -1 or other "unlimited" logic if standard calls for it
-            Some(q)
-        } else {
-            None
-        };
+        let quota = quota_limit;
         API_CLIENT.create_token(user_id, quota).await
     }
 

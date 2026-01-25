@@ -9,7 +9,7 @@ enum ProviderType {
     OpenAI = 1,
     Anthropic = 14,
     Google = 24,
-    AWS = 99,   // Custom mapping for UI
+    Aws = 99,   // Custom mapping for UI
     Azure = 98, // Custom mapping for UI
     Local = 97, // Custom mapping for UI
 }
@@ -20,7 +20,7 @@ impl ProviderType {
             ProviderType::OpenAI => "OpenAI",
             ProviderType::Anthropic => "Anthropic",
             ProviderType::Google => "Google Gemini",
-            ProviderType::AWS => "AWS Bedrock",
+            ProviderType::Aws => "AWS Bedrock",
             ProviderType::Azure => "Azure OpenAI",
             ProviderType::Local => "Local / GGUF",
         }
@@ -52,7 +52,7 @@ impl ProviderType {
                     path { d: "M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" }
                 }
             },
-            ProviderType::AWS => rsx! {
+            ProviderType::Aws => rsx! {
                 svg {
                     view_box: "0 0 24 24",
                     class: "w-8 h-8",
@@ -438,7 +438,7 @@ pub fn ChannelPage() -> Element {
                     final_base_url = "https://generativelanguage.googleapis.com".to_string();
                     final_models = "gemini-pro,gemini-1.5-pro".to_string();
                 }
-                ProviderType::AWS => {
+                ProviderType::Aws => {
                     // Map AWS to Custom type for now, or Reuse 1 (OpenAI compatible) if router handles it?
                     // Assuming Router handles AWS SigV4 via a specific flag.
                     // For now, we use type=1 (OpenAI) but with backend magic, OR type=99 if backend supports it.
@@ -531,6 +531,18 @@ pub fn ChannelPage() -> Element {
         });
     };
 
+    let handle_toggle_status = move |c: Channel| {
+        let mut new_c = c.clone();
+        new_c.status = if c.status == 1 { 0 } else { 1 };
+        spawn(async move {
+            if ChannelService::update(&new_c).await.is_ok() {
+                channels.restart();
+            } else {
+                toast.error("Failed to update status");
+            }
+        });
+    };
+
     let channels_data = channels.read().clone();
 
     // Determine if any modal is open (retained for logic if needed, but styling is now handled by overlay)
@@ -589,79 +601,80 @@ pub fn ChannelPage() -> Element {
                                     }
                                 } else {
                                     rsx! {
-                                        div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10 w-full px-1",
-                                            for channel in list {
-                                                div { class: "group relative flex flex-col justify-between p-6 min-h-[220px] h-full bg-base-100 rounded-2xl border border-base-200 hover:border-base-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 ease-out cursor-default",
-                                                    // Status Indicator (Breathing Light)
-                                                    div { class: "absolute top-6 right-6",
-                                                        if channel.status == 1 {
-                                                            span { class: "relative flex h-3 w-3",
-                                                                span { class: "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" }
-                                                                span { class: "relative inline-flex rounded-full h-3 w-3 bg-emerald-500" }
-                                                            }
-                                                        } else {
-                                                            span { class: "h-3 w-3 rounded-full bg-base-300" }
-                                                        }
+                                        div { class: "w-full overflow-x-auto",
+                                            table { class: "table table-lg",
+                                                thead {
+                                                    tr {
+                                                        th { "Status" }
+                                                        th { "Name" }
+                                                        th { "Replicas" }
+                                                        th { "Actions" }
                                                     }
-
-                                                    // Card Header
-                                                    div {
-                                                        div { class: "text-[10px] font-bold tracking-widest text-base-content/30 uppercase mb-3",
-                                                            match channel.type_ {
-                                                                1 => {
-                                                                    if channel.base_url.contains("amazonaws.com") {
-                                                                        "AWS Bedrock"
-                                                                    } else if channel.base_url.contains("azure.com") {
-                                                                        "Azure OpenAI"
-                                                                    } else {
-                                                                        "OpenAI"
+                                                }
+                                                tbody {
+                                                    for channel in list {
+                                                        tr {
+                                                            td {
+                                                                if channel.status == 1 {
+                                                                    div { class: "badge badge-success gap-2",
+                                                                        "Running"
                                                                     }
-                                                                },
-                                                                14 => "Anthropic",
-                                                                24 => "Google",
-                                                                _ => "Custom"
+                                                                } else {
+                                                                    div { class: "badge badge-ghost gap-2",
+                                                                        "Stopped"
+                                                                    }
+                                                                }
                                                             }
-                                                        }
-                                                        h3 { class: "text-xl font-bold text-base-content tracking-tight leading-tight pr-4 break-all line-clamp-2", "{channel.name}" }
-                                                    }
-
-                                                    // Card Footer
-                                                    div { class: "flex items-end justify-between mt-4",
-                                                        div { class: "flex flex-col gap-1.5 min-w-0 flex-1",
-                                                            span { class: "text-xs text-base-content/40 font-semibold tracking-wide", "AVAILABLE MODELS" }
-                                                            div {
-                                                                class: "tooltip tooltip-bottom w-full",
-                                                                "data-tip": "{channel.models}",
-                                                                div { class: "font-mono text-xs text-base-content/70 bg-base-200/50 px-2 py-1 rounded w-full break-all text-left",
+                                                            td {
+                                                                div { class: "font-bold", "{channel.name}" }
+                                                                div { class: "text-sm opacity-50", "{channel.models}" }
+                                                            }
+                                                            td {
+                                                                "1"
+                                                            }
+                                                            td {
+                                                                div { class: "flex gap-2",
                                                                     {
-                                                                        let s = channel.models.clone();
-                                                                        if s.len() > 60 {
-                                                                            format!("{}...", &s[0..60])
+                                                                        let c_stop = channel.clone();
+                                                                        let c_start = channel.clone();
+                                                                        if channel.status == 1 {
+                                                                            rsx! {
+                                                                                button {
+                                                                                    class: "btn btn-sm btn-warning",
+                                                                                    onclick: move |_| handle_toggle_status(c_stop.clone()),
+                                                                                    "Stop"
+                                                                                }
+                                                                            }
                                                                         } else {
-                                                                            s
+                                                                            rsx! {
+                                                                                button {
+                                                                                    class: "btn btn-sm btn-success",
+                                                                                    onclick: move |_| handle_toggle_status(c_start.clone()),
+                                                                                    "Start"
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    {
+                                                                        let c_delete = channel.clone();
+                                                                        rsx! {
+                                                                            button {
+                                                                                class: "btn btn-sm btn-error btn-outline",
+                                                                                onclick: move |_| {
+                                                                                    delete_channel_id.set(c_delete.id);
+                                                                                    delete_channel_name.set(c_delete.name.clone());
+                                                                                    is_delete_modal_open.set(true);
+                                                                                },
+                                                                                "Delete"
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
                                                             }
                                                         }
-
-                                                        // Actions (Delete)
-                                                        button {
-                                                            class: "btn btn-circle btn-sm btn-ghost text-base-content/20 hover:text-error hover:bg-error/5 transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 duration-200",
-                                                            onclick: move |_| {
-                                                                delete_channel_id.set(channel.id);
-                                                                delete_channel_name.set(channel.name.clone());
-                                                                is_delete_modal_open.set(true);
-                                                            },
-                                                            title: "移除连接",
-                                                            svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
-                                                            }
-                                                        }
                                                     }
                                                 }
                                             }
-
                                         }
                                     }
                                 }
@@ -713,7 +726,7 @@ pub fn ChannelPage() -> Element {
                             if modal_step() == 0 {
                                 // Step 1: Provider Selection Grid
                                 div { class: "grid grid-cols-2 sm:grid-cols-3 gap-4",
-                                    for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::AWS, ProviderType::Azure, ProviderType::Local] {
+                                    for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
                                         button {
                                             class: "group flex flex-col items-center justify-center gap-4 p-6 h-36 rounded-2xl border border-base-200 bg-base-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ease-out",
                                             onclick: move |_| select_provider(p),
@@ -762,7 +775,7 @@ pub fn ChannelPage() -> Element {
                                         }
                                     }
 
-                                    if selected_provider() == ProviderType::AWS {
+                                    if selected_provider() == ProviderType::Aws {
                                         div { class: "alert alert-info text-xs",
                                             "注意: 您的密钥仅保存在本地，且通过 SigV4 签名请求，我们不会存储明文。"
                                         }

@@ -56,7 +56,7 @@ serde_json = "1.0"
 thiserror = "1.0"
 
 # UI Framework
-dioxus = { version = "0.7.2", features = ["desktop"] }
+dioxus = { version = "0.7.2", default-features = false }
 dioxus-router = "0.7.2"
 dioxus-liveview = { version = "0.7.2", features = ["axum"] }
 
@@ -175,7 +175,7 @@ burncloud-core.workspace = true
 burncloud-cli.workspace = true
 burncloud-server.workspace = true
 burncloud-code.workspace = true
-burncloud-client.workspace = true
+burncloud-client = { workspace = true, default-features = false, features = ["liveview"] }
 burncloud-router.workspace = true
 
 tokio.workspace = true
