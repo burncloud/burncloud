@@ -129,9 +129,9 @@ impl DiskCollector {
                 )));
             }
 
-            let block_size = statvfs.f_frsize as u64;
-            let total_blocks = statvfs.f_blocks as u64;
-            let free_blocks = statvfs.f_bavail as u64;
+            let block_size = statvfs.f_frsize;
+            let total_blocks = statvfs.f_blocks;
+            let free_blocks = statvfs.f_bavail;
 
             let total = total_blocks * block_size;
             let available = free_blocks * block_size;

@@ -36,7 +36,7 @@ test.describe('Login Flow', () => {
     await page.click('button');
 
     // Wait for redirect
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/console\/dashboard/);
     await expect(page.locator('body')).toContainText('仪表盘'); // Or 'Dashboard'
   });
 });
