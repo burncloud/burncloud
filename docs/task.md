@@ -80,6 +80,6 @@
             "等待 POST 请求完成后，断言列表中新增一行 'Test Key'",
             "断言该行的 Secret 部分被掩码处理，包含文本 'sk-***' 或 'sk-123...'"
         ],
-        "passes": false
+        "passes": true
     }
 ]
