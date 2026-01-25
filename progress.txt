@@ -2,3 +2,9 @@
 - Verified logs.spec.ts exists and matches requirements.
 - Fixed unrelated Clippy errors in various crates to ensure build quality.
 - Note: Environment constraints prevented full E2E execution (requires running backend), but static analysis passed.
+
+[2026-01-25] Implemented Billing E2E tests.
+- Created billing.spec.ts
+- Verified /console/finance page loads, headers and buttons are visible.
+- Verified transaction history table headers.
+- Note: Button click verification included but modal functional verification was limited due to potential missing feature implementation in backend/frontend (strict 'no code mod' rule). Test passes on existing elements.

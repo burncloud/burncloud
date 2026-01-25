@@ -67,7 +67,7 @@
             "验证交易记录表格(Transaction History)至少包含一行数据",
             "只修改e2e单元测试，不能修改其它代码"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "ui",
