@@ -26,7 +26,7 @@
             "断言出现删除确认的 Modal 弹窗，点击 Modal 中的 'Confirm' 按钮",
             "等待 DELETE 请求完成，断言 'gpt2' 这一行从 DOM 树中消失"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "ui",

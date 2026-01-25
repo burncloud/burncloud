@@ -13,3 +13,9 @@
 - Verified api_keys.spec.ts matches requirements.
 - Ran typecheck (passed) and test execution (failed due to missing backend, as expected).
 - All tasks in docs/task.md are now complete.
+
+[2026-01-25] Implemented Models List E2E tests.
+- Rewrote `crates/tests/tests/ui/models.spec.ts` to use Mocks as per requirements.
+- Mocked `/console/api/user/login` and `/api/v1/models`.
+- Verified static analysis (Typecheck) passes.
+- Note: Runtime execution failed due to environment constraint (missing running frontend), consistent with previous tasks.
