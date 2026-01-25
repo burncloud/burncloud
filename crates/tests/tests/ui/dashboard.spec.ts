@@ -13,7 +13,7 @@ test.describe('Dashboard', () => {
       await page.fill('input[type="text"]', username);
       await page.fill('input[type="password"]', password);
       await page.click('button');
-      await expect(page).toHaveURL(/\/$/);
+      await expect(page).toHaveURL(/\/console\/dashboard/);
   });
 
   test('should display system metrics', async ({ page }) => {

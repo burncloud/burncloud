@@ -23,7 +23,7 @@ pub fn AccessCredentialsPage() -> Element {
     // State management
     let mut show_create_modal = use_signal(|| false);
     let mut show_key_result_modal = use_signal(|| false);
-    let mut new_full_key = use_signal(|| String::new());
+    let mut new_full_key = use_signal(String::new);
 
     let auth = use_auth();
     let user = auth.current_user;
@@ -132,7 +132,7 @@ pub fn AccessCredentialsPage() -> Element {
 
     // Delete Modal State
     let mut is_delete_modal_open = use_signal(|| false);
-    let mut delete_token_id = use_signal(|| String::new());
+    let mut delete_token_id = use_signal(String::new);
 
     let mut open_delete_modal = move |token: String| {
         delete_token_id.set(token);
@@ -205,7 +205,7 @@ pub fn AccessCredentialsPage() -> Element {
                 } else {
                     div { class: "grid gap-4",
                         {
-                            keys().into_iter().enumerate().map(|(_idx, key)| {
+                            keys().into_iter().map(|key| {
                                 // Clone IDs for closures to avoid move errors
                                 let status_id = key.id.clone();
                                 let delete_id = key.id.clone();
@@ -274,7 +274,7 @@ pub fn AccessCredentialsPage() -> Element {
                                                             }
                                                         });
                                                     },
-                                                    {render_status_icon(&key.status)}
+                                                    {render_status_icon(key.status)}
                                                 }
 
                                                 button {

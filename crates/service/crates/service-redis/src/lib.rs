@@ -3,7 +3,6 @@
 //! Redis 服务层，提供连接池管理和常用操作封装
 
 use redis::AsyncCommands;
-use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -53,9 +52,9 @@ impl RedisService {
     pub async fn set(&self, key: &str, value: &str, expire_seconds: Option<u64>) -> Result<()> {
         let mut conn = self.get_connection().await?;
         if let Some(ex) = expire_seconds {
-            conn.set_ex(key, value, ex).await?;
+            conn.set_ex::<_, _, ()>(key, value, ex).await?;
         } else {
-            conn.set(key, value).await?;
+            conn.set::<_, _, ()>(key, value).await?;
         }
         Ok(())
     }
@@ -70,7 +69,7 @@ impl RedisService {
     /// 删除键 (Del)
     pub async fn del(&self, key: &str) -> Result<()> {
         let mut conn = self.get_connection().await?;
-        conn.del(key).await?;
+        conn.del::<_, ()>(key).await?;
         Ok(())
     }
 

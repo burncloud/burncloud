@@ -14,7 +14,7 @@ test.describe('Channel Management UI', () => {
       await page.fill('input[type="password"]', password);
       // Use robust role-based locator
       await page.getByRole('button', { name: '登录' }).click();
-      await expect(page).toHaveURL(/\/$/);
+      await expect(page).toHaveURL(/\/console\/dashboard/);
   });
 
   test('should create and delete a channel via UI', async ({ page }) => {
