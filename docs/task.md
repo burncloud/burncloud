@@ -153,7 +153,7 @@
             "在 `crates/router/src/adaptor/factory.rs` 中注册 `ChannelType::VertexAi`",
             "验证: `AdaptorFactory::get_adaptor(ChannelType::VertexAi)` 返回正确的适配器实例"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backend",

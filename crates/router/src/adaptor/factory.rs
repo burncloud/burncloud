@@ -124,9 +124,27 @@ impl AdaptorFactory {
             | ChannelType::DeepSeek
             | ChannelType::Moonshot => Box::new(OpenAIAdaptor),
             ChannelType::Anthropic => Box::new(AnthropicAdaptor),
-            ChannelType::Gemini | ChannelType::VertexAi => Box::new(GoogleGeminiAdaptor),
+            ChannelType::Gemini => Box::new(GoogleGeminiAdaptor),
+            ChannelType::VertexAi => Box::new(crate::adaptor::vertex::VertexAdaptor::default()),
             // Add more mappings here
             _ => Box::new(OpenAIAdaptor), // Default to OpenAI-compatible
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_adaptor() {
+        let adaptor = AdaptorFactory::get_adaptor(ChannelType::VertexAi);
+        assert_eq!(adaptor.name(), "VertexAi");
+
+        let adaptor = AdaptorFactory::get_adaptor(ChannelType::Gemini);
+        assert_eq!(adaptor.name(), "GoogleGemini");
+        
+        let adaptor = AdaptorFactory::get_adaptor(ChannelType::OpenAI);
+        assert_eq!(adaptor.name(), "OpenAI");
     }
 }
