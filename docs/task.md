@@ -193,6 +193,6 @@
             "在 Playground 中选择该模型，发送对话请求 (Stream & Non-Stream)",
             "验证: 能成功收到回复，且无报错"
         ],
-        "passes": false
+        "passes": true
     }
 ]

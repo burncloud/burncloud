@@ -14,6 +14,8 @@ pub struct DbUpstream {
     pub priority: i32,
     #[sqlx(default)]
     pub protocol: String, // "openai", "gemini", "claude"
+    pub param_override: Option<String>,
+    pub header_override: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -76,7 +78,9 @@ impl RouterDatabase {
                     match_path TEXT NOT NULL,
                     auth_type TEXT NOT NULL,
                     priority INTEGER NOT NULL DEFAULT 0,
-                    protocol TEXT NOT NULL DEFAULT 'openai'
+                    protocol TEXT NOT NULL DEFAULT 'openai',
+                    param_override TEXT,
+                    header_override TEXT
                 );
                 "#,
                 r#"
@@ -129,7 +133,9 @@ impl RouterDatabase {
                     match_path TEXT NOT NULL,
                     auth_type TEXT NOT NULL,
                     priority INTEGER NOT NULL DEFAULT 0,
-                    protocol TEXT NOT NULL DEFAULT 'openai'
+                    protocol TEXT NOT NULL DEFAULT 'openai',
+                    param_override TEXT,
+                    header_override TEXT
                 );
                 "#,
                 r#"
@@ -190,6 +196,16 @@ impl RouterDatabase {
             .await;
             let _ = sqlx::query(
                 "ALTER TABLE router_upstreams ADD COLUMN protocol TEXT NOT NULL DEFAULT 'openai'",
+            )
+            .execute(conn.pool())
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE router_upstreams ADD COLUMN param_override TEXT",
+            )
+            .execute(conn.pool())
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE router_upstreams ADD COLUMN header_override TEXT",
             )
             .execute(conn.pool())
             .await;
@@ -270,7 +286,7 @@ impl RouterDatabase {
     pub async fn get_all_upstreams(db: &Database) -> Result<Vec<DbUpstream>> {
         let conn = db.get_connection()?;
         let rows = sqlx::query_as::<_, DbUpstream>(
-            "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol FROM router_upstreams"
+            "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override FROM router_upstreams"
         )
         .fetch_all(conn.pool())
         .await?;
@@ -359,9 +375,9 @@ impl RouterDatabase {
     pub async fn create_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
         let conn = db.get_connection()?;
         sqlx::query(
-            "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
-        .bind(&u.id).bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol)
+        .bind(&u.id).bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol).bind(&u.param_override).bind(&u.header_override)
         .execute(conn.pool())
         .await?;
         Ok(())
@@ -370,7 +386,7 @@ impl RouterDatabase {
     pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<DbUpstream>> {
         let conn = db.get_connection()?;
         let upstream = sqlx::query_as::<_, DbUpstream>(
-            "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol FROM router_upstreams WHERE id = ?"
+            "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override FROM router_upstreams WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(conn.pool())

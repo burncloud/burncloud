@@ -55,8 +55,8 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             auth_type: AuthType::from(u.auth_type.as_str()),
             priority: u.priority,
             protocol: u.protocol,
-            param_override: None,
-            header_override: None,
+            param_override: u.param_override,
+            header_override: u.header_override,
         })
         .collect();
 
@@ -508,6 +508,7 @@ async fn proxy_logic(
         let channel_type = match upstream.protocol.as_str() {
             "claude" => ChannelType::Anthropic,
             "gemini" => ChannelType::Gemini,
+            "vertex" => ChannelType::VertexAi,
             _ => ChannelType::OpenAI,
         };
 
@@ -612,6 +613,9 @@ async fn proxy_logic(
                                  Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)) 
                              }
                          });
+                         
+                         let done = futures::stream::once(async { Ok(axum::body::Bytes::from("data: [DONE]\n\n")) });
+                         let final_stream = stream.chain(done);
 
                          return (
                             Response::builder()
@@ -619,7 +623,7 @@ async fn proxy_logic(
                                 .header("content-type", "text/event-stream")
                                 .header("cache-control", "no-cache")
                                 .header("connection", "keep-alive")
-                                .body(Body::from_stream(stream)) 
+                                .body(Body::from_stream(final_stream)) 
                                 .unwrap(),
                             last_upstream_id,
                             status,

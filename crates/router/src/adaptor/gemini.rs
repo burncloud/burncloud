@@ -70,7 +70,18 @@ impl GeminiAdaptor {
 
     // Convert Gemini Response JSON -> OpenAI Response JSON
     // NOTE: This handles non-streaming response only for now.
-    pub fn convert_response(gemini_resp: Value, model: &str) -> Value {
+    pub fn convert_response(mut gemini_resp: Value, model: &str) -> Value {
+        // Handle Array (from streamGenerateContent)
+        if gemini_resp.is_array() {
+            if let Value::Array(mut arr) = gemini_resp {
+                gemini_resp = if !arr.is_empty() {
+                    arr.remove(0)
+                } else {
+                    Value::Null
+                };
+            }
+        }
+
         // TODO: Robust error handling if gemini_resp is error
         let candidate = gemini_resp.get("candidates").and_then(|c| c.get(0));
 

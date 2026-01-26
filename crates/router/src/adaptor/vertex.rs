@@ -55,6 +55,10 @@ impl ChannelAdaptor for VertexAdaptor {
         "VertexAi"
     }
 
+    fn convert_response(&self, response: Value, model: &str) -> Option<Value> {
+        Some(GeminiAdaptor::convert_response(response, model))
+    }
+
     fn convert_stream_response(&self, chunk: &str) -> Option<String> {
         GeminiAdaptor::convert_stream_response(chunk)
     }
@@ -75,21 +79,24 @@ impl ChannelAdaptor for VertexAdaptor {
             }
         };
 
-        // Get Access Token
-        let token = match self.get_access_token(&client_email, &private_key).await {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("VertexAdaptor: Failed to get Access Token: {}", e);
-                return client.post("http://failed-to-get-token");
-            }
-        };
-
         // Parse Request Body to OpenAIChatRequest
         let openai_req: OpenAIChatRequest = match serde_json::from_value(body.clone()) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("VertexAdaptor: Failed to parse OpenAI Request: {}", e);
                 return client.post("http://failed-to-parse-body");
+            }
+        };
+
+        // Check for Auth URL override
+        let auth_url_override = openai_req.extra.get("auth_url").and_then(|v| v.as_str());
+
+        // Get Access Token
+        let token = match self.get_access_token(&client_email, &private_key, auth_url_override).await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("VertexAdaptor: Failed to get Access Token: {}", e);
+                return client.post("http://failed-to-get-token");
             }
         };
 
@@ -110,15 +117,26 @@ impl ChannelAdaptor for VertexAdaptor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| "us-central1".to_string());
+        
+        let custom_base_url = openai_req.extra.get("base_url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         // Convert Body
         let vertex_body = GeminiAdaptor::convert_request(openai_req);
 
         // Construct URL
-        let url = format!(
-            "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:streamGenerateContent",
-            region, project_id, region, model
-        );
+        let url = if let Some(base) = custom_base_url {
+            format!(
+                "{}/v1/projects/{}/locations/{}/publishers/google/models/{}:streamGenerateContent",
+                base.trim_end_matches('/'), project_id, region, model
+            )
+        } else {
+            format!(
+                "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:streamGenerateContent",
+                region, project_id, region, model
+            )
+        };
 
         // Create new request
         client.post(url)
@@ -135,10 +153,13 @@ impl VertexAdaptor {
     }
 
     #[allow(dead_code)]
-    pub async fn get_access_token(&self, client_email: &str, private_key: &str) -> Result<String> {
+    pub async fn get_access_token(&self, client_email: &str, private_key: &str, auth_url_override: Option<&str>) -> Result<String> {
         let now = Utc::now().timestamp();
+        let auth_url = auth_url_override.unwrap_or(&self.auth_url);
 
-        // Check cache
+        // Check cache (key includes auth_url to avoid collisions if testing multiple endpoints?)
+        // Cache key is just client_email. If we change auth_url for same email, it might reuse token.
+        // For testing it's fine.
         if let Some(entry) = TOKEN_CACHE.get(client_email) {
             let (token, exp) = entry.value();
             // Buffer 60s to avoid using an expiring token
@@ -151,7 +172,7 @@ impl VertexAdaptor {
         let claims = Claims {
             iss: client_email.to_string(),
             scope: "https://www.googleapis.com/auth/cloud-platform".to_string(),
-            aud: self.auth_url.clone(),
+            aud: auth_url.to_string(),
             exp: now + 3600,
             iat: now,
         };
@@ -168,7 +189,7 @@ impl VertexAdaptor {
             ("assertion", &jwt),
         ];
 
-        let res = client.post(&self.auth_url)
+        let res = client.post(auth_url)
             .form(&params)
             .send()
             .await
@@ -253,10 +274,74 @@ q/3tDxsxpwLbEpeg6nqaTxylV1V6Ky5oLq8u9tOsqP6eZ83STlGlPpimKH2FlO21
 Apfww82b16AoK7qgtPcI8g==
 -----END PRIVATE KEY-----"#;
 
-        let token = adaptor.get_access_token("client@email.com", private_key).await.expect("Failed to get token");
+        let token = adaptor.get_access_token("client@email.com", private_key, None).await.expect("Failed to get token");
         assert_eq!(token, "mock_token");
         
         mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_overrides() {
+        let mut server = mockito::Server::new_async().await;
+        // Mock auth on dynamic port
+        let auth_mock = server.mock("POST", "/auth")
+            .with_status(200)
+            .with_body(r#"{"access_token": "mock_token", "expires_in": 3600, "token_type": "Bearer"}"#)
+            .create_async().await;
+
+        let adaptor = VertexAdaptor::default(); // Use default which points to real google, but we override
+        
+        let private_key = r#"-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDaJKsOxgH3D2ah
+v8vbh9n99AvHPOoIuJur/sV7tHZ9/bzMvnzVsQxxciagrVFve+XaE1mQjzNbRKB3
+zsdpW2n1eUEtrO1PrQCA8BuaAnL/le4RryHyiDMy/hhGDVzvF55gSIgHv+aThDz7
+/bK+GGJbLsoHOeFH7OV7wBWhNHpd5+I2GmAXEbCozPO9QjXkpsxOCbMu3lLQq99V
+/F/HOWUbPMSIrVLKleL/yUhNO+0VUhYpWVAvO8gKP4hAf/qLvKNlV9zclBgANIhb
+Fh8sC3OpvNVWiHNBoclVnmRB+OHJC51JBhHeZCJhM5IxDRtcYR4gGxcpNev8YFRF
+xb76yA8dAgMBAAECggEAJ6D/MVsf2sPhu3M2I87Jd5TY+ewzQPvWjfel5Sv61bcd
+kB1v3LtB/S8FXO23jFb4Afa/b99P713nf/Rg7h8k/+r0AAn4/584ZvQXs5IL1aol
+WnGUK3T6RiJ6gullD2tdQnUSv0OprfVZRdcIHHgeEB4PJiJp7nDXHLTfyQ4ZR8sl
+GstLN63/ZHNy4CyBdsjvJe0dqtJdXqK/ME6w5MtcHGpur8oSNqLsKKgIyXkcSasL
+rhINjqIC1pN096a0nn9j9kYxJHas+JSu2gdhCuJ94t5B84B+Eb/7+MxmMLwygD0m
+SbBA0MLfwzwmv6zsgLeXBxeK26AeeUTRjhXNVGSs8QKBgQD7alSesb/2Ecr8+2tm
+UtzTY2wMKVcwNuYTLEmksIr43jIV1Gl73rMu3DH5hkXS1rOxBt6839QZDbWcL+7p
+ruJpHW8o9/Qj7ELewqg8bKqXVvFTpqNQb13H0tQCrj1gQTopHwzBoThAvpVVxyZ2
+s7FndVz+xsx53GXQnfisPb5YsQKBgQDeHwPepm3ABTGd1Qbp50ixEz/UtFL2F1Dy
+jy4ylQR8ygqkgeE4NYh5WaubZnIKgn56cN2Rombv3LbqIe/N36Gj282k2rM4h7Km
+1U1r1auIMZIon+zt1a2PlgmttUoAX5x2AuHI2DWE7ROmMTImV1SsW61qfg2xl1Nh
+n/oyipf4LQKBgEtOKBZ4i1T7M1/fNuYpP7eZeg2SfGkWqIdppo1Ly/SLKVlcjFPr
++qO4lMd2rodeg+gsdJ8CNBdlAdbMjLU2Ct8NT/RngJsZ81Wh3J5sthQqmJJDwXsg
+QGjP/2zmH8ArCW6zvDBrR9wsubI9uomnfSXOA5LUnP6LQ3vfNVLyE4ehAoGAe8kXE
+/72DNwYIZh1iOb+6MgMe5Ke5UxrLTJEEaZgYNcMBU/oXrXev5oMe8ck6Nx+defu
+Ytn5udTsDyEojjgB0dqOCUBkPq3JDxayVdU3CehuRruRg53gYrO/4xG0Eu81t8K1
+Z4Oul8yzdZvXEez7YC6bP0zOftkRe8d23LHGLWUCgYAhW6lqcEmOqtw+TtQlVGQR
+0K6nDeP5P0EnaG4ZiwVIiMpJhqj5avwlyDBeg9QdM+ubhqXHB5oCcLRLrP9PITf+
+q/3tDxsxpwLbEpeg6nqaTxylV1V6Ky5oLq8u9tOsqP6eZ83STlGlPpimKH2FlO21
+Apfww82b16AoK7qgtPcI8g==
+-----END PRIVATE KEY-----"#;
+
+        let api_key_json = serde_json::json!({
+            "client_email": "test@test-project.iam.gserviceaccount.com",
+            "private_key": private_key,
+            "project_id": "config-project"
+        }).to_string();
+
+        let client = reqwest::Client::new();
+        let builder = client.post("http://placeholder");
+
+        let body = serde_json::json!({
+            "model": "gemini-pro",
+            "messages": [{"role": "user", "content": "hi"}],
+            "base_url": format!("{}/v1", server.url()),
+            "auth_url": format!("{}/auth", server.url())
+        });
+
+        let req_builder = adaptor.build_request(&client, builder, &api_key_json, &body).await;
+        let req = req_builder.build().expect("Failed to build");
+
+        assert_eq!(req.url().as_str(), format!("{}/v1/v1/projects/config-project/locations/us-central1/publishers/google/models/gemini-pro:streamGenerateContent", server.url()));
+        
+        auth_mock.assert();
     }
     
     #[tokio::test]
