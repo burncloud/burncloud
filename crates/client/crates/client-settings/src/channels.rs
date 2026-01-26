@@ -11,6 +11,14 @@ pub struct Channel {
     pub match_path: String,
     pub auth_type: String,
     pub priority: i32,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    pub param_override: Option<String>,
+    pub header_override: Option<String>,
+}
+
+fn default_protocol() -> String {
+    "openai".to_string()
 }
 
 #[component]
@@ -25,6 +33,9 @@ pub fn ChannelManager() -> Element {
     let mut form_api_key = use_signal(String::new);
     let mut form_match_path = use_signal(|| "/v1/chat/completions".to_string());
     let mut form_auth_type = use_signal(|| "Bearer".to_string());
+    let mut form_protocol = use_signal(|| "openai".to_string());
+    let mut form_param = use_signal(String::new);
+    let mut form_header = use_signal(String::new);
 
     // Fetch channels
     use_resource(move || async move {
@@ -56,6 +67,17 @@ pub fn ChannelManager() -> Element {
             match_path: form_match_path(),
             auth_type: form_auth_type(),
             priority: 0,
+            protocol: form_protocol(),
+            param_override: if form_param().is_empty() {
+                None
+            } else {
+                Some(form_param())
+            },
+            header_override: if form_header().is_empty() {
+                None
+            } else {
+                Some(form_header())
+            },
         };
 
         if let Ok(resp) = client
@@ -100,6 +122,17 @@ pub fn ChannelManager() -> Element {
                         }
                     }
                     div { class: "flex flex-col gap-sm",
+                        label { class: "text-caption text-secondary", "协议类型" }
+                        select { class: "input",
+                            value: "{form_protocol}",
+                            onchange: move |e| form_protocol.set(e.value()),
+                            option { value: "openai", "OpenAI / Compatible" }
+                            option { value: "vertex", "Vertex AI" }
+                            option { value: "gemini", "Google Gemini" }
+                            option { value: "claude", "Anthropic Claude" }
+                        }
+                    }
+                    div { class: "flex flex-col gap-sm",
                         label { class: "text-caption text-secondary", "鉴权类型" }
                         select { class: "input",
                             value: "{form_auth_type}",
@@ -124,10 +157,27 @@ pub fn ChannelManager() -> Element {
                         }
                     }
                     div { class: "flex flex-col gap-sm", style: "grid-column: span 2;",
-                        label { class: "text-caption text-secondary", "API Key" }
+                        label { class: "text-caption text-secondary",
+                            if form_protocol() == "vertex" { "Service Account JSON" } else { "API Key / Token" }
+                        }
                         input { class: "input", type: "password",
                             value: "{form_api_key}",
                             oninput: move |e| form_api_key.set(e.value())
+                        }
+                    }
+                    // Advanced Config (Collapsible or just extra fields)
+                    div { class: "flex flex-col gap-sm",
+                        label { class: "text-caption text-secondary", "参数覆写 (JSON)" }
+                        input { class: "input", placeholder: "e.g. project_id: my-project",
+                            value: "{form_param}",
+                            oninput: move |e| form_param.set(e.value())
+                        }
+                    }
+                    div { class: "flex flex-col gap-sm",
+                        label { class: "text-caption text-secondary", "Header 覆写 (JSON)" }
+                        input { class: "input",
+                            value: "{form_header}",
+                            oninput: move |e| form_header.set(e.value())
                         }
                     }
                 }
@@ -151,7 +201,9 @@ pub fn ChannelManager() -> Element {
                                 div { class: "flex items-center justify-between p-sm bg-hover rounded",
                                     div {
                                         div { class: "font-medium", "{channel.name}" }
-                                        div { class: "text-caption text-secondary", "{channel.base_url} ({channel.match_path})" }
+                                        div { class: "text-caption text-secondary",
+                                            "{channel.protocol} | {channel.base_url} ({channel.match_path})"
+                                        }
                                     }
                                     div { class: "flex gap-sm",
                                         span { class: "tag", "{channel.auth_type}" }
