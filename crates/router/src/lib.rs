@@ -19,6 +19,7 @@ use burncloud_database::Database;
 use burncloud_database_router::{DbRouterLog, RouterDatabase};
 use circuit_breaker::CircuitBreaker;
 use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
+use futures::stream::StreamExt;
 use http_body_util::BodyExt;
 use limiter::RateLimiter;
 use model_router::ModelRouter;
@@ -510,7 +511,7 @@ async fn proxy_logic(
             _ => ChannelType::OpenAI,
         };
 
-        let adaptor = AdaptorFactory::get_adaptor(channel_type);
+        let adaptor: Arc<dyn adaptor::factory::ChannelAdaptor> = Arc::from(AdaptorFactory::get_adaptor(channel_type));
 
         // 3. Prepare Request Body
         let request_body_json: Option<serde_json::Value> =
@@ -538,6 +539,9 @@ async fn proxy_logic(
             continue;
         }
         let mut request_body_json = request_body_json.unwrap();
+
+        // Check if streaming is requested
+        let is_stream = request_body_json.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
 
         // Apply param_override
         if let Some(ref override_str) = upstream.param_override {
@@ -588,6 +592,38 @@ async fn proxy_logic(
                     // This satisfies the "Passthrough Principle" and enables streaming.
                     if upstream.protocol == "openai" {
                         return (handle_response(resp), last_upstream_id, status);
+                    }
+
+                    // Handle Streaming for non-OpenAI
+                    if is_stream {
+                         let body_stream = resp.bytes_stream();
+                         let adaptor_clone = adaptor.clone();
+                         
+                         let stream = body_stream.map(move |chunk_result| {
+                             match chunk_result {
+                                 Ok(bytes) => {
+                                     let text = String::from_utf8_lossy(&bytes);
+                                     if let Some(converted) = adaptor_clone.convert_stream_response(&text) {
+                                         Ok(axum::body::Bytes::from(converted))
+                                     } else {
+                                         Ok(axum::body::Bytes::new())
+                                     }
+                                 },
+                                 Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)) 
+                             }
+                         });
+
+                         return (
+                            Response::builder()
+                                .status(status)
+                                .header("content-type", "text/event-stream")
+                                .header("cache-control", "no-cache")
+                                .header("connection", "keep-alive")
+                                .body(Body::from_stream(stream)) 
+                                .unwrap(),
+                            last_upstream_id,
+                            status,
+                        );
                     }
 
                     // 6. Handle Response Conversion

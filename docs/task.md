@@ -183,7 +183,7 @@
             "逻辑: 当 `stream=true` 且 ChannelType 为 VertexAi/Gemini 时，使用 `convert_stream_response` 处理响应流",
             "验证: 编译通过"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "integration",
