@@ -39,10 +39,13 @@ pub async fn start_mock_upstream(listener: TcpListener) {
         let mut header_map = serde_json::Map::new();
         for (k, v) in headers {
             if let Some(key) = k {
-                 header_map.insert(key.to_string(), serde_json::Value::String(v.to_str().unwrap_or_default().to_string()));
+                header_map.insert(
+                    key.to_string(),
+                    serde_json::Value::String(v.to_str().unwrap_or_default().to_string()),
+                );
             }
         }
-        
+
         // Construct a response that mimics HttpBin's /anything
         // Specifically, Balancer test checks for `json["url"]`
         // We need to inject the request URL into the response.
@@ -52,37 +55,42 @@ pub async fn start_mock_upstream(listener: TcpListener) {
         // Balancer test expects `url` to contain `/u1` or `/u2`.
         // We can check the path from the request URI if we had it.
         // Let's change the handler signature to accept URI.
-        
+
         serde_json::json!({
             "headers": header_map,
             "data": body,
             "json": serde_json::from_str::<serde_json::Value>(&body).ok(),
             "url": "http://mocked/u1/group-test" // This needs to be dynamic!
-        }).to_string()
+        })
+        .to_string()
     };
-    
+
     // Improved handler to capture URI
-    let handler = |method: axum::http::Method, uri: axum::http::Uri, headers: axum::http::HeaderMap, body: String| async move {
-         let mut header_map = serde_json::Map::new();
+    let handler = |method: axum::http::Method,
+                   uri: axum::http::Uri,
+                   headers: axum::http::HeaderMap,
+                   body: String| async move {
+        let mut header_map = serde_json::Map::new();
         for (k, v) in headers {
             if let Some(key) = k {
-                 header_map.insert(key.to_string(), serde_json::Value::String(v.to_str().unwrap_or_default().to_string()));
+                header_map.insert(
+                    key.to_string(),
+                    serde_json::Value::String(v.to_str().unwrap_or_default().to_string()),
+                );
             }
         }
-        
+
         serde_json::json!({
             "method": method.to_string(),
             "url": uri.to_string(), // This will be the path only (e.g. /anything/u1/group-test) unless absolute form used
             "headers": header_map,
             "data": body,
             "json": serde_json::from_str::<serde_json::Value>(&body).ok()
-        }).to_string()
+        })
+        .to_string()
     };
 
-    axum::serve(
-        listener,
-        axum::Router::new().fallback(handler),
-    )
-    .await
-    .unwrap();
+    axum::serve(listener, axum::Router::new().fallback(handler))
+        .await
+        .unwrap();
 }

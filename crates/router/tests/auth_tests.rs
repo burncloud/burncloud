@@ -12,23 +12,24 @@ async fn start_mock_upstream(listener: tokio::net::TcpListener) {
         let mut header_map = serde_json::Map::new();
         for (k, v) in headers {
             if let Some(key) = k {
-                 header_map.insert(key.to_string(), serde_json::Value::String(v.to_str().unwrap_or_default().to_string()));
+                header_map.insert(
+                    key.to_string(),
+                    serde_json::Value::String(v.to_str().unwrap_or_default().to_string()),
+                );
             }
         }
-        
+
         serde_json::json!({
             "headers": header_map,
             "data": body,
             "json": serde_json::from_str::<serde_json::Value>(&body).ok()
-        }).to_string()
+        })
+        .to_string()
     };
 
-    axum::serve(
-        listener,
-        axum::Router::new().fallback(handler),
-    )
-    .await
-    .unwrap();
+    axum::serve(listener, axum::Router::new().fallback(handler))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -210,10 +211,7 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     start_test_server(port).await;
 
     let client = Client::new();
-    let url = format!(
-        "http://localhost:{}{}",
-        port, match_path
-    );
+    let url = format!("http://localhost:{}{}", port, match_path);
 
     let resp = client
         .post(&url)

@@ -199,16 +199,12 @@ impl RouterDatabase {
             )
             .execute(conn.pool())
             .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_upstreams ADD COLUMN param_override TEXT",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_upstreams ADD COLUMN header_override TEXT",
-            )
-            .execute(conn.pool())
-            .await;
+            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN param_override TEXT")
+                .execute(conn.pool())
+                .await;
+            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN header_override TEXT")
+                .execute(conn.pool())
+                .await;
             let _ = sqlx::query(
                 "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
             )

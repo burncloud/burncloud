@@ -1,7 +1,7 @@
+use async_trait::async_trait;
 use burncloud_common::types::{ChannelType, OpenAIChatRequest};
 use reqwest::RequestBuilder;
 use serde_json::Value;
-use async_trait::async_trait;
 
 /// Trait defining the behavior for a channel adaptor.
 /// This mirrors the structure of New API's channel adapters.
@@ -25,8 +25,13 @@ pub trait ChannelAdaptor: Send + Sync {
 
     /// Modifies the HTTP request builder before sending (e.g., setting headers, URL, body).
     /// This gives adaptors full control over how the request is sent.
-    async fn build_request(&self, client: &reqwest::Client, builder: RequestBuilder, api_key: &str, body: &Value)
-        -> RequestBuilder;
+    async fn build_request(
+        &self,
+        client: &reqwest::Client,
+        builder: RequestBuilder,
+        api_key: &str,
+        body: &Value,
+    ) -> RequestBuilder;
 
     /// Checks if the adaptor supports streaming for the given model/request.
     #[allow(dead_code)]
@@ -151,7 +156,7 @@ mod tests {
 
         let adaptor = AdaptorFactory::get_adaptor(ChannelType::Gemini);
         assert_eq!(adaptor.name(), "GoogleGemini");
-        
+
         let adaptor = AdaptorFactory::get_adaptor(ChannelType::OpenAI);
         assert_eq!(adaptor.name(), "OpenAI");
     }

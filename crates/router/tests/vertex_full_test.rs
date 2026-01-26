@@ -10,12 +10,16 @@ async fn test_vertex_full_flow() -> anyhow::Result<()> {
 
     // 1. Start Mock Upstream (Vertex API & Auth)
     let mut server = mockito::Server::new_async().await;
-    
+
     // Mock Auth
-    let auth_mock = server.mock("POST", "/auth")
+    let auth_mock = server
+        .mock("POST", "/auth")
         .with_status(200)
-        .with_body(r#"{"access_token": "mock_vertex_token", "expires_in": 3600, "token_type": "Bearer"}"#)
-        .create_async().await;
+        .with_body(
+            r#"{"access_token": "mock_vertex_token", "expires_in": 3600, "token_type": "Bearer"}"#,
+        )
+        .create_async()
+        .await;
 
     // Mock Gemini Stream Response (Vertex Format)
     // Vertex returns a list of objects in a stream.
@@ -42,8 +46,8 @@ async fn test_vertex_full_flow() -> anyhow::Result<()> {
     // 2. Configure Upstream
     let id = "vertex-test";
     let name = "Vertex Test";
-    let base_url = "https://ignored-but-required.com"; 
-    
+    let base_url = "https://ignored-but-required.com";
+
     let private_key = r#"-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDaJKsOxgH3D2ah
 v8vbh9n99AvHPOoIuJur/sV7tHZ9/bzMvnzVsQxxciagrVFve+XaE1mQjzNbRKB3
@@ -81,19 +85,23 @@ Apfww82b16AoK7qgtPcI8g==
         "private_key": private_key,
         "client_email": "test@mock-project.iam.gserviceaccount.com",
         "client_id": "123"
-    }).to_string();
+    })
+    .to_string();
 
     let match_path = "/v1/chat/completions";
     let auth_type = "VertexAi"; // Important: Triggers factory
-    
+
     // Inject overrides
     let param_override = json!({
         "base_url": server.url(),
         "auth_url": format!("{}/auth", server.url())
-    }).to_string();
+    })
+    .to_string();
 
     // Clear existing upstreams (e.g. defaults)
-    sqlx::query("DELETE FROM router_upstreams").execute(&pool).await?;
+    sqlx::query("DELETE FROM router_upstreams")
+        .execute(&pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -125,7 +133,7 @@ Apfww82b16AoK7qgtPcI8g==
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
         .json(&json!({
-            "model": "gemini-pro", // Mapped via ModelRouter? 
+            "model": "gemini-pro", // Mapped via ModelRouter?
             // If ModelRouter fails, it falls back to path routing if we match path?
             // But we set match_path = /v1/chat/completions.
             // Wait, path routing fallback will round-robin.
@@ -149,10 +157,13 @@ Apfww82b16AoK7qgtPcI8g==
 
     let json: serde_json::Value = resp.json().await?;
     println!("Response: {}", json);
-    
+
     // Validate OpenAI Format
     assert_eq!(json["object"], "chat.completion");
-    assert_eq!(json["choices"][0]["message"]["content"], "Hello from Vertex Mock");
+    assert_eq!(
+        json["choices"][0]["message"]["content"],
+        "Hello from Vertex Mock"
+    );
 
     // 5. Send Stream Request
     let stream_resp = client
@@ -174,7 +185,12 @@ Apfww82b16AoK7qgtPcI8g==
     }
     assert_eq!(status, 200);
     // Should be text/event-stream
-    let ct = stream_resp.headers().get("content-type").unwrap().to_str().unwrap();
+    let ct = stream_resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(ct.contains("text/event-stream"));
 
     let bytes = stream_resp.bytes().await?;

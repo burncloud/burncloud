@@ -113,18 +113,23 @@ impl GeminiAdaptor {
 
     pub fn convert_stream_response(chunk: &str) -> Option<String> {
         // Handle array format "[{...}," or ",{...}]" which happens in some stream outputs
-        let clean_chunk = chunk.trim().trim_start_matches('[').trim_start_matches(',').trim_end_matches(',').trim_end_matches(']');
+        let clean_chunk = chunk
+            .trim()
+            .trim_start_matches('[')
+            .trim_start_matches(',')
+            .trim_end_matches(',')
+            .trim_end_matches(']');
         if clean_chunk.is_empty() {
             return None;
         }
 
         let root: Value = match serde_json::from_str(clean_chunk) {
             Ok(v) => v,
-            Err(_) => return None, 
+            Err(_) => return None,
         };
 
         let candidate = root.get("candidates").and_then(|c| c.get(0));
-        
+
         let text = candidate
             .and_then(|c| c.get("content"))
             .and_then(|c| c.get("parts"))
@@ -135,13 +140,13 @@ impl GeminiAdaptor {
         let finish_reason = candidate
             .and_then(|c| c.get("finishReason"))
             .and_then(|s| s.as_str());
-            
+
         let openai_finish_reason = match finish_reason {
             Some("STOP") => Some("stop"),
             Some("MAX_TOKENS") => Some("length"),
             Some("SAFETY") => Some("content_filter"),
             Some(_) => Some("stop"),
-            None => None
+            None => None,
         };
 
         if text.is_none() && openai_finish_reason.is_none() {
@@ -152,7 +157,7 @@ impl GeminiAdaptor {
             "id": "chatcmpl-stream", // Static ID for now as we don't have state
             "object": "chat.completion.chunk",
             "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-            "model": "gemini-model", 
+            "model": "gemini-model",
             "choices": [
                 {
                     "index": 0,
@@ -224,17 +229,17 @@ mod tests {
     #[test]
     fn test_convert_stream_response() {
         let chunk = r#"[{"candidates": [{"content": {"parts": [{"text": "Hello stream"}]}, "finishReason": null, "index": 0}]}]"#;
-        
+
         let sse = GeminiAdaptor::convert_stream_response(chunk).unwrap();
         assert!(sse.starts_with("data: "));
         assert!(sse.contains("Hello stream"));
         assert!(sse.contains(r#""finish_reason":null"#));
-        
+
         // Test dirty chunk with STOP
         let dirty_chunk = r#",{"candidates": [{"finishReason": "STOP", "index": 0}]},"#;
         let sse2 = GeminiAdaptor::convert_stream_response(dirty_chunk).unwrap();
         assert!(sse2.contains(r#""finish_reason":"stop""#));
-        
+
         // Test invalid/empty
         assert!(GeminiAdaptor::convert_stream_response("").is_none());
         assert!(GeminiAdaptor::convert_stream_response("[]").is_none());

@@ -1,15 +1,15 @@
 use super::factory::ChannelAdaptor;
 use super::gemini::GeminiAdaptor;
-use burncloud_common::types::OpenAIChatRequest;
-use reqwest::RequestBuilder;
-use serde_json::Value;
-use anyhow::{Result, Context};
-use serde::{Deserialize, Serialize};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use chrono::Utc;
-use once_cell::sync::Lazy;
-use dashmap::DashMap;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
+use burncloud_common::types::OpenAIChatRequest;
+use chrono::Utc;
+use dashmap::DashMap;
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use once_cell::sync::Lazy;
+use reqwest::RequestBuilder;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub struct VertexAdaptor {
     pub auth_url: String,
@@ -71,7 +71,8 @@ impl ChannelAdaptor for VertexAdaptor {
         body: &Value,
     ) -> RequestBuilder {
         // Parse Service Account
-        let (client_email, private_key, sa_project_id) = match Self::parse_service_account(api_key) {
+        let (client_email, private_key, sa_project_id) = match Self::parse_service_account(api_key)
+        {
             Ok(acc) => acc,
             Err(e) => {
                 eprintln!("VertexAdaptor: Failed to parse Service Account: {}", e);
@@ -92,7 +93,10 @@ impl ChannelAdaptor for VertexAdaptor {
         let auth_url_override = openai_req.extra.get("auth_url").and_then(|v| v.as_str());
 
         // Get Access Token
-        let token = match self.get_access_token(&client_email, &private_key, auth_url_override).await {
+        let token = match self
+            .get_access_token(&client_email, &private_key, auth_url_override)
+            .await
+        {
             Ok(t) => t,
             Err(e) => {
                 eprintln!("VertexAdaptor: Failed to get Access Token: {}", e);
@@ -102,23 +106,29 @@ impl ChannelAdaptor for VertexAdaptor {
 
         // Extract params
         let model = openai_req.model.clone();
-        
+
         // Priority for project_id:
         // 1. Service Account Config
         // 2. Extra param "project_id"
         // 3. Default? No default, fail if missing.
-        let project_id = openai_req.extra.get("project_id")
+        let project_id = openai_req
+            .extra
+            .get("project_id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or(sa_project_id)
-            .unwrap_or_default(); 
+            .unwrap_or_default();
 
-        let region = openai_req.extra.get("region")
+        let region = openai_req
+            .extra
+            .get("region")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| "us-central1".to_string());
-        
-        let custom_base_url = openai_req.extra.get("base_url")
+
+        let custom_base_url = openai_req
+            .extra
+            .get("base_url")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -129,7 +139,10 @@ impl ChannelAdaptor for VertexAdaptor {
         let url = if let Some(base) = custom_base_url {
             format!(
                 "{}/v1/projects/{}/locations/{}/publishers/google/models/{}:streamGenerateContent",
-                base.trim_end_matches('/'), project_id, region, model
+                base.trim_end_matches('/'),
+                project_id,
+                region,
+                model
             )
         } else {
             format!(
@@ -139,21 +152,28 @@ impl ChannelAdaptor for VertexAdaptor {
         };
 
         // Create new request
-        client.post(url)
-            .bearer_auth(token)
-            .json(&vertex_body)
+        client.post(url).bearer_auth(token).json(&vertex_body)
     }
 }
 
 impl VertexAdaptor {
-    #[allow(dead_code)] 
+    #[allow(dead_code)]
     fn parse_service_account(json_str: &str) -> Result<(String, String, Option<String>)> {
         let account: ServiceAccount = serde_json::from_str(json_str)?;
-        Ok((account.client_email, account.private_key, account.project_id))
+        Ok((
+            account.client_email,
+            account.private_key,
+            account.project_id,
+        ))
     }
 
     #[allow(dead_code)]
-    pub async fn get_access_token(&self, client_email: &str, private_key: &str, auth_url_override: Option<&str>) -> Result<String> {
+    pub async fn get_access_token(
+        &self,
+        client_email: &str,
+        private_key: &str,
+        auth_url_override: Option<&str>,
+    ) -> Result<String> {
         let now = Utc::now().timestamp();
         let auth_url = auth_url_override.unwrap_or(&self.auth_url);
 
@@ -189,23 +209,28 @@ impl VertexAdaptor {
             ("assertion", &jwt),
         ];
 
-        let res = client.post(auth_url)
+        let res = client
+            .post(auth_url)
             .form(&params)
             .send()
             .await
             .context("Failed to send token request")?;
-        
+
         if !res.status().is_success() {
-             let status = res.status();
-             let text = res.text().await.unwrap_or_default();
-             anyhow::bail!("Failed to get token: {} - {}", status, text);
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to get token: {} - {}", status, text);
         }
 
-        let token_res: TokenResponse = res.json().await.context("Failed to parse token response")?;
-        
+        let token_res: TokenResponse =
+            res.json().await.context("Failed to parse token response")?;
+
         // Update cache
         let exp_ts = now + token_res.expires_in;
-        TOKEN_CACHE.insert(client_email.to_string(), (token_res.access_token.clone(), exp_ts));
+        TOKEN_CACHE.insert(
+            client_email.to_string(),
+            (token_res.access_token.clone(), exp_ts),
+        );
 
         Ok(token_res.access_token)
     }
@@ -226,20 +251,28 @@ mod tests {
             "client_id": "123"
         }"#;
 
-        let (email, key, project_id) = VertexAdaptor::parse_service_account(json_str).expect("Failed to parse");
+        let (email, key, project_id) =
+            VertexAdaptor::parse_service_account(json_str).expect("Failed to parse");
         assert_eq!(email, "test@test-project.iam.gserviceaccount.com");
-        assert_eq!(key, "-----BEGIN PRIVATE KEY-----\nKEY\n-----END PRIVATE KEY-----\n");
+        assert_eq!(
+            key,
+            "-----BEGIN PRIVATE KEY-----\nKEY\n-----END PRIVATE KEY-----\n"
+        );
         assert_eq!(project_id, Some("test-project".to_string()));
     }
 
     #[tokio::test]
     async fn test_get_access_token() {
         let mut server = mockito::Server::new_async().await;
-        let mock = server.mock("POST", "/")
+        let mock = server
+            .mock("POST", "/")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"access_token": "mock_token", "expires_in": 3600, "token_type": "Bearer"}"#)
-            .create_async().await;
+            .with_body(
+                r#"{"access_token": "mock_token", "expires_in": 3600, "token_type": "Bearer"}"#,
+            )
+            .create_async()
+            .await;
 
         let adaptor = VertexAdaptor {
             auth_url: server.url(),
@@ -274,9 +307,12 @@ q/3tDxsxpwLbEpeg6nqaTxylV1V6Ky5oLq8u9tOsqP6eZ83STlGlPpimKH2FlO21
 Apfww82b16AoK7qgtPcI8g==
 -----END PRIVATE KEY-----"#;
 
-        let token = adaptor.get_access_token("client@email.com", private_key, None).await.expect("Failed to get token");
+        let token = adaptor
+            .get_access_token("client@email.com", private_key, None)
+            .await
+            .expect("Failed to get token");
         assert_eq!(token, "mock_token");
-        
+
         mock.assert();
     }
 
@@ -284,13 +320,17 @@ Apfww82b16AoK7qgtPcI8g==
     async fn test_overrides() {
         let mut server = mockito::Server::new_async().await;
         // Mock auth on dynamic port
-        let auth_mock = server.mock("POST", "/auth")
+        let auth_mock = server
+            .mock("POST", "/auth")
             .with_status(200)
-            .with_body(r#"{"access_token": "mock_token", "expires_in": 3600, "token_type": "Bearer"}"#)
-            .create_async().await;
+            .with_body(
+                r#"{"access_token": "mock_token", "expires_in": 3600, "token_type": "Bearer"}"#,
+            )
+            .create_async()
+            .await;
 
         let adaptor = VertexAdaptor::default(); // Use default which points to real google, but we override
-        
+
         let private_key = r#"-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDaJKsOxgH3D2ah
 v8vbh9n99AvHPOoIuJur/sV7tHZ9/bzMvnzVsQxxciagrVFve+XaE1mQjzNbRKB3
@@ -324,7 +364,8 @@ Apfww82b16AoK7qgtPcI8g==
             "client_email": "test@test-project.iam.gserviceaccount.com",
             "private_key": private_key,
             "project_id": "config-project"
-        }).to_string();
+        })
+        .to_string();
 
         let client = reqwest::Client::new();
         let builder = client.post("http://placeholder");
@@ -336,23 +377,29 @@ Apfww82b16AoK7qgtPcI8g==
             "auth_url": format!("{}/auth", server.url())
         });
 
-        let req_builder = adaptor.build_request(&client, builder, &api_key_json, &body).await;
+        let req_builder = adaptor
+            .build_request(&client, builder, &api_key_json, &body)
+            .await;
         let req = req_builder.build().expect("Failed to build");
 
         assert_eq!(req.url().as_str(), format!("{}/v1/v1/projects/config-project/locations/us-central1/publishers/google/models/gemini-pro:streamGenerateContent", server.url()));
-        
+
         auth_mock.assert();
     }
-    
+
     #[tokio::test]
     async fn test_build_request_conversion() {
         let mut server = mockito::Server::new_async().await;
         // Mock auth
-        let mock = server.mock("POST", "/")
+        let mock = server
+            .mock("POST", "/")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"access_token": "mock_token", "expires_in": 3600, "token_type": "Bearer"}"#)
-            .create_async().await;
+            .with_body(
+                r#"{"access_token": "mock_token", "expires_in": 3600, "token_type": "Bearer"}"#,
+            )
+            .create_async()
+            .await;
 
         let adaptor = VertexAdaptor {
             auth_url: server.url(),
@@ -392,11 +439,12 @@ Apfww82b16AoK7qgtPcI8g==
             "client_email": "test@test-project.iam.gserviceaccount.com",
             "private_key": private_key,
             "project_id": "config-project" // Configured project
-        }).to_string();
-        
+        })
+        .to_string();
+
         let client = reqwest::Client::new();
         let builder = client.post("http://placeholder"); // dummy
-        
+
         // OpenAI Style Body
         let body = serde_json::json!({
             "model": "gemini-pro",
@@ -408,21 +456,23 @@ Apfww82b16AoK7qgtPcI8g==
             "project_id": "override-project"
         });
 
-        let req_builder = adaptor.build_request(&client, builder, &api_key_json, &body).await;
+        let req_builder = adaptor
+            .build_request(&client, builder, &api_key_json, &body)
+            .await;
         let req = req_builder.build().expect("Failed to build req");
 
         // Verify URL: Should use "override-project" and "asia-northeast1"
         assert_eq!(req.url().as_str(), "https://asia-northeast1-aiplatform.googleapis.com/v1/projects/override-project/locations/asia-northeast1/publishers/google/models/gemini-pro:streamGenerateContent");
-        
+
         // Verify Body: Should be converted to Gemini format
-        
+
         if let Some(body) = req.body() {
-             let bytes = body.as_bytes().unwrap();
-             let json_body: serde_json::Value = serde_json::from_slice(bytes).unwrap();
-             // Check if it has "contents" (Gemini) instead of "messages" (OpenAI)
-             assert!(json_body.get("contents").is_some());
-             assert!(json_body.get("messages").is_none());
-             assert_eq!(json_body["contents"][0]["parts"][0]["text"], "Hello Vertex");
+            let bytes = body.as_bytes().unwrap();
+            let json_body: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+            // Check if it has "contents" (Gemini) instead of "messages" (OpenAI)
+            assert!(json_body.get("contents").is_some());
+            assert!(json_body.get("messages").is_none());
+            assert_eq!(json_body["contents"][0]["parts"][0]["text"], "Hello Vertex");
         } else {
             panic!("Request has no body");
         }

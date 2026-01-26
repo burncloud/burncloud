@@ -1,7 +1,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_test_server, start_mock_upstream};
+use common::{setup_db, start_mock_upstream, start_test_server};
 use reqwest::Client;
 
 #[tokio::test]
@@ -51,7 +51,10 @@ async fn test_failover() -> anyhow::Result<()> {
     .execute(&pool).await?;
 
     // 3. Bind
-    sqlx::query("DELETE FROM router_group_members WHERE group_id = ?").bind(group_id).execute(&pool).await?;
+    sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
+        .bind(group_id)
+        .execute(&pool)
+        .await?;
     sqlx::query(
         "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES (?, ?, 1), (?, ?, 1)"
     )
@@ -76,7 +79,7 @@ async fn test_failover() -> anyhow::Result<()> {
         let resp = client
             .get(&url)
             .header("Authorization", "Bearer sk-burncloud-demo")
-             // Need valid JSON body for ProxyLogic!
+            // Need valid JSON body for ProxyLogic!
             .json(&serde_json::json!({"test": "failover"}))
             .send()
             .await?;

@@ -1,7 +1,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_test_server, start_mock_upstream};
+use common::{setup_db, start_mock_upstream, start_test_server};
 use reqwest::Client;
 use serde_json::Value;
 
@@ -65,7 +65,10 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     // Let's assume we can delete first or ignore.
     // Or just Try Insert.
     // Let's first delete to be safe if we are reusing DB.
-    sqlx::query("DELETE FROM router_group_members WHERE group_id = ?").bind(group_id).execute(&pool).await?;
+    sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
+        .bind(group_id)
+        .execute(&pool)
+        .await?;
 
     sqlx::query(
         "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES (?, ?, 1), (?, ?, 1)"
@@ -93,7 +96,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
         let resp = client
             .get(&url)
             .header("Authorization", "Bearer sk-burncloud-demo")
-            .json(&serde_json::json!({"test": "data"})) 
+            .json(&serde_json::json!({"test": "data"}))
             .send()
             .await?;
 
