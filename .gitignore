@@ -16,6 +16,7 @@ Cargo.lock
 /*.bat
 /*.json
 /*.pid
+/progress.txt
 MESSAGE.md
 ISSUE.md
 home-current.jpeg
@@ -83,3 +84,4 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+*.pem

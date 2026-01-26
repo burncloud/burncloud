@@ -122,7 +122,7 @@
             "优化: 实现简单的内存缓存 (RwLock<HashMap>) 以避免频繁请求 Token",
             "验证: 在 Mock Server 环境下，能正确发送 JWT 并解析返回的 Access Token"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backend",
@@ -134,7 +134,7 @@
             "构造 URL: `https://<region>-aiplatform.googleapis.com/v1/projects/<project_id>/locations/<region>/publishers/google/models/<model>:streamGenerateContent`",
             "验证: 构造的 URL 和 Header 符合 Vertex AI 规范"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backend",

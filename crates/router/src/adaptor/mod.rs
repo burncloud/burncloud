@@ -1,3 +1,4 @@
 pub mod claude;
 pub mod factory;
 pub mod gemini;
+pub mod vertex;

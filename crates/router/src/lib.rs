@@ -568,7 +568,7 @@ async fn proxy_logic(
             }
         }
 
-        let req_builder = adaptor.build_request(req_builder, &upstream.api_key, &request_body_json);
+        let req_builder = adaptor.build_request(&state.client, req_builder, &upstream.api_key, &request_body_json).await;
 
         // 5. Execute
         match req_builder.send().await {

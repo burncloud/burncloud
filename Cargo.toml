@@ -88,6 +88,7 @@ http = "1.0"
 sha2 = "0.10"
 md5 = "0.7"
 hmac = "0.12"
+jsonwebtoken = "9"
 
 # Archive
 zip = "0.6"

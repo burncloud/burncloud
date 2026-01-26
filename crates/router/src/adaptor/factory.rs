@@ -1,9 +1,11 @@
 use burncloud_common::types::{ChannelType, OpenAIChatRequest};
 use reqwest::RequestBuilder;
 use serde_json::Value;
+use async_trait::async_trait;
 
 /// Trait defining the behavior for a channel adaptor.
 /// This mirrors the structure of New API's channel adapters.
+#[async_trait]
 pub trait ChannelAdaptor: Send + Sync {
     /// Returns the name of the adaptor (e.g., "OpenAI", "Claude").
     #[allow(dead_code)]
@@ -23,7 +25,7 @@ pub trait ChannelAdaptor: Send + Sync {
 
     /// Modifies the HTTP request builder before sending (e.g., setting headers, URL, body).
     /// This gives adaptors full control over how the request is sent.
-    fn build_request(&self, builder: RequestBuilder, api_key: &str, body: &Value)
+    async fn build_request(&self, client: &reqwest::Client, builder: RequestBuilder, api_key: &str, body: &Value)
         -> RequestBuilder;
 
     /// Checks if the adaptor supports streaming for the given model/request.
@@ -37,12 +39,14 @@ pub trait ChannelAdaptor: Send + Sync {
 
 // Implementations will go here or in submodules
 pub struct OpenAIAdaptor;
+#[async_trait]
 impl ChannelAdaptor for OpenAIAdaptor {
     fn name(&self) -> &'static str {
         "OpenAI"
     }
-    fn build_request(
+    async fn build_request(
         &self,
+        _client: &reqwest::Client,
         builder: RequestBuilder,
         api_key: &str,
         body: &Value,
@@ -52,12 +56,14 @@ impl ChannelAdaptor for OpenAIAdaptor {
 }
 
 pub struct AnthropicAdaptor;
+#[async_trait]
 impl ChannelAdaptor for AnthropicAdaptor {
     fn name(&self) -> &'static str {
         "Anthropic"
     }
-    fn build_request(
+    async fn build_request(
         &self,
+        _client: &reqwest::Client,
         builder: RequestBuilder,
         api_key: &str,
         body: &Value,
@@ -82,12 +88,14 @@ impl ChannelAdaptor for AnthropicAdaptor {
 }
 
 pub struct GoogleGeminiAdaptor;
+#[async_trait]
 impl ChannelAdaptor for GoogleGeminiAdaptor {
     fn name(&self) -> &'static str {
         "GoogleGemini"
     }
-    fn build_request(
+    async fn build_request(
         &self,
+        _client: &reqwest::Client,
         builder: RequestBuilder,
         api_key: &str,
         body: &Value,
