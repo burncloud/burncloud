@@ -162,7 +162,7 @@
             "修改 `ChannelAdaptor` trait，增加 `fn convert_stream_response(...)`",
             "验证: 编译通过"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backend",

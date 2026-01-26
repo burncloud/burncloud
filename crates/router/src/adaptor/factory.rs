@@ -34,7 +34,11 @@ pub trait ChannelAdaptor: Send + Sync {
         true
     }
 
-    // TODO: Add stream handling method
+    /// Converts a vendor-specific stream chunk to an OpenAI-compatible SSE event string.
+    /// Returns `None` if the adaptor performs direct passthrough.
+    fn convert_stream_response(&self, _chunk: &str) -> Option<String> {
+        None
+    }
 }
 
 // Implementations will go here or in submodules
