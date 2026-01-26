@@ -146,7 +146,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     let url = format!("http://localhost:{}/anything", port);
 
     let openai_body = json!({
-        "model": "gpt-4", // Will be passed through or mapped
+        "model": "claude-3-opus", // Will be passed through or mapped
         "messages": [
             { "role": "system", "content": "You are a helpful assistant." },
             { "role": "user", "content": "Hello Claude" }

@@ -144,7 +144,7 @@
             "确保 Vertex AI 的 API 路径参数 (project_id, region) 能从 Upstream 配置或 Extra 参数中获取",
             "验证: 输入 OpenAI Request，输出符合 Vertex AI 的 JSON Body"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backend",

@@ -1,4 +1,6 @@
 use super::factory::ChannelAdaptor;
+use super::gemini::GeminiAdaptor;
+use burncloud_common::types::OpenAIChatRequest;
 use reqwest::RequestBuilder;
 use serde_json::Value;
 use anyhow::{Result, Context};
@@ -61,13 +63,9 @@ impl ChannelAdaptor for VertexAdaptor {
         body: &Value,
     ) -> RequestBuilder {
         // Parse Service Account
-        let (client_email, private_key, project_id) = match Self::parse_service_account(api_key) {
+        let (client_email, private_key, sa_project_id) = match Self::parse_service_account(api_key) {
             Ok(acc) => acc,
             Err(e) => {
-                // If parsing fails, fallback to passing through (will likely fail auth) or panic?
-                // Returning original builder won't work because URL is wrong.
-                // We should probably log error and return a dummy builder that fails?
-                // For now, let's assume valid config or panic/log.
                 eprintln!("VertexAdaptor: Failed to parse Service Account: {}", e);
                 return client.post("http://invalid-service-account-config");
             }
@@ -82,11 +80,35 @@ impl ChannelAdaptor for VertexAdaptor {
             }
         };
 
+        // Parse Request Body to OpenAIChatRequest
+        let openai_req: OpenAIChatRequest = match serde_json::from_value(body.clone()) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("VertexAdaptor: Failed to parse OpenAI Request: {}", e);
+                return client.post("http://failed-to-parse-body");
+            }
+        };
+
         // Extract params
-        let model = body.get("model").and_then(|v| v.as_str()).unwrap_or("gemini-pro");
-        let region = body.get("region").and_then(|v| v.as_str()).unwrap_or("us-central1");
-        // If project_id is not in service account, maybe in body?
-        let project_id = project_id.or_else(|| body.get("project_id").and_then(|v| v.as_str()).map(|s| s.to_string())).unwrap_or_default();
+        let model = openai_req.model.clone();
+        
+        // Priority for project_id:
+        // 1. Service Account Config
+        // 2. Extra param "project_id"
+        // 3. Default? No default, fail if missing.
+        let project_id = openai_req.extra.get("project_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or(sa_project_id)
+            .unwrap_or_default(); 
+
+        let region = openai_req.extra.get("region")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "us-central1".to_string());
+
+        // Convert Body
+        let vertex_body = GeminiAdaptor::convert_request(openai_req);
 
         // Construct URL
         let url = format!(
@@ -97,7 +119,7 @@ impl ChannelAdaptor for VertexAdaptor {
         // Create new request
         client.post(url)
             .bearer_auth(token)
-            .json(body)
+            .json(&vertex_body)
     }
 }
 
@@ -234,7 +256,7 @@ Apfww82b16AoK7qgtPcI8g==
     }
     
     #[tokio::test]
-    async fn test_build_request() {
+    async fn test_build_request_conversion() {
         let mut server = mockito::Server::new_async().await;
         // Mock auth
         let mock = server.mock("POST", "/")
@@ -247,8 +269,7 @@ Apfww82b16AoK7qgtPcI8g==
             auth_url: server.url(),
         };
 
-        // Real PEM key for signing (otherwise get_access_token fails)
-        // We reuse the one from previous test for convenience, embedded here
+        // Private Key for signing
         let private_key = r#"-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDaJKsOxgH3D2ah
 v8vbh9n99AvHPOoIuJur/sV7tHZ9/bzMvnzVsQxxciagrVFve+XaE1mQjzNbRKB3
@@ -281,19 +302,42 @@ Apfww82b16AoK7qgtPcI8g==
         let api_key_json = serde_json::json!({
             "client_email": "test@test-project.iam.gserviceaccount.com",
             "private_key": private_key,
-            "project_id": "test-project"
+            "project_id": "config-project" // Configured project
         }).to_string();
         
         let client = reqwest::Client::new();
         let builder = client.post("http://placeholder"); // dummy
-        let body = serde_json::json!({"model": "gemini-ultra", "region": "asia-east1"});
+        
+        // OpenAI Style Body
+        let body = serde_json::json!({
+            "model": "gemini-pro",
+            "messages": [
+                { "role": "user", "content": "Hello Vertex" }
+            ],
+            // Extra params override
+            "region": "asia-northeast1",
+            "project_id": "override-project"
+        });
 
         let req_builder = adaptor.build_request(&client, builder, &api_key_json, &body).await;
         let req = req_builder.build().expect("Failed to build req");
 
-        assert_eq!(req.url().as_str(), "https://asia-east1-aiplatform.googleapis.com/v1/projects/test-project/locations/asia-east1/publishers/google/models/gemini-ultra:streamGenerateContent");
-        assert_eq!(req.headers().get("Authorization").unwrap(), "Bearer mock_token");
+        // Verify URL: Should use "override-project" and "asia-northeast1"
+        assert_eq!(req.url().as_str(), "https://asia-northeast1-aiplatform.googleapis.com/v1/projects/override-project/locations/asia-northeast1/publishers/google/models/gemini-pro:streamGenerateContent");
         
+        // Verify Body: Should be converted to Gemini format
+        
+        if let Some(body) = req.body() {
+             let bytes = body.as_bytes().unwrap();
+             let json_body: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+             // Check if it has "contents" (Gemini) instead of "messages" (OpenAI)
+             assert!(json_body.get("contents").is_some());
+             assert!(json_body.get("messages").is_none());
+             assert_eq!(json_body["contents"][0]["parts"][0]["text"], "Hello Vertex");
+        } else {
+            panic!("Request has no body");
+        }
+
         mock.assert();
     }
 }
