@@ -55,6 +55,10 @@ impl ChannelAdaptor for VertexAdaptor {
         "VertexAi"
     }
 
+    fn convert_stream_response(&self, chunk: &str) -> Option<String> {
+        GeminiAdaptor::convert_stream_response(chunk)
+    }
+
     async fn build_request(
         &self,
         client: &reqwest::Client,

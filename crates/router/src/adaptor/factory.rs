@@ -116,6 +116,10 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
             response, model_name,
         ))
     }
+
+    fn convert_stream_response(&self, chunk: &str) -> Option<String> {
+        crate::adaptor::gemini::GeminiAdaptor::convert_stream_response(chunk)
+    }
 }
 
 pub struct AdaptorFactory;

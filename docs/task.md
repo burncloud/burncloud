@@ -173,7 +173,7 @@
             "转换: 输出 OpenAI SSE 格式 (`data: {...}`)",
             "验证: 单元测试，输入 Google chunk，输出 OpenAI SSE string"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backend",
