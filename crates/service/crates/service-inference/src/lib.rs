@@ -181,6 +181,8 @@ impl InferenceService {
             auth_type: "Bearer".to_string(), // 占位，实际上不需要，但 Router 需要非空
             priority: 100,                   // 本地模型优先级高
             protocol: "openai".to_string(),
+            param_override: None,
+            header_override: None,
         };
 
         // Upsert: 先删后插，或者检查是否存在

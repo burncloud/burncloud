@@ -157,6 +157,10 @@ pub fn ChannelPage() -> Element {
     let mut form_azure_api_version = use_signal(|| "2023-05-15".to_string());
     // Local specific
     let mut form_local_url = use_signal(|| "http://localhost:8080".to_string());
+    // Google specific
+    let mut form_google_auth_type = use_signal(|| "api_key".to_string()); // "api_key" or "vertex"
+    let mut form_google_region = use_signal(|| "us-central1".to_string());
+    let mut form_google_project_id = use_signal(String::new);
 
     let open_create_modal = move |_| {
         form_id.set(0);
@@ -169,6 +173,9 @@ pub fn ChannelPage() -> Element {
         form_aws_model_id.set("anthropic.claude-sonnet-4-5-20250929-v1:0".to_string());
         form_azure_resource.set(String::new());
         form_azure_deployment.set(String::new());
+        form_google_auth_type.set("api_key".to_string());
+        form_google_region.set("us-central1".to_string());
+        form_google_project_id.set(String::new());
         is_modal_open.set(true);
     };
 
@@ -434,9 +441,26 @@ pub fn ChannelPage() -> Element {
                     final_models = "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string();
                 }
                 ProviderType::Google => {
-                    final_type = 24;
-                    final_base_url = "https://generativelanguage.googleapis.com".to_string();
-                    final_models = "gemini-pro,gemini-1.5-pro".to_string();
+                    if form_google_auth_type() == "vertex" {
+                        final_type = 41; // VertexAi
+                                         // No Base URL needed usually, constructed by backend, but we can set a placeholder or override
+                        final_base_url = "https://aiplatform.googleapis.com".to_string();
+                        final_models = "gemini-pro,gemini-1.5-pro".to_string();
+
+                        // Pack params
+                        let mut params_map = serde_json::Map::new();
+                        params_map.insert("region".to_string(), json!(form_google_region()));
+                        if !form_google_project_id().is_empty() {
+                            params_map
+                                .insert("project_id".to_string(), json!(form_google_project_id()));
+                        }
+                        final_param_override =
+                            Some(serde_json::Value::Object(params_map).to_string());
+                    } else {
+                        final_type = 24; // Gemini
+                        final_base_url = "https://generativelanguage.googleapis.com".to_string();
+                        final_models = "gemini-pro,gemini-1.5-pro".to_string();
+                    }
                 }
                 ProviderType::Aws => {
                     // Map AWS to Custom type for now, or Reuse 1 (OpenAI compatible) if router handles it?
@@ -767,11 +791,64 @@ pub fn ChannelPage() -> Element {
                                     }
 
                                     if selected_provider() == ProviderType::Google {
-                                        BCInput {
-                                            label: Some("API Key".to_string()),
-                                            value: "{form_key}",
-                                            placeholder: "AIza...".to_string(),
-                                            oninput: move |e: FormEvent| form_key.set(e.value())
+                                        div { class: "flex flex-col gap-2 mb-2",
+                                            label { class: "text-sm font-medium text-base-content/80", "认证类型 (Auth Type)" }
+                                            div { class: "join w-full",
+                                                button {
+                                                    class: if form_google_auth_type() == "api_key" { "join-item btn btn-sm btn-primary flex-1" } else { "join-item btn btn-sm btn-ghost flex-1" },
+                                                    onclick: move |_| form_google_auth_type.set("api_key".to_string()),
+                                                    "Gemini API"
+                                                }
+                                                button {
+                                                    class: if form_google_auth_type() == "vertex" { "join-item btn btn-sm btn-primary flex-1" } else { "join-item btn btn-sm btn-ghost flex-1" },
+                                                    onclick: move |_| form_google_auth_type.set("vertex".to_string()),
+                                                    "Vertex AI"
+                                                }
+                                            }
+                                        }
+
+                                        if form_google_auth_type() == "api_key" {
+                                            BCInput {
+                                                label: Some("API Key".to_string()),
+                                                value: "{form_key}",
+                                                placeholder: "AIza...".to_string(),
+                                                oninput: move |e: FormEvent| form_key.set(e.value())
+                                            }
+                                        } else {
+                                            div { class: "flex flex-col gap-1.5",
+                                                label { class: "text-sm font-medium text-base-content/80",
+                                                    "Service Account JSON Key"
+                                                    span { class: "text-xs font-normal text-base-content/50 ml-2", "(Copied from Google Cloud Console)" }
+                                                }
+                                                textarea {
+                                                    class: "textarea textarea-bordered h-32 text-xs font-mono leading-tight",
+                                                    placeholder: "{{\n  \"type\": \"service_account\",\n  \"project_id\": ...\n}}",
+                                                    value: "{form_key}",
+                                                    oninput: move |e| form_key.set(e.value())
+                                                }
+                                            }
+
+                                            div { class: "grid grid-cols-2 gap-4",
+                                                div { class: "flex flex-col gap-1.5",
+                                                    label { class: "text-sm font-medium text-base-content/80", "区域 (Region)" }
+                                                    select { class: "select select-bordered w-full select-sm",
+                                                        value: "{form_google_region}",
+                                                        onchange: move |e: FormEvent| form_google_region.set(e.value()),
+                                                        option { value: "us-central1", "US Central (Iowa)" }
+                                                        option { value: "us-east4", "US East (N. Virginia)" }
+                                                        option { value: "us-west1", "US West (Oregon)" }
+                                                        option { value: "asia-northeast1", "Asia (Tokyo)" }
+                                                        option { value: "asia-southeast1", "Asia (Singapore)" }
+                                                        option { value: "europe-west1", "Europe (Belgium)" }
+                                                    }
+                                                }
+                                                BCInput {
+                                                    label: Some("Project ID (Optional)".to_string()),
+                                                    value: "{form_google_project_id}",
+                                                    placeholder: "Override JSON project_id".to_string(),
+                                                    oninput: move |e: FormEvent| form_google_project_id.set(e.value())
+                                                }
+                                            }
                                         }
                                     }
 
