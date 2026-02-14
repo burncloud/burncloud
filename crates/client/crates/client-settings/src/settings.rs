@@ -1,4 +1,3 @@
-use crate::channels::ChannelManager;
 use crate::groups::GroupManager;
 use crate::tokens::TokenManager;
 use burncloud_client_shared::i18n::{t, use_i18n, Language};
@@ -28,11 +27,7 @@ pub fn SystemSettings() -> Element {
                     onclick: move |_| active_tab.set("general"),
                     "General"
                 }
-                button {
-                    class: if active_tab() == "channels" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
-                    onclick: move |_| active_tab.set("channels"),
-                    "{t(*lang, \"nav.channels\")}"
-                }
+
                 button {
                     class: if active_tab() == "groups" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
                     onclick: move |_| active_tab.set("groups"),
@@ -94,8 +89,7 @@ pub fn SystemSettings() -> Element {
                         }
                     }
                 }
-            } else if active_tab() == "channels" {
-                ChannelManager {}
+
             } else if active_tab() == "groups" {
                 GroupManager {}
             } else if active_tab() == "tokens" {

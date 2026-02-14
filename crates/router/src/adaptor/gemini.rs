@@ -70,7 +70,18 @@ impl GeminiAdaptor {
 
     // Convert Gemini Response JSON -> OpenAI Response JSON
     // NOTE: This handles non-streaming response only for now.
-    pub fn convert_response(gemini_resp: Value, model: &str) -> Value {
+    pub fn convert_response(mut gemini_resp: Value, model: &str) -> Value {
+        // Handle Array (from streamGenerateContent)
+        if gemini_resp.is_array() {
+            if let Value::Array(mut arr) = gemini_resp {
+                gemini_resp = if !arr.is_empty() {
+                    arr.remove(0)
+                } else {
+                    Value::Null
+                };
+            }
+        }
+
         // TODO: Robust error handling if gemini_resp is error
         let candidate = gemini_resp.get("candidates").and_then(|c| c.get(0));
 
@@ -98,6 +109,67 @@ impl GeminiAdaptor {
                 }
             ]
         })
+    }
+
+    pub fn convert_stream_response(chunk: &str) -> Option<String> {
+        // Handle array format "[{...}," or ",{...}]" which happens in some stream outputs
+        let clean_chunk = chunk
+            .trim()
+            .trim_start_matches('[')
+            .trim_start_matches(',')
+            .trim_end_matches(',')
+            .trim_end_matches(']');
+        if clean_chunk.is_empty() {
+            return None;
+        }
+
+        let root: Value = match serde_json::from_str(clean_chunk) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+
+        let candidate = root.get("candidates").and_then(|c| c.get(0));
+
+        let text = candidate
+            .and_then(|c| c.get("content"))
+            .and_then(|c| c.get("parts"))
+            .and_then(|p| p.get(0))
+            .and_then(|p| p.get("text"))
+            .and_then(|t| t.as_str());
+
+        let finish_reason = candidate
+            .and_then(|c| c.get("finishReason"))
+            .and_then(|s| s.as_str());
+
+        let openai_finish_reason = match finish_reason {
+            Some("STOP") => Some("stop"),
+            Some("MAX_TOKENS") => Some("length"),
+            Some("SAFETY") => Some("content_filter"),
+            Some(_) => Some("stop"),
+            None => None,
+        };
+
+        if text.is_none() && openai_finish_reason.is_none() {
+            return None;
+        }
+
+        let chunk_json = json!({
+            "id": "chatcmpl-stream", // Static ID for now as we don't have state
+            "object": "chat.completion.chunk",
+            "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "model": "gemini-model",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": text
+                    },
+                    "finish_reason": openai_finish_reason
+                }
+            ]
+        });
+
+        Some(format!("data: {}\n\n", chunk_json.to_string()))
     }
 }
 
@@ -152,5 +224,24 @@ mod tests {
         assert_eq!(openai_val["model"], "gemini-pro");
         assert_eq!(openai_val["choices"][0]["message"]["content"], "Hi there!");
         assert_eq!(openai_val["choices"][0]["message"]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_convert_stream_response() {
+        let chunk = r#"[{"candidates": [{"content": {"parts": [{"text": "Hello stream"}]}, "finishReason": null, "index": 0}]}]"#;
+
+        let sse = GeminiAdaptor::convert_stream_response(chunk).unwrap();
+        assert!(sse.starts_with("data: "));
+        assert!(sse.contains("Hello stream"));
+        assert!(sse.contains(r#""finish_reason":null"#));
+
+        // Test dirty chunk with STOP
+        let dirty_chunk = r#",{"candidates": [{"finishReason": "STOP", "index": 0}]},"#;
+        let sse2 = GeminiAdaptor::convert_stream_response(dirty_chunk).unwrap();
+        assert!(sse2.contains(r#""finish_reason":"stop""#));
+
+        // Test invalid/empty
+        assert!(GeminiAdaptor::convert_stream_response("").is_none());
+        assert!(GeminiAdaptor::convert_stream_response("[]").is_none());
     }
 }

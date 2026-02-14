@@ -81,5 +81,118 @@
             "断言该行的 Secret 部分被掩码处理，包含文本 'sk-***' 或 'sk-123...'"
         ],
         "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 1.1: 添加 Google Vertex AI 所需依赖",
+        "steps": [
+            "修改 `crates/router/Cargo.toml`，添加 `jsonwebtoken = \"9\"`",
+            "更新 workspace 依赖配置 (如果需要)",
+            "验证: `cargo build -p burncloud-router` 成功下载并编译依赖"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 1.2: 创建 VertexAdaptor 结构体并实现基础 trait",
+        "steps": [
+            "创建 `crates/router/src/adaptor/vertex.rs`",
+            "定义 `pub struct VertexAdaptor;`",
+            "实现 `ChannelAdaptor` trait，name() 返回 'VertexAi'",
+            "验证: 文件存在且能被 `mod.rs` 引用，编译通过"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 1.3: 实现 Service Account 解析",
+        "steps": [
+            "编写 `parse_service_account(json_str: &str) -> Result<(String, String)>`",
+            "逻辑: 解析 JSON，提取 `private_key` 和 `client_email`",
+            "验证: 单元测试能正确解析 mock 的 json 字符串，提取 private_key 和 email"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 1.4: 实现 OAuth Token 获取 (JWT 签名)",
+        "steps": [
+            "实现 `get_access_token(client_email, private_key) -> String`",
+            "逻辑: 构造 JWT Claims (iss, scope, aud, exp, iat)，使用 RS256 签名，POST 请求 Google OAuth 端点",
+            "优化: 实现简单的内存缓存 (RwLock<HashMap>) 以避免频繁请求 Token",
+            "验证: 在 Mock Server 环境下，能正确发送 JWT 并解析返回的 Access Token"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 1.5: 实现 Vertex 请求构造 (Build Request)",
+        "steps": [
+            "实现 `build_request`",
+            "逻辑: 调用 `get_access_token` 获取 Token",
+            "Header 添加 `Authorization: Bearer <token>`",
+            "构造 URL: `https://<region>-aiplatform.googleapis.com/v1/projects/<project_id>/locations/<region>/publishers/google/models/<model>:streamGenerateContent`",
+            "验证: 构造的 URL 和 Header 符合 Vertex AI 规范"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 1.6: 复用与适配 Gemini 协议转换",
+        "steps": [
+            "在 `VertexAdaptor` 中复用 `GeminiAdaptor` 的 `convert_request`",
+            "确保 Vertex AI 的 API 路径参数 (project_id, region) 能从 Upstream 配置或 Extra 参数中获取",
+            "验证: 输入 OpenAI Request，输出符合 Vertex AI 的 JSON Body"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 1.7: 注册 Vertex 适配器",
+        "steps": [
+            "在 `crates/router/src/adaptor/factory.rs` 中注册 `ChannelType::VertexAi`",
+            "验证: `AdaptorFactory::get_adaptor(ChannelType::VertexAi)` 返回正确的适配器实例"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 2.1: 为 ChannelAdaptor Trait 增加流式支持",
+        "steps": [
+            "修改 `ChannelAdaptor` trait，增加 `fn convert_stream_response(...)`",
+            "验证: 编译通过"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 2.2: 实现 Vertex/Gemini 流式转换",
+        "steps": [
+            "在 `VertexAdaptor` (及 `GeminiAdaptor`) 中实现 `convert_stream_response`",
+            "逻辑: 解析 Google 的流式 JSON Array chunk (`[{candidates: ...}]`)",
+            "转换: 输出 OpenAI SSE 格式 (`data: {...}`)",
+            "验证: 单元测试，输入 Google chunk，输出 OpenAI SSE string"
+        ],
+        "passes": true
+    },
+    {
+        "category": "backend",
+        "description": "Task 2.3: 更新 Router Proxy Logic 支持流式",
+        "steps": [
+            "修改 `crates/router/src/lib.rs` 中的 `proxy_logic`",
+            "逻辑: 当 `stream=true` 且 ChannelType 为 VertexAi/Gemini 时，使用 `convert_stream_response` 处理响应流",
+            "验证: 编译通过"
+        ],
+        "passes": true
+    },
+    {
+        "category": "integration",
+        "description": "Task 3.1: 完整 Vertex AI 流程测试",
+        "steps": [
+            "在 UI 或 CLI 中添加一个 Google Vertex AI 渠道 (配置 Mock 的 Service Account)",
+            "在 Playground 中选择该模型，发送对话请求 (Stream & Non-Stream)",
+            "验证: 能成功收到回复，且无报错"
+        ],
+        "passes": true
     }
 ]
