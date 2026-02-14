@@ -1,7 +1,12 @@
-use crate::channels::Channel;
 use dioxus::prelude::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Channel {
+    pub id: String,
+    pub name: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Group {

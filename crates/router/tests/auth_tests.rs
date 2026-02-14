@@ -6,6 +6,32 @@ use reqwest::Client;
 use serde_json::json;
 use std::env;
 
+async fn start_mock_upstream(listener: tokio::net::TcpListener) {
+    let handler = |headers: axum::http::HeaderMap, body: String| async move {
+        // Return a structure similar to HttpBin's response for verification
+        let mut header_map = serde_json::Map::new();
+        for (k, v) in headers {
+            if let Some(key) = k {
+                header_map.insert(
+                    key.to_string(),
+                    serde_json::Value::String(v.to_str().unwrap_or_default().to_string()),
+                );
+            }
+        }
+
+        serde_json::json!({
+            "headers": header_map,
+            "data": body,
+            "json": serde_json::from_str::<serde_json::Value>(&body).ok()
+        })
+        .to_string()
+    };
+
+    axum::serve(listener, axum::Router::new().fallback(handler))
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn test_bedrock_proxy() -> anyhow::Result<()> {
     let ak = env::var("TEST_AWS_AK").unwrap_or_default();
@@ -79,11 +105,20 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
 async fn test_deepseek_proxy() -> anyhow::Result<()> {
     let (_db, pool) = setup_db().await?;
 
+    // Start Mock Upstream
+    let mock_port = 3020;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        start_mock_upstream(listener).await;
+    });
+
     let id = "deepseek-test";
     let name = "DeepSeek Test";
-    let base_url = "https://httpbin.org/anything";
+    let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
     let api_key = "sk-deepseek-mock-key";
-    let match_path = "/v1/chat/completions";
+    let match_path = "/v1/chat/completions/test-deepseek";
     let auth_type = "DeepSeek";
 
     sqlx::query(
@@ -93,7 +128,8 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
         ON CONFLICT(id) DO UPDATE SET 
             api_key = excluded.api_key,
             base_url = excluded.base_url,
-            auth_type = excluded.auth_type
+            auth_type = excluded.auth_type,
+            match_path = excluded.match_path
         "#,
     )
     .bind(id)
@@ -109,12 +145,12 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     start_test_server(port).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}/v1/chat/completions", port);
+    let url = format!("http://localhost:{}{}", port, match_path);
 
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .body("deepseek body")
+        .json(&json!({"content": "deepseek body"}))
         .send()
         .await?;
 
@@ -135,11 +171,20 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
 async fn test_qwen_proxy() -> anyhow::Result<()> {
     let (_db, pool) = setup_db().await?;
 
+    // Start Mock Upstream
+    let mock_port = 3021;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        start_mock_upstream(listener).await;
+    });
+
     let id = "qwen-test";
     let name = "Qwen Test";
-    let base_url = "https://httpbin.org/anything";
+    let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
     let api_key = "sk-qwen-mock-key";
-    let match_path = "/api/v1/services/aigc/text-generation/generation";
+    let match_path = "/api/v1/services/aigc/text-generation/generation/test-qwen";
     let auth_type = "Qwen";
 
     sqlx::query(
@@ -149,7 +194,8 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
         ON CONFLICT(id) DO UPDATE SET 
             api_key = excluded.api_key,
             base_url = excluded.base_url,
-            auth_type = excluded.auth_type
+            auth_type = excluded.auth_type,
+            match_path = excluded.match_path
         "#,
     )
     .bind(id)
@@ -165,15 +211,12 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     start_test_server(port).await;
 
     let client = Client::new();
-    let url = format!(
-        "http://localhost:{}/api/v1/services/aigc/text-generation/generation",
-        port
-    );
+    let url = format!("http://localhost:{}{}", port, match_path);
 
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .body("qwen body")
+        .json(&json!({"content": "qwen body"}))
         .send()
         .await?;
 

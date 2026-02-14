@@ -1,9 +1,11 @@
+use async_trait::async_trait;
 use burncloud_common::types::{ChannelType, OpenAIChatRequest};
 use reqwest::RequestBuilder;
 use serde_json::Value;
 
 /// Trait defining the behavior for a channel adaptor.
 /// This mirrors the structure of New API's channel adapters.
+#[async_trait]
 pub trait ChannelAdaptor: Send + Sync {
     /// Returns the name of the adaptor (e.g., "OpenAI", "Claude").
     #[allow(dead_code)]
@@ -23,8 +25,13 @@ pub trait ChannelAdaptor: Send + Sync {
 
     /// Modifies the HTTP request builder before sending (e.g., setting headers, URL, body).
     /// This gives adaptors full control over how the request is sent.
-    fn build_request(&self, builder: RequestBuilder, api_key: &str, body: &Value)
-        -> RequestBuilder;
+    async fn build_request(
+        &self,
+        client: &reqwest::Client,
+        builder: RequestBuilder,
+        api_key: &str,
+        body: &Value,
+    ) -> RequestBuilder;
 
     /// Checks if the adaptor supports streaming for the given model/request.
     #[allow(dead_code)]
@@ -32,17 +39,23 @@ pub trait ChannelAdaptor: Send + Sync {
         true
     }
 
-    // TODO: Add stream handling method
+    /// Converts a vendor-specific stream chunk to an OpenAI-compatible SSE event string.
+    /// Returns `None` if the adaptor performs direct passthrough.
+    fn convert_stream_response(&self, _chunk: &str) -> Option<String> {
+        None
+    }
 }
 
 // Implementations will go here or in submodules
 pub struct OpenAIAdaptor;
+#[async_trait]
 impl ChannelAdaptor for OpenAIAdaptor {
     fn name(&self) -> &'static str {
         "OpenAI"
     }
-    fn build_request(
+    async fn build_request(
         &self,
+        _client: &reqwest::Client,
         builder: RequestBuilder,
         api_key: &str,
         body: &Value,
@@ -52,12 +65,14 @@ impl ChannelAdaptor for OpenAIAdaptor {
 }
 
 pub struct AnthropicAdaptor;
+#[async_trait]
 impl ChannelAdaptor for AnthropicAdaptor {
     fn name(&self) -> &'static str {
         "Anthropic"
     }
-    fn build_request(
+    async fn build_request(
         &self,
+        _client: &reqwest::Client,
         builder: RequestBuilder,
         api_key: &str,
         body: &Value,
@@ -82,12 +97,14 @@ impl ChannelAdaptor for AnthropicAdaptor {
 }
 
 pub struct GoogleGeminiAdaptor;
+#[async_trait]
 impl ChannelAdaptor for GoogleGeminiAdaptor {
     fn name(&self) -> &'static str {
         "GoogleGemini"
     }
-    fn build_request(
+    async fn build_request(
         &self,
+        _client: &reqwest::Client,
         builder: RequestBuilder,
         api_key: &str,
         body: &Value,
@@ -104,6 +121,10 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
             response, model_name,
         ))
     }
+
+    fn convert_stream_response(&self, chunk: &str) -> Option<String> {
+        crate::adaptor::gemini::GeminiAdaptor::convert_stream_response(chunk)
+    }
 }
 
 pub struct AdaptorFactory;
@@ -116,9 +137,27 @@ impl AdaptorFactory {
             | ChannelType::DeepSeek
             | ChannelType::Moonshot => Box::new(OpenAIAdaptor),
             ChannelType::Anthropic => Box::new(AnthropicAdaptor),
-            ChannelType::Gemini | ChannelType::VertexAi => Box::new(GoogleGeminiAdaptor),
+            ChannelType::Gemini => Box::new(GoogleGeminiAdaptor),
+            ChannelType::VertexAi => Box::new(crate::adaptor::vertex::VertexAdaptor::default()),
             // Add more mappings here
             _ => Box::new(OpenAIAdaptor), // Default to OpenAI-compatible
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_adaptor() {
+        let adaptor = AdaptorFactory::get_adaptor(ChannelType::VertexAi);
+        assert_eq!(adaptor.name(), "VertexAi");
+
+        let adaptor = AdaptorFactory::get_adaptor(ChannelType::Gemini);
+        assert_eq!(adaptor.name(), "GoogleGemini");
+
+        let adaptor = AdaptorFactory::get_adaptor(ChannelType::OpenAI);
+        assert_eq!(adaptor.name(), "OpenAI");
     }
 }

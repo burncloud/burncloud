@@ -1,7 +1,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_test_server};
+use common::{setup_db, start_mock_upstream, start_test_server};
 use reqwest::Client;
 use serde_json::Value;
 
@@ -9,12 +9,21 @@ use serde_json::Value;
 async fn test_round_robin_balancer() -> anyhow::Result<()> {
     let (_db, pool) = setup_db().await?;
 
+    // Start Mock Upstream
+    let mock_port = 3022;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        start_mock_upstream(listener).await;
+    });
+
     // 1. Create Upstreams
     let u1_id = "u1";
-    let u1_url = "https://httpbin.org/anything/u1";
+    let u1_url = format!("http://127.0.0.1:{}/anything/u1", mock_port);
 
     let u2_id = "u2";
-    let u2_url = "https://httpbin.org/anything/u2";
+    let u2_url = format!("http://127.0.0.1:{}/anything/u2", mock_port);
 
     // Insert Upstreams
     // Note: We set match_path to something that won't match directly to ensure they are only reached via group
@@ -25,6 +34,12 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
         VALUES 
         (?, 'Upstream 1', ?, 'key1', '/u1-direct', 'Bearer'),
         (?, 'Upstream 2', ?, 'key2', '/u2-direct', 'Bearer')
+        ON CONFLICT(id) DO UPDATE SET 
+            base_url = excluded.base_url,
+            name = excluded.name,
+            api_key = excluded.api_key,
+            match_path = excluded.match_path,
+            auth_type = excluded.auth_type
         "#,
     )
     .bind(u1_id)
@@ -39,12 +54,22 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     let match_path = "/group-test";
 
     sqlx::query(
-        "INSERT INTO router_groups (id, name, strategy, match_path) VALUES (?, 'Test Group', 'round_robin', ?)"
+        "INSERT INTO router_groups (id, name, strategy, match_path) VALUES (?, 'Test Group', 'round_robin', ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, strategy=excluded.strategy, match_path=excluded.match_path"
     )
     .bind(group_id).bind(match_path)
     .execute(&pool).await?;
 
     // 3. Bind Upstreams to Group
+    // For many-to-many, we might need to delete old ones or use upsert if ID exists?
+    // router_group_members usually has (group_id, upstream_id) as PK or unique?
+    // Let's assume we can delete first or ignore.
+    // Or just Try Insert.
+    // Let's first delete to be safe if we are reusing DB.
+    sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
+        .bind(group_id)
+        .execute(&pool)
+        .await?;
+
     sqlx::query(
         "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES (?, ?, 1), (?, ?, 1)"
     )
@@ -64,9 +89,14 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     let mut hits_u2 = 0;
 
     for i in 0..4 {
+        // Must send JSON body because ProxyLogic expects it, or at least handles it nicely
+        // But ProxyLogic only fails if body is invalid JSON *AND* it needs to parse it?
+        // Actually, previous debugging showed it returned 502 with "Invalid JSON body".
+        // So we MUST send valid JSON.
         let resp = client
             .get(&url)
             .header("Authorization", "Bearer sk-burncloud-demo")
+            .json(&serde_json::json!({"test": "data"}))
             .send()
             .await?;
 
