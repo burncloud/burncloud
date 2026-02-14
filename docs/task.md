@@ -370,7 +370,7 @@
     {
         "category": "integration",
         "description": "Task 6.2: 集成测试 - 添加 Gemini 渠道",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel add -t gemini -k \"test-gemini-key\" -m \"gemini-pro\"",
             "验证命令执行成功",
@@ -380,7 +380,7 @@
     {
         "category": "integration",
         "description": "Task 6.3: 集成测试 - 添加 Azure 渠道",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel add -t azure -k \"test-azure-key\" -u \"https://test.openai.azure.com\" -m \"gpt-4\"",
             "验证命令执行成功",
@@ -390,7 +390,7 @@
     {
         "category": "integration",
         "description": "Task 6.4: 集成测试 - 列出渠道 (表格格式)",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel list",
             "验证输出为表格格式",
@@ -401,7 +401,7 @@
     {
         "category": "integration",
         "description": "Task 6.5: 集成测试 - 列出渠道 (JSON 格式)",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel list --format json",
             "验证输出为有效 JSON",
@@ -412,7 +412,7 @@
     {
         "category": "integration",
         "description": "Task 6.6: 集成测试 - 显示渠道详情",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel show 1",
             "验证显示渠道的详细信息",
@@ -423,7 +423,7 @@
     {
         "category": "integration",
         "description": "Task 6.7: 集成测试 - 删除渠道 (带确认)",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel delete 1",
             "验证显示确认提示",
@@ -435,7 +435,7 @@
     {
         "category": "integration",
         "description": "Task 6.8: 集成测试 - 删除渠道 (跳过确认)",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel delete 2 --yes",
             "验证无需确认直接删除",
@@ -445,7 +445,7 @@
     {
         "category": "integration",
         "description": "Task 6.9: 集成测试 - 删除不存在的渠道",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel delete 999",
             "验证显示 \"Channel not found\" 错误消息",
@@ -455,7 +455,7 @@
     {
         "category": "integration",
         "description": "Task 6.10: 集成测试 - 无效渠道类型",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel add -t invalid -k \"test\"",
             "验证显示友好的错误消息",
@@ -465,7 +465,7 @@
     {
         "category": "integration",
         "description": "Task 6.11: 集成测试 - 验证数据库状态",
-        "passes": false,
+        "passes": true,
         "steps": [
             "使用 sqlite3 命令或代码检查 ~/.burncloud/data.db",
             "验证 channels 表数据正确",
@@ -476,7 +476,7 @@
     {
         "category": "integration",
         "description": "Task 6.12: 集成测试 - 帮助信息",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo run -- channel --help",
             "验证显示所有子命令",
