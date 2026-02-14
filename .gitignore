@@ -16,6 +16,7 @@ Cargo.lock
 /*.bat
 /*.json
 /*.pid
+/*.md
 /progress.txt
 MESSAGE.md
 ISSUE.md
