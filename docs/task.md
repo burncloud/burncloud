@@ -88,7 +88,7 @@
     {
         "category": "token-expiry",
         "description": "Task 2.2: 实现过期时间检查逻辑",
-        "passes": false,
+        "passes": true,
         "steps": [
             "在 validate_token 函数中添加过期检查",
             "if token.expired_time > 0 && token.expired_time < now() { return TokenExpired }",
