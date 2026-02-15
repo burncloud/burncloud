@@ -19,9 +19,10 @@ Cargo.lock
 /*.md
 /spec
 /progress.txt
-MESSAGE.md
-ISSUE.md
-home-current.jpeg
+/MESSAGE.md
+/ISSUE.md
+/home-current.jpeg
+/.entire
 
 # LLM files
 /.ralph
@@ -34,6 +35,7 @@ package-lock.json
 yarn.lock
 
 # Test output
+/crates/tests/tests/ui/*.jpeg
 playwright-report
 test-results
 

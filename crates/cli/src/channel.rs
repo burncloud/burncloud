@@ -83,15 +83,15 @@ pub fn get_default_channel_name(channel_type: ChannelType) -> String {
 /// Handle channel add command
 pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
     // Parse channel type
-    let type_str = args.get_one::<String>("type").ok_or_else(|| {
-        anyhow!("Channel type is required. Use -t or --type to specify.")
-    })?;
+    let type_str = args
+        .get_one::<String>("type")
+        .ok_or_else(|| anyhow!("Channel type is required. Use -t or --type to specify."))?;
     let channel_type = parse_channel_type(type_str)?;
 
     // Get API key
-    let key = args.get_one::<String>("key").ok_or_else(|| {
-        anyhow!("API key is required. Use -k or --key to specify.")
-    })?;
+    let key = args
+        .get_one::<String>("key")
+        .ok_or_else(|| anyhow!("API key is required. Use -k or --key to specify."))?;
     if key.is_empty() {
         return Err(anyhow!("API key cannot be empty"));
     }
@@ -158,7 +158,10 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
 
 /// Handle channel list command
 pub async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
-    let format = args.get_one::<String>("format").map(|s| s.as_str()).unwrap_or("table");
+    let format = args
+        .get_one::<String>("format")
+        .map(|s| s.as_str())
+        .unwrap_or("table");
 
     let channels = ChannelModel::list(db, 100, 0).await?;
 
@@ -174,12 +177,18 @@ pub async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
         }
         _ => {
             // Table format
-            println!("{:<5} {:<20} {:<12} {:<10} {:<40} {:<40}",
-                "ID", "Name", "Type", "Status", "Models", "Base URL");
+            println!(
+                "{:<5} {:<20} {:<12} {:<10} {:<40} {:<40}",
+                "ID", "Name", "Type", "Status", "Models", "Base URL"
+            );
             println!("{}", "-".repeat(130));
             for channel in channels {
                 let type_name = get_channel_type_name(ChannelType::from(channel.type_));
-                let status = if channel.status == 1 { "Active" } else { "Inactive" };
+                let status = if channel.status == 1 {
+                    "Active"
+                } else {
+                    "Inactive"
+                };
                 let models_display = if channel.models.len() > 35 {
                     format!("{}...", &channel.models[..32])
                 } else {
@@ -191,13 +200,9 @@ pub async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
                 } else {
                     base_url_display.to_string()
                 };
-                println!("{:<5} {:<20} {:<12} {:<10} {:<40} {:<40}",
-                    channel.id,
-                    channel.name,
-                    type_name,
-                    status,
-                    models_display,
-                    url_truncated
+                println!(
+                    "{:<5} {:<20} {:<12} {:<10} {:<40} {:<40}",
+                    channel.id, channel.name, type_name, status, models_display, url_truncated
                 );
             }
         }
@@ -208,11 +213,13 @@ pub async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
 
 /// Handle channel show command
 pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
-    let id: i32 = args.get_one::<String>("id")
+    let id: i32 = args
+        .get_one::<String>("id")
         .ok_or_else(|| anyhow!("Channel ID is required"))?
         .parse()?;
 
-    let channel = ChannelModel::get_by_id(db, id).await?
+    let channel = ChannelModel::get_by_id(db, id)
+        .await?
         .ok_or_else(|| anyhow!("Channel with ID {} not found", id))?;
 
     // Mask the API key (show only first 8 characters)
@@ -223,7 +230,11 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
     };
 
     let type_name = get_channel_type_name(ChannelType::from(channel.type_));
-    let status = if channel.status == 1 { "Active" } else { "Inactive" };
+    let status = if channel.status == 1 {
+        "Active"
+    } else {
+        "Inactive"
+    };
 
     println!("Channel Details:");
     println!("  ID:          {}", channel.id);
@@ -232,7 +243,10 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
     println!("  Status:      {}", status);
     println!("  Key:         {}", masked_key);
     println!("  Models:      {}", channel.models);
-    println!("  Base URL:    {}", channel.base_url.as_deref().unwrap_or("N/A"));
+    println!(
+        "  Base URL:    {}",
+        channel.base_url.as_deref().unwrap_or("N/A")
+    );
     println!("  Group:       {}", channel.group);
     println!("  Priority:    {}", channel.priority);
     println!("  Weight:      {}", channel.weight);
@@ -243,14 +257,16 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
 
 /// Handle channel delete command
 pub async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> {
-    let id: i32 = args.get_one::<String>("id")
+    let id: i32 = args
+        .get_one::<String>("id")
         .ok_or_else(|| anyhow!("Channel ID is required"))?
         .parse()?;
 
     let skip_confirm = args.get_flag("yes");
 
     // Check if channel exists
-    let channel = ChannelModel::get_by_id(db, id).await?
+    let channel = ChannelModel::get_by_id(db, id)
+        .await?
         .ok_or_else(|| anyhow!("Channel with ID {} not found", id))?;
 
     // Confirm deletion
@@ -302,34 +318,76 @@ mod tests {
         assert_eq!(parse_channel_type("OpenAI").unwrap(), ChannelType::OpenAI);
         assert_eq!(parse_channel_type("OPENAI").unwrap(), ChannelType::OpenAI);
         assert_eq!(parse_channel_type("azure").unwrap(), ChannelType::Azure);
-        assert_eq!(parse_channel_type("anthropic").unwrap(), ChannelType::Anthropic);
+        assert_eq!(
+            parse_channel_type("anthropic").unwrap(),
+            ChannelType::Anthropic
+        );
         assert_eq!(parse_channel_type("gemini").unwrap(), ChannelType::Gemini);
         assert_eq!(parse_channel_type("aws").unwrap(), ChannelType::Aws);
-        assert_eq!(parse_channel_type("vertexai").unwrap(), ChannelType::VertexAi);
+        assert_eq!(
+            parse_channel_type("vertexai").unwrap(),
+            ChannelType::VertexAi
+        );
         assert_eq!(parse_channel_type("vertex").unwrap(), ChannelType::VertexAi);
-        assert_eq!(parse_channel_type("deepseek").unwrap(), ChannelType::DeepSeek);
+        assert_eq!(
+            parse_channel_type("deepseek").unwrap(),
+            ChannelType::DeepSeek
+        );
         assert!(parse_channel_type("invalid").is_err());
     }
 
     #[test]
     fn test_get_default_models() {
-        assert_eq!(get_default_models(ChannelType::OpenAI), vec!["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]);
-        assert_eq!(get_default_models(ChannelType::Azure), vec!["gpt-4", "gpt-35-turbo"]);
-        assert_eq!(get_default_models(ChannelType::Anthropic), vec!["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]);
-        assert_eq!(get_default_models(ChannelType::Gemini), vec!["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"]);
-        assert_eq!(get_default_models(ChannelType::Aws), vec!["claude-3-sonnet", "claude-3-haiku"]);
-        assert_eq!(get_default_models(ChannelType::VertexAi), vec!["gemini-1.5-pro"]);
-        assert_eq!(get_default_models(ChannelType::DeepSeek), vec!["deepseek-chat", "deepseek-coder"]);
+        assert_eq!(
+            get_default_models(ChannelType::OpenAI),
+            vec!["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]
+        );
+        assert_eq!(
+            get_default_models(ChannelType::Azure),
+            vec!["gpt-4", "gpt-35-turbo"]
+        );
+        assert_eq!(
+            get_default_models(ChannelType::Anthropic),
+            vec!["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]
+        );
+        assert_eq!(
+            get_default_models(ChannelType::Gemini),
+            vec!["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"]
+        );
+        assert_eq!(
+            get_default_models(ChannelType::Aws),
+            vec!["claude-3-sonnet", "claude-3-haiku"]
+        );
+        assert_eq!(
+            get_default_models(ChannelType::VertexAi),
+            vec!["gemini-1.5-pro"]
+        );
+        assert_eq!(
+            get_default_models(ChannelType::DeepSeek),
+            vec!["deepseek-chat", "deepseek-coder"]
+        );
     }
 
     #[test]
     fn test_get_default_base_url() {
-        assert_eq!(get_default_base_url(ChannelType::OpenAI), Some("https://api.openai.com/v1"));
+        assert_eq!(
+            get_default_base_url(ChannelType::OpenAI),
+            Some("https://api.openai.com/v1")
+        );
         assert_eq!(get_default_base_url(ChannelType::Azure), None);
-        assert_eq!(get_default_base_url(ChannelType::Anthropic), Some("https://api.anthropic.com/v1"));
-        assert_eq!(get_default_base_url(ChannelType::Gemini), Some("https://generativelanguage.googleapis.com/v1beta"));
+        assert_eq!(
+            get_default_base_url(ChannelType::Anthropic),
+            Some("https://api.anthropic.com/v1")
+        );
+        assert_eq!(
+            get_default_base_url(ChannelType::Gemini),
+            Some("https://generativelanguage.googleapis.com/v1beta")
+        );
         assert_eq!(get_default_base_url(ChannelType::Aws), None);
         assert_eq!(get_default_base_url(ChannelType::VertexAi), None);
-        assert_eq!(get_default_base_url(ChannelType::DeepSeek), Some("https://api.deepseek.com/v1"));
+        assert_eq!(
+            get_default_base_url(ChannelType::DeepSeek),
+            Some("https://api.deepseek.com/v1")
+        );
     }
 }
