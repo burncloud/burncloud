@@ -63,6 +63,8 @@ async fn create_token(
         status: "active".to_string(),
         quota_limit: payload.quota_limit.unwrap_or(-1),
         used_quota: 0,
+        accessed_time: 0,
+        expired_time: -1,
     };
 
     match RouterDatabase::create_token(&state.db, &db_token).await {
