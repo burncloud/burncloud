@@ -354,6 +354,11 @@ async fn proxy_handler(
     // TODO: Integrate tiktoken-rs for precise counting
     let estimated_prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
 
+    // Extract model name for pricing before proxy_logic consumes body_bytes
+    let model_name = serde_json::from_slice::<serde_json::Value>(&body_bytes)
+        .ok()
+        .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(|s| s.to_string()));
+
     // Create token counter for streaming response parsing
     let token_counter = Arc::new(StreamingTokenCounter::with_prompt_tokens(estimated_prompt_tokens as u32));
 
@@ -366,11 +371,6 @@ async fn proxy_handler(
 
     // Calculate cost if we have token usage
     let cost = if prompt_tokens > 0 || completion_tokens > 0 {
-        // Try to get model from request body for pricing
-        let model_name = serde_json::from_slice::<serde_json::Value>(&body_bytes)
-            .ok()
-            .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(|s| s.to_string()));
-
         if let Some(model) = model_name {
             if let Ok(Some(price)) = PriceModel::get(&state.db, &model).await {
                 PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
