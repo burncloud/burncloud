@@ -1,9 +1,12 @@
 use anyhow::Result;
 use burncloud_auto_update::AutoUpdater;
 use burncloud_core::{ConfigManager, ModelManager};
+use burncloud_database::Database;
 use clap::{Arg, Command};
 use log::{error, info};
 use std::io::{self, Write};
+
+use crate::channel::handle_channel_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
@@ -30,6 +33,83 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                     .help("仅检查更新，不执行更新")
                     .action(clap::ArgAction::SetTrue),
             ),
+        )
+        .subcommand(
+            Command::new("channel")
+                .about("Manage API channels")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("add")
+                        .about("Add a new channel")
+                        .arg(
+                            Arg::new("type")
+                                .short('t')
+                                .long("type")
+                                .required(true)
+                                .help("Channel type (openai, azure, anthropic, gemini, aws, vertexai, deepseek)"),
+                        )
+                        .arg(
+                            Arg::new("key")
+                                .short('k')
+                                .long("key")
+                                .required(true)
+                                .help("API key for the channel"),
+                        )
+                        .arg(
+                            Arg::new("models")
+                                .short('m')
+                                .long("models")
+                                .help("Comma-separated list of supported models (uses defaults if not specified)"),
+                        )
+                        .arg(
+                            Arg::new("url")
+                                .short('u')
+                                .long("url")
+                                .help("Custom base URL for the channel"),
+                        )
+                        .arg(
+                            Arg::new("name")
+                                .short('n')
+                                .long("name")
+                                .help("Channel name (uses default if not specified)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("list")
+                        .about("List all channels")
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete a channel")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Channel ID to delete"),
+                        )
+                        .arg(
+                            Arg::new("yes")
+                                .short('y')
+                                .long("yes")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Skip confirmation prompt"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show channel details")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Channel ID to show"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -93,6 +173,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 Ok(Err(e)) => return Err(e),
                 Err(e) => return Err(anyhow::anyhow!(format!("更新线程失败: {:?}", e))),
             }
+        }
+        Some(("channel", sub_m)) => {
+            let db = Database::new().await?;
+            handle_channel_command(&db, sub_m).await?;
+            db.close().await?;
         }
         _ => {
             show_help();
