@@ -91,7 +91,8 @@ impl PriceModel {
             .as_secs() as i64;
 
         let sql = match db.kind().as_str() {
-            "postgres" => r#"
+            "postgres" => {
+                r#"
                 INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ON CONFLICT(model) DO UPDATE SET
@@ -100,8 +101,10 @@ impl PriceModel {
                     currency = EXCLUDED.currency,
                     alias_for = EXCLUDED.alias_for,
                     updated_at = EXCLUDED.updated_at
-            "#,
-            _ => r#"
+            "#
+            }
+            _ => {
+                r#"
                 INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(model) DO UPDATE SET
@@ -110,7 +113,8 @@ impl PriceModel {
                     currency = excluded.currency,
                     alias_for = excluded.alias_for,
                     updated_at = excluded.updated_at
-            "#,
+            "#
+            }
         };
 
         sqlx::query(sql)
@@ -135,10 +139,7 @@ impl PriceModel {
             _ => "DELETE FROM prices WHERE model = ?",
         };
 
-        sqlx::query(sql)
-            .bind(model)
-            .execute(conn.pool())
-            .await?;
+        sqlx::query(sql).bind(model).execute(conn.pool()).await?;
 
         Ok(())
     }

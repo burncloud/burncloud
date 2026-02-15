@@ -47,8 +47,7 @@ impl StreamingTokenCounter {
 
     /// Returns the total token count.
     pub fn total_tokens(&self) -> u32 {
-        self.prompt_tokens.load(Ordering::Relaxed)
-            + self.completion_tokens.load(Ordering::Relaxed)
+        self.prompt_tokens.load(Ordering::Relaxed) + self.completion_tokens.load(Ordering::Relaxed)
     }
 }
 

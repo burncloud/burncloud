@@ -383,7 +383,10 @@ impl Schema {
                         .await?;
                 }
             }
-            println!("Initialized default pricing for {} models", default_prices.len());
+            println!(
+                "Initialized default pricing for {} models",
+                default_prices.len()
+            );
         }
 
         Ok(())

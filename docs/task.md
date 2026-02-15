@@ -175,7 +175,7 @@
     {
         "category": "pricing",
         "description": "Task 3.6: 集成计费逻辑到router",
-        "passes": false,
+        "passes": true,
         "steps": [
             "在 proxy_logic() 请求结束后调用 PricingService::calculate_cost()",
             "将费用写入 router_logs 或新表",
@@ -185,7 +185,7 @@
     {
         "category": "pricing",
         "description": "Task 3.7: 实现CLI定价管理命令",
-        "passes": false,
+        "passes": true,
         "steps": [
             "添加 burncloud price list 命令",
             "添加 burncloud price set <model> --input <price> --output <price> 命令",
@@ -195,7 +195,7 @@
     {
         "category": "pricing",
         "description": "Task 3.8: 集成测试 - 计费逻辑",
-        "passes": false,
+        "passes": true,
         "steps": [
             "设置模型定价: gpt-4 input=$0.03/1k, output=$0.06/1k",
             "发送请求消耗 100 prompt + 200 completion tokens",
@@ -206,7 +206,7 @@
     {
         "category": "quota",
         "description": "Task 4.1: 分析当前配额数据结构",
-        "passes": false,
+        "passes": true,
         "steps": [
             "阅读 users 表: quota, used_quota 字段",
             "阅读 tokens 表: remain_quota, used_quota 字段",
@@ -217,7 +217,7 @@
     {
         "category": "quota",
         "description": "Task 4.2: 实现配额扣除服务",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建 crates/service/crates/service-user/src/quota.rs 或使用现有模块",
             "实现 deduct_quota(user_id, token_id, cost) -> Result<()>",
@@ -229,7 +229,7 @@
     {
         "category": "quota",
         "description": "Task 4.3: 集成配额扣除到router",
-        "passes": false,
+        "passes": true,
         "steps": [
             "在请求开始时检查配额是否充足",
             "在请求结束后扣除配额",
@@ -240,7 +240,7 @@
     {
         "category": "quota",
         "description": "Task 4.4: 定义配额不足错误响应",
-        "passes": false,
+        "passes": true,
         "steps": [
             "定义错误码: QUOTA_INSUFFICIENT = 402",
             "定义错误消息: \"Insufficient quota\"",
@@ -251,7 +251,7 @@
     {
         "category": "quota",
         "description": "Task 4.5: 集成测试 - 配额扣除",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建用户配额为 100 的用户",
             "发送请求消耗 50 配额",
@@ -283,7 +283,7 @@
     {
         "category": "weighted-balance",
         "description": "Task 6.1: 设计WeightedBalancer结构",
-        "passes": false,
+        "passes": true,
         "steps": [
             "定义 WeightedBalancer 结构体",
             "字段: channels: Vec<(Channel, weight)>, total_weight: u32",
@@ -294,7 +294,7 @@
     {
         "category": "weighted-balance",
         "description": "Task 6.2: 实现加权随机选择算法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "实现 select() 方法",
             "生成随机数 r in [0, total_weight)",
@@ -305,7 +305,7 @@
     {
         "category": "weighted-balance",
         "description": "Task 6.3: 集成WeightedBalancer到ModelRouter",
-        "passes": false,
+        "passes": true,
         "steps": [
             "修改 ModelRouter::route() 方法",
             "根据 abilities 表中的 weight 字段使用 WeightedBalancer",
@@ -316,7 +316,7 @@
     {
         "category": "weighted-balance",
         "description": "Task 6.4: 集成测试 - 加权负载均衡",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建两个渠道: Channel A (weight=80), Channel B (weight=20)",
             "发送100个请求",
@@ -327,7 +327,7 @@
     {
         "category": "integration",
         "description": "Task 7.1: 端到端测试 - 完整计费流程",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建用户、Token、Channel、定价配置",
             "发送流式请求",
@@ -340,7 +340,7 @@
     {
         "category": "integration",
         "description": "Task 7.2: 性能测试 - 并发请求",
-        "passes": false,
+        "passes": true,
         "steps": [
             "使用工具 (wrk/ab) 发送100并发请求",
             "验证无数据竞争",
@@ -351,7 +351,7 @@
     {
         "category": "integration",
         "description": "Task 7.3: 边界测试 - 异常情况",
-        "passes": false,
+        "passes": true,
         "steps": [
             "测试无效Token: 返回401",
             "测试过期Token: 返回401",
@@ -363,7 +363,7 @@
     {
         "category": "docs",
         "description": "Task 8.1: 更新API文档",
-        "passes": false,
+        "passes": true,
         "steps": [
             "更新 docs/api.md 添加新错误码说明",
             "添加计费API文档",
@@ -374,7 +374,7 @@
     {
         "category": "docs",
         "description": "Task 8.2: 更新README",
-        "passes": false,
+        "passes": true,
         "steps": [
             "更新 README.md 添加计费功能说明",
             "添加定价配置示例",
@@ -385,7 +385,7 @@
     {
         "category": "release",
         "description": "Task 9.1: 准备发布检查清单",
-        "passes": false,
+        "passes": true,
         "steps": [
             "运行 cargo clippy --all-targets --all-features",
             "运行 cargo fmt --all -- --check",
@@ -396,7 +396,7 @@
     {
         "category": "release",
         "description": "Task 9.2: 准备数据库迁移说明",
-        "passes": false,
+        "passes": true,
         "steps": [
             "编写迁移步骤文档",
             "准备从旧版本升级的SQL脚本",

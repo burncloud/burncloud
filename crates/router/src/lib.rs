@@ -253,7 +253,7 @@ async fn proxy_handler(
         .and_then(|s| s.strip_prefix("Bearer "));
 
     let user_token = match user_auth {
-        Some(token) => token,
+        Some(token) => token.to_string(),
         None => {
             return Response::builder()
                 .status(401)
@@ -264,23 +264,23 @@ async fn proxy_handler(
 
     // Check against DB
     let (user_id, user_group, quota_limit, used_quota) =
-        match RouterDatabase::validate_token_and_get_info(&state.db, user_token).await {
+        match RouterDatabase::validate_token_and_get_info(&state.db, &user_token).await {
             Ok(Some(info)) => {
                 // Update accessed_time non-blocking
                 let db = state.db.clone();
-                let token = user_token.to_string();
+                let token = user_token.clone();
                 tokio::spawn(async move {
                     let _ = RouterDatabase::update_token_accessed_time(&db, &token).await;
                 });
                 (info.0.to_string(), info.1, info.2, info.3)
-            },
+            }
             Ok(None) => {
                 // Fallback to old token table logic with detailed validation
-                match RouterDatabase::validate_token_detailed(&state.db, user_token).await {
+                match RouterDatabase::validate_token_detailed(&state.db, &user_token).await {
                     Ok(TokenValidationResult::Valid(t)) => {
                         // Update accessed_time non-blocking
                         let db = state.db.clone();
-                        let token = user_token.to_string();
+                        let token = user_token.clone();
                         tokio::spawn(async move {
                             let _ = RouterDatabase::update_token_accessed_time(&db, &token).await;
                         });
@@ -314,20 +314,21 @@ async fn proxy_handler(
                     }
                 }
             }
-            Err(e) => {
-                return Response::builder()
-                    .status(500)
-                    .header("content-type", "application/json")
-                    .body(Body::from(format!(r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#, e)))
-                    .unwrap()
-            }
+            Err(e) => return Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#,
+                    e
+                )))
+                .unwrap(),
         };
 
     if quota_limit >= 0 && used_quota >= quota_limit {
         return Response::builder()
-            .status(429)
+            .status(402)
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"error":{"message":"Quota Exceeded","type":"insufficient_quota_error","code":"insufficient_quota"}}"#))
+            .body(Body::from(r#"{"error":{"message":"Insufficient quota","type":"insufficient_quota_error","code":"insufficient_quota"}}"#))
             .unwrap();
     }
 
@@ -357,14 +358,29 @@ async fn proxy_handler(
     // Extract model name for pricing before proxy_logic consumes body_bytes
     let model_name = serde_json::from_slice::<serde_json::Value>(&body_bytes)
         .ok()
-        .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(|s| s.to_string()));
+        .and_then(|v| {
+            v.get("model")
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string())
+        });
 
     // Create token counter for streaming response parsing
-    let token_counter = Arc::new(StreamingTokenCounter::with_prompt_tokens(estimated_prompt_tokens as u32));
+    let token_counter = Arc::new(StreamingTokenCounter::with_prompt_tokens(
+        estimated_prompt_tokens as u32,
+    ));
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status) =
-        proxy_logic(&state, method, uri, headers, body_bytes, &path, &user_group, token_counter.clone()).await;
+    let (response, upstream_id, final_status) = proxy_logic(
+        &state,
+        method,
+        uri,
+        headers,
+        body_bytes,
+        &path,
+        &user_group,
+        token_counter.clone(),
+    )
+    .await;
 
     // Get final token counts
     let (prompt_tokens, completion_tokens) = token_counter.get_usage();
@@ -387,7 +403,7 @@ async fn proxy_handler(
     // Async Log
     let log = DbRouterLog {
         request_id,
-        user_id: Some(user_id),
+        user_id: Some(user_id.clone()),
         path,
         upstream_id,
         status_code: final_status.as_u16() as i32,
@@ -399,12 +415,27 @@ async fn proxy_handler(
 
     let _ = state.log_tx.send(log).await;
 
+    // Deduct quota (non-blocking)
+    let total_tokens = prompt_tokens + completion_tokens;
+    if total_tokens > 0 {
+        let db = state.db.clone();
+        let token_for_quota = user_token.to_string();
+        let user_id_for_quota = user_id.clone();
+        tokio::spawn(async move {
+            // Deduct quota in token units
+            let quota_cost = total_tokens as f64;
+            let _ =
+                RouterDatabase::deduct_quota(&db, &user_id_for_quota, &token_for_quota, quota_cost)
+                    .await;
+        });
+    }
+
     response
 }
 
 use adaptor::factory::AdaptorFactory;
 use burncloud_common::types::ChannelType;
-use burncloud_database_models::{PriceModel, Price};
+use burncloud_database_models::PriceModel;
 
 async fn proxy_logic(
     state: &AppState,
@@ -666,7 +697,11 @@ async fn proxy_logic(
                     // Optimization: If protocol is OpenAI, we can stream directly without parsing/buffering
                     // This satisfies the "Passthrough Principle" and enables streaming.
                     if upstream.protocol == "openai" {
-                        return (handle_response_with_token_parsing(resp, &token_counter, "openai"), last_upstream_id, status);
+                        return (
+                            handle_response_with_token_parsing(resp, &token_counter, "openai"),
+                            last_upstream_id,
+                            status,
+                        );
                     }
 
                     // Handle Streaming for non-OpenAI
@@ -683,13 +718,22 @@ async fn proxy_logic(
                                 // Parse token usage from streaming response
                                 match protocol.as_str() {
                                     "claude" => {
-                                        StreamingTokenParser::parse_anthropic_chunk(&text, &counter_clone);
+                                        StreamingTokenParser::parse_anthropic_chunk(
+                                            &text,
+                                            &counter_clone,
+                                        );
                                     }
                                     "gemini" | "vertex" => {
-                                        StreamingTokenParser::parse_gemini_chunk(&text, &counter_clone);
+                                        StreamingTokenParser::parse_gemini_chunk(
+                                            &text,
+                                            &counter_clone,
+                                        );
                                     }
                                     _ => {
-                                        StreamingTokenParser::parse_openai_chunk(&text, &counter_clone);
+                                        StreamingTokenParser::parse_openai_chunk(
+                                            &text,
+                                            &counter_clone,
+                                        );
                                     }
                                 }
 

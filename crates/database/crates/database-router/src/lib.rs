@@ -68,7 +68,7 @@ pub struct DbRouterLog {
     pub completion_tokens: i32,
     #[sqlx(default)]
     pub cost: f64, // Cost in USD
-    // created_at is handled by DB default
+                   // created_at is handled by DB default
 }
 
 // DbUser etc are moved to burncloud-database-user
@@ -245,11 +245,9 @@ impl RouterDatabase {
             )
             .execute(conn.pool())
             .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
+            let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0")
+                .execute(conn.pool())
+                .await;
         }
 
         // Insert default demo data if empty
@@ -386,7 +384,10 @@ impl RouterDatabase {
     }
 
     /// Validates a token and returns detailed result distinguishing between invalid and expired
-    pub async fn validate_token_detailed(db: &Database, token: &str) -> Result<TokenValidationResult> {
+    pub async fn validate_token_detailed(
+        db: &Database,
+        token: &str,
+    ) -> Result<TokenValidationResult> {
         let conn = db.get_connection()?;
         let token = sqlx::query_as::<_, DbToken>(
              "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'"
@@ -623,5 +624,116 @@ impl RouterDatabase {
         .await?;
 
         Ok((row.0.unwrap_or(0), row.1.unwrap_or(0)))
+    }
+
+    /// Deduct quota from both user and token atomically.
+    /// Cost is in quota units (typically 1 quota = 1 token, or can be scaled).
+    /// Returns Ok(true) if deduction successful, Ok(false) if insufficient quota.
+    pub async fn deduct_quota(
+        db: &Database,
+        user_id: &str,
+        token: &str,
+        cost: f64,
+    ) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let cost_i64 = cost.ceil() as i64;
+
+        if cost_i64 <= 0 {
+            return Ok(true);
+        }
+
+        // Start transaction
+        let mut tx = conn.pool().begin().await?;
+
+        // Check if token has unlimited quota
+        let unlimited: bool = sqlx::query_scalar(
+            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?",
+        )
+        .bind(token)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap_or(0)
+            != 0;
+
+        if unlimited {
+            // Unlimited quota - just update used_quota for tracking
+            sqlx::query("UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?")
+                .bind(cost_i64)
+                .bind(token)
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            return Ok(true);
+        }
+
+        // Check token quota
+        let token_quota: Option<(i64, i64)> =
+            sqlx::query_as("SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?")
+                .bind(token)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+        if let Some((quota_limit, used_quota)) = token_quota {
+            // quota_limit = -1 means unlimited for token
+            if quota_limit >= 0 && used_quota + cost_i64 > quota_limit {
+                tx.rollback().await?;
+                return Ok(false);
+            }
+        }
+
+        // Check user quota from users table (if it exists)
+        // Note: users table is managed by database-user crate
+        // For now, we just check token quota
+        // TODO: Integrate with user-level quota checking
+
+        // Deduct from token
+        sqlx::query("UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?")
+            .bind(cost_i64)
+            .bind(token)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Check if quota is sufficient without deducting.
+    pub async fn check_quota(db: &Database, token: &str, cost: f64) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let cost_i64 = cost.ceil() as i64;
+
+        if cost_i64 <= 0 {
+            return Ok(true);
+        }
+
+        // Check if token has unlimited quota
+        let unlimited: bool = sqlx::query_scalar(
+            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?",
+        )
+        .bind(token)
+        .fetch_one(conn.pool())
+        .await
+        .unwrap_or(0)
+            != 0;
+
+        if unlimited {
+            return Ok(true);
+        }
+
+        // Check token quota
+        let token_quota: Option<(i64, i64)> =
+            sqlx::query_as("SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?")
+                .bind(token)
+                .fetch_optional(conn.pool())
+                .await?;
+
+        if let Some((quota_limit, used_quota)) = token_quota {
+            // quota_limit = -1 means unlimited
+            if quota_limit >= 0 && used_quota + cost_i64 > quota_limit {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 }

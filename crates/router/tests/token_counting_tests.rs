@@ -94,7 +94,10 @@ async fn test_openai_streaming_token_count() -> anyhow::Result<()> {
     .fetch_one(&pool)
     .await?;
 
-    println!("Token counts from logs: prompt={}, completion={}", logs.0, logs.1);
+    println!(
+        "Token counts from logs: prompt={}, completion={}",
+        logs.0, logs.1
+    );
 
     // Prompt tokens should be > 0 (estimated or from usage)
     // Note: For OpenAI streaming with stream_options.include_usage, we should get actual counts
@@ -189,7 +192,10 @@ async fn test_anthropic_streaming_token_count() -> anyhow::Result<()> {
     .fetch_one(&pool)
     .await?;
 
-    println!("Token counts from logs: prompt={}, completion={}", logs.0, logs.1);
+    println!(
+        "Token counts from logs: prompt={}, completion={}",
+        logs.0, logs.1
+    );
 
     // Prompt tokens should be > 0
     assert!(logs.0 > 0, "Prompt tokens should be greater than 0");
@@ -239,7 +245,8 @@ async fn test_token_counting_unit() -> anyhow::Result<()> {
 
     // Test Gemini streaming response
     let counter3 = Arc::new(StreamingTokenCounter::new());
-    let gemini_chunk = r#"{"candidates":[],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":20}}"#;
+    let gemini_chunk =
+        r#"{"candidates":[],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":20}}"#;
 
     StreamingTokenParser::parse_gemini_chunk(gemini_chunk, &counter3);
 

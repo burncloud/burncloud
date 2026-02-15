@@ -92,7 +92,7 @@ async fn test_valid_token_with_future_expiry_passes_auth() -> anyhow::Result<()>
     )
     .bind(&unique_token)
     .bind("test-user-future")
-        .bind("active")
+    .bind("active")
     .bind(-1i64) // unlimited quota
     .bind(0i64)
     .bind(expired_time)
@@ -121,7 +121,10 @@ async fn test_valid_token_with_future_expiry_passes_auth() -> anyhow::Result<()>
     if status == 401 {
         let body: serde_json::Value = resp.json().await?;
         // The error should NOT be token_expired
-        assert_ne!(body["error"]["code"], "token_expired", "Token with future expiry should not be reported as expired");
+        assert_ne!(
+            body["error"]["code"], "token_expired",
+            "Token with future expiry should not be reported as expired"
+        );
     }
     // If status is not 401, the token passed auth validation
 
@@ -178,7 +181,10 @@ async fn test_token_with_never_expire_minus_one_passes_auth() -> anyhow::Result<
     if status == 401 {
         let body: serde_json::Value = resp.json().await?;
         // The error should NOT be token_expired
-        assert_ne!(body["error"]["code"], "token_expired", "Token with never-expire (-1) should not be reported as expired");
+        assert_ne!(
+            body["error"]["code"], "token_expired",
+            "Token with never-expire (-1) should not be reported as expired"
+        );
     }
     // If status is not 401, the token passed auth validation
 
@@ -239,18 +245,22 @@ async fn test_accessed_time_updates_on_valid_token() -> anyhow::Result<()> {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Check that accessed_time was updated
-    let row: (i64,) = sqlx::query_as(
-        "SELECT accessed_time FROM router_tokens WHERE token = ?",
-    )
-    .bind(&unique_token)
-    .fetch_one(&pool)
-    .await?;
+    let row: (i64,) = sqlx::query_as("SELECT accessed_time FROM router_tokens WHERE token = ?")
+        .bind(&unique_token)
+        .fetch_one(&pool)
+        .await?;
 
     let accessed_time = row.0;
 
     // accessed_time should be greater than initial_time and >= before_time
-    assert!(accessed_time > initial_time, "accessed_time should be updated from initial 0");
-    assert!(accessed_time >= before_time, "accessed_time should be >= request time");
+    assert!(
+        accessed_time > initial_time,
+        "accessed_time should be updated from initial 0"
+    );
+    assert!(
+        accessed_time >= before_time,
+        "accessed_time should be >= request time"
+    );
 
     Ok(())
 }

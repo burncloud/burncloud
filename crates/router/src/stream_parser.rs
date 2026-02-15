@@ -50,7 +50,8 @@ impl StreamingTokenParser {
                 if json.get("type").and_then(|v| v.as_str()) == Some("message_start") {
                     if let Some(message) = json.get("message") {
                         if let Some(usage) = message.get("usage") {
-                            if let Some(input) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                            if let Some(input) = usage.get("input_tokens").and_then(|v| v.as_u64())
+                            {
                                 counter.set_prompt_tokens(input as u32);
                             }
                         }
@@ -89,7 +90,10 @@ impl StreamingTokenParser {
                 if let Some(prompt) = metadata.get("promptTokenCount").and_then(|v| v.as_u64()) {
                     counter.set_prompt_tokens(prompt as u32);
                 }
-                if let Some(completion) = metadata.get("candidatesTokenCount").and_then(|v| v.as_u64()) {
+                if let Some(completion) = metadata
+                    .get("candidatesTokenCount")
+                    .and_then(|v| v.as_u64())
+                {
                     counter.set_completion_tokens(completion as u32);
                 }
             }
