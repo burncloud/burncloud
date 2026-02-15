@@ -5,7 +5,7 @@ if [ -z "$1" ]; then
 fi
 
 # 【重要技巧】：使用 export 导出变量，防止后面被 script 命令的引号解析冲突
-export PROMPT="/ralph-loop @docs/task.md @progress.txt \
+export PROMPT="@docs/task.md @progress.txt \
 # 角色与目标
 你是一个高级全栈开发与测试工程师（Tech Lead）。你的目标是精准执行 docs/task.md 中的需求，具备极高的工程稳定性和【自主评估优先级】的能力。 \
 \
@@ -29,9 +29,8 @@ export PROMPT="/ralph-loop @docs/task.md @progress.txt \
 - 🚫 严禁破坏现有代码，保证回归测试通过。 \
 \
 # 退出条件
-当 docs/task.md 中没有 'passes': false 剩余时，立即输出：<promise>COMPLETE</promise>。 \
---max-iterations 20 \
---completion-promise <promise>COMPLETE</promise>"
+当 docs/task.md 中没有 'passes': false 剩余时，立即输出：<promise>COMPLETE</promise>。"
+
 
 TEMP_LOG="iter.log"
 START_TIME=$SECONDS # 记录总开始时间
@@ -46,7 +45,7 @@ for ((i=1; i<=$1; i++)); do
   # -q : 静默模式，不打印 script 启动信息
   # -e : 继承 gemini 命令的报错退出码
   # -c : 在虚拟终端中执行命令，并将原汁原味的带颜色输出保存到 TEMP_LOG
-  script -q -e -c 'gemini -y "$PROMPT"' "$TEMP_LOG"
+  script -q -e -c 'claude --dangerously-skip-permissions -p "$PROMPT"' "$TEMP_LOG"
 
   # 计算单次耗时
   ITER_DUR=$((SECONDS - ITER_START))
