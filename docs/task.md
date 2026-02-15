@@ -110,7 +110,7 @@
     {
         "category": "token-expiry",
         "description": "Task 2.4: 集成测试 - 过期Token验证",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建一个过期时间设置为过去时间的Token",
             "使用该Token发送请求",
