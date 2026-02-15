@@ -263,7 +263,7 @@
     {
         "category": "token-access",
         "description": "Task 5.1: 实现Token访问时间更新",
-        "passes": false,
+        "passes": true,
         "steps": [
             "在 validate_token 函数中，验证成功后更新 accessed_time",
             "使用非阻塞方式更新 (spawn task 或直接更新)",
@@ -273,7 +273,7 @@
     {
         "category": "token-access",
         "description": "Task 5.2: 集成测试 - 访问时间更新",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建Token，记录初始 accessed_time",
             "使用Token发送请求",

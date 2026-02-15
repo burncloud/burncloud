@@ -184,3 +184,73 @@ async fn test_token_with_never_expire_minus_one_passes_auth() -> anyhow::Result<
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_accessed_time_updates_on_valid_token() -> anyhow::Result<()> {
+    let (_db, pool) = setup_db().await?;
+
+    // Use unique token name for each test run
+    let unique_token = format!("sk-access-{}", Uuid::new_v4());
+
+    // Create a token with initial accessed_time = 0
+    sqlx::query("DELETE FROM router_tokens WHERE token = ?")
+        .bind(&unique_token)
+        .execute(&pool)
+        .await?;
+
+    let initial_time = 0i64;
+    sqlx::query(
+        r#"
+        INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota, expired_time, accessed_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&unique_token)
+    .bind("test-user-access")
+    .bind("active")
+    .bind(-1i64) // unlimited quota
+    .bind(0i64)
+    .bind(-1i64) // never expires
+    .bind(initial_time)
+    .execute(&pool)
+    .await?;
+
+    let port = 3033;
+    start_test_server(port).await;
+
+    let client = Client::new();
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
+
+    // Get current time before request
+    let before_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    // Make a request with the token
+    let _ = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", unique_token))
+        .json(&json!({"model": "test", "messages": [{"role": "user", "content": "hello"}]}))
+        .send()
+        .await?;
+
+    // Wait a bit for the async update to complete
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Check that accessed_time was updated
+    let row: (i64,) = sqlx::query_as(
+        "SELECT accessed_time FROM router_tokens WHERE token = ?",
+    )
+    .bind(&unique_token)
+    .fetch_one(&pool)
+    .await?;
+
+    let accessed_time = row.0;
+
+    // accessed_time should be greater than initial_time and >= before_time
+    assert!(accessed_time > initial_time, "accessed_time should be updated from initial 0");
+    assert!(accessed_time >= before_time, "accessed_time should be >= request time");
+
+    Ok(())
+}
