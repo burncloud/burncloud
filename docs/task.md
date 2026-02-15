@@ -78,7 +78,7 @@
     {
         "category": "token-expiry",
         "description": "Task 2.1: 分析当前validate_token函数",
-        "passes": false,
+        "passes": true,
         "steps": [
             "阅读 crates/database/crates/database-router/src/lib.rs 中 validate_token 函数",
             "确认 expired_time 字段是否存在及其语义 (-1=永不过期, >0=过期时间戳)",
