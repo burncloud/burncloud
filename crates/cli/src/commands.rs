@@ -7,6 +7,7 @@ use log::{error, info};
 use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
+use crate::price::handle_price_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
@@ -110,6 +111,71 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Channel ID to show"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("price")
+                .about("Manage model pricing")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list")
+                        .about("List all prices")
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("set")
+                        .about("Set price for a model")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("input")
+                                .long("input")
+                                .required(true)
+                                .help("Input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .long("output")
+                                .required(true)
+                                .help("Output price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("alias")
+                                .long("alias")
+                                .help("Alias to another model's pricing"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("get")
+                        .about("Get price for a model")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete price for a model")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -177,6 +243,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("channel", sub_m)) => {
             let db = Database::new().await?;
             handle_channel_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("price", sub_m)) => {
+            let db = Database::new().await?;
+            handle_price_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {

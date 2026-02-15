@@ -37,10 +37,6 @@ We choose Rust for our extreme pursuit of performance.
 *   **Experts, not Models**: Users don't care about `.bin` files. They care about capabilities. We present "Experts" (e.g., "Coding Wizard", "Creative Writer"), not just raw model names.
 *   **Hide the Math**: Don't show quantization bits (INT4/FP16) by default. Use human-readable sliders: "Faster" <-> "Smarter".
 
-### 1.7 BurnGrid Protocol
-*   **Seamless Sharing**: Network features (reselling/channels) are branded as "**BurnGrid**". It should feel like AirPlay for Compute—toggle it on to share excess power, toggle off for privacy.
-*   **Universal Memory**: We aim to provide a system-level vector memory that persists across different experts.
-
 ---
 
 ## Chapter 2: Architectural Principles
