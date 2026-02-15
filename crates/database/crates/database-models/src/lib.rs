@@ -5,6 +5,154 @@ use sqlx::Row;
 
 pub use burncloud_database::DatabaseError;
 
+/// Model pricing information
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Price {
+    pub id: i32,
+    pub model: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    #[serde(default)]
+    pub currency: String,
+    pub alias_for: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+}
+
+/// Input for creating/updating a price
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceInput {
+    pub model: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    pub currency: Option<String>,
+    pub alias_for: Option<String>,
+}
+
+pub struct PriceModel;
+
+impl PriceModel {
+    /// Get price for a model, resolving aliases
+    pub async fn get(db: &Database, model: &str) -> Result<Option<Price>> {
+        Self::get_inner(db, model, 0).await
+    }
+
+    /// Internal get with recursion depth limit to prevent infinite loops
+    async fn get_inner(db: &Database, model: &str, depth: u32) -> Result<Option<Price>> {
+        // Prevent infinite recursion from circular aliases
+        if depth > 10 {
+            return Ok(None);
+        }
+
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices WHERE model = $1",
+            _ => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices WHERE model = ?",
+        };
+
+        let price: Option<Price> = sqlx::query_as(sql)
+            .bind(model)
+            .fetch_optional(conn.pool())
+            .await?;
+
+        // If this price is an alias, resolve to the target model
+        if let Some(ref p) = price {
+            if let Some(ref alias_for) = p.alias_for {
+                return Box::pin(Self::get_inner(db, alias_for, depth + 1)).await;
+            }
+        }
+
+        Ok(price)
+    }
+
+    /// List all prices
+    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Price>> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices ORDER BY model LIMIT $1 OFFSET $2",
+            _ => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices ORDER BY model LIMIT ? OFFSET ?",
+        };
+
+        let prices = sqlx::query_as(sql)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(conn.pool())
+            .await?;
+
+        Ok(prices)
+    }
+
+    /// Create or update a price (upsert)
+    pub async fn upsert(db: &Database, input: &PriceInput) -> Result<()> {
+        let conn = db.get_connection()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let sql = match db.kind().as_str() {
+            "postgres" => r#"
+                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT(model) DO UPDATE SET
+                    input_price = EXCLUDED.input_price,
+                    output_price = EXCLUDED.output_price,
+                    currency = EXCLUDED.currency,
+                    alias_for = EXCLUDED.alias_for,
+                    updated_at = EXCLUDED.updated_at
+            "#,
+            _ => r#"
+                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(model) DO UPDATE SET
+                    input_price = excluded.input_price,
+                    output_price = excluded.output_price,
+                    currency = excluded.currency,
+                    alias_for = excluded.alias_for,
+                    updated_at = excluded.updated_at
+            "#,
+        };
+
+        sqlx::query(sql)
+            .bind(&input.model)
+            .bind(input.input_price)
+            .bind(input.output_price)
+            .bind(input.currency.as_deref().unwrap_or("USD"))
+            .bind(&input.alias_for)
+            .bind(now)
+            .bind(now)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Delete a price
+    pub async fn delete(db: &Database, model: &str) -> Result<()> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "DELETE FROM prices WHERE model = $1",
+            _ => "DELETE FROM prices WHERE model = ?",
+        };
+
+        sqlx::query(sql)
+            .bind(model)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Calculate cost for a request
+    /// Returns cost in the default currency (USD)
+    pub fn calculate_cost(price: &Price, prompt_tokens: u32, completion_tokens: u32) -> f64 {
+        // Prices are per 1M tokens
+        let input_cost = (prompt_tokens as f64 / 1_000_000.0) * price.input_price;
+        let output_cost = (completion_tokens as f64 / 1_000_000.0) * price.output_price;
+        input_cost + output_cost
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ModelInfo {
     pub model_id: String,

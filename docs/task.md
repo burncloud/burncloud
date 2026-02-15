@@ -2,7 +2,7 @@
     {
         "category": "token-stats",
         "description": "Task 1.1: 分析各供应商流式响应中的token统计格式",
-        "passes": false,
+        "passes": true,
         "steps": [
             "研究OpenAI流式响应: data: {\"choices\":[{\"delta\":...}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20}}",
             "研究Anthropic流式响应: data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":15}}",
@@ -13,7 +13,7 @@
     {
         "category": "token-stats",
         "description": "Task 1.2: 定义流式Token统计结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "在 crates/router/src/lib.rs 或新模块中定义 StreamingTokenCounter 结构体",
             "字段: prompt_tokens: AtomicU32, completion_tokens: AtomicU32",
@@ -24,7 +24,7 @@
     {
         "category": "token-stats",
         "description": "Task 1.3: 实现OpenAI流式响应token解析",
-        "passes": false,
+        "passes": true,
         "steps": [
             "在流式响应处理中监听 data: [DONE] 之前的usage字段",
             "解析 usage.prompt_tokens 和 usage.completion_tokens",
@@ -35,7 +35,7 @@
     {
         "category": "token-stats",
         "description": "Task 1.4: 实现Anthropic流式响应token解析",
-        "passes": false,
+        "passes": true,
         "steps": [
             "监听 message_start 事件获取 input_tokens",
             "监听 message_delta 事件获取 output_tokens",
@@ -46,7 +46,7 @@
     {
         "category": "token-stats",
         "description": "Task 1.5: 实现Gemini流式响应token解析",
-        "passes": false,
+        "passes": true,
         "steps": [
             "监听 usageMetadata 字段",
             "解析 promptTokenCount 和 candidatesTokenCount",
@@ -57,7 +57,7 @@
     {
         "category": "token-stats",
         "description": "Task 1.6: 将token统计写入router_logs表",
-        "passes": false,
+        "passes": true,
         "steps": [
             "修改 proxy_logic() 在请求结束时获取token计数",
             "将 completion_tokens 写入 DbRouterLog",
@@ -67,7 +67,7 @@
     {
         "category": "token-stats",
         "description": "Task 1.7: 集成测试 - 流式请求token统计",
-        "passes": false,
+        "passes": true,
         "steps": [
             "启动服务器",
             "发送流式请求到 OpenAI/Claude/Gemini 渠道",
@@ -121,7 +121,7 @@
     {
         "category": "pricing",
         "description": "Task 3.1: 设计prices表结构",
-        "passes": false,
+        "passes": true,
         "steps": [
             "设计表字段: id, model, input_price, output_price, currency, created_at, updated_at",
             "考虑模型别名映射 (gpt-4-turbo -> gpt-4 定价)",
@@ -131,7 +131,7 @@
     {
         "category": "pricing",
         "description": "Task 3.2: 添加prices表到schema.rs",
-        "passes": false,
+        "passes": true,
         "steps": [
             "打开 crates/database/src/schema.rs",
             "添加 prices 表定义",
@@ -141,7 +141,7 @@
     {
         "category": "pricing",
         "description": "Task 3.3: 创建Price数据模型",
-        "passes": false,
+        "passes": true,
         "steps": [
             "在 crates/database-models/src/lib.rs 或新文件定义 Price 结构体",
             "实现 FromRow trait",
@@ -152,7 +152,7 @@
     {
         "category": "pricing",
         "description": "Task 3.4: 创建数据库迁移脚本",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建 migrations/xxx_create_prices.sql 文件",
             "写入 CREATE TABLE IF NOT EXISTS prices 语句",
@@ -163,7 +163,7 @@
     {
         "category": "pricing",
         "description": "Task 3.5: 实现PricingService服务层",
-        "passes": false,
+        "passes": true,
         "steps": [
             "创建 crates/service/crates/service-pricing/src/lib.rs",
             "实现 calculate_cost(model, prompt_tokens, completion_tokens) -> f64",

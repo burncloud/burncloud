@@ -15,6 +15,7 @@ dashmap.workspace = true
 
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
+burncloud-database-models = { workspace = true }
 burncloud-router-aws = { workspace = true }
 burncloud-common = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

@@ -215,6 +215,41 @@ impl Schema {
             _ => "",
         };
 
+        // 5. Prices Table (Model Pricing)
+        let prices_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS prices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model TEXT NOT NULL UNIQUE,
+                    input_price REAL NOT NULL DEFAULT 0,
+                    output_price REAL NOT NULL DEFAULT 0,
+                    currency TEXT DEFAULT 'USD',
+                    alias_for TEXT,
+                    created_at INTEGER,
+                    updated_at INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS prices (
+                    id SERIAL PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL UNIQUE,
+                    input_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    output_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    currency VARCHAR(10) DEFAULT 'USD',
+                    alias_for VARCHAR(255),
+                    created_at BIGINT,
+                    updated_at BIGINT
+                );
+                CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
+            "#
+            }
+            _ => "",
+        };
+
         // Execute all
         if !users_sql.is_empty() {
             pool.execute(users_sql).await?;
@@ -227,6 +262,9 @@ impl Schema {
         }
         if !tokens_sql.is_empty() {
             pool.execute(tokens_sql).await?;
+        }
+        if !prices_sql.is_empty() {
+            pool.execute(prices_sql).await?;
         }
 
         // Init Root User if not exists
@@ -285,6 +323,67 @@ impl Schema {
                     .await?;
                 println!("Initialized demo token: sk-burncloud-demo");
             }
+        }
+
+        // Init Default Prices
+        let check_prices_sql = "SELECT count(*) FROM prices";
+        let p_count: i64 = match kind.as_str() {
+            "sqlite" => sqlx::query_scalar(check_prices_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            "postgres" => sqlx::query_scalar(check_prices_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            _ => 0,
+        };
+
+        if p_count == 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+
+            // Default pricing (prices per 1M tokens)
+            // Format: (model, input_price, output_price, alias_for)
+            let default_prices = [
+                // OpenAI models
+                ("gpt-4", 30.0, 60.0, None),
+                ("gpt-4-turbo", 10.0, 30.0, Some("gpt-4")),
+                ("gpt-4o", 2.5, 10.0, None),
+                ("gpt-4o-mini", 0.15, 0.60, None),
+                ("gpt-3.5-turbo", 0.50, 1.50, None),
+                // Anthropic models
+                ("claude-3-opus", 15.0, 75.0, None),
+                ("claude-3-sonnet", 3.0, 15.0, None),
+                ("claude-3-haiku", 0.25, 1.25, None),
+                ("claude-3-5-sonnet", 3.0, 15.0, None),
+                // Google models
+                ("gemini-1.5-pro", 3.5, 10.5, None),
+                ("gemini-1.5-flash", 0.075, 0.30, None),
+                ("gemini-pro", 0.50, 1.50, None),
+            ];
+
+            for (model, input_price, output_price, alias_for) in default_prices {
+                let insert_sql = match kind.as_str() {
+                    "sqlite" => "INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at) VALUES (?, ?, ?, 'USD', ?, ?, ?)",
+                    "postgres" => "INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at) VALUES ($1, $2, $3, 'USD', $4, $5, $6)",
+                    _ => "",
+                };
+                if !insert_sql.is_empty() {
+                    sqlx::query(insert_sql)
+                        .bind(model)
+                        .bind(input_price)
+                        .bind(output_price)
+                        .bind(alias_for)
+                        .bind(now)
+                        .bind(now)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            println!("Initialized default pricing for {} models", default_prices.len());
         }
 
         Ok(())
