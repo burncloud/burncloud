@@ -99,7 +99,7 @@
     {
         "category": "token-expiry",
         "description": "Task 2.3: 定义Token过期错误响应",
-        "passes": false,
+        "passes": true,
         "steps": [
             "定义错误码: TOKEN_EXPIRED = 401",
             "定义错误消息: \"Token has expired\"",
