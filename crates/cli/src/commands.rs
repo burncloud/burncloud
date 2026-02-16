@@ -8,6 +8,7 @@ use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
 use crate::price::handle_price_command;
+use crate::token::handle_token_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
@@ -176,6 +177,103 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Model name"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("token")
+                .about("Manage API tokens")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list")
+                        .about("List all tokens")
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        )
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .help("Filter by user ID"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("create")
+                        .about("Create a new token")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .required(true)
+                                .help("User ID for the token"),
+                        )
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .help("Token name"),
+                        )
+                        .arg(
+                            Arg::new("quota")
+                                .long("quota")
+                                .help("Remaining quota for the token"),
+                        )
+                        .arg(
+                            Arg::new("unlimited")
+                                .long("unlimited")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Set unlimited quota"),
+                        )
+                        .arg(
+                            Arg::new("expired")
+                                .long("expired")
+                                .help("Expiration timestamp (-1 for never)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("update")
+                        .about("Update a token")
+                        .arg(
+                            Arg::new("key")
+                                .required(true)
+                                .help("Token key to update"),
+                        )
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .help("New token name"),
+                        )
+                        .arg(
+                            Arg::new("quota")
+                                .long("quota")
+                                .help("New remaining quota"),
+                        )
+                        .arg(
+                            Arg::new("status")
+                                .long("status")
+                                .help("New status (1=active, 0=disabled)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete a token")
+                        .arg(
+                            Arg::new("key")
+                                .required(true)
+                                .help("Token key to delete"),
+                        )
+                        .arg(
+                            Arg::new("yes")
+                                .short('y')
+                                .long("yes")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Skip confirmation prompt"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -248,6 +346,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("price", sub_m)) => {
             let db = Database::new().await?;
             handle_price_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("token", sub_m)) => {
+            let db = Database::new().await?;
+            handle_token_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {
