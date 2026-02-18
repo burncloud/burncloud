@@ -1,9 +1,11 @@
 mod adaptor;
 mod balancer;
+mod channel_state;
 mod circuit_breaker;
 mod config;
 mod limiter;
 mod model_router;
+pub mod response_parser;
 pub mod stream_parser;
 pub mod token_counter;
 
@@ -19,6 +21,7 @@ use balancer::RoundRobinBalancer;
 use burncloud_common::types::OpenAIChatRequest;
 use burncloud_database::Database;
 use burncloud_database_router::{DbRouterLog, RouterDatabase, TokenValidationResult};
+use channel_state::ChannelStateTracker;
 use circuit_breaker::CircuitBreaker;
 use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
 use futures::stream::StreamExt;
@@ -44,6 +47,7 @@ struct AppState {
     circuit_breaker: Arc<CircuitBreaker>,
     log_tx: mpsc::Sender<DbRouterLog>,
     model_router: Arc<ModelRouter>,
+    channel_state_tracker: Arc<ChannelStateTracker>,
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
@@ -103,6 +107,8 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     // Circuit Breaker: 5 failures, 30s cooldown
     let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30));
     let model_router = Arc::new(ModelRouter::new(db.clone()));
+    // Channel State Tracker for health monitoring
+    let channel_state_tracker = Arc::new(ChannelStateTracker::new());
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -130,6 +136,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         circuit_breaker,
         log_tx,
         model_router,
+        channel_state_tracker,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
