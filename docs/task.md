@@ -778,7 +778,7 @@
     {
         "category": "phase3-dynamic-adaptor",
         "description": "Task 3.2.6: 创建 DynamicAdaptorFactory",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/factory.rs",
             "定义结构体包含 db 和 cache",
