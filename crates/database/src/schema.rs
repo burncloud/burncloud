@@ -95,7 +95,8 @@ impl Schema {
                     setting TEXT,
                     param_override TEXT,
                     header_override TEXT,
-                    remark TEXT
+                    remark TEXT,
+                    api_version VARCHAR(32) DEFAULT 'default'
                 );
                 CREATE INDEX IF NOT EXISTS idx_channels_name ON channels(name);
                 CREATE INDEX IF NOT EXISTS idx_channels_tag ON channels(tag);
@@ -125,7 +126,8 @@ impl Schema {
                     setting TEXT,
                     param_override TEXT,
                     header_override TEXT,
-                    remark VARCHAR(255)
+                    remark VARCHAR(255),
+                    api_version VARCHAR(32) DEFAULT 'default'
                 );
                 CREATE INDEX IF NOT EXISTS idx_channels_name ON channels(name);
                 CREATE INDEX IF NOT EXISTS idx_channels_tag ON channels(tag);
@@ -315,6 +317,18 @@ impl Schema {
         }
         if !protocol_configs_sql.is_empty() {
             pool.execute(protocol_configs_sql).await?;
+        }
+
+        // Migration: Add api_version column to channels if it doesn't exist
+        // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we try and ignore errors
+        if kind == "sqlite" {
+            let _ = sqlx::query("ALTER TABLE channels ADD COLUMN api_version VARCHAR(32) DEFAULT 'default'")
+                .execute(pool)
+                .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS api_version VARCHAR(32) DEFAULT 'default'")
+                .execute(pool)
+                .await;
         }
 
         // Init Root User if not exists

@@ -924,7 +924,7 @@
     {
         "category": "phase4-channel-cli",
         "description": "Task 4.1.2: 添加 Channel.api_version 字段支持",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/common/src/types.rs",
             "在 Channel 结构体添加 api_version 字段",
@@ -935,7 +935,7 @@
     {
         "category": "phase4-channel-cli",
         "description": "Task 4.1.3: 更新 channels 表添加 api_version 列",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/database/src/schema.rs",
             "添加 api_version 列 (VARCHAR, DEFAULT 'default')",

@@ -222,6 +222,7 @@ pub struct Channel {
     pub param_override: Option<String>,
     pub header_override: Option<String>,
     pub remark: Option<String>,
+    pub api_version: Option<String>, // API version for protocol adaptation
     // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
