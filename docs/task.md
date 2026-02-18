@@ -801,7 +801,7 @@
     {
         "category": "phase3-api-detector",
         "description": "Task 3.3.1: 创建 detector.rs 文件",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/detector.rs (新建)",
             "创建模块基础结构",
@@ -811,7 +811,7 @@
     {
         "category": "phase3-api-detector",
         "description": "Task 3.3.2: 定义 ApiVersionDetector 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/detector.rs",
             "定义字段: db",
@@ -822,7 +822,7 @@
     {
         "category": "phase3-api-detector",
         "description": "Task 3.3.3: 实现 detect_and_update 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/detector.rs",
             "解析弃用错误信息",
@@ -834,7 +834,7 @@
     {
         "category": "phase3-api-detector",
         "description": "Task 3.3.4: 实现 parse_deprecation_error 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/detector.rs",
             "使用正则表达式匹配新版本号",
@@ -845,7 +845,7 @@
     {
         "category": "phase3-api-detector",
         "description": "Task 3.3.5: 集成检测器到错误处理流程",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "在特定错误响应时调用 detector",

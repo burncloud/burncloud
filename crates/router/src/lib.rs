@@ -52,6 +52,7 @@ struct AppState {
     model_router: Arc<ModelRouter>,
     channel_state_tracker: Arc<ChannelStateTracker>,
     adaptor_factory: Arc<adaptor::factory::DynamicAdaptorFactory>,
+    api_version_detector: Arc<adaptor::detector::ApiVersionDetector>,
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
@@ -115,6 +116,8 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let channel_state_tracker = Arc::new(ChannelStateTracker::new());
     // Dynamic Adaptor Factory for protocol adaptation
     let adaptor_factory = Arc::new(adaptor::factory::DynamicAdaptorFactory::new(db.clone()));
+    // API Version Detector for handling deprecated versions
+    let api_version_detector = Arc::new(adaptor::detector::ApiVersionDetector::new(db.clone()));
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -144,6 +147,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         model_router,
         channel_state_tracker,
         adaptor_factory,
+        api_version_detector,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -940,6 +944,35 @@ async fn proxy_logic(
 
                     // Record failure with circuit breaker
                     state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type);
+
+                    // Check for API version deprecation and auto-update if detected
+                    if adaptor::detector::ApiVersionDetector::is_deprecation_error(error_message) {
+                        let channel_id_for_detector = channel_id;
+                        let adaptor_factory_for_detector = state.adaptor_factory.clone();
+                        let detector = state.api_version_detector.clone();
+                        let error_message_for_detector = error_message.to_string();
+
+                        tokio::spawn(async move {
+                            match detector.detect_and_update(
+                                channel_id_for_detector,
+                                &error_message_for_detector,
+                                &adaptor_factory_for_detector,
+                            ).await {
+                                Ok(Some(new_version)) => {
+                                    println!(
+                                        "API version deprecation detected, updated channel {} to version: {}",
+                                        channel_id_for_detector, new_version
+                                    );
+                                }
+                                Ok(None) => {
+                                    // No deprecation detected or no new version found
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to detect/update API version: {}", e);
+                                }
+                            }
+                        });
+                    }
 
                     // Log the error
                     println!(
