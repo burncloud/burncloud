@@ -333,7 +333,7 @@
     {
         "category": "phase1-router-integration",
         "description": "Task 1.5.1: 在 lib.rs 中解析成功响应头",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "在请求成功后调用 parse_rate_limit_info",
@@ -345,7 +345,7 @@
     {
         "category": "phase1-router-integration",
         "description": "Task 1.5.2: 在 lib.rs 中解析失败响应",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "在请求失败后调用 parse_error_response",
@@ -357,7 +357,7 @@
     {
         "category": "phase1-router-integration",
         "description": "Task 1.5.3: 处理 429 响应的特殊逻辑",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "检测 429 状态码",
@@ -370,7 +370,7 @@
     {
         "category": "phase1-router-integration",
         "description": "Task 1.5.4: 处理 401/402 错误的渠道级禁用",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "检测 401 (认证失败) 状态码",
@@ -382,7 +382,7 @@
     {
         "category": "phase1-router-integration",
         "description": "Task 1.5.5: 处理 404 模型不存在错误",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "检测 404 状态码",

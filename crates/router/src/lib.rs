@@ -386,6 +386,8 @@ async fn proxy_handler(
         &path,
         &user_group,
         token_counter.clone(),
+        model_name.as_deref(),
+        start_time,
     )
     .await;
 
@@ -443,6 +445,8 @@ async fn proxy_handler(
 use adaptor::factory::AdaptorFactory;
 use burncloud_common::types::ChannelType;
 use burncloud_database_models::PriceModel;
+use circuit_breaker::FailureType;
+use response_parser::{parse_error_response, parse_rate_limit_info};
 
 async fn proxy_logic(
     state: &AppState,
@@ -453,6 +457,8 @@ async fn proxy_logic(
     path: &str,
     user_group: &str,
     token_counter: Arc<StreamingTokenCounter>,
+    model_name: Option<&str>,
+    request_start_time: Instant,
 ) -> (Response, Option<String>, StatusCode) {
     let config = state.config.read().await;
 
@@ -690,9 +696,24 @@ async fn proxy_logic(
         // 5. Execute
         match req_builder.send().await {
             Ok(resp) => {
-                if resp.status().is_server_error() {
-                    last_error = format!("Upstream returned {}", resp.status());
-                    state.circuit_breaker.record_failure(&upstream.id);
+                let status = resp.status();
+                let resp_headers = resp.headers().clone();
+
+                // Handle different response status codes
+                if status.is_server_error() {
+                    // 5xx Server Error
+                    last_error = format!("Upstream returned {}", status);
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    state.circuit_breaker.record_failure_with_type(
+                        &upstream.id,
+                        FailureType::ServerError,
+                    );
+                    state.channel_state_tracker.record_error(
+                        channel_id,
+                        model_name,
+                        &FailureType::ServerError,
+                        &last_error,
+                    );
                     continue;
                 }
 
@@ -700,6 +721,35 @@ async fn proxy_logic(
 
                 if resp.status().is_success() {
                     let status = resp.status();
+                    let resp_headers = resp.headers().clone();
+
+                    // Parse rate limit info from response headers
+                    let rate_limit_info = parse_rate_limit_info(
+                        &resp_headers,
+                        None, // No body for success
+                        &upstream.protocol,
+                    );
+
+                    // Record success in channel state tracker
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    let latency_ms = request_start_time.elapsed().as_millis() as u64;
+                    state.channel_state_tracker.record_success(
+                        channel_id,
+                        model_name,
+                        latency_ms,
+                    );
+
+                    // Log rate limit info for debugging/monitoring
+                    if rate_limit_info.request_limit.is_some() || rate_limit_info.token_limit.is_some() {
+                        println!(
+                            "Rate limit info for {}: requests={:?}, tokens={:?}, remaining={:?}, retry_after={:?}",
+                            upstream.name,
+                            rate_limit_info.request_limit,
+                            rate_limit_info.token_limit,
+                            rate_limit_info.remaining,
+                            rate_limit_info.retry_after
+                        );
+                    }
 
                     // Optimization: If protocol is OpenAI, we can stream directly without parsing/buffering
                     // This satisfies the "Passthrough Principle" and enables streaming.
@@ -797,13 +847,124 @@ async fn proxy_logic(
                         status,
                     );
                 } else {
-                    let status = resp.status();
-                    return (handle_response(resp), last_upstream_id, status);
+                    // Handle non-success responses (4xx errors)
+                    let status_code = status.as_u16();
+                    let body_bytes = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            // If we can't read the body, return a simple error
+                            last_error = format!("Failed to read response body: {}", e);
+                            return (
+                                Response::builder()
+                                    .status(status)
+                                    .body(Body::from(last_error.clone()))
+                                    .unwrap(),
+                                last_upstream_id,
+                                status,
+                            );
+                        }
+                    };
+                    let body_str = String::from_utf8_lossy(&body_bytes);
+
+                    // Parse error response
+                    let error_info = parse_error_response(&body_str, &upstream.protocol);
+                    let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
+
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+
+                    // Determine failure type based on status code
+                    let failure_type = match status_code {
+                        401 => {
+                            // Authentication failed - channel-level issue
+                            let ft = FailureType::AuthFailed;
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                None, // Auth failure affects entire channel
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        402 => {
+                            // Payment required - balance exhausted
+                            let ft = FailureType::PaymentRequired;
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                None,
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        429 => {
+                            // Rate limited - extract retry_after from headers or error info
+                            let retry_after = resp_headers
+                                .get("retry-after")
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(|v| v.parse::<u64>().ok());
+
+                            // Determine scope from error response
+                            let scope = error_info.scope.unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
+
+                            let ft = FailureType::RateLimited { scope, retry_after };
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                model_name,
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        404 => {
+                            // Model not found
+                            let ft = FailureType::ModelNotFound;
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                model_name,
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        _ => {
+                            // Other client errors - treat as server error for retry logic
+                            FailureType::ServerError
+                        }
+                    };
+
+                    // Record failure with circuit breaker
+                    state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type);
+
+                    // Log the error
+                    println!(
+                        "Upstream {} returned {}: {}",
+                        upstream.name, status_code, error_message
+                    );
+
+                    return (
+                        Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(Body::from(body_bytes))
+                            .unwrap(),
+                        last_upstream_id,
+                        status,
+                    );
                 }
             }
             Err(e) => {
                 last_error = format!("Network Error: {}", e);
-                state.circuit_breaker.record_failure(&upstream.id);
+                let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                state.circuit_breaker.record_failure_with_type(
+                    &upstream.id,
+                    FailureType::Timeout,
+                );
+                state.channel_state_tracker.record_error(
+                    channel_id,
+                    model_name,
+                    &FailureType::Timeout,
+                    &last_error,
+                );
                 eprintln!(
                     "Failover: {} failed with {}, trying next...",
                     upstream.name, e
