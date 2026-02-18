@@ -283,3 +283,76 @@ pub struct Token {
     pub accessed_time: i64,
     pub expired_time: i64, // -1 for never
 }
+
+/// Protocol Configuration for dynamic protocol adapters
+/// Allows runtime configuration of API endpoints and request/response mappings
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ProtocolConfig {
+    pub id: i32,
+    /// Channel type (1=OpenAI, 2=Anthropic, 3=Azure, etc.)
+    pub channel_type: i32,
+    /// API version string (e.g., "2024-02-01", "v1")
+    pub api_version: String,
+    /// Whether this is the default config for the channel type
+    pub is_default: bool,
+    /// Chat completions endpoint (supports placeholders like {deployment_id})
+    pub chat_endpoint: Option<String>,
+    /// Embeddings endpoint
+    pub embed_endpoint: Option<String>,
+    /// Models list endpoint
+    pub models_endpoint: Option<String>,
+    /// Request field mapping rules (JSON)
+    pub request_mapping: Option<String>,
+    /// Response field mapping rules (JSON)
+    pub response_mapping: Option<String>,
+    /// Detection rules for auto-detection (JSON)
+    pub detection_rules: Option<String>,
+    /// Creation timestamp
+    pub created_at: Option<i64>,
+    /// Update timestamp
+    pub updated_at: Option<i64>,
+}
+
+impl Default for ProtocolConfig {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            channel_type: 1, // OpenAI
+            api_version: "default".to_string(),
+            is_default: true,
+            chat_endpoint: Some("/v1/chat/completions".to_string()),
+            embed_endpoint: Some("/v1/embeddings".to_string()),
+            models_endpoint: Some("/v1/models".to_string()),
+            request_mapping: None,
+            response_mapping: None,
+            detection_rules: None,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+}
+
+/// Request mapping configuration for protocol adaptation
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RequestMapping {
+    /// Field mappings: "target_field" => "source_field"
+    #[serde(default)]
+    pub field_map: HashMap<String, String>,
+    /// Field renames: "old_name" => "new_name"
+    #[serde(default)]
+    pub rename: HashMap<String, String>,
+    /// Fields to add to the request
+    #[serde(default)]
+    pub add_fields: HashMap<String, Value>,
+}
+
+/// Response mapping configuration for protocol adaptation
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ResponseMapping {
+    /// Path to extract content from response (e.g., "choices[0].message.content")
+    pub content_path: Option<String>,
+    /// Path to extract token usage
+    pub usage_path: Option<String>,
+    /// Path to extract error message
+    pub error_path: Option<String>,
+}

@@ -250,6 +250,53 @@ impl Schema {
             _ => "",
         };
 
+        // 6. Protocol Configs Table (Dynamic Protocol Adapter Configuration)
+        let protocol_configs_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS protocol_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_type INTEGER NOT NULL,
+                    api_version VARCHAR(32) NOT NULL,
+                    is_default BOOLEAN DEFAULT 0,
+                    chat_endpoint VARCHAR(255),
+                    embed_endpoint VARCHAR(255),
+                    models_endpoint VARCHAR(255),
+                    request_mapping TEXT,
+                    response_mapping TEXT,
+                    detection_rules TEXT,
+                    created_at INTEGER,
+                    updated_at INTEGER,
+                    UNIQUE(channel_type, api_version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_type ON protocol_configs(channel_type);
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_version ON protocol_configs(api_version);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS protocol_configs (
+                    id SERIAL PRIMARY KEY,
+                    channel_type INTEGER NOT NULL,
+                    api_version VARCHAR(32) NOT NULL,
+                    is_default BOOLEAN DEFAULT FALSE,
+                    chat_endpoint VARCHAR(255),
+                    embed_endpoint VARCHAR(255),
+                    models_endpoint VARCHAR(255),
+                    request_mapping TEXT,
+                    response_mapping TEXT,
+                    detection_rules TEXT,
+                    created_at BIGINT,
+                    updated_at BIGINT,
+                    UNIQUE(channel_type, api_version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_type ON protocol_configs(channel_type);
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_version ON protocol_configs(api_version);
+            "#
+            }
+            _ => "",
+        };
+
         // Execute all
         if !users_sql.is_empty() {
             pool.execute(users_sql).await?;
@@ -265,6 +312,9 @@ impl Schema {
         }
         if !prices_sql.is_empty() {
             pool.execute(prices_sql).await?;
+        }
+        if !protocol_configs_sql.is_empty() {
+            pool.execute(protocol_configs_sql).await?;
         }
 
         // Init Root User if not exists
@@ -386,6 +436,65 @@ impl Schema {
             println!(
                 "Initialized default pricing for {} models",
                 default_prices.len()
+            );
+        }
+
+        // Init Default Protocol Configs
+        let check_protocol_sql = "SELECT count(*) FROM protocol_configs";
+        let pc_count: i64 = match kind.as_str() {
+            "sqlite" => sqlx::query_scalar(check_protocol_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            "postgres" => sqlx::query_scalar(check_protocol_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            _ => 0,
+        };
+
+        if pc_count == 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+
+            // Default protocol configs
+            // channel_type values: 1=OpenAI, 2=Anthropic, 3=Azure, 4=Gemini, 5=Vertex
+            let default_protocols: [(i32, &str, bool, Option<&str>, Option<&str>, Option<&str>); 4] = [
+                // OpenAI - default
+                (1, "default", true, Some("/v1/chat/completions"), Some("/v1/embeddings"), Some("/v1/models")),
+                // Anthropic - default
+                (2, "2023-06-01", true, Some("/v1/messages"), None, None),
+                // Azure OpenAI - default
+                (3, "2024-02-01", true, Some("/deployments/{deployment_id}/chat/completions"), Some("/deployments/{deployment_id}/embeddings"), Some("/deployments?api-version=2024-02-01")),
+                // Gemini - default
+                (4, "v1", true, Some("/v1/models/{model}:generateContent"), Some("/v1/models/{model}:embedContent"), Some("/v1/models")),
+            ];
+
+            for (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint) in default_protocols {
+                let insert_sql = match kind.as_str() {
+                    "sqlite" => "INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "postgres" => "INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    _ => "",
+                };
+                if !insert_sql.is_empty() {
+                    sqlx::query(insert_sql)
+                        .bind(channel_type)
+                        .bind(api_version)
+                        .bind(is_default)
+                        .bind(chat_endpoint)
+                        .bind(embed_endpoint)
+                        .bind(models_endpoint)
+                        .bind(now)
+                        .bind(now)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            println!(
+                "Initialized default protocol configs for {} channel types",
+                default_protocols.len()
             );
         }
 

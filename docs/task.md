@@ -645,7 +645,7 @@
     {
         "category": "phase3-protocol-config",
         "description": "Task 3.1.1: 创建 protocol_configs 表",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/database/src/schema.rs",
             "定义表结构: id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint, request_mapping, response_mapping, detection_rules, created_at, updated_at",
@@ -656,7 +656,7 @@
     {
         "category": "phase3-protocol-config",
         "description": "Task 3.1.2: 定义 ProtocolConfig 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/common/src/types.rs",
             "定义字段对应数据库表结构",
@@ -667,7 +667,7 @@
     {
         "category": "phase3-protocol-config",
         "description": "Task 3.1.3: 实现 ProtocolConfigModel CRUD",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/database-models/src/lib.rs",
             "实现 get_by_type_version 方法",
