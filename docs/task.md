@@ -499,7 +499,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.1: 创建 price_sync 模块文件",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/price_sync.rs (新建)",
             "创建模块基础结构",
@@ -510,7 +510,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.2: 定义 LiteLLM 价格数据结构",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/price_sync.rs",
             "定义 LiteLLMPrice 结构体: model, input_price, output_price, context_window, max_output_tokens",
@@ -521,7 +521,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.3: 定义 PriceSyncService 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/price_sync.rs",
             "定义字段: db, http_client, sync_interval",
@@ -532,7 +532,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.4: 实现 fetch_litellm_prices 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/price_sync.rs",
             "从 GitHub 获取 JSON 数据",
@@ -544,7 +544,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.5: 实现 sync_from_litellm 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/price_sync.rs",
             "调用 fetch_litellm_prices",
@@ -556,7 +556,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.6: 实现定时同步任务启动",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "在 Router 启动时创建 PriceSyncService",
@@ -568,7 +568,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.7: 扩展 prices 表添加同步字段",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/database/src/schema.rs",
             "添加 synced_at 字段 (DATETIME)",
@@ -580,7 +580,7 @@
     {
         "category": "phase2-price-sync",
         "description": "Task 2.2.8: 实现 PriceModel::upsert 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/database-models/src/lib.rs",
             "实现插入或更新价格记录",

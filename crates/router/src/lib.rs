@@ -6,6 +6,7 @@ mod circuit_breaker;
 mod config;
 mod limiter;
 mod model_router;
+pub mod price_sync;
 pub mod response_parser;
 pub mod stream_parser;
 pub mod token_counter;
