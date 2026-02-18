@@ -104,12 +104,32 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
     }
     async fn build_request(
         &self,
-        _client: &reqwest::Client,
-        builder: RequestBuilder,
+        client: &reqwest::Client,
+        _builder: RequestBuilder,
         api_key: &str,
         body: &Value,
     ) -> RequestBuilder {
-        builder.header("x-goog-api-key", api_key).json(body)
+        // Extract model name from body
+        let model = body.get("model").and_then(|m| m.as_str()).unwrap_or("gemini-2.0-flash");
+
+        // Convert OpenAI request to Gemini format
+        let openai_req: Option<OpenAIChatRequest> = serde_json::from_value(body.clone()).ok();
+        let gemini_body = if let Some(req) = openai_req {
+            crate::adaptor::gemini::GeminiAdaptor::convert_request(req)
+        } else {
+            body.clone()
+        };
+
+        // Construct correct Gemini API URL: /v1beta/models/{model}:generateContent
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            model
+        );
+
+        client
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .json(&gemini_body)
     }
     fn convert_request(&self, request: &OpenAIChatRequest) -> Option<Value> {
         Some(crate::adaptor::gemini::GeminiAdaptor::convert_request(
