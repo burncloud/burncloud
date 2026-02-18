@@ -724,7 +724,7 @@
     {
         "category": "phase3-dynamic-adaptor",
         "description": "Task 3.2.1: 创建 dynamic.rs 适配器文件",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/dynamic.rs (新建)",
             "创建模块基础结构",
@@ -734,7 +734,7 @@
     {
         "category": "phase3-dynamic-adaptor",
         "description": "Task 3.2.2: 定义 DynamicAdaptor 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/dynamic.rs",
             "定义字段: config (ProtocolConfig), channel_type",
@@ -744,7 +744,7 @@
     {
         "category": "phase3-dynamic-adaptor",
         "description": "Task 3.2.3: 实现 Adaptor trait for DynamicAdaptor",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/dynamic.rs",
             "实现 prepare_request 方法",
@@ -756,7 +756,7 @@
     {
         "category": "phase3-dynamic-adaptor",
         "description": "Task 3.2.4: 实现 prepare_request 动态路径构建",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/dynamic.rs",
             "替换路径中的 {deployment_id} 占位符",
@@ -767,7 +767,7 @@
     {
         "category": "phase3-dynamic-adaptor",
         "description": "Task 3.2.5: 实现 parse_response 动态解析",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/dynamic.rs",
             "应用响应映射规则",
