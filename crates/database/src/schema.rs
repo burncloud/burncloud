@@ -299,6 +299,43 @@ impl Schema {
             _ => "",
         };
 
+        // 7. Model Capabilities Table (synced from LiteLLM)
+        let model_capabilities_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS model_capabilities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model TEXT NOT NULL UNIQUE,
+                    context_window INTEGER,
+                    max_output_tokens INTEGER,
+                    supports_vision BOOLEAN DEFAULT 0,
+                    supports_function_calling BOOLEAN DEFAULT 0,
+                    input_price REAL,
+                    output_price REAL,
+                    synced_at INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS idx_model_capabilities_model ON model_capabilities(model);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS model_capabilities (
+                    id SERIAL PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL UNIQUE,
+                    context_window BIGINT,
+                    max_output_tokens BIGINT,
+                    supports_vision BOOLEAN DEFAULT FALSE,
+                    supports_function_calling BOOLEAN DEFAULT FALSE,
+                    input_price DOUBLE PRECISION,
+                    output_price DOUBLE PRECISION,
+                    synced_at BIGINT
+                );
+                CREATE INDEX IF NOT EXISTS idx_model_capabilities_model ON model_capabilities(model);
+            "#
+            }
+            _ => "",
+        };
+
         // Execute all
         if !users_sql.is_empty() {
             pool.execute(users_sql).await?;
@@ -317,6 +354,9 @@ impl Schema {
         }
         if !protocol_configs_sql.is_empty() {
             pool.execute(protocol_configs_sql).await?;
+        }
+        if !model_capabilities_sql.is_empty() {
+            pool.execute(model_capabilities_sql).await?;
         }
 
         // Migration: Add api_version column to channels if it doesn't exist

@@ -502,4 +502,90 @@ mod tests {
         let body = r#"{"error": {"message": "Unknown error"}}"#;
         assert_eq!(parse_rate_limit_scope_from_error(body), None);
     }
+
+    #[test]
+    fn test_parse_openai_rate_limit() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ratelimit-limit-requests", "100".parse().unwrap());
+        headers.insert("x-ratelimit-limit-tokens", "100000".parse().unwrap());
+        headers.insert("retry-after", "30".parse().unwrap());
+
+        let info = parse_openai_rate_limit(&headers);
+
+        assert_eq!(info.request_limit, Some(100));
+        assert_eq!(info.token_limit, Some(100000));
+        assert_eq!(info.retry_after, Some(30));
+    }
+
+    #[test]
+    fn test_parse_anthropic_rate_limit() {
+        let mut headers = HeaderMap::new();
+        headers.insert("anthropic-ratelimit-requests-limit", "50".parse().unwrap());
+        headers.insert("anthropic-ratelimit-requests-reset", "1m".parse().unwrap());
+        headers.insert("retry-after", "60".parse().unwrap());
+
+        let info = parse_anthropic_rate_limit(&headers);
+
+        assert_eq!(info.request_limit, Some(50));
+        assert_eq!(info.retry_after, Some(60));
+    }
+
+    #[test]
+    fn test_parse_azure_rate_limit() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ratelimit-limit", "1000".parse().unwrap());
+        headers.insert("x-ratelimit-remaining", "500".parse().unwrap());
+        headers.insert("x-ratelimit-reset", "3600".parse().unwrap());
+
+        let info = parse_azure_rate_limit(&headers);
+
+        assert_eq!(info.request_limit, Some(1000));
+        assert_eq!(info.remaining, Some(500));
+    }
+
+    #[test]
+    fn test_parse_openai_error() {
+        let body = r#"{"error": {"type": "rate_limit_exceeded", "message": "Rate limit exceeded", "code": "rate_limit_exceeded"}}"#;
+        let info = parse_openai_error(body);
+
+        assert_eq!(info.error_type, Some("rate_limit_exceeded".to_string()));
+        assert_eq!(info.message, Some("Rate limit exceeded".to_string()));
+        assert_eq!(info.code, Some("rate_limit_exceeded".to_string()));
+    }
+
+    #[test]
+    fn test_parse_anthropic_error() {
+        // Anthropic error format has type and message at root level
+        let body = r#"{"type": "rate_limit_error", "message": "Rate limit exceeded. Please retry after 30 seconds."}"#;
+        let info = parse_anthropic_error(body);
+
+        assert_eq!(info.error_type, Some("rate_limit_error".to_string()));
+        assert!(info.message.as_ref().unwrap().contains("Rate limit"));
+    }
+
+    #[test]
+    fn test_parse_generic_error() {
+        let body = r#"{"error": "Internal server error"}"#;
+        let info = parse_generic_error(body);
+
+        assert_eq!(info.message, Some("Internal server error".to_string()));
+    }
+
+    #[test]
+    fn test_parse_rate_limit_info_routing() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ratelimit-limit-requests", "100".parse().unwrap());
+
+        // Test OpenAI routing
+        let info = parse_rate_limit_info(&headers, None, "openai");
+        assert_eq!(info.request_limit, Some(100));
+
+        // Test Anthropic routing
+        let info = parse_rate_limit_info(&headers, None, "anthropic");
+        assert_eq!(info.request_limit, None); // Different header name
+
+        // Test unknown provider
+        let info = parse_rate_limit_info(&headers, None, "unknown");
+        assert_eq!(info.request_limit, None);
+    }
 }

@@ -946,7 +946,7 @@
     {
         "category": "phase4-channel-cli",
         "description": "Task 4.1.4: 实现 AbilityModel::create_batch 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/database-models/src/lib.rs",
             "批量创建 abilities 记录",
@@ -957,7 +957,7 @@
     {
         "category": "phase4-model-capabilities",
         "description": "Task 4.2.1: 创建 model_capabilities 表",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/database/src/schema.rs",
             "定义表结构: model, context_window, max_output_tokens, supports_vision, supports_function_calling, input_price, output_price, synced_at",
@@ -967,7 +967,7 @@
     {
         "category": "phase4-model-capabilities",
         "description": "Task 4.2.2: 扩展 PriceSyncService 同步能力数据",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/price_sync.rs",
             "解析 LiteLLM 数据中的能力字段",
@@ -978,7 +978,7 @@
     {
         "category": "phase5-tests",
         "description": "Task 5.1.1: 编写状态机转换单元测试",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "测试 LEARNING → STABLE 转换",
@@ -990,7 +990,7 @@
     {
         "category": "phase5-tests",
         "description": "Task 5.1.2: 编写响应头解析单元测试",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/response_parser.rs",
             "测试 OpenAI 格式解析",

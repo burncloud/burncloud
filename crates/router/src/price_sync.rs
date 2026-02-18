@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use burncloud_database::Database;
+use burncloud_database::{sqlx, Database};
 use burncloud_database_models::{PriceInput, PriceModel};
 use reqwest::Client;
 use serde::Deserialize;
@@ -140,6 +140,91 @@ impl PriceSyncService {
         println!("Price sync complete: {} models updated", updated_count);
         Ok(updated_count)
     }
+
+    /// Sync model capabilities from LiteLLM to the local database
+    ///
+    /// Returns the number of capabilities updated/inserted
+    pub async fn sync_capabilities(&self) -> anyhow::Result<usize> {
+        let prices = self.fetch_litellm_prices().await?;
+        let mut updated_count = 0;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let conn = self.db.get_connection()?;
+        let pool = conn.pool();
+        let is_postgres = self.db.kind() == "postgres";
+
+        for (key, price_data) in prices {
+            // Skip embedding models
+            if price_data.mode.as_deref() == Some("embedding") {
+                continue;
+            }
+
+            // Get the model name
+            let model_name = match &price_data.model {
+                Some(m) => m.clone(),
+                None => key.clone(),
+            };
+
+            // Get pricing info for capabilities table
+            let (input_price, output_price) = price_data.to_per_million_price();
+
+            // Build the SQL
+            let sql = if is_postgres {
+                r#"
+                INSERT INTO model_capabilities (model, context_window, max_output_tokens, supports_vision, supports_function_calling, input_price, output_price, synced_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT(model) DO UPDATE SET
+                    context_window = EXCLUDED.context_window,
+                    max_output_tokens = EXCLUDED.max_output_tokens,
+                    supports_vision = EXCLUDED.supports_vision,
+                    supports_function_calling = EXCLUDED.supports_function_calling,
+                    input_price = EXCLUDED.input_price,
+                    output_price = EXCLUDED.output_price,
+                    synced_at = EXCLUDED.synced_at
+                "#
+            } else {
+                r#"
+                INSERT INTO model_capabilities (model, context_window, max_output_tokens, supports_vision, supports_function_calling, input_price, output_price, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(model) DO UPDATE SET
+                    context_window = excluded.context_window,
+                    max_output_tokens = excluded.max_output_tokens,
+                    supports_vision = excluded.supports_vision,
+                    supports_function_calling = excluded.supports_function_calling,
+                    input_price = excluded.input_price,
+                    output_price = excluded.output_price,
+                    synced_at = excluded.synced_at
+                "#
+            };
+
+            let result = sqlx::query(sql)
+                .bind(&model_name)
+                .bind(price_data.max_input_tokens.map(|t| t as i64))
+                .bind(price_data.max_output_tokens.map(|t| t as i64))
+                .bind(price_data.supports_vision.unwrap_or(false))
+                .bind(price_data.supports_function_calling.unwrap_or(false))
+                .bind(input_price)
+                .bind(output_price)
+                .bind(now)
+                .execute(pool)
+                .await;
+
+            match result {
+                Ok(_) => {
+                    updated_count += 1;
+                }
+                Err(e) => {
+                    eprintln!("Failed to sync capabilities for {}: {}", model_name, e);
+                }
+            }
+        }
+
+        println!("Capabilities sync complete: {} models updated", updated_count);
+        Ok(updated_count)
+    }
 }
 
 /// Start a background price sync task
@@ -157,6 +242,13 @@ pub fn start_price_sync_task(db: Database, interval_secs: u64) -> tokio::task::J
             Err(e) => eprintln!("Initial price sync failed: {}", e),
         }
 
+        // Initial capabilities sync
+        println!("Starting initial capabilities sync from LiteLLM...");
+        match service.sync_capabilities().await {
+            Ok(count) => println!("Initial capabilities sync complete: {} models", count),
+            Err(e) => eprintln!("Initial capabilities sync failed: {}", e),
+        }
+
         // Periodic sync
         loop {
             interval.tick().await;
@@ -164,6 +256,10 @@ pub fn start_price_sync_task(db: Database, interval_secs: u64) -> tokio::task::J
             match service.sync_from_litellm().await {
                 Ok(count) => println!("Periodic price sync complete: {} models updated", count),
                 Err(e) => eprintln!("Periodic price sync failed: {}", e),
+            }
+            match service.sync_capabilities().await {
+                Ok(count) => println!("Periodic capabilities sync complete: {} models updated", count),
+                Err(e) => eprintln!("Periodic capabilities sync failed: {}", e),
             }
         }
     })
