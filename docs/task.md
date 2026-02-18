@@ -679,7 +679,7 @@
     {
         "category": "phase3-protocol-config",
         "description": "Task 3.1.4: 定义 RequestMapping 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/mapping.rs (新建)",
             "定义字段: field_map, rename, add_fields",
@@ -690,7 +690,7 @@
     {
         "category": "phase3-protocol-config",
         "description": "Task 3.1.5: 定义 ResponseMapping 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/mapping.rs",
             "定义字段: content_path, usage_path, error_path",
@@ -701,7 +701,7 @@
     {
         "category": "phase3-protocol-config",
         "description": "Task 3.1.6: 实现 apply_mapping 函数",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/mapping.rs",
             "应用字段映射规则到 JSON",
@@ -713,7 +713,7 @@
     {
         "category": "phase3-protocol-config",
         "description": "Task 3.1.7: 实现 extract_value 函数",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptor/mapping.rs",
             "支持 JSONPath 语法提取值",
