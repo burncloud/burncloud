@@ -591,7 +591,7 @@
     {
         "category": "phase2-notification",
         "description": "Task 2.3.1: 创建 notification 模块文件",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/notification.rs (新建)",
             "创建模块基础结构",
@@ -601,7 +601,7 @@
     {
         "category": "phase2-notification",
         "description": "Task 2.3.2: 定义 NotificationService 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/notification.rs",
             "定义通知配置字段",
@@ -612,7 +612,7 @@
     {
         "category": "phase2-notification",
         "description": "Task 2.3.3: 实现 notify_new_model 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/notification.rs",
             "发送新模型发现通知",
@@ -623,7 +623,7 @@
     {
         "category": "phase2-notification",
         "description": "Task 2.3.4: 实现 notify_price_missing 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/notification.rs",
             "发送价格缺失通知",
@@ -634,7 +634,7 @@
     {
         "category": "phase2-notification",
         "description": "Task 2.3.5: 实现 notify_channel_error 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/notification.rs",
             "发送渠道错误通知",
