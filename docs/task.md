@@ -1003,7 +1003,7 @@
     {
         "category": "phase5-tests",
         "description": "Task 5.1.3: 编写渠道选择集成测试",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/tests/integration_test.rs (或新建)",
             "测试健康渠道优先选择",
@@ -1015,7 +1015,7 @@
     {
         "category": "phase5-tests",
         "description": "Task 5.1.4: 编写价格同步集成测试",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/tests/integration_test.rs",
             "模拟 LiteLLM 数据源",
@@ -1027,7 +1027,7 @@
     {
         "category": "phase5-tests",
         "description": "Task 5.1.5: 编写协议适配集成测试",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/tests/integration_test.rs",
             "测试动态路径替换",
@@ -1039,7 +1039,7 @@
     {
         "category": "phase6-docs",
         "description": "Task 6.1.1: 更新 docs/plan.md 整合最终方案",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: docs/plan.md",
             "确保包含价格自动同步章节",
@@ -1051,7 +1051,7 @@
     {
         "category": "phase6-docs",
         "description": "Task 6.1.2: 更新 CLAUDE.md 添加新模块说明",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: CLAUDE.md",
             "添加 channel_state.rs 说明",
