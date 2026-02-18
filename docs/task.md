@@ -856,7 +856,7 @@
     {
         "category": "phase3-cli-protocol",
         "description": "Task 3.4.1: 创建 protocol.rs CLI 模块",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/cli/src/protocol.rs (新建)",
             "创建模块基础结构",
@@ -866,7 +866,7 @@
     {
         "category": "phase3-cli-protocol",
         "description": "Task 3.4.2: 实现 protocol list 命令",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/cli/src/protocol.rs",
             "查询 protocol_configs 表",
@@ -877,7 +877,7 @@
     {
         "category": "phase3-cli-protocol",
         "description": "Task 3.4.3: 实现 protocol add 命令",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/cli/src/protocol.rs",
             "必需参数: --channel-type, --api-version",
@@ -889,7 +889,7 @@
     {
         "category": "phase3-cli-protocol",
         "description": "Task 3.4.4: 实现 protocol test 命令",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/cli/src/protocol.rs",
             "参数: --channel-id, --model",
@@ -901,7 +901,7 @@
     {
         "category": "phase3-cli-protocol",
         "description": "Task 3.4.5: 在 commands.rs 中添加 protocol 子命令",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/cli/src/commands.rs",
             "添加 protocol 子命令定义",

@@ -2,6 +2,7 @@ pub mod channel;
 pub mod commands;
 pub mod output;
 pub mod price;
+pub mod protocol;
 pub mod token;
 
 pub use channel::*;

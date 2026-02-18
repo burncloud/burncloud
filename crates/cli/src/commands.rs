@@ -8,6 +8,7 @@ use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
 use crate::price::handle_price_command;
+use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
@@ -274,6 +275,112 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Skip confirmation prompt"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("protocol")
+                .about("Manage protocol configurations")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list")
+                        .about("List all protocol configs")
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("add")
+                        .about("Add a new protocol config")
+                        .arg(
+                            Arg::new("channel-type")
+                                .long("channel-type")
+                                .required(true)
+                                .help("Channel type ID (0=OpenAI, 1=Anthropic, 2=Azure, 3=AWS, 4=Gemini, 5=VertexAI, 6=DeepSeek, 7=Moonshot)"),
+                        )
+                        .arg(
+                            Arg::new("api-version")
+                                .long("api-version")
+                                .required(true)
+                                .help("API version string"),
+                        )
+                        .arg(
+                            Arg::new("default")
+                                .long("default")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Set as default for this channel type"),
+                        )
+                        .arg(
+                            Arg::new("chat-endpoint")
+                                .long("chat-endpoint")
+                                .help("Chat endpoint template (e.g., /v1/chat/completions)"),
+                        )
+                        .arg(
+                            Arg::new("embed-endpoint")
+                                .long("embed-endpoint")
+                                .help("Embedding endpoint template"),
+                        )
+                        .arg(
+                            Arg::new("models-endpoint")
+                                .long("models-endpoint")
+                                .help("Models listing endpoint"),
+                        )
+                        .arg(
+                            Arg::new("request-mapping")
+                                .long("request-mapping")
+                                .help("JSON request mapping configuration"),
+                        )
+                        .arg(
+                            Arg::new("response-mapping")
+                                .long("response-mapping")
+                                .help("JSON response mapping configuration"),
+                        )
+                        .arg(
+                            Arg::new("detection-rules")
+                                .long("detection-rules")
+                                .help("JSON detection rules for API version"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete a protocol config")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Protocol config ID to delete"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show protocol config details")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Protocol config ID to show"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("test")
+                        .about("Test a protocol configuration")
+                        .arg(
+                            Arg::new("channel-id")
+                                .long("channel-id")
+                                .required(true)
+                                .help("Channel ID to test"),
+                        )
+                        .arg(
+                            Arg::new("model")
+                                .long("model")
+                                .help("Model name to test with"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -351,6 +458,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("token", sub_m)) => {
             let db = Database::new().await?;
             handle_token_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("protocol", sub_m)) => {
+            let db = Database::new().await?;
+            handle_protocol_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {
