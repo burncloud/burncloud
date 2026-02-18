@@ -1,3 +1,4 @@
+mod adaptive_limit;
 mod adaptor;
 mod balancer;
 mod channel_state;

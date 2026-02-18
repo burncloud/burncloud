@@ -394,7 +394,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.1: 创建 adaptive_limit 模块文件",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs (新建)",
             "创建模块基础结构",
@@ -405,7 +405,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.2: 定义 RateLimitState 枚举",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "定义枚举: Learning, Stable, Cooldown",
@@ -416,7 +416,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.3: 定义 AdaptiveLimitConfig 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "定义配置字段: learning_duration, initial_limit, adjustment_step, success_threshold, failure_threshold, cooldown_duration, recovery_ratio, max_limit",
@@ -427,7 +427,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.4: 定义 AdaptiveRateLimit 结构体",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "定义字段: learned_limit, current_limit, state, success_streak, failure_streak, cooldown_until, rate_limit_until, last_adjusted_at",
@@ -437,7 +437,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.5: 实现 AdaptiveRateLimit::new 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "接收 config 参数",
@@ -449,7 +449,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.6: 实现 on_success 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "从响应头学习上游限制",
@@ -462,7 +462,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.7: 实现 on_rate_limited 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "更新失败计数",
@@ -475,7 +475,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.8: 实现 check_available 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "检查 COOLDOWN 状态",
@@ -487,7 +487,7 @@
     {
         "category": "phase2-adaptive-limit",
         "description": "Task 2.1.9: 实现 recover_from_cooldown 方法",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/adaptive_limit.rs",
             "将状态设置为 Learning",
