@@ -51,6 +51,7 @@ struct AppState {
     log_tx: mpsc::Sender<DbRouterLog>,
     model_router: Arc<ModelRouter>,
     channel_state_tracker: Arc<ChannelStateTracker>,
+    adaptor_factory: Arc<adaptor::factory::DynamicAdaptorFactory>,
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
@@ -112,6 +113,8 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let model_router = Arc::new(ModelRouter::new(db.clone()));
     // Channel State Tracker for health monitoring
     let channel_state_tracker = Arc::new(ChannelStateTracker::new());
+    // Dynamic Adaptor Factory for protocol adaptation
+    let adaptor_factory = Arc::new(adaptor::factory::DynamicAdaptorFactory::new(db.clone()));
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -140,6 +143,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         log_tx,
         model_router,
         channel_state_tracker,
+        adaptor_factory,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -445,7 +449,6 @@ async fn proxy_handler(
     response
 }
 
-use adaptor::factory::AdaptorFactory;
 use burncloud_common::types::ChannelType;
 use burncloud_database_models::PriceModel;
 use circuit_breaker::FailureType;
@@ -612,7 +615,7 @@ async fn proxy_logic(
             upstream.protocol
         );
 
-        // Determine Adaptor
+        // Determine Adaptor using DynamicAdaptorFactory
         // Currently Upstream struct stores protocol string. We should map it to ChannelType.
         // Simple heuristic map for now.
         let channel_type = match upstream.protocol.as_str() {
@@ -622,8 +625,8 @@ async fn proxy_logic(
             _ => ChannelType::OpenAI,
         };
 
-        let adaptor: Arc<dyn adaptor::factory::ChannelAdaptor> =
-            Arc::from(AdaptorFactory::get_adaptor(channel_type));
+        // Use DynamicAdaptorFactory to get adaptor (supports both static and dynamic configs)
+        let adaptor = state.adaptor_factory.get_adaptor(channel_type, None).await;
 
         // 3. Prepare Request Body
         let request_body_json: Option<serde_json::Value> =

@@ -790,7 +790,7 @@
     {
         "category": "phase3-dynamic-adaptor",
         "description": "Task 3.2.7: 集成 DynamicAdaptorFactory 到路由",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/router/src/lib.rs",
             "在 RouterState 中添加 adaptor_factory",
