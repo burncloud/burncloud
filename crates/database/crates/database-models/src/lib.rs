@@ -519,8 +519,8 @@ impl ChannelModel {
         let sql = if db.kind() == "postgres" {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 RETURNING id
                 "#,
                 type_col, group_col
@@ -528,8 +528,8 @@ impl ChannelModel {
         } else {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
                 type_col, group_col
             )
@@ -556,7 +556,8 @@ impl ChannelModel {
             .bind(channel.priority)
             .bind(channel.created_time)
             .bind(&channel.param_override)
-            .bind(&channel.header_override);
+            .bind(&channel.header_override)
+            .bind(&channel.api_version);
 
         let id = if db.kind() == "postgres" {
             let row = query.fetch_one(&mut *tx).await?;
@@ -590,17 +591,17 @@ impl ChannelModel {
         let sql = if is_postgres {
             format!(
                 r#"
-                UPDATE channels 
-                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11
-                WHERE id = $12
+                UPDATE channels
+                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11, api_version = $12
+                WHERE id = $13
                 "#,
                 type_col, group_col
             )
         } else {
             format!(
                 r#"
-                UPDATE channels 
-                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?
+                UPDATE channels
+                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?
                 WHERE id = ?
                 "#,
                 type_col, group_col
@@ -619,6 +620,7 @@ impl ChannelModel {
             .bind(channel.priority)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
+            .bind(&channel.api_version)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -656,21 +658,21 @@ impl ChannelModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                SELECT 
-                    id, type as "type_", key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, "group", used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as "type_", key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, "group", used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels WHERE id = $1
             "#
             }
             _ => {
                 r#"
-                SELECT 
-                    id, type as type_, key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, `group`, used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as type_, key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, `group`, used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels WHERE id = ?
             "#
             }
@@ -689,21 +691,21 @@ impl ChannelModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                SELECT 
-                    id, type as "type_", key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, "group", used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as "type_", key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, "group", used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels ORDER BY id DESC LIMIT $1 OFFSET $2
             "#
             }
             _ => {
                 r#"
-                SELECT 
-                    id, type as type_, key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, `group`, used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as type_, key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, `group`, used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels ORDER BY id DESC LIMIT ? OFFSET ?
             "#
             }

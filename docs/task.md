@@ -912,7 +912,7 @@
     {
         "category": "phase4-channel-cli",
         "description": "Task 4.1.1: 修改 channel add 命令自动创建 abilities",
-        "passes": false,
+        "passes": true,
         "steps": [
             "文件: crates/cli/src/channel.rs",
             "解析 -m/--models 参数获取模型列表",
