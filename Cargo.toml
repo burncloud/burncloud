@@ -112,7 +112,7 @@ redis = { version = "0.24", features = ["tokio-comp"] }
 # Internal crates
 burncloud-auto-update = { path = "crates/auto-update" }
 burncloud-cli = { path = "crates/cli" }
-burncloud-client = { path = "crates/client" }
+burncloud-client = { path = "crates/client", default-features = false }
 burncloud-client-api = { path = "crates/client/crates/client-api" }
 burncloud-client-dashboard = { path = "crates/client/crates/client-dashboard" }
 burncloud-client-deploy = { path = "crates/client/crates/client-deploy" }
