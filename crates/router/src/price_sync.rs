@@ -25,11 +25,11 @@ pub struct LiteLLMPrice {
     /// Output price per 1M tokens
     #[serde(default)]
     pub output_cost_per_token: Option<f64>,
-    /// Context window size
-    #[serde(default)]
+    /// Context window size (can be number or string in LiteLLM JSON)
+    #[serde(default, deserialize_with = "deserialize_optional_u32")]
     pub max_input_tokens: Option<u32>,
-    /// Maximum output tokens
-    #[serde(default)]
+    /// Maximum output tokens (can be number or string in LiteLLM JSON)
+    #[serde(default, deserialize_with = "deserialize_optional_u32")]
     pub max_output_tokens: Option<u32>,
     /// Alternative model name used for pricing
     #[serde(default)]
@@ -43,6 +43,77 @@ pub struct LiteLLMPrice {
     /// Model type (e.g., "chat", "embedding")
     #[serde(default)]
     pub mode: Option<String>,
+}
+
+/// Custom deserializer to handle both number and string values for token fields
+fn deserialize_optional_u32<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct OptionalU32Visitor;
+
+    impl<'de> Visitor<'de> for OptionalU32Visitor {
+        type Value = Option<u32>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a number, string, or null")
+        }
+
+        fn visit_none<E>(self) -> Result<Option<u32>, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Option<u32>, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Option<u32>, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(v as u32))
+        }
+
+        fn visit_i64<E>(self, v: i64) -> Result<Option<u32>, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(v as u32))
+        }
+
+        fn visit_f64<E>(self, v: f64) -> Result<Option<u32>, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(v as u32))
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Option<u32>, E>
+        where
+            E: de::Error,
+        {
+            // Try to parse string as number, otherwise return None
+            // Also try parsing as float since some values might be "2000000.0"
+            if let Ok(n) = v.parse::<u32>() {
+                Ok(Some(n))
+            } else if let Ok(n) = v.parse::<f64>() {
+                Ok(Some(n as u32))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    deserializer.deserialize_any(OptionalU32Visitor)
 }
 
 impl LiteLLMPrice {
