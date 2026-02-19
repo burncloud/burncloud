@@ -142,13 +142,18 @@ impl CircuitBreaker {
         match failure_type {
             FailureType::AuthFailed | FailureType::PaymentRequired => {
                 // Auth and payment failures immediately trip the circuit
-                entry.failure_count.store(self.failure_threshold, Ordering::Relaxed);
+                entry
+                    .failure_count
+                    .store(self.failure_threshold, Ordering::Relaxed);
                 println!(
                     "Circuit Breaker: Upstream {} immediately tripped due to {:?}",
                     upstream_id, failure_type
                 );
             }
-            FailureType::RateLimited { scope: _, retry_after } => {
+            FailureType::RateLimited {
+                scope: _,
+                retry_after,
+            } => {
                 // Set rate limit expiry time
                 let duration = retry_after
                     .map(|s| Duration::from_secs(s))

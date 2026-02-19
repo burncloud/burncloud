@@ -290,12 +290,10 @@ pub fn parse_gemini_rate_limit(headers: &HeaderMap, body: Option<&str>) -> RateL
                                         || reason.contains("RateLimitExceeded")
                                     {
                                         // Try to extract retry delay
-                                        if let Some(retry_delay) = detail
-                                            .get("retryDelay")
-                                            .and_then(|d| d.as_str())
+                                        if let Some(retry_delay) =
+                                            detail.get("retryDelay").and_then(|d| d.as_str())
                                         {
-                                            info.retry_after =
-                                                parse_duration_string(retry_delay);
+                                            info.retry_after = parse_duration_string(retry_delay);
                                         }
                                     }
                                 }
@@ -337,9 +335,18 @@ fn parse_openai_error(body: &str) -> ErrorInfo {
 
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
         if let Some(error) = json.get("error") {
-            info.error_type = error.get("type").and_then(|t| t.as_str()).map(|s| s.to_string());
-            info.message = error.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
-            info.code = error.get("code").and_then(|c| c.as_str()).map(|s| s.to_string());
+            info.error_type = error
+                .get("type")
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string());
+            info.message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string());
+            info.code = error
+                .get("code")
+                .and_then(|c| c.as_str())
+                .map(|s| s.to_string());
         }
     }
 
@@ -353,8 +360,14 @@ fn parse_anthropic_error(body: &str) -> ErrorInfo {
     let mut info = ErrorInfo::default();
 
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-        info.error_type = json.get("type").and_then(|t| t.as_str()).map(|s| s.to_string());
-        info.message = json.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
+        info.error_type = json
+            .get("type")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string());
+        info.message = json
+            .get("message")
+            .and_then(|m| m.as_str())
+            .map(|s| s.to_string());
     }
 
     info.scope = parse_rate_limit_scope_from_error(body);
@@ -374,9 +387,18 @@ fn parse_gemini_error(body: &str) -> ErrorInfo {
 
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
         if let Some(error) = json.get("error") {
-            info.error_type = error.get("status").and_then(|s| s.as_str()).map(|s| s.to_string());
-            info.message = error.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
-            info.code = error.get("code").and_then(|c| c.as_i64()).map(|c| c.to_string());
+            info.error_type = error
+                .get("status")
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string());
+            info.message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string());
+            info.code = error
+                .get("code")
+                .and_then(|c| c.as_i64())
+                .map(|c| c.to_string());
         }
     }
 
@@ -395,12 +417,24 @@ fn parse_generic_error(body: &str) -> ErrorInfo {
             if error.is_string() {
                 info.message = error.as_str().map(|s| s.to_string());
             } else {
-                info.message = error.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
-                info.error_type = error.get("type").and_then(|t| t.as_str()).map(|s| s.to_string());
-                info.code = error.get("code").and_then(|c| c.as_str()).map(|s| s.to_string());
+                info.message = error
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .map(|s| s.to_string());
+                info.error_type = error
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string());
+                info.code = error
+                    .get("code")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string());
             }
         } else {
-            info.message = json.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
+            info.message = json
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string());
         }
     } else {
         // If not JSON, use the body as the message

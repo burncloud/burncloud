@@ -51,14 +51,14 @@ pub struct AdaptiveLimitConfig {
 impl Default for AdaptiveLimitConfig {
     fn default() -> Self {
         Self {
-            learning_duration: 10,          // Learn over 10 requests
-            initial_limit: 10,              // Start conservatively
-            adjustment_step: 5,             // Adjust by 5 requests at a time
-            success_threshold: 5,           // 5 successes to increase
-            failure_threshold: 2,           // 2 failures to cooldown
+            learning_duration: 10, // Learn over 10 requests
+            initial_limit: 10,     // Start conservatively
+            adjustment_step: 5,    // Adjust by 5 requests at a time
+            success_threshold: 5,  // 5 successes to increase
+            failure_threshold: 2,  // 2 failures to cooldown
             cooldown_duration: Duration::from_secs(30),
-            recovery_ratio: 0.5,            // Reduce to 50% after cooldown
-            max_limit: 1000,                // Cap at 1000 requests
+            recovery_ratio: 0.5, // Reduce to 50% after cooldown
+            max_limit: 1000,     // Cap at 1000 requests
         }
     }
 }
@@ -311,10 +311,7 @@ impl AdaptiveRateLimit {
             self.last_adjusted_at = Some(now);
             self.success_streak = 0; // Reset streak after adjustment
 
-            println!(
-                "AdaptiveLimit: Increased limit to {}",
-                self.current_limit
-            );
+            println!("AdaptiveLimit: Increased limit to {}", self.current_limit);
         }
     }
 }

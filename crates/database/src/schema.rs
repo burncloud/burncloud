@@ -362,9 +362,11 @@ impl Schema {
         // Migration: Add api_version column to channels if it doesn't exist
         // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we try and ignore errors
         if kind == "sqlite" {
-            let _ = sqlx::query("ALTER TABLE channels ADD COLUMN api_version VARCHAR(32) DEFAULT 'default'")
-                .execute(pool)
-                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE channels ADD COLUMN api_version VARCHAR(32) DEFAULT 'default'",
+            )
+            .execute(pool)
+            .await;
         } else if kind == "postgres" {
             let _ = sqlx::query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS api_version VARCHAR(32) DEFAULT 'default'")
                 .execute(pool)
@@ -515,18 +517,48 @@ impl Schema {
 
             // Default protocol configs
             // channel_type values: 1=OpenAI, 2=Anthropic, 3=Azure, 4=Gemini, 5=Vertex
-            let default_protocols: [(i32, &str, bool, Option<&str>, Option<&str>, Option<&str>); 4] = [
+            let default_protocols: [(i32, &str, bool, Option<&str>, Option<&str>, Option<&str>);
+                4] = [
                 // OpenAI - default
-                (1, "default", true, Some("/v1/chat/completions"), Some("/v1/embeddings"), Some("/v1/models")),
+                (
+                    1,
+                    "default",
+                    true,
+                    Some("/v1/chat/completions"),
+                    Some("/v1/embeddings"),
+                    Some("/v1/models"),
+                ),
                 // Anthropic - default
                 (2, "2023-06-01", true, Some("/v1/messages"), None, None),
                 // Azure OpenAI - default
-                (3, "2024-02-01", true, Some("/deployments/{deployment_id}/chat/completions"), Some("/deployments/{deployment_id}/embeddings"), Some("/deployments?api-version=2024-02-01")),
+                (
+                    3,
+                    "2024-02-01",
+                    true,
+                    Some("/deployments/{deployment_id}/chat/completions"),
+                    Some("/deployments/{deployment_id}/embeddings"),
+                    Some("/deployments?api-version=2024-02-01"),
+                ),
                 // Gemini - default
-                (4, "v1", true, Some("/v1/models/{model}:generateContent"), Some("/v1/models/{model}:embedContent"), Some("/v1/models")),
+                (
+                    4,
+                    "v1",
+                    true,
+                    Some("/v1/models/{model}:generateContent"),
+                    Some("/v1/models/{model}:embedContent"),
+                    Some("/v1/models"),
+                ),
             ];
 
-            for (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint) in default_protocols {
+            for (
+                channel_type,
+                api_version,
+                is_default,
+                chat_endpoint,
+                embed_endpoint,
+                models_endpoint,
+            ) in default_protocols
+            {
                 let insert_sql = match kind.as_str() {
                     "sqlite" => "INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     "postgres" => "INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",

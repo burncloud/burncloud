@@ -11,7 +11,8 @@ use reqwest::Client;
 use serde::Deserialize;
 
 /// URL for LiteLLM's model prices JSON file
-const LITELLM_PRICES_URL: &str = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+const LITELLM_PRICES_URL: &str =
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 
 /// LiteLLM price data structure from the JSON file
 #[derive(Debug, Clone, Deserialize)]
@@ -222,7 +223,10 @@ impl PriceSyncService {
             }
         }
 
-        println!("Capabilities sync complete: {} models updated", updated_count);
+        println!(
+            "Capabilities sync complete: {} models updated",
+            updated_count
+        );
         Ok(updated_count)
     }
 }
@@ -258,7 +262,10 @@ pub fn start_price_sync_task(db: Database, interval_secs: u64) -> tokio::task::J
                 Err(e) => eprintln!("Periodic price sync failed: {}", e),
             }
             match service.sync_capabilities().await {
-                Ok(count) => println!("Periodic capabilities sync complete: {} models updated", count),
+                Ok(count) => println!(
+                    "Periodic capabilities sync complete: {} models updated",
+                    count
+                ),
                 Err(e) => eprintln!("Periodic capabilities sync failed: {}", e),
             }
         }

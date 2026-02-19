@@ -7,6 +7,7 @@ mod config;
 mod limiter;
 mod model_router;
 pub mod notification;
+pub mod passthrough;
 pub mod price_sync;
 pub mod response_parser;
 pub mod stream_parser;
@@ -456,6 +457,7 @@ async fn proxy_handler(
 use burncloud_common::types::ChannelType;
 use burncloud_database_models::PriceModel;
 use circuit_breaker::FailureType;
+use passthrough::{should_passthrough, PassthroughDecision};
 use response_parser::{parse_error_response, parse_rate_limit_info};
 
 async fn proxy_logic(
@@ -475,8 +477,15 @@ async fn proxy_logic(
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
 
+    // Try to extract model from Gemini native path first
+    let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
+
     if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-        if let Some(model) = json.get("model").and_then(|v| v.as_str()) {
+        // Prefer model from body, fall back to path-extracted model for Gemini native paths
+        let model_ref = json.get("model").and_then(|v| v.as_str());
+        let model_opt = model_ref.or(gemini_path_model.as_deref());
+
+        if let Some(model) = model_opt {
             println!(
                 "ProxyLogic: Attempting to route model '{}' for group '{}'",
                 model, user_group
@@ -629,32 +638,251 @@ async fn proxy_logic(
             _ => ChannelType::OpenAI,
         };
 
-        // Use DynamicAdaptorFactory to get adaptor (supports both static and dynamic configs)
+        // 3. Parse Request Body early for passthrough detection
+        let body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+            Ok(v) => v,
+            Err(_) => {
+                last_error = "Invalid JSON body".to_string();
+                continue;
+            }
+        };
+
+        // 4. Check if we should use passthrough mode (Gemini native format)
+        let passthrough_decision = should_passthrough(path, &body_json, channel_type);
+
+        // Handle Gemini passthrough mode
+        if passthrough_decision == PassthroughDecision::Passthrough {
+            println!(
+                "Using passthrough mode for Gemini request: path={}, has_contents={}",
+                path,
+                body_json.get("contents").is_some()
+            );
+
+            // Build target URL for passthrough
+            let passthrough_url = passthrough::build_gemini_passthrough_url(
+                &upstream.base_url,
+                path,
+                &body_json,
+            );
+
+            println!("Passthrough URL: {}", passthrough_url);
+
+            // Check if streaming
+            let is_stream = body_json
+                .get("stream")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            // Determine final URL (add alt=sse for streaming requests if not already in URL)
+            let final_url = if is_stream && !passthrough_url.contains("alt=") {
+                let separator = if passthrough_url.contains('?') { "&" } else { "?" };
+                format!("{}{}alt=sse", passthrough_url, separator)
+            } else {
+                passthrough_url.clone()
+            };
+
+            println!("Final passthrough URL: {}", final_url);
+
+            // Prepare request body - remove 'stream' field for Gemini native API
+            let mut passthrough_body = body_json.clone();
+            if passthrough_body.get("stream").is_some() {
+                passthrough_body.as_object_mut().unwrap().remove("stream");
+            }
+
+            // Build passthrough request with final URL
+            let mut req_builder = state.client
+                .request(method.clone(), &final_url)
+                .header("x-goog-api-key", &upstream.api_key);
+
+            // Apply header_override
+            if let Some(ref override_str) = upstream.header_override {
+                if let Ok(header_map) =
+                    serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
+                {
+                    for (k, v) in header_map {
+                        req_builder = req_builder.header(k, v);
+                    }
+                }
+            }
+
+            let req_builder = req_builder.json(&passthrough_body);
+
+            // Execute passthrough request
+            match req_builder.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+
+                    if status.is_server_error() {
+                        last_error = format!("Upstream returned {}", status);
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        state
+                            .circuit_breaker
+                            .record_failure_with_type(&upstream.id, FailureType::ServerError);
+                        state.channel_state_tracker.record_error(
+                            channel_id,
+                            model_name,
+                            &FailureType::ServerError,
+                            &last_error,
+                        );
+                        continue;
+                    }
+
+                    state.circuit_breaker.record_success(&upstream.id);
+
+                    if status.is_success() {
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        let latency_ms = request_start_time.elapsed().as_millis() as u64;
+                        state
+                            .channel_state_tracker
+                            .record_success(channel_id, model_name, latency_ms);
+
+                        // Handle streaming vs non-streaming passthrough
+                        if is_stream {
+                            // Stream passthrough - directly forward Gemini SSE format
+                            let body_stream = resp.bytes_stream();
+                            let counter_clone = token_counter.clone();
+
+                            let stream = body_stream.map(move |chunk_result| match chunk_result {
+                                Ok(bytes) => {
+                                    let text = String::from_utf8_lossy(&bytes);
+
+                                    // Parse token usage from Gemini streaming response
+                                    let (prompt, completion) =
+                                        passthrough::parse_gemini_streaming_usage(&text);
+                                    if prompt > 0 || completion > 0 {
+                                        counter_clone.add_tokens(prompt, completion);
+                                    }
+
+                                    // Pass through raw bytes (Gemini native format)
+                                    Ok(bytes)
+                                }
+                                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                            });
+
+                            return (
+                                Response::builder()
+                                    .status(status)
+                                    .header("content-type", "text/event-stream")
+                                    .header("cache-control", "no-cache")
+                                    .header("connection", "keep-alive")
+                                    .body(Body::from_stream(stream))
+                                    .unwrap(),
+                                last_upstream_id,
+                                status,
+                            );
+                        } else {
+                            // Non-streaming passthrough
+                            let resp_bytes = match resp.bytes().await {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    last_error = format!("Failed to read response: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            // Parse usage metadata from response
+                            if let Ok(resp_json) =
+                                serde_json::from_slice::<serde_json::Value>(&resp_bytes)
+                            {
+                                let (prompt, completion) =
+                                    passthrough::parse_gemini_usage(&resp_json);
+                                if prompt > 0 || completion > 0 {
+                                    token_counter.add_tokens(prompt, completion);
+                                }
+                            }
+
+                            return (
+                                Response::builder()
+                                    .status(status)
+                                    .header("content-type", "application/json")
+                                    .body(Body::from(resp_bytes))
+                                    .unwrap(),
+                                last_upstream_id,
+                                status,
+                            );
+                        }
+                    } else {
+                        // Non-success status (4xx)
+                        let body_bytes = match resp.bytes().await {
+                            Ok(b) => b,
+                            Err(e) => {
+                                last_error = format!("Failed to read error response: {}", e);
+                                return (
+                                    Response::builder()
+                                        .status(status)
+                                        .body(Body::from(last_error.clone()))
+                                        .unwrap(),
+                                    last_upstream_id,
+                                    status,
+                                );
+                            }
+                        };
+
+                        // Record rate limit errors
+                        if status.as_u16() == 429 {
+                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                model_name,
+                                &FailureType::RateLimited {
+                                    scope: circuit_breaker::RateLimitScope::Unknown,
+                                    retry_after: None,
+                                },
+                                "Rate limited",
+                            );
+                            state.circuit_breaker.record_failure_with_type(
+                                &upstream.id,
+                                FailureType::RateLimited {
+                                    scope: circuit_breaker::RateLimitScope::Unknown,
+                                    retry_after: None,
+                                },
+                            );
+                        }
+
+                        return (
+                            Response::builder()
+                                .status(status)
+                                .header("content-type", "application/json")
+                                .body(Body::from(body_bytes))
+                                .unwrap(),
+                            last_upstream_id,
+                            status,
+                        );
+                    }
+                }
+                Err(e) => {
+                    last_error = format!("Network Error: {}", e);
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    state
+                        .circuit_breaker
+                        .record_failure_with_type(&upstream.id, FailureType::Timeout);
+                    state.channel_state_tracker.record_error(
+                        channel_id,
+                        model_name,
+                        &FailureType::Timeout,
+                        &last_error,
+                    );
+                    continue;
+                }
+            }
+        }
+
+        // 5. Use DynamicAdaptorFactory to get adaptor (supports both static and dynamic configs)
         let adaptor = state.adaptor_factory.get_adaptor(channel_type, None).await;
 
-        // 3. Prepare Request Body
+        // 6. Prepare Request Body (for conversion mode)
         let request_body_json: Option<serde_json::Value> =
             if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
                 adaptor
                     .convert_request(&req)
                     .or_else(|| Some(serde_json::json!(req))) // Use converted or original
             } else {
-                // Failed to parse as OpenAI request, use raw bytes if possible?
-                // Adaptor interface expects Value for build_request.
-                // If body is not valid JSON, we might fail here for complex adaptors.
-                // For OpenAI passthrough, we might want raw bytes.
-                // Let's assume it's JSON for now as most LLM APIs are.
-                serde_json::from_slice(&body_bytes).ok()
+                // Use the already parsed JSON
+                Some(body_json)
             };
 
         if request_body_json.is_none() {
-            // If we can't parse body and we need to (implied by using adaptors), fail?
-            // Or just pass empty?
-            // If protocol is "openai", maybe we don't need to parse?
-            // But `build_request` takes Value.
-            // We should probably update `build_request` to take Option<Value> or Bytes?
-            // For now, fail if not JSON.
-            last_error = "Invalid JSON body".to_string();
+            last_error = "Failed to prepare request body".to_string();
             continue;
         }
         let mut request_body_json = request_body_json.unwrap();
@@ -714,10 +942,9 @@ async fn proxy_logic(
                     // 5xx Server Error
                     last_error = format!("Upstream returned {}", status);
                     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                    state.circuit_breaker.record_failure_with_type(
-                        &upstream.id,
-                        FailureType::ServerError,
-                    );
+                    state
+                        .circuit_breaker
+                        .record_failure_with_type(&upstream.id, FailureType::ServerError);
                     state.channel_state_tracker.record_error(
                         channel_id,
                         model_name,
@@ -743,14 +970,14 @@ async fn proxy_logic(
                     // Record success in channel state tracker
                     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                     let latency_ms = request_start_time.elapsed().as_millis() as u64;
-                    state.channel_state_tracker.record_success(
-                        channel_id,
-                        model_name,
-                        latency_ms,
-                    );
+                    state
+                        .channel_state_tracker
+                        .record_success(channel_id, model_name, latency_ms);
 
                     // Log rate limit info for debugging/monitoring
-                    if rate_limit_info.request_limit.is_some() || rate_limit_info.token_limit.is_some() {
+                    if rate_limit_info.request_limit.is_some()
+                        || rate_limit_info.token_limit.is_some()
+                    {
                         println!(
                             "Rate limit info for {}: requests={:?}, tokens={:?}, remaining={:?}, retry_after={:?}",
                             upstream.name,
@@ -914,7 +1141,9 @@ async fn proxy_logic(
                                 .and_then(|v| v.parse::<u64>().ok());
 
                             // Determine scope from error response
-                            let scope = error_info.scope.unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
+                            let scope = error_info
+                                .scope
+                                .unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
 
                             let ft = FailureType::RateLimited { scope, retry_after };
                             state.channel_state_tracker.record_error(
@@ -943,7 +1172,9 @@ async fn proxy_logic(
                     };
 
                     // Record failure with circuit breaker
-                    state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type);
+                    state
+                        .circuit_breaker
+                        .record_failure_with_type(&upstream.id, failure_type);
 
                     // Check for API version deprecation and auto-update if detected
                     if adaptor::detector::ApiVersionDetector::is_deprecation_error(error_message) {
@@ -953,11 +1184,14 @@ async fn proxy_logic(
                         let error_message_for_detector = error_message.to_string();
 
                         tokio::spawn(async move {
-                            match detector.detect_and_update(
-                                channel_id_for_detector,
-                                &error_message_for_detector,
-                                &adaptor_factory_for_detector,
-                            ).await {
+                            match detector
+                                .detect_and_update(
+                                    channel_id_for_detector,
+                                    &error_message_for_detector,
+                                    &adaptor_factory_for_detector,
+                                )
+                                .await
+                            {
                                 Ok(Some(new_version)) => {
                                     println!(
                                         "API version deprecation detected, updated channel {} to version: {}",
@@ -994,10 +1228,9 @@ async fn proxy_logic(
             Err(e) => {
                 last_error = format!("Network Error: {}", e);
                 let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                state.circuit_breaker.record_failure_with_type(
-                    &upstream.id,
-                    FailureType::Timeout,
-                );
+                state
+                    .circuit_breaker
+                    .record_failure_with_type(&upstream.id, FailureType::Timeout);
                 state.channel_state_tracker.record_error(
                     channel_id,
                     model_name,

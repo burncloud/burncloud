@@ -37,6 +37,17 @@ impl StreamingTokenCounter {
         self.completion_tokens.store(count, Ordering::Relaxed);
     }
 
+    /// Adds tokens to the counter (updates both prompt and completion if non-zero).
+    /// This is useful for parsing usage metadata from responses.
+    pub fn add_tokens(&self, prompt_tokens: u32, completion_tokens: u32) {
+        if prompt_tokens > 0 {
+            self.prompt_tokens.store(prompt_tokens, Ordering::Relaxed);
+        }
+        if completion_tokens > 0 {
+            self.completion_tokens.store(completion_tokens, Ordering::Relaxed);
+        }
+    }
+
     /// Returns the current token usage as (prompt_tokens, completion_tokens).
     pub fn get_usage(&self) -> (u32, u32) {
         (

@@ -42,7 +42,11 @@ impl RequestMapping {
     }
 
     /// Add a field mapping
-    pub fn add_field_mapping(mut self, target: impl Into<String>, source: impl Into<String>) -> Self {
+    pub fn add_field_mapping(
+        mut self,
+        target: impl Into<String>,
+        source: impl Into<String>,
+    ) -> Self {
         self.field_map.insert(target.into(), source.into());
         self
     }
@@ -116,7 +120,8 @@ impl ResponseMapping {
 /// 2. Apply field renames
 /// 3. Add fixed fields
 pub fn apply_mapping(json: &mut Value, mapping: &RequestMapping) {
-    if !mapping.field_map.is_empty() || !mapping.rename.is_empty() || !mapping.add_fields.is_empty() {
+    if !mapping.field_map.is_empty() || !mapping.rename.is_empty() || !mapping.add_fields.is_empty()
+    {
         if let Some(obj) = json.as_object_mut() {
             // 1. Apply field mappings (copy from source to target)
             for (target, source) in &mapping.field_map {
@@ -127,7 +132,9 @@ pub fn apply_mapping(json: &mut Value, mapping: &RequestMapping) {
 
             // 2. Apply field renames
             // Collect renames to apply (avoid modifying while iterating)
-            let renames: Vec<(String, String)> = mapping.rename.iter()
+            let renames: Vec<(String, String)> = mapping
+                .rename
+                .iter()
                 .filter_map(|(from, to)| {
                     if obj.contains_key(from) && !obj.contains_key(to) {
                         Some((from.clone(), to.clone()))
@@ -259,9 +266,18 @@ mod tests {
             .add_rename("model", "deployment_id")
             .add_fixed_field("api-version", json!("2025-01-01"));
 
-        assert_eq!(mapping.field_map.get("input"), Some(&"messages".to_string()));
-        assert_eq!(mapping.rename.get("model"), Some(&"deployment_id".to_string()));
-        assert_eq!(mapping.add_fields.get("api-version"), Some(&json!("2025-01-01")));
+        assert_eq!(
+            mapping.field_map.get("input"),
+            Some(&"messages".to_string())
+        );
+        assert_eq!(
+            mapping.rename.get("model"),
+            Some(&"deployment_id".to_string())
+        );
+        assert_eq!(
+            mapping.add_fields.get("api-version"),
+            Some(&json!("2025-01-01"))
+        );
     }
 
     #[test]
@@ -279,7 +295,10 @@ mod tests {
             .usage_path("usage")
             .error_path("error.message");
 
-        assert_eq!(mapping.content_path, Some("choices[0].message.content".to_string()));
+        assert_eq!(
+            mapping.content_path,
+            Some("choices[0].message.content".to_string())
+        );
         assert_eq!(mapping.usage_path, Some("usage".to_string()));
         assert_eq!(mapping.error_path, Some("error.message".to_string()));
     }
@@ -290,8 +309,7 @@ mod tests {
             "messages": [{"role": "user", "content": "Hello"}]
         });
 
-        let mapping = RequestMapping::new()
-            .add_field_mapping("input", "messages");
+        let mapping = RequestMapping::new().add_field_mapping("input", "messages");
 
         apply_mapping(&mut json, &mapping);
 
@@ -305,8 +323,7 @@ mod tests {
             "model": "gpt-4"
         });
 
-        let mapping = RequestMapping::new()
-            .add_rename("model", "deployment_id");
+        let mapping = RequestMapping::new().add_rename("model", "deployment_id");
 
         apply_mapping(&mut json, &mapping);
 
@@ -417,17 +434,22 @@ mod tests {
         let parsed: RequestMapping = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.field_map.get("input"), Some(&"messages".to_string()));
-        assert_eq!(parsed.rename.get("model"), Some(&"deployment_id".to_string()));
+        assert_eq!(
+            parsed.rename.get("model"),
+            Some(&"deployment_id".to_string())
+        );
     }
 
     #[test]
     fn test_response_mapping_serialization() {
-        let mapping = ResponseMapping::new()
-            .content_path("choices[0].message.content");
+        let mapping = ResponseMapping::new().content_path("choices[0].message.content");
 
         let json = serde_json::to_string(&mapping).unwrap();
         let parsed: ResponseMapping = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed.content_path, Some("choices[0].message.content".to_string()));
+        assert_eq!(
+            parsed.content_path,
+            Some("choices[0].message.content".to_string())
+        );
     }
 }

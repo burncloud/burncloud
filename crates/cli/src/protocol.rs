@@ -97,12 +97,25 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
             match config {
                 Some(c) => {
                     println!("ID: {}", c.id);
-                    println!("Channel Type: {} ({})", channel_type_to_name(c.channel_type), c.channel_type);
+                    println!(
+                        "Channel Type: {} ({})",
+                        channel_type_to_name(c.channel_type),
+                        c.channel_type
+                    );
                     println!("API Version: {}", c.api_version);
                     println!("Is Default: {}", c.is_default);
-                    println!("Chat Endpoint: {}", c.chat_endpoint.as_deref().unwrap_or("-"));
-                    println!("Embed Endpoint: {}", c.embed_endpoint.as_deref().unwrap_or("-"));
-                    println!("Models Endpoint: {}", c.models_endpoint.as_deref().unwrap_or("-"));
+                    println!(
+                        "Chat Endpoint: {}",
+                        c.chat_endpoint.as_deref().unwrap_or("-")
+                    );
+                    println!(
+                        "Embed Endpoint: {}",
+                        c.embed_endpoint.as_deref().unwrap_or("-")
+                    );
+                    println!(
+                        "Models Endpoint: {}",
+                        c.models_endpoint.as_deref().unwrap_or("-")
+                    );
                     if let Some(ref req_map) = c.request_mapping {
                         println!("Request Mapping: {}", req_map);
                     }

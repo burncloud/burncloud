@@ -223,12 +223,7 @@ impl NotificationService {
 
     /// Send notification via webhook
     async fn send_webhook(&self, url: &str, notification: &Notification) -> anyhow::Result<()> {
-        let response = self
-            .http_client
-            .post(url)
-            .json(notification)
-            .send()
-            .await?;
+        let response = self.http_client.post(url).json(notification).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -413,8 +408,14 @@ mod tests {
         .with_metadata("channel_id", "123")
         .with_metadata("error_code", "500");
 
-        assert_eq!(notification.metadata.get("channel_id"), Some(&"123".to_string()));
-        assert_eq!(notification.metadata.get("error_code"), Some(&"500".to_string()));
+        assert_eq!(
+            notification.metadata.get("channel_id"),
+            Some(&"123".to_string())
+        );
+        assert_eq!(
+            notification.metadata.get("error_code"),
+            Some(&"500".to_string())
+        );
     }
 
     #[test]

@@ -63,7 +63,9 @@ impl ApiVersionDetector {
     /// Check if an error message indicates API version deprecation
     pub fn is_deprecation_error(error_message: &str) -> bool {
         let lower = error_message.to_lowercase();
-        lower.contains("deprecated") || lower.contains("no longer available") || lower.contains("has been retired")
+        lower.contains("deprecated")
+            || lower.contains("no longer available")
+            || lower.contains("has been retired")
     }
 
     /// Detect and update API version for a channel based on deprecation error
@@ -88,7 +90,8 @@ impl ApiVersionDetector {
         };
 
         // Update channel's api_version in database
-        self.update_channel_api_version(channel_id, &new_version).await?;
+        self.update_channel_api_version(channel_id, &new_version)
+            .await?;
 
         // Invalidate adaptor cache for this channel
         // Note: We invalidate all cached adaptors for this channel type

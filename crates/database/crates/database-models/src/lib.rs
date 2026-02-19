@@ -367,7 +367,12 @@ impl TokenModel {
     }
 
     /// List tokens with pagination and optional user_id filter
-    pub async fn list(db: &Database, limit: i32, offset: i32, user_id: Option<&str>) -> Result<Vec<Token>> {
+    pub async fn list(
+        db: &Database,
+        limit: i32,
+        offset: i32,
+        user_id: Option<&str>,
+    ) -> Result<Vec<Token>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -488,10 +493,7 @@ impl TokenModel {
             _ => "DELETE FROM tokens WHERE key = ?",
         };
 
-        let result = sqlx::query(sql)
-            .bind(key)
-            .execute(conn.pool())
-            .await?;
+        let result = sqlx::query(sql).bind(key).execute(conn.pool()).await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -1056,7 +1058,9 @@ impl ProtocolConfigModel {
         // If this is set as default, clear other defaults for the same channel type
         if is_default {
             let clear_sql = match db.kind().as_str() {
-                "postgres" => "UPDATE protocol_configs SET is_default = FALSE WHERE channel_type = $1",
+                "postgres" => {
+                    "UPDATE protocol_configs SET is_default = FALSE WHERE channel_type = $1"
+                }
                 _ => "UPDATE protocol_configs SET is_default = 0 WHERE channel_type = ?",
             };
             sqlx::query(clear_sql)
@@ -1128,10 +1132,7 @@ impl ProtocolConfigModel {
             _ => "DELETE FROM protocol_configs WHERE id = ?",
         };
 
-        let result = sqlx::query(sql)
-            .bind(id)
-            .execute(conn.pool())
-            .await?;
+        let result = sqlx::query(sql).bind(id).execute(conn.pool()).await?;
 
         Ok(result.rows_affected() > 0)
     }

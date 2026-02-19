@@ -132,7 +132,7 @@ impl ModelRouter {
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark
+                    header_override, remark, api_version
                 FROM channels WHERE id IN ({})
                 "#,
                 placeholders
@@ -144,7 +144,7 @@ impl ModelRouter {
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark
+                    header_override, remark, api_version
                 FROM channels WHERE id IN ({})
                 "#,
                 placeholders
@@ -159,14 +159,11 @@ impl ModelRouter {
         let channels: Vec<Channel> = query.fetch_all(pool).await?;
 
         // 4. Map channels to weights
-        let weight_map: std::collections::HashMap<i32, i32> =
-            candidates.into_iter().collect();
+        let weight_map: std::collections::HashMap<i32, i32> = candidates.into_iter().collect();
 
         let result: Vec<(Channel, i32)> = channels
             .into_iter()
-            .filter_map(|ch| {
-                weight_map.get(&ch.id).map(|&w| (ch, w))
-            })
+            .filter_map(|ch| weight_map.get(&ch.id).map(|&w| (ch, w)))
             .collect();
 
         Ok(result)
@@ -187,7 +184,9 @@ impl ModelRouter {
             let total_weight: i32 = candidates.iter().map(|(_, w)| *w).sum();
             if total_weight <= 0 {
                 // All weights are 0 or negative (invalid), pick random
-                candidates[rand::thread_rng().gen_range(0..candidates.len())].0.clone()
+                candidates[rand::thread_rng().gen_range(0..candidates.len())]
+                    .0
+                    .clone()
             } else {
                 let mut r = rand::thread_rng().gen_range(0..total_weight);
                 let mut selected = candidates[0].0.clone();
@@ -228,13 +227,13 @@ impl ModelRouter {
         model: &str,
         state_tracker: &ChannelStateTracker,
     ) -> std::result::Result<Option<Channel>, NoAvailableChannelsError> {
-        let candidates = self
-            .get_candidates(group, model)
-            .await
-            .map_err(|e| NoAvailableChannelsError {
-                model: model.to_string(),
-                reason: format!("Database error: {}", e),
-            })?;
+        let candidates =
+            self.get_candidates(group, model)
+                .await
+                .map_err(|e| NoAvailableChannelsError {
+                    model: model.to_string(),
+                    reason: format!("Database error: {}", e),
+                })?;
 
         if candidates.is_empty() {
             return Ok(None);
@@ -261,7 +260,9 @@ impl ModelRouter {
             // This is a simple heuristic - could be improved with more sophisticated scoring
             let score_a = self.calculate_health_score(a.id, state_tracker, model);
             let score_b = self.calculate_health_score(b.id, state_tracker, model);
-            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Weighted Random Selection from available channels
@@ -270,7 +271,9 @@ impl ModelRouter {
         } else {
             let total_weight: i32 = sorted.iter().map(|(_, w)| *w).sum();
             if total_weight <= 0 {
-                sorted[rand::thread_rng().gen_range(0..sorted.len())].0.clone()
+                sorted[rand::thread_rng().gen_range(0..sorted.len())]
+                    .0
+                    .clone()
             } else {
                 let mut r = rand::thread_rng().gen_range(0..total_weight);
                 let mut selected = sorted[0].0.clone();
@@ -295,7 +298,12 @@ impl ModelRouter {
     ///
     /// Higher scores indicate healthier channels.
     /// Considers success rate, average latency, and current status.
-    fn calculate_health_score(&self, channel_id: i32, state_tracker: &ChannelStateTracker, model: &str) -> f64 {
+    fn calculate_health_score(
+        &self,
+        channel_id: i32,
+        state_tracker: &ChannelStateTracker,
+        model: &str,
+    ) -> f64 {
         state_tracker.get_health_score(channel_id, Some(model))
     }
 }

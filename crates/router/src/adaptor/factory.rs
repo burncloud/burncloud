@@ -114,7 +114,10 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
         body: &Value,
     ) -> RequestBuilder {
         // Extract model name from body
-        let model = body.get("model").and_then(|m| m.as_str()).unwrap_or("gemini-2.0-flash");
+        let model = body
+            .get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or("gemini-2.0-flash");
 
         // Convert OpenAI request to Gemini format
         let openai_req: Option<OpenAIChatRequest> = serde_json::from_value(body.clone()).ok();
@@ -214,7 +217,10 @@ impl DynamicAdaptorFactory {
         }
 
         // Try to load dynamic config from database
-        match self.load_dynamic_adaptor(channel_type_id, api_version).await {
+        match self
+            .load_dynamic_adaptor(channel_type_id, api_version)
+            .await
+        {
             Ok(Some(adaptor)) => {
                 self.cache.insert(cache_key, Arc::clone(&adaptor));
                 adaptor
@@ -224,7 +230,10 @@ impl DynamicAdaptorFactory {
                 Arc::from(AdaptorFactory::get_adaptor(channel_type))
             }
             Err(e) => {
-                eprintln!("Failed to load dynamic adaptor: {}, falling back to static", e);
+                eprintln!(
+                    "Failed to load dynamic adaptor: {}, falling back to static",
+                    e
+                );
                 Arc::from(AdaptorFactory::get_adaptor(channel_type))
             }
         }
@@ -239,7 +248,10 @@ impl DynamicAdaptorFactory {
             Ok(Some(adaptor)) => adaptor,
             Ok(None) => Arc::from(AdaptorFactory::get_adaptor(channel_type)),
             Err(e) => {
-                eprintln!("Failed to load default adaptor: {}, falling back to static", e);
+                eprintln!(
+                    "Failed to load default adaptor: {}, falling back to static",
+                    e
+                );
                 Arc::from(AdaptorFactory::get_adaptor(channel_type))
             }
         }
@@ -251,7 +263,8 @@ impl DynamicAdaptorFactory {
         channel_type: i32,
         api_version: &str,
     ) -> anyhow::Result<Option<Arc<dyn ChannelAdaptor>>> {
-        let config = ProtocolConfigModel::get_by_type_version(&self.db, channel_type, api_version).await?;
+        let config =
+            ProtocolConfigModel::get_by_type_version(&self.db, channel_type, api_version).await?;
 
         match config {
             Some(protocol_config) => {
@@ -284,11 +297,13 @@ impl DynamicAdaptorFactory {
         config: ProtocolConfig,
     ) -> anyhow::Result<Arc<dyn ChannelAdaptor>> {
         // Parse request and response mappings
-        let request_mapping = config.request_mapping
+        let request_mapping = config
+            .request_mapping
             .as_ref()
             .and_then(|json| crate::adaptor::dynamic::DynamicAdaptor::parse_request_mapping(json));
 
-        let response_mapping = config.response_mapping
+        let response_mapping = config
+            .response_mapping
             .as_ref()
             .and_then(|json| crate::adaptor::dynamic::DynamicAdaptor::parse_response_mapping(json));
 

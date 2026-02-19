@@ -48,7 +48,10 @@ impl DynamicAdaptor {
 
     /// Build endpoint URL with placeholder substitution
     pub fn build_endpoint(&self, base_url: &str, model: &str) -> String {
-        let endpoint = self.chat_endpoint.as_deref().unwrap_or("/v1/chat/completions");
+        let endpoint = self
+            .chat_endpoint
+            .as_deref()
+            .unwrap_or("/v1/chat/completions");
 
         // Replace placeholders
         let endpoint = endpoint.replace("{deployment_id}", model);
@@ -205,14 +208,7 @@ mod tests {
 
     #[test]
     fn test_build_endpoint_default() {
-        let adaptor = DynamicAdaptor::new(
-            1,
-            "default".to_string(),
-            None,
-            None,
-            None,
-            None,
-        );
+        let adaptor = DynamicAdaptor::new(1, "default".to_string(), None, None, None, None);
 
         let endpoint = adaptor.build_endpoint("https://api.openai.com", "gpt-4");
         assert_eq!(endpoint, "https://api.openai.com/v1/chat/completions");
@@ -225,8 +221,14 @@ mod tests {
 
         assert!(mapping.is_some());
         let mapping = mapping.unwrap();
-        assert_eq!(mapping.field_map.get("input"), Some(&"messages".to_string()));
-        assert_eq!(mapping.rename.get("model"), Some(&"deployment_id".to_string()));
+        assert_eq!(
+            mapping.field_map.get("input"),
+            Some(&"messages".to_string())
+        );
+        assert_eq!(
+            mapping.rename.get("model"),
+            Some(&"deployment_id".to_string())
+        );
     }
 
     #[test]
@@ -272,14 +274,8 @@ mod tests {
             .add_rename("model", "deployment_id")
             .add_fixed_field("api-version", serde_json::json!("2025-01-01"));
 
-        let adaptor = DynamicAdaptor::new(
-            3,
-            "2025-01-01".to_string(),
-            None,
-            None,
-            Some(mapping),
-            None,
-        );
+        let adaptor =
+            DynamicAdaptor::new(3, "2025-01-01".to_string(), None, None, Some(mapping), None);
 
         let req = OpenAIChatRequest {
             model: "gpt-4".to_string(),
