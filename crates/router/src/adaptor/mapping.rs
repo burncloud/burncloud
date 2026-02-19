@@ -29,11 +29,13 @@ pub struct RequestMapping {
 
 impl RequestMapping {
     /// Create an empty request mapping
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Create a request mapping with field map
+    #[allow(dead_code)]
     pub fn with_field_map(field_map: HashMap<String, String>) -> Self {
         Self {
             field_map,
@@ -42,6 +44,7 @@ impl RequestMapping {
     }
 
     /// Add a field mapping
+    #[allow(dead_code)]
     pub fn add_field_mapping(
         mut self,
         target: impl Into<String>,
@@ -52,12 +55,14 @@ impl RequestMapping {
     }
 
     /// Add a field rename
+    #[allow(dead_code)]
     pub fn add_rename(mut self, from: impl Into<String>, to: impl Into<String>) -> Self {
         self.rename.insert(from.into(), to.into());
         self
     }
 
     /// Add a fixed field
+    #[allow(dead_code)]
     pub fn add_fixed_field(mut self, key: impl Into<String>, value: Value) -> Self {
         self.add_fields.insert(key.into(), value);
         self
@@ -82,11 +87,13 @@ pub struct ResponseMapping {
 
 impl ResponseMapping {
     /// Create an empty response mapping
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Create a response mapping with content path
+    #[allow(dead_code)]
     pub fn with_content_path(path: impl Into<String>) -> Self {
         Self {
             content_path: Some(path.into()),
@@ -95,18 +102,21 @@ impl ResponseMapping {
     }
 
     /// Set content path
+    #[allow(dead_code)]
     pub fn content_path(mut self, path: impl Into<String>) -> Self {
         self.content_path = Some(path.into());
         self
     }
 
     /// Set usage path
+    #[allow(dead_code)]
     pub fn usage_path(mut self, path: impl Into<String>) -> Self {
         self.usage_path = Some(path.into());
         self
     }
 
     /// Set error path
+    #[allow(dead_code)]
     pub fn error_path(mut self, path: impl Into<String>) -> Self {
         self.error_path = Some(path.into());
         self
@@ -180,6 +190,7 @@ pub fn extract_value<'a>(json: &'a Value, path: &str) -> Option<&'a Value> {
 }
 
 /// Extract a value from JSON using a path expression (owned version)
+#[allow(dead_code)]
 pub fn extract_value_owned(json: &Value, path: &str) -> Option<Value> {
     extract_value(json, path).cloned()
 }
@@ -235,11 +246,13 @@ enum PathPart {
 }
 
 /// Extract usage information from a response
+#[allow(dead_code)]
 pub fn extract_usage(json: &Value, usage_path: &str) -> Option<Value> {
     extract_value_owned(json, usage_path)
 }
 
 /// Extract error message from a response
+#[allow(dead_code)]
 pub fn extract_error(json: &Value, error_path: &str) -> Option<String> {
     extract_value(json, error_path)
         .and_then(|v| v.as_str())

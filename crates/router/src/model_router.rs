@@ -169,44 +169,6 @@ impl ModelRouter {
         Ok(result)
     }
 
-    /// Routes a request to a suitable channel based on user group and requested model.
-    pub async fn route(&self, group: &str, model: &str) -> Result<Option<Channel>> {
-        let candidates = self.get_candidates(group, model).await?;
-
-        if candidates.is_empty() {
-            return Ok(None);
-        }
-
-        // Weighted Random Selection
-        let selected_channel = if candidates.len() == 1 {
-            candidates[0].0.clone()
-        } else {
-            let total_weight: i32 = candidates.iter().map(|(_, w)| *w).sum();
-            if total_weight <= 0 {
-                // All weights are 0 or negative (invalid), pick random
-                candidates[rand::thread_rng().gen_range(0..candidates.len())]
-                    .0
-                    .clone()
-            } else {
-                let mut r = rand::thread_rng().gen_range(0..total_weight);
-                let mut selected = candidates[0].0.clone();
-                for (ch, weight) in &candidates {
-                    if *weight <= 0 {
-                        continue;
-                    }
-                    if r < *weight {
-                        selected = ch.clone();
-                        break;
-                    }
-                    r -= weight;
-                }
-                selected
-            }
-        };
-
-        Ok(Some(selected_channel))
-    }
-
     /// Routes a request to a suitable channel with state filtering.
     ///
     /// This method filters out unavailable channels based on the ChannelStateTracker

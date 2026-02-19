@@ -72,6 +72,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             protocol: u.protocol,
             param_override: u.param_override,
             header_override: u.header_override,
+            api_version: u.api_version,
         })
         .collect();
 
@@ -239,8 +240,39 @@ async fn models_handler(State(state): State<AppState>) -> Response {
 }
 
 async fn health_status_handler(State(state): State<AppState>) -> Response {
-    let status_map = state.circuit_breaker.get_status_map();
-    let json = serde_json::to_string(&status_map).unwrap_or_else(|_| "{}".to_string());
+    let circuit_breaker_status = state.circuit_breaker.get_status_map();
+    let channel_states = state.channel_state_tracker.get_all_states();
+
+    // Build comprehensive health report
+    let health_report = serde_json::json!({
+        "circuit_breaker": circuit_breaker_status,
+        "channels": channel_states.iter().map(|(ch_id, ch_state)| {
+            let models: Vec<_> = ch_state.models.iter().map(|m| {
+                let model_state = m.value();
+                serde_json::json!({
+                    "model": model_state.model,
+                    "status": format!("{:?}", model_state.status),
+                    "success_count": model_state.success_count,
+                    "failure_count": model_state.failure_count,
+                    "avg_latency_ms": model_state.avg_latency_ms,
+                    "adaptive_limit": {
+                        "current_limit": model_state.adaptive_limit.get_current_limit(),
+                        "learned_limit": model_state.adaptive_limit.get_learned_limit(),
+                        "state": format!("{:?}", model_state.adaptive_limit.get_state()),
+                    },
+                    "last_error": model_state.last_error,
+                })
+            }).collect();
+
+            (ch_id.to_string(), serde_json::json!({
+                "auth_ok": ch_state.auth_ok,
+                "balance_status": format!("{:?}", ch_state.balance_status),
+                "models": models,
+            }))
+        }).collect::<std::collections::HashMap<_, _>>()
+    });
+
+    let json = serde_json::to_string(&health_report).unwrap_or_else(|_| "{}".to_string());
 
     Response::builder()
         .status(200)
@@ -490,9 +522,10 @@ async fn proxy_logic(
                 "ProxyLogic: Attempting to route model '{}' for group '{}'",
                 model, user_group
             );
-            match state.model_router.route(user_group, model).await {
+            // Use state-aware routing to filter out unavailable channels
+            match state.model_router.route_with_state(user_group, model, &state.channel_state_tracker).await {
                 Ok(Some(channel)) => {
-                    println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
+                    println!("ModelRouter: Routed {} -> Channel {} (state-filtered)", model, channel.name);
                     // Map Channel Type
                     let channel_type = ChannelType::from(channel.type_);
 
@@ -518,6 +551,7 @@ async fn proxy_logic(
                         protocol, // Ideally we should store ChannelType in Upstream too
                         param_override: channel.param_override.clone(),
                         header_override: channel.header_override.clone(),
+                        api_version: channel.api_version.clone(),
                     });
                 }
                 Ok(None) => {
@@ -527,7 +561,23 @@ async fn proxy_logic(
                     );
                 }
                 Err(e) => {
-                    println!("ModelRouter: Error querying DB: {}", e);
+                    // NoAvailableChannelsError - all channels are unavailable
+                    println!(
+                        "ModelRouter: No available channels for {}: {}",
+                        model, e
+                    );
+                    return (
+                        Response::builder()
+                            .status(503)
+                            .header("content-type", "application/json")
+                            .body(Body::from(format!(
+                                r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels"}}}}"#,
+                                e
+                            )))
+                            .unwrap(),
+                        None,
+                        StatusCode::SERVICE_UNAVAILABLE,
+                    );
                 }
             }
         } else {
@@ -732,9 +782,15 @@ async fn proxy_logic(
                     if status.is_success() {
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
+                        // Parse rate limit info from response headers for adaptive limiter
+                        let rate_limit_info = parse_rate_limit_info(
+                            resp.headers(),
+                            None,
+                            &upstream.protocol,
+                        );
                         state
                             .channel_state_tracker
-                            .record_success(channel_id, model_name, latency_ms);
+                            .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
 
                         // Handle streaming vs non-streaming passthrough
                         if is_stream {
@@ -868,7 +924,10 @@ async fn proxy_logic(
         }
 
         // 5. Use DynamicAdaptorFactory to get adaptor (supports both static and dynamic configs)
-        let adaptor = state.adaptor_factory.get_adaptor(channel_type, None).await;
+        let adaptor = state
+            .adaptor_factory
+            .get_adaptor(channel_type, upstream.api_version.as_deref())
+            .await;
 
         // 6. Prepare Request Body (for conversion mode)
         let request_body_json: Option<serde_json::Value> =
@@ -967,12 +1026,12 @@ async fn proxy_logic(
                         &upstream.protocol,
                     );
 
-                    // Record success in channel state tracker
+                    // Record success in channel state tracker with learned upstream limit
                     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                     let latency_ms = request_start_time.elapsed().as_millis() as u64;
                     state
                         .channel_state_tracker
-                        .record_success(channel_id, model_name, latency_ms);
+                        .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
 
                     // Log rate limit info for debugging/monitoring
                     if rate_limit_info.request_limit.is_some()
@@ -1257,24 +1316,6 @@ async fn proxy_logic(
         None,
         StatusCode::BAD_GATEWAY,
     )
-}
-
-fn handle_response(resp: reqwest::Response) -> Response {
-    let status = resp.status();
-    let mut response_builder = Response::builder().status(status);
-
-    if let Some(headers_mut) = response_builder.headers_mut() {
-        for (k, v) in resp.headers() {
-            headers_mut.insert(k, v.clone());
-        }
-    }
-
-    let stream = resp.bytes_stream();
-    let body = Body::from_stream(stream);
-
-    response_builder
-        .body(body)
-        .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
 /// Handle streaming response with token parsing for OpenAI protocol

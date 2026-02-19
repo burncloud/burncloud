@@ -24,6 +24,8 @@ pub struct DbUpstream {
     pub protocol: String, // "openai", "gemini", "claude"
     pub param_override: Option<String>,
     pub header_override: Option<String>,
+    #[sqlx(default)]
+    pub api_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -246,6 +248,14 @@ impl RouterDatabase {
             .execute(conn.pool())
             .await;
             let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0")
+                .execute(conn.pool())
+                .await;
+            // Add api_version column for protocol adaptation
+            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN api_version TEXT")
+                .execute(conn.pool())
+                .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN IF NOT EXISTS api_version TEXT")
                 .execute(conn.pool())
                 .await;
         }
@@ -631,7 +641,7 @@ impl RouterDatabase {
     /// Returns Ok(true) if deduction successful, Ok(false) if insufficient quota.
     pub async fn deduct_quota(
         db: &Database,
-        user_id: &str,
+        _user_id: &str,
         token: &str,
         cost: f64,
     ) -> Result<bool> {

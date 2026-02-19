@@ -67,7 +67,7 @@ impl Default for AdaptiveLimitConfig {
 ///
 /// This struct maintains state for a single upstream endpoint or model,
 /// tracking learned limits and adjusting based on success/failure patterns.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AdaptiveRateLimit {
     /// The rate limit learned from upstream response headers
     pub learned_limit: Option<u32>,

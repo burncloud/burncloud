@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 // Import FailureType from circuit_breaker module
 use crate::circuit_breaker::{FailureType, RateLimitScope};
+use crate::adaptive_limit::{AdaptiveRateLimit, AdaptiveLimitConfig};
 
 /// Represents the balance status of a channel's account.
 ///
@@ -61,6 +62,7 @@ impl Default for ModelStatus {
 ///
 /// Tracks the model's operational status, rate limiting, errors, and performance metrics.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ModelState {
     /// The model name/identifier
     pub model: String,
@@ -80,9 +82,8 @@ pub struct ModelState {
     pub failure_count: u64,
     /// Average latency in milliseconds
     pub avg_latency_ms: f64,
-    /// Adaptive rate limit (learned from upstream behavior)
-    /// This will be used by the adaptive_limit module
-    pub adaptive_limit: Option<u32>,
+    /// Adaptive rate limiter (learns and adjusts to upstream limits)
+    pub adaptive_limit: AdaptiveRateLimit,
 }
 
 impl ModelState {
@@ -98,7 +99,24 @@ impl ModelState {
             success_count: 0,
             failure_count: 0,
             avg_latency_ms: 0.0,
-            adaptive_limit: None,
+            adaptive_limit: AdaptiveRateLimit::with_defaults(),
+        }
+    }
+
+    /// Create a new ModelState with custom adaptive limit config
+    #[allow(dead_code)]
+    pub fn with_config(model: String, channel_id: i32, config: AdaptiveLimitConfig) -> Self {
+        Self {
+            model,
+            channel_id,
+            status: ModelStatus::default(),
+            rate_limit_until: None,
+            last_error: None,
+            last_error_time: None,
+            success_count: 0,
+            failure_count: 0,
+            avg_latency_ms: 0.0,
+            adaptive_limit: AdaptiveRateLimit::new(config),
         }
     }
 }
@@ -107,7 +125,8 @@ impl ModelState {
 ///
 /// Tracks channel-level status including authentication, balance, and rate limits,
 /// as well as the state of individual models available through this channel.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ChannelState {
     /// The channel ID
     pub channel_id: i32,
@@ -217,6 +236,11 @@ impl ChannelStateTracker {
                     return false;
                 }
             }
+
+            // Check adaptive rate limiter availability
+            if !model_state.adaptive_limit.check_available() {
+                return false;
+            }
         }
 
         true
@@ -283,11 +307,23 @@ impl ChannelStateTracker {
                             model_state.last_error = Some(error_message.to_string());
                             model_state.last_error_time = Some(now);
                             model_state.failure_count += 1;
+                            // Update adaptive rate limiter
+                            model_state.adaptive_limit.on_rate_limited(*retry_after);
                         }
                     }
                     RateLimitScope::Unknown => {
                         // If scope is unknown, treat as account-level to be safe
                         channel_state.account_rate_limit_until = Some(retry_until);
+                        // Also update model-level adaptive limiter if model is specified
+                        if let Some(model_name) = model {
+                            let mut model_state = channel_state
+                                .models
+                                .entry(model_name.to_string())
+                                .or_insert_with(|| {
+                                    ModelState::new(model_name.to_string(), channel_id)
+                                });
+                            model_state.adaptive_limit.on_rate_limited(*retry_after);
+                        }
                     }
                 }
             }
@@ -328,7 +364,8 @@ impl ChannelStateTracker {
     /// * `channel_id` - The channel ID where the success occurred
     /// * `model` - Optional model name if the success is model-specific
     /// * `latency_ms` - The latency of the successful request in milliseconds
-    pub fn record_success(&self, channel_id: i32, model: Option<&str>, latency_ms: u64) {
+    /// * `upstream_limit` - Optional rate limit learned from upstream response headers
+    pub fn record_success(&self, channel_id: i32, model: Option<&str>, latency_ms: u64, upstream_limit: Option<u32>) {
         // Get or create channel state
         let channel_state = self
             .channel_states
@@ -372,6 +409,9 @@ impl ChannelStateTracker {
                 }
             }
         }
+
+        // Update adaptive rate limiter with learned upstream limit
+        model_state.adaptive_limit.on_success(upstream_limit);
     }
 
     /// Filter a list of candidate channels to return only available ones.
@@ -386,6 +426,7 @@ impl ChannelStateTracker {
     ///
     /// # Returns
     /// A vector of channel IDs that are available for the given model (if specified)
+    #[allow(dead_code)]
     pub fn get_available_channels(&self, candidates: &[i32], model: Option<&str>) -> Vec<i32> {
         candidates
             .iter()
@@ -456,5 +497,15 @@ impl ChannelStateTracker {
         }
 
         score
+    }
+
+    /// Get all channel states for monitoring/health reporting.
+    ///
+    /// Returns a vector of (channel_id, ChannelState) pairs.
+    pub fn get_all_states(&self) -> Vec<(i32, ChannelState)> {
+        self.channel_states
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect()
     }
 }

@@ -182,27 +182,6 @@ impl CircuitBreaker {
         }
     }
 
-    /// Records a failed request (legacy method for backward compatibility).
-    pub fn record_failure(&self, upstream_id: &str) {
-        let mut entry = self.states.entry(upstream_id.to_string()).or_default();
-        let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
-        entry.last_failure_time = Some(Instant::now());
-
-        if new_count >= self.failure_threshold {
-            println!(
-                "Circuit Breaker: Upstream {} tripped! (Failures: {})",
-                upstream_id, new_count
-            );
-        }
-    }
-
-    /// Get the last failure type for an upstream.
-    pub fn get_failure_type(&self, upstream_id: &str) -> Option<FailureType> {
-        self.states
-            .get(upstream_id)
-            .and_then(|entry| entry.failure_type.clone())
-    }
-
     /// Get current health status map for monitoring
     pub fn get_status_map(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();

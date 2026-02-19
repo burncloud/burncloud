@@ -56,13 +56,13 @@ impl LiteLLMPrice {
 
 /// Service for syncing prices from LiteLLM
 pub struct PriceSyncService {
-    db: Database,
+    db: std::sync::Arc<Database>,
     http_client: Client,
 }
 
 impl PriceSyncService {
     /// Create a new PriceSyncService
-    pub fn new(db: Database) -> Self {
+    pub fn new(db: std::sync::Arc<Database>) -> Self {
         Self {
             db,
             http_client: Client::builder()
@@ -234,7 +234,10 @@ impl PriceSyncService {
 /// Start a background price sync task
 ///
 /// This spawns a tokio task that syncs prices periodically
-pub fn start_price_sync_task(db: Database, interval_secs: u64) -> tokio::task::JoinHandle<()> {
+pub fn start_price_sync_task(
+    db: std::sync::Arc<Database>,
+    interval_secs: u64,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let service = PriceSyncService::new(db);
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));

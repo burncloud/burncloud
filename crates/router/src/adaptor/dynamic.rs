@@ -11,21 +11,23 @@ use reqwest::RequestBuilder;
 use serde_json::Value;
 
 /// Dynamic adaptor that uses protocol configuration at runtime
+#[allow(dead_code)]
 pub struct DynamicAdaptor {
     /// Channel type identifier
-    channel_type: i32,
+    pub channel_type: i32,
     /// API version string
-    api_version: String,
+    pub api_version: String,
     /// Chat endpoint template (supports placeholders)
-    chat_endpoint: Option<String>,
+    pub chat_endpoint: Option<String>,
     /// Embed endpoint template
-    embed_endpoint: Option<String>,
+    pub embed_endpoint: Option<String>,
     /// Request mapping configuration
     request_mapping: Option<RequestMapping>,
     /// Response mapping configuration
     response_mapping: Option<ResponseMapping>,
 }
 
+#[allow(dead_code)]
 impl DynamicAdaptor {
     /// Create a new dynamic adaptor with the given configuration
     pub fn new(

@@ -183,6 +183,7 @@ impl InferenceService {
             protocol: "openai".to_string(),
             param_override: None,
             header_override: None,
+            api_version: None,
         };
 
         // Upsert: 先删后插，或者检查是否存在

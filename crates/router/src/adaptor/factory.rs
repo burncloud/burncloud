@@ -240,6 +240,7 @@ impl DynamicAdaptorFactory {
     }
 
     /// Get an adaptor using the default API version for the channel type
+    #[allow(dead_code)]
     pub async fn get_default_adaptor(&self, channel_type: ChannelType) -> Arc<dyn ChannelAdaptor> {
         let channel_type_id = channel_type as i32;
 
@@ -276,6 +277,7 @@ impl DynamicAdaptorFactory {
     }
 
     /// Load the default dynamic adaptor for a channel type
+    #[allow(dead_code)]
     async fn load_default_adaptor(
         &self,
         channel_type: i32,
@@ -325,6 +327,7 @@ impl DynamicAdaptorFactory {
     }
 
     /// Remove a specific adaptor from the cache
+    #[allow(dead_code)]
     pub fn invalidate(&self, channel_type: i32, api_version: &str) {
         let key = AdaptorCacheKey {
             channel_type,
