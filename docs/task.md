@@ -494,7 +494,7 @@
         },
         {
             "id": "3.4",
-            "passes": null,
+            "passes": true,
             "category": "phase3-billing-logic",
             "priority": "P3",
             "description": "实现优先级和音频定价计费逻辑",

@@ -416,23 +416,34 @@ async fn proxy_handler(
                 .map(|s| s.to_string())
         });
 
-    // Detect if this is a batch API request
-    // OpenAI Batch API: requests include "metadata" with "batch_id" or are sent to batch endpoints
-    // Batch requests can be detected by:
-    // 1. Request body contains "batch" in metadata
-    // 2. Custom header like "X-Batch-Request" or "OpenAI-Batch"
-    let is_batch_request = headers
-        .get("x-batch-request")
-        .or_else(|| headers.get("openai-batch"))
-        .is_some()
-        || serde_json::from_slice::<serde_json::Value>(&body_bytes)
-            .ok()
-            .and_then(|v| {
-                v.get("metadata")
-                    .and_then(|m| m.get("batch_id"))
-                    .map(|_| true)
-            })
-            .unwrap_or(false);
+    // Detect request type for advanced billing
+    // 1. Batch API: detected via headers or metadata.batch_id
+    // 2. Priority: detected via metadata.priority or x-priority header
+    let (is_batch_request, is_priority_request) = {
+        let body_json = serde_json::from_slice::<serde_json::Value>(&body_bytes).ok();
+
+        let batch = headers
+            .get("x-batch-request")
+            .or_else(|| headers.get("openai-batch"))
+            .is_some()
+            || body_json
+                .as_ref()
+                .and_then(|v| v.get("metadata").and_then(|m| m.get("batch_id")))
+                .is_some();
+
+        let priority = headers
+            .get("x-priority")
+            .map(|v| v.to_str().unwrap_or("") == "high")
+            .unwrap_or(false)
+            || body_json
+                .as_ref()
+                .and_then(|v| v.get("metadata").and_then(|m| m.get("priority")))
+                .and_then(|p| p.as_str())
+                .map(|s| s == "high" || s == "urgent")
+                .unwrap_or(false);
+
+        (batch, priority)
+    };
 
     // Create token counter for streaming response parsing
     let token_counter = Arc::new(StreamingTokenCounter::with_prompt_tokens(
@@ -477,7 +488,7 @@ async fn proxy_handler(
                     audio_input_price: price.audio_input_price,
                 };
 
-                // Check if we have cache tokens and cache pricing
+                // Determine billing type with priority: cache > priority > batch > standard
                 if cache_read_tokens > 0 || cache_creation_tokens > 0 {
                     // Use advanced pricing with cache cost calculation
                     let usage = billing::TokenUsage {
@@ -489,6 +500,9 @@ async fn proxy_handler(
                     };
 
                     billing::calculate_cache_cost(&usage, &pricing)
+                } else if is_priority_request {
+                    // Use priority pricing for high-priority requests
+                    billing::calculate_priority_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
                 } else if is_batch_request {
                     // Use batch pricing for batch API requests
                     billing::calculate_batch_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
