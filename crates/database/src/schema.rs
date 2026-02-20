@@ -237,7 +237,10 @@ impl Schema {
                     priority_input_price REAL,
                     priority_output_price REAL,
                     audio_input_price REAL,
-                    full_pricing TEXT
+                    full_pricing TEXT,
+                    original_currency TEXT,
+                    original_input_price REAL,
+                    original_output_price REAL
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
             "#
@@ -260,7 +263,10 @@ impl Schema {
                     priority_input_price DOUBLE PRECISION,
                     priority_output_price DOUBLE PRECISION,
                     audio_input_price DOUBLE PRECISION,
-                    full_pricing TEXT
+                    full_pricing TEXT,
+                    original_currency VARCHAR(10),
+                    original_input_price DOUBLE PRECISION,
+                    original_output_price DOUBLE PRECISION
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
             "#
@@ -387,6 +393,37 @@ impl Schema {
             _ => "",
         };
 
+        // 9. Exchange Rates Table (for multi-currency support)
+        let exchange_rates_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS exchange_rates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    from_currency TEXT NOT NULL,
+                    to_currency TEXT NOT NULL,
+                    rate REAL NOT NULL,
+                    updated_at INTEGER,
+                    UNIQUE(from_currency, to_currency)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exchange_rates_from ON exchange_rates(from_currency);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS exchange_rates (
+                    id SERIAL PRIMARY KEY,
+                    from_currency VARCHAR(10) NOT NULL,
+                    to_currency VARCHAR(10) NOT NULL,
+                    rate DOUBLE PRECISION NOT NULL,
+                    updated_at BIGINT,
+                    UNIQUE(from_currency, to_currency)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exchange_rates_from ON exchange_rates(from_currency);
+            "#
+            }
+            _ => "",
+        };
+
         // Execute all
         if !users_sql.is_empty() {
             pool.execute(users_sql).await?;
@@ -411,6 +448,9 @@ impl Schema {
         }
         if !tiered_pricing_sql.is_empty() {
             pool.execute(tiered_pricing_sql).await?;
+        }
+        if !exchange_rates_sql.is_empty() {
+            pool.execute(exchange_rates_sql).await?;
         }
 
         // Migration: Add api_version column to channels if it doesn't exist
@@ -475,6 +515,24 @@ impl Schema {
             let _ = sqlx::query("ALTER TABLE prices ADD COLUMN IF NOT EXISTS full_pricing TEXT")
                 .execute(pool)
                 .await;
+        }
+
+        // Migration: Add multi-currency fields to prices table
+        let multi_currency_columns = [
+            ("original_currency", "VARCHAR(10)"),
+            ("original_input_price", "REAL"),
+            ("original_output_price", "REAL"),
+        ];
+
+        for (column, col_type) in multi_currency_columns {
+            if kind == "sqlite" {
+                let sql = format!("ALTER TABLE prices ADD COLUMN {} {}", column, col_type);
+                let _ = sqlx::query(&sql).execute(pool).await;
+            } else if kind == "postgres" {
+                let pg_type = if col_type == "REAL" { "DOUBLE PRECISION" } else { col_type };
+                let sql = format!("ALTER TABLE prices ADD COLUMN IF NOT EXISTS {} {}", column, pg_type);
+                let _ = sqlx::query(&sql).execute(pool).await;
+            }
         }
 
         // Init Root User if not exists

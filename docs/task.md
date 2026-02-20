@@ -711,7 +711,7 @@
         },
         {
             "id": "8.1",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P2",
             "description": "扩展数据库支持多货币字段",

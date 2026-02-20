@@ -66,6 +66,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 priority_output_price: None,
                 audio_input_price: None,
                 full_pricing: None,
+                // Multi-currency fields
+                original_currency: None,
+                original_input_price: None,
+                original_output_price: None,
             };
 
             PriceModel::upsert(db, &input).await?;

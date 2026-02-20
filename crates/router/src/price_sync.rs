@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::{PriceInput, PriceModel};
+use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -43,6 +43,31 @@ pub struct LiteLLMPrice {
     /// Model type (e.g., "chat", "embedding")
     #[serde(default)]
     pub mode: Option<String>,
+    // Advanced pricing fields from LiteLLM
+    /// Cache read input token cost (Prompt Caching)
+    #[serde(default)]
+    pub cache_read_input_token_cost: Option<f64>,
+    /// Cache creation input token cost (Prompt Caching)
+    #[serde(default)]
+    pub cache_creation_input_token_cost: Option<f64>,
+    /// Batch API input token cost
+    #[serde(default)]
+    pub input_cost_per_token_batches: Option<f64>,
+    /// Batch API output token cost
+    #[serde(default)]
+    pub output_cost_per_token_batches: Option<f64>,
+    /// Priority input token cost (higher priority requests)
+    #[serde(default)]
+    pub input_cost_per_token_priority: Option<f64>,
+    /// Priority output token cost
+    #[serde(default)]
+    pub output_cost_per_token_priority: Option<f64>,
+    /// Audio input token cost
+    #[serde(default)]
+    pub input_cost_per_audio_token: Option<f64>,
+    /// Search context cost per query
+    #[serde(default)]
+    pub search_context_cost_per_query: Option<f64>,
 }
 
 /// Custom deserializer to handle both number and string values for token fields
@@ -123,6 +148,34 @@ impl LiteLLMPrice {
         let output_price = self.output_cost_per_token.map(|c| c * 1_000_000.0);
         (input_price, output_price)
     }
+
+    /// Convert cache pricing to per-1M tokens
+    pub fn to_cache_per_million_price(&self) -> (Option<f64>, Option<f64>) {
+        let cache_read_price = self.cache_read_input_token_cost.map(|c| c * 1_000_000.0);
+        let cache_creation_price = self
+            .cache_creation_input_token_cost
+            .map(|c| c * 1_000_000.0);
+        (cache_read_price, cache_creation_price)
+    }
+
+    /// Convert batch pricing to per-1M tokens
+    pub fn to_batch_per_million_price(&self) -> (Option<f64>, Option<f64>) {
+        let batch_input_price = self.input_cost_per_token_batches.map(|c| c * 1_000_000.0);
+        let batch_output_price = self.output_cost_per_token_batches.map(|c| c * 1_000_000.0);
+        (batch_input_price, batch_output_price)
+    }
+
+    /// Convert priority pricing to per-1M tokens
+    pub fn to_priority_per_million_price(&self) -> (Option<f64>, Option<f64>) {
+        let priority_input_price = self.input_cost_per_token_priority.map(|c| c * 1_000_000.0);
+        let priority_output_price = self.output_cost_per_token_priority.map(|c| c * 1_000_000.0);
+        (priority_input_price, priority_output_price)
+    }
+
+    /// Convert audio pricing to per-1M tokens
+    pub fn to_audio_per_million_price(&self) -> Option<f64> {
+        self.input_cost_per_audio_token.map(|c| c * 1_000_000.0)
+    }
 }
 
 /// Service for syncing prices from LiteLLM
@@ -188,13 +241,32 @@ impl PriceSyncService {
                 (None, None) => continue,  // No pricing info, skip
             };
 
-            // Create price input
+            // Get advanced pricing info
+            let (cache_read_price, cache_creation_price) = price_data.to_cache_per_million_price();
+            let (batch_input_price, batch_output_price) = price_data.to_batch_per_million_price();
+            let (priority_input_price, priority_output_price) =
+                price_data.to_priority_per_million_price();
+            let audio_input_price = price_data.to_audio_per_million_price();
+
+            // Create price input with advanced pricing fields
             let price_input = PriceInput {
                 model: model_name.clone(),
                 input_price: input,
                 output_price: output,
                 currency: Some("USD".to_string()),
                 alias_for: price_data.pricing_model.clone(),
+                cache_read_price,
+                cache_creation_price,
+                batch_input_price,
+                batch_output_price,
+                priority_input_price,
+                priority_output_price,
+                audio_input_price,
+                full_pricing: None,
+                // Multi-currency fields
+                original_currency: None,
+                original_input_price: None,
+                original_output_price: None,
             };
 
             // Upsert to database
@@ -300,6 +372,58 @@ impl PriceSyncService {
         );
         Ok(updated_count)
     }
+
+    /// Import tiered pricing from a JSON structure
+    ///
+    /// This is used for models like Qwen that have tiered pricing based on context length.
+    /// LiteLLM doesn't include this data, so it must be manually configured.
+    pub async fn import_tiered_pricing(
+        &self,
+        tiers: &[TieredPriceInput],
+    ) -> anyhow::Result<usize> {
+        let mut imported_count = 0;
+
+        for tier in tiers {
+            // Validate tier data
+            if tier.input_price < 0.0 || tier.output_price < 0.0 {
+                eprintln!(
+                    "Skipping tier with invalid price for model {}: prices must be >= 0",
+                    tier.model
+                );
+                continue;
+            }
+
+            if let Some(tier_end) = tier.tier_end {
+                if tier.tier_start >= tier_end {
+                    eprintln!(
+                        "Skipping tier with invalid range for model {}: tier_start ({}) must be < tier_end ({})",
+                        tier.model, tier.tier_start, tier_end
+                    );
+                    continue;
+                }
+            }
+
+            match TieredPriceModel::upsert_tier(&self.db, tier).await {
+                Ok(_) => {
+                    imported_count += 1;
+                    println!(
+                        "Imported tier for model {} ({}-{} tokens): ${:.4}/${:.4} per 1M",
+                        tier.model,
+                        tier.tier_start,
+                        tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e)),
+                        tier.input_price,
+                        tier.output_price
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Failed to import tier for {}: {}", tier.model, e);
+                }
+            }
+        }
+
+        println!("Tiered pricing import complete: {} tiers imported", imported_count);
+        Ok(imported_count)
+    }
 }
 
 /// Start a background price sync task
@@ -363,6 +487,14 @@ mod tests {
             supports_vision: None,
             supports_function_calling: None,
             mode: Some("chat".to_string()),
+            cache_read_input_token_cost: None,
+            cache_creation_input_token_cost: None,
+            input_cost_per_token_batches: None,
+            output_cost_per_token_batches: None,
+            input_cost_per_token_priority: None,
+            output_cost_per_token_priority: None,
+            input_cost_per_audio_token: None,
+            search_context_cost_per_query: None,
         };
 
         let (input, output) = price.to_per_million_price();
@@ -383,10 +515,46 @@ mod tests {
             supports_vision: None,
             supports_function_calling: None,
             mode: Some("chat".to_string()),
+            cache_read_input_token_cost: None,
+            cache_creation_input_token_cost: None,
+            input_cost_per_token_batches: None,
+            output_cost_per_token_batches: None,
+            input_cost_per_token_priority: None,
+            output_cost_per_token_priority: None,
+            input_cost_per_audio_token: None,
+            search_context_cost_per_query: None,
         };
 
         let (input, output) = price.to_per_million_price();
         assert!(input.is_none());
         assert!(output.is_none());
+    }
+
+    #[test]
+    fn test_litellm_advanced_pricing_conversion() {
+        // Test cache pricing conversion
+        let price = LiteLLMPrice {
+            model: Some("claude-3-5-sonnet".to_string()),
+            input_cost_per_token: Some(0.000003), // $3 per 1M
+            output_cost_per_token: Some(0.000015), // $15 per 1M
+            cache_read_input_token_cost: Some(0.0000003), // $0.30 per 1M (10% of input)
+            cache_creation_input_token_cost: Some(0.00000375), // $3.75 per 1M
+            max_input_tokens: None,
+            max_output_tokens: None,
+            pricing_model: None,
+            supports_vision: None,
+            supports_function_calling: None,
+            mode: Some("chat".to_string()),
+            input_cost_per_token_batches: None,
+            output_cost_per_token_batches: None,
+            input_cost_per_token_priority: None,
+            output_cost_per_token_priority: None,
+            input_cost_per_audio_token: None,
+            search_context_cost_per_query: None,
+        };
+
+        let (cache_read, cache_creation) = price.to_cache_per_million_price();
+        assert!((cache_read.unwrap() - 0.30).abs() < 0.001);
+        assert!((cache_creation.unwrap() - 3.75).abs() < 0.001);
     }
 }

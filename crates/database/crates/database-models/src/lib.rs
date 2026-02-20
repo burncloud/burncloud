@@ -27,6 +27,10 @@ pub struct Price {
     pub priority_output_price: Option<f64>,
     pub audio_input_price: Option<f64>,
     pub full_pricing: Option<String>,
+    // Multi-currency fields
+    pub original_currency: Option<String>,
+    pub original_input_price: Option<f64>,
+    pub original_output_price: Option<f64>,
 }
 
 /// Input for creating/updating a price
@@ -56,6 +60,13 @@ pub struct PriceInput {
     pub audio_input_price: Option<f64>,
     #[serde(default)]
     pub full_pricing: Option<String>,
+    // Multi-currency fields
+    #[serde(default)]
+    pub original_currency: Option<String>,
+    #[serde(default)]
+    pub original_input_price: Option<f64>,
+    #[serde(default)]
+    pub original_output_price: Option<f64>,
 }
 
 pub struct PriceModel;
@@ -75,8 +86,8 @@ impl PriceModel {
 
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices WHERE model = $1"#,
-            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices WHERE model = ?"#,
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices WHERE model = $1"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices WHERE model = ?"#,
         };
 
         let price: Option<Price> = sqlx::query_as(sql)
@@ -98,8 +109,8 @@ impl PriceModel {
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices ORDER BY model LIMIT $1 OFFSET $2"#,
-            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices ORDER BY model LIMIT ? OFFSET ?"#,
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices ORDER BY model LIMIT $1 OFFSET $2"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices ORDER BY model LIMIT ? OFFSET ?"#,
         };
 
         let prices = sqlx::query_as(sql)
@@ -124,8 +135,9 @@ impl PriceModel {
                 r#"
                 INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
                     cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
-                    priority_input_price, priority_output_price, audio_input_price, full_pricing)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                    priority_input_price, priority_output_price, audio_input_price, full_pricing,
+                    original_currency, original_input_price, original_output_price)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                 ON CONFLICT(model) DO UPDATE SET
                     input_price = EXCLUDED.input_price,
                     output_price = EXCLUDED.output_price,
@@ -139,15 +151,19 @@ impl PriceModel {
                     priority_input_price = EXCLUDED.priority_input_price,
                     priority_output_price = EXCLUDED.priority_output_price,
                     audio_input_price = EXCLUDED.audio_input_price,
-                    full_pricing = EXCLUDED.full_pricing
+                    full_pricing = EXCLUDED.full_pricing,
+                    original_currency = EXCLUDED.original_currency,
+                    original_input_price = EXCLUDED.original_input_price,
+                    original_output_price = EXCLUDED.original_output_price
             "#
             }
             _ => {
                 r#"
                 INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
                     cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
-                    priority_input_price, priority_output_price, audio_input_price, full_pricing)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    priority_input_price, priority_output_price, audio_input_price, full_pricing,
+                    original_currency, original_input_price, original_output_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(model) DO UPDATE SET
                     input_price = excluded.input_price,
                     output_price = excluded.output_price,
@@ -161,7 +177,10 @@ impl PriceModel {
                     priority_input_price = excluded.priority_input_price,
                     priority_output_price = excluded.priority_output_price,
                     audio_input_price = excluded.audio_input_price,
-                    full_pricing = excluded.full_pricing
+                    full_pricing = excluded.full_pricing,
+                    original_currency = excluded.original_currency,
+                    original_input_price = excluded.original_input_price,
+                    original_output_price = excluded.original_output_price
             "#
             }
         };
@@ -182,6 +201,9 @@ impl PriceModel {
             .bind(input.priority_output_price)
             .bind(input.audio_input_price)
             .bind(&input.full_pricing)
+            .bind(&input.original_currency)
+            .bind(input.original_input_price)
+            .bind(input.original_output_price)
             .execute(conn.pool())
             .await?;
 

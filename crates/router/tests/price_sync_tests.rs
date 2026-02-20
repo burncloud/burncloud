@@ -52,6 +52,9 @@ async fn test_litellm_advanced_pricing_sync() -> anyhow::Result<()> {
         priority_output_price,
         audio_input_price,
         full_pricing: None,
+        original_currency: None,
+        original_input_price: None,
+        original_output_price: None,
     };
 
     // Upsert to database
@@ -124,6 +127,9 @@ async fn test_litellm_basic_pricing_sync() -> anyhow::Result<()> {
         priority_output_price,
         audio_input_price,
         full_pricing: None,
+        original_currency: None,
+        original_input_price: None,
+        original_output_price: None,
     };
 
     // Upsert to database
@@ -168,6 +174,9 @@ async fn test_litellm_pricing_update() -> anyhow::Result<()> {
         priority_output_price: None,
         audio_input_price: None,
         full_pricing: None,
+        original_currency: None,
+        original_input_price: None,
+        original_output_price: None,
     };
     PriceModel::upsert(&_db, &price_input).await?;
 
@@ -190,6 +199,9 @@ async fn test_litellm_pricing_update() -> anyhow::Result<()> {
         priority_output_price: None,
         audio_input_price: None,
         full_pricing: None,
+        original_currency: None,
+        original_input_price: None,
+        original_output_price: None,
     };
     PriceModel::upsert(&_db, &updated_input).await?;
 
