@@ -771,7 +771,7 @@
         },
         {
             "id": "8.2",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P2",
             "description": "定义多货币数据结构和枚举",

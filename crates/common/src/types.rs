@@ -2,6 +2,78 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
+
+/// Supported currencies for pricing
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Currency {
+    #[default]
+    USD,
+    CNY,
+    EUR,
+}
+
+impl Currency {
+    /// Get the currency symbol
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            Currency::USD => "$",
+            Currency::CNY => "¥",
+            Currency::EUR => "€",
+        }
+    }
+
+    /// Get the currency code
+    pub fn code(&self) -> &'static str {
+        match self {
+            Currency::USD => "USD",
+            Currency::CNY => "CNY",
+            Currency::EUR => "EUR",
+        }
+    }
+}
+
+impl fmt::Display for Currency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.code())
+    }
+}
+
+impl FromStr for Currency {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "USD" | "usd" => Ok(Currency::USD),
+            "CNY" | "cny" => Ok(Currency::CNY),
+            "EUR" | "eur" => Ok(Currency::EUR),
+            _ => Err(format!("Unknown currency: {}", s)),
+        }
+    }
+}
+
+/// Multi-currency price information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiCurrencyPrice {
+    /// Currency of the price
+    pub currency: Currency,
+    /// Input price per 1M tokens
+    pub input_price: f64,
+    /// Output price per 1M tokens
+    pub output_price: f64,
+}
+
+/// Exchange rate for currency conversion
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ExchangeRate {
+    pub id: i32,
+    pub from_currency: String,
+    pub to_currency: String,
+    pub rate: f64,
+    pub updated_at: Option<i64>,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelInfo {
@@ -396,4 +468,78 @@ pub struct FullPricing {
     /// Additional pricing fields not covered by dedicated columns
     #[serde(default)]
     pub additional_fields: HashMap<String, Value>,
+}
+
+#[cfg(test)]
+mod currency_tests {
+    use super::*;
+
+    #[test]
+    fn test_currency_default() {
+        let currency = Currency::default();
+        assert_eq!(currency, Currency::USD);
+    }
+
+    #[test]
+    fn test_currency_symbol() {
+        assert_eq!(Currency::USD.symbol(), "$");
+        assert_eq!(Currency::CNY.symbol(), "¥");
+        assert_eq!(Currency::EUR.symbol(), "€");
+    }
+
+    #[test]
+    fn test_currency_code() {
+        assert_eq!(Currency::USD.code(), "USD");
+        assert_eq!(Currency::CNY.code(), "CNY");
+        assert_eq!(Currency::EUR.code(), "EUR");
+    }
+
+    #[test]
+    fn test_currency_display() {
+        assert_eq!(format!("{}", Currency::USD), "USD");
+        assert_eq!(format!("{}", Currency::CNY), "CNY");
+    }
+
+    #[test]
+    fn test_currency_from_str() {
+        assert_eq!(Currency::from_str("USD").unwrap(), Currency::USD);
+        assert_eq!(Currency::from_str("usd").unwrap(), Currency::USD);
+        assert_eq!(Currency::from_str("CNY").unwrap(), Currency::CNY);
+        assert_eq!(Currency::from_str("eur").unwrap(), Currency::EUR);
+        assert!(Currency::from_str("GBP").is_err());
+    }
+
+    #[test]
+    fn test_currency_serde() {
+        // Test serialization
+        let json = serde_json::to_string(&Currency::USD).unwrap();
+        assert_eq!(json, "\"usd\"");
+
+        let json = serde_json::to_string(&Currency::CNY).unwrap();
+        assert_eq!(json, "\"cny\"");
+
+        // Test deserialization (lowercase)
+        let currency: Currency = serde_json::from_str("\"usd\"").unwrap();
+        assert_eq!(currency, Currency::USD);
+
+        let currency: Currency = serde_json::from_str("\"eur\"").unwrap();
+        assert_eq!(currency, Currency::EUR);
+    }
+
+    #[test]
+    fn test_multi_currency_price() {
+        let price = MultiCurrencyPrice {
+            currency: Currency::CNY,
+            input_price: 0.002,
+            output_price: 0.006,
+        };
+
+        assert_eq!(price.currency, Currency::CNY);
+        assert!((price.input_price - 0.002).abs() < 0.0001);
+        assert!((price.output_price - 0.006).abs() < 0.0001);
+
+        // Test serialization
+        let json = serde_json::to_string(&price).unwrap();
+        assert!(json.contains("\"currency\":\"cny\""));
+    }
 }
