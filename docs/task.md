@@ -557,7 +557,7 @@
         },
         {
             "id": "4.3",
-            "passes": null,
+            "passes": true,
             "category": "phase4-integration",
             "priority": "P3",
             "description": "实现自动检测阶梯计费模型",
@@ -577,7 +577,7 @@
         },
         {
             "id": "5.1",
-            "passes": null,
+            "passes": true,
             "category": "phase5-cli",
             "priority": "P2",
             "description": "实现阶梯定价 CLI 管理命令",

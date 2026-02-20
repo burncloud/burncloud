@@ -7,7 +7,7 @@ use log::{error, info};
 use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
-use crate::price::handle_price_command;
+use crate::price::{handle_price_command, handle_tiered_command};
 use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
 
@@ -176,6 +176,94 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("model")
                                 .required(true)
                                 .help("Model name"),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("tiered")
+                .about("Manage tiered pricing for models")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list-tiers")
+                        .about("List tiered pricing for a model")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("add-tier")
+                        .about("Add a tiered pricing entry")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("tier-start")
+                                .long("tier-start")
+                                .required(true)
+                                .help("Starting token count for this tier"),
+                        )
+                        .arg(
+                            Arg::new("tier-end")
+                                .long("tier-end")
+                                .help("Ending token count for this tier (omit for no limit)"),
+                        )
+                        .arg(
+                            Arg::new("input-price")
+                                .long("input-price")
+                                .required(true)
+                                .help("Input price per 1M tokens for this tier"),
+                        )
+                        .arg(
+                            Arg::new("output-price")
+                                .long("output-price")
+                                .required(true)
+                                .help("Output price per 1M tokens for this tier"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Region for this tier (cn, international, omit for universal)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("import-tiered")
+                        .about("Import tiered pricing from a JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("JSON file with tiered pricing data"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete-tiers")
+                        .about("Delete tiered pricing for a model")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Delete only for a specific region"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("check-tiered")
+                        .about("Check if a model has tiered pricing configured")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name to check"),
                         ),
                 ),
         )
@@ -455,6 +543,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
             handle_price_command(&db, sub_m).await?;
             db.close().await?;
         }
+        Some(("tiered", sub_m)) => {
+            let db = Database::new().await?;
+            handle_tiered_command(&db, sub_m).await?;
+            db.close().await?;
+        }
         Some(("token", sub_m)) => {
             let db = Database::new().await?;
             handle_token_command(&db, sub_m).await?;
@@ -534,6 +627,13 @@ pub fn show_help() {
     println!("  burncloud list                - 列出模型");
     println!("  burncloud update              - 更新应用程序");
     println!("  burncloud update --check-only - 仅检查更新");
+    println!();
+    println!("定价管理:");
+    println!("  burncloud price list          - 列出模型价格");
+    println!("  burncloud price set           - 设置模型价格");
+    println!("  burncloud tiered list-tiers   - 列出阶梯定价");
+    println!("  burncloud tiered add-tier     - 添加阶梯定价");
+    println!("  burncloud tiered import-tiered - 导入阶梯定价JSON");
     println!();
     println!("示例:");
     println!("  burncloud client");
