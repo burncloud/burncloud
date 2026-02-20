@@ -535,6 +535,19 @@ impl Schema {
             }
         }
 
+        // Migration: Add preferred_currency column to users table
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
+                .execute(pool)
+                .await;
+        }
+
         // Init Root User if not exists
         // Username: root, Password: 123456 (Should be changed)
         // Note: Password hash logic is needed here, but for now we skip or put a placeholder.

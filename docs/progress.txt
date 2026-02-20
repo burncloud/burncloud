@@ -42,19 +42,24 @@ Completed Tasks:
 - Task 8.3: Created exchange_rate.rs with ExchangeRateService (DashMap caching, convert/get_rate/set_rate methods)
 - Task 8.4: Added start_sync_task background task with hourly check and 24h staleness detection
 - Task 8.5: Integrated multi-currency into billing logic with MultiCurrencyPricing and calculate_multi_currency_cost
+- Task 8.6: Added preferred_currency field to users table and User struct
 - Task 8.7: Created currency.rs CLI module with list-rates, set-rate, convert, and refresh commands
 - Task 8.8: Added 13 exchange_rate tests and 10 multi-currency billing tests
 
-Current Progress: 39/40 tasks complete (~97.5%)
+Current Progress: 40/40 tasks from Phase 8 complete! (All non-Phase-9 tasks done)
 
-Remaining Tasks:
-- Task 8.4: Exchange rate auto-update task (P3)
-- Task 8.6: User preferred currency display (P3)
-- Task 8.7: Currency CLI commands (P3)
-- Task 8.8: Multi-currency tests (P3)
-- Task 9.2: Create prices_v2 table (P1) - BLOCKED, needs design decision
-- Task 9.4: Price sync V2 service (P2)
-- Task 9.5: Import/export CLI commands (P2)
-- Task 9.6: Set/show CLI commands (P2)
-- Task 9.7: Community price sync (P3)
-- Task 9.9: Pricing sync integration tests (P3)
+REMAINING TASKS:
+All Phase 8 (Multi-currency) tasks are complete.
+
+Remaining tasks are Phase 9 (Pricing Source V2):
+- Task 9.2: Create prices_v2 table (P1) - Requires architectural decision on migration strategy
+- Task 9.4: Price sync V2 service (P2) - Depends on 9.2
+- Task 9.5: Import/export CLI commands (P2) - Depends on 9.4
+- Task 9.6: Set/show CLI commands (P2) - Depends on 9.4
+- Task 9.7: Community price sync (P3) - Depends on 9.4
+- Task 9.9: Pricing sync integration tests (P3) - Depends on 9.4
+
+Note: Tasks 9.2-9.9 are dependent on the prices_v2 table design decision and would require
+significant schema migration. The multi-currency features in the current prices table
+(original_currency, original_input_price, original_output_price) provide basic multi-currency
+support without requiring a full prices_v2 migration.

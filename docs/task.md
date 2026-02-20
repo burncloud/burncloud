@@ -911,7 +911,7 @@
         },
         {
             "id": "8.6",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P3",
             "description": "实现用户偏好货币展示",
