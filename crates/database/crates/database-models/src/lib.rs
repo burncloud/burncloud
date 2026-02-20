@@ -18,16 +18,44 @@ pub struct Price {
     pub alias_for: Option<String>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+    // Advanced pricing fields
+    pub cache_read_price: Option<f64>,
+    pub cache_creation_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub full_pricing: Option<String>,
 }
 
 /// Input for creating/updating a price
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PriceInput {
     pub model: String,
+    #[serde(default)]
     pub input_price: f64,
+    #[serde(default)]
     pub output_price: f64,
     pub currency: Option<String>,
     pub alias_for: Option<String>,
+    // Advanced pricing fields
+    #[serde(default)]
+    pub cache_read_price: Option<f64>,
+    #[serde(default)]
+    pub cache_creation_price: Option<f64>,
+    #[serde(default)]
+    pub batch_input_price: Option<f64>,
+    #[serde(default)]
+    pub batch_output_price: Option<f64>,
+    #[serde(default)]
+    pub priority_input_price: Option<f64>,
+    #[serde(default)]
+    pub priority_output_price: Option<f64>,
+    #[serde(default)]
+    pub audio_input_price: Option<f64>,
+    #[serde(default)]
+    pub full_pricing: Option<String>,
 }
 
 pub struct PriceModel;
@@ -47,8 +75,8 @@ impl PriceModel {
 
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices WHERE model = $1",
-            _ => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices WHERE model = ?",
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices WHERE model = $1"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices WHERE model = ?"#,
         };
 
         let price: Option<Price> = sqlx::query_as(sql)
@@ -70,8 +98,8 @@ impl PriceModel {
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices ORDER BY model LIMIT $1 OFFSET $2",
-            _ => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices ORDER BY model LIMIT ? OFFSET ?",
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices ORDER BY model LIMIT $1 OFFSET $2"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing FROM prices ORDER BY model LIMIT ? OFFSET ?"#,
         };
 
         let prices = sqlx::query_as(sql)
@@ -94,26 +122,46 @@ impl PriceModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
+                    cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
+                    priority_input_price, priority_output_price, audio_input_price, full_pricing)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 ON CONFLICT(model) DO UPDATE SET
                     input_price = EXCLUDED.input_price,
                     output_price = EXCLUDED.output_price,
                     currency = EXCLUDED.currency,
                     alias_for = EXCLUDED.alias_for,
-                    updated_at = EXCLUDED.updated_at
+                    updated_at = EXCLUDED.updated_at,
+                    cache_read_price = EXCLUDED.cache_read_price,
+                    cache_creation_price = EXCLUDED.cache_creation_price,
+                    batch_input_price = EXCLUDED.batch_input_price,
+                    batch_output_price = EXCLUDED.batch_output_price,
+                    priority_input_price = EXCLUDED.priority_input_price,
+                    priority_output_price = EXCLUDED.priority_output_price,
+                    audio_input_price = EXCLUDED.audio_input_price,
+                    full_pricing = EXCLUDED.full_pricing
             "#
             }
             _ => {
                 r#"
-                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
+                    cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
+                    priority_input_price, priority_output_price, audio_input_price, full_pricing)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(model) DO UPDATE SET
                     input_price = excluded.input_price,
                     output_price = excluded.output_price,
                     currency = excluded.currency,
                     alias_for = excluded.alias_for,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    cache_read_price = excluded.cache_read_price,
+                    cache_creation_price = excluded.cache_creation_price,
+                    batch_input_price = excluded.batch_input_price,
+                    batch_output_price = excluded.batch_output_price,
+                    priority_input_price = excluded.priority_input_price,
+                    priority_output_price = excluded.priority_output_price,
+                    audio_input_price = excluded.audio_input_price,
+                    full_pricing = excluded.full_pricing
             "#
             }
         };
@@ -126,6 +174,14 @@ impl PriceModel {
             .bind(&input.alias_for)
             .bind(now)
             .bind(now)
+            .bind(input.cache_read_price)
+            .bind(input.cache_creation_price)
+            .bind(input.batch_input_price)
+            .bind(input.batch_output_price)
+            .bind(input.priority_input_price)
+            .bind(input.priority_output_price)
+            .bind(input.audio_input_price)
+            .bind(&input.full_pricing)
             .execute(conn.pool())
             .await?;
 
@@ -1135,5 +1191,167 @@ impl ProtocolConfigModel {
         let result = sqlx::query(sql).bind(id).execute(conn.pool()).await?;
 
         Ok(result.rows_affected() > 0)
+    }
+}
+
+/// Tiered pricing for models with usage-based pricing tiers
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TieredPrice {
+    pub id: i32,
+    pub model: String,
+    pub region: Option<String>,
+    pub tier_start: i64,
+    pub tier_end: Option<i64>,
+    pub input_price: f64,
+    pub output_price: f64,
+}
+
+/// Input for creating/updating a tiered price
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TieredPriceInput {
+    pub model: String,
+    pub region: Option<String>,
+    pub tier_start: i64,
+    pub tier_end: Option<i64>,
+    pub input_price: f64,
+    pub output_price: f64,
+}
+
+pub struct TieredPriceModel;
+
+impl TieredPriceModel {
+    /// Get all tiers for a model, optionally filtered by region
+    pub async fn get_tiers(
+        db: &Database,
+        model: &str,
+        region: Option<&str>,
+    ) -> Result<Vec<TieredPrice>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let tiers = match region {
+            Some(r) => {
+                let sql = if is_postgres {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = $1 AND region = $2
+                       ORDER BY tier_start ASC"#
+                } else {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = ? AND region = ?
+                       ORDER BY tier_start ASC"#
+                };
+                sqlx::query_as(sql)
+                    .bind(model)
+                    .bind(r)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+            None => {
+                // Get tiers with NULL region (universal) or matching region
+                let sql = if is_postgres {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = $1
+                       ORDER BY tier_start ASC"#
+                } else {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = ?
+                       ORDER BY tier_start ASC"#
+                };
+                sqlx::query_as(sql)
+                    .bind(model)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+        };
+
+        Ok(tiers)
+    }
+
+    /// Upsert a tiered price
+    pub async fn upsert_tier(db: &Database, input: &TieredPriceInput) -> Result<()> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            r#"
+            INSERT INTO tiered_pricing (model, region, tier_start, tier_end, input_price, output_price)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT(model, region, tier_start) DO UPDATE SET
+                tier_end = EXCLUDED.tier_end,
+                input_price = EXCLUDED.input_price,
+                output_price = EXCLUDED.output_price
+            "#
+        } else {
+            r#"
+            INSERT INTO tiered_pricing (model, region, tier_start, tier_end, input_price, output_price)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(model, region, tier_start) DO UPDATE SET
+                tier_end = excluded.tier_end,
+                input_price = excluded.input_price,
+                output_price = excluded.output_price
+            "#
+        };
+
+        sqlx::query(sql)
+            .bind(&input.model)
+            .bind(&input.region)
+            .bind(input.tier_start)
+            .bind(input.tier_end)
+            .bind(input.input_price)
+            .bind(input.output_price)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Delete all tiers for a model and region
+    pub async fn delete_tiers(db: &Database, model: &str, region: Option<&str>) -> Result<()> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        match region {
+            Some(r) => {
+                let sql = if is_postgres {
+                    "DELETE FROM tiered_pricing WHERE model = $1 AND region = $2"
+                } else {
+                    "DELETE FROM tiered_pricing WHERE model = ? AND region = ?"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .bind(r)
+                    .execute(conn.pool())
+                    .await?;
+            }
+            None => {
+                let sql = if is_postgres {
+                    "DELETE FROM tiered_pricing WHERE model = $1"
+                } else {
+                    "DELETE FROM tiered_pricing WHERE model = ?"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .execute(conn.pool())
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a model has tiered pricing configured
+    pub async fn has_tiered_pricing(db: &Database, model: &str) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "SELECT COUNT(*) FROM tiered_pricing WHERE model = $1",
+            _ => "SELECT COUNT(*) FROM tiered_pricing WHERE model = ?",
+        };
+
+        let count: i64 = sqlx::query_scalar(sql)
+            .bind(model)
+            .fetch_one(conn.pool())
+            .await?;
+
+        Ok(count > 0)
     }
 }

@@ -217,7 +217,7 @@ impl Schema {
             _ => "",
         };
 
-        // 5. Prices Table (Model Pricing)
+        // 5. Prices Table (Model Pricing) with Advanced Pricing Fields
         let prices_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -229,7 +229,15 @@ impl Schema {
                     currency TEXT DEFAULT 'USD',
                     alias_for TEXT,
                     created_at INTEGER,
-                    updated_at INTEGER
+                    updated_at INTEGER,
+                    cache_read_price REAL,
+                    cache_creation_price REAL,
+                    batch_input_price REAL,
+                    batch_output_price REAL,
+                    priority_input_price REAL,
+                    priority_output_price REAL,
+                    audio_input_price REAL,
+                    full_pricing TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
             "#
@@ -244,7 +252,15 @@ impl Schema {
                     currency VARCHAR(10) DEFAULT 'USD',
                     alias_for VARCHAR(255),
                     created_at BIGINT,
-                    updated_at BIGINT
+                    updated_at BIGINT,
+                    cache_read_price DOUBLE PRECISION,
+                    cache_creation_price DOUBLE PRECISION,
+                    batch_input_price DOUBLE PRECISION,
+                    batch_output_price DOUBLE PRECISION,
+                    priority_input_price DOUBLE PRECISION,
+                    priority_output_price DOUBLE PRECISION,
+                    audio_input_price DOUBLE PRECISION,
+                    full_pricing TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
             "#
@@ -336,6 +352,41 @@ impl Schema {
             _ => "",
         };
 
+        // 8. Tiered Pricing Table (for models with tiered pricing like Qwen)
+        let tiered_pricing_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS tiered_pricing (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model TEXT NOT NULL,
+                    region TEXT,
+                    tier_start INTEGER NOT NULL,
+                    tier_end INTEGER,
+                    input_price REAL NOT NULL,
+                    output_price REAL NOT NULL,
+                    UNIQUE(model, region, tier_start)
+                );
+                CREATE INDEX IF NOT EXISTS idx_tiered_pricing_model ON tiered_pricing(model);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS tiered_pricing (
+                    id SERIAL PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL,
+                    region VARCHAR(32),
+                    tier_start BIGINT NOT NULL,
+                    tier_end BIGINT,
+                    input_price DOUBLE PRECISION NOT NULL,
+                    output_price DOUBLE PRECISION NOT NULL,
+                    UNIQUE(model, region, tier_start)
+                );
+                CREATE INDEX IF NOT EXISTS idx_tiered_pricing_model ON tiered_pricing(model);
+            "#
+            }
+            _ => "",
+        };
+
         // Execute all
         if !users_sql.is_empty() {
             pool.execute(users_sql).await?;
@@ -358,6 +409,9 @@ impl Schema {
         if !model_capabilities_sql.is_empty() {
             pool.execute(model_capabilities_sql).await?;
         }
+        if !tiered_pricing_sql.is_empty() {
+            pool.execute(tiered_pricing_sql).await?;
+        }
 
         // Migration: Add api_version column to channels if it doesn't exist
         // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we try and ignore errors
@@ -369,6 +423,42 @@ impl Schema {
             .await;
         } else if kind == "postgres" {
             let _ = sqlx::query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS api_version VARCHAR(32) DEFAULT 'default'")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Add advanced pricing columns to prices table if they don't exist
+        // Note: full_pricing is TEXT, others are REAL/DOUBLE PRECISION
+        let advanced_pricing_columns_real = [
+            "cache_read_price",
+            "cache_creation_price",
+            "batch_input_price",
+            "batch_output_price",
+            "priority_input_price",
+            "priority_output_price",
+            "audio_input_price",
+        ];
+
+        for column in advanced_pricing_columns_real {
+            if kind == "sqlite" {
+                let sql = format!("ALTER TABLE prices ADD COLUMN {} REAL", column);
+                let _ = sqlx::query(&sql).execute(pool).await;
+            } else if kind == "postgres" {
+                let sql = format!(
+                    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS {} DOUBLE PRECISION",
+                    column
+                );
+                let _ = sqlx::query(&sql).execute(pool).await;
+            }
+        }
+
+        // Add full_pricing column as TEXT separately
+        if kind == "sqlite" {
+            let _ = sqlx::query("ALTER TABLE prices ADD COLUMN full_pricing TEXT")
+                .execute(pool)
+                .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE prices ADD COLUMN IF NOT EXISTS full_pricing TEXT")
                 .execute(pool)
                 .await;
         }

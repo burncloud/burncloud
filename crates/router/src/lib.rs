@@ -1,6 +1,7 @@
 mod adaptive_limit;
 mod adaptor;
 mod balancer;
+pub mod billing;
 mod channel_state;
 mod circuit_breaker;
 mod config;
