@@ -1,0 +1,196 @@
+{
+  "version": "1.0",
+  "updated_at": "2024-01-15T10:00:00Z",
+  "source": "local",
+  "models": {
+    "gpt-4-turbo": {
+      "pricing": {
+        "USD": {
+          "input_price": 10.0,
+          "output_price": 30.0,
+          "source": "openai"
+        },
+        "CNY": {
+          "input_price": 72.0,
+          "output_price": 216.0,
+          "source": "converted"
+        }
+      },
+      "cache_pricing": {
+        "USD": {
+          "cache_read_input_price": 1.0,
+          "cache_creation_input_price": 1.25
+        }
+      },
+      "batch_pricing": {
+        "USD": {
+          "batch_input_price": 5.0,
+          "batch_output_price": 15.0
+        }
+      },
+      "metadata": {
+        "context_window": 128000,
+        "max_output_tokens": 4096,
+        "supports_vision": true,
+        "supports_function_calling": true,
+        "provider": "openai",
+        "family": "gpt-4"
+      }
+    },
+    "gpt-4o": {
+      "pricing": {
+        "USD": {
+          "input_price": 2.5,
+          "output_price": 10.0,
+          "source": "openai"
+        }
+      },
+      "cache_pricing": {
+        "USD": {
+          "cache_read_input_price": 0.25,
+          "cache_creation_input_price": 0.3125
+        }
+      },
+      "batch_pricing": {
+        "USD": {
+          "batch_input_price": 1.25,
+          "batch_output_price": 5.0
+        }
+      },
+      "metadata": {
+        "context_window": 128000,
+        "max_output_tokens": 16384,
+        "supports_vision": true,
+        "supports_function_calling": true,
+        "provider": "openai",
+        "family": "gpt-4"
+      }
+    },
+    "claude-3-5-sonnet-20241022": {
+      "pricing": {
+        "USD": {
+          "input_price": 3.0,
+          "output_price": 15.0,
+          "source": "anthropic"
+        },
+        "CNY": {
+          "input_price": 21.6,
+          "output_price": 108.0,
+          "source": "converted"
+        }
+      },
+      "cache_pricing": {
+        "USD": {
+          "cache_read_input_price": 0.30,
+          "cache_creation_input_price": 3.75
+        }
+      },
+      "batch_pricing": {
+        "USD": {
+          "batch_input_price": 1.5,
+          "batch_output_price": 7.5
+        }
+      },
+      "metadata": {
+        "context_window": 200000,
+        "max_output_tokens": 8192,
+        "supports_vision": true,
+        "supports_function_calling": true,
+        "provider": "anthropic",
+        "family": "claude-3"
+      }
+    },
+    "qwen-max": {
+      "pricing": {
+        "USD": {
+          "input_price": 1.2,
+          "output_price": 6.0,
+          "source": "international"
+        },
+        "CNY": {
+          "input_price": 0.359,
+          "output_price": 1.434,
+          "source": "cn"
+        }
+      },
+      "tiered_pricing": {
+        "USD": [
+          {
+            "tier_start": 0,
+            "tier_end": 32000,
+            "input_price": 1.2,
+            "output_price": 6.0
+          },
+          {
+            "tier_start": 32000,
+            "tier_end": 128000,
+            "input_price": 2.4,
+            "output_price": 12.0
+          },
+          {
+            "tier_start": 128000,
+            "tier_end": 252000,
+            "input_price": 3.0,
+            "output_price": 15.0
+          }
+        ],
+        "CNY": [
+          {
+            "tier_start": 0,
+            "tier_end": 32000,
+            "input_price": 0.359,
+            "output_price": 1.434
+          },
+          {
+            "tier_start": 32000,
+            "tier_end": 128000,
+            "input_price": 0.574,
+            "output_price": 2.294
+          },
+          {
+            "tier_start": 128000,
+            "tier_end": 252000,
+            "input_price": 1.004,
+            "output_price": 4.014
+          }
+        ]
+      },
+      "metadata": {
+        "context_window": 252000,
+        "max_output_tokens": 8192,
+        "supports_vision": true,
+        "supports_function_calling": true,
+        "provider": "alibaba",
+        "family": "qwen"
+      }
+    },
+    "deepseek-chat": {
+      "pricing": {
+        "USD": {
+          "input_price": 0.14,
+          "output_price": 0.28,
+          "source": "deepseek"
+        },
+        "CNY": {
+          "input_price": 1.0,
+          "output_price": 2.0,
+          "source": "cn"
+        }
+      },
+      "cache_pricing": {
+        "USD": {
+          "cache_read_input_price": 0.014,
+          "cache_creation_input_price": null
+        }
+      },
+      "metadata": {
+        "context_window": 64000,
+        "max_output_tokens": 4096,
+        "supports_vision": false,
+        "supports_function_calling": true,
+        "provider": "deepseek",
+        "family": "deepseek"
+      }
+    }
+  }
+}

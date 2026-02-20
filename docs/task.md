@@ -693,7 +693,7 @@
         },
         {
             "id": "7.2",
-            "passes": null,
+            "passes": true,
             "category": "phase7-docs",
             "priority": "P3",
             "description": "创建阶梯定价配置示例文件",
@@ -1280,7 +1280,7 @@
         },
         {
             "id": "9.8",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P3",
             "description": "创建示例 pricing.json 文件",
