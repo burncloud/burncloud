@@ -1258,3 +1258,261 @@
    - 模拟 429 响应 → 验证状态更新
    - 模拟响应头 → 验证限流学习
    - 价格同步任务 → 验证数据库更新
+
+---
+十三、高级定价维度支持（TODO）
+
+当前价格同步仅支持基础定价字段，LiteLLM JSON 中包含更多高级定价维度：
+
+### 当前已支持
+
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `input_cost_per_token` | 标准输入价格 | $2.5/1M tokens |
+| `output_cost_per_token` | 标准输出价格 | $10/1M tokens |
+| `max_input_tokens` | 上下文窗口 | 128000 |
+| `max_output_tokens` | 最大输出 | 16384 |
+| `supports_vision` | 支持视觉 | true/false |
+| `supports_function_calling` | 支持函数调用 | true/false |
+
+### 当前缺失（需后续实现）
+
+| 字段 | 说明 | 影响场景 |
+|------|------|----------|
+| `cache_read_input_token_cost` | 缓存命中价格 | Prompt Caching 场景，可节省 90% 成本 |
+| `cache_creation_input_token_cost` | 缓存创建价格 | 首次缓存创建 |
+| `input_cost_per_token_batches` | 批量请求价格 | Batch API，节省 50% |
+| `output_cost_per_token_batches` | 批量输出价格 | Batch API |
+| `input_cost_per_token_priority` | 优先级请求价格 | 高优先级请求，加价 70% |
+| `output_cost_per_token_priority` | 优先级输出价格 | 高优先级请求 |
+| `input_cost_per_audio_token` | 音频输入价格 | 多模态请求，音频贵 7x |
+| `search_context_cost_per_query` | 搜索上下文价格 | Web Search 功能 |
+
+### 示例：Claude 3.5 Sonnet 完整定价
+
+```json
+{
+  "input_cost_per_token": 3e-06,                    // $3.00/1M
+  "cache_read_input_token_cost": 3e-07,             // $0.30/1M (缓存命中)
+  "cache_creation_input_token_cost": 3.75e-06,      // $3.75/1M (缓存创建)
+  "output_cost_per_token": 1.5e-05                   // $15.00/1M
+}
+```
+
+**影响**: 使用 Prompt Caching 时，缓存命中可节省 90% 输入成本，但当前无法正确计算。
+
+### 解决方案（待定）
+
+#### 方案 A: 扩展现有 prices 表
+
+```sql
+ALTER TABLE prices ADD COLUMN cache_read_price REAL;
+ALTER TABLE prices ADD COLUMN cache_creation_price REAL;
+ALTER TABLE prices ADD COLUMN batch_input_price REAL;
+ALTER TABLE prices ADD COLUMN batch_output_price REAL;
+ALTER TABLE prices ADD COLUMN priority_input_price REAL;
+ALTER TABLE prices ADD COLUMN priority_output_price REAL;
+ALTER TABLE prices ADD COLUMN audio_input_price REAL;
+ALTER TABLE prices ADD COLUMN full_pricing TEXT;  -- JSON blob for future fields
+```
+
+优点：简单直接，查询方便
+缺点：字段多，表结构复杂
+
+#### 方案 B: 创建独立价格详情表
+
+```sql
+CREATE TABLE price_details (
+    id INTEGER PRIMARY KEY,
+    model TEXT NOT NULL,
+    price_type TEXT NOT NULL,  -- 'standard', 'cache_read', 'batch', 'priority', 'audio'
+    input_price REAL,
+    output_price REAL,
+    UNIQUE(model, price_type)
+);
+```
+
+优点：灵活扩展，支持无限价格类型
+缺点：查询需要 JOIN
+
+#### 方案 C: JSON 字段存储完整定价
+
+```sql
+ALTER TABLE prices ADD COLUMN full_pricing TEXT;  -- JSON blob
+```
+
+优点：最灵活，无需修改表结构
+缺点：查询性能稍差，需要应用层解析
+
+### 复杂计费公式
+
+当前简单公式：
+```
+cost = prompt_tokens * input_price + completion_tokens * output_price
+```
+
+需要支持：
+```
+cost = standard_tokens * standard_price
+     + cache_read_tokens * cache_read_price
+     + cache_creation_tokens * cache_creation_price
+     + audio_tokens * audio_price
+     + batch_tokens * batch_price
+     + priority_tokens * priority_price
+```
+
+### 实现优先级
+
+| 优先级 | 任务 | 原因 |
+|--------|------|------|
+| P2 | 缓存定价支持 | Prompt Caching 使用广泛，节省显著 |
+| P2 | 批量定价支持 | Batch API 使用广泛 |
+| P3 | 优先级定价 | 较少使用 |
+| P3 | 音频定价 | 多模态场景 |
+
+### 相关代码位置
+
+- 价格同步: `crates/router/src/price_sync.rs`
+- 价格模型: `crates/database/crates/database-models/src/lib.rs`
+- 成本计算: `crates/router/src/lib.rs` (proxy_handler)
+- 数据库结构: `crates/database/src/schema.rs`
+
+---
+
+### 特殊案例：Qwen 阶梯定价与区域差异
+
+**问题背景**: Qwen3-Max 存在两种复杂定价维度：
+
+#### 1. 区域定价差异
+
+| 区域 | 0-32K 输入 | 32K-128K 输入 | 128K-252K 输入 |
+|------|-----------|--------------|----------------|
+| 国内版 (北京) | $0.359/1M | $0.574/1M | $1.004/1M |
+| 海外版 (新加坡) | $1.2/1M | $2.4/1M | $3.0/1M |
+
+**差异**: 国内版价格约为海外版的 30%
+
+#### 2. 阶梯定价 (Tiered Pricing)
+
+输入 token 越长，单价越高：
+
+```
+输入 0-32K tokens:    基准价格
+输入 32K-128K tokens: 基准价格 × 2
+输入 128K-252K tokens: 基准价格 × 3
+```
+
+**示例计算**:
+```
+用户输入 150K tokens (海外版):
+- 前 32K tokens:  32K × $1.2/1M  = $0.0384
+- 32K-128K:       96K × $2.4/1M  = $0.2304
+- 128K-150K:      22K × $3.0/1M  = $0.0660
+- 总计: $0.3348 (而非 150K × $1.2/1M = $0.18)
+
+误差: 当前简单公式会少计费 46%!
+```
+
+#### 当前 LiteLLM 数据问题
+
+```json
+// LiteLLM 中只有单一价格，无法表达阶梯定价
+"dashscope/qwen-max": {
+  "input_cost_per_token": 1.6e-06,  // $1.6/1M - 但这是哪个阶梯？
+  "max_input_tokens": 30720         // 只显示 30K，实际支持更大
+}
+```
+
+#### 解决方案
+
+##### 方案 1: 阶梯定价表
+
+```sql
+CREATE TABLE tiered_pricing (
+    id INTEGER PRIMARY KEY,
+    model TEXT NOT NULL,
+    region TEXT,                    -- 'cn', 'international', NULL(通用)
+    tier_start INTEGER NOT NULL,    -- 阶梯起始 tokens
+    tier_end INTEGER NOT NULL,      -- 阶梯结束 tokens
+    input_price REAL NOT NULL,      -- 该阶梯输入价格
+    output_price REAL NOT NULL,     -- 该阶梯输出价格
+    UNIQUE(model, region, tier_start)
+);
+
+-- 示例数据
+INSERT INTO tiered_pricing VALUES
+(1, 'qwen3-max', 'cn', 0, 32000, 0.359, 1.434),
+(2, 'qwen3-max', 'cn', 32000, 128000, 0.574, 2.294),
+(3, 'qwen3-max', 'cn', 128000, 252000, 1.004, 4.014),
+(4, 'qwen3-max', 'international', 0, 32000, 1.2, 6.0),
+(5, 'qwen3-max', 'international', 32000, 128000, 2.4, 12.0),
+(6, 'qwen3-max', 'international', 128000, 252000, 3.0, 15.0);
+```
+
+##### 方案 2: 渠道级价格覆盖
+
+```sql
+-- 在 channels 表或 abilities 表中存储区域信息
+ALTER TABLE channels ADD COLUMN pricing_region TEXT DEFAULT 'international';
+```
+
+##### 方案 3: JSON 配置
+
+```sql
+ALTER TABLE prices ADD COLUMN tiered_pricing TEXT;  -- JSON blob
+
+-- 示例
+{
+  "tiers": [
+    {"min": 0, "max": 32000, "input": 1.2, "output": 6.0},
+    {"min": 32000, "max": 128000, "input": 2.4, "output": 12.0},
+    {"min": 128000, "max": 252000, "input": 3.0, "output": 15.0}
+  ],
+  "regions": {
+    "cn": {"multiplier": 0.3},  -- 国内版价格系数
+    "international": {"multiplier": 1.0}
+  }
+}
+```
+
+#### 计费逻辑变更
+
+```rust
+// 当前简单公式
+fn calculate_cost(tokens: u64, price: f64) -> f64 {
+    tokens as f64 * price / 1_000_000.0
+}
+
+// 需要支持阶梯计费
+fn calculate_tiered_cost(tokens: u64, tiers: &[Tier]) -> f64 {
+    let mut cost = 0.0;
+    let mut remaining = tokens;
+
+    for tier in tiers {
+        let tier_tokens = remaining.min(tier.max - tier.min);
+        cost += tier_tokens as f64 * tier.price / 1_000_000.0;
+        remaining -= tier_tokens;
+        if remaining == 0 { break; }
+    }
+
+    cost
+}
+```
+
+#### 影响范围
+
+| 场景 | 影响程度 |
+|------|----------|
+| Qwen 系列模型 | 高 - 阶梯定价 |
+| DeepSeek 长上下文 | 中 - 可能有类似策略 |
+| Gemini 长上下文 | 低 - 目前单一价格 |
+| Claude 长上下文 | 低 - 目前单一价格 |
+
+#### 实现优先级
+
+| 优先级 | 任务 |
+|--------|------|
+| P2 | 阶梯定价表设计与实现 |
+| P2 | 阶梯计费逻辑实现 |
+| P3 | 区域定价支持 |
+| P3 | 自动检测模型是否需要阶梯计费 |
