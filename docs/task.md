@@ -675,7 +675,7 @@
         },
         {
             "id": "7.1",
-            "passes": null,
+            "passes": true,
             "category": "phase7-docs",
             "priority": "P3",
             "description": "更新 CLAUDE.md 添加高级定价说明",
