@@ -148,6 +148,7 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         header_override: None,
         remark: None,
         api_version: Some("default".to_string()),
+        pricing_region: None, // Default to universal pricing
     };
 
     // Save to database

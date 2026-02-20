@@ -167,6 +167,13 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("model")
                                 .required(true)
                                 .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Show tiered pricing configuration"),
                         ),
                 )
                 .subcommand(
@@ -177,6 +184,10 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .required(true)
                                 .help("Model name"),
                         ),
+                )
+                .subcommand(
+                    Command::new("sync-status")
+                        .about("Show pricing sync status and advanced pricing statistics"),
                 ),
         )
         .subcommand(

@@ -1354,4 +1354,17 @@ impl TieredPriceModel {
 
         Ok(count > 0)
     }
+
+    /// List all tiered pricing entries
+    pub async fn list_all(db: &Database) -> Result<Vec<TieredPrice>> {
+        let conn = db.get_connection()?;
+        let sql = r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                     FROM tiered_pricing ORDER BY model, tier_start ASC"#;
+
+        let tiers = sqlx::query_as(sql)
+            .fetch_all(conn.pool())
+            .await?;
+
+        Ok(tiers)
+    }
 }

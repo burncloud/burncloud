@@ -597,7 +597,7 @@
         },
         {
             "id": "5.2",
-            "passes": null,
+            "passes": true,
             "category": "phase5-cli",
             "priority": "P3",
             "description": "实现高级定价同步状态 CLI",

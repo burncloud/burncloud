@@ -82,6 +82,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         }
         Some(("get", sub_m)) => {
             let model = sub_m.get_one::<String>("model").unwrap();
+            let verbose = sub_m.get_flag("verbose");
 
             match PriceModel::get(db, model).await? {
                 Some(price) => {
@@ -114,11 +115,78 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     if let Some(audio_input) = price.audio_input_price {
                         println!("Audio Input Price: ${:.4}/1M tokens", audio_input);
                     }
+
+                    // Show tiered pricing in verbose mode
+                    if verbose {
+                        println!("\n--- Tiered Pricing ---");
+                        let has_tiered = TieredPriceModel::has_tiered_pricing(db, model).await?;
+                        if has_tiered {
+                            let tiers = TieredPriceModel::get_tiers(db, model, None).await?;
+                            for tier in tiers {
+                                let region = tier.region.as_deref().unwrap_or("universal");
+                                let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                                println!(
+                                    "  [{}] {}-{} tokens: ${:.4}/${:.4} per 1M (in/out)",
+                                    region, tier.tier_start, tier_end, tier.input_price, tier.output_price
+                                );
+                            }
+                        } else {
+                            println!("  No tiered pricing configured for this model.");
+                        }
+                    }
                 }
                 None => {
                     println!("No price found for model '{}'", model);
                 }
             }
+        }
+        Some(("sync-status", _)) => {
+            // Show sync status by counting models with advanced pricing
+            let prices = PriceModel::list(db, 10000, 0).await?;
+
+            let mut total = 0;
+            let mut with_cache = 0;
+            let mut with_batch = 0;
+            let mut with_priority = 0;
+            let mut with_audio = 0;
+
+            for price in &prices {
+                total += 1;
+                if price.cache_read_price.is_some() || price.cache_creation_price.is_some() {
+                    with_cache += 1;
+                }
+                if price.batch_input_price.is_some() || price.batch_output_price.is_some() {
+                    with_batch += 1;
+                }
+                if price.priority_input_price.is_some() || price.priority_output_price.is_some() {
+                    with_priority += 1;
+                }
+                if price.audio_input_price.is_some() {
+                    with_audio += 1;
+                }
+            }
+
+            // Check tiered pricing count
+            let tiered_prices = TieredPriceModel::list_all(db).await?;
+            let mut tiered_models = std::collections::HashSet::new();
+            for tier in &tiered_prices {
+                tiered_models.insert(tier.model.clone());
+            }
+            let with_tiered = tiered_models.len() as i32;
+
+            println!("Pricing Sync Status");
+            println!("{}", "=".repeat(50));
+            println!("Total models: {}", total);
+            println!("Models with cache pricing: {}", with_cache);
+            println!("Models with batch pricing: {}", with_batch);
+            println!("Models with priority pricing: {}", with_priority);
+            println!("Models with audio pricing: {}", with_audio);
+            println!("Models with tiered pricing: {}", with_tiered);
+            println!();
+            println!("Tiered pricing entries: {}", tiered_prices.len());
+            println!();
+            println!("Note: Prices are synced hourly from LiteLLM by default.");
+            println!("Use 'burncloud tiered import-tiered <file>' to add custom tiered pricing.");
         }
         _ => {
             println!("Usage: burncloud price <list|set|get|delete|list-tiers|add-tier|import-tiered>");
