@@ -1390,3 +1390,432 @@ impl TieredPriceModel {
         Ok(tiers)
     }
 }
+
+/// Multi-currency price entry for prices_v2 table
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PriceV2 {
+    pub id: i32,
+    pub model: String,
+    pub currency: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    pub cache_read_input_price: Option<f64>,
+    pub cache_creation_input_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub source: Option<String>,
+    pub region: Option<String>,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub supports_vision: Option<bool>,
+    pub supports_function_calling: Option<bool>,
+    pub synced_at: Option<i64>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+}
+
+/// Input for creating/updating a PriceV2 entry
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PriceV2Input {
+    pub model: String,
+    pub currency: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    pub cache_read_input_price: Option<f64>,
+    pub cache_creation_input_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub source: Option<String>,
+    pub region: Option<String>,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub supports_vision: Option<bool>,
+    pub supports_function_calling: Option<bool>,
+}
+
+pub struct PriceV2Model;
+
+impl PriceV2Model {
+    /// Get price for a model in a specific currency and region
+    /// Falls back to USD if the requested currency is not found
+    pub async fn get(
+        db: &Database,
+        model: &str,
+        currency: &str,
+        region: Option<&str>,
+    ) -> Result<Option<PriceV2>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        // First try exact match (model, currency, region)
+        let sql = if is_postgres {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = $1 AND currency = $2 AND region IS NOT DISTINCT FROM $3"#
+        } else {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = ? AND currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+        };
+
+        let price = if is_postgres {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(currency)
+                .bind(region)
+                .fetch_optional(conn.pool())
+                .await?
+        } else {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(currency)
+                .bind(region)
+                .bind(region)
+                .fetch_optional(conn.pool())
+                .await?
+        };
+
+        if price.is_some() {
+            return Ok(price);
+        }
+
+        // Fallback to USD if different currency requested
+        if currency != "USD" {
+            let sql_usd = if is_postgres {
+                r#"SELECT id, model, currency, input_price, output_price,
+                          cache_read_input_price, cache_creation_input_price,
+                          batch_input_price, batch_output_price,
+                          priority_input_price, priority_output_price,
+                          audio_input_price, source, region,
+                          context_window, max_output_tokens,
+                          supports_vision, supports_function_calling,
+                          synced_at, created_at, updated_at
+                   FROM prices_v2 WHERE model = $1 AND currency = 'USD' AND region IS NOT DISTINCT FROM $2"#
+            } else {
+                r#"SELECT id, model, currency, input_price, output_price,
+                          cache_read_input_price, cache_creation_input_price,
+                          batch_input_price, batch_output_price,
+                          priority_input_price, priority_output_price,
+                          audio_input_price, source, region,
+                          context_window, max_output_tokens,
+                          supports_vision, supports_function_calling,
+                          synced_at, created_at, updated_at
+                   FROM prices_v2 WHERE model = ? AND currency = 'USD' AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+            };
+
+            let usd_price = if is_postgres {
+                sqlx::query_as(sql_usd)
+                    .bind(model)
+                    .bind(region)
+                    .fetch_optional(conn.pool())
+                    .await?
+            } else {
+                sqlx::query_as(sql_usd)
+                    .bind(model)
+                    .bind(region)
+                    .bind(region)
+                    .fetch_optional(conn.pool())
+                    .await?
+            };
+
+            return Ok(usd_price);
+        }
+
+        Ok(None)
+    }
+
+    /// Get all prices for a model across all currencies
+    pub async fn get_all_currencies(
+        db: &Database,
+        model: &str,
+        region: Option<&str>,
+    ) -> Result<Vec<PriceV2>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = $1 AND region IS NOT DISTINCT FROM $2
+               ORDER BY currency"#
+        } else {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+               ORDER BY currency"#
+        };
+
+        let prices = if is_postgres {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(region)
+                .fetch_all(conn.pool())
+                .await?
+        } else {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(region)
+                .bind(region)
+                .fetch_all(conn.pool())
+                .await?
+        };
+
+        Ok(prices)
+    }
+
+    /// List all prices with pagination
+    pub async fn list(db: &Database, limit: i32, offset: i32, currency: Option<&str>) -> Result<Vec<PriceV2>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let prices = match currency {
+            Some(curr) => {
+                let sql = if is_postgres {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 WHERE currency = $1
+                       ORDER BY model LIMIT $2 OFFSET $3"#
+                } else {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 WHERE currency = ?
+                       ORDER BY model LIMIT ? OFFSET ?"#
+                };
+                sqlx::query_as(sql)
+                    .bind(curr)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+            None => {
+                let sql = if is_postgres {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 ORDER BY model, currency LIMIT $1 OFFSET $2"#
+                } else {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 ORDER BY model, currency LIMIT ? OFFSET ?"#
+                };
+                sqlx::query_as(sql)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+        };
+
+        Ok(prices)
+    }
+
+    /// Create or update a price (upsert)
+    pub async fn upsert(db: &Database, input: &PriceV2Input) -> Result<()> {
+        let conn = db.get_connection()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            r#"
+            INSERT INTO prices_v2 (
+                model, currency, input_price, output_price,
+                cache_read_input_price, cache_creation_input_price,
+                batch_input_price, batch_output_price,
+                priority_input_price, priority_output_price,
+                audio_input_price, source, region,
+                context_window, max_output_tokens,
+                supports_vision, supports_function_calling,
+                synced_at, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            ON CONFLICT(model, currency, region) DO UPDATE SET
+                input_price = EXCLUDED.input_price,
+                output_price = EXCLUDED.output_price,
+                cache_read_input_price = EXCLUDED.cache_read_input_price,
+                cache_creation_input_price = EXCLUDED.cache_creation_input_price,
+                batch_input_price = EXCLUDED.batch_input_price,
+                batch_output_price = EXCLUDED.batch_output_price,
+                priority_input_price = EXCLUDED.priority_input_price,
+                priority_output_price = EXCLUDED.priority_output_price,
+                audio_input_price = EXCLUDED.audio_input_price,
+                source = EXCLUDED.source,
+                context_window = EXCLUDED.context_window,
+                max_output_tokens = EXCLUDED.max_output_tokens,
+                supports_vision = EXCLUDED.supports_vision,
+                supports_function_calling = EXCLUDED.supports_function_calling,
+                synced_at = EXCLUDED.synced_at,
+                updated_at = EXCLUDED.updated_at
+            "#
+        } else {
+            r#"
+            INSERT INTO prices_v2 (
+                model, currency, input_price, output_price,
+                cache_read_input_price, cache_creation_input_price,
+                batch_input_price, batch_output_price,
+                priority_input_price, priority_output_price,
+                audio_input_price, source, region,
+                context_window, max_output_tokens,
+                supports_vision, supports_function_calling,
+                synced_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(model, currency, region) DO UPDATE SET
+                input_price = excluded.input_price,
+                output_price = excluded.output_price,
+                cache_read_input_price = excluded.cache_read_input_price,
+                cache_creation_input_price = excluded.cache_creation_input_price,
+                batch_input_price = excluded.batch_input_price,
+                batch_output_price = excluded.batch_output_price,
+                priority_input_price = excluded.priority_input_price,
+                priority_output_price = excluded.priority_output_price,
+                audio_input_price = excluded.audio_input_price,
+                source = excluded.source,
+                context_window = excluded.context_window,
+                max_output_tokens = excluded.max_output_tokens,
+                supports_vision = excluded.supports_vision,
+                supports_function_calling = excluded.supports_function_calling,
+                synced_at = excluded.synced_at,
+                updated_at = excluded.updated_at
+            "#
+        };
+
+        sqlx::query(sql)
+            .bind(&input.model)
+            .bind(&input.currency)
+            .bind(input.input_price)
+            .bind(input.output_price)
+            .bind(input.cache_read_input_price)
+            .bind(input.cache_creation_input_price)
+            .bind(input.batch_input_price)
+            .bind(input.batch_output_price)
+            .bind(input.priority_input_price)
+            .bind(input.priority_output_price)
+            .bind(input.audio_input_price)
+            .bind(&input.source)
+            .bind(&input.region)
+            .bind(input.context_window)
+            .bind(input.max_output_tokens)
+            .bind(input.supports_vision)
+            .bind(input.supports_function_calling)
+            .bind(now) // synced_at
+            .bind(now) // created_at
+            .bind(now) // updated_at
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Delete a price entry
+    pub async fn delete(db: &Database, model: &str, currency: &str, region: Option<&str>) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let result = match region {
+            Some(r) => {
+                let sql = if is_postgres {
+                    "DELETE FROM prices_v2 WHERE model = $1 AND currency = $2 AND region = $3"
+                } else {
+                    "DELETE FROM prices_v2 WHERE model = ? AND currency = ? AND region = ?"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .bind(currency)
+                    .bind(r)
+                    .execute(conn.pool())
+                    .await?
+            }
+            None => {
+                let sql = if is_postgres {
+                    "DELETE FROM prices_v2 WHERE model = $1 AND currency = $2 AND region IS NULL"
+                } else {
+                    "DELETE FROM prices_v2 WHERE model = ? AND currency = ? AND region IS NULL"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .bind(currency)
+                    .execute(conn.pool())
+                    .await?
+            }
+        };
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Delete all prices for a model
+    pub async fn delete_all_for_model(db: &Database, model: &str) -> Result<()> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "DELETE FROM prices_v2 WHERE model = $1",
+            _ => "DELETE FROM prices_v2 WHERE model = ?",
+        };
+
+        sqlx::query(sql).bind(model).execute(conn.pool()).await?;
+
+        Ok(())
+    }
+
+    /// Calculate cost for a request using PriceV2
+    /// Returns cost in the currency specified in the price entry
+    pub fn calculate_cost(price: &PriceV2, prompt_tokens: u64, completion_tokens: u64) -> f64 {
+        // Prices are per 1M tokens
+        let input_cost = (prompt_tokens as f64 / 1_000_000.0) * price.input_price;
+        let output_cost = (completion_tokens as f64 / 1_000_000.0) * price.output_price;
+        input_cost + output_cost
+    }
+}

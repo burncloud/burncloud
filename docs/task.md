@@ -1030,7 +1030,7 @@
         },
         {
             "id": "9.2",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P1",
             "description": "创建 prices_v2 多货币价格表",

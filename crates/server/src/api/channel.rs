@@ -53,6 +53,7 @@ impl ChannelDto {
             header_override: self.header_override,
             remark: None,
             api_version: self.api_version,
+            pricing_region: None,
         }
     }
 }

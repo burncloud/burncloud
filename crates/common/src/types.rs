@@ -473,6 +473,99 @@ pub struct FullPricing {
     pub additional_fields: HashMap<String, Value>,
 }
 
+/// Multi-currency price entry for prices_v2 table
+/// Supports USD, CNY, EUR and advanced pricing fields
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PriceV2 {
+    pub id: i32,
+    /// Model name
+    pub model: String,
+    /// Currency (USD, CNY, EUR)
+    pub currency: String,
+    /// Input price per 1M tokens
+    pub input_price: f64,
+    /// Output price per 1M tokens
+    pub output_price: f64,
+    /// Cache read input price per 1M tokens (for Prompt Caching)
+    pub cache_read_input_price: Option<f64>,
+    /// Cache creation input price per 1M tokens
+    pub cache_creation_input_price: Option<f64>,
+    /// Batch input price per 1M tokens (typically 50% of standard)
+    pub batch_input_price: Option<f64>,
+    /// Batch output price per 1M tokens
+    pub batch_output_price: Option<f64>,
+    /// Priority input price per 1M tokens (typically 170% of standard)
+    pub priority_input_price: Option<f64>,
+    /// Priority output price per 1M tokens
+    pub priority_output_price: Option<f64>,
+    /// Audio input price per 1M tokens (typically 7x text)
+    pub audio_input_price: Option<f64>,
+    /// Source of pricing data (litellm, manual, community, etc.)
+    pub source: Option<String>,
+    /// Region for pricing (cn, international, NULL for universal)
+    pub region: Option<String>,
+    /// Context window for the model
+    pub context_window: Option<i64>,
+    /// Maximum output tokens
+    pub max_output_tokens: Option<i64>,
+    /// Whether the model supports vision/image input
+    pub supports_vision: Option<bool>,
+    /// Whether the model supports function calling
+    pub supports_function_calling: Option<bool>,
+    /// Last sync timestamp
+    pub synced_at: Option<i64>,
+    /// Creation timestamp
+    pub created_at: Option<i64>,
+    /// Update timestamp
+    pub updated_at: Option<i64>,
+}
+
+/// Input for creating/updating a PriceV2 entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceV2Input {
+    pub model: String,
+    pub currency: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    pub cache_read_input_price: Option<f64>,
+    pub cache_creation_input_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub source: Option<String>,
+    pub region: Option<String>,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub supports_vision: Option<bool>,
+    pub supports_function_calling: Option<bool>,
+}
+
+impl Default for PriceV2Input {
+    fn default() -> Self {
+        Self {
+            model: String::new(),
+            currency: "USD".to_string(),
+            input_price: 0.0,
+            output_price: 0.0,
+            cache_read_input_price: None,
+            cache_creation_input_price: None,
+            batch_input_price: None,
+            batch_output_price: None,
+            priority_input_price: None,
+            priority_output_price: None,
+            audio_input_price: None,
+            source: None,
+            region: None,
+            context_window: None,
+            max_output_tokens: None,
+            supports_vision: None,
+            supports_function_calling: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod currency_tests {
     use super::*;

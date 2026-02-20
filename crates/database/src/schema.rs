@@ -424,6 +424,71 @@ impl Schema {
             _ => "",
         };
 
+        // 10. Prices V2 Table (multi-currency pricing with advanced pricing fields)
+        let prices_v2_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS prices_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model TEXT NOT NULL,
+                    currency TEXT NOT NULL DEFAULT 'USD',
+                    input_price REAL NOT NULL DEFAULT 0,
+                    output_price REAL NOT NULL DEFAULT 0,
+                    cache_read_input_price REAL,
+                    cache_creation_input_price REAL,
+                    batch_input_price REAL,
+                    batch_output_price REAL,
+                    priority_input_price REAL,
+                    priority_output_price REAL,
+                    audio_input_price REAL,
+                    source TEXT,
+                    region TEXT,
+                    context_window INTEGER,
+                    max_output_tokens INTEGER,
+                    supports_vision BOOLEAN DEFAULT 0,
+                    supports_function_calling BOOLEAN DEFAULT 0,
+                    synced_at INTEGER,
+                    created_at INTEGER,
+                    updated_at INTEGER,
+                    UNIQUE(model, currency, region)
+                );
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS prices_v2 (
+                    id SERIAL PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL,
+                    currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+                    input_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    output_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    cache_read_input_price DOUBLE PRECISION,
+                    cache_creation_input_price DOUBLE PRECISION,
+                    batch_input_price DOUBLE PRECISION,
+                    batch_output_price DOUBLE PRECISION,
+                    priority_input_price DOUBLE PRECISION,
+                    priority_output_price DOUBLE PRECISION,
+                    audio_input_price DOUBLE PRECISION,
+                    source VARCHAR(64),
+                    region VARCHAR(32),
+                    context_window BIGINT,
+                    max_output_tokens BIGINT,
+                    supports_vision BOOLEAN DEFAULT FALSE,
+                    supports_function_calling BOOLEAN DEFAULT FALSE,
+                    synced_at BIGINT,
+                    created_at BIGINT,
+                    updated_at BIGINT,
+                    UNIQUE(model, currency, region)
+                );
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
+            "#
+            }
+            _ => "",
+        };
+
         // Execute all
         if !users_sql.is_empty() {
             pool.execute(users_sql).await?;
@@ -451,6 +516,9 @@ impl Schema {
         }
         if !exchange_rates_sql.is_empty() {
             pool.execute(exchange_rates_sql).await?;
+        }
+        if !prices_v2_sql.is_empty() {
+            pool.execute(prices_v2_sql).await?;
         }
 
         // Migration: Add api_version column to channels if it doesn't exist
@@ -546,6 +614,91 @@ impl Schema {
             let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
                 .execute(pool)
                 .await;
+        }
+
+        // Migration: Add currency column to tiered_pricing table for multi-currency support
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE tiered_pricing ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE tiered_pricing ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Migrate existing prices to prices_v2 table (USD only)
+        // Only run if prices_v2 is empty but prices has data
+        let prices_v2_count: i64 = match kind.as_str() {
+            "sqlite" => sqlx::query_scalar("SELECT count(*) FROM prices_v2")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            "postgres" => sqlx::query_scalar("SELECT count(*) FROM prices_v2")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            _ => 0,
+        };
+
+        if prices_v2_count == 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+
+            // Insert from prices to prices_v2 (USD currency, no region)
+            let migrate_sql = match kind.as_str() {
+                "sqlite" => r#"
+                    INSERT INTO prices_v2 (
+                        model, currency, input_price, output_price,
+                        cache_read_input_price, cache_creation_input_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, source, region,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        model, 'USD', input_price, output_price,
+                        cache_read_price, cache_creation_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, NULL, NULL,
+                        ?, ?
+                    FROM prices
+                "#,
+                "postgres" => r#"
+                    INSERT INTO prices_v2 (
+                        model, currency, input_price, output_price,
+                        cache_read_input_price, cache_creation_input_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, source, region,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        model, 'USD', input_price, output_price,
+                        cache_read_price, cache_creation_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, NULL, NULL,
+                        $1, $2
+                    FROM prices
+                    ON CONFLICT (model, currency, region) DO NOTHING
+                "#,
+                _ => "",
+            };
+
+            if !migrate_sql.is_empty() {
+                let _ = sqlx::query(migrate_sql)
+                    .bind(now)
+                    .bind(now)
+                    .execute(pool)
+                    .await;
+                println!("Migrated existing prices to prices_v2 table");
+            }
         }
 
         // Init Root User if not exists
