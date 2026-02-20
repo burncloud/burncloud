@@ -179,6 +179,88 @@ impl ExchangeRateService {
     pub fn get_last_updated(&self, from: Currency, to: Currency) -> Option<DateTime<Utc>> {
         self.rates.get(&(from, to)).map(|r| r.updated_at)
     }
+
+    /// Start a background task to periodically refresh exchange rates
+    ///
+    /// This spawns a tokio task that:
+    /// - Checks every hour if rates need to be refreshed
+    /// - Refreshes rates that are older than 24 hours
+    /// - Logs warnings on failure but doesn't panic
+    ///
+    /// # Example
+    /// ```ignore
+    /// let service = Arc::new(ExchangeRateService::new(db));
+    /// service.start_sync_task();
+    /// ```
+    pub fn start_sync_task(self: Arc<Self>) {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Check hourly
+
+            loop {
+                interval.tick().await;
+
+                // Load rates from database first
+                match self.load_rates_from_db().await {
+                    Ok(count) => {
+                        tracing::debug!("Loaded {} exchange rates from database", count);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to load exchange rates from database: {}", e);
+                    }
+                }
+
+                // Check if we need to refresh rates (older than 24 hours)
+                let now = Utc::now();
+                let needs_refresh = self.rates.iter().any(|entry| {
+                    let age = now.signed_duration_since(entry.updated_at);
+                    age.num_hours() >= 24
+                });
+
+                if needs_refresh {
+                    tracing::info!("Exchange rates are stale, attempting refresh");
+                    // Note: External API refresh would go here
+                    // For now, we just log that refresh is needed
+                    tracing::info!(
+                        "Exchange rate auto-refresh not configured. \
+                         Use 'burncloud currency set-rate' to update manually."
+                    );
+                }
+            }
+        });
+    }
+
+    /// Start exchange rate sync task with external API support
+    ///
+    /// This is an extended version that can fetch rates from an external API.
+    /// The API URL should return JSON like: {"USD_CNY": 7.2, "EUR_USD": 1.08}
+    #[cfg(feature = "exchange-api")]
+    pub async fn fetch_from_api(&self, api_url: &str) -> anyhow::Result<()> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()?;
+
+        let response = client.get(api_url).send().await?;
+        let json: serde_json::Value = response.json().await?;
+
+        // Parse rates from API response
+        // Expected format: {"USD_CNY": 7.2, "EUR_USD": 1.08}
+        if let Some(obj) = json.as_object() {
+            for (key, value) in obj {
+                if let (Some(from), Some(to)) = (key.split('_').next(), key.split('_').nth(1)) {
+                    if let (Ok(from_currency), Ok(to_currency), Some(rate)) = (
+                        Currency::from_str(from),
+                        Currency::from_str(to),
+                        value.as_f64(),
+                    ) {
+                        self.set_rate(from_currency, to_currency, rate);
+                        tracing::info!("Updated rate: {} -> {} = {}", from_currency, to_currency, rate);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

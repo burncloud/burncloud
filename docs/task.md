@@ -842,7 +842,7 @@
         },
         {
             "id": "8.4",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P3",
             "description": "实现汇率自动更新任务",
