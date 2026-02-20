@@ -797,7 +797,7 @@
         },
         {
             "id": "8.3",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P2",
             "description": "实现汇率服务 ExchangeRateService",

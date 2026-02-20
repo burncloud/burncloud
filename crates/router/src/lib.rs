@@ -7,6 +7,7 @@ mod circuit_breaker;
 mod config;
 mod limiter;
 mod model_router;
+pub mod exchange_rate;
 pub mod notification;
 pub mod passthrough;
 pub mod price_sync;
