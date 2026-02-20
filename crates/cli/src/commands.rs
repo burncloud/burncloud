@@ -133,6 +133,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .long("offset")
                                 .default_value("0")
                                 .help("Offset for pagination"),
+                        )
+                        .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .help("Filter by currency (USD, CNY, EUR)"),
                         ),
                 )
                 .subcommand(
@@ -156,6 +161,37 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Output price per 1M tokens"),
                         )
                         .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .default_value("USD")
+                                .help("Currency for this price (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Region for this price (cn, international)"),
+                        )
+                        .arg(
+                            Arg::new("cache-read")
+                                .long("cache-read")
+                                .help("Cache read input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("cache-creation")
+                                .long("cache-creation")
+                                .help("Cache creation input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("batch-input")
+                                .long("batch-input")
+                                .help("Batch input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("batch-output")
+                                .long("batch-output")
+                                .help("Batch output price per 1M tokens"),
+                        )
+                        .arg(
                             Arg::new("alias")
                                 .long("alias")
                                 .help("Alias to another model's pricing"),
@@ -170,11 +206,35 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Model name"),
                         )
                         .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .help("Filter by currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
                             Arg::new("verbose")
                                 .short('v')
                                 .long("verbose")
                                 .action(clap::ArgAction::SetTrue)
                                 .help("Show tiered pricing configuration"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show detailed pricing information for a model including all currencies")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .help("Filter by currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
                         ),
                 )
                 .subcommand(
@@ -189,6 +249,46 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 .subcommand(
                     Command::new("sync-status")
                         .about("Show pricing sync status and advanced pricing statistics"),
+                )
+                .subcommand(
+                    Command::new("import")
+                        .about("Import pricing configuration from a JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("JSON file with pricing configuration"),
+                        )
+                        .arg(
+                            Arg::new("override")
+                                .long("override")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Override existing prices without confirmation"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("export")
+                        .about("Export pricing configuration to a JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("Output JSON file path"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("json")
+                                .value_parser(["json", "csv"])
+                                .help("Output format (json or csv)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("validate")
+                        .about("Validate a pricing configuration JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("JSON file to validate"),
+                        ),
                 ),
         )
         .subcommand(

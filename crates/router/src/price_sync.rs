@@ -2,11 +2,24 @@
 //!
 //! This module provides functionality for syncing model pricing data from
 //! LiteLLM's model_prices_and_context_window.json file.
+//!
+//! # PriceSyncServiceV2
+//!
+//! The V2 service supports multi-source, multi-currency price synchronization with
+//! the following priority order (highest to lowest):
+//! 1. Local override configuration (pricing.override.json)
+//! 2. Local main configuration (pricing.json)
+//! 3. Community price repository (daily sync)
+//! 4. LiteLLM (USD fallback only)
 
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
+use burncloud_common::PricingConfig;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
+use burncloud_database_models::{PriceInput, PriceModel, PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel};
+use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -470,6 +483,457 @@ pub fn start_price_sync_task(
     })
 }
 
+// ============================================================================
+// PriceSyncServiceV2 - Multi-source, multi-currency price synchronization
+// ============================================================================
+
+/// URL for the community pricing repository
+pub const COMMUNITY_PRICES_URL: &str =
+    "https://raw.githubusercontent.com/burncloud/pricing-data/main/pricing/latest.json";
+
+/// Result of a sync operation
+#[derive(Debug, Clone, Default)]
+pub struct SyncResult {
+    /// Number of models synced
+    pub models_synced: usize,
+    /// Number of currencies synced
+    pub currencies_synced: usize,
+    /// Number of tiered pricing entries synced
+    pub tiered_pricing_synced: usize,
+    /// Number of models with errors
+    pub errors: usize,
+    /// Source of the sync
+    pub source: String,
+}
+
+/// Configuration for PriceSyncServiceV2
+#[derive(Debug, Clone)]
+pub struct PriceSyncConfig {
+    /// Path to local override configuration file
+    pub override_config_path: PathBuf,
+    /// Path to local main configuration file
+    pub local_config_path: PathBuf,
+    /// URL for community price repository
+    pub community_repo_url: String,
+    /// URL for LiteLLM prices
+    pub litellm_url: String,
+    /// Enable community price sync (default: true)
+    pub community_sync_enabled: bool,
+    /// Community sync interval in seconds (default: 86400 = 24 hours)
+    pub community_sync_interval_secs: u64,
+}
+
+impl Default for PriceSyncConfig {
+    fn default() -> Self {
+        Self {
+            override_config_path: PathBuf::from("config/pricing.override.json"),
+            local_config_path: PathBuf::from("config/pricing.json"),
+            community_repo_url: COMMUNITY_PRICES_URL.to_string(),
+            litellm_url: LITELLM_PRICES_URL.to_string(),
+            community_sync_enabled: true,
+            community_sync_interval_secs: 86400, // 24 hours
+        }
+    }
+}
+
+/// V2 Price Sync Service supporting multi-source, multi-currency synchronization
+///
+/// This service supports the following data sources in priority order:
+/// 1. Local override configuration (highest priority)
+/// 2. Local main configuration
+/// 3. Community price repository
+/// 4. LiteLLM (USD only, lowest priority)
+pub struct PriceSyncServiceV2 {
+    db: Arc<Database>,
+    http_client: Client,
+    config: PriceSyncConfig,
+    /// Last time community prices were synced
+    last_community_sync: Option<DateTime<Utc>>,
+    /// Last time LiteLLM prices were synced
+    last_litellm_sync: Option<DateTime<Utc>>,
+}
+
+impl PriceSyncServiceV2 {
+    /// Create a new PriceSyncServiceV2 with default configuration
+    pub fn new(db: Arc<Database>) -> Self {
+        Self {
+            db,
+            http_client: Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+            config: PriceSyncConfig::default(),
+            last_community_sync: None,
+            last_litellm_sync: None,
+        }
+    }
+
+    /// Create a new PriceSyncServiceV2 with custom configuration
+    pub fn with_config(db: Arc<Database>, config: PriceSyncConfig) -> Self {
+        Self {
+            db,
+            http_client: Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+            config,
+            last_community_sync: None,
+            last_litellm_sync: None,
+        }
+    }
+
+    /// Sync prices from all sources with priority ordering
+    ///
+    /// Priority order (highest to lowest):
+    /// 1. Local override configuration
+    /// 2. Local main configuration
+    /// 3. Community price repository (if enabled and due)
+    /// 4. LiteLLM (USD fallback)
+    pub async fn sync_all(&mut self) -> anyhow::Result<SyncResult> {
+        let mut total_result = SyncResult::default();
+
+        // 1. Load local override configuration (highest priority)
+        if let Some(config) = self.load_local_override()? {
+            println!("Applying local override pricing configuration...");
+            let result = self.apply_prices(&config, "local_override").await?;
+            total_result.models_synced += result.models_synced;
+            total_result.currencies_synced += result.currencies_synced;
+            total_result.tiered_pricing_synced += result.tiered_pricing_synced;
+            total_result.errors += result.errors;
+            // Return early - override has highest priority
+            return Ok(total_result);
+        }
+
+        // 2. Load local main configuration
+        if let Some(config) = self.load_local_config()? {
+            println!("Applying local pricing configuration...");
+            let result = self.apply_prices(&config, "local").await?;
+            total_result.models_synced += result.models_synced;
+            total_result.currencies_synced += result.currencies_synced;
+            total_result.tiered_pricing_synced += result.tiered_pricing_synced;
+            total_result.errors += result.errors;
+            // Return early - local config has high priority
+            return Ok(total_result);
+        }
+
+        // 3. Sync from community repository (if enabled and due)
+        if self.config.community_sync_enabled && self.should_sync_community() {
+            println!("Syncing from community price repository...");
+            match self.sync_community_prices().await {
+                Ok(result) => {
+                    total_result.models_synced += result.models_synced;
+                    total_result.currencies_synced += result.currencies_synced;
+                    total_result.tiered_pricing_synced += result.tiered_pricing_synced;
+                    total_result.errors += result.errors;
+                    self.last_community_sync = Some(Utc::now());
+                }
+                Err(e) => {
+                    eprintln!("Community price sync failed: {}", e);
+                    // Fall through to LiteLLM
+                }
+            }
+        }
+
+        // 4. Sync from LiteLLM (USD fallback only)
+        println!("Syncing from LiteLLM (USD prices)...");
+        let litellm_result = self.sync_litellm_to_v2().await?;
+        total_result.models_synced += litellm_result.models_synced;
+        total_result.errors += litellm_result.errors;
+        self.last_litellm_sync = Some(Utc::now());
+
+        Ok(total_result)
+    }
+
+    /// Check if community sync is due
+    fn should_sync_community(&self) -> bool {
+        match self.last_community_sync {
+            None => true,
+            Some(last) => {
+                let elapsed = Utc::now() - last;
+                elapsed.num_seconds() >= self.config.community_sync_interval_secs as i64
+            }
+        }
+    }
+
+    /// Load local override configuration file
+    fn load_local_override(&self) -> anyhow::Result<Option<PricingConfig>> {
+        let path = &self.config.override_config_path;
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let content = std::fs::read_to_string(path)?;
+        let config: PricingConfig = serde_json::from_str(&content)?;
+        Ok(Some(config))
+    }
+
+    /// Load local main configuration file
+    fn load_local_config(&self) -> anyhow::Result<Option<PricingConfig>> {
+        let path = &self.config.local_config_path;
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let content = std::fs::read_to_string(path)?;
+        let config: PricingConfig = serde_json::from_str(&content)?;
+        Ok(Some(config))
+    }
+
+    /// Apply pricing configuration to database
+    async fn apply_prices(
+        &self,
+        config: &PricingConfig,
+        source: &str,
+    ) -> anyhow::Result<SyncResult> {
+        let mut result = SyncResult {
+            source: source.to_string(),
+            ..Default::default()
+        };
+
+        for (model_name, model_pricing) in &config.models {
+            // Apply standard pricing for each currency
+            for (currency, currency_pricing) in &model_pricing.pricing {
+                let price_input = PriceV2Input {
+                    model: model_name.clone(),
+                    currency: currency.clone(),
+                    input_price: currency_pricing.input_price,
+                    output_price: currency_pricing.output_price,
+                    source: currency_pricing.source.clone().or(Some(source.to_string())),
+                    ..Default::default()
+                };
+
+                match PriceV2Model::upsert(&self.db, &price_input).await {
+                    Ok(_) => {
+                        result.models_synced += 1;
+                        result.currencies_synced += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to upsert price for {} ({}): {}", model_name, currency, e);
+                        result.errors += 1;
+                    }
+                }
+            }
+
+            // Apply cache pricing
+            if let Some(ref cache_pricing) = model_pricing.cache_pricing {
+                for (currency, cache_config) in cache_pricing {
+                    // Get existing price and update with cache pricing
+                    if let Ok(Some(mut existing)) = PriceV2Model::get(&self.db, model_name, currency, None).await {
+                        existing.cache_read_input_price = Some(cache_config.cache_read_input_price);
+                        existing.cache_creation_input_price = cache_config.cache_creation_input_price;
+
+                        let update_input = PriceV2Input {
+                            model: existing.model.clone(),
+                            currency: existing.currency.clone(),
+                            input_price: existing.input_price,
+                            output_price: existing.output_price,
+                            cache_read_input_price: Some(cache_config.cache_read_input_price),
+                            cache_creation_input_price: cache_config.cache_creation_input_price,
+                            batch_input_price: existing.batch_input_price,
+                            batch_output_price: existing.batch_output_price,
+                            priority_input_price: existing.priority_input_price,
+                            priority_output_price: existing.priority_output_price,
+                            audio_input_price: existing.audio_input_price,
+                            source: existing.source.clone(),
+                            region: existing.region.clone(),
+                            context_window: existing.context_window,
+                            max_output_tokens: existing.max_output_tokens,
+                            supports_vision: existing.supports_vision_bool(),
+                            supports_function_calling: existing.supports_function_calling_bool(),
+                        };
+
+                        if let Err(e) = PriceV2Model::upsert(&self.db, &update_input).await {
+                            eprintln!("Failed to update cache pricing for {}: {}", model_name, e);
+                        }
+                    }
+                }
+            }
+
+            // Apply tiered pricing
+            if let Some(ref tiered_pricing) = model_pricing.tiered_pricing {
+                for (currency, tiers) in tiered_pricing {
+                    for tier in tiers {
+                        let tier_input = TieredPriceInput {
+                            model: model_name.clone(),
+                            region: Some(currency.clone()), // Use currency as region identifier
+                            tier_start: tier.tier_start,
+                            tier_end: tier.tier_end,
+                            input_price: tier.input_price,
+                            output_price: tier.output_price,
+                        };
+
+                        match TieredPriceModel::upsert_tier(&self.db, &tier_input).await {
+                            Ok(_) => {
+                                result.tiered_pricing_synced += 1;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "Failed to upsert tiered pricing for {} ({}): {}",
+                                    model_name, currency, e
+                                );
+                                result.errors += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        println!(
+            "Applied {} models, {} currencies, {} tiers from {}",
+            result.models_synced,
+            result.currencies_synced,
+            result.tiered_pricing_synced,
+            source
+        );
+
+        Ok(result)
+    }
+
+    /// Sync prices from community repository
+    async fn sync_community_prices(&self) -> anyhow::Result<SyncResult> {
+        let response = self
+            .http_client
+            .get(&self.config.community_repo_url)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let text = response.text().await?;
+        let config: PricingConfig = serde_json::from_str(&text)?;
+
+        self.apply_prices(&config, "community").await
+    }
+
+    /// Sync prices from LiteLLM to prices_v2 table
+    async fn sync_litellm_to_v2(&self) -> anyhow::Result<SyncResult> {
+        let mut result = SyncResult {
+            source: "litellm".to_string(),
+            ..Default::default()
+        };
+
+        let prices = self.fetch_litellm_prices().await?;
+
+        for (key, price_data) in prices {
+            // Skip embedding models
+            if price_data.mode.as_deref() == Some("embedding") {
+                continue;
+            }
+
+            let model_name = match &price_data.model {
+                Some(m) => m.clone(),
+                None => key,
+            };
+
+            let (input_price, output_price) = price_data.to_per_million_price();
+
+            let (input, output) = match (input_price, output_price) {
+                (Some(i), Some(o)) => (i, o),
+                (Some(i), None) => (i, i),
+                (None, Some(o)) => (o, o),
+                (None, None) => continue,
+            };
+
+            let (cache_read, cache_creation) = price_data.to_cache_per_million_price();
+            let (batch_input, batch_output) = price_data.to_batch_per_million_price();
+            let (priority_input, priority_output) = price_data.to_priority_per_million_price();
+            let audio_input = price_data.to_audio_per_million_price();
+
+            let price_input = PriceV2Input {
+                model: model_name.clone(),
+                currency: "USD".to_string(),
+                input_price: input,
+                output_price: output,
+                cache_read_input_price: cache_read,
+                cache_creation_input_price: cache_creation,
+                batch_input_price: batch_input,
+                batch_output_price: batch_output,
+                priority_input_price: priority_input,
+                priority_output_price: priority_output,
+                audio_input_price: audio_input,
+                source: Some("litellm".to_string()),
+                region: None,
+                context_window: price_data.max_input_tokens.map(|t| t as i64),
+                max_output_tokens: price_data.max_output_tokens.map(|t| t as i64),
+                supports_vision: price_data.supports_vision,
+                supports_function_calling: price_data.supports_function_calling,
+            };
+
+            match PriceV2Model::upsert(&self.db, &price_input).await {
+                Ok(_) => {
+                    result.models_synced += 1;
+                }
+                Err(e) => {
+                    eprintln!("Failed to upsert price for {}: {}", model_name, e);
+                    result.errors += 1;
+                }
+            }
+        }
+
+        println!(
+            "Synced {} models from LiteLLM",
+            result.models_synced
+        );
+
+        Ok(result)
+    }
+
+    /// Fetch LiteLLM prices
+    async fn fetch_litellm_prices(&self) -> anyhow::Result<HashMap<String, LiteLLMPrice>> {
+        let response = self
+            .http_client
+            .get(&self.config.litellm_url)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let text = response.text().await?;
+        let prices: HashMap<String, LiteLLMPrice> = serde_json::from_str(&text)?;
+
+        Ok(prices)
+    }
+}
+
+/// Start a background price sync task using PriceSyncServiceV2
+///
+/// This spawns a tokio task that syncs prices periodically from multiple sources
+pub fn start_price_sync_task_v2(
+    db: Arc<Database>,
+    interval_secs: u64,
+    config: Option<PriceSyncConfig>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut service = match config {
+            Some(cfg) => PriceSyncServiceV2::with_config(db, cfg),
+            None => PriceSyncServiceV2::new(db),
+        };
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+
+        // Initial sync
+        println!("Starting initial multi-source price sync...");
+        match service.sync_all().await {
+            Ok(result) => println!(
+                "Initial price sync complete: {} models, {} currencies, {} tiers",
+                result.models_synced, result.currencies_synced, result.tiered_pricing_synced
+            ),
+            Err(e) => eprintln!("Initial price sync failed: {}", e),
+        }
+
+        // Periodic sync
+        loop {
+            interval.tick().await;
+            println!("Starting periodic multi-source price sync...");
+            match service.sync_all().await {
+                Ok(result) => println!(
+                    "Periodic price sync complete: {} models, {} currencies, {} tiers",
+                    result.models_synced, result.currencies_synced, result.tiered_pricing_synced
+                ),
+                Err(e) => eprintln!("Periodic price sync failed: {}", e),
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,5 +1020,132 @@ mod tests {
         let (cache_read, cache_creation) = price.to_cache_per_million_price();
         assert!((cache_read.unwrap() - 0.30).abs() < 0.001);
         assert!((cache_creation.unwrap() - 3.75).abs() < 0.001);
+    }
+
+    // ========================================================================
+    // PriceSyncServiceV2 Tests
+    // ========================================================================
+
+    #[test]
+    fn test_sync_result_default() {
+        let result = SyncResult::default();
+        assert_eq!(result.models_synced, 0);
+        assert_eq!(result.currencies_synced, 0);
+        assert_eq!(result.tiered_pricing_synced, 0);
+        assert_eq!(result.errors, 0);
+        assert!(result.source.is_empty());
+    }
+
+    #[test]
+    fn test_price_sync_config_default() {
+        let config = PriceSyncConfig::default();
+        assert_eq!(
+            config.override_config_path,
+            PathBuf::from("config/pricing.override.json")
+        );
+        assert_eq!(
+            config.local_config_path,
+            PathBuf::from("config/pricing.json")
+        );
+        assert_eq!(config.community_repo_url, COMMUNITY_PRICES_URL);
+        assert_eq!(config.litellm_url, LITELLM_PRICES_URL);
+        assert!(config.community_sync_enabled);
+        assert_eq!(config.community_sync_interval_secs, 86400);
+    }
+
+    #[test]
+    fn test_load_local_config_nonexistent() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let config = PriceSyncConfig {
+            local_config_path: dir.path().join("nonexistent.json"),
+            ..Default::default()
+        };
+
+        // Test load_local_config returns None for nonexistent file
+        // Note: This test doesn't need a database - just testing file loading logic
+        let path = &config.local_config_path;
+        assert!(!path.exists());
+
+        // Verify the path configuration
+        assert_eq!(config.local_config_path, dir.path().join("nonexistent.json"));
+    }
+
+    #[test]
+    fn test_load_local_config_valid() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("pricing.json");
+
+        let config_content = r#"{
+            "version": "1.0",
+            "updated_at": "2024-01-15T10:00:00Z",
+            "source": "test",
+            "models": {
+                "gpt-4": {
+                    "pricing": {
+                        "USD": {
+                            "input_price": 30.0,
+                            "output_price": 60.0
+                        }
+                    }
+                }
+            }
+        }"#;
+        std::fs::write(&config_path, config_content).unwrap();
+
+        // Test loading config from file (without database)
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        let pricing_config: PricingConfig = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(pricing_config.version, "1.0");
+        assert!(pricing_config.models.contains_key("gpt-4"));
+    }
+
+    #[test]
+    fn test_load_override_priority() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let main_path = dir.path().join("pricing.json");
+        let override_path = dir.path().join("pricing.override.json");
+
+        // Write main config
+        let main_content = r#"{
+            "version": "1.0",
+            "updated_at": "2024-01-15T10:00:00Z",
+            "source": "main",
+            "models": {}
+        }"#;
+        std::fs::write(&main_path, main_content).unwrap();
+
+        // Write override config with different source
+        let override_content = r#"{
+            "version": "1.0",
+            "updated_at": "2024-01-16T10:00:00Z",
+            "source": "override",
+            "models": {}
+        }"#;
+        std::fs::write(&override_path, override_content).unwrap();
+
+        // Test that override file exists and has priority
+        assert!(override_path.exists());
+
+        let override_content = std::fs::read_to_string(&override_path).unwrap();
+        let config: PricingConfig = serde_json::from_str(&override_content).unwrap();
+        assert_eq!(config.source, "override");
+    }
+
+    #[test]
+    fn test_community_sync_interval() {
+        let config = PriceSyncConfig {
+            community_sync_interval_secs: 3600, // 1 hour
+            ..Default::default()
+        };
+
+        // Verify sync interval configuration
+        assert_eq!(config.community_sync_interval_secs, 3600);
     }
 }

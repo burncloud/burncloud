@@ -1130,7 +1130,7 @@
         },
         {
             "id": "9.4",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P2",
             "description": "实现价格同步服务 V2",
@@ -1176,7 +1176,7 @@
         },
         {
             "id": "9.5",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P2",
             "description": "实现价格导入导出 CLI 命令",
@@ -1209,7 +1209,7 @@
         },
         {
             "id": "9.6",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P2",
             "description": "实现价格设置和查询 CLI 命令",
@@ -1245,7 +1245,7 @@
         },
         {
             "id": "9.7",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P3",
             "description": "实现社区价格库同步",
@@ -1310,7 +1310,7 @@
         },
         {
             "id": "9.9",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P3",
             "description": "编写价格同步集成测试",

@@ -1410,11 +1410,25 @@ pub struct PriceV2 {
     pub region: Option<String>,
     pub context_window: Option<i64>,
     pub max_output_tokens: Option<i64>,
-    pub supports_vision: Option<bool>,
-    pub supports_function_calling: Option<bool>,
+    #[sqlx(default)]
+    pub supports_vision: Option<i32>, // SQLite stores booleans as INTEGER
+    #[sqlx(default)]
+    pub supports_function_calling: Option<i32>,
     pub synced_at: Option<i64>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+}
+
+impl PriceV2 {
+    /// Check if vision is supported
+    pub fn supports_vision_bool(&self) -> Option<bool> {
+        self.supports_vision.map(|v| v != 0)
+    }
+
+    /// Check if function calling is supported
+    pub fn supports_function_calling_bool(&self) -> Option<bool> {
+        self.supports_function_calling.map(|v| v != 0)
+    }
 }
 
 /// Input for creating/updating a PriceV2 entry
@@ -1750,8 +1764,8 @@ impl PriceV2Model {
             .bind(&input.region)
             .bind(input.context_window)
             .bind(input.max_output_tokens)
-            .bind(input.supports_vision)
-            .bind(input.supports_function_calling)
+            .bind(input.supports_vision.map(|v| v as i32))
+            .bind(input.supports_function_calling.map(|v| v as i32))
             .bind(now) // synced_at
             .bind(now) // created_at
             .bind(now) // updated_at
