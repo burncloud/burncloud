@@ -970,7 +970,7 @@
         },
         {
             "id": "9.1",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P1",
             "description": "定义 pricing.json Schema 和数据结构",
