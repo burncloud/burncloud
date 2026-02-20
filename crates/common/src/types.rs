@@ -223,6 +223,7 @@ pub struct Channel {
     pub header_override: Option<String>,
     pub remark: Option<String>,
     pub api_version: Option<String>, // API version for protocol adaptation
+    pub pricing_region: Option<String>, // Pricing region: 'cn', 'international', or NULL for universal
                                      // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
@@ -356,4 +357,43 @@ pub struct ResponseMapping {
     pub usage_path: Option<String>,
     /// Path to extract error message
     pub error_path: Option<String>,
+}
+
+/// Tiered pricing configuration for models with usage-based pricing tiers
+/// (e.g., Qwen models with different prices based on context length)
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TieredPrice {
+    pub id: i32,
+    /// Model name
+    pub model: String,
+    /// Region for pricing (e.g., "cn", "international", NULL for universal)
+    pub region: Option<String>,
+    /// Starting token count for this tier
+    pub tier_start: i64,
+    /// Ending token count for this tier (NULL means no upper limit)
+    pub tier_end: Option<i64>,
+    /// Input price per 1M tokens for this tier
+    pub input_price: f64,
+    /// Output price per 1M tokens for this tier
+    pub output_price: f64,
+}
+
+/// Input for creating/updating a tiered price
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TieredPriceInput {
+    pub model: String,
+    pub region: Option<String>,
+    pub tier_start: i64,
+    pub tier_end: Option<i64>,
+    pub input_price: f64,
+    pub output_price: f64,
+}
+
+/// Full pricing configuration for extensibility
+/// Used for the full_pricing JSON blob in prices table
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FullPricing {
+    /// Additional pricing fields not covered by dedicated columns
+    #[serde(default)]
+    pub additional_fields: HashMap<String, Value>,
 }

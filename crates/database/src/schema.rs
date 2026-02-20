@@ -427,6 +427,20 @@ impl Schema {
                 .await;
         }
 
+        // Migration: Add pricing_region column to channels if it doesn't exist
+        // Supports 'cn', 'international', and NULL (universal)
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE channels ADD COLUMN pricing_region VARCHAR(32) DEFAULT 'international'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS pricing_region VARCHAR(32) DEFAULT 'international'")
+                .execute(pool)
+                .await;
+        }
+
         // Migration: Add advanced pricing columns to prices table if they don't exist
         // Note: full_pricing is TEXT, others are REAL/DOUBLE PRECISION
         let advanced_pricing_columns_real = [

@@ -538,7 +538,7 @@
         },
         {
             "id": "4.2",
-            "passes": null,
+            "passes": true,
             "category": "phase4-integration",
             "priority": "P3",
             "description": "实现区域定价支持",
