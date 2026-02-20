@@ -616,7 +616,7 @@
         },
         {
             "id": "6.1",
-            "passes": null,
+            "passes": true,
             "category": "phase6-tests",
             "priority": "P2",
             "description": "编写阶梯计费单元测试",
@@ -638,7 +638,7 @@
         },
         {
             "id": "6.2",
-            "passes": null,
+            "passes": true,
             "category": "phase6-tests",
             "priority": "P2",
             "description": "编写缓存计费单元测试",
