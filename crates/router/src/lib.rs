@@ -473,8 +473,15 @@ async fn proxy_handler(
 
     // Calculate cost if we have token usage
     let cost = if prompt_tokens > 0 || completion_tokens > 0 {
-        if let Some(model) = model_name {
-            if let Ok(Some(price)) = PriceModel::get(&state.db, &model).await {
+        if let Some(model) = &model_name {
+            // Try to get price and check for tiered pricing
+            let price_result = PriceModel::get(&state.db, model).await;
+            let tiered_result = burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model).await;
+
+            // Check if model has tiered pricing
+            let has_tiered = matches!(tiered_result, Ok(true));
+
+            if let Ok(Some(price)) = price_result {
                 // Build advanced pricing struct
                 let pricing = billing::AdvancedPricing {
                     input_price: price.input_price,
@@ -488,7 +495,7 @@ async fn proxy_handler(
                     audio_input_price: price.audio_input_price,
                 };
 
-                // Determine billing type with priority: cache > priority > batch > standard
+                // Determine billing type with priority: cache > tiered > priority > batch > standard
                 if cache_read_tokens > 0 || cache_creation_tokens > 0 {
                     // Use advanced pricing with cache cost calculation
                     let usage = billing::TokenUsage {
@@ -500,6 +507,36 @@ async fn proxy_handler(
                     };
 
                     billing::calculate_cache_cost(&usage, &pricing)
+                } else if has_tiered {
+                    // Use tiered pricing for models with usage-based tiers (e.g., Qwen)
+                    match burncloud_database_models::TieredPriceModel::get_tiers(&state.db, model, None).await {
+                        Ok(tiers) if !tiers.is_empty() => {
+                            // Convert database TieredPrice to billing TieredPrice
+                            let billing_tiers: Vec<burncloud_common::types::TieredPrice> = tiers
+                                .into_iter()
+                                .map(|t| burncloud_common::types::TieredPrice {
+                                    id: t.id,
+                                    model: t.model,
+                                    region: t.region,
+                                    tier_start: t.tier_start,
+                                    tier_end: t.tier_end,
+                                    input_price: t.input_price,
+                                    output_price: t.output_price,
+                                })
+                                .collect();
+
+                            match billing::calculate_tiered_cost_full(
+                                prompt_tokens as u64,
+                                completion_tokens as u64,
+                                &billing_tiers,
+                                None,
+                            ) {
+                                Ok(cost) => cost,
+                                Err(_) => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                            }
+                        }
+                        _ => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                    }
                 } else if is_priority_request {
                     // Use priority pricing for high-priority requests
                     billing::calculate_priority_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)

@@ -512,7 +512,7 @@
         },
         {
             "id": "4.1",
-            "passes": null,
+            "passes": true,
             "category": "phase4-integration",
             "priority": "P2",
             "description": "集成高级计费到 proxy_handler",
