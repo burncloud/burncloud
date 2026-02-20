@@ -184,6 +184,9 @@ impl ExchangeRateService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     /// Create a mock database for testing
     /// Since ExchangeRateService tests only use in-memory cache, we can use a minimal mock
@@ -195,9 +198,23 @@ mod tests {
         use burncloud_database::Database;
         use std::sync::Arc;
 
-        // Use tokio runtime to create database
+        // Use tokio runtime to create database with unique path
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let db = rt.block_on(async { Database::new().await.unwrap() });
+        let db = rt.block_on(async {
+            // Generate unique database path to avoid conflicts between tests
+            let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+            let db_path = format!("/tmp/burncloud_test_exchange_rate_{}_{}.db",
+                std::process::id(), test_id);
+
+            // Remove existing test db if exists
+            let _ = std::fs::remove_file(&db_path);
+
+            // Set environment variable for database path
+            std::env::set_var("BURNCLOUD_DATABASE_URL", format!("sqlite://{}?mode=rwc", db_path));
+
+            let db = Database::new().await.unwrap();
+            db
+        });
         ExchangeRateService::new(Arc::new(db))
     }
 

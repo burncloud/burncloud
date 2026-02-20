@@ -870,7 +870,7 @@
         },
         {
             "id": "8.5",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P2",
             "description": "集成多货币到计费逻辑",

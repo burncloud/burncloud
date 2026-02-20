@@ -6,8 +6,10 @@
 //! - Batch pricing (Batch API)
 //! - Priority pricing (high-priority requests)
 //! - Audio token pricing
+//! - Multi-currency support
 
 use burncloud_common::types::TieredPrice;
+use burncloud_common::Currency;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -91,6 +93,68 @@ fn format_cost(amount: f64, currency: &str) -> String {
         _ => "",
     };
     format!("{}{:.6}", symbol, amount)
+}
+
+/// Multi-currency pricing information
+#[derive(Debug, Clone, Default)]
+pub struct MultiCurrencyPricing {
+    /// Pricing in USD (required)
+    pub usd: AdvancedPricing,
+    /// Pricing in local currency (optional)
+    pub local: Option<(Currency, AdvancedPricing)>,
+    /// Exchange rate from USD to local currency (if available)
+    pub exchange_rate: Option<f64>,
+}
+
+/// Calculate cost with multi-currency support
+///
+/// Returns cost in both USD and local currency if available.
+/// Internal calculations are done in USD for precision, then converted.
+pub fn calculate_multi_currency_cost(
+    usage: &TokenUsage,
+    pricing: &MultiCurrencyPricing,
+    is_batch: bool,
+    is_priority: bool,
+) -> CostResult {
+    // Calculate base cost in USD
+    let usd_cost = if is_batch {
+        calculate_batch_cost(usage.prompt_tokens, usage.completion_tokens, &pricing.usd)
+    } else if is_priority {
+        calculate_priority_cost(usage.prompt_tokens, usage.completion_tokens, &pricing.usd)
+    } else if usage.cache_read_tokens > 0 || usage.cache_creation_tokens > 0 || usage.audio_tokens > 0 {
+        calculate_cache_cost(usage, &pricing.usd)
+    } else {
+        // Standard pricing
+        let input_cost = (usage.prompt_tokens as f64 / 1_000_000.0) * pricing.usd.input_price;
+        let output_cost = (usage.completion_tokens as f64 / 1_000_000.0) * pricing.usd.output_price;
+        ((input_cost + output_cost) * 1_000_000.0).round() / 1_000_000.0
+    };
+
+    // If we have local currency pricing, use it
+    if let Some((local_currency, local_pricing)) = &pricing.local {
+        let local_cost = if is_batch {
+            calculate_batch_cost(usage.prompt_tokens, usage.completion_tokens, local_pricing)
+        } else if is_priority {
+            calculate_priority_cost(usage.prompt_tokens, usage.completion_tokens, local_pricing)
+        } else if usage.cache_read_tokens > 0 || usage.cache_creation_tokens > 0 || usage.audio_tokens > 0 {
+            calculate_cache_cost(usage, local_pricing)
+        } else {
+            let input_cost = (usage.prompt_tokens as f64 / 1_000_000.0) * local_pricing.input_price;
+            let output_cost = (usage.completion_tokens as f64 / 1_000_000.0) * local_pricing.output_price;
+            ((input_cost + output_cost) * 1_000_000.0).round() / 1_000_000.0
+        };
+
+        return CostResult::with_local(usd_cost, local_currency.code(), local_cost);
+    }
+
+    // If we have exchange rate but no local pricing, convert from USD
+    if let Some(rate) = pricing.exchange_rate {
+        // Use a default local currency (CNY for now, could be made configurable)
+        let local_amount = usd_cost * rate;
+        return CostResult::with_local(usd_cost, "CNY", local_amount);
+    }
+
+    CostResult::from_usd(usd_cost)
 }
 
 /// Calculate cost for tiered pricing
@@ -640,5 +704,143 @@ mod tests {
         // For now, output is calculated at first tier price
         // This test verifies the function works
         assert!(cost > 0.0);
+    }
+
+    #[test]
+    fn test_multi_currency_with_local_pricing() {
+        let usage = TokenUsage {
+            prompt_tokens: 1_000_000,
+            completion_tokens: 500_000,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 1.2,  // USD per 1M tokens
+            output_price: 6.0,
+            ..Default::default()
+        };
+
+        let cny_pricing = AdvancedPricing {
+            input_price: 0.359,  // CNY per 1M tokens (cheaper for CN region)
+            output_price: 1.434,
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing,
+            local: Some((Currency::CNY, cny_pricing)),
+            exchange_rate: None,
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
+
+        // USD: 1M × $1.2 + 0.5M × $6.0 = $1.2 + $3.0 = $4.2
+        assert!((result.usd_amount - 4.2).abs() < 0.000001);
+
+        // CNY: 1M × ¥0.359 + 0.5M × ¥1.434 = ¥0.359 + ¥0.717 = ¥1.076
+        let expected_cny = 0.359 + 0.717;
+        assert!((result.local_amount.unwrap() - expected_cny).abs() < 0.000001);
+        assert_eq!(result.local_currency, "CNY");
+    }
+
+    #[test]
+    fn test_multi_currency_with_exchange_rate() {
+        let usage = TokenUsage {
+            prompt_tokens: 1_000_000,
+            completion_tokens: 0,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 1.0,
+            output_price: 4.0,
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing,
+            local: None,
+            exchange_rate: Some(7.2),  // 1 USD = 7.2 CNY
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
+
+        // USD: 1M × $1.0 = $1.0
+        assert!((result.usd_amount - 1.0).abs() < 0.000001);
+
+        // CNY via exchange rate: $1.0 × 7.2 = ¥7.2
+        assert!((result.local_amount.unwrap() - 7.2).abs() < 0.000001);
+    }
+
+    #[test]
+    fn test_multi_currency_batch() {
+        let usage = TokenUsage {
+            prompt_tokens: 1_000_000,
+            completion_tokens: 1_000_000,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 10.0,
+            output_price: 30.0,
+            batch_input_price: Some(5.0),
+            batch_output_price: Some(15.0),
+            ..Default::default()
+        };
+
+        let cny_pricing = AdvancedPricing {
+            input_price: 70.0,
+            output_price: 210.0,
+            batch_input_price: Some(35.0),
+            batch_output_price: Some(105.0),
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing,
+            local: Some((Currency::CNY, cny_pricing)),
+            exchange_rate: None,
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, true, false);
+
+        // USD batch: $5 + $15 = $20
+        assert!((result.usd_amount - 20.0).abs() < 0.000001);
+
+        // CNY batch: ¥35 + ¥105 = ¥140
+        assert!((result.local_amount.unwrap() - 140.0).abs() < 0.000001);
+    }
+
+    #[test]
+    fn test_multi_currency_cache() {
+        let usage = TokenUsage {
+            prompt_tokens: 100_000,
+            completion_tokens: 50_000,
+            cache_read_tokens: 50_000,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 3.0,
+            output_price: 15.0,
+            cache_read_price: Some(0.30),
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing.clone(),
+            local: None,
+            exchange_rate: Some(7.2),
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
+
+        // Verify cache cost is calculated
+        // Standard: 50K × $3.0 + 50K × $15.0 + 50K × $0.30 = $0.15 + $0.75 + $0.015 = $0.915
+        assert!((result.usd_amount - 0.915).abs() < 0.000001);
+
+        // With exchange rate, local amount should be USD × rate
+        let expected_local = result.usd_amount * 7.2;
+        assert!((result.local_amount.unwrap() - expected_local).abs() < 0.000001);
     }
 }
