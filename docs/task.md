@@ -1094,7 +1094,7 @@
         },
         {
             "id": "9.3",
-            "passes": null,
+            "passes": true,
             "category": "phase9-pricing-source",
             "priority": "P2",
             "description": "实现本地配置文件加载服务",

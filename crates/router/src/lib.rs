@@ -10,6 +10,7 @@ mod model_router;
 pub mod notification;
 pub mod passthrough;
 pub mod price_sync;
+pub mod pricing_loader;
 pub mod response_parser;
 pub mod stream_parser;
 pub mod token_counter;

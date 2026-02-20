@@ -35,6 +35,7 @@ regex = "1.12.3"
 mockito = "1.7.1"
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = "3"
 
 [[example]]
 name = "configure_apikey_test"
