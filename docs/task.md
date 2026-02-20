@@ -657,7 +657,7 @@
         },
         {
             "id": "6.3",
-            "passes": null,
+            "passes": true,
             "category": "phase6-tests",
             "priority": "P2",
             "description": "编写价格同步集成测试",
