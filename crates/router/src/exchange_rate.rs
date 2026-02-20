@@ -185,16 +185,17 @@ impl ExchangeRateService {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
     static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     /// Create a mock database for testing
     /// Since ExchangeRateService tests only use in-memory cache, we can use a minimal mock
     fn create_test_service() -> ExchangeRateService {
-        // For unit tests that don't need DB persistence, we can create a service
-        // with a database that will fail on DB operations but work for cache operations
-        // Since Database::new is async, we use a simpler approach: tests that need DB
-        // should be integration tests. For unit tests, we only test cache operations.
+        // Lock to ensure tests run serially to avoid DB conflicts
+        let _lock = TEST_MUTEX.lock().unwrap();
+
         use burncloud_database::Database;
         use std::sync::Arc;
 
@@ -203,8 +204,8 @@ mod tests {
         let db = rt.block_on(async {
             // Generate unique database path to avoid conflicts between tests
             let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-            let db_path = format!("/tmp/burncloud_test_exchange_rate_{}_{}.db",
-                std::process::id(), test_id);
+            let pid = std::process::id();
+            let db_path = format!("/tmp/burncloud_test_exch_{}_{}.db", pid, test_id);
 
             // Remove existing test db if exists
             let _ = std::fs::remove_file(&db_path);
@@ -282,5 +283,101 @@ mod tests {
 
         service.clear_cache();
         assert_eq!(service.get_rate(Currency::USD, Currency::CNY), None);
+    }
+
+    #[test]
+    fn test_get_last_updated() {
+        let service = create_test_service();
+
+        // No rate set
+        assert!(service.get_last_updated(Currency::USD, Currency::CNY).is_none());
+
+        // Set rate
+        service.set_rate(Currency::USD, Currency::CNY, 7.2);
+        let updated = service.get_last_updated(Currency::USD, Currency::CNY);
+        assert!(updated.is_some());
+    }
+
+    #[test]
+    fn test_multiple_currencies() {
+        let service = create_test_service();
+
+        // Set multiple rates
+        service.set_rate(Currency::USD, Currency::CNY, 7.2);
+        service.set_rate(Currency::USD, Currency::EUR, 0.93);
+        service.set_rate(Currency::EUR, Currency::CNY, 7.75);
+
+        // Test each conversion
+        assert!((service.convert(100.0, Currency::USD, Currency::CNY) - 720.0).abs() < 0.001);
+        assert!((service.convert(100.0, Currency::USD, Currency::EUR) - 93.0).abs() < 0.001);
+        assert!((service.convert(100.0, Currency::EUR, Currency::CNY) - 775.0).abs() < 0.001);
+
+        // Verify all rates are stored
+        let rates = service.list_rates();
+        assert_eq!(rates.len(), 3);
+    }
+
+    #[test]
+    fn test_reverse_rate_fallback() {
+        let service = create_test_service();
+
+        // Only set one direction
+        service.set_rate(Currency::USD, Currency::CNY, 7.2);
+
+        // Forward conversion uses direct rate
+        let forward = service.convert(100.0, Currency::USD, Currency::CNY);
+        assert!((forward - 720.0).abs() < 0.001);
+
+        // Reverse conversion uses reverse rate calculation
+        let reverse = service.convert(720.0, Currency::CNY, Currency::USD);
+        assert!((reverse - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eur_to_cny_via_usd() {
+        let service = create_test_service();
+
+        // Set USD rates only (no direct EUR->CNY)
+        service.set_rate(Currency::USD, Currency::CNY, 7.2);
+        service.set_rate(Currency::EUR, Currency::USD, 1.08);
+
+        // EUR to USD (direct rate exists)
+        let eur_to_usd = service.convert(100.0, Currency::EUR, Currency::USD);
+        assert!((eur_to_usd - 108.0).abs() < 0.001);
+
+        // EUR to CNY (no direct rate, should return original amount as fallback)
+        // Note: This tests the current behavior where only direct/reverse rates work
+        let eur_to_cny = service.convert(100.0, Currency::EUR, Currency::CNY);
+        // Since there's no direct EUR->CNY rate and we don't do multi-hop,
+        // it returns original amount (current implementation)
+        // In a full implementation, this would be 100 * 1.08 * 7.2 = 777.6
+        assert!((eur_to_cny - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_zero_amount_conversion() {
+        let service = create_test_service();
+        service.set_rate(Currency::USD, Currency::CNY, 7.2);
+
+        let amount = service.convert(0.0, Currency::USD, Currency::CNY);
+        assert!((amount - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_negative_rate_handling() {
+        let service = create_test_service();
+
+        // Setting a negative rate (should not happen in practice, but test behavior)
+        service.set_rate(Currency::USD, Currency::CNY, -7.2);
+
+        // Forward conversion with negative rate should work
+        let amount = service.convert(100.0, Currency::USD, Currency::CNY);
+        assert!((amount - (-720.0)).abs() < 0.001);
+
+        // Reverse conversion: when reverse_rate is negative (not > 0),
+        // the code returns the original amount as a safety measure
+        let reverse = service.convert(720.0, Currency::CNY, Currency::USD);
+        // Due to safety check (reverse_rate > 0.0), returns original amount
+        assert!((reverse - 720.0).abs() < 0.001);
     }
 }

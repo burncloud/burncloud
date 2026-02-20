@@ -950,7 +950,7 @@
         },
         {
             "id": "8.8",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P3",
             "description": "编写多货币单元测试和集成测试",

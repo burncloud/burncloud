@@ -843,4 +843,160 @@ mod tests {
         let expected_local = result.usd_amount * 7.2;
         assert!((result.local_amount.unwrap() - expected_local).abs() < 0.000001);
     }
+
+    #[test]
+    fn test_multi_currency_priority() {
+        let usage = TokenUsage {
+            prompt_tokens: 1_000_000,
+            completion_tokens: 500_000,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 10.0,
+            output_price: 30.0,
+            priority_input_price: Some(17.0),
+            priority_output_price: Some(51.0),
+            ..Default::default()
+        };
+
+        let cny_pricing = AdvancedPricing {
+            input_price: 70.0,
+            output_price: 210.0,
+            priority_input_price: Some(119.0),
+            priority_output_price: Some(357.0),
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing,
+            local: Some((Currency::CNY, cny_pricing)),
+            exchange_rate: None,
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, true);
+
+        // USD priority: $17 + $25.5 = $42.5
+        let expected_usd = 1.0 * 17.0 + 0.5 * 51.0;
+        assert!((result.usd_amount - expected_usd).abs() < 0.000001);
+
+        // CNY priority: ¥119 + ¥178.5 = ¥297.5
+        let expected_cny = 1.0 * 119.0 + 0.5 * 357.0;
+        assert!((result.local_amount.unwrap() - expected_cny).abs() < 0.000001);
+    }
+
+    #[test]
+    fn test_multi_currency_fallback_to_usd_only() {
+        let usage = TokenUsage {
+            prompt_tokens: 1_000_000,
+            completion_tokens: 0,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 1.0,
+            output_price: 4.0,
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing,
+            local: None,
+            exchange_rate: None,
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
+
+        // USD only: $1.0
+        assert!((result.usd_amount - 1.0).abs() < 0.000001);
+        assert!(result.local_amount.is_none());
+        assert_eq!(result.local_currency, "USD");
+    }
+
+    #[test]
+    fn test_multi_currency_eur_local() {
+        let usage = TokenUsage {
+            prompt_tokens: 500_000,
+            completion_tokens: 500_000,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 10.0,
+            output_price: 30.0,
+            ..Default::default()
+        };
+
+        let eur_pricing = AdvancedPricing {
+            input_price: 9.3,  // ~1 EUR = 1.08 USD
+            output_price: 27.9,
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing,
+            local: Some((Currency::EUR, eur_pricing)),
+            exchange_rate: None,
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
+
+        // USD: 0.5 × $10 + 0.5 × $30 = $5 + $15 = $20
+        assert!((result.usd_amount - 20.0).abs() < 0.000001);
+
+        // EUR: 0.5 × €9.3 + 0.5 × €27.9 = €4.65 + €13.95 = €18.6
+        assert!((result.local_amount.unwrap() - 18.6).abs() < 0.000001);
+        assert_eq!(result.local_currency, "EUR");
+    }
+
+    #[test]
+    fn test_multi_currency_audio_tokens() {
+        let usage = TokenUsage {
+            prompt_tokens: 50_000,
+            completion_tokens: 10_000,
+            audio_tokens: 10_000,
+            ..Default::default()
+        };
+
+        let usd_pricing = AdvancedPricing {
+            input_price: 1.0,
+            output_price: 4.0,
+            audio_input_price: Some(7.0),  // Audio tokens cost 7x
+            ..Default::default()
+        };
+
+        let cny_pricing = AdvancedPricing {
+            input_price: 7.0,
+            output_price: 28.0,
+            audio_input_price: Some(49.0),
+            ..Default::default()
+        };
+
+        let multi_pricing = MultiCurrencyPricing {
+            usd: usd_pricing,
+            local: Some((Currency::CNY, cny_pricing)),
+            exchange_rate: None,
+        };
+
+        let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
+
+        // USD: (50K × $1 + 10K × $4 + 10K × $7) / 1M = $0.05 + $0.04 + $0.07 = $0.16
+        let expected_usd = 0.05 + 0.04 + 0.07;
+        assert!((result.usd_amount - expected_usd).abs() < 0.000001);
+
+        // CNY: (50K × ¥7 + 10K × ¥28 + 10K × ¥49) / 1M = ¥0.35 + ¥0.28 + ¥0.49 = ¥1.12
+        let expected_cny = 0.35 + 0.28 + 0.49;
+        assert!((result.local_amount.unwrap() - expected_cny).abs() < 0.000001);
+    }
+
+    #[test]
+    fn test_multi_currency_display_formatting() {
+        let result = CostResult::with_local(1.0, "EUR", 0.93);
+        assert!(result.display.contains("€"));
+        assert!(result.display.contains("0.93"));
+
+        let result_usd = CostResult::from_usd(1.0);
+        assert!(result_usd.display.contains("$"));
+        assert!(result_usd.display.contains("1.0"));
+    }
 }
