@@ -7,6 +7,7 @@ use log::{error, info};
 use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
+use crate::currency::handle_currency_command;
 use crate::price::{handle_price_command, handle_tiered_command};
 use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
@@ -480,6 +481,62 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Model name to test with"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("currency")
+                .about("Manage exchange rates and currency conversion")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list-rates")
+                        .about("List all exchange rates"),
+                )
+                .subcommand(
+                    Command::new("set-rate")
+                        .about("Set an exchange rate")
+                        .arg(
+                            Arg::new("from")
+                                .long("from")
+                                .required(true)
+                                .help("Source currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("to")
+                                .long("to")
+                                .required(true)
+                                .help("Target currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("rate")
+                                .long("rate")
+                                .required(true)
+                                .help("Exchange rate (e.g., 7.2 for USD→CNY)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("refresh")
+                        .about("Refresh exchange rates from external API"),
+                )
+                .subcommand(
+                    Command::new("convert")
+                        .about("Convert amount between currencies")
+                        .arg(
+                            Arg::new("amount")
+                                .required(true)
+                                .help("Amount to convert"),
+                        )
+                        .arg(
+                            Arg::new("from")
+                                .long("from")
+                                .required(true)
+                                .help("Source currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("to")
+                                .long("to")
+                                .required(true)
+                                .help("Target currency (USD, CNY, EUR)"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -567,6 +624,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("protocol", sub_m)) => {
             let db = Database::new().await?;
             handle_protocol_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("currency", sub_m)) => {
+            let db = Database::new().await?;
+            handle_currency_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {

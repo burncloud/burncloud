@@ -931,7 +931,7 @@
         },
         {
             "id": "8.7",
-            "passes": null,
+            "passes": true,
             "category": "phase8-multi-currency",
             "priority": "P3",
             "description": "实现汇率管理 CLI 命令",
