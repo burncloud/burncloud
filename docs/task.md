@@ -476,7 +476,7 @@
         },
         {
             "id": "3.3",
-            "passes": null,
+            "passes": true,
             "category": "phase3-billing-logic",
             "priority": "P2",
             "description": "实现批量定价计费逻辑",

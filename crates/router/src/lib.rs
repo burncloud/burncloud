@@ -416,6 +416,24 @@ async fn proxy_handler(
                 .map(|s| s.to_string())
         });
 
+    // Detect if this is a batch API request
+    // OpenAI Batch API: requests include "metadata" with "batch_id" or are sent to batch endpoints
+    // Batch requests can be detected by:
+    // 1. Request body contains "batch" in metadata
+    // 2. Custom header like "X-Batch-Request" or "OpenAI-Batch"
+    let is_batch_request = headers
+        .get("x-batch-request")
+        .or_else(|| headers.get("openai-batch"))
+        .is_some()
+        || serde_json::from_slice::<serde_json::Value>(&body_bytes)
+            .ok()
+            .and_then(|v| {
+                v.get("metadata")
+                    .and_then(|m| m.get("batch_id"))
+                    .map(|_| true)
+            })
+            .unwrap_or(false);
+
     // Create token counter for streaming response parsing
     let token_counter = Arc::new(StreamingTokenCounter::with_prompt_tokens(
         estimated_prompt_tokens as u32,
@@ -446,21 +464,22 @@ async fn proxy_handler(
     let cost = if prompt_tokens > 0 || completion_tokens > 0 {
         if let Some(model) = model_name {
             if let Ok(Some(price)) = PriceModel::get(&state.db, &model).await {
+                // Build advanced pricing struct
+                let pricing = billing::AdvancedPricing {
+                    input_price: price.input_price,
+                    output_price: price.output_price,
+                    cache_read_price: price.cache_read_price,
+                    cache_creation_price: price.cache_creation_price,
+                    batch_input_price: price.batch_input_price,
+                    batch_output_price: price.batch_output_price,
+                    priority_input_price: price.priority_input_price,
+                    priority_output_price: price.priority_output_price,
+                    audio_input_price: price.audio_input_price,
+                };
+
                 // Check if we have cache tokens and cache pricing
                 if cache_read_tokens > 0 || cache_creation_tokens > 0 {
                     // Use advanced pricing with cache cost calculation
-                    let pricing = billing::AdvancedPricing {
-                        input_price: price.input_price,
-                        output_price: price.output_price,
-                        cache_read_price: price.cache_read_price,
-                        cache_creation_price: price.cache_creation_price,
-                        batch_input_price: price.batch_input_price,
-                        batch_output_price: price.batch_output_price,
-                        priority_input_price: price.priority_input_price,
-                        priority_output_price: price.priority_output_price,
-                        audio_input_price: price.audio_input_price,
-                    };
-
                     let usage = billing::TokenUsage {
                         prompt_tokens: prompt_tokens as u64,
                         completion_tokens: completion_tokens as u64,
@@ -470,6 +489,9 @@ async fn proxy_handler(
                     };
 
                     billing::calculate_cache_cost(&usage, &pricing)
+                } else if is_batch_request {
+                    // Use batch pricing for batch API requests
+                    billing::calculate_batch_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
                 } else {
                     // Fall back to simple calculation
                     PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
