@@ -439,11 +439,41 @@ async fn proxy_handler(
     // Get final token counts
     let (prompt_tokens, completion_tokens) = token_counter.get_usage();
 
+    // Get cache token counts
+    let (cache_read_tokens, cache_creation_tokens) = token_counter.get_cache_usage();
+
     // Calculate cost if we have token usage
     let cost = if prompt_tokens > 0 || completion_tokens > 0 {
         if let Some(model) = model_name {
             if let Ok(Some(price)) = PriceModel::get(&state.db, &model).await {
-                PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
+                // Check if we have cache tokens and cache pricing
+                if cache_read_tokens > 0 || cache_creation_tokens > 0 {
+                    // Use advanced pricing with cache cost calculation
+                    let pricing = billing::AdvancedPricing {
+                        input_price: price.input_price,
+                        output_price: price.output_price,
+                        cache_read_price: price.cache_read_price,
+                        cache_creation_price: price.cache_creation_price,
+                        batch_input_price: price.batch_input_price,
+                        batch_output_price: price.batch_output_price,
+                        priority_input_price: price.priority_input_price,
+                        priority_output_price: price.priority_output_price,
+                        audio_input_price: price.audio_input_price,
+                    };
+
+                    let usage = billing::TokenUsage {
+                        prompt_tokens: prompt_tokens as u64,
+                        completion_tokens: completion_tokens as u64,
+                        cache_read_tokens: cache_read_tokens as u64,
+                        cache_creation_tokens: cache_creation_tokens as u64,
+                        audio_tokens: 0,
+                    };
+
+                    billing::calculate_cache_cost(&usage, &pricing)
+                } else {
+                    // Fall back to simple calculation
+                    PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
+                }
             } else {
                 0.0
             }
