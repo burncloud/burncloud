@@ -622,7 +622,7 @@
         },
         {
             "id": "10.14",
-            "passes": null,
+            "passes": true,
             "category": "phase6-tests",
             "priority": "P2",
             "description": "编写集成测试和手动验证",
