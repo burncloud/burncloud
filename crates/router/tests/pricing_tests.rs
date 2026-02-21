@@ -1,16 +1,13 @@
 mod common;
 
-use burncloud_database::sqlx;
 use burncloud_database_models::{PriceInput, PriceModel};
-use common::{setup_db, start_test_server};
-use reqwest::Client;
-use serde_json::json;
+use common::setup_db;
 
 /// Test pricing logic: verify cost calculation matches expected formula
 /// Formula: cost = (prompt_tokens * input_price / 1M) + (completion_tokens * output_price / 1M)
 #[tokio::test]
 async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, _pool) = setup_db().await?;
 
     // Set up pricing for test model
     // Input: $30/1M tokens, Output: $60/1M tokens (like GPT-4)
@@ -20,6 +17,7 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
         output_price: 60.0,
         currency: Some("USD".to_string()),
         alias_for: None,
+        ..Default::default()
     };
     PriceModel::upsert(&_db, &input).await?;
 
@@ -51,7 +49,7 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
 /// Test model alias resolution for pricing
 #[tokio::test]
 async fn test_pricing_alias_resolution() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, _pool) = setup_db().await?;
 
     // Set up base model pricing
     let base_input = PriceInput {
@@ -60,6 +58,7 @@ async fn test_pricing_alias_resolution() -> anyhow::Result<()> {
         output_price: 60.0,
         currency: Some("USD".to_string()),
         alias_for: None,
+        ..Default::default()
     };
     PriceModel::upsert(&_db, &base_input).await?;
 
@@ -70,6 +69,7 @@ async fn test_pricing_alias_resolution() -> anyhow::Result<()> {
         output_price: 0.0, // Not used
         currency: Some("USD".to_string()),
         alias_for: Some("gpt-4".to_string()),
+        ..Default::default()
     };
     PriceModel::upsert(&_db, &alias_input).await?;
 
@@ -88,7 +88,7 @@ async fn test_pricing_alias_resolution() -> anyhow::Result<()> {
 /// Test price listing
 #[tokio::test]
 async fn test_pricing_list() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, _pool) = setup_db().await?;
 
     // List all prices (should include default pricing)
     let prices = PriceModel::list(&_db, 100, 0).await?;
@@ -112,7 +112,7 @@ async fn test_pricing_list() -> anyhow::Result<()> {
 /// Test price delete and recreate
 #[tokio::test]
 async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, _pool) = setup_db().await?;
 
     // Create a test model
     let input = PriceInput {
@@ -121,6 +121,7 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         output_price: 20.0,
         currency: Some("USD".to_string()),
         alias_for: None,
+        ..Default::default()
     };
     PriceModel::upsert(&_db, &input).await?;
 
@@ -142,6 +143,7 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         output_price: 100.0,
         currency: Some("USD".to_string()),
         alias_for: None,
+        ..Default::default()
     };
     PriceModel::upsert(&_db, &input2).await?;
 

@@ -40,7 +40,14 @@ fn main() -> Result<()> {
         [_, subcommand, _rest @ ..] => {
             match subcommand.as_str() {
                 "client" => {
+                    #[cfg(windows)]
                     burncloud_client::launch_gui_with_tray();
+
+                    #[cfg(not(windows))]
+                    {
+                        println!("Desktop GUI is only available on Windows.");
+                        println!("On Linux, use 'burncloud server' to start the web dashboard.");
+                    }
                 }
                 "server" | "router" => {
                     run_async_server()?;

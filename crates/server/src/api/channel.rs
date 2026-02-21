@@ -24,6 +24,7 @@ pub struct ChannelDto {
     pub priority: i64,
     pub param_override: Option<String>,
     pub header_override: Option<String>,
+    pub api_version: Option<String>,
 }
 
 impl ChannelDto {
@@ -51,6 +52,8 @@ impl ChannelDto {
             param_override: self.param_override,
             header_override: self.header_override,
             remark: None,
+            api_version: self.api_version,
+            pricing_region: None,
         }
     }
 }

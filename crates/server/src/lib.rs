@@ -5,7 +5,7 @@ use axum::Router;
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
-use burncloud_router::create_router_app;
+use burncloud_router::{create_router_app, price_sync::start_price_sync_task};
 use burncloud_service_monitor::SystemMonitorService;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -56,6 +56,9 @@ pub async fn start_server(port: u16, enable_liveview: bool) -> anyhow::Result<()
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
     let db = Arc::new(db);
+
+    // Start background price sync task (hourly sync from LiteLLM)
+    let _price_sync_handle = start_price_sync_task(db.clone(), 3600);
 
     let app = create_app(db, enable_liveview).await?;
 

@@ -2,6 +2,78 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
+
+/// Supported currencies for pricing
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Currency {
+    #[default]
+    USD,
+    CNY,
+    EUR,
+}
+
+impl Currency {
+    /// Get the currency symbol
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            Currency::USD => "$",
+            Currency::CNY => "¥",
+            Currency::EUR => "€",
+        }
+    }
+
+    /// Get the currency code
+    pub fn code(&self) -> &'static str {
+        match self {
+            Currency::USD => "USD",
+            Currency::CNY => "CNY",
+            Currency::EUR => "EUR",
+        }
+    }
+}
+
+impl fmt::Display for Currency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.code())
+    }
+}
+
+impl FromStr for Currency {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "USD" | "usd" => Ok(Currency::USD),
+            "CNY" | "cny" => Ok(Currency::CNY),
+            "EUR" | "eur" => Ok(Currency::EUR),
+            _ => Err(format!("Unknown currency: {}", s)),
+        }
+    }
+}
+
+/// Multi-currency price information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiCurrencyPrice {
+    /// Currency of the price
+    pub currency: Currency,
+    /// Input price per 1M tokens
+    pub input_price: f64,
+    /// Output price per 1M tokens
+    pub output_price: f64,
+}
+
+/// Exchange rate for currency conversion
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ExchangeRate {
+    pub id: i32,
+    pub from_currency: String,
+    pub to_currency: String,
+    pub rate: f64,
+    pub updated_at: Option<i64>,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelInfo {
@@ -222,7 +294,9 @@ pub struct Channel {
     pub param_override: Option<String>,
     pub header_override: Option<String>,
     pub remark: Option<String>,
-    // ChannelInfo fields from New API are flattened or handled separately in logic
+    pub api_version: Option<String>, // API version for protocol adaptation
+    pub pricing_region: Option<String>, // Pricing region: 'cn', 'international', or NULL for universal
+                                     // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -265,6 +339,9 @@ pub struct User {
     pub aff_count: i32,
     pub aff_quota: i64,
     pub inviter_id: Option<String>,
+    /// User's preferred currency for display (USD, CNY, EUR)
+    #[sqlx(default)]
+    pub preferred_currency: Option<String>,
     #[sqlx(default)]
     pub created_at: Option<i64>, // Unix timestamp
 }
@@ -282,4 +359,283 @@ pub struct Token {
     pub created_time: i64,
     pub accessed_time: i64,
     pub expired_time: i64, // -1 for never
+}
+
+/// Protocol Configuration for dynamic protocol adapters
+/// Allows runtime configuration of API endpoints and request/response mappings
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ProtocolConfig {
+    pub id: i32,
+    /// Channel type (1=OpenAI, 2=Anthropic, 3=Azure, etc.)
+    pub channel_type: i32,
+    /// API version string (e.g., "2024-02-01", "v1")
+    pub api_version: String,
+    /// Whether this is the default config for the channel type
+    pub is_default: bool,
+    /// Chat completions endpoint (supports placeholders like {deployment_id})
+    pub chat_endpoint: Option<String>,
+    /// Embeddings endpoint
+    pub embed_endpoint: Option<String>,
+    /// Models list endpoint
+    pub models_endpoint: Option<String>,
+    /// Request field mapping rules (JSON)
+    pub request_mapping: Option<String>,
+    /// Response field mapping rules (JSON)
+    pub response_mapping: Option<String>,
+    /// Detection rules for auto-detection (JSON)
+    pub detection_rules: Option<String>,
+    /// Creation timestamp
+    pub created_at: Option<i64>,
+    /// Update timestamp
+    pub updated_at: Option<i64>,
+}
+
+impl Default for ProtocolConfig {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            channel_type: 1, // OpenAI
+            api_version: "default".to_string(),
+            is_default: true,
+            chat_endpoint: Some("/v1/chat/completions".to_string()),
+            embed_endpoint: Some("/v1/embeddings".to_string()),
+            models_endpoint: Some("/v1/models".to_string()),
+            request_mapping: None,
+            response_mapping: None,
+            detection_rules: None,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+}
+
+/// Request mapping configuration for protocol adaptation
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RequestMapping {
+    /// Field mappings: "target_field" => "source_field"
+    #[serde(default)]
+    pub field_map: HashMap<String, String>,
+    /// Field renames: "old_name" => "new_name"
+    #[serde(default)]
+    pub rename: HashMap<String, String>,
+    /// Fields to add to the request
+    #[serde(default)]
+    pub add_fields: HashMap<String, Value>,
+}
+
+/// Response mapping configuration for protocol adaptation
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ResponseMapping {
+    /// Path to extract content from response (e.g., "choices[0].message.content")
+    pub content_path: Option<String>,
+    /// Path to extract token usage
+    pub usage_path: Option<String>,
+    /// Path to extract error message
+    pub error_path: Option<String>,
+}
+
+/// Tiered pricing configuration for models with usage-based pricing tiers
+/// (e.g., Qwen models with different prices based on context length)
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TieredPrice {
+    pub id: i32,
+    /// Model name
+    pub model: String,
+    /// Region for pricing (e.g., "cn", "international", NULL for universal)
+    pub region: Option<String>,
+    /// Starting token count for this tier
+    pub tier_start: i64,
+    /// Ending token count for this tier (NULL means no upper limit)
+    pub tier_end: Option<i64>,
+    /// Input price per 1M tokens for this tier
+    pub input_price: f64,
+    /// Output price per 1M tokens for this tier
+    pub output_price: f64,
+}
+
+/// Input for creating/updating a tiered price
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TieredPriceInput {
+    pub model: String,
+    pub region: Option<String>,
+    pub tier_start: i64,
+    pub tier_end: Option<i64>,
+    pub input_price: f64,
+    pub output_price: f64,
+}
+
+/// Full pricing configuration for extensibility
+/// Used for the full_pricing JSON blob in prices table
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FullPricing {
+    /// Additional pricing fields not covered by dedicated columns
+    #[serde(default)]
+    pub additional_fields: HashMap<String, Value>,
+}
+
+/// Multi-currency price entry for prices_v2 table
+/// Supports USD, CNY, EUR and advanced pricing fields
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PriceV2 {
+    pub id: i32,
+    /// Model name
+    pub model: String,
+    /// Currency (USD, CNY, EUR)
+    pub currency: String,
+    /// Input price per 1M tokens
+    pub input_price: f64,
+    /// Output price per 1M tokens
+    pub output_price: f64,
+    /// Cache read input price per 1M tokens (for Prompt Caching)
+    pub cache_read_input_price: Option<f64>,
+    /// Cache creation input price per 1M tokens
+    pub cache_creation_input_price: Option<f64>,
+    /// Batch input price per 1M tokens (typically 50% of standard)
+    pub batch_input_price: Option<f64>,
+    /// Batch output price per 1M tokens
+    pub batch_output_price: Option<f64>,
+    /// Priority input price per 1M tokens (typically 170% of standard)
+    pub priority_input_price: Option<f64>,
+    /// Priority output price per 1M tokens
+    pub priority_output_price: Option<f64>,
+    /// Audio input price per 1M tokens (typically 7x text)
+    pub audio_input_price: Option<f64>,
+    /// Source of pricing data (litellm, manual, community, etc.)
+    pub source: Option<String>,
+    /// Region for pricing (cn, international, NULL for universal)
+    pub region: Option<String>,
+    /// Context window for the model
+    pub context_window: Option<i64>,
+    /// Maximum output tokens
+    pub max_output_tokens: Option<i64>,
+    /// Whether the model supports vision/image input
+    pub supports_vision: Option<bool>,
+    /// Whether the model supports function calling
+    pub supports_function_calling: Option<bool>,
+    /// Last sync timestamp
+    pub synced_at: Option<i64>,
+    /// Creation timestamp
+    pub created_at: Option<i64>,
+    /// Update timestamp
+    pub updated_at: Option<i64>,
+}
+
+/// Input for creating/updating a PriceV2 entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceV2Input {
+    pub model: String,
+    pub currency: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    pub cache_read_input_price: Option<f64>,
+    pub cache_creation_input_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub source: Option<String>,
+    pub region: Option<String>,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub supports_vision: Option<bool>,
+    pub supports_function_calling: Option<bool>,
+}
+
+impl Default for PriceV2Input {
+    fn default() -> Self {
+        Self {
+            model: String::new(),
+            currency: "USD".to_string(),
+            input_price: 0.0,
+            output_price: 0.0,
+            cache_read_input_price: None,
+            cache_creation_input_price: None,
+            batch_input_price: None,
+            batch_output_price: None,
+            priority_input_price: None,
+            priority_output_price: None,
+            audio_input_price: None,
+            source: None,
+            region: None,
+            context_window: None,
+            max_output_tokens: None,
+            supports_vision: None,
+            supports_function_calling: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod currency_tests {
+    use super::*;
+
+    #[test]
+    fn test_currency_default() {
+        let currency = Currency::default();
+        assert_eq!(currency, Currency::USD);
+    }
+
+    #[test]
+    fn test_currency_symbol() {
+        assert_eq!(Currency::USD.symbol(), "$");
+        assert_eq!(Currency::CNY.symbol(), "¥");
+        assert_eq!(Currency::EUR.symbol(), "€");
+    }
+
+    #[test]
+    fn test_currency_code() {
+        assert_eq!(Currency::USD.code(), "USD");
+        assert_eq!(Currency::CNY.code(), "CNY");
+        assert_eq!(Currency::EUR.code(), "EUR");
+    }
+
+    #[test]
+    fn test_currency_display() {
+        assert_eq!(format!("{}", Currency::USD), "USD");
+        assert_eq!(format!("{}", Currency::CNY), "CNY");
+    }
+
+    #[test]
+    fn test_currency_from_str() {
+        assert_eq!(Currency::from_str("USD").unwrap(), Currency::USD);
+        assert_eq!(Currency::from_str("usd").unwrap(), Currency::USD);
+        assert_eq!(Currency::from_str("CNY").unwrap(), Currency::CNY);
+        assert_eq!(Currency::from_str("eur").unwrap(), Currency::EUR);
+        assert!(Currency::from_str("GBP").is_err());
+    }
+
+    #[test]
+    fn test_currency_serde() {
+        // Test serialization
+        let json = serde_json::to_string(&Currency::USD).unwrap();
+        assert_eq!(json, "\"usd\"");
+
+        let json = serde_json::to_string(&Currency::CNY).unwrap();
+        assert_eq!(json, "\"cny\"");
+
+        // Test deserialization (lowercase)
+        let currency: Currency = serde_json::from_str("\"usd\"").unwrap();
+        assert_eq!(currency, Currency::USD);
+
+        let currency: Currency = serde_json::from_str("\"eur\"").unwrap();
+        assert_eq!(currency, Currency::EUR);
+    }
+
+    #[test]
+    fn test_multi_currency_price() {
+        let price = MultiCurrencyPrice {
+            currency: Currency::CNY,
+            input_price: 0.002,
+            output_price: 0.006,
+        };
+
+        assert_eq!(price.currency, Currency::CNY);
+        assert!((price.input_price - 0.002).abs() < 0.0001);
+        assert!((price.output_price - 0.006).abs() < 0.0001);
+
+        // Test serialization
+        let json = serde_json::to_string(&price).unwrap();
+        assert!(json.contains("\"currency\":\"cny\""));
+    }
 }

@@ -37,7 +37,11 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 } else {
                     token.remain_quota.to_string()
                 };
-                let status = if token.status == 1 { "active" } else { "disabled" };
+                let status = if token.status == 1 {
+                    "active"
+                } else {
+                    "disabled"
+                };
                 let expired = if token.expired_time == -1 {
                     "never".to_string()
                 } else {

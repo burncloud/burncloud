@@ -1,9 +1,18 @@
+mod adaptive_limit;
 mod adaptor;
 mod balancer;
+pub mod billing;
+mod channel_state;
 mod circuit_breaker;
 mod config;
 mod limiter;
 mod model_router;
+pub mod exchange_rate;
+pub mod notification;
+pub mod passthrough;
+pub mod price_sync;
+pub mod pricing_loader;
+pub mod response_parser;
 pub mod stream_parser;
 pub mod token_counter;
 
@@ -19,6 +28,7 @@ use balancer::RoundRobinBalancer;
 use burncloud_common::types::OpenAIChatRequest;
 use burncloud_database::Database;
 use burncloud_database_router::{DbRouterLog, RouterDatabase, TokenValidationResult};
+use channel_state::ChannelStateTracker;
 use circuit_breaker::CircuitBreaker;
 use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
 use futures::stream::StreamExt;
@@ -44,6 +54,9 @@ struct AppState {
     circuit_breaker: Arc<CircuitBreaker>,
     log_tx: mpsc::Sender<DbRouterLog>,
     model_router: Arc<ModelRouter>,
+    channel_state_tracker: Arc<ChannelStateTracker>,
+    adaptor_factory: Arc<adaptor::factory::DynamicAdaptorFactory>,
+    api_version_detector: Arc<adaptor::detector::ApiVersionDetector>,
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
@@ -62,6 +75,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             protocol: u.protocol,
             param_override: u.param_override,
             header_override: u.header_override,
+            api_version: u.api_version,
         })
         .collect();
 
@@ -103,6 +117,12 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     // Circuit Breaker: 5 failures, 30s cooldown
     let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30));
     let model_router = Arc::new(ModelRouter::new(db.clone()));
+    // Channel State Tracker for health monitoring
+    let channel_state_tracker = Arc::new(ChannelStateTracker::new());
+    // Dynamic Adaptor Factory for protocol adaptation
+    let adaptor_factory = Arc::new(adaptor::factory::DynamicAdaptorFactory::new(db.clone()));
+    // API Version Detector for handling deprecated versions
+    let api_version_detector = Arc::new(adaptor::detector::ApiVersionDetector::new(db.clone()));
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -130,6 +150,9 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         circuit_breaker,
         log_tx,
         model_router,
+        channel_state_tracker,
+        adaptor_factory,
+        api_version_detector,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -220,8 +243,39 @@ async fn models_handler(State(state): State<AppState>) -> Response {
 }
 
 async fn health_status_handler(State(state): State<AppState>) -> Response {
-    let status_map = state.circuit_breaker.get_status_map();
-    let json = serde_json::to_string(&status_map).unwrap_or_else(|_| "{}".to_string());
+    let circuit_breaker_status = state.circuit_breaker.get_status_map();
+    let channel_states = state.channel_state_tracker.get_all_states();
+
+    // Build comprehensive health report
+    let health_report = serde_json::json!({
+        "circuit_breaker": circuit_breaker_status,
+        "channels": channel_states.iter().map(|(ch_id, ch_state)| {
+            let models: Vec<_> = ch_state.models.iter().map(|m| {
+                let model_state = m.value();
+                serde_json::json!({
+                    "model": model_state.model,
+                    "status": format!("{:?}", model_state.status),
+                    "success_count": model_state.success_count,
+                    "failure_count": model_state.failure_count,
+                    "avg_latency_ms": model_state.avg_latency_ms,
+                    "adaptive_limit": {
+                        "current_limit": model_state.adaptive_limit.get_current_limit(),
+                        "learned_limit": model_state.adaptive_limit.get_learned_limit(),
+                        "state": format!("{:?}", model_state.adaptive_limit.get_state()),
+                    },
+                    "last_error": model_state.last_error,
+                })
+            }).collect();
+
+            (ch_id.to_string(), serde_json::json!({
+                "auth_ok": ch_state.auth_ok,
+                "balance_status": format!("{:?}", ch_state.balance_status),
+                "models": models,
+            }))
+        }).collect::<std::collections::HashMap<_, _>>()
+    });
+
+    let json = serde_json::to_string(&health_report).unwrap_or_else(|_| "{}".to_string());
 
     Response::builder()
         .status(200)
@@ -364,6 +418,35 @@ async fn proxy_handler(
                 .map(|s| s.to_string())
         });
 
+    // Detect request type for advanced billing
+    // 1. Batch API: detected via headers or metadata.batch_id
+    // 2. Priority: detected via metadata.priority or x-priority header
+    let (is_batch_request, is_priority_request) = {
+        let body_json = serde_json::from_slice::<serde_json::Value>(&body_bytes).ok();
+
+        let batch = headers
+            .get("x-batch-request")
+            .or_else(|| headers.get("openai-batch"))
+            .is_some()
+            || body_json
+                .as_ref()
+                .and_then(|v| v.get("metadata").and_then(|m| m.get("batch_id")))
+                .is_some();
+
+        let priority = headers
+            .get("x-priority")
+            .map(|v| v.to_str().unwrap_or("") == "high")
+            .unwrap_or(false)
+            || body_json
+                .as_ref()
+                .and_then(|v| v.get("metadata").and_then(|m| m.get("priority")))
+                .and_then(|p| p.as_str())
+                .map(|s| s == "high" || s == "urgent")
+                .unwrap_or(false);
+
+        (batch, priority)
+    };
+
     // Create token counter for streaming response parsing
     let token_counter = Arc::new(StreamingTokenCounter::with_prompt_tokens(
         estimated_prompt_tokens as u32,
@@ -379,17 +462,93 @@ async fn proxy_handler(
         &path,
         &user_group,
         token_counter.clone(),
+        model_name.as_deref(),
+        start_time,
     )
     .await;
 
     // Get final token counts
     let (prompt_tokens, completion_tokens) = token_counter.get_usage();
 
+    // Get cache token counts
+    let (cache_read_tokens, cache_creation_tokens) = token_counter.get_cache_usage();
+
     // Calculate cost if we have token usage
     let cost = if prompt_tokens > 0 || completion_tokens > 0 {
-        if let Some(model) = model_name {
-            if let Ok(Some(price)) = PriceModel::get(&state.db, &model).await {
-                PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
+        if let Some(model) = &model_name {
+            // Try to get price and check for tiered pricing
+            let price_result = PriceModel::get(&state.db, model).await;
+            let tiered_result = burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model).await;
+
+            // Check if model has tiered pricing
+            let has_tiered = matches!(tiered_result, Ok(true));
+
+            if let Ok(Some(price)) = price_result {
+                // Build advanced pricing struct
+                let pricing = billing::AdvancedPricing {
+                    input_price: price.input_price,
+                    output_price: price.output_price,
+                    cache_read_price: price.cache_read_price,
+                    cache_creation_price: price.cache_creation_price,
+                    batch_input_price: price.batch_input_price,
+                    batch_output_price: price.batch_output_price,
+                    priority_input_price: price.priority_input_price,
+                    priority_output_price: price.priority_output_price,
+                    audio_input_price: price.audio_input_price,
+                };
+
+                // Determine billing type with priority: cache > tiered > priority > batch > standard
+                if cache_read_tokens > 0 || cache_creation_tokens > 0 {
+                    // Use advanced pricing with cache cost calculation
+                    let usage = billing::TokenUsage {
+                        prompt_tokens: prompt_tokens as u64,
+                        completion_tokens: completion_tokens as u64,
+                        cache_read_tokens: cache_read_tokens as u64,
+                        cache_creation_tokens: cache_creation_tokens as u64,
+                        audio_tokens: 0,
+                    };
+
+                    billing::calculate_cache_cost(&usage, &pricing)
+                } else if has_tiered {
+                    // Use tiered pricing for models with usage-based tiers (e.g., Qwen)
+                    match burncloud_database_models::TieredPriceModel::get_tiers(&state.db, model, None).await {
+                        Ok(tiers) if !tiers.is_empty() => {
+                            // Convert database TieredPrice to billing TieredPrice
+                            let billing_tiers: Vec<burncloud_common::types::TieredPrice> = tiers
+                                .into_iter()
+                                .map(|t| burncloud_common::types::TieredPrice {
+                                    id: t.id,
+                                    model: t.model,
+                                    region: t.region,
+                                    tier_start: t.tier_start,
+                                    tier_end: t.tier_end,
+                                    input_price: t.input_price,
+                                    output_price: t.output_price,
+                                })
+                                .collect();
+
+                            match billing::calculate_tiered_cost_full(
+                                prompt_tokens as u64,
+                                completion_tokens as u64,
+                                &billing_tiers,
+                                None,
+                            ) {
+                                Ok(cost) => cost,
+                                Err(_) => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                            }
+                        }
+                        _ => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                    }
+                } else if is_priority_request {
+                    // Use priority pricing for high-priority requests
+                    billing::calculate_priority_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
+                } else if is_batch_request {
+                    // Use batch pricing for batch API requests
+                    billing::calculate_batch_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
+                } else {
+                    // Fall back to simple calculation
+                    PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
+                }
             } else {
                 0.0
             }
@@ -433,9 +592,11 @@ async fn proxy_handler(
     response
 }
 
-use adaptor::factory::AdaptorFactory;
 use burncloud_common::types::ChannelType;
 use burncloud_database_models::PriceModel;
+use circuit_breaker::FailureType;
+use passthrough::{should_passthrough, PassthroughDecision};
+use response_parser::{parse_error_response, parse_rate_limit_info};
 
 async fn proxy_logic(
     state: &AppState,
@@ -446,21 +607,31 @@ async fn proxy_logic(
     path: &str,
     user_group: &str,
     token_counter: Arc<StreamingTokenCounter>,
+    model_name: Option<&str>,
+    request_start_time: Instant,
 ) -> (Response, Option<String>, StatusCode) {
     let config = state.config.read().await;
 
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
 
+    // Try to extract model from Gemini native path first
+    let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
+
     if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-        if let Some(model) = json.get("model").and_then(|v| v.as_str()) {
+        // Prefer model from body, fall back to path-extracted model for Gemini native paths
+        let model_ref = json.get("model").and_then(|v| v.as_str());
+        let model_opt = model_ref.or(gemini_path_model.as_deref());
+
+        if let Some(model) = model_opt {
             println!(
                 "ProxyLogic: Attempting to route model '{}' for group '{}'",
                 model, user_group
             );
-            match state.model_router.route(user_group, model).await {
+            // Use state-aware routing to filter out unavailable channels
+            match state.model_router.route_with_state(user_group, model, &state.channel_state_tracker).await {
                 Ok(Some(channel)) => {
-                    println!("ModelRouter: Routed {} -> Channel {}", model, channel.name);
+                    println!("ModelRouter: Routed {} -> Channel {} (state-filtered)", model, channel.name);
                     // Map Channel Type
                     let channel_type = ChannelType::from(channel.type_);
 
@@ -486,6 +657,7 @@ async fn proxy_logic(
                         protocol, // Ideally we should store ChannelType in Upstream too
                         param_override: channel.param_override.clone(),
                         header_override: channel.header_override.clone(),
+                        api_version: channel.api_version.clone(),
                     });
                 }
                 Ok(None) => {
@@ -495,7 +667,23 @@ async fn proxy_logic(
                     );
                 }
                 Err(e) => {
-                    println!("ModelRouter: Error querying DB: {}", e);
+                    // NoAvailableChannelsError - all channels are unavailable
+                    println!(
+                        "ModelRouter: No available channels for {}: {}",
+                        model, e
+                    );
+                    return (
+                        Response::builder()
+                            .status(503)
+                            .header("content-type", "application/json")
+                            .body(Body::from(format!(
+                                r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels"}}}}"#,
+                                e
+                            )))
+                            .unwrap(),
+                        None,
+                        StatusCode::SERVICE_UNAVAILABLE,
+                    );
                 }
             }
         } else {
@@ -596,7 +784,7 @@ async fn proxy_logic(
             upstream.protocol
         );
 
-        // Determine Adaptor
+        // Determine Adaptor using DynamicAdaptorFactory
         // Currently Upstream struct stores protocol string. We should map it to ChannelType.
         // Simple heuristic map for now.
         let channel_type = match upstream.protocol.as_str() {
@@ -606,32 +794,260 @@ async fn proxy_logic(
             _ => ChannelType::OpenAI,
         };
 
-        let adaptor: Arc<dyn adaptor::factory::ChannelAdaptor> =
-            Arc::from(AdaptorFactory::get_adaptor(channel_type));
+        // 3. Parse Request Body early for passthrough detection
+        let body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+            Ok(v) => v,
+            Err(_) => {
+                last_error = "Invalid JSON body".to_string();
+                continue;
+            }
+        };
 
-        // 3. Prepare Request Body
+        // 4. Check if we should use passthrough mode (Gemini native format)
+        let passthrough_decision = should_passthrough(path, &body_json, channel_type);
+
+        // Handle Gemini passthrough mode
+        if passthrough_decision == PassthroughDecision::Passthrough {
+            println!(
+                "Using passthrough mode for Gemini request: path={}, has_contents={}",
+                path,
+                body_json.get("contents").is_some()
+            );
+
+            // Build target URL for passthrough
+            let passthrough_url = passthrough::build_gemini_passthrough_url(
+                &upstream.base_url,
+                path,
+                &body_json,
+            );
+
+            println!("Passthrough URL: {}", passthrough_url);
+
+            // Check if streaming
+            let is_stream = body_json
+                .get("stream")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            // Determine final URL (add alt=sse for streaming requests if not already in URL)
+            let final_url = if is_stream && !passthrough_url.contains("alt=") {
+                let separator = if passthrough_url.contains('?') { "&" } else { "?" };
+                format!("{}{}alt=sse", passthrough_url, separator)
+            } else {
+                passthrough_url.clone()
+            };
+
+            println!("Final passthrough URL: {}", final_url);
+
+            // Prepare request body - remove 'stream' field for Gemini native API
+            let mut passthrough_body = body_json.clone();
+            if passthrough_body.get("stream").is_some() {
+                passthrough_body.as_object_mut().unwrap().remove("stream");
+            }
+
+            // Build passthrough request with final URL
+            let mut req_builder = state.client
+                .request(method.clone(), &final_url)
+                .header("x-goog-api-key", &upstream.api_key);
+
+            // Apply header_override
+            if let Some(ref override_str) = upstream.header_override {
+                if let Ok(header_map) =
+                    serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
+                {
+                    for (k, v) in header_map {
+                        req_builder = req_builder.header(k, v);
+                    }
+                }
+            }
+
+            let req_builder = req_builder.json(&passthrough_body);
+
+            // Execute passthrough request
+            match req_builder.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+
+                    if status.is_server_error() {
+                        last_error = format!("Upstream returned {}", status);
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        state
+                            .circuit_breaker
+                            .record_failure_with_type(&upstream.id, FailureType::ServerError);
+                        state.channel_state_tracker.record_error(
+                            channel_id,
+                            model_name,
+                            &FailureType::ServerError,
+                            &last_error,
+                        );
+                        continue;
+                    }
+
+                    state.circuit_breaker.record_success(&upstream.id);
+
+                    if status.is_success() {
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        let latency_ms = request_start_time.elapsed().as_millis() as u64;
+                        // Parse rate limit info from response headers for adaptive limiter
+                        let rate_limit_info = parse_rate_limit_info(
+                            resp.headers(),
+                            None,
+                            &upstream.protocol,
+                        );
+                        state
+                            .channel_state_tracker
+                            .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
+
+                        // Handle streaming vs non-streaming passthrough
+                        if is_stream {
+                            // Stream passthrough - directly forward Gemini SSE format
+                            let body_stream = resp.bytes_stream();
+                            let counter_clone = token_counter.clone();
+
+                            let stream = body_stream.map(move |chunk_result| match chunk_result {
+                                Ok(bytes) => {
+                                    let text = String::from_utf8_lossy(&bytes);
+
+                                    // Parse token usage from Gemini streaming response
+                                    let (prompt, completion) =
+                                        passthrough::parse_gemini_streaming_usage(&text);
+                                    if prompt > 0 || completion > 0 {
+                                        counter_clone.add_tokens(prompt, completion);
+                                    }
+
+                                    // Pass through raw bytes (Gemini native format)
+                                    Ok(bytes)
+                                }
+                                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                            });
+
+                            return (
+                                Response::builder()
+                                    .status(status)
+                                    .header("content-type", "text/event-stream")
+                                    .header("cache-control", "no-cache")
+                                    .header("connection", "keep-alive")
+                                    .body(Body::from_stream(stream))
+                                    .unwrap(),
+                                last_upstream_id,
+                                status,
+                            );
+                        } else {
+                            // Non-streaming passthrough
+                            let resp_bytes = match resp.bytes().await {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    last_error = format!("Failed to read response: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            // Parse usage metadata from response
+                            if let Ok(resp_json) =
+                                serde_json::from_slice::<serde_json::Value>(&resp_bytes)
+                            {
+                                let (prompt, completion) =
+                                    passthrough::parse_gemini_usage(&resp_json);
+                                if prompt > 0 || completion > 0 {
+                                    token_counter.add_tokens(prompt, completion);
+                                }
+                            }
+
+                            return (
+                                Response::builder()
+                                    .status(status)
+                                    .header("content-type", "application/json")
+                                    .body(Body::from(resp_bytes))
+                                    .unwrap(),
+                                last_upstream_id,
+                                status,
+                            );
+                        }
+                    } else {
+                        // Non-success status (4xx)
+                        let body_bytes = match resp.bytes().await {
+                            Ok(b) => b,
+                            Err(e) => {
+                                last_error = format!("Failed to read error response: {}", e);
+                                return (
+                                    Response::builder()
+                                        .status(status)
+                                        .body(Body::from(last_error.clone()))
+                                        .unwrap(),
+                                    last_upstream_id,
+                                    status,
+                                );
+                            }
+                        };
+
+                        // Record rate limit errors
+                        if status.as_u16() == 429 {
+                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                model_name,
+                                &FailureType::RateLimited {
+                                    scope: circuit_breaker::RateLimitScope::Unknown,
+                                    retry_after: None,
+                                },
+                                "Rate limited",
+                            );
+                            state.circuit_breaker.record_failure_with_type(
+                                &upstream.id,
+                                FailureType::RateLimited {
+                                    scope: circuit_breaker::RateLimitScope::Unknown,
+                                    retry_after: None,
+                                },
+                            );
+                        }
+
+                        return (
+                            Response::builder()
+                                .status(status)
+                                .header("content-type", "application/json")
+                                .body(Body::from(body_bytes))
+                                .unwrap(),
+                            last_upstream_id,
+                            status,
+                        );
+                    }
+                }
+                Err(e) => {
+                    last_error = format!("Network Error: {}", e);
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    state
+                        .circuit_breaker
+                        .record_failure_with_type(&upstream.id, FailureType::Timeout);
+                    state.channel_state_tracker.record_error(
+                        channel_id,
+                        model_name,
+                        &FailureType::Timeout,
+                        &last_error,
+                    );
+                    continue;
+                }
+            }
+        }
+
+        // 5. Use DynamicAdaptorFactory to get adaptor (supports both static and dynamic configs)
+        let adaptor = state
+            .adaptor_factory
+            .get_adaptor(channel_type, upstream.api_version.as_deref())
+            .await;
+
+        // 6. Prepare Request Body (for conversion mode)
         let request_body_json: Option<serde_json::Value> =
             if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
                 adaptor
                     .convert_request(&req)
                     .or_else(|| Some(serde_json::json!(req))) // Use converted or original
             } else {
-                // Failed to parse as OpenAI request, use raw bytes if possible?
-                // Adaptor interface expects Value for build_request.
-                // If body is not valid JSON, we might fail here for complex adaptors.
-                // For OpenAI passthrough, we might want raw bytes.
-                // Let's assume it's JSON for now as most LLM APIs are.
-                serde_json::from_slice(&body_bytes).ok()
+                // Use the already parsed JSON
+                Some(body_json)
             };
 
         if request_body_json.is_none() {
-            // If we can't parse body and we need to (implied by using adaptors), fail?
-            // Or just pass empty?
-            // If protocol is "openai", maybe we don't need to parse?
-            // But `build_request` takes Value.
-            // We should probably update `build_request` to take Option<Value> or Bytes?
-            // For now, fail if not JSON.
-            last_error = "Invalid JSON body".to_string();
+            last_error = "Failed to prepare request body".to_string();
             continue;
         }
         let mut request_body_json = request_body_json.unwrap();
@@ -683,9 +1099,23 @@ async fn proxy_logic(
         // 5. Execute
         match req_builder.send().await {
             Ok(resp) => {
-                if resp.status().is_server_error() {
-                    last_error = format!("Upstream returned {}", resp.status());
-                    state.circuit_breaker.record_failure(&upstream.id);
+                let status = resp.status();
+                let resp_headers = resp.headers().clone();
+
+                // Handle different response status codes
+                if status.is_server_error() {
+                    // 5xx Server Error
+                    last_error = format!("Upstream returned {}", status);
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    state
+                        .circuit_breaker
+                        .record_failure_with_type(&upstream.id, FailureType::ServerError);
+                    state.channel_state_tracker.record_error(
+                        channel_id,
+                        model_name,
+                        &FailureType::ServerError,
+                        &last_error,
+                    );
                     continue;
                 }
 
@@ -693,6 +1123,35 @@ async fn proxy_logic(
 
                 if resp.status().is_success() {
                     let status = resp.status();
+                    let resp_headers = resp.headers().clone();
+
+                    // Parse rate limit info from response headers
+                    let rate_limit_info = parse_rate_limit_info(
+                        &resp_headers,
+                        None, // No body for success
+                        &upstream.protocol,
+                    );
+
+                    // Record success in channel state tracker with learned upstream limit
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    let latency_ms = request_start_time.elapsed().as_millis() as u64;
+                    state
+                        .channel_state_tracker
+                        .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
+
+                    // Log rate limit info for debugging/monitoring
+                    if rate_limit_info.request_limit.is_some()
+                        || rate_limit_info.token_limit.is_some()
+                    {
+                        println!(
+                            "Rate limit info for {}: requests={:?}, tokens={:?}, remaining={:?}, retry_after={:?}",
+                            upstream.name,
+                            rate_limit_info.request_limit,
+                            rate_limit_info.token_limit,
+                            rate_limit_info.remaining,
+                            rate_limit_info.retry_after
+                        );
+                    }
 
                     // Optimization: If protocol is OpenAI, we can stream directly without parsing/buffering
                     // This satisfies the "Passthrough Principle" and enables streaming.
@@ -790,13 +1249,159 @@ async fn proxy_logic(
                         status,
                     );
                 } else {
-                    let status = resp.status();
-                    return (handle_response(resp), last_upstream_id, status);
+                    // Handle non-success responses (4xx errors)
+                    let status_code = status.as_u16();
+                    let body_bytes = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            // If we can't read the body, return a simple error
+                            last_error = format!("Failed to read response body: {}", e);
+                            return (
+                                Response::builder()
+                                    .status(status)
+                                    .body(Body::from(last_error.clone()))
+                                    .unwrap(),
+                                last_upstream_id,
+                                status,
+                            );
+                        }
+                    };
+                    let body_str = String::from_utf8_lossy(&body_bytes);
+
+                    // Parse error response
+                    let error_info = parse_error_response(&body_str, &upstream.protocol);
+                    let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
+
+                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+
+                    // Determine failure type based on status code
+                    let failure_type = match status_code {
+                        401 => {
+                            // Authentication failed - channel-level issue
+                            let ft = FailureType::AuthFailed;
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                None, // Auth failure affects entire channel
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        402 => {
+                            // Payment required - balance exhausted
+                            let ft = FailureType::PaymentRequired;
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                None,
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        429 => {
+                            // Rate limited - extract retry_after from headers or error info
+                            let retry_after = resp_headers
+                                .get("retry-after")
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(|v| v.parse::<u64>().ok());
+
+                            // Determine scope from error response
+                            let scope = error_info
+                                .scope
+                                .unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
+
+                            let ft = FailureType::RateLimited { scope, retry_after };
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                model_name,
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        404 => {
+                            // Model not found
+                            let ft = FailureType::ModelNotFound;
+                            state.channel_state_tracker.record_error(
+                                channel_id,
+                                model_name,
+                                &ft,
+                                error_message,
+                            );
+                            ft
+                        }
+                        _ => {
+                            // Other client errors - treat as server error for retry logic
+                            FailureType::ServerError
+                        }
+                    };
+
+                    // Record failure with circuit breaker
+                    state
+                        .circuit_breaker
+                        .record_failure_with_type(&upstream.id, failure_type);
+
+                    // Check for API version deprecation and auto-update if detected
+                    if adaptor::detector::ApiVersionDetector::is_deprecation_error(error_message) {
+                        let channel_id_for_detector = channel_id;
+                        let adaptor_factory_for_detector = state.adaptor_factory.clone();
+                        let detector = state.api_version_detector.clone();
+                        let error_message_for_detector = error_message.to_string();
+
+                        tokio::spawn(async move {
+                            match detector
+                                .detect_and_update(
+                                    channel_id_for_detector,
+                                    &error_message_for_detector,
+                                    &adaptor_factory_for_detector,
+                                )
+                                .await
+                            {
+                                Ok(Some(new_version)) => {
+                                    println!(
+                                        "API version deprecation detected, updated channel {} to version: {}",
+                                        channel_id_for_detector, new_version
+                                    );
+                                }
+                                Ok(None) => {
+                                    // No deprecation detected or no new version found
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to detect/update API version: {}", e);
+                                }
+                            }
+                        });
+                    }
+
+                    // Log the error
+                    println!(
+                        "Upstream {} returned {}: {}",
+                        upstream.name, status_code, error_message
+                    );
+
+                    return (
+                        Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(Body::from(body_bytes))
+                            .unwrap(),
+                        last_upstream_id,
+                        status,
+                    );
                 }
             }
             Err(e) => {
                 last_error = format!("Network Error: {}", e);
-                state.circuit_breaker.record_failure(&upstream.id);
+                let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                state
+                    .circuit_breaker
+                    .record_failure_with_type(&upstream.id, FailureType::Timeout);
+                state.channel_state_tracker.record_error(
+                    channel_id,
+                    model_name,
+                    &FailureType::Timeout,
+                    &last_error,
+                );
                 eprintln!(
                     "Failover: {} failed with {}, trying next...",
                     upstream.name, e
@@ -817,24 +1422,6 @@ async fn proxy_logic(
         None,
         StatusCode::BAD_GATEWAY,
     )
-}
-
-fn handle_response(resp: reqwest::Response) -> Response {
-    let status = resp.status();
-    let mut response_builder = Response::builder().status(status);
-
-    if let Some(headers_mut) = response_builder.headers_mut() {
-        for (k, v) in resp.headers() {
-            headers_mut.insert(k, v.clone());
-        }
-    }
-
-    let stream = resp.bytes_stream();
-    let body = Body::from_stream(stream);
-
-    response_builder
-        .body(body)
-        .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
 /// Handle streaming response with token parsing for OpenAI protocol

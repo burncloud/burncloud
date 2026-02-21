@@ -45,6 +45,7 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
         output_price: 0.60, // $0.60 per 1M tokens
         currency: Some("USD".to_string()),
         alias_for: None,
+        ..Default::default()
     };
     PriceModel::upsert(&_db, &price_input).await?;
 
@@ -135,6 +136,7 @@ async fn test_e2e_token_counting() -> anyhow::Result<()> {
         output_price: 60.0,
         currency: Some("USD".to_string()),
         alias_for: None,
+        ..Default::default()
     };
 
     // Cost = (100/1M * 30) + (50/1M * 60) = 0.003 + 0.003 = 0.006
