@@ -19,6 +19,7 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
         latency_ms: 150,
         prompt_tokens: 10,
         completion_tokens: 20,
+        cost: 0.001,
     };
 
     RouterDatabase::insert_log(&db, &log_entry).await?;

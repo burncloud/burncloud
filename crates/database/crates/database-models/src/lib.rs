@@ -1,4 +1,4 @@
-use burncloud_common::types::Channel;
+use burncloud_common::types::{Ability, Channel};
 use burncloud_database::{Database, Result};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -18,16 +18,55 @@ pub struct Price {
     pub alias_for: Option<String>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+    // Advanced pricing fields
+    pub cache_read_price: Option<f64>,
+    pub cache_creation_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub full_pricing: Option<String>,
+    // Multi-currency fields
+    pub original_currency: Option<String>,
+    pub original_input_price: Option<f64>,
+    pub original_output_price: Option<f64>,
 }
 
 /// Input for creating/updating a price
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PriceInput {
     pub model: String,
+    #[serde(default)]
     pub input_price: f64,
+    #[serde(default)]
     pub output_price: f64,
     pub currency: Option<String>,
     pub alias_for: Option<String>,
+    // Advanced pricing fields
+    #[serde(default)]
+    pub cache_read_price: Option<f64>,
+    #[serde(default)]
+    pub cache_creation_price: Option<f64>,
+    #[serde(default)]
+    pub batch_input_price: Option<f64>,
+    #[serde(default)]
+    pub batch_output_price: Option<f64>,
+    #[serde(default)]
+    pub priority_input_price: Option<f64>,
+    #[serde(default)]
+    pub priority_output_price: Option<f64>,
+    #[serde(default)]
+    pub audio_input_price: Option<f64>,
+    #[serde(default)]
+    pub full_pricing: Option<String>,
+    // Multi-currency fields
+    #[serde(default)]
+    pub original_currency: Option<String>,
+    #[serde(default)]
+    pub original_input_price: Option<f64>,
+    #[serde(default)]
+    pub original_output_price: Option<f64>,
 }
 
 pub struct PriceModel;
@@ -47,8 +86,8 @@ impl PriceModel {
 
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices WHERE model = $1",
-            _ => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices WHERE model = ?",
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices WHERE model = $1"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices WHERE model = ?"#,
         };
 
         let price: Option<Price> = sqlx::query_as(sql)
@@ -70,8 +109,8 @@ impl PriceModel {
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices ORDER BY model LIMIT $1 OFFSET $2",
-            _ => "SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at FROM prices ORDER BY model LIMIT ? OFFSET ?",
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices ORDER BY model LIMIT $1 OFFSET $2"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices ORDER BY model LIMIT ? OFFSET ?"#,
         };
 
         let prices = sqlx::query_as(sql)
@@ -94,26 +133,54 @@ impl PriceModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
+                    cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
+                    priority_input_price, priority_output_price, audio_input_price, full_pricing,
+                    original_currency, original_input_price, original_output_price)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                 ON CONFLICT(model) DO UPDATE SET
                     input_price = EXCLUDED.input_price,
                     output_price = EXCLUDED.output_price,
                     currency = EXCLUDED.currency,
                     alias_for = EXCLUDED.alias_for,
-                    updated_at = EXCLUDED.updated_at
+                    updated_at = EXCLUDED.updated_at,
+                    cache_read_price = EXCLUDED.cache_read_price,
+                    cache_creation_price = EXCLUDED.cache_creation_price,
+                    batch_input_price = EXCLUDED.batch_input_price,
+                    batch_output_price = EXCLUDED.batch_output_price,
+                    priority_input_price = EXCLUDED.priority_input_price,
+                    priority_output_price = EXCLUDED.priority_output_price,
+                    audio_input_price = EXCLUDED.audio_input_price,
+                    full_pricing = EXCLUDED.full_pricing,
+                    original_currency = EXCLUDED.original_currency,
+                    original_input_price = EXCLUDED.original_input_price,
+                    original_output_price = EXCLUDED.original_output_price
             "#
             }
             _ => {
                 r#"
-                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
+                    cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
+                    priority_input_price, priority_output_price, audio_input_price, full_pricing,
+                    original_currency, original_input_price, original_output_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(model) DO UPDATE SET
                     input_price = excluded.input_price,
                     output_price = excluded.output_price,
                     currency = excluded.currency,
                     alias_for = excluded.alias_for,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    cache_read_price = excluded.cache_read_price,
+                    cache_creation_price = excluded.cache_creation_price,
+                    batch_input_price = excluded.batch_input_price,
+                    batch_output_price = excluded.batch_output_price,
+                    priority_input_price = excluded.priority_input_price,
+                    priority_output_price = excluded.priority_output_price,
+                    audio_input_price = excluded.audio_input_price,
+                    full_pricing = excluded.full_pricing,
+                    original_currency = excluded.original_currency,
+                    original_input_price = excluded.original_input_price,
+                    original_output_price = excluded.original_output_price
             "#
             }
         };
@@ -126,6 +193,17 @@ impl PriceModel {
             .bind(&input.alias_for)
             .bind(now)
             .bind(now)
+            .bind(input.cache_read_price)
+            .bind(input.cache_creation_price)
+            .bind(input.batch_input_price)
+            .bind(input.batch_output_price)
+            .bind(input.priority_input_price)
+            .bind(input.priority_output_price)
+            .bind(input.audio_input_price)
+            .bind(&input.full_pricing)
+            .bind(&input.original_currency)
+            .bind(input.original_input_price)
+            .bind(input.original_output_price)
             .execute(conn.pool())
             .await?;
 
@@ -367,7 +445,12 @@ impl TokenModel {
     }
 
     /// List tokens with pagination and optional user_id filter
-    pub async fn list(db: &Database, limit: i32, offset: i32, user_id: Option<&str>) -> Result<Vec<Token>> {
+    pub async fn list(
+        db: &Database,
+        limit: i32,
+        offset: i32,
+        user_id: Option<&str>,
+    ) -> Result<Vec<Token>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -488,10 +571,7 @@ impl TokenModel {
             _ => "DELETE FROM tokens WHERE key = ?",
         };
 
-        let result = sqlx::query(sql)
-            .bind(key)
-            .execute(conn.pool())
-            .await?;
+        let result = sqlx::query(sql).bind(key).execute(conn.pool()).await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -519,8 +599,8 @@ impl ChannelModel {
         let sql = if db.kind() == "postgres" {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 RETURNING id
                 "#,
                 type_col, group_col
@@ -528,8 +608,8 @@ impl ChannelModel {
         } else {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
                 type_col, group_col
             )
@@ -556,7 +636,8 @@ impl ChannelModel {
             .bind(channel.priority)
             .bind(channel.created_time)
             .bind(&channel.param_override)
-            .bind(&channel.header_override);
+            .bind(&channel.header_override)
+            .bind(&channel.api_version);
 
         let id = if db.kind() == "postgres" {
             let row = query.fetch_one(&mut *tx).await?;
@@ -590,17 +671,17 @@ impl ChannelModel {
         let sql = if is_postgres {
             format!(
                 r#"
-                UPDATE channels 
-                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11
-                WHERE id = $12
+                UPDATE channels
+                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11, api_version = $12
+                WHERE id = $13
                 "#,
                 type_col, group_col
             )
         } else {
             format!(
                 r#"
-                UPDATE channels 
-                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?
+                UPDATE channels
+                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?
                 WHERE id = ?
                 "#,
                 type_col, group_col
@@ -619,6 +700,7 @@ impl ChannelModel {
             .bind(channel.priority)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
+            .bind(&channel.api_version)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -656,21 +738,21 @@ impl ChannelModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                SELECT 
-                    id, type as "type_", key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, "group", used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as "type_", key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, "group", used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels WHERE id = $1
             "#
             }
             _ => {
                 r#"
-                SELECT 
-                    id, type as type_, key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, `group`, used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as type_, key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, `group`, used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels WHERE id = ?
             "#
             }
@@ -689,21 +771,21 @@ impl ChannelModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                SELECT 
-                    id, type as "type_", key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, "group", used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as "type_", key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, "group", used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels ORDER BY id DESC LIMIT $1 OFFSET $2
             "#
             }
             _ => {
                 r#"
-                SELECT 
-                    id, type as type_, key, status, name, weight, created_time, test_time, 
-                    response_time, base_url, models, `group`, used_quota, model_mapping, 
-                    priority, auto_ban, other_info, tag, setting, param_override, 
-                    header_override, remark 
+                SELECT
+                    id, type as type_, key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, `group`, used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version
                 FROM channels ORDER BY id DESC LIMIT ? OFFSET ?
             "#
             }
@@ -790,5 +872,964 @@ impl ChannelModel {
             }
         }
         Ok(())
+    }
+}
+
+/// Ability model for routing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AbilityInput {
+    pub group: String,
+    pub model: String,
+    pub channel_id: i32,
+    pub enabled: bool,
+    pub priority: i64,
+    pub weight: i32,
+}
+
+pub struct AbilityModel;
+
+impl AbilityModel {
+    /// Create abilities in batch for a channel
+    ///
+    /// This is more efficient than creating abilities one by one.
+    /// Handles conflicts by using INSERT OR IGNORE / ON CONFLICT DO NOTHING.
+    pub async fn create_batch(db: &Database, abilities: &[AbilityInput]) -> Result<usize> {
+        if abilities.is_empty() {
+            return Ok(0);
+        }
+
+        let conn = db.get_connection()?;
+        let pool = conn.pool();
+        let is_postgres = db.kind() == "postgres";
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
+
+        let mut count = 0;
+        for ability in abilities {
+            let sql = if is_postgres {
+                format!(
+                    r#"
+                    INSERT INTO abilities ({}, model, channel_id, enabled, priority, weight)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    ON CONFLICT ({}, model, channel_id) DO NOTHING
+                    "#,
+                    group_col, group_col
+                )
+            } else {
+                format!(
+                    r#"
+                    INSERT OR IGNORE INTO abilities ({}, model, channel_id, enabled, priority, weight)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    "#,
+                    group_col
+                )
+            };
+
+            let result = sqlx::query(&sql)
+                .bind(&ability.group)
+                .bind(&ability.model)
+                .bind(ability.channel_id)
+                .bind(ability.enabled)
+                .bind(ability.priority)
+                .bind(ability.weight)
+                .execute(pool)
+                .await?;
+
+            count += result.rows_affected() as usize;
+        }
+
+        Ok(count)
+    }
+
+    /// Delete all abilities for a channel
+    pub async fn delete_by_channel(db: &Database, channel_id: i32) -> Result<()> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "DELETE FROM abilities WHERE channel_id = $1",
+            _ => "DELETE FROM abilities WHERE channel_id = ?",
+        };
+
+        sqlx::query(sql)
+            .bind(channel_id)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// List abilities for a channel
+    pub async fn list_by_channel(db: &Database, channel_id: i32) -> Result<Vec<Ability>> {
+        let conn = db.get_connection()?;
+        let group_col = if db.kind() == "postgres" {
+            "\"group\""
+        } else {
+            "`group`"
+        };
+
+        let sql = match db.kind().as_str() {
+            "postgres" => format!(
+                "SELECT {} as \"group\", model, channel_id, enabled, priority, weight FROM abilities WHERE channel_id = $1",
+                group_col
+            ),
+            _ => format!(
+                "SELECT {} as `group`, model, channel_id, enabled, priority, weight FROM abilities WHERE channel_id = ?",
+                group_col
+            ),
+        };
+
+        let abilities = sqlx::query_as(&sql)
+            .bind(channel_id)
+            .fetch_all(conn.pool())
+            .await?;
+
+        Ok(abilities)
+    }
+}
+
+/// Protocol configuration for dynamic protocol adapters
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ProtocolConfig {
+    pub id: i32,
+    pub channel_type: i32,
+    pub api_version: String,
+    pub is_default: bool,
+    pub chat_endpoint: Option<String>,
+    pub embed_endpoint: Option<String>,
+    pub models_endpoint: Option<String>,
+    pub request_mapping: Option<String>,
+    pub response_mapping: Option<String>,
+    pub detection_rules: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+}
+
+/// Input for creating/updating a protocol config
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtocolConfigInput {
+    pub channel_type: i32,
+    pub api_version: String,
+    pub is_default: Option<bool>,
+    pub chat_endpoint: Option<String>,
+    pub embed_endpoint: Option<String>,
+    pub models_endpoint: Option<String>,
+    pub request_mapping: Option<String>,
+    pub response_mapping: Option<String>,
+    pub detection_rules: Option<String>,
+}
+
+pub struct ProtocolConfigModel;
+
+impl ProtocolConfigModel {
+    /// Get protocol config by channel type and API version
+    pub async fn get_by_type_version(
+        db: &Database,
+        channel_type: i32,
+        api_version: &str,
+    ) -> Result<Option<ProtocolConfig>> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => {
+                r#"
+                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                       models_endpoint, request_mapping, response_mapping, detection_rules,
+                       created_at, updated_at
+                FROM protocol_configs
+                WHERE channel_type = $1 AND api_version = $2
+                "#
+            }
+            _ => {
+                r#"
+                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                       models_endpoint, request_mapping, response_mapping, detection_rules,
+                       created_at, updated_at
+                FROM protocol_configs
+                WHERE channel_type = ? AND api_version = ?
+                "#
+            }
+        };
+
+        let config = sqlx::query_as(sql)
+            .bind(channel_type)
+            .bind(api_version)
+            .fetch_optional(conn.pool())
+            .await?;
+
+        Ok(config)
+    }
+
+    /// Get the default protocol config for a channel type
+    pub async fn get_default(db: &Database, channel_type: i32) -> Result<Option<ProtocolConfig>> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => {
+                r#"
+                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                       models_endpoint, request_mapping, response_mapping, detection_rules,
+                       created_at, updated_at
+                FROM protocol_configs
+                WHERE channel_type = $1 AND is_default = TRUE
+                "#
+            }
+            _ => {
+                r#"
+                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                       models_endpoint, request_mapping, response_mapping, detection_rules,
+                       created_at, updated_at
+                FROM protocol_configs
+                WHERE channel_type = ? AND is_default = 1
+                "#
+            }
+        };
+
+        let config = sqlx::query_as(sql)
+            .bind(channel_type)
+            .fetch_optional(conn.pool())
+            .await?;
+
+        Ok(config)
+    }
+
+    /// List all protocol configs
+    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<ProtocolConfig>> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => {
+                r#"
+                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                       models_endpoint, request_mapping, response_mapping, detection_rules,
+                       created_at, updated_at
+                FROM protocol_configs
+                ORDER BY channel_type, api_version
+                LIMIT $1 OFFSET $2
+                "#
+            }
+            _ => {
+                r#"
+                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                       models_endpoint, request_mapping, response_mapping, detection_rules,
+                       created_at, updated_at
+                FROM protocol_configs
+                ORDER BY channel_type, api_version
+                LIMIT ? OFFSET ?
+                "#
+            }
+        };
+
+        let configs = sqlx::query_as(sql)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(conn.pool())
+            .await?;
+
+        Ok(configs)
+    }
+
+    /// Create or update a protocol config (upsert)
+    pub async fn upsert(db: &Database, input: &ProtocolConfigInput) -> Result<()> {
+        let conn = db.get_connection()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let is_default = input.is_default.unwrap_or(false);
+
+        // If this is set as default, clear other defaults for the same channel type
+        if is_default {
+            let clear_sql = match db.kind().as_str() {
+                "postgres" => {
+                    "UPDATE protocol_configs SET is_default = FALSE WHERE channel_type = $1"
+                }
+                _ => "UPDATE protocol_configs SET is_default = 0 WHERE channel_type = ?",
+            };
+            sqlx::query(clear_sql)
+                .bind(input.channel_type)
+                .execute(conn.pool())
+                .await?;
+        }
+
+        let sql = match db.kind().as_str() {
+            "postgres" => {
+                r#"
+                INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint,
+                    embed_endpoint, models_endpoint, request_mapping, response_mapping,
+                    detection_rules, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                ON CONFLICT(channel_type, api_version) DO UPDATE SET
+                    is_default = EXCLUDED.is_default,
+                    chat_endpoint = EXCLUDED.chat_endpoint,
+                    embed_endpoint = EXCLUDED.embed_endpoint,
+                    models_endpoint = EXCLUDED.models_endpoint,
+                    request_mapping = EXCLUDED.request_mapping,
+                    response_mapping = EXCLUDED.response_mapping,
+                    detection_rules = EXCLUDED.detection_rules,
+                    updated_at = EXCLUDED.updated_at
+                "#
+            }
+            _ => {
+                r#"
+                INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint,
+                    embed_endpoint, models_endpoint, request_mapping, response_mapping,
+                    detection_rules, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(channel_type, api_version) DO UPDATE SET
+                    is_default = excluded.is_default,
+                    chat_endpoint = excluded.chat_endpoint,
+                    embed_endpoint = excluded.embed_endpoint,
+                    models_endpoint = excluded.models_endpoint,
+                    request_mapping = excluded.request_mapping,
+                    response_mapping = excluded.response_mapping,
+                    detection_rules = excluded.detection_rules,
+                    updated_at = excluded.updated_at
+                "#
+            }
+        };
+
+        sqlx::query(sql)
+            .bind(input.channel_type)
+            .bind(&input.api_version)
+            .bind(is_default)
+            .bind(&input.chat_endpoint)
+            .bind(&input.embed_endpoint)
+            .bind(&input.models_endpoint)
+            .bind(&input.request_mapping)
+            .bind(&input.response_mapping)
+            .bind(&input.detection_rules)
+            .bind(now)
+            .bind(now)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Delete a protocol config
+    pub async fn delete(db: &Database, id: i32) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "DELETE FROM protocol_configs WHERE id = $1",
+            _ => "DELETE FROM protocol_configs WHERE id = ?",
+        };
+
+        let result = sqlx::query(sql).bind(id).execute(conn.pool()).await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+}
+
+/// Tiered pricing for models with usage-based pricing tiers
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TieredPrice {
+    pub id: i32,
+    pub model: String,
+    pub region: Option<String>,
+    pub tier_start: i64,
+    pub tier_end: Option<i64>,
+    pub input_price: f64,
+    pub output_price: f64,
+}
+
+/// Input for creating/updating a tiered price
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TieredPriceInput {
+    pub model: String,
+    pub region: Option<String>,
+    pub tier_start: i64,
+    pub tier_end: Option<i64>,
+    pub input_price: f64,
+    pub output_price: f64,
+}
+
+pub struct TieredPriceModel;
+
+impl TieredPriceModel {
+    /// Get all tiers for a model, optionally filtered by region
+    pub async fn get_tiers(
+        db: &Database,
+        model: &str,
+        region: Option<&str>,
+    ) -> Result<Vec<TieredPrice>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let tiers = match region {
+            Some(r) => {
+                let sql = if is_postgres {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = $1 AND region = $2
+                       ORDER BY tier_start ASC"#
+                } else {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = ? AND region = ?
+                       ORDER BY tier_start ASC"#
+                };
+                sqlx::query_as(sql)
+                    .bind(model)
+                    .bind(r)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+            None => {
+                // Get tiers with NULL region (universal) or matching region
+                let sql = if is_postgres {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = $1
+                       ORDER BY tier_start ASC"#
+                } else {
+                    r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                       FROM tiered_pricing WHERE model = ?
+                       ORDER BY tier_start ASC"#
+                };
+                sqlx::query_as(sql)
+                    .bind(model)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+        };
+
+        Ok(tiers)
+    }
+
+    /// Upsert a tiered price
+    pub async fn upsert_tier(db: &Database, input: &TieredPriceInput) -> Result<()> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            r#"
+            INSERT INTO tiered_pricing (model, region, tier_start, tier_end, input_price, output_price)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT(model, region, tier_start) DO UPDATE SET
+                tier_end = EXCLUDED.tier_end,
+                input_price = EXCLUDED.input_price,
+                output_price = EXCLUDED.output_price
+            "#
+        } else {
+            r#"
+            INSERT INTO tiered_pricing (model, region, tier_start, tier_end, input_price, output_price)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(model, region, tier_start) DO UPDATE SET
+                tier_end = excluded.tier_end,
+                input_price = excluded.input_price,
+                output_price = excluded.output_price
+            "#
+        };
+
+        sqlx::query(sql)
+            .bind(&input.model)
+            .bind(&input.region)
+            .bind(input.tier_start)
+            .bind(input.tier_end)
+            .bind(input.input_price)
+            .bind(input.output_price)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Delete all tiers for a model and region
+    pub async fn delete_tiers(db: &Database, model: &str, region: Option<&str>) -> Result<()> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        match region {
+            Some(r) => {
+                let sql = if is_postgres {
+                    "DELETE FROM tiered_pricing WHERE model = $1 AND region = $2"
+                } else {
+                    "DELETE FROM tiered_pricing WHERE model = ? AND region = ?"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .bind(r)
+                    .execute(conn.pool())
+                    .await?;
+            }
+            None => {
+                let sql = if is_postgres {
+                    "DELETE FROM tiered_pricing WHERE model = $1"
+                } else {
+                    "DELETE FROM tiered_pricing WHERE model = ?"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .execute(conn.pool())
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a model has tiered pricing configured
+    pub async fn has_tiered_pricing(db: &Database, model: &str) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "SELECT COUNT(*) FROM tiered_pricing WHERE model = $1",
+            _ => "SELECT COUNT(*) FROM tiered_pricing WHERE model = ?",
+        };
+
+        let count: i64 = sqlx::query_scalar(sql)
+            .bind(model)
+            .fetch_one(conn.pool())
+            .await?;
+
+        Ok(count > 0)
+    }
+
+    /// List all tiered pricing entries
+    pub async fn list_all(db: &Database) -> Result<Vec<TieredPrice>> {
+        let conn = db.get_connection()?;
+        let sql = r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
+                     FROM tiered_pricing ORDER BY model, tier_start ASC"#;
+
+        let tiers = sqlx::query_as(sql)
+            .fetch_all(conn.pool())
+            .await?;
+
+        Ok(tiers)
+    }
+}
+
+/// Multi-currency price entry for prices_v2 table
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PriceV2 {
+    pub id: i32,
+    pub model: String,
+    pub currency: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    pub cache_read_input_price: Option<f64>,
+    pub cache_creation_input_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub source: Option<String>,
+    pub region: Option<String>,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    #[sqlx(default)]
+    pub supports_vision: Option<i32>, // SQLite stores booleans as INTEGER
+    #[sqlx(default)]
+    pub supports_function_calling: Option<i32>,
+    pub synced_at: Option<i64>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+}
+
+impl PriceV2 {
+    /// Check if vision is supported
+    pub fn supports_vision_bool(&self) -> Option<bool> {
+        self.supports_vision.map(|v| v != 0)
+    }
+
+    /// Check if function calling is supported
+    pub fn supports_function_calling_bool(&self) -> Option<bool> {
+        self.supports_function_calling.map(|v| v != 0)
+    }
+}
+
+/// Input for creating/updating a PriceV2 entry
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PriceV2Input {
+    pub model: String,
+    pub currency: String,
+    pub input_price: f64,
+    pub output_price: f64,
+    pub cache_read_input_price: Option<f64>,
+    pub cache_creation_input_price: Option<f64>,
+    pub batch_input_price: Option<f64>,
+    pub batch_output_price: Option<f64>,
+    pub priority_input_price: Option<f64>,
+    pub priority_output_price: Option<f64>,
+    pub audio_input_price: Option<f64>,
+    pub source: Option<String>,
+    pub region: Option<String>,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub supports_vision: Option<bool>,
+    pub supports_function_calling: Option<bool>,
+}
+
+pub struct PriceV2Model;
+
+impl PriceV2Model {
+    /// Get price for a model in a specific currency and region
+    /// Falls back to USD if the requested currency is not found
+    pub async fn get(
+        db: &Database,
+        model: &str,
+        currency: &str,
+        region: Option<&str>,
+    ) -> Result<Option<PriceV2>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        // First try exact match (model, currency, region)
+        let sql = if is_postgres {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = $1 AND currency = $2 AND region IS NOT DISTINCT FROM $3"#
+        } else {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = ? AND currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+        };
+
+        let price = if is_postgres {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(currency)
+                .bind(region)
+                .fetch_optional(conn.pool())
+                .await?
+        } else {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(currency)
+                .bind(region)
+                .bind(region)
+                .fetch_optional(conn.pool())
+                .await?
+        };
+
+        if price.is_some() {
+            return Ok(price);
+        }
+
+        // Fallback to USD if different currency requested
+        if currency != "USD" {
+            let sql_usd = if is_postgres {
+                r#"SELECT id, model, currency, input_price, output_price,
+                          cache_read_input_price, cache_creation_input_price,
+                          batch_input_price, batch_output_price,
+                          priority_input_price, priority_output_price,
+                          audio_input_price, source, region,
+                          context_window, max_output_tokens,
+                          supports_vision, supports_function_calling,
+                          synced_at, created_at, updated_at
+                   FROM prices_v2 WHERE model = $1 AND currency = 'USD' AND region IS NOT DISTINCT FROM $2"#
+            } else {
+                r#"SELECT id, model, currency, input_price, output_price,
+                          cache_read_input_price, cache_creation_input_price,
+                          batch_input_price, batch_output_price,
+                          priority_input_price, priority_output_price,
+                          audio_input_price, source, region,
+                          context_window, max_output_tokens,
+                          supports_vision, supports_function_calling,
+                          synced_at, created_at, updated_at
+                   FROM prices_v2 WHERE model = ? AND currency = 'USD' AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+            };
+
+            let usd_price = if is_postgres {
+                sqlx::query_as(sql_usd)
+                    .bind(model)
+                    .bind(region)
+                    .fetch_optional(conn.pool())
+                    .await?
+            } else {
+                sqlx::query_as(sql_usd)
+                    .bind(model)
+                    .bind(region)
+                    .bind(region)
+                    .fetch_optional(conn.pool())
+                    .await?
+            };
+
+            return Ok(usd_price);
+        }
+
+        Ok(None)
+    }
+
+    /// Get all prices for a model across all currencies
+    pub async fn get_all_currencies(
+        db: &Database,
+        model: &str,
+        region: Option<&str>,
+    ) -> Result<Vec<PriceV2>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = $1 AND region IS NOT DISTINCT FROM $2
+               ORDER BY currency"#
+        } else {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+               ORDER BY currency"#
+        };
+
+        let prices = if is_postgres {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(region)
+                .fetch_all(conn.pool())
+                .await?
+        } else {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(region)
+                .bind(region)
+                .fetch_all(conn.pool())
+                .await?
+        };
+
+        Ok(prices)
+    }
+
+    /// List all prices with pagination
+    pub async fn list(db: &Database, limit: i32, offset: i32, currency: Option<&str>) -> Result<Vec<PriceV2>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let prices = match currency {
+            Some(curr) => {
+                let sql = if is_postgres {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 WHERE currency = $1
+                       ORDER BY model LIMIT $2 OFFSET $3"#
+                } else {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 WHERE currency = ?
+                       ORDER BY model LIMIT ? OFFSET ?"#
+                };
+                sqlx::query_as(sql)
+                    .bind(curr)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+            None => {
+                let sql = if is_postgres {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 ORDER BY model, currency LIMIT $1 OFFSET $2"#
+                } else {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices_v2 ORDER BY model, currency LIMIT ? OFFSET ?"#
+                };
+                sqlx::query_as(sql)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(conn.pool())
+                    .await?
+            }
+        };
+
+        Ok(prices)
+    }
+
+    /// Create or update a price (upsert)
+    pub async fn upsert(db: &Database, input: &PriceV2Input) -> Result<()> {
+        let conn = db.get_connection()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            r#"
+            INSERT INTO prices_v2 (
+                model, currency, input_price, output_price,
+                cache_read_input_price, cache_creation_input_price,
+                batch_input_price, batch_output_price,
+                priority_input_price, priority_output_price,
+                audio_input_price, source, region,
+                context_window, max_output_tokens,
+                supports_vision, supports_function_calling,
+                synced_at, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            ON CONFLICT(model, currency, region) DO UPDATE SET
+                input_price = EXCLUDED.input_price,
+                output_price = EXCLUDED.output_price,
+                cache_read_input_price = EXCLUDED.cache_read_input_price,
+                cache_creation_input_price = EXCLUDED.cache_creation_input_price,
+                batch_input_price = EXCLUDED.batch_input_price,
+                batch_output_price = EXCLUDED.batch_output_price,
+                priority_input_price = EXCLUDED.priority_input_price,
+                priority_output_price = EXCLUDED.priority_output_price,
+                audio_input_price = EXCLUDED.audio_input_price,
+                source = EXCLUDED.source,
+                context_window = EXCLUDED.context_window,
+                max_output_tokens = EXCLUDED.max_output_tokens,
+                supports_vision = EXCLUDED.supports_vision,
+                supports_function_calling = EXCLUDED.supports_function_calling,
+                synced_at = EXCLUDED.synced_at,
+                updated_at = EXCLUDED.updated_at
+            "#
+        } else {
+            r#"
+            INSERT INTO prices_v2 (
+                model, currency, input_price, output_price,
+                cache_read_input_price, cache_creation_input_price,
+                batch_input_price, batch_output_price,
+                priority_input_price, priority_output_price,
+                audio_input_price, source, region,
+                context_window, max_output_tokens,
+                supports_vision, supports_function_calling,
+                synced_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(model, currency, region) DO UPDATE SET
+                input_price = excluded.input_price,
+                output_price = excluded.output_price,
+                cache_read_input_price = excluded.cache_read_input_price,
+                cache_creation_input_price = excluded.cache_creation_input_price,
+                batch_input_price = excluded.batch_input_price,
+                batch_output_price = excluded.batch_output_price,
+                priority_input_price = excluded.priority_input_price,
+                priority_output_price = excluded.priority_output_price,
+                audio_input_price = excluded.audio_input_price,
+                source = excluded.source,
+                context_window = excluded.context_window,
+                max_output_tokens = excluded.max_output_tokens,
+                supports_vision = excluded.supports_vision,
+                supports_function_calling = excluded.supports_function_calling,
+                synced_at = excluded.synced_at,
+                updated_at = excluded.updated_at
+            "#
+        };
+
+        sqlx::query(sql)
+            .bind(&input.model)
+            .bind(&input.currency)
+            .bind(input.input_price)
+            .bind(input.output_price)
+            .bind(input.cache_read_input_price)
+            .bind(input.cache_creation_input_price)
+            .bind(input.batch_input_price)
+            .bind(input.batch_output_price)
+            .bind(input.priority_input_price)
+            .bind(input.priority_output_price)
+            .bind(input.audio_input_price)
+            .bind(&input.source)
+            .bind(&input.region)
+            .bind(input.context_window)
+            .bind(input.max_output_tokens)
+            .bind(input.supports_vision.map(|v| v as i32))
+            .bind(input.supports_function_calling.map(|v| v as i32))
+            .bind(now) // synced_at
+            .bind(now) // created_at
+            .bind(now) // updated_at
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Delete a price entry
+    pub async fn delete(db: &Database, model: &str, currency: &str, region: Option<&str>) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let result = match region {
+            Some(r) => {
+                let sql = if is_postgres {
+                    "DELETE FROM prices_v2 WHERE model = $1 AND currency = $2 AND region = $3"
+                } else {
+                    "DELETE FROM prices_v2 WHERE model = ? AND currency = ? AND region = ?"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .bind(currency)
+                    .bind(r)
+                    .execute(conn.pool())
+                    .await?
+            }
+            None => {
+                let sql = if is_postgres {
+                    "DELETE FROM prices_v2 WHERE model = $1 AND currency = $2 AND region IS NULL"
+                } else {
+                    "DELETE FROM prices_v2 WHERE model = ? AND currency = ? AND region IS NULL"
+                };
+                sqlx::query(sql)
+                    .bind(model)
+                    .bind(currency)
+                    .execute(conn.pool())
+                    .await?
+            }
+        };
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Delete all prices for a model
+    pub async fn delete_all_for_model(db: &Database, model: &str) -> Result<()> {
+        let conn = db.get_connection()?;
+        let sql = match db.kind().as_str() {
+            "postgres" => "DELETE FROM prices_v2 WHERE model = $1",
+            _ => "DELETE FROM prices_v2 WHERE model = ?",
+        };
+
+        sqlx::query(sql).bind(model).execute(conn.pool()).await?;
+
+        Ok(())
+    }
+
+    /// Calculate cost for a request using PriceV2
+    /// Returns cost in the currency specified in the price entry
+    pub fn calculate_cost(price: &PriceV2, prompt_tokens: u64, completion_tokens: u64) -> f64 {
+        // Prices are per 1M tokens
+        let input_cost = (prompt_tokens as f64 / 1_000_000.0) * price.input_price;
+        let output_cost = (completion_tokens as f64 / 1_000_000.0) * price.output_price;
+        input_cost + output_cost
     }
 }

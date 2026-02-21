@@ -21,4 +21,45 @@
 - Task 6.11: Database state verified via channel list command (sqlite3 not available)
 - Task 6.12: Help commands verified - shows all subcommands and parameter descriptions
 
-ALL TASKS IN docs/task.md ARE NOW COMPLETE.
+[2026-02-20] Advanced Pricing Tasks (from docs/task.md v4.0)
+
+Completed Tasks:
+- Task 3.2: Extended StreamingTokenCounter with cache tokens (cache_read_tokens, cache_creation_tokens, audio_tokens)
+- Task 3.3: Added batch request detection and billing
+- Task 3.4: Added priority request detection and billing
+- Task 4.1: Integrated tiered pricing into proxy_handler
+- Tasks 5.1, 4.3: Added check-tiered CLI command
+- Tasks 6.1, 6.2: Verified existing tests
+- Task 6.3: Created price_sync_tests.rs
+- Task 7.1: Updated CLAUDE.md with billing docs
+- Tasks 7.2, 9.8: Created config examples
+- Task 4.2: Added pricing_region to channels
+- Task 5.2: Added sync-status CLI command
+- Task 9.1: Created pricing_config.rs with PricingConfig, ModelPricing, TieredPriceConfig structures
+- Task 8.1: Added multi-currency DB fields (original_currency, original_input_price, original_output_price)
+- Task 8.2: Defined Currency enum (USD, CNY, EUR) with Display, FromStr, Serialize traits
+- Task 9.3: Created pricing_loader.rs with load_local_override, load_local_config
+- Task 8.3: Created exchange_rate.rs with ExchangeRateService (DashMap caching, convert/get_rate/set_rate methods)
+- Task 8.4: Added start_sync_task background task with hourly check and 24h staleness detection
+- Task 8.5: Integrated multi-currency into billing logic with MultiCurrencyPricing and calculate_multi_currency_cost
+- Task 8.6: Added preferred_currency field to users table and User struct
+- Task 8.7: Created currency.rs CLI module with list-rates, set-rate, convert, and refresh commands
+- Task 8.8: Added 13 exchange_rate tests and 10 multi-currency billing tests
+
+Current Progress: 40/40 tasks from Phase 8 complete! (All non-Phase-9 tasks done)
+
+REMAINING TASKS:
+All Phase 8 (Multi-currency) tasks are complete.
+
+Remaining tasks are Phase 9 (Pricing Source V2):
+- Task 9.2: Create prices_v2 table (P1) - Requires architectural decision on migration strategy
+- Task 9.4: Price sync V2 service (P2) - Depends on 9.2
+- Task 9.5: Import/export CLI commands (P2) - Depends on 9.4
+- Task 9.6: Set/show CLI commands (P2) - Depends on 9.4
+- Task 9.7: Community price sync (P3) - Depends on 9.4
+- Task 9.9: Pricing sync integration tests (P3) - Depends on 9.4
+
+Note: Tasks 9.2-9.9 are dependent on the prices_v2 table design decision and would require
+significant schema migration. The multi-currency features in the current prices table
+(original_currency, original_input_price, original_output_price) provide basic multi-currency
+support without requiring a full prices_v2 migration.

@@ -95,7 +95,8 @@ impl Schema {
                     setting TEXT,
                     param_override TEXT,
                     header_override TEXT,
-                    remark TEXT
+                    remark TEXT,
+                    api_version VARCHAR(32) DEFAULT 'default'
                 );
                 CREATE INDEX IF NOT EXISTS idx_channels_name ON channels(name);
                 CREATE INDEX IF NOT EXISTS idx_channels_tag ON channels(tag);
@@ -125,7 +126,8 @@ impl Schema {
                     setting TEXT,
                     param_override TEXT,
                     header_override TEXT,
-                    remark VARCHAR(255)
+                    remark VARCHAR(255),
+                    api_version VARCHAR(32) DEFAULT 'default'
                 );
                 CREATE INDEX IF NOT EXISTS idx_channels_name ON channels(name);
                 CREATE INDEX IF NOT EXISTS idx_channels_tag ON channels(tag);
@@ -215,7 +217,7 @@ impl Schema {
             _ => "",
         };
 
-        // 5. Prices Table (Model Pricing)
+        // 5. Prices Table (Model Pricing) with Advanced Pricing Fields
         let prices_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -227,7 +229,18 @@ impl Schema {
                     currency TEXT DEFAULT 'USD',
                     alias_for TEXT,
                     created_at INTEGER,
-                    updated_at INTEGER
+                    updated_at INTEGER,
+                    cache_read_price REAL,
+                    cache_creation_price REAL,
+                    batch_input_price REAL,
+                    batch_output_price REAL,
+                    priority_input_price REAL,
+                    priority_output_price REAL,
+                    audio_input_price REAL,
+                    full_pricing TEXT,
+                    original_currency TEXT,
+                    original_input_price REAL,
+                    original_output_price REAL
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
             "#
@@ -242,9 +255,235 @@ impl Schema {
                     currency VARCHAR(10) DEFAULT 'USD',
                     alias_for VARCHAR(255),
                     created_at BIGINT,
-                    updated_at BIGINT
+                    updated_at BIGINT,
+                    cache_read_price DOUBLE PRECISION,
+                    cache_creation_price DOUBLE PRECISION,
+                    batch_input_price DOUBLE PRECISION,
+                    batch_output_price DOUBLE PRECISION,
+                    priority_input_price DOUBLE PRECISION,
+                    priority_output_price DOUBLE PRECISION,
+                    audio_input_price DOUBLE PRECISION,
+                    full_pricing TEXT,
+                    original_currency VARCHAR(10),
+                    original_input_price DOUBLE PRECISION,
+                    original_output_price DOUBLE PRECISION
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
+            "#
+            }
+            _ => "",
+        };
+
+        // 6. Protocol Configs Table (Dynamic Protocol Adapter Configuration)
+        let protocol_configs_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS protocol_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_type INTEGER NOT NULL,
+                    api_version VARCHAR(32) NOT NULL,
+                    is_default BOOLEAN DEFAULT 0,
+                    chat_endpoint VARCHAR(255),
+                    embed_endpoint VARCHAR(255),
+                    models_endpoint VARCHAR(255),
+                    request_mapping TEXT,
+                    response_mapping TEXT,
+                    detection_rules TEXT,
+                    created_at INTEGER,
+                    updated_at INTEGER,
+                    UNIQUE(channel_type, api_version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_type ON protocol_configs(channel_type);
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_version ON protocol_configs(api_version);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS protocol_configs (
+                    id SERIAL PRIMARY KEY,
+                    channel_type INTEGER NOT NULL,
+                    api_version VARCHAR(32) NOT NULL,
+                    is_default BOOLEAN DEFAULT FALSE,
+                    chat_endpoint VARCHAR(255),
+                    embed_endpoint VARCHAR(255),
+                    models_endpoint VARCHAR(255),
+                    request_mapping TEXT,
+                    response_mapping TEXT,
+                    detection_rules TEXT,
+                    created_at BIGINT,
+                    updated_at BIGINT,
+                    UNIQUE(channel_type, api_version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_type ON protocol_configs(channel_type);
+                CREATE INDEX IF NOT EXISTS idx_protocol_configs_version ON protocol_configs(api_version);
+            "#
+            }
+            _ => "",
+        };
+
+        // 7. Model Capabilities Table (synced from LiteLLM)
+        let model_capabilities_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS model_capabilities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model TEXT NOT NULL UNIQUE,
+                    context_window INTEGER,
+                    max_output_tokens INTEGER,
+                    supports_vision BOOLEAN DEFAULT 0,
+                    supports_function_calling BOOLEAN DEFAULT 0,
+                    input_price REAL,
+                    output_price REAL,
+                    synced_at INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS idx_model_capabilities_model ON model_capabilities(model);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS model_capabilities (
+                    id SERIAL PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL UNIQUE,
+                    context_window BIGINT,
+                    max_output_tokens BIGINT,
+                    supports_vision BOOLEAN DEFAULT FALSE,
+                    supports_function_calling BOOLEAN DEFAULT FALSE,
+                    input_price DOUBLE PRECISION,
+                    output_price DOUBLE PRECISION,
+                    synced_at BIGINT
+                );
+                CREATE INDEX IF NOT EXISTS idx_model_capabilities_model ON model_capabilities(model);
+            "#
+            }
+            _ => "",
+        };
+
+        // 8. Tiered Pricing Table (for models with tiered pricing like Qwen)
+        let tiered_pricing_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS tiered_pricing (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model TEXT NOT NULL,
+                    region TEXT,
+                    tier_start INTEGER NOT NULL,
+                    tier_end INTEGER,
+                    input_price REAL NOT NULL,
+                    output_price REAL NOT NULL,
+                    UNIQUE(model, region, tier_start)
+                );
+                CREATE INDEX IF NOT EXISTS idx_tiered_pricing_model ON tiered_pricing(model);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS tiered_pricing (
+                    id SERIAL PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL,
+                    region VARCHAR(32),
+                    tier_start BIGINT NOT NULL,
+                    tier_end BIGINT,
+                    input_price DOUBLE PRECISION NOT NULL,
+                    output_price DOUBLE PRECISION NOT NULL,
+                    UNIQUE(model, region, tier_start)
+                );
+                CREATE INDEX IF NOT EXISTS idx_tiered_pricing_model ON tiered_pricing(model);
+            "#
+            }
+            _ => "",
+        };
+
+        // 9. Exchange Rates Table (for multi-currency support)
+        let exchange_rates_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS exchange_rates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    from_currency TEXT NOT NULL,
+                    to_currency TEXT NOT NULL,
+                    rate REAL NOT NULL,
+                    updated_at INTEGER,
+                    UNIQUE(from_currency, to_currency)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exchange_rates_from ON exchange_rates(from_currency);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS exchange_rates (
+                    id SERIAL PRIMARY KEY,
+                    from_currency VARCHAR(10) NOT NULL,
+                    to_currency VARCHAR(10) NOT NULL,
+                    rate DOUBLE PRECISION NOT NULL,
+                    updated_at BIGINT,
+                    UNIQUE(from_currency, to_currency)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exchange_rates_from ON exchange_rates(from_currency);
+            "#
+            }
+            _ => "",
+        };
+
+        // 10. Prices V2 Table (multi-currency pricing with advanced pricing fields)
+        let prices_v2_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS prices_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model TEXT NOT NULL,
+                    currency TEXT NOT NULL DEFAULT 'USD',
+                    input_price REAL NOT NULL DEFAULT 0,
+                    output_price REAL NOT NULL DEFAULT 0,
+                    cache_read_input_price REAL,
+                    cache_creation_input_price REAL,
+                    batch_input_price REAL,
+                    batch_output_price REAL,
+                    priority_input_price REAL,
+                    priority_output_price REAL,
+                    audio_input_price REAL,
+                    source TEXT,
+                    region TEXT,
+                    context_window INTEGER,
+                    max_output_tokens INTEGER,
+                    supports_vision INTEGER DEFAULT 0,
+                    supports_function_calling INTEGER DEFAULT 0,
+                    synced_at INTEGER,
+                    created_at INTEGER,
+                    updated_at INTEGER,
+                    UNIQUE(model, currency, region)
+                );
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS prices_v2 (
+                    id SERIAL PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL,
+                    currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+                    input_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    output_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    cache_read_input_price DOUBLE PRECISION,
+                    cache_creation_input_price DOUBLE PRECISION,
+                    batch_input_price DOUBLE PRECISION,
+                    batch_output_price DOUBLE PRECISION,
+                    priority_input_price DOUBLE PRECISION,
+                    priority_output_price DOUBLE PRECISION,
+                    audio_input_price DOUBLE PRECISION,
+                    source VARCHAR(64),
+                    region VARCHAR(32),
+                    context_window BIGINT,
+                    max_output_tokens BIGINT,
+                    supports_vision BOOLEAN DEFAULT FALSE,
+                    supports_function_calling BOOLEAN DEFAULT FALSE,
+                    synced_at BIGINT,
+                    created_at BIGINT,
+                    updated_at BIGINT,
+                    UNIQUE(model, currency, region)
+                );
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
             "#
             }
             _ => "",
@@ -265,6 +504,201 @@ impl Schema {
         }
         if !prices_sql.is_empty() {
             pool.execute(prices_sql).await?;
+        }
+        if !protocol_configs_sql.is_empty() {
+            pool.execute(protocol_configs_sql).await?;
+        }
+        if !model_capabilities_sql.is_empty() {
+            pool.execute(model_capabilities_sql).await?;
+        }
+        if !tiered_pricing_sql.is_empty() {
+            pool.execute(tiered_pricing_sql).await?;
+        }
+        if !exchange_rates_sql.is_empty() {
+            pool.execute(exchange_rates_sql).await?;
+        }
+        if !prices_v2_sql.is_empty() {
+            pool.execute(prices_v2_sql).await?;
+        }
+
+        // Migration: Add api_version column to channels if it doesn't exist
+        // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we try and ignore errors
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE channels ADD COLUMN api_version VARCHAR(32) DEFAULT 'default'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS api_version VARCHAR(32) DEFAULT 'default'")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Add pricing_region column to channels if it doesn't exist
+        // Supports 'cn', 'international', and NULL (universal)
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE channels ADD COLUMN pricing_region VARCHAR(32) DEFAULT 'international'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS pricing_region VARCHAR(32) DEFAULT 'international'")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Add advanced pricing columns to prices table if they don't exist
+        // Note: full_pricing is TEXT, others are REAL/DOUBLE PRECISION
+        let advanced_pricing_columns_real = [
+            "cache_read_price",
+            "cache_creation_price",
+            "batch_input_price",
+            "batch_output_price",
+            "priority_input_price",
+            "priority_output_price",
+            "audio_input_price",
+        ];
+
+        for column in advanced_pricing_columns_real {
+            if kind == "sqlite" {
+                let sql = format!("ALTER TABLE prices ADD COLUMN {} REAL", column);
+                let _ = sqlx::query(&sql).execute(pool).await;
+            } else if kind == "postgres" {
+                let sql = format!(
+                    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS {} DOUBLE PRECISION",
+                    column
+                );
+                let _ = sqlx::query(&sql).execute(pool).await;
+            }
+        }
+
+        // Add full_pricing column as TEXT separately
+        if kind == "sqlite" {
+            let _ = sqlx::query("ALTER TABLE prices ADD COLUMN full_pricing TEXT")
+                .execute(pool)
+                .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE prices ADD COLUMN IF NOT EXISTS full_pricing TEXT")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Add multi-currency fields to prices table
+        let multi_currency_columns = [
+            ("original_currency", "VARCHAR(10)"),
+            ("original_input_price", "REAL"),
+            ("original_output_price", "REAL"),
+        ];
+
+        for (column, col_type) in multi_currency_columns {
+            if kind == "sqlite" {
+                let sql = format!("ALTER TABLE prices ADD COLUMN {} {}", column, col_type);
+                let _ = sqlx::query(&sql).execute(pool).await;
+            } else if kind == "postgres" {
+                let pg_type = if col_type == "REAL" { "DOUBLE PRECISION" } else { col_type };
+                let sql = format!("ALTER TABLE prices ADD COLUMN IF NOT EXISTS {} {}", column, pg_type);
+                let _ = sqlx::query(&sql).execute(pool).await;
+            }
+        }
+
+        // Migration: Add preferred_currency column to users table
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Add currency column to tiered_pricing table for multi-currency support
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE tiered_pricing ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE tiered_pricing ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Migrate existing prices to prices_v2 table (USD only)
+        // Only run if prices_v2 is empty but prices has data
+        let prices_v2_count: i64 = match kind.as_str() {
+            "sqlite" => sqlx::query_scalar("SELECT count(*) FROM prices_v2")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            "postgres" => sqlx::query_scalar("SELECT count(*) FROM prices_v2")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            _ => 0,
+        };
+
+        if prices_v2_count == 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+
+            // Insert from prices to prices_v2 (USD currency, no region)
+            let migrate_sql = match kind.as_str() {
+                "sqlite" => r#"
+                    INSERT INTO prices_v2 (
+                        model, currency, input_price, output_price,
+                        cache_read_input_price, cache_creation_input_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, source, region,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        model, 'USD', input_price, output_price,
+                        cache_read_price, cache_creation_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, NULL, NULL,
+                        ?, ?
+                    FROM prices
+                "#,
+                "postgres" => r#"
+                    INSERT INTO prices_v2 (
+                        model, currency, input_price, output_price,
+                        cache_read_input_price, cache_creation_input_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, source, region,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        model, 'USD', input_price, output_price,
+                        cache_read_price, cache_creation_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, NULL, NULL,
+                        $1, $2
+                    FROM prices
+                    ON CONFLICT (model, currency, region) DO NOTHING
+                "#,
+                _ => "",
+            };
+
+            if !migrate_sql.is_empty() {
+                let _ = sqlx::query(migrate_sql)
+                    .bind(now)
+                    .bind(now)
+                    .execute(pool)
+                    .await;
+                println!("Migrated existing prices to prices_v2 table");
+            }
         }
 
         // Init Root User if not exists
@@ -386,6 +820,95 @@ impl Schema {
             println!(
                 "Initialized default pricing for {} models",
                 default_prices.len()
+            );
+        }
+
+        // Init Default Protocol Configs
+        let check_protocol_sql = "SELECT count(*) FROM protocol_configs";
+        let pc_count: i64 = match kind.as_str() {
+            "sqlite" => sqlx::query_scalar(check_protocol_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            "postgres" => sqlx::query_scalar(check_protocol_sql)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
+            _ => 0,
+        };
+
+        if pc_count == 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+
+            // Default protocol configs
+            // channel_type values: 1=OpenAI, 2=Anthropic, 3=Azure, 4=Gemini, 5=Vertex
+            let default_protocols: [(i32, &str, bool, Option<&str>, Option<&str>, Option<&str>);
+                4] = [
+                // OpenAI - default
+                (
+                    1,
+                    "default",
+                    true,
+                    Some("/v1/chat/completions"),
+                    Some("/v1/embeddings"),
+                    Some("/v1/models"),
+                ),
+                // Anthropic - default
+                (2, "2023-06-01", true, Some("/v1/messages"), None, None),
+                // Azure OpenAI - default
+                (
+                    3,
+                    "2024-02-01",
+                    true,
+                    Some("/deployments/{deployment_id}/chat/completions"),
+                    Some("/deployments/{deployment_id}/embeddings"),
+                    Some("/deployments?api-version=2024-02-01"),
+                ),
+                // Gemini - default
+                (
+                    4,
+                    "v1",
+                    true,
+                    Some("/v1/models/{model}:generateContent"),
+                    Some("/v1/models/{model}:embedContent"),
+                    Some("/v1/models"),
+                ),
+            ];
+
+            for (
+                channel_type,
+                api_version,
+                is_default,
+                chat_endpoint,
+                embed_endpoint,
+                models_endpoint,
+            ) in default_protocols
+            {
+                let insert_sql = match kind.as_str() {
+                    "sqlite" => "INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "postgres" => "INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    _ => "",
+                };
+                if !insert_sql.is_empty() {
+                    sqlx::query(insert_sql)
+                        .bind(channel_type)
+                        .bind(api_version)
+                        .bind(is_default)
+                        .bind(chat_endpoint)
+                        .bind(embed_endpoint)
+                        .bind(models_endpoint)
+                        .bind(now)
+                        .bind(now)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            println!(
+                "Initialized default protocol configs for {} channel types",
+                default_protocols.len()
             );
         }
 
