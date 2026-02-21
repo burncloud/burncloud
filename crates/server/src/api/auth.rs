@@ -112,7 +112,9 @@ async fn create_user(
         password_hash: Some(password_hash),
         github_id: None,
         status: 1,
-        balance: 10.0, // Signup bonus
+        balance_usd: 10_000_000_000, // 10 USD signup bonus in nanodollars
+        balance_cny: 0,
+        preferred_currency: Some("USD".to_string()),
     };
 
     match UserDatabase::create_user(&state.db, &user).await {

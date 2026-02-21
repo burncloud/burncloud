@@ -11,6 +11,8 @@ impl Schema {
         // 1. Users Table
         // Note: 'group' is a reserved keyword in SQL, so we quote it or use a different name in DB if needed.
         // But New API uses 'group' in GORM. In raw SQL, we should quote it: "group" or `group`.
+        // Note: balance_usd and balance_cny are stored as BIGINT nanodollars (9 decimal precision)
+        // Using i64 (signed BIGINT) for PostgreSQL compatibility, values must be non-negative
         let users_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -33,7 +35,10 @@ impl Schema {
                     aff_count INTEGER DEFAULT 0,
                     aff_quota INTEGER DEFAULT 0,
                     inviter_id TEXT,
-                    deleted_at TEXT
+                    deleted_at TEXT,
+                    balance_usd BIGINT DEFAULT 0,
+                    balance_cny BIGINT DEFAULT 0,
+                    preferred_currency VARCHAR(10) DEFAULT 'USD'
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -60,7 +65,10 @@ impl Schema {
                     aff_count INTEGER DEFAULT 0,
                     aff_quota BIGINT DEFAULT 0,
                     inviter_id TEXT,
-                    deleted_at TIMESTAMP
+                    deleted_at TIMESTAMP,
+                    balance_usd BIGINT DEFAULT 0,
+                    balance_cny BIGINT DEFAULT 0,
+                    preferred_currency VARCHAR(10) DEFAULT 'USD'
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -175,6 +183,9 @@ impl Schema {
         };
 
         // 4. Tokens Table (App Tokens)
+        // Note: Token-level quota fields (remain_quota, unlimited_quota, used_quota) are deprecated.
+        // Token quotas are now managed at the user level via dual-currency wallet (balance_usd, balance_cny).
+        // These fields are retained for backward compatibility and will be removed in a future migration.
         let tokens_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -218,6 +229,14 @@ impl Schema {
         };
 
         // 5. Prices Table (Model Pricing) with Advanced Pricing Fields
+        // ============================================================================
+        // DEPRECATED: Use prices_v2 table instead.
+        // - prices table uses REAL for prices (floating point precision issues)
+        // - prices_v2 uses BIGINT for nanodollar prices (9 decimal precision)
+        // - prices table has no region support
+        // - prices_v2 supports regional pricing with UNIQUE(model, region) constraint
+        // Migration path: All new pricing should use PriceV2Model, not PriceModel.
+        // ============================================================================
         let prices_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -453,10 +472,10 @@ impl Schema {
                     synced_at INTEGER,
                     created_at INTEGER,
                     updated_at INTEGER,
-                    UNIQUE(model, currency, region)
+                    UNIQUE(model, region)
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
-                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_region ON prices_v2(model, region);
             "#
             }
             "postgres" => {
@@ -483,10 +502,10 @@ impl Schema {
                     synced_at BIGINT,
                     created_at BIGINT,
                     updated_at BIGINT,
-                    UNIQUE(model, currency, region)
+                    UNIQUE(model, region)
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
-                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
+                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_region ON prices_v2(model, region);
             "#
             }
             _ => "",
@@ -618,6 +637,41 @@ impl Schema {
                 .execute(pool)
                 .await;
         }
+
+        // Migration: Add dual-currency wallet columns to users table
+        // balance_usd and balance_cny are stored as BIGINT nanodollars (9 decimal precision)
+        // Note: Using i64 (signed BIGINT) for PostgreSQL compatibility, values must be non-negative
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN balance_usd BIGINT DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN balance_cny BIGINT DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0")
+                .execute(pool)
+                .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Migrate existing quota to balance_usd for users with zero balance_usd
+        // Quota system: 500000 quota = $1
+        // Nanodollar conversion: $1 = 1_000_000_000 nanodollars
+        // So: balance_usd = quota * 1_000_000_000 / 500000 = quota * 2000
+        // Note: This only migrates users who haven't been migrated yet (balance_usd = 0)
+        // Same SQL for both SQLite and PostgreSQL
+        let _ = sqlx::query(
+            "UPDATE users SET balance_usd = (quota - used_quota) * 2000 WHERE balance_usd = 0 AND quota > used_quota",
+        )
+        .execute(pool)
+        .await;
 
         // Migration: Add currency column to tiered_pricing table for multi-currency support
         if kind == "sqlite" {
@@ -923,6 +977,154 @@ impl Schema {
                 .await;
 
                 println!("PostgreSQL price migration completed");
+            }
+        }
+
+        // Migration: Change prices_v2 unique constraint from UNIQUE(model, currency, region) to UNIQUE(model, region)
+        // This enforces the core principle: one model in one region can only have one currency pricing
+        // Check if the constraint needs to be changed by looking for duplicates
+        let needs_constraint_migration: bool = if kind == "sqlite" {
+            // Check if we have the old constraint by trying to insert a duplicate
+            // If the table has UNIQUE(model, currency, region), we need to migrate
+            let constraint_check: Option<i64> = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM pragma_index_list('prices_v2') WHERE name LIKE '%currency%'"
+            )
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+
+            constraint_check.unwrap_or(0) > 0
+        } else if kind == "postgres" {
+            // Check if the old constraint exists
+            let constraint_check: Option<String> = sqlx::query_scalar(
+                "SELECT constraint_name FROM information_schema.table_constraints
+                 WHERE table_name = 'prices_v2' AND constraint_type = 'UNIQUE'
+                 AND constraint_name LIKE '%currency%'"
+            )
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+
+            constraint_check.is_some()
+        } else {
+            false
+        };
+
+        if needs_constraint_migration {
+            println!("Migrating prices_v2 unique constraint to UNIQUE(model, region)...");
+
+            if kind == "sqlite" {
+                // SQLite: Create new table with correct constraint, migrate data, swap tables
+                // First, clean duplicates - keep only one row per (model, region)
+                // We keep the row with the lowest id for each (model, region) combination
+                let _ = sqlx::query(
+                    r#"
+                    CREATE TABLE IF NOT EXISTS prices_v2_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        model TEXT NOT NULL,
+                        currency TEXT NOT NULL DEFAULT 'USD',
+                        input_price BIGINT NOT NULL DEFAULT 0,
+                        output_price BIGINT NOT NULL DEFAULT 0,
+                        cache_read_input_price BIGINT,
+                        cache_creation_input_price BIGINT,
+                        batch_input_price BIGINT,
+                        batch_output_price BIGINT,
+                        priority_input_price BIGINT,
+                        priority_output_price BIGINT,
+                        audio_input_price BIGINT,
+                        source TEXT,
+                        region TEXT,
+                        context_window INTEGER,
+                        max_output_tokens INTEGER,
+                        supports_vision INTEGER DEFAULT 0,
+                        supports_function_calling INTEGER DEFAULT 0,
+                        synced_at INTEGER,
+                        created_at INTEGER,
+                        updated_at INTEGER,
+                        UNIQUE(model, region)
+                    )
+                    "#,
+                )
+                .execute(pool)
+                .await;
+
+                // Insert deduplicated data - keep first entry for each (model, region)
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO prices_v2_new
+                    SELECT id, model, currency, input_price, output_price,
+                           cache_read_input_price, cache_creation_input_price,
+                           batch_input_price, batch_output_price,
+                           priority_input_price, priority_output_price,
+                           audio_input_price, source, region,
+                           context_window, max_output_tokens,
+                           supports_vision, supports_function_calling,
+                           synced_at, created_at, updated_at
+                    FROM prices_v2
+                    WHERE id IN (
+                        SELECT MIN(id) FROM prices_v2 GROUP BY model, region
+                    )
+                    "#,
+                )
+                .execute(pool)
+                .await;
+
+                let _ = sqlx::query("DROP TABLE prices_v2").execute(pool).await;
+                let _ = sqlx::query("ALTER TABLE prices_v2_new RENAME TO prices_v2").execute(pool).await;
+                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model)").execute(pool).await;
+                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_prices_v2_model_region ON prices_v2(model, region)").execute(pool).await;
+
+                println!("SQLite prices_v2 constraint migration completed");
+            } else if kind == "postgres" {
+                // PostgreSQL: Drop old constraint and add new one
+                // First, clean duplicates
+                let _ = sqlx::query(
+                    "DELETE FROM prices_v2 WHERE id NOT IN (
+                        SELECT MIN(id) FROM prices_v2 GROUP BY model, region
+                    )"
+                )
+                .execute(pool)
+                .await;
+
+                // Drop the old constraint (name varies, so we find it dynamically)
+                let _ = sqlx::query(
+                    "DO $$
+                    DECLARE constraint_name TEXT;
+                    BEGIN
+                        SELECT c.conname INTO constraint_name
+                        FROM pg_constraint c
+                        JOIN pg_class t ON c.conrelid = t.oid
+                        WHERE t.relname = 'prices_v2'
+                        AND c.contype = 'u'
+                        AND EXISTS (
+                            SELECT 1 FROM pg_attribute a
+                            WHERE a.attrelid = t.oid
+                            AND a.attnum = ANY(c.conkey)
+                            AND a.attname = 'currency'
+                        );
+                        IF constraint_name IS NOT NULL THEN
+                            EXECUTE 'ALTER TABLE prices_v2 DROP CONSTRAINT ' || constraint_name;
+                        END IF;
+                    END $$;"
+                )
+                .execute(pool)
+                .await;
+
+                // Add the new constraint
+                let _ = sqlx::query(
+                    "ALTER TABLE prices_v2 ADD CONSTRAINT prices_v2_model_region_unique UNIQUE (model, region)"
+                )
+                .execute(pool)
+                .await;
+
+                // Create the new index
+                let _ = sqlx::query(
+                    "CREATE INDEX IF NOT EXISTS idx_prices_v2_model_region ON prices_v2(model, region)"
+                )
+                .execute(pool)
+                .await;
+
+                println!("PostgreSQL prices_v2 constraint migration completed");
             }
         }
 

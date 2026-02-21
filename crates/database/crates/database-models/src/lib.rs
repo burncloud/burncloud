@@ -69,6 +69,11 @@ pub struct PriceInput {
     pub original_output_price: Option<f64>,
 }
 
+/// DEPRECATED: Use PriceV2Model instead.
+/// - Price/PriceModel uses REAL for prices (floating point precision issues)
+/// - PriceV2/PriceV2Model uses BIGINT for nanodollar prices (9 decimal precision)
+/// - PriceV2 supports regional pricing with UNIQUE(model, region) constraint
+/// Migration: All new pricing should use PriceV2Model, not PriceModel.
 pub struct PriceModel;
 
 impl PriceModel {
@@ -1726,7 +1731,8 @@ impl PriceV2Model {
                 supports_vision, supports_function_calling,
                 synced_at, created_at, updated_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-            ON CONFLICT(model, currency, region) DO UPDATE SET
+            ON CONFLICT(model, region) DO UPDATE SET
+                currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
                 output_price = EXCLUDED.output_price,
                 cache_read_input_price = EXCLUDED.cache_read_input_price,
@@ -1756,7 +1762,8 @@ impl PriceV2Model {
                 supports_vision, supports_function_calling,
                 synced_at, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(model, currency, region) DO UPDATE SET
+            ON CONFLICT(model, region) DO UPDATE SET
+                currency = excluded.currency,
                 input_price = excluded.input_price,
                 output_price = excluded.output_price,
                 cache_read_input_price = excluded.cache_read_input_price,

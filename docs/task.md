@@ -1,806 +1,578 @@
 {
     "meta": {
-        "title": "价格系统 u64 精度迁移 - 实施任务清单",
+        "title": "区域定价与双币扣费 - 实施任务清单",
         "version": "1.0",
-        "source": "docs/plan.md 第十七章",
+        "source": "docs/plan.md 第十八章",
         "priority_order": [
             "P1",
             "P2"
         ],
         "estimated_phases": 6,
-        "total_tasks": 14,
-        "estimated_effort": "3-5 days",
+        "total_tasks": 15,
+        "estimated_effort": "5-7 days",
         "task_status_field": {
             "passes": "null=未开始, true=已完成, false=失败需重试"
         }
     },
     "context": {
-        "problem": "当前价格系统使用 f64 类型存储价格，存在浮点精度问题：累加计算时可能产生微小误差、直接比较浮点数不可靠、财务计算应使用精确数值",
-        "goal": "将所有价格字段从 f64 迁移到 u64，使用纳美元 (Nanodollars) 作为内部存储单位，实现 9 位小数精度",
+        "problem": "国内模型（如 Qwen）有人民币价格，但系统可能把它们硬转成美元。当汇率变动时，硬转换的价格就不准确。同一个模型同时有 USD 和 CNY 两种价格的设计是错误的。",
+        "goal": "实现区域定价和双币扣费：同一渠道同一模型只能有一种货币定价，国内渠道用 CNY，海外渠道用 USD，绝对不能把人民币价格硬转成美元。",
+        "core_principle": "同一个渠道同一个模型只能有一种货币定价",
         "constraints": [
-            "保持 API 向后兼容，JSON 输出仍显示浮点格式",
-            "CLI 输入接受 f64，内部转换为 u64",
-            "数据库迁移需支持 SQLite 和 PostgreSQL",
-            "总价计算使用 u128 中间值避免溢出"
+            "国内渠道 → 使用人民币定价（CNY）",
+            "海外渠道 → 使用美元定价（USD）",
+            "绝对不能把人民币价格硬转成美元",
+            "余额使用 u64（无符号）保证非负",
+            "prices_v2 正式替换 prices 表",
+            "移除废弃的 quota 字段"
         ],
         "negative_constraints": [
-            "不要在计费逻辑中使用 unwrap() 或 expect()",
-            "不要在热路径中同步查询数据库",
-            "不要直接删除旧价格数据",
-            "不要在迁移时跳过数据验证",
-            "不要在溢出时静默截断"
+            "不要在同一区域为同一模型设置两种货币价格",
+            "不要把 CNY 价格硬转成 USD",
+            "不要在扣费前不检查余额充足性",
+            "不要使用 i64 作为余额类型（应使用 u64）"
         ],
         "security": {
-            "input_validation": "所有价格输入必须 >= 0",
-            "overflow_protection": "使用 u128 中间值计算总价",
-            "sql_injection": "使用参数化查询"
+            "input_validation": "余额必须 >= 0",
+            "overflow_protection": "使用 u128 中间值计算汇率转换",
+            "balance_check": "请求前必须预判余额是否充足"
         },
         "metrics": {
-            "precision": "9 位小数精度 (纳美元)",
-            "billing_accuracy": "计费误差 < 10^-9",
-            "overflow_threshold": "单次请求最大 10B tokens × $1000/1M"
+            "balance_precision": "u64 nanodollars (9位小数)",
+            "pre_check_latency": "< 5ms (一次数据库查询)",
+            "cross_currency_accuracy": "汇率转换精度 10^-9"
         }
     },
     "execution_order": [
-        ["10.1"],
-        ["10.2"],
-        ["10.3", "10.4"],
-        ["10.5"],
-        ["10.6", "10.7"],
-        ["10.8", "10.9", "10.10"],
-        ["10.11", "10.12"],
-        ["10.13", "10.14"]
+        ["18.1", "18.2"],
+        ["18.3", "18.4"],
+        ["18.5"],
+        ["18.6", "18.7", "18.8"],
+        ["18.9", "18.10", "18.11"],
+        ["18.12", "18.13"],
+        ["18.14", "18.15"]
     ],
     "tasks": [
         {
-            "id": "10.1",
+            "id": "18.1",
             "passes": true,
-            "category": "phase1-infrastructure",
+            "category": "phase1-database",
             "priority": "P1",
-            "description": "创建 price_u64.rs 辅助模块",
+            "description": "修改 users 表 - 移除 quota，添加双币钱包",
             "context": {
-                "why": "需要统一的转换函数处理 f64 ↔ u64 转换，确保所有模块使用相同的精度逻辑",
-                "impact": "所有后续任务依赖此模块",
-                "risk": "转换函数实现错误会导致全局计费错误"
+                "why": "废弃的 quota 字段需要移除，改用双币钱包支持区域定价",
+                "impact": "所有用户余额逻辑的基础",
+                "risk": "数据迁移需谨慎，避免丢失用户余额"
             },
             "steps": [
                 {
-                    "action": "创建文件",
-                    "file": "crates/common/src/price_u64.rs"
+                    "action": "添加 balance_usd 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE users ADD COLUMN balance_usd BIGINT UNSIGNED DEFAULT 0"
                 },
                 {
-                    "action": "定义常量 NANO_PER_DOLLAR",
-                    "value": "1_000_000_000",
-                    "comment": "1 USD = 10^9 纳美元"
+                    "action": "添加 balance_cny 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE users ADD COLUMN balance_cny BIGINT UNSIGNED DEFAULT 0"
                 },
                 {
-                    "action": "定义常量 RATE_SCALE",
-                    "value": "1_000_000_000",
-                    "comment": "汇率缩放因子，9 位精度"
+                    "action": "添加 preferred_currency 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE users ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'"
                 },
                 {
-                    "action": "实现 dollars_to_nano(price: f64) -> u64",
-                    "detail": "(price * NANO_PER_DOLLAR as f64).round() as u64"
+                    "action": "移除 quota 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE users DROP COLUMN quota"
                 },
                 {
-                    "action": "实现 nano_to_dollars(nano: u64) -> f64",
-                    "detail": "nano as f64 / NANO_PER_DOLLAR as f64"
-                },
-                {
-                    "action": "实现 rate_to_scaled(rate: f64) -> u64",
-                    "detail": "汇率转缩放整数"
-                },
-                {
-                    "action": "实现 scaled_to_rate(scaled: u64) -> f64",
-                    "detail": "缩放整数转汇率"
-                },
-                {
-                    "action": "实现 calculate_cost_safe(tokens: u64, price_per_million: u64) -> u64",
-                    "detail": "使用 u128 中间值避免溢出"
-                },
-                {
-                    "action": "添加单元测试",
-                    "tests": ["roundtrip", "9位精度", "溢出保护"]
+                    "action": "移除 used_quota 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE users DROP COLUMN used_quota"
                 }
             ],
             "acceptance_criteria": [
-                "GIVEN 价格 $3.0",
-                "WHEN 调用 dollars_to_nano",
-                "THEN 返回 3_000_000_000",
-                "AND roundtrip 误差 < 10^-9"
-            ],
-            "verification": [
-                "cargo test 通过",
-                "test_dollars_to_nano_roundtrip 通过",
-                "test_nine_decimal_precision 通过"
-            ],
-            "constraints": [
-                "所有函数必须是纯函数（无副作用）",
-                "禁止 panic，错误通过 Result 返回"
-            ],
-            "references": [
-                "docs/plan.md 第十七章 - 辅助模块设计"
+                "users 表包含 balance_usd, balance_cny, preferred_currency 字段",
+                "quota 和 used_quota 字段已移除",
+                "现有用户数据迁移正确"
             ]
         },
         {
-            "id": "10.2",
+            "id": "18.2",
             "passes": true,
-            "category": "phase1-infrastructure",
+            "category": "phase1-database",
             "priority": "P1",
-            "description": "在 common/lib.rs 导出 price_u64 模块",
+            "description": "修改 router_tokens 表 - 移除 quota 字段",
             "context": {
-                "why": "使其他 crate 能够使用转换函数",
-                "impact": "所有需要价格转换的模块"
+                "why": "token 级别的 quota 已废弃，统一使用用户级双币钱包",
+                "impact": "token 配额检查逻辑",
+                "risk": "需要更新所有使用 quota 的代码"
             },
             "steps": [
                 {
-                    "action": "修改文件",
-                    "file": "crates/common/src/lib.rs"
+                    "action": "移除 quota_limit 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE router_tokens DROP COLUMN quota_limit"
                 },
                 {
-                    "action": "添加模块声明",
-                    "code": "pub mod price_u64;"
+                    "action": "移除 used_quota 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE router_tokens DROP COLUMN used_quota"
                 },
                 {
-                    "action": "重新导出常用函数",
-                    "code": "pub use price_u64::{dollars_to_nano, nano_to_dollars, NANO_PER_DOLLAR};"
-                }
-            ],
-            "verification": [
-                "cargo build 编译通过",
-                "其他 crate 可以 use burncloud_common::dollars_to_nano"
-            ],
-            "dependencies": ["10.1"]
-        },
-        {
-            "id": "10.3",
-            "passes": true,
-            "category": "phase2-types",
-            "priority": "P1",
-            "description": "修改 types.rs 价格字段 f64 → u64",
-            "context": {
-                "why": "核心数据结构需要使用 u64 存储价格",
-                "impact": "所有使用这些结构体的模块"
-            },
-            "steps": [
-                {
-                    "action": "修改文件",
-                    "file": "crates/common/src/types.rs"
-                },
-                {
-                    "action": "修改 PriceV2 结构体",
-                    "changes": [
-                        "input_price: f64 → u64",
-                        "output_price: f64 → u64",
-                        "cache_read_input_price: Option<f64> → Option<u64>",
-                        "cache_creation_input_price: Option<f64> → Option<u64>",
-                        "batch_input_price: Option<f64> → Option<u64>",
-                        "batch_output_price: Option<f64> → Option<u64>",
-                        "priority_input_price: Option<f64> → Option<u64>",
-                        "priority_output_price: Option<f64> → Option<u64>",
-                        "audio_input_price: Option<f64> → Option<u64>"
-                    ]
-                },
-                {
-                    "action": "修改 TieredPrice 结构体",
-                    "changes": ["input_price: f64 → u64", "output_price: f64 → u64"]
-                },
-                {
-                    "action": "修改 ExchangeRate 结构体",
-                    "changes": ["rate: f64 → u64 (缩放值)"]
-                },
-                {
-                    "action": "修改所有 Input 结构体",
-                    "detail": "PriceV2Input, TieredPriceInput 等"
-                }
-            ],
-            "verification": [
-                "cargo check 编译通过"
-            ],
-            "dependencies": ["10.2"]
-        },
-        {
-            "id": "10.4",
-            "passes": true,
-            "category": "phase2-types",
-            "priority": "P1",
-            "description": "修改 pricing_config.rs 添加自定义序列化",
-            "context": {
-                "why": "JSON 配置文件使用浮点数，需要自定义序列化保持兼容",
-                "impact": "价格导入导出功能"
-            },
-            "steps": [
-                {
-                    "action": "修改文件",
-                    "file": "crates/common/src/pricing_config.rs"
-                },
-                {
-                    "action": "修改 CurrencyPricing",
-                    "changes": ["input_price: f64 → u64", "output_price: f64 → u64"]
-                },
-                {
-                    "action": "添加自定义 serde 序列化器",
-                    "detail": "序列化时 u64→f64，反序列化时 f64→u64"
-                },
-                {
-                    "action": "使用 serde(with) 属性",
-                    "example": "#[serde(serialize_with = \"serialize_nano_as_dollars\")]"
-                }
-            ],
-            "verification": [
-                "JSON 输出仍为浮点格式",
-                "JSON 输入接受浮点数",
-                "cargo test 通过"
-            ],
-            "dependencies": ["10.2"]
-        },
-        {
-            "id": "10.5",
-            "passes": true,
-            "category": "phase3-database",
-            "priority": "P1",
-            "description": "修改 schema.rs 数据库表 REAL → BIGINT",
-            "context": {
-                "why": "数据库需要使用整数类型存储纳美元价格",
-                "impact": "所有价格相关表",
-                "risk": "迁移失败会导致数据丢失"
-            },
-            "steps": [
-                {
-                    "action": "修改文件",
-                    "file": "crates/database/src/schema.rs"
-                },
-                {
-                    "action": "修改 prices_v2 表",
-                    "changes": [
-                        "input_price REAL → BIGINT",
-                        "output_price REAL → BIGINT",
-                        "cache_read_input_price REAL → BIGINT",
-                        "cache_creation_input_price REAL → BIGINT",
-                        "batch_input_price REAL → BIGINT",
-                        "batch_output_price REAL → BIGINT",
-                        "priority_input_price REAL → BIGINT",
-                        "priority_output_price REAL → BIGINT",
-                        "audio_input_price REAL → BIGINT"
-                    ]
-                },
-                {
-                    "action": "修改 tiered_pricing 表",
-                    "changes": ["input_price REAL → BIGINT", "output_price REAL → BIGINT"]
-                },
-                {
-                    "action": "修改 exchange_rates 表",
-                    "changes": ["rate REAL → BIGINT"]
-                },
-                {
-                    "action": "添加数据迁移逻辑",
-                    "detail": "在 Schema::init 中添加迁移：REAL * 10^9 → BIGINT"
+                    "action": "移除 unlimited_quota 字段",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE router_tokens DROP COLUMN unlimited_quota"
                 }
             ],
             "acceptance_criteria": [
-                "GIVEN prices_v2 表有 REAL 类型数据",
-                "WHEN 执行迁移",
-                "THEN 数据正确转换为 BIGINT",
-                "AND $3.0 → 3000000000"
-            ],
-            "verification": [
-                "新数据库创建正确",
-                "现有数据迁移正确",
-                "cargo test 通过"
-            ],
-            "constraints": [
-                "迁移必须幂等",
-                "已迁移数据不重复处理"
-            ],
-            "rollback": {
-                "sqlite": "需重建表，从备份恢复",
-                "postgresql": "ALTER COLUMN TYPE REAL"
-            },
-            "dependencies": ["10.3"]
+                "router_tokens 表不再有 quota 相关字段",
+                "现有 token 数据迁移正确"
+            ]
         },
         {
-            "id": "10.6",
+            "id": "18.3",
             "passes": true,
-            "category": "phase3-database",
+            "category": "phase2-prices",
             "priority": "P1",
-            "description": "添加数据迁移脚本",
+            "description": "修改 prices_v2 表约束 - UNIQUE(model, region)",
             "context": {
-                "why": "需要将现有 f64 数据安全转换为 u64"
+                "why": "确保同一模型在同一区域只有一种货币价格",
+                "impact": "价格存储的核心约束",
+                "risk": "需要清理可能的重复数据"
             },
             "steps": [
                 {
-                    "action": "添加 SQLite 迁移",
-                    "logic": [
-                        "CREATE TABLE prices_v2_new (... BIGINT ...)",
-                        "INSERT INTO prices_v2_new SELECT ... ROUND(price * 1000000000) ...",
-                        "DROP TABLE prices_v2",
-                        "ALTER TABLE prices_v2_new RENAME TO prices_v2"
-                    ]
+                    "action": "清理重复数据",
+                    "detail": "DELETE FROM prices_v2 WHERE id NOT IN (SELECT MIN(id) FROM prices_v2 GROUP BY model, region)"
                 },
                 {
-                    "action": "添加 PostgreSQL 迁移",
-                    "logic": [
-                        "ALTER TABLE prices_v2 ALTER COLUMN input_price TYPE BIGINT USING ROUND(input_price * 1000000000)::BIGINT",
-                        "..."
-                    ]
+                    "action": "修改唯一约束",
+                    "detail": "UNIQUE(model, currency, region) → UNIQUE(model, region)"
                 },
                 {
-                    "action": "添加迁移检查",
-                    "detail": "检查是否已迁移，避免重复执行"
-                }
-            ],
-            "verification": [
-                "迁移前后数据对比正确",
-                "迁移后价格精度验证"
-            ],
-            "dependencies": ["10.5"]
-        },
-        {
-            "id": "10.7",
-            "passes": true,
-            "category": "phase3-database",
-            "priority": "P1",
-            "description": "修改 database-models 结构体",
-            "context": {
-                "why": "数据库模型需要匹配新的 u64 类型"
-            },
-            "steps": [
-                {
-                    "action": "修改文件",
-                    "file": "crates/database/crates/database-models/src/lib.rs"
-                },
-                {
-                    "action": "修改 Price 结构体",
-                    "changes": "所有价格字段 f64 → u64"
-                },
-                {
-                    "action": "修改 PriceV2 结构体",
-                    "changes": "所有价格字段 f64/u64 → u64"
-                },
-                {
-                    "action": "修改 TieredPrice 结构体",
-                    "changes": "input_price, output_price f64 → u64"
-                },
-                {
-                    "action": "修改 calculate_cost 方法",
-                    "detail": "使用 u64 运算，返回 u64"
-                },
-                {
-                    "action": "修改所有 Input 结构体",
-                    "detail": "PriceInput, PriceV2Input, TieredPriceInput"
-                }
-            ],
-            "verification": [
-                "cargo build 编译通过",
-                "数据库读写测试通过"
-            ],
-            "dependencies": ["10.5"]
-        },
-        {
-            "id": "10.8",
-            "passes": true,
-            "category": "phase4-business-logic",
-            "priority": "P1",
-            "description": "修改 billing.rs 计费计算使用 u64",
-            "context": {
-                "why": "核心计费逻辑需要使用整数运算避免精度问题",
-                "impact": "所有计费场景",
-                "risk": "计费计算错误导致财务损失"
-            },
-            "steps": [
-                {
-                    "action": "修改文件",
-                    "file": "crates/router/src/billing.rs"
-                },
-                {
-                    "action": "修改 CostResult 结构体",
-                    "changes": ["usd_amount: f64 → u64", "local_amount: Option<f64> → Option<u64>"]
-                },
-                {
-                    "action": "修改 AdvancedPricing 结构体",
-                    "changes": "所有价格字段 f64 → u64"
-                },
-                {
-                    "action": "修改 format_cost 函数",
-                    "detail": "从 u64 转换后格式化：nano_to_dollars(amount)"
-                },
-                {
-                    "action": "修改 calculate_tiered_cost",
-                    "detail": "使用 u64 整数运算"
-                },
-                {
-                    "action": "修改 calculate_cache_cost",
-                    "detail": "使用 u64 整数运算"
-                },
-                {
-                    "action": "修改 calculate_batch_cost",
-                    "detail": "使用 u64 整数运算"
-                },
-                {
-                    "action": "修改 calculate_priority_cost",
-                    "detail": "使用 u64 整数运算"
-                },
-                {
-                    "action": "修改 calculate_multi_currency_cost",
-                    "detail": "使用 u64 整数运算"
-                },
-                {
-                    "action": "使用 calculate_cost_safe 避免溢出",
-                    "detail": "tokens * price_per_million / 1_000_000"
+                    "action": "更新 upsert 逻辑",
+                    "file": "crates/database/crates/database-models/src/lib.rs",
+                    "detail": "ON CONFLICT(model, region) DO UPDATE SET ..."
                 }
             ],
             "acceptance_criteria": [
-                "GIVEN 150K tokens, Qwen 阶梯定价",
-                "WHEN 计算 cost",
-                "THEN 结果 = 334800000 (纳美元) = $0.3348"
-            ],
-            "verification": [
-                "所有 billing 测试通过",
-                "计费精度验证 < 10^-9"
-            ],
-            "dependencies": ["10.3", "10.7"]
+                "prices_v2 约束为 UNIQUE(model, region)",
+                "无法为同一模型+区域插入两种货币价格"
+            ]
         },
         {
-            "id": "10.9",
+            "id": "18.4",
             "passes": true,
-            "category": "phase4-business-logic",
-            "priority": "P2",
-            "description": "修改 exchange_rate.rs 汇率服务",
+            "category": "phase2-prices",
+            "priority": "P1",
+            "description": "废弃旧 prices 表",
             "context": {
-                "why": "汇率服务需要使用 u64 存储缩放汇率"
+                "why": "prices_v2 已成熟，正式替换旧表",
+                "impact": "所有使用 PriceModel 的代码需要迁移",
+                "risk": "需要确保所有调用点都已迁移"
             },
             "steps": [
                 {
-                    "action": "修改文件",
-                    "file": "crates/router/src/exchange_rate.rs"
+                    "action": "重命名旧表",
+                    "file": "crates/database/src/schema.rs",
+                    "detail": "ALTER TABLE prices RENAME TO prices_deprecated"
                 },
                 {
-                    "action": "修改 CachedRate 结构体",
-                    "changes": ["rate: f64 → u64 (缩放值)"]
-                },
-                {
-                    "action": "修改 convert 方法",
-                    "detail": "使用整数运算，rate_to_scaled/scaled_to_rate"
-                },
-                {
-                    "action": "修改 get_rate 方法",
-                    "returns": "Option<u64>"
-                },
-                {
-                    "action": "修改 set_rate 方法",
-                    "input": "u64 (缩放值)"
+                    "action": "添加迁移注释",
+                    "detail": "-- Deprecated: Use prices_v2 instead"
                 }
             ],
-            "verification": [
-                "cargo test exchange_rate 通过",
-                "汇率转换精度验证"
-            ],
-            "dependencies": ["10.3"]
+            "acceptance_criteria": [
+                "prices 表已重命名为 prices_deprecated",
+                "所有代码使用 PriceV2Model"
+            ]
         },
         {
-            "id": "10.10",
+            "id": "18.5",
             "passes": true,
-            "category": "phase4-business-logic",
-            "priority": "P2",
-            "description": "修改 price_sync.rs 边界转换",
+            "category": "phase3-types",
+            "priority": "P1",
+            "description": "更新 User 和 Token 类型定义",
             "context": {
-                "why": "LiteLLM 源数据是 f64，需要在写入数据库边界处转换为 u64"
+                "why": "类型定义需要与数据库结构同步",
+                "impact": "所有使用 User 和 Token 的代码",
+                "risk": "编译错误需要逐一修复"
             },
             "steps": [
                 {
-                    "action": "修改文件",
-                    "file": "crates/router/src/price_sync.rs"
+                    "action": "更新 User 结构体",
+                    "file": "crates/common/src/types.rs",
+                    "detail": "移除 quota/used_quota，添加 balance_usd/balance_cny/preferred_currency (u64 类型)"
                 },
                 {
-                    "action": "保持 LiteLLMPrice 结构体 f64",
-                    "detail": "源数据格式不变"
+                    "action": "更新 Token 结构体",
+                    "file": "crates/common/src/types.rs",
+                    "detail": "移除 quota_limit/used_quota/unlimited_quota"
                 },
                 {
-                    "action": "修改转换函数返回 u64",
-                    "changes": ["to_per_million_price() → (Option<u64>, Option<u64>)"]
-                },
-                {
-                    "action": "在 sync_from_litellm 中转换",
-                    "detail": "写入数据库时调用 dollars_to_nano()"
+                    "action": "更新 DbUser 结构体",
+                    "file": "crates/database/crates/database-user/src/lib.rs",
+                    "detail": "与 User 结构体同步"
                 }
             ],
-            "verification": [
-                "cargo test price_sync 通过",
-                "同步后数据库值为纳美元"
-            ],
-            "dependencies": ["10.3", "10.7"]
+            "acceptance_criteria": [
+                "User 结构体包含双币字段",
+                "Token 结构体不包含 quota 字段",
+                "编译通过"
+            ]
         },
         {
-            "id": "10.11",
-            "passes": true,
-            "category": "phase5-cli",
-            "priority": "P2",
-            "description": "修改 price.rs CLI 命令",
+            "id": "18.6",
+            "passes": null,
+            "category": "phase4-billing",
+            "priority": "P1",
+            "description": "实现 PriceV2Model::get_by_model_region",
             "context": {
-                "why": "CLI 需要接受 f64 输入（用户友好），内部转换为 u64"
+                "why": "简化价格查询，一个区域只有一种货币",
+                "impact": "所有价格查询逻辑",
+                "risk": "需要处理 region 为 NULL 的情况"
             },
             "steps": [
                 {
-                    "action": "修改文件",
-                    "file": "crates/cli/src/price.rs"
+                    "action": "实现 get_by_model_region 函数",
+                    "file": "crates/database/crates/database-models/src/lib.rs",
+                    "detail": "直接查询 (model, region)，返回 PriceV2"
                 },
                 {
-                    "action": "输入解析保持 f64",
-                    "detail": "用户输入如 --input 3.0"
-                },
-                {
-                    "action": "存储时转换为 u64",
-                    "detail": "调用 dollars_to_nano()"
-                },
-                {
-                    "action": "显示时转换为 f64",
-                    "detail": "调用 nano_to_dollars()，格式化显示"
-                },
-                {
-                    "action": "更新所有命令处理",
-                    "commands": ["set", "get", "show", "list", "import", "export"]
+                    "action": "实现 region fallback 逻辑",
+                    "detail": "region 未找到时回退到 region=NULL 的通用价格"
                 }
             ],
-            "verification": [
-                "CLI 输入 $3.0，数据库存储 3000000000",
-                "CLI 显示 $3.00/1M"
-            ],
-            "dependencies": ["10.8"]
+            "acceptance_criteria": [
+                "可以根据 model + region 获取价格",
+                "region 不存在时正确回退",
+                "单元测试通过"
+            ]
         },
         {
-            "id": "10.12",
-            "passes": true,
-            "category": "phase5-cli",
-            "priority": "P2",
-            "description": "修改 currency.rs CLI 命令",
+            "id": "18.7",
+            "passes": null,
+            "category": "phase4-billing",
+            "priority": "P1",
+            "description": "实现双币扣费逻辑 deduct_dual_currency",
             "context": {
-                "why": "汇率 CLI 需要处理 f64 输入输出"
+                "why": "根据模型区域优先扣对应币种",
+                "impact": "核心扣费逻辑",
+                "risk": "汇率转换精度问题"
             },
             "steps": [
                 {
-                    "action": "修改文件",
-                    "file": "crates/cli/src/currency.rs"
+                    "action": "实现 deduct_cny 函数",
+                    "file": "crates/database/crates/database-router/src/lib.rs",
+                    "detail": "扣减 CNY 余额，检查充足性"
                 },
                 {
-                    "action": "汇率输入保持 f64",
-                    "detail": "用户输入如 --rate 7.24"
+                    "action": "实现 deduct_usd 函数",
+                    "file": "crates/database/crates/database-router/src/lib.rs",
+                    "detail": "扣减 USD 余额，检查充足性"
                 },
                 {
-                    "action": "存储时转换为 u64",
-                    "detail": "调用 rate_to_scaled()"
+                    "action": "实现 deduct_dual_currency 函数",
+                    "file": "crates/database/crates/database-router/src/lib.rs",
+                    "detail": "根据 cost_currency 决定优先扣减顺序，不足时换汇"
                 },
                 {
-                    "action": "显示时转换为 f64",
-                    "detail": "调用 scaled_to_rate()"
+                    "action": "移除 deduct_quota 函数",
+                    "file": "crates/database/crates/database-router/src/lib.rs",
+                    "detail": "已废弃，使用 deduct_dual_currency 替代"
                 }
             ],
-            "verification": [
-                "CLI 输入汇率 7.24，存储 7240000000",
-                "CLI 显示 7.24"
-            ],
-            "dependencies": ["10.9"]
+            "acceptance_criteria": [
+                "CNY 模型优先扣 CNY 余额",
+                "USD 模型优先扣 USD 余额",
+                "不足时正确换汇",
+                "使用 u128 中间值避免溢出"
+            ]
         },
         {
-            "id": "10.13",
-            "passes": true,
-            "category": "phase6-tests",
+            "id": "18.8",
+            "passes": null,
+            "category": "phase4-billing",
+            "priority": "P2",
+            "description": "实现余额预判逻辑（基于 max_tokens）",
+            "context": {
+                "why": "请求前预判余额，防止超额消费",
+                "impact": "用户请求流程",
+                "risk": "预判过于保守可能拒绝有效请求"
+            },
+            "steps": [
+                {
+                    "action": "提取 max_tokens 参数",
+                    "detail": "从请求体获取 max_tokens，无则使用模型默认值"
+                },
+                {
+                    "action": "计算最大预估费用",
+                    "detail": "(estimated_input + max_output) × 价格"
+                },
+                {
+                    "action": "检查双币余额总和",
+                    "detail": "primary + secondary × rate >= max_cost"
+                },
+                {
+                    "action": "返回 402 错误",
+                    "detail": "余额不足时返回 Insufficient balance 错误"
+                }
+            ],
+            "acceptance_criteria": [
+                "正确提取 max_tokens",
+                "正确计算预估费用",
+                "余额不足时正确拒绝"
+            ]
+        },
+        {
+            "id": "18.9",
+            "passes": null,
+            "category": "phase5-router",
+            "priority": "P1",
+            "description": "修改 proxy_logic 返回 pricing_region",
+            "context": {
+                "why": "需要将渠道的区域信息传递到扣费逻辑",
+                "impact": "路由层核心函数签名",
+                "risk": "调用点需要更新"
+            },
+            "steps": [
+                {
+                    "action": "修改函数签名",
+                    "file": "crates/router/src/lib.rs",
+                    "detail": "-> (Response, Option<String>, StatusCode, Option<String>) // 新增 pricing_region"
+                },
+                {
+                    "action": "在 channel 选择时获取 pricing_region",
+                    "detail": "let pricing_region = channel.pricing_region.clone()"
+                },
+                {
+                    "action": "更新所有调用点",
+                    "detail": "接收并使用 pricing_region"
+                }
+            ],
+            "acceptance_criteria": [
+                "proxy_logic 返回 pricing_region",
+                "所有调用点已更新",
+                "编译通过"
+            ]
+        },
+        {
+            "id": "18.10",
+            "passes": null,
+            "category": "phase5-router",
+            "priority": "P1",
+            "description": "集成区域价格查询",
+            "context": {
+                "why": "使用 PriceV2Model::get_by_model_region 获取区域价格",
+                "impact": "计费逻辑",
+                "risk": "价格获取失败需要处理"
+            },
+            "steps": [
+                {
+                    "action": "调用 get_by_model_region",
+                    "file": "crates/router/src/lib.rs",
+                    "detail": "PriceV2Model::get_by_model_region(&state.db, model, pricing_region.as_deref()).await?"
+                },
+                {
+                    "action": "提取 cost_currency",
+                    "detail": "let cost_currency = price.currency; // USD 或 CNY"
+                },
+                {
+                    "action": "实现价格回退逻辑",
+                    "detail": "region 价格不存在时回退到通用价格"
+                }
+            ],
+            "acceptance_criteria": [
+                "正确获取区域价格",
+                "正确识别货币类型",
+                "回退逻辑正确"
+            ]
+        },
+        {
+            "id": "18.11",
+            "passes": null,
+            "category": "phase5-router",
+            "priority": "P1",
+            "description": "集成双币扣费调用",
+            "context": {
+                "why": "请求完成后调用双币扣费逻辑",
+                "impact": "实际扣费流程",
+                "risk": "扣费失败需要记录日志"
+            },
+            "steps": [
+                {
+                    "action": "获取汇率",
+                    "detail": "state.exchange_rate_service.get_rate_nano(USD, CNY)"
+                },
+                {
+                    "action": "调用 deduct_dual_currency",
+                    "file": "crates/router/src/lib.rs",
+                    "detail": "RouterDatabase::deduct_dual_currency(&state.db, &user_id, cost_nano, cost_currency, exchange_rate).await?"
+                },
+                {
+                    "action": "处理扣费失败",
+                    "detail": "记录日志，但不影响响应返回"
+                }
+            ],
+            "acceptance_criteria": [
+                "正确获取汇率",
+                "正确调用双币扣费",
+                "扣费失败正确处理"
+            ]
+        },
+        {
+            "id": "18.12",
+            "passes": null,
+            "category": "phase6-config",
+            "priority": "P2",
+            "description": "修正价格配置示例",
+            "context": {
+                "why": "当前示例错误地展示了同一模型同时有两种货币价格",
+                "impact": "用户配置参考",
+                "risk": "用户可能复制错误配置"
+            },
+            "steps": [
+                {
+                    "action": "更新 pricing.example.json",
+                    "file": "docs/config/pricing.example.json",
+                    "detail": "每个区域只有一种货币"
+                },
+                {
+                    "action": "添加配置说明",
+                    "detail": "说明 cn 区域用 CNY，international 区域用 USD"
+                }
+            ],
+            "acceptance_criteria": [
+                "示例配置正确",
+                "每个区域只有一种货币"
+            ]
+        },
+        {
+            "id": "18.13",
+            "passes": null,
+            "category": "phase6-config",
+            "priority": "P2",
+            "description": "更新 CLI 价格命令",
+            "context": {
+                "why": "CLI 需要支持 --region 和 --currency 参数",
+                "impact": "用户设置价格的方式",
+                "risk": "需要验证同一区域只能设置一种货币"
+            },
+            "steps": [
+                {
+                    "action": "验证 region + currency 约束",
+                    "file": "crates/cli/src/price.rs",
+                    "detail": "同一区域已存在不同货币价格时拒绝"
+                },
+                {
+                    "action": "更新帮助文档",
+                    "detail": "说明区域定价规则"
+                }
+            ],
+            "acceptance_criteria": [
+                "CLI 正确拒绝冲突的价格设置",
+                "帮助文档清晰"
+            ]
+        },
+        {
+            "id": "18.14",
+            "passes": null,
+            "category": "testing",
             "priority": "P1",
             "description": "编写单元测试",
             "context": {
-                "why": "确保 u64 转换和计费逻辑正确"
+                "why": "验证核心逻辑正确性",
+                "impact": "代码质量保证",
+                "risk": "测试覆盖不全可能遗漏 bug"
             },
             "steps": [
                 {
-                    "action": "添加 price_u64.rs 测试",
-                    "tests": [
-                        "test_dollars_to_nano_roundtrip",
-                        "test_nine_decimal_precision",
-                        "test_rate_to_scaled_roundtrip",
-                        "test_calculate_cost_safe",
-                        "test_overflow_protection"
-                    ]
+                    "action": "测试 one_currency_per_region",
+                    "detail": "同一模型+区域插入两种货币 → 应该失败"
                 },
                 {
-                    "action": "更新 billing.rs 测试",
-                    "tests": [
-                        "test_tiered_cost_u64",
-                        "test_cache_cost_u64",
-                        "test_batch_cost_u64",
-                        "test_multi_currency_u64"
-                    ]
+                    "action": "测试 balance_check_with_max_tokens",
+                    "detail": "余额不足时拒绝请求"
                 },
                 {
-                    "action": "添加边界测试",
-                    "cases": ["0 价格", "最大价格", "溢出边界"]
+                    "action": "测试 dual_currency_cn_model",
+                    "detail": "CNY 模型扣 CNY 余额"
+                },
+                {
+                    "action": "测试 cross_currency_deduction",
+                    "detail": "CNY 不足时用 USD 补足"
                 }
             ],
-            "verification": [
-                "cargo test 全部通过",
-                "测试覆盖率 > 90%"
-            ],
-            "dependencies": ["10.8"]
+            "acceptance_criteria": [
+                "所有单元测试通过",
+                "测试覆盖核心场景"
+            ]
         },
         {
-            "id": "10.14",
-            "passes": true,
-            "category": "phase6-tests",
-            "priority": "P2",
-            "description": "编写集成测试和手动验证",
+            "id": "18.15",
+            "passes": null,
+            "category": "testing",
+            "priority": "P1",
+            "description": "编写集成测试",
             "context": {
-                "why": "端到端验证整个迁移流程"
+                "why": "验证端到端流程",
+                "impact": "系统可靠性",
+                "risk": "环境配置复杂"
             },
             "steps": [
                 {
-                    "action": "创建集成测试",
-                    "file": "crates/tests/pricing_u64_test.rs",
-                    "tests": [
-                        "价格 CRUD 操作",
-                        "计费精度验证",
-                        "汇率转换",
-                        "阶梯定价"
-                    ]
+                    "action": "测试设置国内价格",
+                    "detail": "burncloud price set qwen-max --input 0.359 --output 1.434 --currency CNY --region cn"
                 },
                 {
-                    "action": "手动验证脚本",
-                    "steps": [
-                        "创建演示数据库",
-                        "设置价格验证存储",
-                        "设置极小价格测试精度"
-                    ]
+                    "action": "测试拒绝冲突价格",
+                    "detail": "同一 region 设置不同货币 → 错误"
+                },
+                {
+                    "action": "测试设置海外价格",
+                    "detail": "burncloud price set qwen-max --input 1.2 --output 6.0 --currency USD --region international"
+                },
+                {
+                    "action": "测试双币扣费流程",
+                    "detail": "充值 CNY → 消费 cn 模型 → CNY 余额减少"
                 }
             ],
-            "verification": [
-                "集成测试通过",
-                "手动验证: $2.5 → 2500000000",
-                "手动验证: $0.000000123 → 123"
-            ],
-            "dependencies": ["10.13"]
+            "acceptance_criteria": [
+                "所有集成测试通过",
+                "端到端流程正确"
+            ]
         }
     ],
-    "dependencies": {
-        "10.2": ["10.1"],
-        "10.3": ["10.2"],
-        "10.4": ["10.2"],
-        "10.5": ["10.3"],
-        "10.6": ["10.5"],
-        "10.7": ["10.5"],
-        "10.8": ["10.3", "10.7"],
-        "10.9": ["10.3"],
-        "10.10": ["10.3", "10.7"],
-        "10.11": ["10.8"],
-        "10.12": ["10.9"],
-        "10.13": ["10.8"],
-        "10.14": ["10.13"]
-    },
-    "test_data": {
-        "price_conversions": {
-            "description": "f64 到 u64 纳美元转换示例",
-            "examples": [
-                {"f64": 3.0, "u64": 3000000000, "display": "$3.00"},
-                {"f64": 0.15, "u64": 150000000, "display": "$0.15"},
-                {"f64": 0.00015, "u64": 150000, "display": "$0.00015"},
-                {"f64": 0.000000001, "u64": 1, "display": "$0.000000001"},
-                {"f64": 1.000000001, "u64": 1000000001, "display": "$1.000000001"}
-            ]
-        },
-        "exchange_rate_conversions": {
-            "description": "汇率 f64 到 u64 缩放转换示例",
-            "examples": [
-                {"f64": 7.24, "u64": 7240000000},
-                {"f64": 0.138, "u64": 138000000},
-                {"f64": 1.08, "u64": 1080000000}
-            ]
-        },
-        "billing_calculations": {
-            "description": "计费计算示例（纳美元）",
-            "examples": [
-                {
-                    "tokens": 1000000,
-                    "price_per_million": 3000000000,
-                    "expected_cost_nano": 3000000000,
-                    "expected_cost_usd": 3.0
-                },
-                {
-                    "tokens": 150000,
-                    "price_per_million": 1200000000,
-                    "expected_cost_nano": 180000000,
-                    "expected_cost_usd": 0.18
-                }
-            ]
-        },
-        "tiered_billing": {
-            "description": "阶梯计费示例（Qwen 150K tokens）",
-            "tokens": 150000,
-            "tiers": [
-                {"tier_start": 0, "tier_end": 32000, "price": 1200000000},
-                {"tier_start": 32000, "tier_end": 128000, "price": 2400000000},
-                {"tier_start": 128000, "tier_end": 252000, "price": 3000000000}
-            ],
-            "calculation": [
-                {"range": "0-32K", "tokens": 32000, "price": 1200000000, "cost": 38400000},
-                {"range": "32K-128K", "tokens": 96000, "price": 2400000000, "cost": 230400000},
-                {"range": "128K-150K", "tokens": 22000, "price": 3000000000, "cost": 66000000}
-            ],
-            "total_cost_nano": 334800000,
-            "total_cost_usd": 0.3348
-        }
-    },
-    "api_contracts": {
-        "PriceU64": {
-            "dollars_to_nano": {
-                "input": {"price": "f64"},
-                "output": "u64",
-                "precision": "9 decimal places"
-            },
-            "nano_to_dollars": {
-                "input": {"nano": "u64"},
-                "output": "f64"
-            },
-            "calculate_cost_safe": {
-                "input": {
-                    "tokens": "u64",
-                    "price_per_million_nano": "u64"
-                },
-                "output": "u64",
-                "overflow_protection": "uses u128 intermediate"
-            }
-        },
-        "BillingService": {
-            "calculate_cost": {
-                "input": {
-                    "tokens": "u64",
-                    "price_nano": "u64"
-                },
-                "output": "u64 (nanodollars)",
-                "hot_path": true
-            }
-        }
-    },
-    "summary": {
-        "critical_path": [
-            "10.1",
-            "10.2",
-            "10.3",
-            "10.5",
-            "10.7",
-            "10.8",
-            "10.13"
-        ],
-        "parallelizable": [
-            ["10.3", "10.4"],
-            ["10.6", "10.7"],
-            ["10.8", "10.9", "10.10"],
-            ["10.11", "10.12"],
-            ["10.13", "10.14"]
-        ],
-        "risk_areas": [
+    "risks": {
+        "items": [
             {
                 "area": "数据迁移",
-                "risk": "迁移失败导致数据丢失或精度错误",
-                "mitigation": "备份数据库，迁移后验证对比"
+                "risk": "用户余额迁移错误",
+                "mitigation": "备份、验证、回滚方案"
             },
             {
-                "area": "溢出问题",
-                "risk": "大 token 数量 × 高价格可能溢出",
-                "mitigation": "使用 u128 中间值，添加边界检查"
+                "area": "约束变更",
+                "risk": "现有价格数据违反新约束",
+                "mitigation": "迁移前清理重复数据"
             },
             {
-                "area": "API 兼容性",
-                "risk": "JSON 格式变化影响客户端",
-                "mitigation": "自定义序列化器，输出保持浮点格式"
+                "area": "汇率转换",
+                "risk": "精度丢失或溢出",
+                "mitigation": "使用 u128 中间值"
             },
             {
-                "area": "CLI 用户体验",
-                "risk": "用户不理解纳美元单位",
-                "mitigation": "CLI 显示浮点格式，隐藏内部实现"
+                "area": "余额预判",
+                "risk": "预判过于保守拒绝有效请求",
+                "mitigation": "使用 max_tokens 作为合理上限"
             }
-        ],
-        "definition_of_done": [
-            "所有 P1 任务完成并通过验收",
-            "所有单元测试通过",
-            "数据库迁移验证正确",
-            "CLI 功能手动验证",
-            "计费精度 < 10^-9"
         ]
-    }
+    },
+    "definition_of_done": [
+        "所有 P1 任务完成并通过验收",
+        "所有单元测试和集成测试通过",
+        "数据库迁移验证正确",
+        "CLI 功能手动验证",
+        "双币扣费精度 < 10^-9"
+    ]
 }

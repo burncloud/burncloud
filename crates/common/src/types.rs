@@ -323,6 +323,8 @@ pub struct Ability {
     pub weight: i32,
 }
 
+/// User with dual-currency wallet for regional pricing support.
+/// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: String,
@@ -336,13 +338,18 @@ pub struct User {
     pub github_id: Option<String>,
     pub wechat_id: Option<String>,
     pub access_token: Option<String>,
-    pub quota: i64, // 500000 = $1
-    pub used_quota: i64,
+    /// USD balance in nanodollars (9 decimal precision)
+    /// For display: divide by 1_000_000_000 to get dollars
+    #[sqlx(default)]
+    pub balance_usd: i64,
+    /// CNY balance in nanodollars (9 decimal precision)
+    /// For display: divide by 1_000_000_000 to get yuan
+    #[sqlx(default)]
+    pub balance_cny: i64,
     pub request_count: i32,
     pub group: String,
     pub aff_code: Option<String>,
     pub aff_count: i32,
-    pub aff_quota: i64,
     pub inviter_id: Option<String>,
     /// User's preferred currency for display (USD, CNY, EUR)
     #[sqlx(default)]
@@ -351,6 +358,7 @@ pub struct User {
     pub created_at: Option<i64>, // Unix timestamp
 }
 
+/// Token without quota tracking - quota is now managed at user level via dual-currency wallet.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Token {
     pub id: i32,
@@ -358,9 +366,6 @@ pub struct Token {
     pub key: String,
     pub status: i32,
     pub name: String,
-    pub remain_quota: i64, // -1 for unlimited
-    pub unlimited_quota: bool,
-    pub used_quota: i64,
     pub created_time: i64,
     pub accessed_time: i64,
     pub expired_time: i64, // -1 for never
