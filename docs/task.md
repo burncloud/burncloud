@@ -549,7 +549,7 @@
         },
         {
             "id": "10.12",
-            "passes": null,
+            "passes": true,
             "category": "phase5-cli",
             "priority": "P2",
             "description": "修改 currency.rs CLI 命令",
