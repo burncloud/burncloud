@@ -7,7 +7,9 @@ use log::{error, info};
 use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
-use crate::price::handle_price_command;
+use crate::currency::handle_currency_command;
+use crate::price::{handle_price_command, handle_tiered_command};
+use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
@@ -131,6 +133,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .long("offset")
                                 .default_value("0")
                                 .help("Offset for pagination"),
+                        )
+                        .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .help("Filter by currency (USD, CNY, EUR)"),
                         ),
                 )
                 .subcommand(
@@ -154,6 +161,37 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Output price per 1M tokens"),
                         )
                         .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .default_value("USD")
+                                .help("Currency for this price (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Region for this price (cn, international)"),
+                        )
+                        .arg(
+                            Arg::new("cache-read")
+                                .long("cache-read")
+                                .help("Cache read input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("cache-creation")
+                                .long("cache-creation")
+                                .help("Cache creation input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("batch-input")
+                                .long("batch-input")
+                                .help("Batch input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("batch-output")
+                                .long("batch-output")
+                                .help("Batch output price per 1M tokens"),
+                        )
+                        .arg(
                             Arg::new("alias")
                                 .long("alias")
                                 .help("Alias to another model's pricing"),
@@ -166,6 +204,37 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("model")
                                 .required(true)
                                 .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .help("Filter by currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Show tiered pricing configuration"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show detailed pricing information for a model including all currencies")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .help("Filter by currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
                         ),
                 )
                 .subcommand(
@@ -175,6 +244,138 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("model")
                                 .required(true)
                                 .help("Model name"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("sync-status")
+                        .about("Show pricing sync status and advanced pricing statistics"),
+                )
+                .subcommand(
+                    Command::new("import")
+                        .about("Import pricing configuration from a JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("JSON file with pricing configuration"),
+                        )
+                        .arg(
+                            Arg::new("override")
+                                .long("override")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Override existing prices without confirmation"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("export")
+                        .about("Export pricing configuration to a JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("Output JSON file path"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("json")
+                                .value_parser(["json", "csv"])
+                                .help("Output format (json or csv)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("validate")
+                        .about("Validate a pricing configuration JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("JSON file to validate"),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("tiered")
+                .about("Manage tiered pricing for models")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list-tiers")
+                        .about("List tiered pricing for a model")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("add-tier")
+                        .about("Add a tiered pricing entry")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("tier-start")
+                                .long("tier-start")
+                                .required(true)
+                                .help("Starting token count for this tier"),
+                        )
+                        .arg(
+                            Arg::new("tier-end")
+                                .long("tier-end")
+                                .help("Ending token count for this tier (omit for no limit)"),
+                        )
+                        .arg(
+                            Arg::new("input-price")
+                                .long("input-price")
+                                .required(true)
+                                .help("Input price per 1M tokens for this tier"),
+                        )
+                        .arg(
+                            Arg::new("output-price")
+                                .long("output-price")
+                                .required(true)
+                                .help("Output price per 1M tokens for this tier"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Region for this tier (cn, international, omit for universal)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("import-tiered")
+                        .about("Import tiered pricing from a JSON file")
+                        .arg(
+                            Arg::new("file")
+                                .required(true)
+                                .help("JSON file with tiered pricing data"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete-tiers")
+                        .about("Delete tiered pricing for a model")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Delete only for a specific region"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("check-tiered")
+                        .about("Check if a model has tiered pricing configured")
+                        .arg(
+                            Arg::new("model")
+                                .required(true)
+                                .help("Model name to check"),
                         ),
                 ),
         )
@@ -274,6 +475,168 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Skip confirmation prompt"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("protocol")
+                .about("Manage protocol configurations")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list")
+                        .about("List all protocol configs")
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("add")
+                        .about("Add a new protocol config")
+                        .arg(
+                            Arg::new("channel-type")
+                                .long("channel-type")
+                                .required(true)
+                                .help("Channel type ID (0=OpenAI, 1=Anthropic, 2=Azure, 3=AWS, 4=Gemini, 5=VertexAI, 6=DeepSeek, 7=Moonshot)"),
+                        )
+                        .arg(
+                            Arg::new("api-version")
+                                .long("api-version")
+                                .required(true)
+                                .help("API version string"),
+                        )
+                        .arg(
+                            Arg::new("default")
+                                .long("default")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Set as default for this channel type"),
+                        )
+                        .arg(
+                            Arg::new("chat-endpoint")
+                                .long("chat-endpoint")
+                                .help("Chat endpoint template (e.g., /v1/chat/completions)"),
+                        )
+                        .arg(
+                            Arg::new("embed-endpoint")
+                                .long("embed-endpoint")
+                                .help("Embedding endpoint template"),
+                        )
+                        .arg(
+                            Arg::new("models-endpoint")
+                                .long("models-endpoint")
+                                .help("Models listing endpoint"),
+                        )
+                        .arg(
+                            Arg::new("request-mapping")
+                                .long("request-mapping")
+                                .help("JSON request mapping configuration"),
+                        )
+                        .arg(
+                            Arg::new("response-mapping")
+                                .long("response-mapping")
+                                .help("JSON response mapping configuration"),
+                        )
+                        .arg(
+                            Arg::new("detection-rules")
+                                .long("detection-rules")
+                                .help("JSON detection rules for API version"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete a protocol config")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Protocol config ID to delete"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show protocol config details")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Protocol config ID to show"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("test")
+                        .about("Test a protocol configuration")
+                        .arg(
+                            Arg::new("channel-id")
+                                .long("channel-id")
+                                .required(true)
+                                .help("Channel ID to test"),
+                        )
+                        .arg(
+                            Arg::new("model")
+                                .long("model")
+                                .help("Model name to test with"),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("currency")
+                .about("Manage exchange rates and currency conversion")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list-rates")
+                        .about("List all exchange rates"),
+                )
+                .subcommand(
+                    Command::new("set-rate")
+                        .about("Set an exchange rate")
+                        .arg(
+                            Arg::new("from")
+                                .long("from")
+                                .required(true)
+                                .help("Source currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("to")
+                                .long("to")
+                                .required(true)
+                                .help("Target currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("rate")
+                                .long("rate")
+                                .required(true)
+                                .help("Exchange rate (e.g., 7.2 for USD→CNY)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("refresh")
+                        .about("Refresh exchange rates from external API"),
+                )
+                .subcommand(
+                    Command::new("convert")
+                        .about("Convert amount between currencies")
+                        .arg(
+                            Arg::new("amount")
+                                .required(true)
+                                .help("Amount to convert"),
+                        )
+                        .arg(
+                            Arg::new("from")
+                                .long("from")
+                                .required(true)
+                                .help("Source currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("to")
+                                .long("to")
+                                .required(true)
+                                .help("Target currency (USD, CNY, EUR)"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -348,9 +711,24 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
             handle_price_command(&db, sub_m).await?;
             db.close().await?;
         }
+        Some(("tiered", sub_m)) => {
+            let db = Database::new().await?;
+            handle_tiered_command(&db, sub_m).await?;
+            db.close().await?;
+        }
         Some(("token", sub_m)) => {
             let db = Database::new().await?;
             handle_token_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("protocol", sub_m)) => {
+            let db = Database::new().await?;
+            handle_protocol_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("currency", sub_m)) => {
+            let db = Database::new().await?;
+            handle_currency_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {
@@ -422,6 +800,13 @@ pub fn show_help() {
     println!("  burncloud list                - 列出模型");
     println!("  burncloud update              - 更新应用程序");
     println!("  burncloud update --check-only - 仅检查更新");
+    println!();
+    println!("定价管理:");
+    println!("  burncloud price list          - 列出模型价格");
+    println!("  burncloud price set           - 设置模型价格");
+    println!("  burncloud tiered list-tiers   - 列出阶梯定价");
+    println!("  burncloud tiered add-tier     - 添加阶梯定价");
+    println!("  burncloud tiered import-tiered - 导入阶梯定价JSON");
     println!();
     println!("示例:");
     println!("  burncloud client");

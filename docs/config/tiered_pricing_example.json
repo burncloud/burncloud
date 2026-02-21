@@ -1,0 +1,106 @@
+[
+  {
+    "model": "qwen-max",
+    "region": "cn",
+    "tier_start": 0,
+    "tier_end": 32000,
+    "input_price": 0.359,
+    "output_price": 1.434
+  },
+  {
+    "model": "qwen-max",
+    "region": "cn",
+    "tier_start": 32000,
+    "tier_end": 128000,
+    "input_price": 0.574,
+    "output_price": 2.294
+  },
+  {
+    "model": "qwen-max",
+    "region": "cn",
+    "tier_start": 128000,
+    "tier_end": 252000,
+    "input_price": 1.004,
+    "output_price": 4.014
+  },
+  {
+    "model": "qwen-max",
+    "region": "international",
+    "tier_start": 0,
+    "tier_end": 32000,
+    "input_price": 1.2,
+    "output_price": 6.0
+  },
+  {
+    "model": "qwen-max",
+    "region": "international",
+    "tier_start": 32000,
+    "tier_end": 128000,
+    "input_price": 2.4,
+    "output_price": 12.0
+  },
+  {
+    "model": "qwen-max",
+    "region": "international",
+    "tier_start": 128000,
+    "tier_end": 252000,
+    "input_price": 3.0,
+    "output_price": 15.0
+  },
+  {
+    "model": "qwen-plus",
+    "region": "cn",
+    "tier_start": 0,
+    "tier_end": 32000,
+    "input_price": 0.179,
+    "output_price": 0.717
+  },
+  {
+    "model": "qwen-plus",
+    "region": "cn",
+    "tier_start": 32000,
+    "tier_end": 128000,
+    "input_price": 0.287,
+    "output_price": 1.147
+  },
+  {
+    "model": "qwen-plus",
+    "region": "cn",
+    "tier_start": 128000,
+    "tier_end": 252000,
+    "input_price": 0.502,
+    "output_price": 2.007
+  },
+  {
+    "model": "qwen-plus",
+    "region": "international",
+    "tier_start": 0,
+    "tier_end": 32000,
+    "input_price": 0.6,
+    "output_price": 3.0
+  },
+  {
+    "model": "qwen-plus",
+    "region": "international",
+    "tier_start": 32000,
+    "tier_end": 128000,
+    "input_price": 1.2,
+    "output_price": 6.0
+  },
+  {
+    "model": "qwen-plus",
+    "region": "international",
+    "tier_start": 128000,
+    "tier_end": 252000,
+    "input_price": 1.5,
+    "output_price": 7.5
+  },
+  {
+    "model": "deepseek-chat",
+    "region": null,
+    "tier_start": 0,
+    "tier_end": null,
+    "input_price": 0.14,
+    "output_price": 0.28
+  }
+]
