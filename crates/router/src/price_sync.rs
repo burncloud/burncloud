@@ -189,6 +189,48 @@ impl LiteLLMPrice {
     pub fn to_audio_per_million_price(&self) -> Option<f64> {
         self.input_cost_per_audio_token.map(|c| c * 1_000_000.0)
     }
+
+    // ========== Nanodollar conversion methods (for PriceV2) ==========
+
+    /// Convert per-token cost to per-1M tokens price in nanodollars (i64)
+    pub fn to_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let input_price = self.input_cost_per_token.map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        let output_price = self.output_cost_per_token.map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        (input_price, output_price)
+    }
+
+    /// Convert cache pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_cache_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let cache_read_price = self.cache_read_input_token_cost.map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        let cache_creation_price = self
+            .cache_creation_input_token_cost
+            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        (cache_read_price, cache_creation_price)
+    }
+
+    /// Convert batch pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_batch_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let batch_input_price = self.input_cost_per_token_batches.map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        let batch_output_price = self.output_cost_per_token_batches.map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        (batch_input_price, batch_output_price)
+    }
+
+    /// Convert priority pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_priority_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let priority_input_price = self.input_cost_per_token_priority.map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        let priority_output_price = self.output_cost_per_token_priority.map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+        (priority_input_price, priority_output_price)
+    }
+
+    /// Convert audio pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_audio_per_million_price_nano(&self) -> Option<i64> {
+        use burncloud_common::dollars_to_nano;
+        self.input_cost_per_audio_token.map(|c| dollars_to_nano(c * 1_000_000.0) as i64)
+    }
 }
 
 /// Service for syncing prices from LiteLLM
@@ -397,8 +439,8 @@ impl PriceSyncService {
         let mut imported_count = 0;
 
         for tier in tiers {
-            // Validate tier data
-            if tier.input_price < 0.0 || tier.output_price < 0.0 {
+            // Validate tier data (prices are now i64 nanodollars, so compare with 0)
+            if tier.input_price < 0 || tier.output_price < 0 {
                 eprintln!(
                     "Skipping tier with invalid price for model {}: prices must be >= 0",
                     tier.model
@@ -825,7 +867,7 @@ impl PriceSyncServiceV2 {
                 None => key,
             };
 
-            let (input_price, output_price) = price_data.to_per_million_price();
+            let (input_price, output_price) = price_data.to_per_million_price_nano();
 
             let (input, output) = match (input_price, output_price) {
                 (Some(i), Some(o)) => (i, o),
@@ -834,10 +876,10 @@ impl PriceSyncServiceV2 {
                 (None, None) => continue,
             };
 
-            let (cache_read, cache_creation) = price_data.to_cache_per_million_price();
-            let (batch_input, batch_output) = price_data.to_batch_per_million_price();
-            let (priority_input, priority_output) = price_data.to_priority_per_million_price();
-            let audio_input = price_data.to_audio_per_million_price();
+            let (cache_read, cache_creation) = price_data.to_cache_per_million_price_nano();
+            let (batch_input, batch_output) = price_data.to_batch_per_million_price_nano();
+            let (priority_input, priority_output) = price_data.to_priority_per_million_price_nano();
+            let audio_input = price_data.to_audio_per_million_price_nano();
 
             let price_input = PriceV2Input {
                 model: model_name.clone(),

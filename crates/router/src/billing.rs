@@ -897,7 +897,7 @@ mod tests {
 
         // CNY: 1M × ¥0.359 + 0.5M × ¥1.434 = ¥0.359 + ¥0.717 = ¥1.076
         let expected_cny = 0.359 + 0.717;
-        assert!((result.local_amount.unwrap() - expected_cny).abs() < 0.000001);
+        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
         assert_eq!(result.local_currency, "CNY");
     }
 
@@ -910,24 +910,24 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: 1.0,
-            output_price: 4.0,
+            input_price: to_nano(1.0),
+            output_price: to_nano(4.0),
             ..Default::default()
         };
 
         let multi_pricing = MultiCurrencyPricing {
             usd: usd_pricing,
             local: None,
-            exchange_rate: Some(7.2),  // 1 USD = 7.2 CNY
+            exchange_rate_nano: Some(to_nano(7.2)),  // 1 USD = 7.2 CNY
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
 
         // USD: 1M × $1.0 = $1.0
-        assert!((result.usd_amount - 1.0).abs() < 0.000001);
+        assert!((result.usd_amount() - 1.0).abs() < 0.000001);
 
         // CNY via exchange rate: $1.0 × 7.2 = ¥7.2
-        assert!((result.local_amount.unwrap() - 7.2).abs() < 0.000001);
+        assert!((result.local_amount().unwrap() - 7.2).abs() < 0.000001);
     }
 
     #[test]
@@ -939,34 +939,34 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: 10.0,
-            output_price: 30.0,
-            batch_input_price: Some(5.0),
-            batch_output_price: Some(15.0),
+            input_price: to_nano(10.0),
+            output_price: to_nano(30.0),
+            batch_input_price: Some(to_nano(5.0)),
+            batch_output_price: Some(to_nano(15.0)),
             ..Default::default()
         };
 
         let cny_pricing = AdvancedPricing {
-            input_price: 70.0,
-            output_price: 210.0,
-            batch_input_price: Some(35.0),
-            batch_output_price: Some(105.0),
+            input_price: to_nano(70.0),
+            output_price: to_nano(210.0),
+            batch_input_price: Some(to_nano(35.0)),
+            batch_output_price: Some(to_nano(105.0)),
             ..Default::default()
         };
 
         let multi_pricing = MultiCurrencyPricing {
             usd: usd_pricing,
             local: Some((Currency::CNY, cny_pricing)),
-            exchange_rate: None,
+            exchange_rate_nano: None,
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, true, false);
 
         // USD batch: $5 + $15 = $20
-        assert!((result.usd_amount - 20.0).abs() < 0.000001);
+        assert!((result.usd_amount() - 20.0).abs() < 0.000001);
 
         // CNY batch: ¥35 + ¥105 = ¥140
-        assert!((result.local_amount.unwrap() - 140.0).abs() < 0.000001);
+        assert!((result.local_amount().unwrap() - 140.0).abs() < 0.000001);
     }
 
     #[test]
@@ -979,27 +979,27 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: 3.0,
-            output_price: 15.0,
-            cache_read_price: Some(0.30),
+            input_price: to_nano(3.0),
+            output_price: to_nano(15.0),
+            cache_read_price: Some(to_nano(0.30)),
             ..Default::default()
         };
 
         let multi_pricing = MultiCurrencyPricing {
-            usd: usd_pricing.clone(),
+            usd: usd_pricing,
             local: None,
-            exchange_rate: Some(7.2),
+            exchange_rate_nano: Some(to_nano(7.2)),
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
 
         // Verify cache cost is calculated
         // Standard: 50K × $3.0 + 50K × $15.0 + 50K × $0.30 = $0.15 + $0.75 + $0.015 = $0.915
-        assert!((result.usd_amount - 0.915).abs() < 0.000001);
+        assert!((result.usd_amount() - 0.915).abs() < 0.000001);
 
         // With exchange rate, local amount should be USD × rate
-        let expected_local = result.usd_amount * 7.2;
-        assert!((result.local_amount.unwrap() - expected_local).abs() < 0.000001);
+        let expected_local = result.usd_amount() * 7.2;
+        assert!((result.local_amount().unwrap() - expected_local).abs() < 0.000001);
     }
 
     #[test]
@@ -1011,36 +1011,36 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: 10.0,
-            output_price: 30.0,
-            priority_input_price: Some(17.0),
-            priority_output_price: Some(51.0),
+            input_price: to_nano(10.0),
+            output_price: to_nano(30.0),
+            priority_input_price: Some(to_nano(17.0)),
+            priority_output_price: Some(to_nano(51.0)),
             ..Default::default()
         };
 
         let cny_pricing = AdvancedPricing {
-            input_price: 70.0,
-            output_price: 210.0,
-            priority_input_price: Some(119.0),
-            priority_output_price: Some(357.0),
+            input_price: to_nano(70.0),
+            output_price: to_nano(210.0),
+            priority_input_price: Some(to_nano(119.0)),
+            priority_output_price: Some(to_nano(357.0)),
             ..Default::default()
         };
 
         let multi_pricing = MultiCurrencyPricing {
             usd: usd_pricing,
             local: Some((Currency::CNY, cny_pricing)),
-            exchange_rate: None,
+            exchange_rate_nano: None,
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, true);
 
         // USD priority: $17 + $25.5 = $42.5
         let expected_usd = 1.0 * 17.0 + 0.5 * 51.0;
-        assert!((result.usd_amount - expected_usd).abs() < 0.000001);
+        assert!((result.usd_amount() - expected_usd).abs() < 0.000001);
 
         // CNY priority: ¥119 + ¥178.5 = ¥297.5
         let expected_cny = 1.0 * 119.0 + 0.5 * 357.0;
-        assert!((result.local_amount.unwrap() - expected_cny).abs() < 0.000001);
+        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
     }
 
     #[test]
@@ -1052,22 +1052,22 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: 1.0,
-            output_price: 4.0,
+            input_price: to_nano(1.0),
+            output_price: to_nano(4.0),
             ..Default::default()
         };
 
         let multi_pricing = MultiCurrencyPricing {
             usd: usd_pricing,
             local: None,
-            exchange_rate: None,
+            exchange_rate_nano: None,
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
 
         // USD only: $1.0
-        assert!((result.usd_amount - 1.0).abs() < 0.000001);
-        assert!(result.local_amount.is_none());
+        assert!((result.usd_amount() - 1.0).abs() < 0.000001);
+        assert!(result.local_amount().is_none());
         assert_eq!(result.local_currency, "USD");
     }
 
@@ -1080,30 +1080,30 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: 10.0,
-            output_price: 30.0,
+            input_price: to_nano(10.0),
+            output_price: to_nano(30.0),
             ..Default::default()
         };
 
         let eur_pricing = AdvancedPricing {
-            input_price: 9.3,  // ~1 EUR = 1.08 USD
-            output_price: 27.9,
+            input_price: to_nano(9.3),  // ~1 EUR = 1.08 USD
+            output_price: to_nano(27.9),
             ..Default::default()
         };
 
         let multi_pricing = MultiCurrencyPricing {
             usd: usd_pricing,
             local: Some((Currency::EUR, eur_pricing)),
-            exchange_rate: None,
+            exchange_rate_nano: None,
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
 
         // USD: 0.5 × $10 + 0.5 × $30 = $5 + $15 = $20
-        assert!((result.usd_amount - 20.0).abs() < 0.000001);
+        assert!((result.usd_amount() - 20.0).abs() < 0.000001);
 
         // EUR: 0.5 × €9.3 + 0.5 × €27.9 = €4.65 + €13.95 = €18.6
-        assert!((result.local_amount.unwrap() - 18.6).abs() < 0.000001);
+        assert!((result.local_amount().unwrap() - 18.6).abs() < 0.000001);
         assert_eq!(result.local_currency, "EUR");
     }
 
@@ -1117,34 +1117,34 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: 1.0,
-            output_price: 4.0,
-            audio_input_price: Some(7.0),  // Audio tokens cost 7x
+            input_price: to_nano(1.0),
+            output_price: to_nano(4.0),
+            audio_input_price: Some(to_nano(7.0)),  // Audio tokens cost 7x
             ..Default::default()
         };
 
         let cny_pricing = AdvancedPricing {
-            input_price: 7.0,
-            output_price: 28.0,
-            audio_input_price: Some(49.0),
+            input_price: to_nano(7.0),
+            output_price: to_nano(28.0),
+            audio_input_price: Some(to_nano(49.0)),
             ..Default::default()
         };
 
         let multi_pricing = MultiCurrencyPricing {
             usd: usd_pricing,
             local: Some((Currency::CNY, cny_pricing)),
-            exchange_rate: None,
+            exchange_rate_nano: None,
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
 
         // USD: (50K × $1 + 10K × $4 + 10K × $7) / 1M = $0.05 + $0.04 + $0.07 = $0.16
         let expected_usd = 0.05 + 0.04 + 0.07;
-        assert!((result.usd_amount - expected_usd).abs() < 0.000001);
+        assert!((result.usd_amount() - expected_usd).abs() < 0.000001);
 
         // CNY: (50K × ¥7 + 10K × ¥28 + 10K × ¥49) / 1M = ¥0.35 + ¥0.28 + ¥0.49 = ¥1.12
         let expected_cny = 0.35 + 0.28 + 0.49;
-        assert!((result.local_amount.unwrap() - expected_cny).abs() < 0.000001);
+        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
     }
 
     #[test]

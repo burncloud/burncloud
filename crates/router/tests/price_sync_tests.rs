@@ -4,10 +4,16 @@ use burncloud_common::pricing_config::{
     CachePricingConfig, CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
     TieredPriceConfig,
 };
+use burncloud_common::dollars_to_nano;
 use burncloud_database_models::{PriceInput, PriceModel, PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel};
 use burncloud_router::price_sync::LiteLLMPrice;
 use common::setup_db;
 use std::collections::HashMap;
+
+/// Helper to convert dollars to nanodollars as i64
+fn to_nano(price: f64) -> i64 {
+    dollars_to_nano(price) as i64
+}
 
 /// Test that LiteLLM price conversion correctly handles advanced pricing fields
 #[tokio::test]
@@ -229,14 +235,14 @@ async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
 
     let model_name = "test-multi-currency-model-v2";
 
-    // Insert USD price
+    // Insert USD price (prices are in nanodollars)
     let usd_price = PriceV2Input {
         model: model_name.to_string(),
         currency: "USD".to_string(),
-        input_price: 1.0,
-        output_price: 3.0,
-        cache_read_input_price: Some(0.1),
-        cache_creation_input_price: Some(1.25),
+        input_price: to_nano(1.0),
+        output_price: to_nano(3.0),
+        cache_read_input_price: Some(to_nano(0.1)),
+        cache_creation_input_price: Some(to_nano(1.25)),
         batch_input_price: None,
         batch_output_price: None,
         priority_input_price: None,
@@ -255,9 +261,9 @@ async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
     let cny_price = PriceV2Input {
         model: model_name.to_string(),
         currency: "CNY".to_string(),
-        input_price: 7.2,
-        output_price: 21.6,
-        cache_read_input_price: Some(0.72),
+        input_price: to_nano(7.2),
+        output_price: to_nano(21.6),
+        cache_read_input_price: Some(to_nano(0.72)),
         cache_creation_input_price: None,
         batch_input_price: None,
         batch_output_price: None,
@@ -278,20 +284,20 @@ async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
     let model_prices: Vec<_> = all_prices.iter().filter(|p| p.model == model_name).collect();
     assert_eq!(model_prices.len(), 2, "Should have 2 currencies");
 
-    // Verify USD price
+    // Verify USD price (stored as nanodollars, compare as integers)
     let usd = PriceV2Model::get(&_db, model_name, "USD", Some("international")).await?;
     assert!(usd.is_some());
     let usd = usd.unwrap();
-    assert!((usd.input_price - 1.0).abs() < 0.001);
-    assert!((usd.output_price - 3.0).abs() < 0.001);
+    assert_eq!(usd.input_price, to_nano(1.0));
+    assert_eq!(usd.output_price, to_nano(3.0));
     assert_eq!(usd.region, Some("international".to_string()));
 
     // Verify CNY price
     let cny = PriceV2Model::get(&_db, model_name, "CNY", Some("cn")).await?;
     assert!(cny.is_some());
     let cny = cny.unwrap();
-    assert!((cny.input_price - 7.2).abs() < 0.001);
-    assert!((cny.output_price - 21.6).abs() < 0.001);
+    assert_eq!(cny.input_price, to_nano(7.2));
+    assert_eq!(cny.output_price, to_nano(21.6));
     assert_eq!(cny.region, Some("cn".to_string()));
 
     Ok(())
@@ -304,31 +310,31 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
 
     let model = "test-tiered-model";
 
-    // Insert multiple tiers for a model
+    // Insert multiple tiers for a model (prices in nanodollars)
     let tiers = vec![
         TieredPriceInput {
             model: model.to_string(),
             region: Some("international".to_string()),
             tier_start: 0,
             tier_end: Some(32000),
-            input_price: 1.2,
-            output_price: 6.0,
+            input_price: to_nano(1.2),
+            output_price: to_nano(6.0),
         },
         TieredPriceInput {
             model: model.to_string(),
             region: Some("international".to_string()),
             tier_start: 32000,
             tier_end: Some(128000),
-            input_price: 2.4,
-            output_price: 12.0,
+            input_price: to_nano(2.4),
+            output_price: to_nano(12.0),
         },
         TieredPriceInput {
             model: model.to_string(),
             region: Some("international".to_string()),
             tier_start: 128000,
             tier_end: None, // No upper limit
-            input_price: 3.0,
-            output_price: 15.0,
+            input_price: to_nano(3.0),
+            output_price: to_nano(15.0),
         },
         // CN region tiers
         TieredPriceInput {
@@ -336,8 +342,8 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
             region: Some("cn".to_string()),
             tier_start: 0,
             tier_end: Some(32000),
-            input_price: 0.359,
-            output_price: 1.434,
+            input_price: to_nano(0.359),
+            output_price: to_nano(1.434),
         },
     ];
 
@@ -362,7 +368,7 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
     // Get CN tiers
     let cn_tiers = TieredPriceModel::get_tiers(&_db, model, Some("cn")).await?;
     assert_eq!(cn_tiers.len(), 1, "Should have 1 CN tier");
-    assert!((cn_tiers[0].input_price - 0.359).abs() < 0.001);
+    assert_eq!(cn_tiers[0].input_price, to_nano(0.359));
 
     // Get all tiers (no region filter)
     let all_tiers = TieredPriceModel::get_tiers(&_db, model, None).await?;
@@ -384,12 +390,12 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
 
     let model_name = "test-priority-model-unique-12345";
 
-    // First, insert a price with a specific region
+    // First, insert a price with a specific region (prices in nanodollars)
     let litellm_price = PriceV2Input {
         model: model_name.to_string(),
         currency: "USD".to_string(),
-        input_price: 10.0,
-        output_price: 30.0,
+        input_price: to_nano(10.0),
+        output_price: to_nano(30.0),
         cache_read_input_price: None,
         cache_creation_input_price: None,
         batch_input_price: None,
@@ -408,16 +414,16 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
 
     // Verify initial price from LiteLLM
     let stored = PriceV2Model::get(&_db, model_name, "USD", Some("international")).await?.unwrap();
-    assert!((stored.input_price - 10.0).abs() < 0.001);
+    assert_eq!(stored.input_price, to_nano(10.0));
     assert_eq!(stored.source, Some("litellm".to_string()));
 
     // Now update with community source (higher priority) - same region
     let community_price = PriceV2Input {
         model: model_name.to_string(),
         currency: "USD".to_string(),
-        input_price: 5.0,
-        output_price: 15.0,
-        cache_read_input_price: Some(0.5),
+        input_price: to_nano(5.0),
+        output_price: to_nano(15.0),
+        cache_read_input_price: Some(to_nano(0.5)),
         cache_creation_input_price: None,
         batch_input_price: None,
         batch_output_price: None,
@@ -435,19 +441,19 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
 
     // Verify price was updated
     let stored = PriceV2Model::get(&_db, model_name, "USD", Some("international")).await?.unwrap();
-    assert!((stored.input_price - 5.0).abs() < 0.001, "Expected 5.0 but got {}", stored.input_price);
+    assert_eq!(stored.input_price, to_nano(5.0), "Expected 5.0 nanodollars but got {}", stored.input_price);
     assert_eq!(stored.source, Some("community".to_string()));
 
     // Update with override source (highest priority)
     let override_price = PriceV2Input {
         model: model_name.to_string(),
         currency: "USD".to_string(),
-        input_price: 2.0,
-        output_price: 6.0,
-        cache_read_input_price: Some(0.2),
-        cache_creation_input_price: Some(2.5),
-        batch_input_price: Some(1.0),
-        batch_output_price: Some(3.0),
+        input_price: to_nano(2.0),
+        output_price: to_nano(6.0),
+        cache_read_input_price: Some(to_nano(0.2)),
+        cache_creation_input_price: Some(to_nano(2.5)),
+        batch_input_price: Some(to_nano(1.0)),
+        batch_output_price: Some(to_nano(3.0)),
         priority_input_price: None,
         priority_output_price: None,
         audio_input_price: None,
@@ -462,10 +468,10 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
 
     // Verify final price from override
     let stored = PriceV2Model::get(&_db, model_name, "USD", Some("international")).await?.unwrap();
-    assert!((stored.input_price - 2.0).abs() < 0.001);
+    assert_eq!(stored.input_price, to_nano(2.0));
     assert_eq!(stored.source, Some("override".to_string()));
-    assert!((stored.cache_read_input_price.unwrap() - 0.2).abs() < 0.001);
-    assert!((stored.batch_input_price.unwrap() - 1.0).abs() < 0.001);
+    assert_eq!(stored.cache_read_input_price.unwrap(), to_nano(0.2));
+    assert_eq!(stored.batch_input_price.unwrap(), to_nano(1.0));
 
     Ok(())
 }
@@ -475,13 +481,13 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
 async fn test_sync_failure_preserves_old_data() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
-    // Insert initial price
+    // Insert initial price (prices in nanodollars)
     let initial_price = PriceV2Input {
         model: "test-failure-model".to_string(),
         currency: "USD".to_string(),
-        input_price: 5.0,
-        output_price: 15.0,
-        cache_read_input_price: Some(0.5),
+        input_price: to_nano(5.0),
+        output_price: to_nano(15.0),
+        cache_read_input_price: Some(to_nano(0.5)),
         cache_creation_input_price: None,
         batch_input_price: None,
         batch_output_price: None,
@@ -499,12 +505,12 @@ async fn test_sync_failure_preserves_old_data() -> anyhow::Result<()> {
 
     // Verify initial data
     let stored = PriceV2Model::get(&_db, "test-failure-model", "USD", None).await?.unwrap();
-    assert!((stored.input_price - 5.0).abs() < 0.001);
+    assert_eq!(stored.input_price, to_nano(5.0));
 
     // Simulate a "failed" sync - the original data should be preserved
     // Verify original data is still there
     let stored = PriceV2Model::get(&_db, "test-failure-model", "USD", None).await?.unwrap();
-    assert!((stored.input_price - 5.0).abs() < 0.001, "Original data should be preserved");
+    assert_eq!(stored.input_price, to_nano(5.0), "Original data should be preserved");
     assert_eq!(stored.source, Some("community".to_string()));
 
     Ok(())
@@ -515,21 +521,21 @@ async fn test_sync_failure_preserves_old_data() -> anyhow::Result<()> {
 async fn test_pricing_config_import() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
-    // Create a PricingConfig
+    // Create a PricingConfig (CurrencyPricing uses i64 nanodollars internally but accepts f64 via serde)
     let mut pricing_map = HashMap::new();
     pricing_map.insert(
         "USD".to_string(),
         CurrencyPricing {
-            input_price: 10.0,
-            output_price: 30.0,
+            input_price: to_nano(10.0),
+            output_price: to_nano(30.0),
             source: Some("openai".to_string()),
         },
     );
     pricing_map.insert(
         "CNY".to_string(),
         CurrencyPricing {
-            input_price: 72.0,
-            output_price: 216.0,
+            input_price: to_nano(72.0),
+            output_price: to_nano(216.0),
             source: Some("converted".to_string()),
         },
     );
@@ -538,8 +544,8 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
     cache_map.insert(
         "USD".to_string(),
         CachePricingConfig {
-            cache_read_input_price: 1.0,
-            cache_creation_input_price: Some(1.25),
+            cache_read_input_price: to_nano(1.0),
+            cache_creation_input_price: Some(to_nano(1.25)),
         },
     );
 
@@ -547,14 +553,14 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
         TieredPriceConfig {
             tier_start: 0,
             tier_end: Some(32000),
-            input_price: 1.2,
-            output_price: 6.0,
+            input_price: to_nano(1.2),
+            output_price: to_nano(6.0),
         },
         TieredPriceConfig {
             tier_start: 32000,
             tier_end: Some(128000),
-            input_price: 2.4,
-            output_price: 12.0,
+            input_price: to_nano(2.4),
+            output_price: to_nano(12.0),
         },
     ];
     let mut tiered_map = HashMap::new();
@@ -642,12 +648,12 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
 
     // Verify imported data
     let usd_price = PriceV2Model::get(&_db, "test-import-model", "USD", None).await?.unwrap();
-    assert!((usd_price.input_price - 10.0).abs() < 0.001);
+    assert_eq!(usd_price.input_price, to_nano(10.0));
     assert_eq!(usd_price.context_window, Some(128000));
     // Note: supports_vision is stored as INTEGER in SQLite, so we skip that check
 
     let cny_price = PriceV2Model::get(&_db, "test-import-model", "CNY", None).await?.unwrap();
-    assert!((cny_price.input_price - 72.0).abs() < 0.001);
+    assert_eq!(cny_price.input_price, to_nano(72.0));
 
     let has_tiered = TieredPriceModel::has_tiered_pricing(&_db, "test-import-model").await?;
     assert!(has_tiered);

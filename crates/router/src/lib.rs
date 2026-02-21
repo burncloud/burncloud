@@ -484,17 +484,20 @@ async fn proxy_handler(
             let has_tiered = matches!(tiered_result, Ok(true));
 
             if let Ok(Some(price)) = price_result {
-                // Build advanced pricing struct
+                // Build advanced pricing struct (convert f64 dollars to i64 nanodollars)
+                let to_nano = |p: f64| (p * 1_000_000_000.0).round() as i64;
+                let to_nano_opt = |p: Option<f64>| p.map(to_nano);
+
                 let pricing = billing::AdvancedPricing {
-                    input_price: price.input_price,
-                    output_price: price.output_price,
-                    cache_read_price: price.cache_read_price,
-                    cache_creation_price: price.cache_creation_price,
-                    batch_input_price: price.batch_input_price,
-                    batch_output_price: price.batch_output_price,
-                    priority_input_price: price.priority_input_price,
-                    priority_output_price: price.priority_output_price,
-                    audio_input_price: price.audio_input_price,
+                    input_price: to_nano(price.input_price),
+                    output_price: to_nano(price.output_price),
+                    cache_read_price: to_nano_opt(price.cache_read_price),
+                    cache_creation_price: to_nano_opt(price.cache_creation_price),
+                    batch_input_price: to_nano_opt(price.batch_input_price),
+                    batch_output_price: to_nano_opt(price.batch_output_price),
+                    priority_input_price: to_nano_opt(price.priority_input_price),
+                    priority_output_price: to_nano_opt(price.priority_output_price),
+                    audio_input_price: to_nano_opt(price.audio_input_price),
                 };
 
                 // Determine billing type with priority: cache > tiered > priority > batch > standard
