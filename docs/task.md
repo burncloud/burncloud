@@ -442,7 +442,7 @@
         },
         {
             "id": "10.9",
-            "passes": null,
+            "passes": true,
             "category": "phase4-business-logic",
             "priority": "P2",
             "description": "修改 exchange_rate.rs 汇率服务",
@@ -479,7 +479,7 @@
         },
         {
             "id": "10.10",
-            "passes": null,
+            "passes": true,
             "category": "phase4-business-logic",
             "priority": "P2",
             "description": "修改 price_sync.rs 边界转换",

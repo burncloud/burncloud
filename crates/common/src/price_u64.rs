@@ -79,14 +79,14 @@ pub fn nano_to_dollars(nano: u64) -> f64 {
 /// assert_eq!(rate_to_scaled(7.24), 7_240_000_000);
 /// assert_eq!(rate_to_scaled(0.138), 138_000_000);
 /// ```
-pub fn rate_to_scaled(rate: f64) -> u64 {
-    (rate * RATE_SCALE as f64).round() as u64
+pub fn rate_to_scaled(rate: f64) -> i64 {
+    (rate * RATE_SCALE as f64).round() as i64
 }
 
-/// Convert a scaled u64 exchange rate back to f64.
+/// Convert a scaled i64 exchange rate back to f64.
 ///
 /// # Arguments
-/// * `scaled` - Scaled exchange rate as u64
+/// * `scaled` - Scaled exchange rate as i64 (can be negative)
 ///
 /// # Returns
 /// * Exchange rate as f64
@@ -97,7 +97,7 @@ pub fn rate_to_scaled(rate: f64) -> u64 {
 ///
 /// assert!((scaled_to_rate(7_240_000_000) - 7.24).abs() < 1e-9);
 /// ```
-pub fn scaled_to_rate(scaled: u64) -> f64 {
+pub fn scaled_to_rate(scaled: i64) -> f64 {
     scaled as f64 / RATE_SCALE as f64
 }
 
