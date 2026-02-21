@@ -59,19 +59,21 @@ impl FromStr for Currency {
 pub struct MultiCurrencyPrice {
     /// Currency of the price
     pub currency: Currency,
-    /// Input price per 1M tokens
-    pub input_price: f64,
-    /// Output price per 1M tokens
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars (u64, 9 decimal precision)
+    pub input_price: u64,
+    /// Output price per 1M tokens in nanodollars (u64, 9 decimal precision)
+    pub output_price: u64,
 }
 
 /// Exchange rate for currency conversion
+/// Rate is stored as scaled u64 (rate * 10^9) for precision
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ExchangeRate {
     pub id: i32,
     pub from_currency: String,
     pub to_currency: String,
-    pub rate: f64,
+    /// Exchange rate scaled by 10^9 (e.g., 7.24 CNY/USD = 7_240_000_000)
+    pub rate: u64,
     pub updated_at: Option<i64>,
 }
 
@@ -447,10 +449,10 @@ pub struct TieredPrice {
     pub tier_start: i64,
     /// Ending token count for this tier (NULL means no upper limit)
     pub tier_end: Option<i64>,
-    /// Input price per 1M tokens for this tier
-    pub input_price: f64,
-    /// Output price per 1M tokens for this tier
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars (u64, 9 decimal precision)
+    pub input_price: u64,
+    /// Output price per 1M tokens in nanodollars (u64, 9 decimal precision)
+    pub output_price: u64,
 }
 
 /// Input for creating/updating a tiered price
@@ -460,8 +462,10 @@ pub struct TieredPriceInput {
     pub region: Option<String>,
     pub tier_start: i64,
     pub tier_end: Option<i64>,
-    pub input_price: f64,
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars (u64, 9 decimal precision)
+    pub input_price: u64,
+    /// Output price per 1M tokens in nanodollars (u64, 9 decimal precision)
+    pub output_price: u64,
 }
 
 /// Full pricing configuration for extensibility
@@ -475,6 +479,7 @@ pub struct FullPricing {
 
 /// Multi-currency price entry for prices_v2 table
 /// Supports USD, CNY, EUR and advanced pricing fields
+/// All prices are stored in nanodollars (u64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PriceV2 {
     pub id: i32,
@@ -482,24 +487,24 @@ pub struct PriceV2 {
     pub model: String,
     /// Currency (USD, CNY, EUR)
     pub currency: String,
-    /// Input price per 1M tokens
-    pub input_price: f64,
-    /// Output price per 1M tokens
-    pub output_price: f64,
-    /// Cache read input price per 1M tokens (for Prompt Caching)
-    pub cache_read_input_price: Option<f64>,
-    /// Cache creation input price per 1M tokens
-    pub cache_creation_input_price: Option<f64>,
-    /// Batch input price per 1M tokens (typically 50% of standard)
-    pub batch_input_price: Option<f64>,
-    /// Batch output price per 1M tokens
-    pub batch_output_price: Option<f64>,
-    /// Priority input price per 1M tokens (typically 170% of standard)
-    pub priority_input_price: Option<f64>,
-    /// Priority output price per 1M tokens
-    pub priority_output_price: Option<f64>,
-    /// Audio input price per 1M tokens (typically 7x text)
-    pub audio_input_price: Option<f64>,
+    /// Input price per 1M tokens in nanodollars
+    pub input_price: u64,
+    /// Output price per 1M tokens in nanodollars
+    pub output_price: u64,
+    /// Cache read input price per 1M tokens in nanodollars (for Prompt Caching)
+    pub cache_read_input_price: Option<u64>,
+    /// Cache creation input price per 1M tokens in nanodollars
+    pub cache_creation_input_price: Option<u64>,
+    /// Batch input price per 1M tokens in nanodollars (typically 50% of standard)
+    pub batch_input_price: Option<u64>,
+    /// Batch output price per 1M tokens in nanodollars
+    pub batch_output_price: Option<u64>,
+    /// Priority input price per 1M tokens in nanodollars (typically 170% of standard)
+    pub priority_input_price: Option<u64>,
+    /// Priority output price per 1M tokens in nanodollars
+    pub priority_output_price: Option<u64>,
+    /// Audio input price per 1M tokens in nanodollars (typically 7x text)
+    pub audio_input_price: Option<u64>,
     /// Source of pricing data (litellm, manual, community, etc.)
     pub source: Option<String>,
     /// Region for pricing (cn, international, NULL for universal)
@@ -521,19 +526,29 @@ pub struct PriceV2 {
 }
 
 /// Input for creating/updating a PriceV2 entry
+/// All prices are in nanodollars (u64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceV2Input {
     pub model: String,
     pub currency: String,
-    pub input_price: f64,
-    pub output_price: f64,
-    pub cache_read_input_price: Option<f64>,
-    pub cache_creation_input_price: Option<f64>,
-    pub batch_input_price: Option<f64>,
-    pub batch_output_price: Option<f64>,
-    pub priority_input_price: Option<f64>,
-    pub priority_output_price: Option<f64>,
-    pub audio_input_price: Option<f64>,
+    /// Input price per 1M tokens in nanodollars
+    pub input_price: u64,
+    /// Output price per 1M tokens in nanodollars
+    pub output_price: u64,
+    /// Cache read input price per 1M tokens in nanodollars
+    pub cache_read_input_price: Option<u64>,
+    /// Cache creation input price per 1M tokens in nanodollars
+    pub cache_creation_input_price: Option<u64>,
+    /// Batch input price per 1M tokens in nanodollars
+    pub batch_input_price: Option<u64>,
+    /// Batch output price per 1M tokens in nanodollars
+    pub batch_output_price: Option<u64>,
+    /// Priority input price per 1M tokens in nanodollars
+    pub priority_input_price: Option<u64>,
+    /// Priority output price per 1M tokens in nanodollars
+    pub priority_output_price: Option<u64>,
+    /// Audio input price per 1M tokens in nanodollars
+    pub audio_input_price: Option<u64>,
     pub source: Option<String>,
     pub region: Option<String>,
     pub context_window: Option<i64>,
@@ -547,8 +562,8 @@ impl Default for PriceV2Input {
         Self {
             model: String::new(),
             currency: "USD".to_string(),
-            input_price: 0.0,
-            output_price: 0.0,
+            input_price: 0,
+            output_price: 0,
             cache_read_input_price: None,
             cache_creation_input_price: None,
             batch_input_price: None,
@@ -624,15 +639,16 @@ mod currency_tests {
 
     #[test]
     fn test_multi_currency_price() {
+        // Prices are in nanodollars: $0.002 = 2_000_000 nanodollars
         let price = MultiCurrencyPrice {
             currency: Currency::CNY,
-            input_price: 0.002,
-            output_price: 0.006,
+            input_price: 2_000_000,    // $0.002 in nanodollars
+            output_price: 6_000_000,   // $0.006 in nanodollars
         };
 
         assert_eq!(price.currency, Currency::CNY);
-        assert!((price.input_price - 0.002).abs() < 0.0001);
-        assert!((price.output_price - 0.006).abs() < 0.0001);
+        assert_eq!(price.input_price, 2_000_000);
+        assert_eq!(price.output_price, 6_000_000);
 
         // Test serialization
         let json = serde_json::to_string(&price).unwrap();
