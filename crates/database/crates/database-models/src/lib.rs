@@ -1217,6 +1217,8 @@ impl ProtocolConfigModel {
 }
 
 /// Tiered pricing for models with usage-based pricing tiers
+/// Prices are stored as i64 nanodollars (9 decimal precision)
+/// Note: Using i64 instead of u64 for PostgreSQL compatibility (BIGINT is signed)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TieredPrice {
     pub id: i32,
@@ -1224,19 +1226,24 @@ pub struct TieredPrice {
     pub region: Option<String>,
     pub tier_start: i64,
     pub tier_end: Option<i64>,
-    pub input_price: f64,
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars (stored as i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (stored as i64 for DB compatibility)
+    pub output_price: i64,
 }
 
 /// Input for creating/updating a tiered price
+/// Prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TieredPriceInput {
     pub model: String,
     pub region: Option<String>,
     pub tier_start: i64,
     pub tier_end: Option<i64>,
-    pub input_price: f64,
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars
+    pub output_price: i64,
 }
 
 pub struct TieredPriceModel;
@@ -1392,20 +1399,31 @@ impl TieredPriceModel {
 }
 
 /// Multi-currency price entry for prices_v2 table
+/// All prices are stored as i64 nanodollars (9 decimal precision)
+/// Note: Using i64 instead of u64 for PostgreSQL compatibility (BIGINT is signed)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PriceV2 {
     pub id: i32,
     pub model: String,
     pub currency: String,
-    pub input_price: f64,
-    pub output_price: f64,
-    pub cache_read_input_price: Option<f64>,
-    pub cache_creation_input_price: Option<f64>,
-    pub batch_input_price: Option<f64>,
-    pub batch_output_price: Option<f64>,
-    pub priority_input_price: Option<f64>,
-    pub priority_output_price: Option<f64>,
-    pub audio_input_price: Option<f64>,
+    /// Input price per 1M tokens in nanodollars (stored as i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (stored as i64 for DB compatibility)
+    pub output_price: i64,
+    /// Cache read input price per 1M tokens in nanodollars
+    pub cache_read_input_price: Option<i64>,
+    /// Cache creation input price per 1M tokens in nanodollars
+    pub cache_creation_input_price: Option<i64>,
+    /// Batch input price per 1M tokens in nanodollars
+    pub batch_input_price: Option<i64>,
+    /// Batch output price per 1M tokens in nanodollars
+    pub batch_output_price: Option<i64>,
+    /// Priority input price per 1M tokens in nanodollars
+    pub priority_input_price: Option<i64>,
+    /// Priority output price per 1M tokens in nanodollars
+    pub priority_output_price: Option<i64>,
+    /// Audio input price per 1M tokens in nanodollars
+    pub audio_input_price: Option<i64>,
     pub source: Option<String>,
     pub region: Option<String>,
     pub context_window: Option<i64>,
@@ -1432,19 +1450,29 @@ impl PriceV2 {
 }
 
 /// Input for creating/updating a PriceV2 entry
+/// All prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PriceV2Input {
     pub model: String,
     pub currency: String,
-    pub input_price: f64,
-    pub output_price: f64,
-    pub cache_read_input_price: Option<f64>,
-    pub cache_creation_input_price: Option<f64>,
-    pub batch_input_price: Option<f64>,
-    pub batch_output_price: Option<f64>,
-    pub priority_input_price: Option<f64>,
-    pub priority_output_price: Option<f64>,
-    pub audio_input_price: Option<f64>,
+    /// Input price per 1M tokens in nanodollars
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars
+    pub output_price: i64,
+    /// Cache read input price per 1M tokens in nanodollars
+    pub cache_read_input_price: Option<i64>,
+    /// Cache creation input price per 1M tokens in nanodollars
+    pub cache_creation_input_price: Option<i64>,
+    /// Batch input price per 1M tokens in nanodollars
+    pub batch_input_price: Option<i64>,
+    /// Batch output price per 1M tokens in nanodollars
+    pub batch_output_price: Option<i64>,
+    /// Priority input price per 1M tokens in nanodollars
+    pub priority_input_price: Option<i64>,
+    /// Priority output price per 1M tokens in nanodollars
+    pub priority_output_price: Option<i64>,
+    /// Audio input price per 1M tokens in nanodollars
+    pub audio_input_price: Option<i64>,
     pub source: Option<String>,
     pub region: Option<String>,
     pub context_window: Option<i64>,
@@ -1825,11 +1853,11 @@ impl PriceV2Model {
     }
 
     /// Calculate cost for a request using PriceV2
-    /// Returns cost in the currency specified in the price entry
-    pub fn calculate_cost(price: &PriceV2, prompt_tokens: u64, completion_tokens: u64) -> f64 {
-        // Prices are per 1M tokens
-        let input_cost = (prompt_tokens as f64 / 1_000_000.0) * price.input_price;
-        let output_cost = (completion_tokens as f64 / 1_000_000.0) * price.output_price;
-        input_cost + output_cost
+    /// Returns cost in nanodollars (i64, 9 decimal precision)
+    pub fn calculate_cost(price: &PriceV2, prompt_tokens: u64, completion_tokens: u64) -> i64 {
+        // Use i128 intermediate to prevent overflow
+        let input_cost = (prompt_tokens as i128 * price.input_price as i128) / 1_000_000;
+        let output_cost = (completion_tokens as i128 * price.output_price as i128) / 1_000_000;
+        (input_cost + output_cost) as i64
     }
 }

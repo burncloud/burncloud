@@ -55,25 +55,28 @@ impl FromStr for Currency {
 }
 
 /// Multi-currency price information
+/// Prices are stored as i64 nanodollars (9 decimal precision)
+/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiCurrencyPrice {
     /// Currency of the price
     pub currency: Currency,
-    /// Input price per 1M tokens in nanodollars (u64, 9 decimal precision)
-    pub input_price: u64,
-    /// Output price per 1M tokens in nanodollars (u64, 9 decimal precision)
-    pub output_price: u64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
 }
 
 /// Exchange rate for currency conversion
-/// Rate is stored as scaled u64 (rate * 10^9) for precision
+/// Rate is stored as scaled i64 (rate * 10^9) for precision
+/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ExchangeRate {
     pub id: i32,
     pub from_currency: String,
     pub to_currency: String,
     /// Exchange rate scaled by 10^9 (e.g., 7.24 CNY/USD = 7_240_000_000)
-    pub rate: u64,
+    pub rate: i64,
     pub updated_at: Option<i64>,
 }
 
@@ -438,6 +441,8 @@ pub struct ResponseMapping {
 
 /// Tiered pricing configuration for models with usage-based pricing tiers
 /// (e.g., Qwen models with different prices based on context length)
+/// Prices are stored as i64 nanodollars (9 decimal precision)
+/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TieredPrice {
     pub id: i32,
@@ -449,10 +454,10 @@ pub struct TieredPrice {
     pub tier_start: i64,
     /// Ending token count for this tier (NULL means no upper limit)
     pub tier_end: Option<i64>,
-    /// Input price per 1M tokens in nanodollars (u64, 9 decimal precision)
-    pub input_price: u64,
-    /// Output price per 1M tokens in nanodollars (u64, 9 decimal precision)
-    pub output_price: u64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
 }
 
 /// Input for creating/updating a tiered price
@@ -462,10 +467,10 @@ pub struct TieredPriceInput {
     pub region: Option<String>,
     pub tier_start: i64,
     pub tier_end: Option<i64>,
-    /// Input price per 1M tokens in nanodollars (u64, 9 decimal precision)
-    pub input_price: u64,
-    /// Output price per 1M tokens in nanodollars (u64, 9 decimal precision)
-    pub output_price: u64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
 }
 
 /// Full pricing configuration for extensibility
@@ -479,7 +484,8 @@ pub struct FullPricing {
 
 /// Multi-currency price entry for prices_v2 table
 /// Supports USD, CNY, EUR and advanced pricing fields
-/// All prices are stored in nanodollars (u64, 9 decimal precision)
+/// All prices are stored in nanodollars (i64, 9 decimal precision)
+/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PriceV2 {
     pub id: i32,
@@ -487,24 +493,24 @@ pub struct PriceV2 {
     pub model: String,
     /// Currency (USD, CNY, EUR)
     pub currency: String,
-    /// Input price per 1M tokens in nanodollars
-    pub input_price: u64,
-    /// Output price per 1M tokens in nanodollars
-    pub output_price: u64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
     /// Cache read input price per 1M tokens in nanodollars (for Prompt Caching)
-    pub cache_read_input_price: Option<u64>,
+    pub cache_read_input_price: Option<i64>,
     /// Cache creation input price per 1M tokens in nanodollars
-    pub cache_creation_input_price: Option<u64>,
+    pub cache_creation_input_price: Option<i64>,
     /// Batch input price per 1M tokens in nanodollars (typically 50% of standard)
-    pub batch_input_price: Option<u64>,
+    pub batch_input_price: Option<i64>,
     /// Batch output price per 1M tokens in nanodollars
-    pub batch_output_price: Option<u64>,
+    pub batch_output_price: Option<i64>,
     /// Priority input price per 1M tokens in nanodollars (typically 170% of standard)
-    pub priority_input_price: Option<u64>,
+    pub priority_input_price: Option<i64>,
     /// Priority output price per 1M tokens in nanodollars
-    pub priority_output_price: Option<u64>,
+    pub priority_output_price: Option<i64>,
     /// Audio input price per 1M tokens in nanodollars (typically 7x text)
-    pub audio_input_price: Option<u64>,
+    pub audio_input_price: Option<i64>,
     /// Source of pricing data (litellm, manual, community, etc.)
     pub source: Option<String>,
     /// Region for pricing (cn, international, NULL for universal)
@@ -526,29 +532,29 @@ pub struct PriceV2 {
 }
 
 /// Input for creating/updating a PriceV2 entry
-/// All prices are in nanodollars (u64, 9 decimal precision)
+/// All prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceV2Input {
     pub model: String,
     pub currency: String,
-    /// Input price per 1M tokens in nanodollars
-    pub input_price: u64,
-    /// Output price per 1M tokens in nanodollars
-    pub output_price: u64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
     /// Cache read input price per 1M tokens in nanodollars
-    pub cache_read_input_price: Option<u64>,
+    pub cache_read_input_price: Option<i64>,
     /// Cache creation input price per 1M tokens in nanodollars
-    pub cache_creation_input_price: Option<u64>,
+    pub cache_creation_input_price: Option<i64>,
     /// Batch input price per 1M tokens in nanodollars
-    pub batch_input_price: Option<u64>,
+    pub batch_input_price: Option<i64>,
     /// Batch output price per 1M tokens in nanodollars
-    pub batch_output_price: Option<u64>,
+    pub batch_output_price: Option<i64>,
     /// Priority input price per 1M tokens in nanodollars
-    pub priority_input_price: Option<u64>,
+    pub priority_input_price: Option<i64>,
     /// Priority output price per 1M tokens in nanodollars
-    pub priority_output_price: Option<u64>,
+    pub priority_output_price: Option<i64>,
     /// Audio input price per 1M tokens in nanodollars
-    pub audio_input_price: Option<u64>,
+    pub audio_input_price: Option<i64>,
     pub source: Option<String>,
     pub region: Option<String>,
     pub context_window: Option<i64>,

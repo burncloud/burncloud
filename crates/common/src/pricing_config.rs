@@ -4,8 +4,9 @@
 //! supporting multi-currency, tiered pricing, cache pricing, batch pricing,
 //! and other advanced pricing features.
 //!
-//! All prices are stored internally as u64 nanodollars (9 decimal precision)
+//! All prices are stored internally as i64 nanodollars (9 decimal precision)
 //! but serialized to JSON as f64 for backward compatibility.
+//! Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -13,52 +14,52 @@ use std::collections::HashMap;
 
 use crate::price_u64::{dollars_to_nano, nano_to_dollars};
 
-/// Custom serde module for serializing u64 nanodollars as f64 dollars
+/// Custom serde module for serializing i64 nanodollars as f64 dollars
 mod nano_as_dollars {
     use super::{dollars_to_nano, nano_to_dollars};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let dollars = nano_to_dollars(*value);
+        let dollars = nano_to_dollars(*value as u64);
         dollars.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
     where
         D: Deserializer<'de>,
     {
         let dollars: f64 = Deserialize::deserialize(deserializer)?;
-        Ok(dollars_to_nano(dollars))
+        Ok(dollars_to_nano(dollars) as i64)
     }
 }
 
-/// Custom serde module for Option<u64> nanodollars as Option<f64> dollars
+/// Custom serde module for Option<i64> nanodollars as Option<f64> dollars
 mod option_nano_as_dollars {
     use super::{dollars_to_nano, nano_to_dollars};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match value {
             Some(nano) => {
-                let dollars = nano_to_dollars(*nano);
+                let dollars = nano_to_dollars(*nano as u64);
                 Some(dollars).serialize(serializer)
             }
             None => None::<f64>.serialize(serializer),
         }
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let opt_dollars: Option<f64> = Option::deserialize(deserializer)?;
-        Ok(opt_dollars.map(dollars_to_nano))
+        Ok(opt_dollars.map(|d| dollars_to_nano(d) as i64))
     }
 }
 
@@ -96,22 +97,22 @@ pub struct ModelPricing {
 }
 
 /// Pricing for a specific currency.
-/// Prices are stored as u64 nanodollars but serialized as f64 dollars.
+/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurrencyPricing {
     /// Input price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
-    pub input_price: u64,
+    pub input_price: i64,
     /// Output price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
-    pub output_price: u64,
+    pub output_price: i64,
     /// Source of this pricing (e.g., "openai", "anthropic", "converted")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
 }
 
 /// Tiered pricing configuration for usage-based pricing.
-/// Prices are stored as u64 nanodollars but serialized as f64 dollars.
+/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TieredPriceConfig {
     /// Starting token count for this tier (inclusive)
@@ -121,34 +122,34 @@ pub struct TieredPriceConfig {
     pub tier_end: Option<i64>,
     /// Input price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
-    pub input_price: u64,
+    pub input_price: i64,
     /// Output price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
-    pub output_price: u64,
+    pub output_price: i64,
 }
 
 /// Cache pricing for Prompt Caching.
-/// Prices are stored as u64 nanodollars but serialized as f64 dollars.
+/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachePricingConfig {
     /// Cache read price per 1M tokens in nanodollars (usually 10% of standard)
     #[serde(with = "nano_as_dollars")]
-    pub cache_read_input_price: u64,
+    pub cache_read_input_price: i64,
     /// Cache creation price per 1M tokens in nanodollars
     #[serde(with = "option_nano_as_dollars", default, skip_serializing_if = "Option::is_none")]
-    pub cache_creation_input_price: Option<u64>,
+    pub cache_creation_input_price: Option<i64>,
 }
 
 /// Batch pricing for Batch API.
-/// Prices are stored as u64 nanodollars but serialized as f64 dollars.
+/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchPricingConfig {
     /// Batch input price per 1M tokens in nanodollars (usually 50% of standard)
     #[serde(with = "nano_as_dollars")]
-    pub batch_input_price: u64,
+    pub batch_input_price: i64,
     /// Batch output price per 1M tokens in nanodollars
     #[serde(with = "nano_as_dollars")]
-    pub batch_output_price: u64,
+    pub batch_output_price: i64,
 }
 
 /// Model metadata for capabilities and limits.
@@ -222,10 +223,10 @@ impl PricingConfig {
         // Validate each model's pricing
         for (model_name, model_pricing) in &self.models {
             // Check for prices that seem unreasonably high (> $1000/1M tokens = 1_000_000_000_000 nanodollars)
-            let high_price_threshold: u64 = 1_000_000_000_000; // $1000 in nanodollars
+            let high_price_threshold: i64 = 1_000_000_000_000; // $1000 in nanodollars
 
             for (currency, pricing) in &model_pricing.pricing {
-                // Note: u64 cannot be negative, so no need to check for negative prices
+                // Note: i64 prices should never be negative (enforced by business logic)
 
                 // Warn if price seems unreasonably high (> $1000/1M tokens)
                 if pricing.input_price > high_price_threshold || pricing.output_price > high_price_threshold {
@@ -233,7 +234,7 @@ impl PricingConfig {
                         field: format!("models.{}.pricing.{}", model_name, currency),
                         message: format!(
                             "Price ${:.2}/1M seems unusually high",
-                            nano_to_dollars(pricing.input_price.max(pricing.output_price))
+                            nano_to_dollars(pricing.input_price.max(pricing.output_price) as u64)
                         ),
                         suggestion: "Verify the pricing is correct".to_string(),
                     });
@@ -356,6 +357,11 @@ pub enum ValidationError {
 mod tests {
     use super::*;
 
+    /// Helper function to convert dollars to nanodollars as i64
+    fn to_nano(price: f64) -> i64 {
+        dollars_to_nano(price) as i64
+    }
+
     #[test]
     fn test_pricing_config_creation() {
         let config = PricingConfig::new("test");
@@ -371,8 +377,8 @@ mod tests {
         pricing.insert(
             "USD".to_string(),
             CurrencyPricing {
-                input_price: dollars_to_nano(10.0),   // $10.0 = 10_000_000_000 nanodollars
-                output_price: dollars_to_nano(30.0),  // $30.0 = 30_000_000_000 nanodollars
+                input_price: to_nano(10.0),   // $10.0 = 10_000_000_000 nanodollars
+                output_price: to_nano(30.0),  // $30.0 = 30_000_000_000 nanodollars
                 source: Some("openai".to_string()),
             },
         );
@@ -412,8 +418,8 @@ mod tests {
         pricing.insert(
             "USD".to_string(),
             CurrencyPricing {
-                input_price: dollars_to_nano(10.0),
-                output_price: dollars_to_nano(30.0),
+                input_price: to_nano(10.0),
+                output_price: to_nano(30.0),
                 source: None,
             },
         );
@@ -441,8 +447,8 @@ mod tests {
         pricing.insert(
             "USD".to_string(),
             CurrencyPricing {
-                input_price: dollars_to_nano(10.0),
-                output_price: dollars_to_nano(30.0),
+                input_price: to_nano(10.0),
+                output_price: to_nano(30.0),
                 source: None,
             },
         );
@@ -451,14 +457,14 @@ mod tests {
             TieredPriceConfig {
                 tier_start: 0,
                 tier_end: Some(32000),
-                input_price: dollars_to_nano(1.2),
-                output_price: dollars_to_nano(6.0),
+                input_price: to_nano(1.2),
+                output_price: to_nano(6.0),
             },
             TieredPriceConfig {
                 tier_start: 32000,
                 tier_end: Some(128000),
-                input_price: dollars_to_nano(2.4),
-                output_price: dollars_to_nano(12.0),
+                input_price: to_nano(2.4),
+                output_price: to_nano(12.0),
             },
         ];
 
@@ -489,8 +495,8 @@ mod tests {
         pricing.insert(
             "USD".to_string(),
             CurrencyPricing {
-                input_price: dollars_to_nano(10.0),
-                output_price: dollars_to_nano(30.0),
+                input_price: to_nano(10.0),
+                output_price: to_nano(30.0),
                 source: None,
             },
         );
@@ -499,8 +505,8 @@ mod tests {
         let tiered = vec![TieredPriceConfig {
             tier_start: 100,
             tier_end: Some(50),
-            input_price: dollars_to_nano(1.2),
-            output_price: dollars_to_nano(6.0),
+            input_price: to_nano(1.2),
+            output_price: to_nano(6.0),
         }];
 
         let mut tiered_map = HashMap::new();
@@ -529,15 +535,15 @@ mod tests {
         pricing.insert(
             "USD".to_string(),
             CurrencyPricing {
-                input_price: dollars_to_nano(10.0),
-                output_price: dollars_to_nano(30.0),
+                input_price: to_nano(10.0),
+                output_price: to_nano(30.0),
                 source: None,
             },
         );
 
         let cache_pricing = CachePricingConfig {
-            cache_read_input_price: dollars_to_nano(1.0),
-            cache_creation_input_price: Some(dollars_to_nano(1.25)),
+            cache_read_input_price: to_nano(1.0),
+            cache_creation_input_price: Some(to_nano(1.25)),
         };
         let mut cache_map = HashMap::new();
         cache_map.insert("USD".to_string(), cache_pricing);
@@ -556,12 +562,12 @@ mod tests {
         // Test get_pricing
         let p = config.get_pricing("claude-3", "USD");
         assert!(p.is_some());
-        assert_eq!(p.unwrap().input_price, dollars_to_nano(10.0));
+        assert_eq!(p.unwrap().input_price, to_nano(10.0));
 
         // Test get_cache_pricing
         let c = config.get_cache_pricing("claude-3", "USD");
         assert!(c.is_some());
-        assert_eq!(c.unwrap().cache_read_input_price, dollars_to_nano(1.0));
+        assert_eq!(c.unwrap().cache_read_input_price, to_nano(1.0));
 
         // Test non-existent model
         assert!(config.get_pricing("nonexistent", "USD").is_none());
