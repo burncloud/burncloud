@@ -512,7 +512,7 @@
         },
         {
             "id": "10.11",
-            "passes": null,
+            "passes": true,
             "category": "phase5-cli",
             "priority": "P2",
             "description": "修改 price.rs CLI 命令",

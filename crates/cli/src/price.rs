@@ -1,8 +1,8 @@
 use anyhow::Result;
-use burncloud_common::pricing_config::{
+use burncloud_common::{dollars_to_nano, nano_to_dollars, pricing_config::{
     BatchPricingConfig, CachePricingConfig, CurrencyPricing, ModelMetadata, ModelPricing,
     PricingConfig, TieredPriceConfig,
-};
+}};
 use burncloud_database::Database;
 use burncloud_database_models::{
     PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel,
@@ -12,6 +12,16 @@ use clap::ArgMatches;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
+
+/// Helper to convert f64 dollars to i64 nanodollars
+fn to_nano(price: f64) -> i64 {
+    dollars_to_nano(price) as i64
+}
+
+/// Helper to convert i64 nanodollars to f64 dollars
+fn from_nano(price: i64) -> f64 {
+    nano_to_dollars(price as u64)
+}
 
 pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -44,7 +54,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 let region = price.region.as_deref().unwrap_or("-");
                 println!(
                     "{:<30} {:>8} {:>15.4} {:>15.4} {:>10}",
-                    price.model, price.currency, price.input_price, price.output_price, region
+                    price.model, price.currency, from_nano(price.input_price), from_nano(price.output_price), region
                 );
             }
         }
@@ -79,15 +89,16 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 .and_then(|s| s.parse().ok());
 
             // Use PriceV2Model for multi-currency support
+            // Convert f64 dollar input to i64 nanodollars
             let input = PriceV2Input {
                 model: model.clone(),
                 currency: currency.clone(),
-                input_price,
-                output_price,
-                cache_read_input_price,
-                cache_creation_input_price,
-                batch_input_price,
-                batch_output_price,
+                input_price: to_nano(input_price),
+                output_price: to_nano(output_price),
+                cache_read_input_price: cache_read_input_price.map(to_nano),
+                cache_creation_input_price: cache_creation_input_price.map(to_nano),
+                batch_input_price: batch_input_price.map(to_nano),
+                batch_output_price: batch_output_price.map(to_nano),
                 priority_input_price: None,
                 priority_output_price: None,
                 audio_input_price: None,
@@ -108,11 +119,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 model, currency, input_price, output_price, region_display
             );
 
-            if cache_read_input_price.is_some() {
-                println!("  Cache read: {:.4}/1M", cache_read_input_price.unwrap());
+            if let Some(cr) = cache_read_input_price {
+                println!("  Cache read: {:.4}/1M", cr);
             }
-            if batch_input_price.is_some() {
-                println!("  Batch input: {:.4}/1M", batch_input_price.unwrap());
+            if let Some(bi) = batch_input_price {
+                println!("  Batch input: {:.4}/1M", bi);
             }
         }
         Some(("delete", sub_m)) => {
@@ -133,23 +144,23 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     Some(price) => {
                         println!("Model: {}", price.model);
                         println!("Currency: {}", price.currency);
-                        println!("Input Price: {:.4}/1M tokens", price.input_price);
-                        println!("Output Price: {:.4}/1M tokens", price.output_price);
+                        println!("Input Price: {:.4}/1M tokens", from_nano(price.input_price));
+                        println!("Output Price: {:.4}/1M tokens", from_nano(price.output_price));
                         if let Some(region) = &price.region {
                             println!("Region: {}", region);
                         }
                         // Display advanced pricing if available
                         if let Some(cache_read) = price.cache_read_input_price {
-                            println!("Cache Read Price: {:.4}/1M tokens", cache_read);
+                            println!("Cache Read Price: {:.4}/1M tokens", from_nano(cache_read));
                         }
                         if let Some(cache_creation) = price.cache_creation_input_price {
-                            println!("Cache Creation Price: {:.4}/1M tokens", cache_creation);
+                            println!("Cache Creation Price: {:.4}/1M tokens", from_nano(cache_creation));
                         }
                         if let Some(batch_input) = price.batch_input_price {
-                            println!("Batch Input Price: {:.4}/1M tokens", batch_input);
+                            println!("Batch Input Price: {:.4}/1M tokens", from_nano(batch_input));
                         }
                         if let Some(batch_output) = price.batch_output_price {
-                            println!("Batch Output Price: {:.4}/1M tokens", batch_output);
+                            println!("Batch Output Price: {:.4}/1M tokens", from_nano(batch_output));
                         }
                     }
                     None => {
@@ -169,13 +180,13 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         if let Some(region) = &price.region {
                             println!("Region: {}", region);
                         }
-                        println!("Input Price: {:.4}/1M tokens", price.input_price);
-                        println!("Output Price: {:.4}/1M tokens", price.output_price);
+                        println!("Input Price: {:.4}/1M tokens", from_nano(price.input_price));
+                        println!("Output Price: {:.4}/1M tokens", from_nano(price.output_price));
                         if let Some(cache_read) = price.cache_read_input_price {
-                            println!("Cache Read Price: {:.4}/1M tokens", cache_read);
+                            println!("Cache Read Price: {:.4}/1M tokens", from_nano(cache_read));
                         }
                         if let Some(batch_input) = price.batch_input_price {
-                            println!("Batch Input Price: {:.4}/1M tokens", batch_input);
+                            println!("Batch Input Price: {:.4}/1M tokens", from_nano(batch_input));
                         }
                     }
                 }
@@ -192,7 +203,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
                         println!(
                             "  [{}] {}-{} tokens: {:.4}/{:.4} per 1M (in/out)",
-                            region, tier.tier_start, tier_end, tier.input_price, tier.output_price
+                            region, tier.tier_start, tier_end, from_nano(tier.input_price), from_nano(tier.output_price)
                         );
                     }
                 } else {
@@ -229,7 +240,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 let region_str = price.region.as_deref().unwrap_or("-");
                 println!(
                     "{:<10} {:>15.4} {:>15.4} {:>10}",
-                    price.currency, price.input_price, price.output_price, region_str
+                    price.currency, from_nano(price.input_price), from_nano(price.output_price), region_str
                 );
             }
 
@@ -243,11 +254,15 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 println!("{}", "-".repeat(55));
                 for price in &prices {
                     if price.cache_read_input_price.is_some() || price.cache_creation_input_price.is_some() {
+                        let cache_read = price.cache_read_input_price.map(from_nano).unwrap_or(0.0);
+                        let cache_creation = price.cache_creation_input_price
+                            .map(|v| format!("{:.4}", from_nano(v)))
+                            .unwrap_or("-".to_string());
                         println!(
                             "{:<10} {:>20.4} {:>20}",
                             price.currency,
-                            price.cache_read_input_price.unwrap_or(0.0),
-                            price.cache_creation_input_price.map(|v| format!("{:.4}", v)).unwrap_or("-".to_string())
+                            cache_read,
+                            cache_creation
                         );
                     }
                 }
@@ -259,11 +274,13 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 println!("{}", "-".repeat(55));
                 for price in &prices {
                     if price.batch_input_price.is_some() || price.batch_output_price.is_some() {
+                        let batch_input = price.batch_input_price.map(from_nano).unwrap_or(0.0);
+                        let batch_output = price.batch_output_price.map(from_nano).unwrap_or(0.0);
                         println!(
                             "{:<10} {:>20.4} {:>20.4}",
                             price.currency,
-                            price.batch_input_price.unwrap_or(0.0),
-                            price.batch_output_price.unwrap_or(0.0)
+                            batch_input,
+                            batch_output
                         );
                     }
                 }
@@ -281,7 +298,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
                     println!(
                         "{:<12} {:>12} {:>12} {:>15.4} {:>15.4}",
-                        region, tier.tier_start, tier_end, tier.input_price, tier.output_price
+                        region, tier.tier_start, tier_end, from_nano(tier.input_price), from_nano(tier.output_price)
                     );
                 }
             }
@@ -590,7 +607,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     cache_map.insert(
                         price.currency.clone(),
                         CachePricingConfig {
-                            cache_read_input_price: price.cache_read_input_price.unwrap_or(0.0),
+                            cache_read_input_price: price.cache_read_input_price.unwrap_or(0),
                             cache_creation_input_price: price.cache_creation_input_price,
                         },
                     );
@@ -602,8 +619,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     batch_map.insert(
                         price.currency.clone(),
                         BatchPricingConfig {
-                            batch_input_price: price.batch_input_price.unwrap_or(0.0),
-                            batch_output_price: price.batch_output_price.unwrap_or(0.0),
+                            batch_input_price: price.batch_input_price.unwrap_or(0),
+                            batch_output_price: price.batch_output_price.unwrap_or(0),
                         },
                     );
                 }
@@ -797,13 +814,14 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0.0);
 
+            // Convert to i64 nanodollars for storage
             let input = TieredPriceInput {
                 model: model.clone(),
                 region,
                 tier_start,
                 tier_end,
-                input_price,
-                output_price,
+                input_price: to_nano(input_price),
+                output_price: to_nano(output_price),
             };
 
             TieredPriceModel::upsert_tier(db, &input).await?;
