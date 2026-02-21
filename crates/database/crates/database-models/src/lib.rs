@@ -1589,6 +1589,101 @@ impl PriceV2Model {
         Ok(None)
     }
 
+    /// Get price for a model in a specific region
+    /// With the new UNIQUE(model, region) constraint, each region has only one currency.
+    /// Falls back to universal price (region=NULL) if region-specific price not found.
+    pub async fn get_by_model_region(
+        db: &Database,
+        model: &str,
+        region: Option<&str>,
+    ) -> Result<Option<PriceV2>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        // First try exact match for the region
+        let sql = if is_postgres {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = $1 AND region IS NOT DISTINCT FROM $2"#
+        } else {
+            r#"SELECT id, model, currency, input_price, output_price,
+                      cache_read_input_price, cache_creation_input_price,
+                      batch_input_price, batch_output_price,
+                      priority_input_price, priority_output_price,
+                      audio_input_price, source, region,
+                      context_window, max_output_tokens,
+                      supports_vision, supports_function_calling,
+                      synced_at, created_at, updated_at
+               FROM prices_v2 WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+        };
+
+        let price = if is_postgres {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(region)
+                .fetch_optional(conn.pool())
+                .await?
+        } else {
+            sqlx::query_as(sql)
+                .bind(model)
+                .bind(region)
+                .bind(region)
+                .fetch_optional(conn.pool())
+                .await?
+        };
+
+        if price.is_some() {
+            return Ok(price);
+        }
+
+        // Fallback to universal price (region = NULL) if region-specific price not found
+        if region.is_some() {
+            let sql_universal = if is_postgres {
+                r#"SELECT id, model, currency, input_price, output_price,
+                          cache_read_input_price, cache_creation_input_price,
+                          batch_input_price, batch_output_price,
+                          priority_input_price, priority_output_price,
+                          audio_input_price, source, region,
+                          context_window, max_output_tokens,
+                          supports_vision, supports_function_calling,
+                          synced_at, created_at, updated_at
+                   FROM prices_v2 WHERE model = $1 AND region IS NULL"#
+            } else {
+                r#"SELECT id, model, currency, input_price, output_price,
+                          cache_read_input_price, cache_creation_input_price,
+                          batch_input_price, batch_output_price,
+                          priority_input_price, priority_output_price,
+                          audio_input_price, source, region,
+                          context_window, max_output_tokens,
+                          supports_vision, supports_function_calling,
+                          synced_at, created_at, updated_at
+                   FROM prices_v2 WHERE model = ? AND region IS NULL"#
+            };
+
+            let universal_price: Option<PriceV2> = if is_postgres {
+                sqlx::query_as(sql_universal)
+                    .bind(model)
+                    .fetch_optional(conn.pool())
+                    .await?
+            } else {
+                sqlx::query_as(sql_universal)
+                    .bind(model)
+                    .fetch_optional(conn.pool())
+                    .await?
+            };
+
+            return Ok(universal_price);
+        }
+
+        Ok(None)
+    }
+
     /// Get all prices for a model across all currencies
     pub async fn get_all_currencies(
         db: &Database,

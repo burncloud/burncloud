@@ -224,7 +224,7 @@
         },
         {
             "id": "18.6",
-            "passes": null,
+            "passes": true,
             "category": "phase4-billing",
             "priority": "P1",
             "description": "实现 PriceV2Model::get_by_model_region",
@@ -252,7 +252,7 @@
         },
         {
             "id": "18.7",
-            "passes": null,
+            "passes": true,
             "category": "phase4-billing",
             "priority": "P1",
             "description": "实现双币扣费逻辑 deduct_dual_currency",

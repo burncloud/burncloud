@@ -746,4 +746,190 @@ impl RouterDatabase {
 
         Ok(true)
     }
+
+    /// Deduct from USD balance.
+    /// Cost is in nanodollars (i64).
+    /// Returns Ok(true) if deduction successful, Ok(false) if insufficient balance.
+    pub async fn deduct_usd(db: &Database, user_id: &str, cost_nano: i64) -> Result<bool> {
+        if cost_nano <= 0 {
+            return Ok(true);
+        }
+
+        let conn = db.get_connection()?;
+
+        // Check current balance
+        let balance: i64 = sqlx::query_scalar("SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(conn.pool())
+            .await
+            .unwrap_or(0);
+
+        if balance < cost_nano {
+            return Ok(false);
+        }
+
+        // Deduct
+        let rows_affected = sqlx::query("UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?")
+            .bind(cost_nano)
+            .bind(user_id)
+            .bind(cost_nano)
+            .execute(conn.pool())
+            .await?
+            .rows_affected();
+
+        Ok(rows_affected > 0)
+    }
+
+    /// Deduct from CNY balance.
+    /// Cost is in nanodollars (i64).
+    /// Returns Ok(true) if deduction successful, Ok(false) if insufficient balance.
+    pub async fn deduct_cny(db: &Database, user_id: &str, cost_nano: i64) -> Result<bool> {
+        if cost_nano <= 0 {
+            return Ok(true);
+        }
+
+        let conn = db.get_connection()?;
+
+        // Check current balance
+        let balance: i64 = sqlx::query_scalar("SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(conn.pool())
+            .await
+            .unwrap_or(0);
+
+        if balance < cost_nano {
+            return Ok(false);
+        }
+
+        // Deduct
+        let rows_affected = sqlx::query("UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?")
+            .bind(cost_nano)
+            .bind(user_id)
+            .bind(cost_nano)
+            .execute(conn.pool())
+            .await?
+            .rows_affected();
+
+        Ok(rows_affected > 0)
+    }
+
+    /// Deduct cost from dual-currency wallet.
+    /// Uses the primary currency first (based on cost_currency), then converts from secondary if needed.
+    ///
+    /// # Arguments
+    /// * `db` - Database connection
+    /// * `user_id` - User ID to deduct from
+    /// * `cost_nano` - Cost in nanodollars (i64)
+    /// * `cost_currency` - Currency of the cost ("USD" or "CNY")
+    /// * `exchange_rate_nano` - Exchange rate scaled by 10^9 (e.g., 7.24 CNY/USD = 7_240_000_000)
+    ///
+    /// # Returns
+    /// Ok(true) if deduction successful, Ok(false) if insufficient balance across both currencies.
+    pub async fn deduct_dual_currency(
+        db: &Database,
+        user_id: &str,
+        cost_nano: i64,
+        cost_currency: &str,
+        exchange_rate_nano: i64,
+    ) -> Result<bool> {
+        if cost_nano <= 0 {
+            return Ok(true);
+        }
+
+        let conn = db.get_connection()?;
+
+        // Get current balances
+        let balances: Option<(i64, i64)> = sqlx::query_as(
+            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?"
+        )
+        .bind(user_id)
+        .fetch_optional(conn.pool())
+        .await?;
+
+        let (balance_usd, balance_cny) = balances.unwrap_or((0, 0));
+
+        if cost_currency == "CNY" {
+            // CNY model: prioritize CNY balance
+            if balance_cny >= cost_nano {
+                // Sufficient CNY balance
+                return Self::deduct_cny(db, user_id, cost_nano).await;
+            }
+
+            // Need to convert USD to CNY
+            // Required CNY = cost_nano - balance_cny
+            // Required USD in nanodollars = required_cny * 10^9 / exchange_rate_nano
+            // Using i128 for intermediate calculation to avoid overflow
+            let required_cny = cost_nano - balance_cny;
+            let required_usd: i128 = (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
+
+            if required_usd > balance_usd as i128 {
+                // Insufficient total balance
+                return Ok(false);
+            }
+
+            // Deduct from both currencies atomically
+            let mut tx = conn.pool().begin().await?;
+
+            // Deduct remaining CNY
+            if balance_cny > 0 {
+                sqlx::query("UPDATE users SET balance_cny = 0 WHERE id = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+
+            // Deduct required USD (already integer, no need to round)
+            let usd_to_deduct = required_usd as i64;
+            sqlx::query("UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?")
+                .bind(usd_to_deduct)
+                .bind(user_id)
+                .bind(usd_to_deduct)
+                .execute(&mut *tx)
+                .await?;
+
+            tx.commit().await?;
+            Ok(true)
+        } else {
+            // USD model (default): prioritize USD balance
+            if balance_usd >= cost_nano {
+                // Sufficient USD balance
+                return Self::deduct_usd(db, user_id, cost_nano).await;
+            }
+
+            // Need to convert CNY to USD
+            // Required USD = cost_nano - balance_usd
+            // Required CNY in nanodollars = required_usd * exchange_rate_nano / 10^9
+            // Using i128 for intermediate calculation to avoid overflow
+            let required_usd = cost_nano - balance_usd;
+            let required_cny: i128 = (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
+
+            if required_cny > balance_cny as i128 {
+                // Insufficient total balance
+                return Ok(false);
+            }
+
+            // Deduct from both currencies atomically
+            let mut tx = conn.pool().begin().await?;
+
+            // Deduct remaining USD
+            if balance_usd > 0 {
+                sqlx::query("UPDATE users SET balance_usd = 0 WHERE id = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+
+            // Deduct required CNY (already integer, no need to round)
+            let cny_to_deduct = required_cny as i64;
+            sqlx::query("UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?")
+                .bind(cny_to_deduct)
+                .bind(user_id)
+                .bind(cny_to_deduct)
+                .execute(&mut *tx)
+                .await?;
+
+            tx.commit().await?;
+            Ok(true)
+        }
+    }
 }
