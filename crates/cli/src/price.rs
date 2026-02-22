@@ -568,7 +568,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let file_path = sub_m.get_one::<String>("file").unwrap();
             let format = sub_m.get_one::<String>("format").unwrap();
 
-            // Fetch all prices from prices_v2 table
+            // Fetch all prices from prices table
             let prices = PriceV2Model::list(db, 100000, 0, None).await?;
             let tiered_prices = TieredPriceModel::list_all(db).await?;
 
@@ -789,9 +789,12 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             for tier in tiers {
                 let region = tier.region.as_deref().unwrap_or("-");
                 let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                // Convert nanodollars to dollars for display
+                let input_dollars = from_nano(tier.input_price);
+                let output_dollars = from_nano(tier.output_price);
                 println!(
                     "{:<15} {:<15} {:>15} {:>15.4} {:>15.4}",
-                    region, tier.tier_start, tier_end, tier.input_price, tier.output_price
+                    region, tier.tier_start, tier_end, input_dollars, output_dollars
                 );
             }
         }
@@ -872,9 +875,12 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                     for tier in tiers {
                         let region = tier.region.as_deref().unwrap_or("universal");
                         let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                        // Convert nanodollars to dollars for display
+                        let input_dollars = from_nano(tier.input_price);
+                        let output_dollars = from_nano(tier.output_price);
                         println!(
                             "  [{}] {}-{} tokens: ${:.4}/${:.4} per 1M (input/output)",
-                            region, tier.tier_start, tier_end, tier.input_price, tier.output_price
+                            region, tier.tier_start, tier_end, input_dollars, output_dollars
                         );
                     }
                 }

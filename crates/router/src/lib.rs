@@ -477,28 +477,29 @@ async fn proxy_handler(
     let cost = if prompt_tokens > 0 || completion_tokens > 0 {
         if let Some(model) = &model_name {
             // Try to get price and check for tiered pricing
-            let price_result = PriceModel::get(&state.db, model).await;
+            // Use new PriceModel API with currency "USD" and no region filter
+            let price_result = PriceModel::get(&state.db, model, "USD", None).await;
             let tiered_result = burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model).await;
 
             // Check if model has tiered pricing
             let has_tiered = matches!(tiered_result, Ok(true));
 
             if let Ok(Some(price)) = price_result {
-                // Build advanced pricing struct (convert f64 dollars to i64 nanodollars)
-                let to_nano = |p: f64| (p * 1_000_000_000.0).round() as i64;
-                let to_nano_opt = |p: Option<f64>| p.map(to_nano);
-
+                // Build advanced pricing struct (prices are already in i64 nanodollars)
                 let pricing = billing::AdvancedPricing {
-                    input_price: to_nano(price.input_price),
-                    output_price: to_nano(price.output_price),
-                    cache_read_price: to_nano_opt(price.cache_read_price),
-                    cache_creation_price: to_nano_opt(price.cache_creation_price),
-                    batch_input_price: to_nano_opt(price.batch_input_price),
-                    batch_output_price: to_nano_opt(price.batch_output_price),
-                    priority_input_price: to_nano_opt(price.priority_input_price),
-                    priority_output_price: to_nano_opt(price.priority_output_price),
-                    audio_input_price: to_nano_opt(price.audio_input_price),
+                    input_price: price.input_price,
+                    output_price: price.output_price,
+                    cache_read_price: price.cache_read_input_price,
+                    cache_creation_price: price.cache_creation_input_price,
+                    batch_input_price: price.batch_input_price,
+                    batch_output_price: price.batch_output_price,
+                    priority_input_price: price.priority_input_price,
+                    priority_output_price: price.priority_output_price,
+                    audio_input_price: price.audio_input_price,
                 };
+
+                // Helper to convert nanodollars (i64) to dollars (f64)
+                let nano_to_dollars = |nano: i64| (nano as f64) / 1_000_000_000.0;
 
                 // Determine billing type with priority: cache > tiered > priority > batch > standard
                 if cache_read_tokens > 0 || cache_creation_tokens > 0 {
@@ -537,10 +538,10 @@ async fn proxy_handler(
                                 None,
                             ) {
                                 Ok(cost) => cost,
-                                Err(_) => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                                Err(_) => nano_to_dollars(PriceModel::calculate_cost(&price, prompt_tokens as u64, completion_tokens as u64)),
                             }
                         }
-                        _ => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                        _ => nano_to_dollars(PriceModel::calculate_cost(&price, prompt_tokens as u64, completion_tokens as u64)),
                     }
                 } else if is_priority_request {
                     // Use priority pricing for high-priority requests
@@ -550,7 +551,7 @@ async fn proxy_handler(
                     billing::calculate_batch_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
                 } else {
                     // Fall back to simple calculation
-                    PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
+                    nano_to_dollars(PriceModel::calculate_cost(&price, prompt_tokens as u64, completion_tokens as u64))
                 }
             } else {
                 0.0

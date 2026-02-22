@@ -285,8 +285,8 @@ impl PriceSyncService {
                 None => key.clone(),
             };
 
-            // Get pricing info
-            let (input_price, output_price) = price_data.to_per_million_price();
+            // Get pricing info (in nanodollars)
+            let (input_price, output_price) = price_data.to_per_million_price_nano();
 
             // Skip if no pricing info
             let (input, output) = match (input_price, output_price) {
@@ -296,32 +296,32 @@ impl PriceSyncService {
                 (None, None) => continue,  // No pricing info, skip
             };
 
-            // Get advanced pricing info
-            let (cache_read_price, cache_creation_price) = price_data.to_cache_per_million_price();
-            let (batch_input_price, batch_output_price) = price_data.to_batch_per_million_price();
+            // Get advanced pricing info (in nanodollars)
+            let (cache_read_price, cache_creation_price) = price_data.to_cache_per_million_price_nano();
+            let (batch_input_price, batch_output_price) = price_data.to_batch_per_million_price_nano();
             let (priority_input_price, priority_output_price) =
-                price_data.to_priority_per_million_price();
-            let audio_input_price = price_data.to_audio_per_million_price();
+                price_data.to_priority_per_million_price_nano();
+            let audio_input_price = price_data.to_audio_per_million_price_nano();
 
-            // Create price input with advanced pricing fields
+            // Create price input with advanced pricing fields (using new PriceInput with i64 nanodollars)
             let price_input = PriceInput {
                 model: model_name.clone(),
+                currency: "USD".to_string(),
                 input_price: input,
                 output_price: output,
-                currency: Some("USD".to_string()),
-                alias_for: price_data.pricing_model.clone(),
-                cache_read_price,
-                cache_creation_price,
+                cache_read_input_price: cache_read_price,
+                cache_creation_input_price: cache_creation_price,
                 batch_input_price,
                 batch_output_price,
                 priority_input_price,
                 priority_output_price,
                 audio_input_price,
-                full_pricing: None,
-                // Multi-currency fields
-                original_currency: None,
-                original_input_price: None,
-                original_output_price: None,
+                source: Some("litellm".to_string()),
+                region: None,
+                context_window: price_data.max_input_tokens.map(|t| t as i64),
+                max_output_tokens: price_data.max_output_tokens.map(|t| t as i64),
+                supports_vision: price_data.supports_vision,
+                supports_function_calling: price_data.supports_function_calling,
             };
 
             // Upsert to database
@@ -847,7 +847,7 @@ impl PriceSyncServiceV2 {
         self.apply_prices(&config, "community").await
     }
 
-    /// Sync prices from LiteLLM to prices_v2 table
+    /// Sync prices from LiteLLM to prices table
     async fn sync_litellm_to_v2(&self) -> anyhow::Result<SyncResult> {
         let mut result = SyncResult {
             source: "litellm".to_string(),

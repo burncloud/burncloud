@@ -5,7 +5,7 @@ use burncloud_common::pricing_config::{
     TieredPriceConfig,
 };
 use burncloud_common::dollars_to_nano;
-use burncloud_database_models::{PriceInput, PriceModel, PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel};
+use burncloud_database_models::{PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel};
 use burncloud_router::price_sync::LiteLLMPrice;
 use common::setup_db;
 use std::collections::HashMap;
@@ -41,50 +41,52 @@ async fn test_litellm_advanced_pricing_sync() -> anyhow::Result<()> {
         search_context_cost_per_query: None,
     };
 
-    // Convert to per-million prices
-    let (input_price, output_price) = litellm_price.to_per_million_price();
-    let (cache_read_price, cache_creation_price) = litellm_price.to_cache_per_million_price();
-    let (batch_input_price, batch_output_price) = litellm_price.to_batch_per_million_price();
-    let (priority_input_price, priority_output_price) = litellm_price.to_priority_per_million_price();
-    let audio_input_price = litellm_price.to_audio_per_million_price();
+    // Convert to per-million prices in nanodollars
+    let (input_price, output_price) = litellm_price.to_per_million_price_nano();
+    let (cache_read_price, cache_creation_price) = litellm_price.to_cache_per_million_price_nano();
+    let (batch_input_price, batch_output_price) = litellm_price.to_batch_per_million_price_nano();
+    let (priority_input_price, priority_output_price) = litellm_price.to_priority_per_million_price_nano();
+    let audio_input_price = litellm_price.to_audio_per_million_price_nano();
 
-    // Create price input with advanced pricing
-    let price_input = PriceInput {
+    // Create price input with advanced pricing (using i64 nanodollars)
+    let price_input = PriceV2Input {
         model: "test-cache-model".to_string(),
+        currency: "USD".to_string(),
         input_price: input_price.unwrap(),
         output_price: output_price.unwrap(),
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        cache_read_price,
-        cache_creation_price,
+        cache_read_input_price: cache_read_price,
+        cache_creation_input_price: cache_creation_price,
         batch_input_price,
         batch_output_price,
         priority_input_price,
         priority_output_price,
         audio_input_price,
-        full_pricing: None,
-        original_currency: None,
-        original_input_price: None,
-        original_output_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()), // Use region for SQLite unique constraint
+        context_window: litellm_price.max_input_tokens.map(|t| t as i64),
+        max_output_tokens: litellm_price.max_output_tokens.map(|t| t as i64),
+        supports_vision: litellm_price.supports_vision,
+        supports_function_calling: litellm_price.supports_function_calling,
     };
 
     // Upsert to database
-    PriceModel::upsert(&_db, &price_input).await?;
+    PriceV2Model::upsert(&_db, &price_input).await?;
 
     // Retrieve and verify
-    let stored = PriceModel::get(&_db, "test-cache-model").await?;
+    let stored = PriceV2Model::get(&_db, "test-cache-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();
-    assert!((stored.input_price - 3.0).abs() < 0.001);
-    assert!((stored.output_price - 15.0).abs() < 0.001);
-    assert!((stored.cache_read_price.unwrap() - 0.30).abs() < 0.001);
-    assert!((stored.cache_creation_price.unwrap() - 3.75).abs() < 0.001);
-    assert!((stored.batch_input_price.unwrap() - 1.5).abs() < 0.001);
-    assert!((stored.batch_output_price.unwrap() - 7.5).abs() < 0.001);
-    assert!((stored.priority_input_price.unwrap() - 5.1).abs() < 0.001);
-    assert!((stored.priority_output_price.unwrap() - 25.5).abs() < 0.001);
-    assert!((stored.audio_input_price.unwrap() - 21.0).abs() < 0.001);
+    // Compare i64 nanodollar values
+    assert_eq!(stored.input_price, to_nano(3.0));
+    assert_eq!(stored.output_price, to_nano(15.0));
+    assert_eq!(stored.cache_read_input_price.unwrap(), to_nano(0.30));
+    assert_eq!(stored.cache_creation_input_price.unwrap(), to_nano(3.75));
+    assert_eq!(stored.batch_input_price.unwrap(), to_nano(1.5));
+    assert_eq!(stored.batch_output_price.unwrap(), to_nano(7.5));
+    assert_eq!(stored.priority_input_price.unwrap(), to_nano(5.1));
+    assert_eq!(stored.priority_output_price.unwrap(), to_nano(25.5));
+    assert_eq!(stored.audio_input_price.unwrap(), to_nano(21.0));
 
     Ok(())
 }
@@ -116,46 +118,44 @@ async fn test_litellm_basic_pricing_sync() -> anyhow::Result<()> {
         search_context_cost_per_query: None,
     };
 
-    // Convert to per-million prices
-    let (input_price, output_price) = litellm_price.to_per_million_price();
-    let (cache_read_price, cache_creation_price) = litellm_price.to_cache_per_million_price();
-    let (batch_input_price, batch_output_price) = litellm_price.to_batch_per_million_price();
-    let (priority_input_price, priority_output_price) = litellm_price.to_priority_per_million_price();
-    let audio_input_price = litellm_price.to_audio_per_million_price();
+    // Convert to per-million prices in nanodollars
+    let (input_price, output_price) = litellm_price.to_per_million_price_nano();
 
-    // Create price input
-    let price_input = PriceInput {
+    // Create price input (using i64 nanodollars)
+    let price_input = PriceV2Input {
         model: "test-basic-model".to_string(),
+        currency: "USD".to_string(),
         input_price: input_price.unwrap(),
         output_price: output_price.unwrap(),
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        cache_read_price,
-        cache_creation_price,
-        batch_input_price,
-        batch_output_price,
-        priority_input_price,
-        priority_output_price,
-        audio_input_price,
-        full_pricing: None,
-        original_currency: None,
-        original_input_price: None,
-        original_output_price: None,
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()), // Use region for SQLite unique constraint
+        context_window: litellm_price.max_input_tokens.map(|t| t as i64),
+        max_output_tokens: litellm_price.max_output_tokens.map(|t| t as i64),
+        supports_vision: None,
+        supports_function_calling: None,
     };
 
     // Upsert to database
-    PriceModel::upsert(&_db, &price_input).await?;
+    PriceV2Model::upsert(&_db, &price_input).await?;
 
     // Retrieve and verify
-    let stored = PriceModel::get(&_db, "test-basic-model").await?;
+    let stored = PriceV2Model::get(&_db, "test-basic-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();
-    assert!((stored.input_price - 1.0).abs() < 0.001);
-    assert!((stored.output_price - 3.0).abs() < 0.001);
+    // Compare i64 nanodollar values
+    assert_eq!(stored.input_price, to_nano(1.0));
+    assert_eq!(stored.output_price, to_nano(3.0));
     // Advanced pricing should be NULL
-    assert_eq!(stored.cache_read_price, None);
-    assert_eq!(stored.cache_creation_price, None);
+    assert_eq!(stored.cache_read_input_price, None);
+    assert_eq!(stored.cache_creation_input_price, None);
     assert_eq!(stored.batch_input_price, None);
     assert_eq!(stored.batch_output_price, None);
     assert_eq!(stored.priority_input_price, None);
@@ -170,65 +170,67 @@ async fn test_litellm_basic_pricing_sync() -> anyhow::Result<()> {
 async fn test_litellm_pricing_update() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
-    // First insert basic pricing
-    let price_input = PriceInput {
+    // First insert basic pricing (using i64 nanodollars)
+    let price_input = PriceV2Input {
         model: "test-update-model".to_string(),
-        input_price: 10.0,
-        output_price: 30.0,
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        cache_read_price: None,
-        cache_creation_price: None,
+        currency: "USD".to_string(),
+        input_price: to_nano(10.0),
+        output_price: to_nano(30.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
         batch_input_price: None,
         batch_output_price: None,
         priority_input_price: None,
         priority_output_price: None,
         audio_input_price: None,
-        full_pricing: None,
-        original_currency: None,
-        original_input_price: None,
-        original_output_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
     };
-    PriceModel::upsert(&_db, &price_input).await?;
+    PriceV2Model::upsert(&_db, &price_input).await?;
 
     // Verify initial price
-    let stored = PriceModel::get(&_db, "test-update-model").await?.unwrap();
-    assert!((stored.input_price - 10.0).abs() < 0.001);
+    let stored = PriceV2Model::get(&_db, "test-update-model", "USD", Some("international")).await?.unwrap();
+    assert_eq!(stored.input_price, to_nano(10.0));
 
     // Now update with new pricing including cache pricing
-    let updated_input = PriceInput {
+    let updated_input = PriceV2Input {
         model: "test-update-model".to_string(),
-        input_price: 3.0,
-        output_price: 15.0,
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        cache_read_price: Some(0.30),
-        cache_creation_price: Some(3.75),
-        batch_input_price: Some(1.5),
-        batch_output_price: Some(7.5),
+        currency: "USD".to_string(),
+        input_price: to_nano(3.0),
+        output_price: to_nano(15.0),
+        cache_read_input_price: Some(to_nano(0.30)),
+        cache_creation_input_price: Some(to_nano(3.75)),
+        batch_input_price: Some(to_nano(1.5)),
+        batch_output_price: Some(to_nano(7.5)),
         priority_input_price: None,
         priority_output_price: None,
         audio_input_price: None,
-        full_pricing: None,
-        original_currency: None,
-        original_input_price: None,
-        original_output_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
     };
-    PriceModel::upsert(&_db, &updated_input).await?;
+    PriceV2Model::upsert(&_db, &updated_input).await?;
 
     // Verify updated price
-    let stored = PriceModel::get(&_db, "test-update-model").await?.unwrap();
-    assert!((stored.input_price - 3.0).abs() < 0.001);
-    assert!((stored.output_price - 15.0).abs() < 0.001);
-    assert!((stored.cache_read_price.unwrap() - 0.30).abs() < 0.001);
-    assert!((stored.cache_creation_price.unwrap() - 3.75).abs() < 0.001);
-    assert!((stored.batch_input_price.unwrap() - 1.5).abs() < 0.001);
-    assert!((stored.batch_output_price.unwrap() - 7.5).abs() < 0.001);
+    let stored = PriceV2Model::get(&_db, "test-update-model", "USD", Some("international")).await?.unwrap();
+    assert_eq!(stored.input_price, to_nano(3.0));
+    assert_eq!(stored.output_price, to_nano(15.0));
+    assert_eq!(stored.cache_read_input_price.unwrap(), to_nano(0.30));
+    assert_eq!(stored.cache_creation_input_price.unwrap(), to_nano(3.75));
+    assert_eq!(stored.batch_input_price.unwrap(), to_nano(1.5));
+    assert_eq!(stored.batch_output_price.unwrap(), to_nano(7.5));
 
     Ok(())
 }
 
-/// Test multi-currency price storage in prices_v2 table
+/// Test multi-currency price storage in prices table
 #[tokio::test]
 async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;

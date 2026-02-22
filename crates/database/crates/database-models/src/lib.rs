@@ -6,9 +6,12 @@ use sqlx::Row;
 
 pub use burncloud_database::DatabaseError;
 
-/// Model pricing information
+/// DEPRECATED: Old price structure using f64 (floating point precision issues)
+/// Use Price (nanodollar version) instead.
+/// This struct is for the deprecated prices_deprecated table.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Price {
+#[deprecated(since = "0.2.0", note = "Use Price (nanodollar version) instead")]
+pub struct PriceDeprecated {
     pub id: i32,
     pub model: String,
     pub input_price: f64,
@@ -33,9 +36,11 @@ pub struct Price {
     pub original_output_price: Option<f64>,
 }
 
-/// Input for creating/updating a price
+/// DEPRECATED: Old price input using f64
+/// Use PriceInput (nanodollar version) instead.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PriceInput {
+#[deprecated(since = "0.2.0", note = "Use PriceInput (nanodollar version) instead")]
+pub struct PriceDeprecatedInput {
     pub model: String,
     #[serde(default)]
     pub input_price: f64,
@@ -69,21 +74,22 @@ pub struct PriceInput {
     pub original_output_price: Option<f64>,
 }
 
-/// DEPRECATED: Use PriceV2Model instead.
-/// - Price/PriceModel uses REAL for prices (floating point precision issues)
-/// - PriceV2/PriceV2Model uses BIGINT for nanodollar prices (9 decimal precision)
-/// - PriceV2 supports regional pricing with UNIQUE(model, region) constraint
-/// Migration: All new pricing should use PriceV2Model, not PriceModel.
-pub struct PriceModel;
+/// DEPRECATED: Use PriceModel instead.
+/// - PriceDeprecated/PriceDeprecatedModel uses REAL for prices (floating point precision issues)
+/// - Price/PriceModel uses BIGINT for nanodollar prices (9 decimal precision)
+/// - Price supports regional pricing with UNIQUE(model, region) constraint
+/// Migration: All new pricing should use PriceModel, not PriceDeprecatedModel.
+#[deprecated(since = "0.2.0", note = "Use PriceModel instead")]
+pub struct PriceDeprecatedModel;
 
-impl PriceModel {
+impl PriceDeprecatedModel {
     /// Get price for a model, resolving aliases
-    pub async fn get(db: &Database, model: &str) -> Result<Option<Price>> {
+    pub async fn get(db: &Database, model: &str) -> Result<Option<PriceDeprecated>> {
         Self::get_inner(db, model, 0).await
     }
 
     /// Internal get with recursion depth limit to prevent infinite loops
-    async fn get_inner(db: &Database, model: &str, depth: u32) -> Result<Option<Price>> {
+    async fn get_inner(db: &Database, model: &str, depth: u32) -> Result<Option<PriceDeprecated>> {
         // Prevent infinite recursion from circular aliases
         if depth > 10 {
             return Ok(None);
@@ -91,11 +97,11 @@ impl PriceModel {
 
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices WHERE model = $1"#,
-            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices WHERE model = ?"#,
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices_deprecated WHERE model = $1"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices_deprecated WHERE model = ?"#,
         };
 
-        let price: Option<Price> = sqlx::query_as(sql)
+        let price: Option<PriceDeprecated> = sqlx::query_as(sql)
             .bind(model)
             .fetch_optional(conn.pool())
             .await?;
@@ -111,11 +117,11 @@ impl PriceModel {
     }
 
     /// List all prices
-    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Price>> {
+    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<PriceDeprecated>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices ORDER BY model LIMIT $1 OFFSET $2"#,
-            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices ORDER BY model LIMIT ? OFFSET ?"#,
+            "postgres" => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices_deprecated ORDER BY model LIMIT $1 OFFSET $2"#,
+            _ => r#"SELECT id, model, input_price, output_price, currency, alias_for, created_at, updated_at, cache_read_price, cache_creation_price, batch_input_price, batch_output_price, priority_input_price, priority_output_price, audio_input_price, full_pricing, original_currency, original_input_price, original_output_price FROM prices_deprecated ORDER BY model LIMIT ? OFFSET ?"#,
         };
 
         let prices = sqlx::query_as(sql)
@@ -128,7 +134,7 @@ impl PriceModel {
     }
 
     /// Create or update a price (upsert)
-    pub async fn upsert(db: &Database, input: &PriceInput) -> Result<()> {
+    pub async fn upsert(db: &Database, input: &PriceDeprecatedInput) -> Result<()> {
         let conn = db.get_connection()?;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -138,7 +144,7 @@ impl PriceModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
+                INSERT INTO prices_deprecated (model, input_price, output_price, currency, alias_for, created_at, updated_at,
                     cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
                     priority_input_price, priority_output_price, audio_input_price, full_pricing,
                     original_currency, original_input_price, original_output_price)
@@ -164,7 +170,7 @@ impl PriceModel {
             }
             _ => {
                 r#"
-                INSERT INTO prices (model, input_price, output_price, currency, alias_for, created_at, updated_at,
+                INSERT INTO prices_deprecated (model, input_price, output_price, currency, alias_for, created_at, updated_at,
                     cache_read_price, cache_creation_price, batch_input_price, batch_output_price,
                     priority_input_price, priority_output_price, audio_input_price, full_pricing,
                     original_currency, original_input_price, original_output_price)
@@ -219,8 +225,8 @@ impl PriceModel {
     pub async fn delete(db: &Database, model: &str) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM prices WHERE model = $1",
-            _ => "DELETE FROM prices WHERE model = ?",
+            "postgres" => "DELETE FROM prices_deprecated WHERE model = $1",
+            _ => "DELETE FROM prices_deprecated WHERE model = ?",
         };
 
         sqlx::query(sql).bind(model).execute(conn.pool()).await?;
@@ -230,7 +236,7 @@ impl PriceModel {
 
     /// Calculate cost for a request
     /// Returns cost in the default currency (USD)
-    pub fn calculate_cost(price: &Price, prompt_tokens: u32, completion_tokens: u32) -> f64 {
+    pub fn calculate_cost(price: &PriceDeprecated, prompt_tokens: u32, completion_tokens: u32) -> f64 {
         // Prices are per 1M tokens
         let input_cost = (prompt_tokens as f64 / 1_000_000.0) * price.input_price;
         let output_cost = (completion_tokens as f64 / 1_000_000.0) * price.output_price;
@@ -1403,11 +1409,11 @@ impl TieredPriceModel {
     }
 }
 
-/// Multi-currency price entry for prices_v2 table
+/// Multi-currency price entry for prices table (formerly prices_v2)
 /// All prices are stored as i64 nanodollars (9 decimal precision)
 /// Note: Using i64 instead of u64 for PostgreSQL compatibility (BIGINT is signed)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct PriceV2 {
+pub struct Price {
     pub id: i32,
     pub model: String,
     pub currency: String,
@@ -1442,7 +1448,7 @@ pub struct PriceV2 {
     pub updated_at: Option<i64>,
 }
 
-impl PriceV2 {
+impl Price {
     /// Check if vision is supported
     pub fn supports_vision_bool(&self) -> Option<bool> {
         self.supports_vision.map(|v| v != 0)
@@ -1454,10 +1460,14 @@ impl PriceV2 {
     }
 }
 
-/// Input for creating/updating a PriceV2 entry
+/// Backward compatibility alias - use Price instead
+#[deprecated(since = "0.2.0", note = "Use Price instead")]
+pub type PriceV2 = Price;
+
+/// Input for creating/updating a Price entry
 /// All prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PriceV2Input {
+pub struct PriceInput {
     pub model: String,
     pub currency: String,
     /// Input price per 1M tokens in nanodollars
@@ -1486,9 +1496,17 @@ pub struct PriceV2Input {
     pub supports_function_calling: Option<bool>,
 }
 
-pub struct PriceV2Model;
+/// Backward compatibility alias - use PriceInput instead
+#[deprecated(since = "0.2.0", note = "Use PriceInput instead")]
+pub type PriceV2Input = PriceInput;
 
-impl PriceV2Model {
+pub struct PriceModel;
+
+/// Backward compatibility alias - use PriceModel instead
+#[deprecated(since = "0.2.0", note = "Use PriceModel instead")]
+pub type PriceV2Model = PriceModel;
+
+impl PriceModel {
     /// Get price for a model in a specific currency and region
     /// Falls back to USD if the requested currency is not found
     pub async fn get(
@@ -1496,7 +1514,7 @@ impl PriceV2Model {
         model: &str,
         currency: &str,
         region: Option<&str>,
-    ) -> Result<Option<PriceV2>> {
+    ) -> Result<Option<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -1510,7 +1528,7 @@ impl PriceV2Model {
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
-               FROM prices_v2 WHERE model = $1 AND currency = $2 AND region IS NOT DISTINCT FROM $3"#
+               FROM prices WHERE model = $1 AND currency = $2 AND region IS NOT DISTINCT FROM $3"#
         } else {
             r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
@@ -1520,7 +1538,7 @@ impl PriceV2Model {
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
-               FROM prices_v2 WHERE model = ? AND currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+               FROM prices WHERE model = ? AND currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))"#
         };
 
         let price = if is_postgres {
@@ -1555,7 +1573,7 @@ impl PriceV2Model {
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
                           synced_at, created_at, updated_at
-                   FROM prices_v2 WHERE model = $1 AND currency = 'USD' AND region IS NOT DISTINCT FROM $2"#
+                   FROM prices WHERE model = $1 AND currency = 'USD' AND region IS NOT DISTINCT FROM $2"#
             } else {
                 r#"SELECT id, model, currency, input_price, output_price,
                           cache_read_input_price, cache_creation_input_price,
@@ -1565,7 +1583,7 @@ impl PriceV2Model {
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
                           synced_at, created_at, updated_at
-                   FROM prices_v2 WHERE model = ? AND currency = 'USD' AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+                   FROM prices WHERE model = ? AND currency = 'USD' AND (region = ? OR (region IS NULL AND ? IS NULL))"#
             };
 
             let usd_price = if is_postgres {
@@ -1596,7 +1614,7 @@ impl PriceV2Model {
         db: &Database,
         model: &str,
         region: Option<&str>,
-    ) -> Result<Option<PriceV2>> {
+    ) -> Result<Option<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -1610,7 +1628,7 @@ impl PriceV2Model {
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
-               FROM prices_v2 WHERE model = $1 AND region IS NOT DISTINCT FROM $2"#
+               FROM prices WHERE model = $1 AND region IS NOT DISTINCT FROM $2"#
         } else {
             r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
@@ -1620,7 +1638,7 @@ impl PriceV2Model {
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
-               FROM prices_v2 WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))"#
+               FROM prices WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))"#
         };
 
         let price = if is_postgres {
@@ -1653,7 +1671,7 @@ impl PriceV2Model {
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
                           synced_at, created_at, updated_at
-                   FROM prices_v2 WHERE model = $1 AND region IS NULL"#
+                   FROM prices WHERE model = $1 AND region IS NULL"#
             } else {
                 r#"SELECT id, model, currency, input_price, output_price,
                           cache_read_input_price, cache_creation_input_price,
@@ -1663,10 +1681,10 @@ impl PriceV2Model {
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
                           synced_at, created_at, updated_at
-                   FROM prices_v2 WHERE model = ? AND region IS NULL"#
+                   FROM prices WHERE model = ? AND region IS NULL"#
             };
 
-            let universal_price: Option<PriceV2> = if is_postgres {
+            let universal_price: Option<Price> = if is_postgres {
                 sqlx::query_as(sql_universal)
                     .bind(model)
                     .fetch_optional(conn.pool())
@@ -1689,7 +1707,7 @@ impl PriceV2Model {
         db: &Database,
         model: &str,
         region: Option<&str>,
-    ) -> Result<Vec<PriceV2>> {
+    ) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -1702,7 +1720,7 @@ impl PriceV2Model {
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
-               FROM prices_v2 WHERE model = $1 AND region IS NOT DISTINCT FROM $2
+               FROM prices WHERE model = $1 AND region IS NOT DISTINCT FROM $2
                ORDER BY currency"#
         } else {
             r#"SELECT id, model, currency, input_price, output_price,
@@ -1713,7 +1731,7 @@ impl PriceV2Model {
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
-               FROM prices_v2 WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+               FROM prices WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
                ORDER BY currency"#
         };
 
@@ -1736,7 +1754,7 @@ impl PriceV2Model {
     }
 
     /// List all prices with pagination
-    pub async fn list(db: &Database, limit: i32, offset: i32, currency: Option<&str>) -> Result<Vec<PriceV2>> {
+    pub async fn list(db: &Database, limit: i32, offset: i32, currency: Option<&str>) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -1751,7 +1769,7 @@ impl PriceV2Model {
                               context_window, max_output_tokens,
                               supports_vision, supports_function_calling,
                               synced_at, created_at, updated_at
-                       FROM prices_v2 WHERE currency = $1
+                       FROM prices WHERE currency = $1
                        ORDER BY model LIMIT $2 OFFSET $3"#
                 } else {
                     r#"SELECT id, model, currency, input_price, output_price,
@@ -1762,7 +1780,7 @@ impl PriceV2Model {
                               context_window, max_output_tokens,
                               supports_vision, supports_function_calling,
                               synced_at, created_at, updated_at
-                       FROM prices_v2 WHERE currency = ?
+                       FROM prices WHERE currency = ?
                        ORDER BY model LIMIT ? OFFSET ?"#
                 };
                 sqlx::query_as(sql)
@@ -1782,7 +1800,7 @@ impl PriceV2Model {
                               context_window, max_output_tokens,
                               supports_vision, supports_function_calling,
                               synced_at, created_at, updated_at
-                       FROM prices_v2 ORDER BY model, currency LIMIT $1 OFFSET $2"#
+                       FROM prices ORDER BY model, currency LIMIT $1 OFFSET $2"#
                 } else {
                     r#"SELECT id, model, currency, input_price, output_price,
                               cache_read_input_price, cache_creation_input_price,
@@ -1792,7 +1810,7 @@ impl PriceV2Model {
                               context_window, max_output_tokens,
                               supports_vision, supports_function_calling,
                               synced_at, created_at, updated_at
-                       FROM prices_v2 ORDER BY model, currency LIMIT ? OFFSET ?"#
+                       FROM prices ORDER BY model, currency LIMIT ? OFFSET ?"#
                 };
                 sqlx::query_as(sql)
                     .bind(limit)
@@ -1806,7 +1824,7 @@ impl PriceV2Model {
     }
 
     /// Create or update a price (upsert)
-    pub async fn upsert(db: &Database, input: &PriceV2Input) -> Result<()> {
+    pub async fn upsert(db: &Database, input: &PriceInput) -> Result<()> {
         let conn = db.get_connection()?;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1816,7 +1834,7 @@ impl PriceV2Model {
 
         let sql = if is_postgres {
             r#"
-            INSERT INTO prices_v2 (
+            INSERT INTO prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -1847,7 +1865,7 @@ impl PriceV2Model {
             "#
         } else {
             r#"
-            INSERT INTO prices_v2 (
+            INSERT INTO prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -1913,9 +1931,9 @@ impl PriceV2Model {
         let result = match region {
             Some(r) => {
                 let sql = if is_postgres {
-                    "DELETE FROM prices_v2 WHERE model = $1 AND currency = $2 AND region = $3"
+                    "DELETE FROM prices WHERE model = $1 AND currency = $2 AND region = $3"
                 } else {
-                    "DELETE FROM prices_v2 WHERE model = ? AND currency = ? AND region = ?"
+                    "DELETE FROM prices WHERE model = ? AND currency = ? AND region = ?"
                 };
                 sqlx::query(sql)
                     .bind(model)
@@ -1926,9 +1944,9 @@ impl PriceV2Model {
             }
             None => {
                 let sql = if is_postgres {
-                    "DELETE FROM prices_v2 WHERE model = $1 AND currency = $2 AND region IS NULL"
+                    "DELETE FROM prices WHERE model = $1 AND currency = $2 AND region IS NULL"
                 } else {
-                    "DELETE FROM prices_v2 WHERE model = ? AND currency = ? AND region IS NULL"
+                    "DELETE FROM prices WHERE model = ? AND currency = ? AND region IS NULL"
                 };
                 sqlx::query(sql)
                     .bind(model)
@@ -1945,8 +1963,8 @@ impl PriceV2Model {
     pub async fn delete_all_for_model(db: &Database, model: &str) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM prices_v2 WHERE model = $1",
-            _ => "DELETE FROM prices_v2 WHERE model = ?",
+            "postgres" => "DELETE FROM prices WHERE model = $1",
+            _ => "DELETE FROM prices WHERE model = ?",
         };
 
         sqlx::query(sql).bind(model).execute(conn.pool()).await?;
@@ -1954,9 +1972,9 @@ impl PriceV2Model {
         Ok(())
     }
 
-    /// Calculate cost for a request using PriceV2
+    /// Calculate cost for a request using Price
     /// Returns cost in nanodollars (i64, 9 decimal precision)
-    pub fn calculate_cost(price: &PriceV2, prompt_tokens: u64, completion_tokens: u64) -> i64 {
+    pub fn calculate_cost(price: &Price, prompt_tokens: u64, completion_tokens: u64) -> i64 {
         // Use i128 intermediate to prevent overflow
         let input_cost = (prompt_tokens as i128 * price.input_price as i128) / 1_000_000;
         let output_cost = (completion_tokens as i128 * price.output_price as i128) / 1_000_000;

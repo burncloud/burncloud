@@ -14,7 +14,7 @@ async fn test_database_new() {
     if db_result.is_ok() {
         let db = db_result.unwrap();
         // The database should be initialized and have a connection (test via connection method)
-        assert!(db.connection().is_ok());
+        assert!(db.get_connection().is_ok());
         let _ = db.close().await;
     }
 }
@@ -66,7 +66,7 @@ async fn test_api_consistency() {
     if db_result.is_ok() {
         let db = db_result.unwrap();
         // Should be initialized and have a connection (test via connection method)
-        assert!(db.connection().is_ok());
+        assert!(db.get_connection().is_ok());
         // Note: We can't test database_path directly as it's private
         // The API consistency is verified by successful initialization
         let _ = db.close().await;

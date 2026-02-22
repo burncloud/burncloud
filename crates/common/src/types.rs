@@ -487,12 +487,13 @@ pub struct FullPricing {
     pub additional_fields: HashMap<String, Value>,
 }
 
-/// Multi-currency price entry for prices_v2 table
+/// Multi-currency price entry for prices table
 /// Supports USD, CNY, EUR and advanced pricing fields
 /// All prices are stored in nanodollars (i64, 9 decimal precision)
-/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
+/// Note: Using i64 for PostgreSQL BIGINT compatibility (BIGINT is signed)
+/// Values must always be non-negative (>= 0)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct PriceV2 {
+pub struct Price {
     pub id: i32,
     /// Model name
     pub model: String,
@@ -524,10 +525,12 @@ pub struct PriceV2 {
     pub context_window: Option<i64>,
     /// Maximum output tokens
     pub max_output_tokens: Option<i64>,
-    /// Whether the model supports vision/image input
-    pub supports_vision: Option<bool>,
-    /// Whether the model supports function calling
-    pub supports_function_calling: Option<bool>,
+    /// Whether the model supports vision/image input (stored as INTEGER 0/1 in DB)
+    #[sqlx(default)]
+    pub supports_vision: Option<i32>,
+    /// Whether the model supports function calling (stored as INTEGER 0/1 in DB)
+    #[sqlx(default)]
+    pub supports_function_calling: Option<i32>,
     /// Last sync timestamp
     pub synced_at: Option<i64>,
     /// Creation timestamp
@@ -536,10 +539,14 @@ pub struct PriceV2 {
     pub updated_at: Option<i64>,
 }
 
-/// Input for creating/updating a PriceV2 entry
+/// Type alias for backward compatibility
+#[deprecated(since = "0.2.0", note = "Use Price instead")]
+pub type PriceV2 = Price;
+
+/// Input for creating/updating a Price entry
 /// All prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriceV2Input {
+pub struct PriceInput {
     pub model: String,
     pub currency: String,
     /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
@@ -568,7 +575,11 @@ pub struct PriceV2Input {
     pub supports_function_calling: Option<bool>,
 }
 
-impl Default for PriceV2Input {
+/// Type alias for backward compatibility
+#[deprecated(since = "0.2.0", note = "Use PriceInput instead")]
+pub type PriceV2Input = PriceInput;
+
+impl Default for PriceInput {
     fn default() -> Self {
         Self {
             model: String::new(),
