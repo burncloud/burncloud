@@ -76,7 +76,7 @@
       "封装 SQL 生成逻辑到辅助函数",
       "测试 SQLite 和 PostgreSQL 兼容性"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "database",

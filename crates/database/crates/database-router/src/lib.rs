@@ -2,6 +2,32 @@ use burncloud_database::{Database, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row};
 
+/// Helper module for PostgreSQL/SQLite SQL compatibility
+mod sql_compat {
+    /// Generate parameterized placeholders for SQL queries
+    /// Returns ($1, $2, ...) for PostgreSQL or (?, ?, ...) for SQLite
+    pub fn placeholders(db_kind: &str, count: usize) -> String {
+        if db_kind == "postgres" {
+            (1..=count)
+                .map(|i| format!("${}", i))
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            vec!["?"; count].join(", ")
+        }
+    }
+
+    /// Generate LIMIT OFFSET placeholders
+    /// PostgreSQL: LIMIT $n OFFSET $m, SQLite: LIMIT ? OFFSET ?
+    pub fn limit_offset_placeholders(db_kind: &str, start_index: usize) -> String {
+        if db_kind == "postgres" {
+            format!("LIMIT ${} OFFSET ${}", start_index, start_index + 1)
+        } else {
+            "LIMIT ? OFFSET ?".to_string()
+        }
+    }
+}
+
 /// Token validation result that distinguishes between invalid and expired tokens
 #[derive(Debug, Clone)]
 pub enum TokenValidationResult {
@@ -290,14 +316,19 @@ impl RouterDatabase {
 
     pub async fn insert_log(db: &Database, log: &DbRouterLog) -> Result<()> {
         let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
 
-        sqlx::query(
+        let placeholders = sql_compat::placeholders(&db.kind(), 9);
+        let sql = format!(
             r#"
             INSERT INTO router_logs
             (request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#
-        )
+            VALUES ({})
+            "#,
+            placeholders
+        );
+
+        sqlx::query(&sql)
         .bind(&log.request_id)
         .bind(&log.user_id)
         .bind(&log.path)
@@ -313,9 +344,12 @@ impl RouterDatabase {
         if let Some(user_id) = &log.user_id {
             let total_tokens = log.prompt_tokens + log.completion_tokens;
             if total_tokens > 0 {
-                sqlx::query(
-                    "UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?",
-                )
+                let update_sql = if is_postgres {
+                    "UPDATE router_tokens SET used_quota = used_quota + $1 WHERE user_id = $2"
+                } else {
+                    "UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?"
+                };
+                sqlx::query(update_sql)
                 .bind(total_tokens)
                 .bind(user_id)
                 .execute(conn.pool())
@@ -361,9 +395,12 @@ impl RouterDatabase {
         group_id: &str,
     ) -> Result<Vec<DbGroupMember>> {
         let conn = db.get_connection()?;
-        let rows = sqlx::query_as::<_, DbGroupMember>(
-            "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = ?",
-        )
+        let sql = if db.kind() == "postgres" {
+            "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = $1"
+        } else {
+            "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = ?"
+        };
+        let rows = sqlx::query_as::<_, DbGroupMember>(sql)
         .bind(group_id)
         .fetch_all(conn.pool())
         .await?;
@@ -372,9 +409,12 @@ impl RouterDatabase {
 
     pub async fn validate_token(db: &Database, token: &str) -> Result<Option<DbToken>> {
         let conn = db.get_connection()?;
-        let token = sqlx::query_as::<_, DbToken>(
-             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'"
-         )
+        let sql = if db.kind() == "postgres" {
+            "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = $1 AND status = 'active'"
+        } else {
+            "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'"
+        };
+        let token = sqlx::query_as::<_, DbToken>(sql)
          .bind(token)
          .fetch_optional(conn.pool())
          .await?;
@@ -402,9 +442,12 @@ impl RouterDatabase {
         token: &str,
     ) -> Result<TokenValidationResult> {
         let conn = db.get_connection()?;
-        let token = sqlx::query_as::<_, DbToken>(
-             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'"
-         )
+        let sql = if db.kind() == "postgres" {
+            "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = $1 AND status = 'active'"
+        } else {
+            "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'"
+        };
+        let token = sqlx::query_as::<_, DbToken>(sql)
          .bind(token)
          .fetch_optional(conn.pool())
          .await?;
@@ -436,7 +479,13 @@ impl RouterDatabase {
             .unwrap_or_default()
             .as_secs() as i64;
 
-        sqlx::query("UPDATE router_tokens SET accessed_time = ? WHERE token = ?")
+        let sql = if db.kind() == "postgres" {
+            "UPDATE router_tokens SET accessed_time = $1 WHERE token = $2"
+        } else {
+            "UPDATE router_tokens SET accessed_time = ? WHERE token = ?"
+        };
+
+        sqlx::query(sql)
             .bind(now)
             .bind(token)
             .execute(conn.pool())
@@ -456,16 +505,18 @@ impl RouterDatabase {
             "`group`"
         };
 
+        let placeholder = if db.kind() == "postgres" { "$1" } else { "?" };
+
         // Assuming tokens.key matches the bearer token
         // And tokens.user_id links to users.id
         let query = format!(
             r#"
-            SELECT u.id, u.{}, t.remain_quota, t.used_quota 
-            FROM tokens t 
-            JOIN users u ON t.user_id = u.id 
-            WHERE t.key = ? AND t.status = 1 AND u.status = 1
+            SELECT u.id, u.{}, t.remain_quota, t.used_quota
+            FROM tokens t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.key = {} AND t.status = 1 AND u.status = 1
             "#,
-            group_col
+            group_col, placeholder
         );
 
         // Use query_as to map to a tuple
@@ -480,9 +531,12 @@ impl RouterDatabase {
     // CRUD for Upstreams
     pub async fn create_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query(
-            "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        )
+        let placeholders = sql_compat::placeholders(&db.kind(), 10);
+        let sql = format!(
+            "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override) VALUES ({})",
+            placeholders
+        );
+        sqlx::query(&sql)
         .bind(&u.id).bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol).bind(&u.param_override).bind(&u.header_override)
         .execute(conn.pool())
         .await?;
@@ -491,9 +545,12 @@ impl RouterDatabase {
 
     pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<DbUpstream>> {
         let conn = db.get_connection()?;
-        let upstream = sqlx::query_as::<_, DbUpstream>(
+        let sql = if db.kind() == "postgres" {
+            "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override FROM router_upstreams WHERE id = $1"
+        } else {
             "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override FROM router_upstreams WHERE id = ?"
-        )
+        };
+        let upstream = sqlx::query_as::<_, DbUpstream>(sql)
         .bind(id)
         .fetch_optional(conn.pool())
         .await?;
@@ -502,9 +559,12 @@ impl RouterDatabase {
 
     pub async fn update_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query(
+        let sql = if db.kind() == "postgres" {
+            "UPDATE router_upstreams SET name=$1, base_url=$2, api_key=$3, match_path=$4, auth_type=$5, priority=$6, protocol=$7 WHERE id=$8"
+        } else {
             "UPDATE router_upstreams SET name=?, base_url=?, api_key=?, match_path=?, auth_type=?, priority=?, protocol=? WHERE id=?"
-        )
+        };
+        sqlx::query(sql)
         .bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol).bind(&u.id)
         .execute(conn.pool())
         .await?;
@@ -513,7 +573,12 @@ impl RouterDatabase {
 
     pub async fn delete_upstream(db: &Database, id: &str) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("DELETE FROM router_upstreams WHERE id = ?")
+        let sql = if db.kind() == "postgres" {
+            "DELETE FROM router_upstreams WHERE id = $1"
+        } else {
+            "DELETE FROM router_upstreams WHERE id = ?"
+        };
+        sqlx::query(sql)
             .bind(id)
             .execute(conn.pool())
             .await?;
@@ -523,9 +588,12 @@ impl RouterDatabase {
     // CRUD for Groups
     pub async fn create_group(db: &Database, g: &DbGroup) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query(
-            "INSERT INTO router_groups (id, name, strategy, match_path) VALUES (?, ?, ?, ?)",
-        )
+        let placeholders = sql_compat::placeholders(&db.kind(), 4);
+        let sql = format!(
+            "INSERT INTO router_groups (id, name, strategy, match_path) VALUES ({})",
+            placeholders
+        );
+        sqlx::query(&sql)
         .bind(&g.id)
         .bind(&g.name)
         .bind(&g.strategy)
@@ -537,12 +605,22 @@ impl RouterDatabase {
 
     pub async fn delete_group(db: &Database, id: &str) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
+        let sql_members = if db.kind() == "postgres" {
+            "DELETE FROM router_group_members WHERE group_id = $1"
+        } else {
+            "DELETE FROM router_group_members WHERE group_id = ?"
+        };
+        sqlx::query(sql_members)
             .bind(id)
             .execute(conn.pool())
             .await?;
 
-        sqlx::query("DELETE FROM router_groups WHERE id = ?")
+        let sql_group = if db.kind() == "postgres" {
+            "DELETE FROM router_groups WHERE id = $1"
+        } else {
+            "DELETE FROM router_groups WHERE id = ?"
+        };
+        sqlx::query(sql_group)
             .bind(id)
             .execute(conn.pool())
             .await?;
@@ -556,15 +634,24 @@ impl RouterDatabase {
         members: Vec<DbGroupMember>,
     ) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
+        let delete_sql = if db.kind() == "postgres" {
+            "DELETE FROM router_group_members WHERE group_id = $1"
+        } else {
+            "DELETE FROM router_group_members WHERE group_id = ?"
+        };
+        sqlx::query(delete_sql)
             .bind(group_id)
             .execute(conn.pool())
             .await?;
 
+        let insert_placeholders = sql_compat::placeholders(&db.kind(), 3);
+        let insert_sql = format!(
+            "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES ({})",
+            insert_placeholders
+        );
+
         for m in members {
-            sqlx::query(
-                "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES (?, ?, ?)",
-            )
+            sqlx::query(&insert_sql)
             .bind(group_id)
             .bind(&m.upstream_id)
             .bind(m.weight)
@@ -587,9 +674,12 @@ impl RouterDatabase {
 
     pub async fn create_token(db: &Database, t: &DbToken) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query(
-            "INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota, expired_time, accessed_time) VALUES (?, ?, ?, ?, ?, ?, ?)"
-        )
+        let placeholders = sql_compat::placeholders(&db.kind(), 7);
+        let sql = format!(
+            "INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota, expired_time, accessed_time) VALUES ({})",
+            placeholders
+        );
+        sqlx::query(&sql)
         .bind(&t.token).bind(&t.user_id).bind(&t.status).bind(t.quota_limit).bind(t.used_quota).bind(t.expired_time).bind(t.accessed_time)
         .execute(conn.pool())
         .await?;
@@ -598,7 +688,12 @@ impl RouterDatabase {
 
     pub async fn delete_token(db: &Database, token: &str) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("DELETE FROM router_tokens WHERE token = ?")
+        let sql = if db.kind() == "postgres" {
+            "DELETE FROM router_tokens WHERE token = $1"
+        } else {
+            "DELETE FROM router_tokens WHERE token = ?"
+        };
+        sqlx::query(sql)
             .bind(token)
             .execute(conn.pool())
             .await?;
@@ -607,7 +702,12 @@ impl RouterDatabase {
 
     pub async fn update_token_status(db: &Database, token: &str, status: &str) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("UPDATE router_tokens SET status = ? WHERE token = ?")
+        let sql = if db.kind() == "postgres" {
+            "UPDATE router_tokens SET status = $1 WHERE token = $2"
+        } else {
+            "UPDATE router_tokens SET status = ? WHERE token = ?"
+        };
+        sqlx::query(sql)
             .bind(status)
             .bind(token)
             .execute(conn.pool())
@@ -617,9 +717,12 @@ impl RouterDatabase {
 
     pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
         let conn = db.get_connection()?;
-        let logs = sqlx::query_as::<_, DbRouterLog>(
-            "SELECT request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost FROM router_logs ORDER BY created_at DESC LIMIT ? OFFSET ?"
-        )
+        let limit_offset = sql_compat::limit_offset_placeholders(&db.kind(), 1);
+        let sql = format!(
+            "SELECT request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost FROM router_logs ORDER BY created_at DESC {}",
+            limit_offset
+        );
+        let logs = sqlx::query_as::<_, DbRouterLog>(&sql)
         .bind(limit)
         .bind(offset)
         .fetch_all(conn.pool())
@@ -629,9 +732,12 @@ impl RouterDatabase {
 
     pub async fn get_usage_by_user(db: &Database, user_id: &str) -> Result<(i64, i64)> {
         let conn = db.get_connection()?;
-        let row: (Option<i64>, Option<i64>) = sqlx::query_as(
-            "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = ?",
-        )
+        let sql = if db.kind() == "postgres" {
+            "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = $1"
+        } else {
+            "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = ?"
+        };
+        let row: (Option<i64>, Option<i64>) = sqlx::query_as(sql)
         .bind(user_id)
         .fetch_one(conn.pool())
         .await?;
@@ -651,6 +757,7 @@ impl RouterDatabase {
     ) -> Result<bool> {
         let conn = db.get_connection()?;
         let cost_i64 = cost;
+        let is_postgres = db.kind() == "postgres";
 
         if cost_i64 <= 0 {
             return Ok(true);
@@ -660,9 +767,12 @@ impl RouterDatabase {
         let mut tx = conn.pool().begin().await?;
 
         // Check if token has unlimited quota
-        let unlimited: bool = sqlx::query_scalar(
-            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?",
-        )
+        let unlimited_sql = if is_postgres {
+            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = $1"
+        } else {
+            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?"
+        };
+        let unlimited: bool = sqlx::query_scalar(unlimited_sql)
         .bind(token)
         .fetch_one(&mut *tx)
         .await
@@ -671,7 +781,12 @@ impl RouterDatabase {
 
         if unlimited {
             // Unlimited quota - just update used_quota for tracking
-            sqlx::query("UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?")
+            let update_sql = if is_postgres {
+                "UPDATE router_tokens SET used_quota = used_quota + $1 WHERE token = $2"
+            } else {
+                "UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?"
+            };
+            sqlx::query(update_sql)
                 .bind(cost_i64)
                 .bind(token)
                 .execute(&mut *tx)
@@ -681,8 +796,13 @@ impl RouterDatabase {
         }
 
         // Check token quota
+        let quota_sql = if is_postgres {
+            "SELECT quota_limit, used_quota FROM router_tokens WHERE token = $1"
+        } else {
+            "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?"
+        };
         let token_quota: Option<(i64, i64)> =
-            sqlx::query_as("SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?")
+            sqlx::query_as(quota_sql)
                 .bind(token)
                 .fetch_optional(&mut *tx)
                 .await?;
@@ -701,7 +821,12 @@ impl RouterDatabase {
         // TODO: Integrate with user-level quota checking
 
         // Deduct from token
-        sqlx::query("UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?")
+        let deduct_sql = if is_postgres {
+            "UPDATE router_tokens SET used_quota = used_quota + $1 WHERE token = $2"
+        } else {
+            "UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?"
+        };
+        sqlx::query(deduct_sql)
             .bind(cost_i64)
             .bind(token)
             .execute(&mut *tx)
@@ -716,15 +841,19 @@ impl RouterDatabase {
     pub async fn check_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
         let conn = db.get_connection()?;
         let cost_i64 = cost;
+        let is_postgres = db.kind() == "postgres";
 
         if cost_i64 <= 0 {
             return Ok(true);
         }
 
         // Check if token has unlimited quota
-        let unlimited: bool = sqlx::query_scalar(
-            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?",
-        )
+        let unlimited_sql = if is_postgres {
+            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = $1"
+        } else {
+            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?"
+        };
+        let unlimited: bool = sqlx::query_scalar(unlimited_sql)
         .bind(token)
         .fetch_one(conn.pool())
         .await
@@ -736,8 +865,13 @@ impl RouterDatabase {
         }
 
         // Check token quota
+        let quota_sql = if is_postgres {
+            "SELECT quota_limit, used_quota FROM router_tokens WHERE token = $1"
+        } else {
+            "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?"
+        };
         let token_quota: Option<(i64, i64)> =
-            sqlx::query_as("SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?")
+            sqlx::query_as(quota_sql)
                 .bind(token)
                 .fetch_optional(conn.pool())
                 .await?;
@@ -761,10 +895,16 @@ impl RouterDatabase {
         }
 
         let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
 
         // Check current balance
+        let balance_sql = if is_postgres {
+            "SELECT COALESCE(balance_usd, 0) FROM users WHERE id = $1"
+        } else {
+            "SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?"
+        };
         let balance: i64 =
-            sqlx::query_scalar("SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?")
+            sqlx::query_scalar(balance_sql)
                 .bind(user_id)
                 .fetch_one(conn.pool())
                 .await
@@ -775,9 +915,12 @@ impl RouterDatabase {
         }
 
         // Deduct
-        let rows_affected = sqlx::query(
-            "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
-        )
+        let deduct_sql = if is_postgres {
+            "UPDATE users SET balance_usd = balance_usd - $1 WHERE id = $2 AND balance_usd >= $3"
+        } else {
+            "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
+        };
+        let rows_affected = sqlx::query(deduct_sql)
         .bind(cost_nano)
         .bind(user_id)
         .bind(cost_nano)
@@ -797,10 +940,16 @@ impl RouterDatabase {
         }
 
         let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
 
         // Check current balance
+        let balance_sql = if is_postgres {
+            "SELECT COALESCE(balance_cny, 0) FROM users WHERE id = $1"
+        } else {
+            "SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?"
+        };
         let balance: i64 =
-            sqlx::query_scalar("SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?")
+            sqlx::query_scalar(balance_sql)
                 .bind(user_id)
                 .fetch_one(conn.pool())
                 .await
@@ -811,9 +960,12 @@ impl RouterDatabase {
         }
 
         // Deduct
-        let rows_affected = sqlx::query(
-            "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
-        )
+        let deduct_sql = if is_postgres {
+            "UPDATE users SET balance_cny = balance_cny - $1 WHERE id = $2 AND balance_cny >= $3"
+        } else {
+            "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
+        };
+        let rows_affected = sqlx::query(deduct_sql)
         .bind(cost_nano)
         .bind(user_id)
         .bind(cost_nano)
@@ -848,11 +1000,15 @@ impl RouterDatabase {
         }
 
         let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
 
         // Get current balances
-        let balances: Option<(i64, i64)> = sqlx::query_as(
-            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?",
-        )
+        let balances_sql = if is_postgres {
+            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = $1"
+        } else {
+            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?"
+        };
+        let balances: Option<(i64, i64)> = sqlx::query_as(balances_sql)
         .bind(user_id)
         .fetch_optional(conn.pool())
         .await?;
@@ -882,9 +1038,15 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
+            let clear_cny_sql = if is_postgres {
+                "UPDATE users SET balance_cny = 0 WHERE id = $1"
+            } else {
+                "UPDATE users SET balance_cny = 0 WHERE id = ?"
+            };
+
             // Deduct remaining CNY
             if balance_cny > 0 {
-                sqlx::query("UPDATE users SET balance_cny = 0 WHERE id = ?")
+                sqlx::query(clear_cny_sql)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
@@ -892,9 +1054,12 @@ impl RouterDatabase {
 
             // Deduct required USD (already integer, no need to round)
             let usd_to_deduct = required_usd as i64;
-            sqlx::query(
-                "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
-            )
+            let deduct_usd_sql = if is_postgres {
+                "UPDATE users SET balance_usd = balance_usd - $1 WHERE id = $2 AND balance_usd >= $3"
+            } else {
+                "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
+            };
+            sqlx::query(deduct_usd_sql)
             .bind(usd_to_deduct)
             .bind(user_id)
             .bind(usd_to_deduct)
@@ -926,9 +1091,15 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
+            let clear_usd_sql = if is_postgres {
+                "UPDATE users SET balance_usd = 0 WHERE id = $1"
+            } else {
+                "UPDATE users SET balance_usd = 0 WHERE id = ?"
+            };
+
             // Deduct remaining USD
             if balance_usd > 0 {
-                sqlx::query("UPDATE users SET balance_usd = 0 WHERE id = ?")
+                sqlx::query(clear_usd_sql)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
@@ -936,9 +1107,12 @@ impl RouterDatabase {
 
             // Deduct required CNY (already integer, no need to round)
             let cny_to_deduct = required_cny as i64;
-            sqlx::query(
-                "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
-            )
+            let deduct_cny_sql = if is_postgres {
+                "UPDATE users SET balance_cny = balance_cny - $1 WHERE id = $2 AND balance_cny >= $3"
+            } else {
+                "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
+            };
+            sqlx::query(deduct_cny_sql)
             .bind(cny_to_deduct)
             .bind(user_id)
             .bind(cny_to_deduct)
