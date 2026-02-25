@@ -12,8 +12,8 @@ uuid.workspace = true
 jsonwebtoken = "9.3"
 serde.workspace = true
 thiserror.workspace = true
-anyhow.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+anyhow.workspace = true

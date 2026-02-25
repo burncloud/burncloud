@@ -41,7 +41,7 @@
       "从 service-redis/Cargo.toml 移除 anyhow",
       "使用 thiserror 替代错误定义"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "deps",
