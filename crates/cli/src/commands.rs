@@ -9,6 +9,7 @@ use std::io::{self, Write};
 use crate::channel::handle_channel_command;
 use crate::currency::handle_currency_command;
 use crate::group::handle_group_command;
+use crate::log::handle_log_command;
 use crate::price::{handle_price_command, handle_tiered_command};
 use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
@@ -877,6 +878,49 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Set members (comma-separated, format: upstream_id:weight or upstream_id)"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("log")
+                .about("Manage request logs")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list")
+                        .about("List request logs")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .help("Filter by user ID"),
+                        )
+                        .arg(
+                            Arg::new("channel-id")
+                                .long("channel-id")
+                                .help("Filter by channel ID (upstream ID)"),
+                        )
+                        .arg(
+                            Arg::new("model")
+                                .long("model")
+                                .help("Filter by model name"),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -979,6 +1023,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("group", sub_m)) => {
             let db = Database::new().await?;
             handle_group_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("log", sub_m)) => {
+            let db = Database::new().await?;
+            handle_log_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {

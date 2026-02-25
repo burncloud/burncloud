@@ -86,6 +86,7 @@ pub struct DbGroupMember {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct DbRouterLog {
+    pub id: i64,
     pub request_id: String,
     pub user_id: Option<String>,
     pub path: String,
@@ -97,7 +98,7 @@ pub struct DbRouterLog {
     #[sqlx(default)]
     /// Cost in nanodollars (9 decimal precision)
     pub cost: i64,
-    // created_at is handled by DB default
+    pub created_at: Option<String>,
 }
 
 // DbUser etc are moved to burncloud-database-user
@@ -746,10 +747,72 @@ impl RouterDatabase {
         let conn = db.get_connection()?;
         let limit_offset = sql_compat::limit_offset_placeholders(&db.kind(), 1);
         let sql = format!(
-            "SELECT request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost FROM router_logs ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, created_at FROM router_logs ORDER BY created_at DESC {}",
             limit_offset
         );
         let logs = sqlx::query_as::<_, DbRouterLog>(&sql)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(conn.pool())
+            .await?;
+        Ok(logs)
+    }
+
+    /// Get logs with optional filtering by user_id, upstream_id (channel), and model
+    pub async fn get_logs_filtered(
+        db: &Database,
+        user_id: Option<&str>,
+        upstream_id: Option<&str>,
+        model: Option<&str>,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<DbRouterLog>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let placeholder = if is_postgres { "$" } else { "?" };
+
+        let mut conditions: Vec<String> = Vec::new();
+        let mut param_index = 1;
+
+        if user_id.is_some() {
+            conditions.push(format!("user_id = {}{}", placeholder, param_index));
+            param_index += 1;
+        }
+        if upstream_id.is_some() {
+            conditions.push(format!("upstream_id = {}{}", placeholder, param_index));
+            param_index += 1;
+        }
+        if model.is_some() {
+            // Model is typically in the request body, but we can search in path as a fallback
+            conditions.push(format!("path LIKE {}{}", placeholder, param_index));
+            param_index += 1;
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let limit_offset = sql_compat::limit_offset_placeholders(&db.kind(), param_index);
+        let sql = format!(
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, created_at FROM router_logs {} ORDER BY created_at DESC {}",
+            where_clause, limit_offset
+        );
+
+        let mut query = sqlx::query_as::<_, DbRouterLog>(&sql);
+
+        if let Some(uid) = user_id {
+            query = query.bind(uid);
+        }
+        if let Some(upstream) = upstream_id {
+            query = query.bind(upstream);
+        }
+        if let Some(m) = model {
+            query = query.bind(format!("%{}%", m));
+        }
+
+        let logs = query
             .bind(limit)
             .bind(offset)
             .fetch_all(conn.pool())
