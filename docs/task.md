@@ -52,7 +52,7 @@
       "将 jsonwebtoken = \"9.3\" 改为 jsonwebtoken.workspace = true",
       "运行 cargo build 验证依赖解析正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "numeric",
