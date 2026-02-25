@@ -920,6 +920,30 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .value_parser(["table", "json"])
                                 .help("Output format (table or json)"),
                         ),
+                )
+                .subcommand(
+                    Command::new("usage")
+                        .about("Show usage statistics for a user")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .required(true)
+                                .help("User ID to show usage for"),
+                        )
+                        .arg(
+                            Arg::new("period")
+                                .long("period")
+                                .default_value("month")
+                                .value_parser(["day", "week", "month"])
+                                .help("Time period (day, week, month)"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
                 ),
         );
 
