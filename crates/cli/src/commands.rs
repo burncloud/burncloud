@@ -76,6 +76,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .short('n')
                                 .long("name")
                                 .help("Channel name (uses default if not specified)"),
+                        )
+                        .arg(
+                            Arg::new("pricing-region")
+                                .long("pricing-region")
+                                .help("Pricing region for this channel (cn, international, or omit for universal)"),
                         ),
                 )
                 .subcommand(

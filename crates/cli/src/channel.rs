@@ -123,6 +123,9 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         get_default_channel_name(channel_type)
     };
 
+    // Get pricing region (optional)
+    let pricing_region = args.get_one::<String>("pricing-region").cloned();
+
     // Build Channel struct
     let mut channel = Channel {
         id: 0,
@@ -148,7 +151,7 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         header_override: None,
         remark: None,
         api_version: Some("default".to_string()),
-        pricing_region: None, // Default to universal pricing
+        pricing_region,
     };
 
     // Save to database

@@ -25,8 +25,8 @@ impl ChannelModel {
         let sql = if db.kind() == "postgres" {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                 RETURNING id
                 "#,
                 type_col, group_col
@@ -34,8 +34,8 @@ impl ChannelModel {
         } else {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
                 type_col, group_col
             )
@@ -60,7 +60,8 @@ impl ChannelModel {
             .bind(channel.created_time)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
-            .bind(&channel.api_version);
+            .bind(&channel.api_version)
+            .bind(&channel.pricing_region);
 
         let id = if db.kind() == "postgres" {
             let row = query.fetch_one(&mut *tx).await?;
@@ -95,8 +96,8 @@ impl ChannelModel {
             format!(
                 r#"
                 UPDATE channels
-                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11, api_version = $12
-                WHERE id = $13
+                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11, api_version = $12, pricing_region = $13
+                WHERE id = $14
                 "#,
                 type_col, group_col
             )
@@ -104,7 +105,7 @@ impl ChannelModel {
             format!(
                 r#"
                 UPDATE channels
-                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?
+                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?
                 WHERE id = ?
                 "#,
                 type_col, group_col
@@ -124,6 +125,7 @@ impl ChannelModel {
             .bind(&channel.param_override)
             .bind(&channel.header_override)
             .bind(&channel.api_version)
+            .bind(&channel.pricing_region)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -165,7 +167,7 @@ impl ChannelModel {
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version
+                    header_override, remark, api_version, pricing_region
                 FROM channels WHERE id = $1
             "#
             }
@@ -175,7 +177,7 @@ impl ChannelModel {
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version
+                    header_override, remark, api_version, pricing_region
                 FROM channels WHERE id = ?
             "#
             }
@@ -198,7 +200,7 @@ impl ChannelModel {
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version
+                    header_override, remark, api_version, pricing_region
                 FROM channels ORDER BY id DESC LIMIT $1 OFFSET $2
             "#
             }
@@ -208,7 +210,7 @@ impl ChannelModel {
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version
+                    header_override, remark, api_version, pricing_region
                 FROM channels ORDER BY id DESC LIMIT ? OFFSET ?
             "#
             }

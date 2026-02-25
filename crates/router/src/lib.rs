@@ -493,7 +493,7 @@ async fn proxy_handler(
     ));
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status) = proxy_logic(
+    let (response, upstream_id, final_status, pricing_region) = proxy_logic(
         &state,
         method,
         uri,
@@ -517,8 +517,14 @@ async fn proxy_handler(
     let cost: i64 = if prompt_tokens > 0 || completion_tokens > 0 {
         if let Some(model) = &model_name {
             // Try to get price and check for tiered pricing
-            // Use new PriceModel API with currency "USD" and no region filter
-            let price_result = PriceModel::get(&state.db, model, "USD", None).await;
+            // Use channel's pricing_region for region-specific pricing
+            let price_result = PriceModel::get(
+                &state.db,
+                model,
+                "USD",
+                pricing_region.as_deref(),
+            )
+            .await;
             let tiered_result =
                 burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model)
                     .await;
@@ -555,7 +561,9 @@ async fn proxy_handler(
                 } else if has_tiered {
                     // Use tiered pricing for models with usage-based tiers (e.g., Qwen)
                     match burncloud_database_models::TieredPriceModel::get_tiers(
-                        &state.db, model, None,
+                        &state.db,
+                        model,
+                        pricing_region.as_deref(),
                     )
                     .await
                     {
@@ -677,11 +685,13 @@ async fn proxy_logic(
     token_counter: Arc<StreamingTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
-) -> (Response, Option<String>, StatusCode) {
+) -> (Response, Option<String>, StatusCode, Option<String>) {
     let config = state.config.read().await;
 
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
+    // Track pricing_region from selected channel for billing
+    let mut selected_pricing_region: Option<String> = None;
 
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
@@ -721,6 +731,9 @@ async fn proxy_logic(
                         _ => (AuthType::Bearer, "openai".to_string()),
                     };
 
+                    // Save pricing_region for billing
+                    selected_pricing_region = channel.pricing_region.clone();
+
                     candidates.push(Upstream {
                         id: channel.id.to_string(),
                         name: channel.name,
@@ -756,6 +769,7 @@ async fn proxy_logic(
                         ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
+                        None,
                     );
                 }
             }
@@ -782,6 +796,7 @@ async fn proxy_logic(
                     ),
                     None,
                     StatusCode::NOT_FOUND,
+                    None,
                 );
             }
         };
@@ -797,6 +812,7 @@ async fn proxy_logic(
                         ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
+                        None,
                     );
                 }
 
@@ -820,6 +836,7 @@ async fn proxy_logic(
             ),
             None,
             StatusCode::INTERNAL_SERVER_ERROR,
+            None,
         );
     }
 
@@ -1007,6 +1024,7 @@ async fn proxy_logic(
                                     }),
                                 last_upstream_id,
                                 status,
+                                selected_pricing_region.clone(),
                             );
                         } else {
                             // Non-streaming passthrough
@@ -1038,6 +1056,7 @@ async fn proxy_logic(
                                 ),
                                 last_upstream_id,
                                 status,
+                                selected_pricing_region.clone(),
                             );
                         }
                     } else {
@@ -1050,6 +1069,7 @@ async fn proxy_logic(
                                     build_response(status, Body::from(last_error.clone())),
                                     last_upstream_id,
                                     status,
+                                    selected_pricing_region.clone(),
                                 );
                             }
                         };
@@ -1084,6 +1104,7 @@ async fn proxy_logic(
                             ),
                             last_upstream_id,
                             status,
+                            selected_pricing_region.clone(),
                         );
                     }
                 }
@@ -1245,6 +1266,7 @@ async fn proxy_logic(
                             handle_response_with_token_parsing(resp, &token_counter, "openai"),
                             last_upstream_id,
                             status,
+                            selected_pricing_region.clone(),
                         );
                     }
 
@@ -1312,6 +1334,7 @@ async fn proxy_logic(
                                 }),
                             last_upstream_id,
                             status,
+                            selected_pricing_region.clone(),
                         );
                     }
 
@@ -1338,6 +1361,7 @@ async fn proxy_logic(
                         ),
                         last_upstream_id,
                         status,
+                        selected_pricing_region.clone(),
                     );
                 } else {
                     // Handle non-success responses (4xx errors)
@@ -1351,6 +1375,7 @@ async fn proxy_logic(
                                 build_response(status, Body::from(last_error.clone())),
                                 last_upstream_id,
                                 status,
+                                selected_pricing_region.clone(),
                             );
                         }
                     };
@@ -1476,6 +1501,7 @@ async fn proxy_logic(
                         ),
                         last_upstream_id,
                         status,
+                        selected_pricing_region.clone(),
                     );
                 }
             }
@@ -1507,6 +1533,7 @@ async fn proxy_logic(
         ),
         None,
         StatusCode::BAD_GATEWAY,
+        None,
     )
 }
 
