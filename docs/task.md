@@ -65,7 +65,7 @@
       "添加 mockito = \"1.7\"",
       "添加 tempfile = \"3\""
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "deps",
