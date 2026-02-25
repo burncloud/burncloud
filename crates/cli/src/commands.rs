@@ -826,6 +826,17 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .long("members")
                                 .help("Comma-separated list of upstream IDs to add as members"),
                         ),
+                )
+                .subcommand(
+                    Command::new("list")
+                        .about("List all groups")
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
                 ),
         );
 
