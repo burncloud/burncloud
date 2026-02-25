@@ -1,6 +1,15 @@
 use crate::{Database, Result};
 use sqlx::Executor;
 
+/// Get current Unix timestamp in seconds
+/// Returns 0 if system time is before Unix epoch (extremely unlikely)
+fn current_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub struct Schema;
 
 impl Schema {
@@ -627,10 +636,7 @@ impl Schema {
         };
 
         if prices_count == 0 && deprecated_exists {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = current_timestamp();
 
             let migrate_sql = match kind.as_str() {
                 "sqlite" => r#"
@@ -858,10 +864,7 @@ impl Schema {
         if t_count == 0 {
             // User 'demo-user' must exist (created by UserDatabase::init)
             // created_time, accessed_time use current timestamp
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = current_timestamp();
             let insert_token_sql = match kind.as_str() {
                 "sqlite" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, ?, ?, -1)",
                 "postgres" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, $1, $2, -1)",
@@ -892,10 +895,7 @@ impl Schema {
         };
 
         if p_count == 0 {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = current_timestamp();
 
             // Default pricing (prices per 1M tokens)
             // Format: (model, input_price, output_price, alias_for)
@@ -956,10 +956,7 @@ impl Schema {
         };
 
         if pc_count == 0 {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = current_timestamp();
 
             // Default protocol configs
             // channel_type values: 1=OpenAI, 2=Anthropic, 3=Azure, 4=Gemini, 5=Vertex

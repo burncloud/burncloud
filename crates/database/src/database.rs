@@ -74,12 +74,12 @@ impl Database {
     pub async fn initialize(&mut self) -> Result<()> {
         sqlx::any::install_default_drivers();
         let connection = DatabaseConnection::new(&self.database_url).await?;
-        self.connection = Some(connection);
+        self.connection = Some(connection.clone());
 
         // Enable WAL mode for SQLite performance and concurrency
         if self.kind() == "sqlite" {
             let _ = sqlx::query("PRAGMA journal_mode=WAL;")
-                .execute(self.connection.as_ref().unwrap().pool())
+                .execute(connection.pool())
                 .await;
         }
 
@@ -182,6 +182,46 @@ impl Database {
             .fetch_optional(conn.pool())
             .await?;
         Ok(result)
+    }
+
+    /// 带参数的查询，返回单条记录或 None（防止 SQL 注入）
+    pub async fn fetch_optional_with_params<T>(
+        &self,
+        query: &str,
+        params: Vec<String>,
+    ) -> Result<Option<T>>
+    where
+        T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
+    {
+        let conn = self.get_connection()?;
+        let mut query_builder = sqlx::query_as::<_, T>(query);
+
+        for param in params {
+            query_builder = query_builder.bind(param);
+        }
+
+        let result = query_builder.fetch_optional(conn.pool()).await?;
+        Ok(result)
+    }
+
+    /// 带参数的查询，返回多条记录（防止 SQL 注入）
+    pub async fn fetch_all_with_params<T>(
+        &self,
+        query: &str,
+        params: Vec<String>,
+    ) -> Result<Vec<T>>
+    where
+        T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
+    {
+        let conn = self.get_connection()?;
+        let mut query_builder = sqlx::query_as::<_, T>(query);
+
+        for param in params {
+            query_builder = query_builder.bind(param);
+        }
+
+        let results = query_builder.fetch_all(conn.pool()).await?;
+        Ok(results)
     }
 }
 

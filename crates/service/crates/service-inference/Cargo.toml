@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 tokio = { workspace = true, features = ["process", "io-util"] }
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 burncloud-database = { workspace = true }

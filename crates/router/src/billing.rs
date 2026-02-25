@@ -147,17 +147,6 @@ fn format_cost_nano(amount_nano: i64, currency: &str) -> String {
     format!("{}{:.6}", symbol, amount)
 }
 
-/// Format a cost amount with currency symbol (legacy, uses f64)
-fn format_cost(amount: f64, currency: &str) -> String {
-    let symbol = match currency.to_uppercase().as_str() {
-        "USD" => "$",
-        "CNY" => "¥",
-        "EUR" => "€",
-        _ => "",
-    };
-    format!("{}{:.6}", symbol, amount)
-}
-
 /// Multi-currency pricing information
 /// Exchange rate is stored as scaled i64 (rate * 10^9) for precision
 #[derive(Debug, Clone, Default)]

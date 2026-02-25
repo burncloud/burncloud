@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use burncloud_common::PricingConfig;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::{PriceInput, PriceModel, PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel};
+use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::Deserialize;
@@ -190,7 +190,7 @@ impl LiteLLMPrice {
         self.input_cost_per_audio_token.map(|c| c * 1_000_000.0)
     }
 
-    // ========== Nanodollar conversion methods (for PriceV2) ==========
+    // ========== Nanodollar conversion methods (for Price) ==========
 
     /// Convert per-token cost to per-1M tokens price in nanodollars (i64)
     pub fn to_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
@@ -735,7 +735,7 @@ impl PriceSyncServiceV2 {
         for (model_name, model_pricing) in &config.models {
             // Apply standard pricing for each currency
             for (currency, currency_pricing) in &model_pricing.pricing {
-                let price_input = PriceV2Input {
+                let price_input = PriceInput {
                     model: model_name.clone(),
                     currency: currency.clone(),
                     input_price: currency_pricing.input_price,
@@ -744,7 +744,7 @@ impl PriceSyncServiceV2 {
                     ..Default::default()
                 };
 
-                match PriceV2Model::upsert(&self.db, &price_input).await {
+                match PriceModel::upsert(&self.db, &price_input).await {
                     Ok(_) => {
                         result.models_synced += 1;
                         result.currencies_synced += 1;
@@ -760,11 +760,11 @@ impl PriceSyncServiceV2 {
             if let Some(ref cache_pricing) = model_pricing.cache_pricing {
                 for (currency, cache_config) in cache_pricing {
                     // Get existing price and update with cache pricing
-                    if let Ok(Some(mut existing)) = PriceV2Model::get(&self.db, model_name, currency, None).await {
+                    if let Ok(Some(mut existing)) = PriceModel::get(&self.db, model_name, currency, None).await {
                         existing.cache_read_input_price = Some(cache_config.cache_read_input_price);
                         existing.cache_creation_input_price = cache_config.cache_creation_input_price;
 
-                        let update_input = PriceV2Input {
+                        let update_input = PriceInput {
                             model: existing.model.clone(),
                             currency: existing.currency.clone(),
                             input_price: existing.input_price,
@@ -784,7 +784,7 @@ impl PriceSyncServiceV2 {
                             supports_function_calling: existing.supports_function_calling_bool(),
                         };
 
-                        if let Err(e) = PriceV2Model::upsert(&self.db, &update_input).await {
+                        if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
                             eprintln!("Failed to update cache pricing for {}: {}", model_name, e);
                         }
                     }
@@ -881,7 +881,7 @@ impl PriceSyncServiceV2 {
             let (priority_input, priority_output) = price_data.to_priority_per_million_price_nano();
             let audio_input = price_data.to_audio_per_million_price_nano();
 
-            let price_input = PriceV2Input {
+            let price_input = PriceInput {
                 model: model_name.clone(),
                 currency: "USD".to_string(),
                 input_price: input,
@@ -901,7 +901,7 @@ impl PriceSyncServiceV2 {
                 supports_function_calling: price_data.supports_function_calling,
             };
 
-            match PriceV2Model::upsert(&self.db, &price_input).await {
+            match PriceModel::upsert(&self.db, &price_input).await {
                 Ok(_) => {
                     result.models_synced += 1;
                 }

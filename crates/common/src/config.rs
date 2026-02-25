@@ -1,5 +1,5 @@
+use crate::error::Result;
 use crate::types::Config;
-use anyhow::Result;
 use std::fs;
 use std::path::Path;
 

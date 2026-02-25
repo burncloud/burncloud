@@ -69,7 +69,8 @@ pub struct DbRouterLog {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
     #[sqlx(default)]
-    pub cost: f64, // Cost in USD
+    /// Cost in nanodollars (9 decimal precision)
+    pub cost: i64,
                    // created_at is handled by DB default
 }
 
@@ -639,14 +640,15 @@ impl RouterDatabase {
     /// Deduct quota from both user and token atomically.
     /// Cost is in quota units (typically 1 quota = 1 token, or can be scaled).
     /// Returns Ok(true) if deduction successful, Ok(false) if insufficient quota.
+    /// Cost parameter uses i64 nanodollars for precision.
     pub async fn deduct_quota(
         db: &Database,
         _user_id: &str,
         token: &str,
-        cost: f64,
+        cost: i64,
     ) -> Result<bool> {
         let conn = db.get_connection()?;
-        let cost_i64 = cost.ceil() as i64;
+        let cost_i64 = cost;
 
         if cost_i64 <= 0 {
             return Ok(true);
@@ -708,9 +710,10 @@ impl RouterDatabase {
     }
 
     /// Check if quota is sufficient without deducting.
-    pub async fn check_quota(db: &Database, token: &str, cost: f64) -> Result<bool> {
+    /// Cost parameter uses i64 nanodollars for precision.
+    pub async fn check_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
         let conn = db.get_connection()?;
-        let cost_i64 = cost.ceil() as i64;
+        let cost_i64 = cost;
 
         if cost_i64 <= 0 {
             return Ok(true);

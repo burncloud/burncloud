@@ -2,7 +2,10 @@
 //!
 //! 本地推理服务管理模块，负责 `llama-server` 等推理后端的进程管理。
 
-use anyhow::{Context, Result};
+mod error;
+
+pub use error::{InferenceError, Result};
+
 use burncloud_database::Database;
 use burncloud_database_router::{DbUpstream, RouterDatabase};
 use std::collections::HashMap;
@@ -110,7 +113,7 @@ impl InferenceService {
                 let err_msg = format!("Failed to spawn process: {}", e);
                 self.set_status(&config.model_id, InstanceStatus::Failed(err_msg.clone()))
                     .await;
-                Err(anyhow::anyhow!(err_msg))
+                Err(InferenceError::ProcessSpawnFailed(err_msg))
             }
         }
     }
@@ -120,7 +123,10 @@ impl InferenceService {
         let mut processes = self.processes.lock().await;
         if let Some(mut child) = processes.remove(model_id) {
             // 尝试优雅停止
-            child.kill().await.context("Failed to kill process")?;
+            child
+                .kill()
+                .await
+                .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
             self.set_status(model_id, InstanceStatus::Stopped).await;
 
             // 从 Router 注销

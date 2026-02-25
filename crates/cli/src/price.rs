@@ -5,7 +5,7 @@ use burncloud_common::{dollars_to_nano, nano_to_dollars, pricing_config::{
 }};
 use burncloud_database::Database;
 use burncloud_database_models::{
-    PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel,
+    PriceInput, PriceModel, TieredPriceInput, TieredPriceModel,
 };
 use chrono::Utc;
 use clap::ArgMatches;
@@ -36,8 +36,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 .unwrap_or(0);
             let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
 
-            // Use PriceV2Model for multi-currency support
-            let prices = PriceV2Model::list(db, limit, offset, currency).await?;
+            // Use PriceModel for multi-currency support
+            let prices = PriceModel::list(db, limit, offset, currency).await?;
 
             if prices.is_empty() {
                 println!("No prices found.");
@@ -88,9 +88,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 .get_one::<String>("batch-output")
                 .and_then(|s| s.parse().ok());
 
-            // Use PriceV2Model for multi-currency support
+            // Use PriceModel for multi-currency support
             // Convert f64 dollar input to i64 nanodollars
-            let input = PriceV2Input {
+            let input = PriceInput {
                 model: model.clone(),
                 currency: currency.clone(),
                 input_price: to_nano(input_price),
@@ -110,7 +110,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 supports_function_calling: None,
             };
 
-            PriceV2Model::upsert(db, &input).await?;
+            PriceModel::upsert(db, &input).await?;
 
             let region_str = input.region.as_deref().unwrap_or("");
             let region_display = if region_str.is_empty() { "".to_string() } else { format!(" [{}]", region_str) };
@@ -129,7 +129,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         Some(("delete", sub_m)) => {
             let model = sub_m.get_one::<String>("model").unwrap();
 
-            PriceV2Model::delete_all_for_model(db, model).await?;
+            PriceModel::delete_all_for_model(db, model).await?;
             println!("✓ All prices deleted for '{}'", model);
         }
         Some(("get", sub_m)) => {
@@ -137,10 +137,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
             let verbose = sub_m.get_flag("verbose");
 
-            // Use PriceV2Model for multi-currency support
+            // Use PriceModel for multi-currency support
             if let Some(curr) = currency {
                 // Get specific currency
-                match PriceV2Model::get(db, model, curr, None).await? {
+                match PriceModel::get(db, model, curr, None).await? {
                     Some(price) => {
                         println!("Model: {}", price.model);
                         println!("Currency: {}", price.currency);
@@ -169,7 +169,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             } else {
                 // Get all currencies
-                let prices = PriceV2Model::get_all_currencies(db, model, None).await?;
+                let prices = PriceModel::get_all_currencies(db, model, None).await?;
                 if prices.is_empty() {
                     println!("No prices found for model '{}'", model);
                 } else {
@@ -220,11 +220,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             // Get all prices for this model
             let prices = if let Some(curr) = currency {
-                PriceV2Model::get(db, model, curr, region).await?
+                PriceModel::get(db, model, curr, region).await?
                     .map(|p| vec![p])
                     .unwrap_or_default()
             } else {
-                PriceV2Model::get_all_currencies(db, model, region).await?
+                PriceModel::get_all_currencies(db, model, region).await?
             };
 
             if prices.is_empty() {
@@ -324,7 +324,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         }
         Some(("sync-status", _)) => {
             // Show sync status by counting models with advanced pricing
-            let prices = PriceV2Model::list(db, 10000, 0, None).await?;
+            let prices = PriceModel::list(db, 10000, 0, None).await?;
 
             let mut total = 0;
             let mut with_cache = 0;
@@ -426,8 +426,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         }
                     });
 
-                    // Build PriceV2Input
-                    let input = PriceV2Input {
+                    // Build PriceInput
+                    let input = PriceInput {
                         model: model_name.clone(),
                         currency: currency.clone(),
                         input_price: pricing.input_price,
@@ -447,7 +447,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         supports_function_calling: metadata.as_ref().map(|m| m.supports_function_calling),
                     };
 
-                    match PriceV2Model::upsert(db, &input).await {
+                    match PriceModel::upsert(db, &input).await {
                         Ok(_) => prices_imported += 1,
                         Err(e) => errors.push(format!("Failed to import {} ({}): {}", model_name, currency, e)),
                     }
@@ -457,10 +457,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 if let Some(ref cache_pricing) = model_pricing.cache_pricing {
                     for (currency, cache) in cache_pricing {
                         // Update existing price with cache pricing
-                        if let Some(existing) = PriceV2Model::get(db, model_name, currency, None).await? {
+                        if let Some(existing) = PriceModel::get(db, model_name, currency, None).await? {
                             let supports_vision = existing.supports_vision_bool();
                             let supports_function_calling = existing.supports_function_calling_bool();
-                            let input = PriceV2Input {
+                            let input = PriceInput {
                                 model: model_name.clone(),
                                 currency: currency.clone(),
                                 input_price: existing.input_price,
@@ -479,7 +479,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 supports_vision,
                                 supports_function_calling,
                             };
-                            match PriceV2Model::upsert(db, &input).await {
+                            match PriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
                                 Err(e) => errors.push(format!("Failed to update cache pricing for {} ({}): {}", model_name, currency, e)),
                             }
@@ -490,10 +490,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 // Import batch pricing if available
                 if let Some(ref batch_pricing) = model_pricing.batch_pricing {
                     for (currency, batch) in batch_pricing {
-                        if let Some(existing) = PriceV2Model::get(db, model_name, currency, None).await? {
+                        if let Some(existing) = PriceModel::get(db, model_name, currency, None).await? {
                             let supports_vision = existing.supports_vision_bool();
                             let supports_function_calling = existing.supports_function_calling_bool();
-                            let input = PriceV2Input {
+                            let input = PriceInput {
                                 model: model_name.clone(),
                                 currency: currency.clone(),
                                 input_price: existing.input_price,
@@ -512,7 +512,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 supports_vision,
                                 supports_function_calling,
                             };
-                            match PriceV2Model::upsert(db, &input).await {
+                            match PriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
                                 Err(e) => errors.push(format!("Failed to update batch pricing for {} ({}): {}", model_name, currency, e)),
                             }
@@ -569,7 +569,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let format = sub_m.get_one::<String>("format").unwrap();
 
             // Fetch all prices from prices table
-            let prices = PriceV2Model::list(db, 100000, 0, None).await?;
+            let prices = PriceModel::list(db, 100000, 0, None).await?;
             let tiered_prices = TieredPriceModel::list_all(db).await?;
 
             if prices.is_empty() {

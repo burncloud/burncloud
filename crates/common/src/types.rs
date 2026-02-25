@@ -304,11 +304,13 @@ pub struct Channel {
                                      // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
+/// Recharge record. Amount is stored as i64 nanodollars (9 decimal precision).
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Recharge {
     pub id: i32,
     pub user_id: String,
-    pub amount: f64,
+    /// Amount in nanodollars (9 decimal precision)
+    pub amount: i64,
     pub description: Option<String>,
     pub created_at: Option<i64>, // Unix timestamp
 }
@@ -539,10 +541,6 @@ pub struct Price {
     pub updated_at: Option<i64>,
 }
 
-/// Type alias for backward compatibility
-#[deprecated(since = "0.2.0", note = "Use Price instead")]
-pub type PriceV2 = Price;
-
 /// Input for creating/updating a Price entry
 /// All prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -574,10 +572,6 @@ pub struct PriceInput {
     pub supports_vision: Option<bool>,
     pub supports_function_calling: Option<bool>,
 }
-
-/// Type alias for backward compatibility
-#[deprecated(since = "0.2.0", note = "Use PriceInput instead")]
-pub type PriceV2Input = PriceInput;
 
 impl Default for PriceInput {
     fn default() -> Self {

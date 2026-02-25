@@ -2,7 +2,7 @@ mod common;
 
 use burncloud_common::price_u64::{dollars_to_nano, nano_to_dollars};
 use burncloud_database::sqlx;
-use burncloud_database_models::{PriceV2Input, PriceV2Model};
+use burncloud_database_models::{PriceInput, PriceModel};
 use burncloud_database_router::RouterDatabase;
 use common::setup_db;
 use uuid::Uuid;
@@ -37,8 +37,8 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
-    // 3. Setup: Create pricing for test model (using PriceV2Model with nanodollars)
-    let price_input = PriceV2Input {
+    // 3. Setup: Create pricing for test model (using PriceModel with nanodollars)
+    let price_input = PriceInput {
         model: "gpt-4o-mini-e2e".to_string(),
         input_price: dollars_to_nano(0.15) as i64,  // $0.15 per 1M tokens -> nanodollars (i64)
         output_price: dollars_to_nano(0.60) as i64, // $0.60 per 1M tokens -> nanodollars (i64)
@@ -57,10 +57,10 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
         supports_vision: None,
         supports_function_calling: None,
     };
-    PriceV2Model::upsert(&_db, &price_input).await?;
+    PriceModel::upsert(&_db, &price_input).await?;
 
     // 4. Test: Get pricing
-    let price = PriceV2Model::get(&_db, "gpt-4o-mini-e2e", "USD", None).await?;
+    let price = PriceModel::get(&_db, "gpt-4o-mini-e2e", "USD", None).await?;
     assert!(price.is_some(), "Price should be found");
     let price = price.unwrap();
 

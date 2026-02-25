@@ -1,7 +1,7 @@
 mod common;
 
 use burncloud_common::dollars_to_nano;
-use burncloud_database_models::{PriceV2Input, PriceV2Model};
+use burncloud_database_models::{PriceInput, PriceModel};
 use common::setup_db;
 
 /// Helper to convert dollars to nanodollars as i64
@@ -23,7 +23,7 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
     // Set up pricing for test model
     // Input: $30/1M tokens, Output: $60/1M tokens (like GPT-4)
     // All prices are stored as i64 nanodollars
-    let input = PriceV2Input {
+    let input = PriceInput {
         model: "test-pricing-model".to_string(),
         currency: "USD".to_string(),
         input_price: to_nano(30.0),
@@ -42,10 +42,10 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
         supports_vision: None,
         supports_function_calling: None,
     };
-    PriceV2Model::upsert(&_db, &input).await?;
+    PriceModel::upsert(&_db, &input).await?;
 
     // Get the price and verify
-    let price = PriceV2Model::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
+    let price = PriceModel::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
     assert!(price.is_some(), "Price should be found");
 
     let price = price.unwrap();
@@ -55,7 +55,7 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
     // Calculate cost for 100 prompt + 200 completion tokens
     // Expected: (100 * 30 / 1_000_000) + (200 * 60 / 1_000_000)
     //         = 0.003 + 0.012 = 0.015
-    let cost_nano = PriceV2Model::calculate_cost(&price, 100, 200);
+    let cost_nano = PriceModel::calculate_cost(&price, 100, 200);
     let cost = from_nano(cost_nano);
     let expected_cost = (100.0 / 1_000_000.0) * 30.0 + (200.0 / 1_000_000.0) * 60.0;
 
@@ -76,7 +76,7 @@ async fn test_pricing_list() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
     // List all prices (should include default pricing)
-    let prices = PriceV2Model::list(&_db, 100, 0, None).await?;
+    let prices = PriceModel::list(&_db, 100, 0, None).await?;
 
     println!("Found {} prices", prices.len());
 
@@ -103,7 +103,7 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
     // Create a test model
-    let input = PriceV2Input {
+    let input = PriceInput {
         model: "test-delete-model".to_string(),
         currency: "USD".to_string(),
         input_price: to_nano(10.0),
@@ -122,21 +122,21 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         supports_vision: None,
         supports_function_calling: None,
     };
-    PriceV2Model::upsert(&_db, &input).await?;
+    PriceModel::upsert(&_db, &input).await?;
 
     // Verify it exists
-    let price = PriceV2Model::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
 
     // Delete it
-    PriceV2Model::delete(&_db, "test-delete-model", "USD", Some("international")).await?;
+    PriceModel::delete(&_db, "test-delete-model", "USD", Some("international")).await?;
 
     // Verify it's gone
-    let price = PriceV2Model::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_none());
 
     // Recreate with different price
-    let input2 = PriceV2Input {
+    let input2 = PriceInput {
         model: "test-delete-model".to_string(),
         currency: "USD".to_string(),
         input_price: to_nano(50.0),
@@ -155,10 +155,10 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         supports_vision: None,
         supports_function_calling: None,
     };
-    PriceV2Model::upsert(&_db, &input2).await?;
+    PriceModel::upsert(&_db, &input2).await?;
 
     // Verify new price
-    let price = PriceV2Model::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
     let price = price.unwrap();
     assert_eq!(price.input_price, to_nano(50.0));

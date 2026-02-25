@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::{BurnCloudError, Result};
 use std::fs;
 use std::path::Path;
 
@@ -11,21 +11,22 @@ pub fn ensure_dir_exists(path: &str) -> Result<()> {
 
 pub fn get_home_dir() -> String {
     dirs::home_dir()
-        .unwrap_or_else(|| std::env::current_dir().unwrap())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
         .to_string_lossy()
         .to_string()
 }
 
 /// Hash a password using bcrypt with default cost (12)
 pub fn hash_password(password: &str) -> Result<String> {
-    let hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
-    Ok(hash)
+    bcrypt::hash(password, bcrypt::DEFAULT_COST)
+        .map_err(|e| BurnCloudError::PasswordHashError(e.to_string()))
 }
 
 /// Verify a password against a bcrypt hash
 pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
-    let result = bcrypt::verify(password, hash)?;
-    Ok(result)
+    bcrypt::verify(password, hash)
+        .map_err(|e| BurnCloudError::PasswordHashError(e.to_string()))
 }
 
 #[cfg(test)]
