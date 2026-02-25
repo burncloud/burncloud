@@ -1,3 +1,4 @@
+use super::current_unix_timestamp;
 use burncloud_common::types::OpenAIChatRequest;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -96,7 +97,7 @@ impl GeminiAdaptor {
         json!({
             "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
             "object": "chat.completion",
-            "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "created": current_unix_timestamp(),
             "model": model,
             "choices": [
                 {
@@ -156,7 +157,7 @@ impl GeminiAdaptor {
         let chunk_json = json!({
             "id": "chatcmpl-stream", // Static ID for now as we don't have state
             "object": "chat.completion.chunk",
-            "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "created": current_unix_timestamp(),
             "model": "gemini-model",
             "choices": [
                 {

@@ -19,7 +19,7 @@
       "修复 adaptor/vertex.rs:255,313,383,462 的 .expect()",
       "使用 thiserror 定义结构化错误并传播"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "error-handling",
