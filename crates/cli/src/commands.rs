@@ -862,6 +862,20 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .action(clap::ArgAction::SetTrue)
                                 .help("Skip confirmation prompt"),
                         ),
+                )
+                .subcommand(
+                    Command::new("members")
+                        .about("Manage group members")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Group ID"),
+                        )
+                        .arg(
+                            Arg::new("set")
+                                .long("set")
+                                .help("Set members (comma-separated, format: upstream_id:weight or upstream_id)"),
+                        ),
                 ),
         );
 

@@ -185,6 +185,85 @@ pub async fn cmd_group_delete(db: &Database, matches: &ArgMatches) -> Result<()>
     Ok(())
 }
 
+/// Handle group members command
+pub async fn cmd_group_members(db: &Database, matches: &ArgMatches) -> Result<()> {
+    let id = matches.get_one::<String>("id").unwrap();
+    let set_str = matches.get_one::<String>("set").cloned();
+
+    // Check if group exists
+    let group = RouterDatabase::get_group_by_id(db, id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Group not found: {}", id))?;
+
+    match set_str {
+        Some(members_str) => {
+            // Set mode: update group members
+            let member_specs: Vec<&str> = members_str
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if member_specs.is_empty() {
+                // Clear all members
+                RouterDatabase::set_group_members(db, id, vec![]).await?;
+                println!("Cleared all members from group '{}'", group.name);
+            } else {
+                // Parse member specs (format: upstream_id:weight or upstream_id)
+                let group_members: Vec<DbGroupMember> = member_specs
+                    .iter()
+                    .map(|spec| {
+                        let parts: Vec<&str> = spec.split(':').collect();
+                        let upstream_id = parts[0].to_string();
+                        let weight = if parts.len() > 1 {
+                            parts[1].parse::<i32>().unwrap_or(1)
+                        } else {
+                            1
+                        };
+                        DbGroupMember {
+                            group_id: id.to_string(),
+                            upstream_id,
+                            weight,
+                        }
+                    })
+                    .collect();
+
+                let count = group_members.len();
+                RouterDatabase::set_group_members(db, id, group_members).await?;
+                println!(
+                    "Set {} member(s) for group '{}'",
+                    count, group.name
+                );
+            }
+        }
+        None => {
+            // Query mode: display current members
+            let members = RouterDatabase::get_group_members_by_group(db, id).await?;
+
+            if members.is_empty() {
+                println!("Group '{}' has no members", group.name);
+            } else {
+                println!("Members of group '{}':", group.name);
+                println!(
+                    "{:<5} {:<40} {:<10}",
+                    "#", "Upstream ID", "Weight"
+                );
+                println!("{}", "-".repeat(55));
+                for (i, member) in members.iter().enumerate() {
+                    println!(
+                        "{:<5} {:<40} {:<10}",
+                        i + 1,
+                        member.upstream_id,
+                        member.weight
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Route group commands
 pub async fn handle_group_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -200,8 +279,11 @@ pub async fn handle_group_command(db: &Database, matches: &ArgMatches) -> Result
         Some(("delete", sub_m)) => {
             cmd_group_delete(db, sub_m).await?;
         }
+        Some(("members", sub_m)) => {
+            cmd_group_members(db, sub_m).await?;
+        }
         _ => {
-            println!("Usage: burncloud group <create|list|show|delete>");
+            println!("Usage: burncloud group <create|list|show|delete|members>");
             println!("Run 'burncloud group --help' for more information.");
         }
     }

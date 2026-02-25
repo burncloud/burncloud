@@ -182,7 +182,7 @@
       "members 子命令: 位置参数 id, 可选参数 --set",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-log-list",
