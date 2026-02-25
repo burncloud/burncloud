@@ -100,7 +100,7 @@
       "评估 server/src/api/channel.rs:75 的 TODO (分页)",
       "决定：实现功能 或 创建 GitHub Issue 跟踪"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "verify",

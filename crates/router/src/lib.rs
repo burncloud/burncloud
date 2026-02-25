@@ -434,7 +434,10 @@ async fn proxy_handler(
     };
 
     // Estimate Prompt Tokens (Simple approximation: 1 token ~= 4 bytes)
-    // TODO: Integrate tiktoken-rs for precise counting
+    // TODO(issue): Integrate tiktoken-rs for precise counting
+    //   - Current approximation is inaccurate for non-ASCII text
+    //   - tiktoken-rs provides accurate token counting for OpenAI models
+    //   - Consider: model-specific tokenizers (cl100k_base, o200k_base, etc.)
     let estimated_prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
 
     // Extract model name for pricing before proxy_logic consumes body_bytes

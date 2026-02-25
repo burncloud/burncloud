@@ -57,7 +57,11 @@ impl RateLimiter {
         }
     }
 
-    /// 手动设置特定 Key 的限流规则 (TODO: 支持针对不同用户设置不同限流)
+    /// 手动设置特定 Key 的限流规则
+    /// TODO(issue): 支持针对不同用户设置不同限流
+    ///   - Requires: storage for per-user rate limits (database or cache)
+    ///   - Consider: integrating with database-user for user-specific configs
+    ///   - Consider: hierarchical limits (global -> user -> token)
     #[allow(dead_code)]
     pub fn set_custom_limit(&self, _key: &str, _capacity: f64, _refill_rate: f64) {
         // 预留接口

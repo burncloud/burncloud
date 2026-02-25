@@ -818,7 +818,11 @@ impl RouterDatabase {
         // Check user quota from users table (if it exists)
         // Note: users table is managed by database-user crate
         // For now, we just check token quota
-        // TODO: Integrate with user-level quota checking
+        // TODO(issue): Integrate with user-level quota checking
+        //   - Requires architectural decision on cross-crate data access
+        //   - Options: 1) Add database-router -> database-user dependency
+        //             2) Create shared quota service in service layer
+        //             3) Pass user quota as parameter from router layer
 
         // Deduct from token
         let deduct_sql = if is_postgres {
