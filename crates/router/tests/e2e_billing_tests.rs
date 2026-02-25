@@ -40,8 +40,8 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
     // 3. Setup: Create pricing for test model (using PriceModel with nanodollars)
     let price_input = PriceInput {
         model: "gpt-4o-mini-e2e".to_string(),
-        input_price: dollars_to_nano(0.15) as i64, // $0.15 per 1M tokens -> nanodollars (i64)
-        output_price: dollars_to_nano(0.60) as i64, // $0.60 per 1M tokens -> nanodollars (i64)
+        input_price: dollars_to_nano(0.15),  // $0.15 per 1M tokens -> nanodollars (i64)
+        output_price: dollars_to_nano(0.60), // $0.60 per 1M tokens -> nanodollars (i64)
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -64,9 +64,9 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
     assert!(price.is_some(), "Price should be found");
     let price = price.unwrap();
 
-    // Convert i64 to u64 for display (prices should always be positive)
-    let input_dollars = nano_to_dollars(price.input_price as u64);
-    let output_dollars = nano_to_dollars(price.output_price as u64);
+    // Convert i64 nanodollars to dollars for display (prices should always be positive)
+    let input_dollars = nano_to_dollars(price.input_price);
+    let output_dollars = nano_to_dollars(price.output_price);
 
     assert!(
         (input_dollars - 0.15).abs() < 0.0001,
@@ -112,7 +112,7 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
             .await?;
 
     // Deduct 300 tokens
-    let deduct_result = RouterDatabase::deduct_quota(&_db, "e2e-test-user", &token, 300.0).await?;
+    let deduct_result = RouterDatabase::deduct_quota(&_db, "e2e-test-user", &token, 300).await?;
     assert!(deduct_result, "Quota deduction should succeed");
 
     let quota_after: i64 =

@@ -27,7 +27,7 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
 
     // Deduct 50 quota
     let result =
-        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 50.0).await?;
+        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 50).await?;
     assert!(result, "Deduction should succeed");
 
     // Small delay
@@ -43,7 +43,7 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
 
     // Deduct another 50 (should succeed, total 100)
     let result =
-        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 50.0).await?;
+        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 50).await?;
     assert!(result, "Second deduction should succeed");
 
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -57,7 +57,7 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
 
     // Try to deduct 1 more (should fail - quota exceeded)
     let result =
-        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 1.0).await?;
+        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 1).await?;
     assert!(!result, "Deduction should fail - quota exceeded");
 
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -99,7 +99,7 @@ async fn test_unlimited_quota() -> anyhow::Result<()> {
         &_db,
         "test-unlimited-user",
         "sk-test-unlimited-token",
-        1000000.0,
+        1_000_000,
     )
     .await?;
     assert!(result, "Unlimited token should always succeed");
@@ -129,11 +129,11 @@ async fn test_quota_check() -> anyhow::Result<()> {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Check if 40 quota is available (should pass: 50 used + 40 = 90 < 100)
-    let result = RouterDatabase::check_quota(&_db, "sk-test-check-token", 40.0).await?;
+    let result = RouterDatabase::check_quota(&_db, "sk-test-check-token", 40).await?;
     assert!(result, "Should have enough quota");
 
     // Check if 60 quota is available (should fail: 50 used + 60 = 110 > 100)
-    let result = RouterDatabase::check_quota(&_db, "sk-test-check-token", 60.0).await?;
+    let result = RouterDatabase::check_quota(&_db, "sk-test-check-token", 60).await?;
     assert!(!result, "Should not have enough quota");
 
     // Verify used_quota didn't change

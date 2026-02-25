@@ -69,7 +69,7 @@ fn serialize_nano_as_dollars<S>(value: &i64, serializer: S) -> Result<S::Ok, S::
 where
     S: serde::Serializer,
 {
-    serializer.serialize_f64(nano_to_dollars(*value as u64))
+    serializer.serialize_f64(nano_to_dollars(*value))
 }
 
 /// Custom serializer for Option<i64> nanodollars as Option<f64> dollars
@@ -78,7 +78,7 @@ where
     S: serde::Serializer,
 {
     match value {
-        Some(nano) => serializer.serialize_some(&nano_to_dollars(*nano as u64)),
+        Some(nano) => serializer.serialize_some(&nano_to_dollars(*nano)),
         None => serializer.serialize_none(),
     }
 }
@@ -86,12 +86,12 @@ where
 impl CostResult {
     /// Get USD amount as f64 dollars (for backward compatibility)
     pub fn usd_amount(&self) -> f64 {
-        nano_to_dollars(self.usd_amount_nano as u64)
+        nano_to_dollars(self.usd_amount_nano)
     }
 
     /// Get local amount as f64 dollars (for backward compatibility)
     pub fn local_amount(&self) -> Option<f64> {
-        self.local_amount_nano.map(|n| nano_to_dollars(n as u64))
+        self.local_amount_nano.map(nano_to_dollars)
     }
 
     /// Create a new CostResult with only USD
@@ -138,7 +138,7 @@ impl CostResult {
 
 /// Format a cost amount (in nanodollars) with currency symbol
 fn format_cost_nano(amount_nano: i64, currency: &str) -> String {
-    let amount = nano_to_dollars(amount_nano as u64);
+    let amount = nano_to_dollars(amount_nano);
     let symbol = match currency.to_uppercase().as_str() {
         "USD" => "$",
         "CNY" => "¥",
@@ -369,7 +369,7 @@ pub fn calculate_tiered_cost(
     region: Option<&str>,
 ) -> Result<f64, BillingError> {
     let cost_nano = calculate_tiered_cost_nano(tokens, tiers, region)?;
-    Ok(nano_to_dollars(cost_nano as u64))
+    Ok(nano_to_dollars(cost_nano))
 }
 
 /// Calculate cost with tiered pricing for both input and output tokens
@@ -458,7 +458,7 @@ pub fn calculate_tiered_cost_full(
 ) -> Result<f64, BillingError> {
     let cost_nano =
         calculate_tiered_cost_full_nano(prompt_tokens, completion_tokens, tiers, region)?;
-    Ok(nano_to_dollars(cost_nano as u64))
+    Ok(nano_to_dollars(cost_nano))
 }
 
 /// Pricing information for cache, batch, and priority billing
@@ -541,7 +541,7 @@ pub fn calculate_cache_cost_nano(usage: &TokenUsage, pricing: &AdvancedPricing) 
 /// Calculate cost for Prompt Caching requests (f64 backward compatibility)
 pub fn calculate_cache_cost(usage: &TokenUsage, pricing: &AdvancedPricing) -> f64 {
     let cost_nano = calculate_cache_cost_nano(usage, pricing);
-    nano_to_dollars(cost_nano as u64)
+    nano_to_dollars(cost_nano)
 }
 
 /// Calculate cost for Batch API requests
@@ -572,7 +572,7 @@ pub fn calculate_batch_cost(
     pricing: &AdvancedPricing,
 ) -> f64 {
     let cost_nano = calculate_batch_cost_nano(prompt_tokens, completion_tokens, pricing);
-    nano_to_dollars(cost_nano as u64)
+    nano_to_dollars(cost_nano)
 }
 
 /// Calculate cost for priority requests
@@ -606,7 +606,7 @@ pub fn calculate_priority_cost(
     pricing: &AdvancedPricing,
 ) -> f64 {
     let cost_nano = calculate_priority_cost_nano(prompt_tokens, completion_tokens, pricing);
-    nano_to_dollars(cost_nano as u64)
+    nano_to_dollars(cost_nano)
 }
 
 #[cfg(test)]

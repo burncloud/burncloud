@@ -1,7 +1,8 @@
-//! Price conversion utilities for u64 nanodollar precision.
+//! Price conversion utilities for i64 nanodollar precision.
 //!
 //! This module provides conversion functions between floating-point dollar values
-//! and u64 nanodollar (10^-9 dollars) representation for precise financial calculations.
+//! and i64 nanodollar (10^-9 dollars) representation for precise financial calculations.
+//! Using i64 for PostgreSQL BIGINT compatibility.
 //!
 //! # Precision
 //! - 1 nanodollar = 10^-9 dollars = $0.000000001
@@ -16,12 +17,12 @@
 //! ```
 
 /// Number of nanodollars in one dollar (9 decimal places precision)
-pub const NANO_PER_DOLLAR: u64 = 1_000_000_000;
+pub const NANO_PER_DOLLAR: i64 = 1_000_000_000;
 
 /// Scaling factor for exchange rates (9 decimal places precision)
-pub const RATE_SCALE: u64 = 1_000_000_000;
+pub const RATE_SCALE: i64 = 1_000_000_000;
 
-/// Convert a dollar amount to nanodollars (u64).
+/// Convert a dollar amount to nanodollars (i64).
 ///
 /// Uses rounding to ensure the nearest integer nanodollar value.
 ///
@@ -29,7 +30,7 @@ pub const RATE_SCALE: u64 = 1_000_000_000;
 /// * `price` - Price in dollars (e.g., 3.0 for $3.00)
 ///
 /// # Returns
-/// * Nanodollar amount as u64
+/// * Nanodollar amount as i64
 ///
 /// # Example
 /// ```
@@ -39,11 +40,11 @@ pub const RATE_SCALE: u64 = 1_000_000_000;
 /// assert_eq!(dollars_to_nano(0.15), 150_000_000);
 /// assert_eq!(dollars_to_nano(0.00015), 150_000);
 /// ```
-pub fn dollars_to_nano(price: f64) -> u64 {
-    (price * NANO_PER_DOLLAR as f64).round() as u64
+pub fn dollars_to_nano(price: f64) -> i64 {
+    (price * NANO_PER_DOLLAR as f64).round() as i64
 }
 
-/// Convert nanodollars (u64) to dollar amount.
+/// Convert nanodollars (i64) to dollar amount.
 ///
 /// # Arguments
 /// * `nano` - Price in nanodollars
@@ -58,7 +59,7 @@ pub fn dollars_to_nano(price: f64) -> u64 {
 /// assert!((nano_to_dollars(3_000_000_000) - 3.0).abs() < 1e-9);
 /// assert!((nano_to_dollars(150_000_000) - 0.15).abs() < 1e-9);
 /// ```
-pub fn nano_to_dollars(nano: u64) -> f64 {
+pub fn nano_to_dollars(nano: i64) -> f64 {
     nano as f64 / NANO_PER_DOLLAR as f64
 }
 
@@ -101,7 +102,7 @@ pub fn scaled_to_rate(scaled: i64) -> f64 {
     scaled as f64 / RATE_SCALE as f64
 }
 
-/// Calculate cost safely using u128 intermediate values to prevent overflow.
+/// Calculate cost safely using i128 intermediate values to prevent overflow.
 ///
 /// For billing calculations: cost = (tokens * price_per_million) / 1_000_000
 ///
@@ -110,12 +111,12 @@ pub fn scaled_to_rate(scaled: i64) -> f64 {
 /// * `price_per_million_nano` - Price per 1M tokens in nanodollars
 ///
 /// # Returns
-/// * Cost in nanodollars as u64
+/// * Cost in nanodollars as i64
 ///
 /// # Overflow Protection
-/// Uses u128 intermediate calculation to handle large token counts.
+/// Uses i128 intermediate calculation to handle large token counts.
 /// Maximum safe calculation: 10B tokens × $1000/1M = 10_000_000_000 × 1_000_000_000_000
-/// = 10^22 which fits in u128 (max ~3.4×10^38)
+/// = 10^22 which fits in i128 (max ~1.7×10^38)
 ///
 /// # Example
 /// ```
@@ -129,17 +130,17 @@ pub fn scaled_to_rate(scaled: i64) -> f64 {
 /// let cost = calculate_cost_safe(150_000, 1_200_000_000);
 /// assert_eq!(cost, 180_000_000);
 /// ```
-pub fn calculate_cost_safe(tokens: u64, price_per_million_nano: u64) -> u64 {
-    // Use u128 for intermediate calculation to prevent overflow
-    let tokens_128 = tokens as u128;
-    let price_128 = price_per_million_nano as u128;
-    let divisor: u128 = 1_000_000;
+pub fn calculate_cost_safe(tokens: u64, price_per_million_nano: i64) -> i64 {
+    // Use i128 for intermediate calculation to prevent overflow
+    let tokens_128 = tokens as i128;
+    let price_128 = price_per_million_nano as i128;
+    let divisor: i128 = 1_000_000;
 
     // Calculate: (tokens * price_per_million) / 1_000_000
     let cost_128 = (tokens_128 * price_128) / divisor;
 
-    // Convert back to u64 (safe for any reasonable billing scenario)
-    cost_128 as u64
+    // Convert back to i64 (safe for any reasonable billing scenario)
+    cost_128 as i64
 }
 
 #[cfg(test)]
@@ -226,10 +227,10 @@ mod tests {
 
     #[test]
     fn test_overflow_protection() {
-        // Test with large values that would overflow u64 intermediate
+        // Test with large values that would overflow i64 intermediate
         // 10B tokens at $1000/1M = $10,000,000
         let large_tokens = 10_000_000_000u64;
-        let high_price = 1_000_000_000_000u64; // $1000/1M in nanodollars
+        let high_price = 1_000_000_000_000i64; // $1000/1M in nanodollars
 
         // Should not panic and should calculate correctly
         let cost = calculate_cost_safe(large_tokens, high_price);
@@ -242,21 +243,21 @@ mod tests {
         // Simulate Qwen tiered pricing scenario from task spec
         // Tier 1: 0-32K tokens at $1.2/1M
         let tier1_tokens = 32_000u64;
-        let tier1_price = 1_200_000_000u64; // $1.2/1M in nanodollars
+        let tier1_price = 1_200_000_000i64; // $1.2/1M in nanodollars
         let tier1_cost = calculate_cost_safe(tier1_tokens, tier1_price);
         // Expected: 32000 * 1200000000 / 1000000 = 38400000
         assert_eq!(tier1_cost, 38_400_000);
 
         // Tier 2: 32K-128K tokens (96K tokens) at $2.4/1M
         let tier2_tokens = 96_000u64;
-        let tier2_price = 2_400_000_000u64; // $2.4/1M in nanodollars
+        let tier2_price = 2_400_000_000i64; // $2.4/1M in nanodollars
         let tier2_cost = calculate_cost_safe(tier2_tokens, tier2_price);
         // Expected: 96000 * 2400000000 / 1000000 = 230400000
         assert_eq!(tier2_cost, 230_400_000);
 
         // Tier 3: 128K-150K tokens (22K tokens) at $3.0/1M
         let tier3_tokens = 22_000u64;
-        let tier3_price = 3_000_000_000u64; // $3.0/1M in nanodollars
+        let tier3_price = 3_000_000_000i64; // $3.0/1M in nanodollars
         let tier3_cost = calculate_cost_safe(tier3_tokens, tier3_price);
         // Expected: 22000 * 3000000000 / 1000000 = 66000000
         assert_eq!(tier3_cost, 66_000_000);

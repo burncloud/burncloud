@@ -23,7 +23,7 @@ mod nano_as_dollars {
     where
         S: Serializer,
     {
-        let dollars = nano_to_dollars(*value as u64);
+        let dollars = nano_to_dollars(*value);
         dollars.serialize(serializer)
     }
 
@@ -32,7 +32,7 @@ mod nano_as_dollars {
         D: Deserializer<'de>,
     {
         let dollars: f64 = Deserialize::deserialize(deserializer)?;
-        Ok(dollars_to_nano(dollars) as i64)
+        Ok(dollars_to_nano(dollars))
     }
 }
 
@@ -47,7 +47,7 @@ mod option_nano_as_dollars {
     {
         match value {
             Some(nano) => {
-                let dollars = nano_to_dollars(*nano as u64);
+                let dollars = nano_to_dollars(*nano);
                 Some(dollars).serialize(serializer)
             }
             None => None::<f64>.serialize(serializer),
@@ -240,7 +240,7 @@ impl PricingConfig {
                         field: format!("models.{}.pricing.{}", model_name, currency),
                         message: format!(
                             "Price ${:.2}/1M seems unusually high",
-                            nano_to_dollars(pricing.input_price.max(pricing.output_price) as u64)
+                            nano_to_dollars(pricing.input_price.max(pricing.output_price))
                         ),
                         suggestion: "Verify the pricing is correct".to_string(),
                     });

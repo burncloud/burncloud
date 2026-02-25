@@ -65,7 +65,7 @@
       "修改 client-shared/services 中的 balance/amount 字段",
       "更新相关 API 和数据库迁移脚本"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "database",

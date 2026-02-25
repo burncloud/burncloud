@@ -16,12 +16,12 @@ use std::path::Path;
 
 /// Helper to convert f64 dollars to i64 nanodollars
 fn to_nano(price: f64) -> i64 {
-    dollars_to_nano(price) as i64
+    dollars_to_nano(price)
 }
 
 /// Helper to convert i64 nanodollars to f64 dollars
 fn from_nano(price: i64) -> f64 {
-    nano_to_dollars(price as u64)
+    nano_to_dollars(price)
 }
 
 pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result<()> {

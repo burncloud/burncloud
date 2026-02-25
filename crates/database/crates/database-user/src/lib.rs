@@ -355,12 +355,13 @@ impl UserDatabase {
         Ok(new_balance)
     }
 
-    /// Legacy method for backward compatibility - updates USD balance
-    pub async fn update_balance(db: &Database, user_id: &str, delta: f64) -> Result<f64> {
-        // Convert f64 dollars to i64 nanodollars
-        let delta_nano = (delta * 1_000_000_000.0) as i64;
-        let new_balance = Self::update_balance_usd(db, user_id, delta_nano).await?;
-        Ok(new_balance as f64 / 1_000_000_000.0)
+    /// Update balance by delta in nanodollars (generic currency-aware method)
+    /// Defaults to USD if currency is not specified
+    pub async fn update_balance(db: &Database, user_id: &str, delta_nano: i64, currency: Option<&str>) -> Result<i64> {
+        match currency {
+            Some("CNY") => Self::update_balance_cny(db, user_id, delta_nano).await,
+            _ => Self::update_balance_usd(db, user_id, delta_nano).await,
+        }
     }
 
     pub async fn create_recharge(db: &Database, recharge: &DbRecharge) -> Result<i32> {
