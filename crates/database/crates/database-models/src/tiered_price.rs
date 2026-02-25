@@ -1,35 +1,5 @@
+use burncloud_common::types::{TieredPrice, TieredPriceInput};
 use burncloud_database::{Database, Result};
-use serde::{Deserialize, Serialize};
-
-/// Tiered pricing for models with usage-based pricing tiers
-/// Prices are stored as i64 nanodollars (9 decimal precision)
-/// Note: Using i64 instead of u64 for PostgreSQL compatibility (BIGINT is signed)
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct TieredPrice {
-    pub id: i32,
-    pub model: String,
-    pub region: Option<String>,
-    pub tier_start: i64,
-    pub tier_end: Option<i64>,
-    /// Input price per 1M tokens in nanodollars (stored as i64 for DB compatibility)
-    pub input_price: i64,
-    /// Output price per 1M tokens in nanodollars (stored as i64 for DB compatibility)
-    pub output_price: i64,
-}
-
-/// Input for creating/updating a tiered price
-/// Prices are in nanodollars (i64, 9 decimal precision)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TieredPriceInput {
-    pub model: String,
-    pub region: Option<String>,
-    pub tier_start: i64,
-    pub tier_end: Option<i64>,
-    /// Input price per 1M tokens in nanodollars
-    pub input_price: i64,
-    /// Output price per 1M tokens in nanodollars
-    pub output_price: i64,
-}
 
 pub struct TieredPriceModel;
 

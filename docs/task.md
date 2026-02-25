@@ -53,7 +53,7 @@
       "保留 TieredPriceModel 的方法实现",
       "运行 cargo build 验证"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "deps",

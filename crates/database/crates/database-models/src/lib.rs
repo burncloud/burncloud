@@ -29,14 +29,14 @@ pub use ability::{AbilityInput, AbilityModel};
 // Re-export protocol config types
 pub use protocol_config::{ProtocolConfig, ProtocolConfigInput, ProtocolConfigModel};
 
-// Re-export tiered price types
-pub use tiered_price::{TieredPrice, TieredPriceInput, TieredPriceModel};
+// Re-export tiered price model (TieredPrice and TieredPriceInput types come from burncloud_common)
+pub use tiered_price::TieredPriceModel;
 
 // Re-export price model (Price and PriceInput types come from burncloud_common)
 pub use price::PriceModel;
 
-// Re-export Price types from common for convenience
-pub use burncloud_common::types::{Price, PriceInput};
+// Re-export Price and TieredPrice types from common for convenience
+pub use burncloud_common::types::{Price, PriceInput, TieredPrice, TieredPriceInput};
 
 // Re-export database error
 pub use burncloud_database::DatabaseError;
