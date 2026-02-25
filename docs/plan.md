@@ -1496,3 +1496,297 @@ burncloud price set qwen-max --input 1.2 --output 6.0 --currency USD --region in
 ### 性能影响
 
 **max_tokens 预判**增加约 1-5ms（一次数据库查询），相比上游 API 调用（100ms-30s）可忽略不计。
+
+---
+十九、feat/price 分支代码规范违规分析与修复
+
+### 问题背景
+
+对 `feat/price` 分支进行代码审查时，发现多处违反 BurnCloud 开发规范的问题。本文档记录所有发现的问题及其修复方案，确保代码质量符合项目标准。
+
+### 问题严重程度分级
+
+| 级别 | 含义 | 处理优先级 |
+|------|------|-----------|
+| 🔴 P0 | 编译错误/阻塞问题 | 立即修复 |
+| 🟠 P1 | 架构违规/重复定义 | 高优先级 |
+| 🟡 P2 | 维护性问题 | 中优先级 |
+| 🟢 P3 | 技术债务/建议 | 低优先级 |
+
+---
+
+### 🔴 P0: 编译错误
+
+#### 1. lib.rs 重复导出语法错误
+
+**文件**: `crates/router/src/lib.rs:40-41`
+
+**问题**:
+```rust
+pub use proxy_logic::*;
+    proxy_logic, handle_response_with_token_parsing
+};
+```
+
+**原因**: `pub use proxy_logic::*;` 后面跟着不完整的 `};` 语句，语法错误。
+
+**修复方案**:
+```rust
+pub use proxy_logic::{proxy_logic, handle_response_with_token_parsing};
+```
+
+#### 2. AppState 结构体缺少右尖括号
+
+**文件**: `crates/router/src/lib.rs:82`
+
+**问题**:
+```rust
+pub config: Arc<RwLock<RouterConfig>,
+```
+
+**原因**: 缺少右尖括号 `>`
+
+**修复方案**:
+```rust
+pub config: Arc<RwLock<RouterConfig>>,
+```
+
+#### 3. proxy_logic.rs 同样的语法错误
+
+**文件**: `crates/router/src/proxy_logic.rs:21`
+
+**问题**:
+```rust
+pub config: Arc<RwLock<RouterConfig>,
+```
+
+**修复方案**:
+```rust
+pub config: Arc<RwLock<RouterConfig>>,
+```
+
+---
+
+### 🟠 P1: 重复定义问题
+
+#### 1. AppState 结构体重复定义
+
+**问题**: 同一 crate 内 `AppState` 定义了三次
+
+| 文件 | 行号 |
+|------|------|
+| `crates/router/src/lib.rs` | 79-92 |
+| `crates/router/src/proxy_logic.rs` | 18-31 |
+| `crates/router/src/state.rs` | 16-29 |
+
+**违反规范**: 违反"禁止巨型 Crate"和模块组织原则
+
+**修复方案**:
+1. 保留 `state.rs` 中的定义作为唯一来源
+2. 在 `lib.rs` 中使用 `pub use state::AppState;`
+3. 删除 `proxy_logic.rs` 中的重复定义
+
+**修复后**:
+```rust
+// lib.rs
+mod state;
+pub use state::AppState;
+
+// proxy_logic.rs
+use crate::state::AppState;
+```
+
+#### 2. 类型定义重复
+
+**问题**: 多个类型在 `common` 和 `database-models` 两处定义
+
+| 类型 | common 位置 | database-models 位置 |
+|------|-------------|---------------------|
+| `TieredPrice` | `types.rs:453-468` | `tiered_price.rs:8-18` |
+| `Price` | `types.rs:497-542` | `price.rs:9-42` |
+| `PriceInput` | `types.rs:546-574` | `price.rs:58-86` |
+| `TieredPriceInput` | `types.rs:471-481` | `tiered_price.rs:23-32` |
+
+**违反规范**: 违反四层架构原则，类型应在 Foundation 层 (common) 定义
+
+**修复方案**:
+1. 保留 `common/src/types.rs` 中的类型定义
+2. `database-models` 中只保留 Model 操作方法（如 `PriceModel::get`, `PriceModel::upsert`）
+3. 在 `database-models` 中 `use burncloud_common::types::*` 导入类型
+
+---
+
+### 🟡 P2: Workspace 依赖违规
+
+#### 1. router/Cargo.toml 未使用 workspace 依赖
+
+**文件**: `crates/router/Cargo.toml:31-32`
+
+**问题**:
+```toml
+futures = "0.3.31"
+regex = "1.12.3"
+```
+
+**违反规范**: 规范 6.1 要求所有第三方库版本在根 `Cargo.toml` 的 `[workspace.dependencies]` 中声明
+
+**修复方案**:
+
+1. 在根 `Cargo.toml` 添加:
+```toml
+[workspace.dependencies]
+futures = "0.3"
+regex = "1"
+```
+
+2. 修改 `router/Cargo.toml`:
+```toml
+futures.workspace = true
+regex.workspace = true
+```
+
+#### 2. common/Cargo.toml 未使用 workspace 依赖
+
+**文件**: `crates/common/Cargo.toml:20`
+
+**问题**:
+```toml
+bcrypt = "0.15"
+```
+
+**修复方案**:
+
+1. 在根 `Cargo.toml` 添加:
+```toml
+bcrypt = "0.15"
+```
+
+2. 修改 `common/Cargo.toml`:
+```toml
+bcrypt.workspace = true
+```
+
+#### 3. dev-dependencies 未使用 workspace
+
+**文件**: `crates/router/Cargo.toml:35-38`
+
+**问题**:
+```toml
+[dev-dependencies]
+mockito = "1.7.1"
+tempfile = "3"
+```
+
+**修复方案**:
+
+1. 在根 `Cargo.toml` 添加:
+```toml
+mockito = "1.7"
+tempfile = "3"
+```
+
+2. 修改 `router/Cargo.toml`:
+```toml
+[dev-dependencies]
+mockito.workspace = true
+tempfile.workspace = true
+```
+
+---
+
+### 🟢 P3: 技术债务
+
+#### 1. TODO 遗留
+
+**文件**: `crates/service/crates/service-inference/src/lib.rs:103`
+
+**问题**:
+```rust
+// TODO: 这里应该等待 health check 成功才标记为 Running
+```
+
+**违反规范**: 规范明确禁止遗留 `TODO` 除非用户明确要求占位
+
+**修复方案**: 实现健康检查或移除 TODO 注释
+
+#### 2. 测试代码中大量使用 .unwrap()
+
+**文件**: `crates/cli/src/price.rs` 等
+
+**问题**: 虽然规范允许在测试中使用 `.unwrap()`，但使用过于密集
+
+**建议**: 考虑使用 `expect()` 提供更好的错误上下文
+
+---
+
+### 修复清单
+
+#### P0 编译错误（必须立即修复）
+
+| # | 文件 | 行号 | 问题 | 状态 |
+|---|------|------|------|------|
+| 1 | `router/src/lib.rs` | 40-41 | 重复导出语法错误 | ⬜ 待修复 |
+| 2 | `router/src/lib.rs` | 82 | 缺少 `>` | ⬜ 待修复 |
+| 3 | `router/src/proxy_logic.rs` | 21 | 缺少 `>` | ⬜ 待修复 |
+
+#### P1 架构问题
+
+| # | 问题 | 涉及文件 | 状态 |
+|---|------|---------|------|
+| 1 | AppState 重复定义 | lib.rs, proxy_logic.rs, state.rs | ⬜ 待修复 |
+| 2 | Price 类型重复 | types.rs, price.rs | ⬜ 待修复 |
+| 3 | TieredPrice 类型重复 | types.rs, tiered_price.rs | ⬜ 待修复 |
+| 4 | PriceInput 类型重复 | types.rs, price.rs | ⬜ 待修复 |
+
+#### P2 Workspace 依赖
+
+| # | 依赖 | 添加位置 | 状态 |
+|---|------|---------|------|
+| 1 | futures | 根 Cargo.toml | ⬜ 待修复 |
+| 2 | regex | 根 Cargo.toml | ⬜ 待修复 |
+| 3 | bcrypt | 根 Cargo.toml | ⬜ 待修复 |
+| 4 | mockito | 根 Cargo.toml | ⬜ 待修复 |
+| 5 | tempfile | 根 Cargo.toml | ⬜ 待修复 |
+
+---
+
+### 验证方案
+
+#### 编译验证
+```bash
+# 修复后运行
+cargo build
+cargo clippy -- -D warnings
+cargo test
+```
+
+#### 架构验证
+```bash
+# 确认无重复定义
+grep -r "pub struct AppState" crates/
+grep -r "pub struct Price " crates/
+grep -r "pub struct TieredPrice" crates/
+```
+
+#### Workspace 依赖验证
+```bash
+# 确认所有依赖使用 workspace
+grep -r '= "' crates/*/Cargo.toml
+grep -r '= "' crates/*/crates/*/Cargo.toml
+```
+
+---
+
+### 相关文件
+
+| 文件 | 改动类型 |
+|------|---------|
+| `crates/router/src/lib.rs` | 语法修复、删除重复定义 |
+| `crates/router/src/proxy_logic.rs` | 语法修复、删除重复定义 |
+| `crates/router/src/state.rs` | 保留作为 AppState 唯一定义 |
+| `crates/database/crates/database-models/src/price.rs` | 删除类型定义，保留 Model |
+| `crates/database/crates/database-models/src/tiered_price.rs` | 删除类型定义，保留 Model |
+| `crates/database/crates/database-models/src/lib.rs` | 更新导入 |
+| `crates/router/Cargo.toml` | 使用 workspace 依赖 |
+| `crates/common/Cargo.toml` | 使用 workspace 依赖 |
+| `Cargo.toml` (根) | 添加 workspace 依赖 |

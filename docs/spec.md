@@ -1,6 +1,8 @@
-# BurnCloud 专家级 Rust 开发规范 (v2.0)
+# BurnCloud 专家级 Rust 开发规范 (v2.1)
 
 本文档整合了 BurnCloud 项目的架构规范、代码模式和最佳实践，为 AI 助手和开发者提供完整的开发指南。
+
+> **v2.1 更新**: 新增 Crate 颗粒度指标 (1.4)、边界划分原则 (1.5)、Database/Service 对齐矩阵 (1.6)
 
 ---
 
@@ -70,6 +72,70 @@ Client  →  Server  →  Router  →  Service  →  Database  →  Common
 
 - **One Thing, One Crate**: 任何独立的业务域（如 billing, user, audit）必须是独立的 Crate
 - **禁止巨型 Crate**: 如果一个 Crate 的 `src/lib.rs` 超过 500 行或 mod 超过 5 个，必须拆分
+
+### 1.4 Crate 颗粒度指标 (Granularity Metrics)
+
+| 指标 | 警戒值 | 强制拆分值 | 说明 |
+|------|--------|------------|------|
+| `lib.rs` 行数 | 300 行 | 500 行 | 超过必须拆分到子模块 |
+| 同级 mod 数量 | 5 个 | 8 个 | 超过考虑按领域拆分子 crate |
+| 单文件行数 | 200 行 | 400 行 | 超过必须拆分 |
+| 公开函数数量 | 15 个 | 25 个 | 超过考虑职责拆分 |
+
+**拆分信号** (出现以下情况必须拆分):
+
+- 文件名出现 `and` 或 `_or_`（如 `user_and_billing.rs`）
+- 测试文件需要 mock 超过 3 个外部依赖
+- `struct` 数量超过 10 个
+- 存在明显独立的子领域（如 `Price` 独立于 `Model`）
+
+### 1.5 边界划分原则 (Boundary Rules)
+
+**单个 Crate 的职责边界**:
+
+1. **单一领域**: 只处理一个业务实体或概念（如 User、Price、Channel）
+2. **独立可测**: 可以在不依赖其他子 crate 的情况下进行单元测试
+3. **独立演进**: 版本更新不需要同步修改其他 crate
+
+**禁止的反模式**:
+
+```rust
+// 🛑 禁止: 巨型 lib.rs（所有代码堆在一个文件）
+// crates/database/crates/database-router/src/lib.rs (938行)
+
+// ✅ 正确: 按实体拆分
+// crates/database/crates/database-router/src/
+// ├── lib.rs          (导出，<100行)
+// ├── channel.rs      (ChannelModel)
+// ├── api_key.rs      (ApiKeyModel)
+// ├── price.rs        (PriceModel)
+// └── error.rs        (错误定义)
+```
+
+### 1.6 Database ↔ Service 对齐矩阵 (Alignment Matrix)
+
+Database 和 Service 子 crate **必须一一对应**，形成垂直切分：
+
+| 领域 | Database Crate | Service Crate | 职责 |
+|------|----------------|---------------|------|
+| User | database-user | service-user | 用户认证、权限、配置 |
+| Model | database-models | service-models | 模型元数据、能力 |
+| Price | database-price | service-price | 定价、计费规则 |
+| Channel | database-channel | service-channel | 渠道配置、密钥管理 |
+| Billing | database-billing | service-billing | 账单、消费记录 |
+| Setting | database-setting | service-setting | 系统配置 |
+| Inference | database-inference | service-inference | 推理请求、日志 |
+
+**对齐规则**:
+
+- 命名强制对齐: `database-{domain}` ↔ `service-{domain}`
+- 不允许单边存在（除非明确标记为 "待实现" 并记录在技术债务中）
+- 新增领域时，同时创建 database 和 service 子 crate
+
+**例外情况** (无需对应):
+
+- 纯外部服务封装（如 `service-redis`、`service-ip`）
+- 纯计算/无状态服务（如 `service-monitor`）
 
 ---
 
@@ -450,7 +516,7 @@ burncloud/
 crates/xxx/
 ├── Cargo.toml
 ├── src/
-│   ├── lib.rs          # 库入口
+│   ├── lib.rs          # 库入口（<100行，仅导出）
 │   ├── error.rs        # 错误定义（如有）
 │   ├── types.rs        # 类型定义（如有）
 │   └── {module}/       # 子模块
@@ -458,6 +524,33 @@ crates/xxx/
 ├── examples/           # 示例（可选）
 └── tests/              # 集成测试（可选）
 ```
+
+**lib.rs 模板** (保持简洁):
+
+```rust
+//! Crate 简要描述
+//!
+//! 详细说明...
+
+mod channel;
+mod price;
+mod error;
+
+pub use channel::*;
+pub use price::*;
+pub use error::{Error, Result};
+```
+
+### 7.4 现有 Crate 状态监控
+
+| Crate | lib.rs 行数 | 状态 | 行动 |
+|-------|-------------|------|------|
+| database-router | 938 | 🔴 超标 | 立即拆分 |
+| client-register | 568 | 🔴 超标 | 立即拆分 |
+| service-user | 445 | 🟡 警戒 | 短期拆分 |
+| database-user | 405 | 🟡 警戒 | 短期拆分 |
+
+> 💡 **建议**: 在 CI 中添加 `lib.rs` 行数检查，超过 300 行发出警告
 
 ---
 
@@ -802,20 +895,49 @@ impl XxxModel {
 - 功能独立，与现有子 crate 边界清晰
 - 需要被多个其他 crate 复用
 - 现有子 crate 已经过于庞大
+- 新增独立业务领域（需同时创建 database-{domain} 和 service-{domain}）
 
-### Q2: 为什么金额必须用 i64 纳美元而不用 rust_decimal？
+### Q2: lib.rs 超过多少行必须拆分？
+
+| 行数 | 状态 | 行动 |
+|------|------|------|
+| < 100 | ✅ 理想 | 保持现状 |
+| 100-300 | 🟢 正常 | 可接受 |
+| 300-500 | 🟡 警戒 | 计划拆分 |
+| > 500 | 🔴 强制 | 必须立即拆分 |
+
+**拆分步骤**:
+1. 识别独立的实体/功能模块
+2. 创建独立文件（如 `channel.rs`、`price.rs`）
+3. 将相关函数和类型迁移到新文件
+4. lib.rs 仅保留 `mod` 和 `pub use`
+
+### Q3: 为什么金额必须用 i64 纳美元而不用 rust_decimal？
 
 1. **性能**: i64 是原生类型，运算速度远超 Decimal
 2. **兼容性**: PostgreSQL BIGINT 是有符号 i64，与无符号 u64 不兼容
 3. **精度**: 纳美元提供 9 位小数精度（$0.000000001），足以满足 Token 计费需求
 4. **一致性**: 统一使用 i64 避免类型转换带来的精度丢失
 
-### Q3: 如何处理 UI 国际化？
+### Q4: 如何处理 UI 国际化？
 
 - 使用 `dioxus` 的 i18n 功能
 - 字符串资源放在配置文件中
 - 支持中英文作为基准语言
 - UI 代码中不硬编码字符串
+
+### Q5: Database 和 Service 子 crate 不对齐怎么办？
+
+**优先级**:
+1. **立即修复**: 导致依赖混乱的不对齐
+2. **短期修复**: 缺失的对应 crate（标记为技术债务）
+3. **例外情况**: 纯外部服务（如 redis、ip）无需对应
+
+**修复步骤**:
+1. 创建缺失的 crate（如 `database-price` 对应 `service-price`）
+2. 迁移相关代码
+3. 更新聚合器的 `pub use`
+4. 注册到 workspace
 
 ---
 

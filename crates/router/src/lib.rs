@@ -36,9 +36,7 @@ pub use state::*;
 pub use handlers::{
     reload_handler, models_handler, health_status_handler, proxy_handler,
 };
-pub use proxy_logic::*;
-    proxy_logic, handle_response_with_token_parsing
-};
+pub use proxy_logic::handle_response_with_token_parsing;
 
 use crate::state::AppState;
 use axum::{

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-TASK_FILE="task.md"
+TASK_FILE="./docs/task.md"
 
 # 检查 jq 是否安装
 if ! command -v jq &> /dev/null; then
@@ -62,7 +62,7 @@ while true; do
     # 或者如果 claude-code 有非交互模式，最好用非交互模式
     
     # 这里假设你是在 Docker 里跑，且需要捕获输出
-    OUTPUT=$(echo "/exit" | docker sandbox run -i claude -p "$PROMPT")
+    OUTPUT=$(echo "/exit" | claude --dangerously-skip-permissions -p "$PROMPT")
     
     echo "$OUTPUT"
 
