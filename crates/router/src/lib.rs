@@ -47,6 +47,40 @@ use uuid::Uuid;
 
 pub use state::AppState;
 
+/// Helper function to build a response safely without panicking.
+/// Falls back to an empty body with the same status if body construction fails.
+fn build_response(status: StatusCode, body: Body) -> Response {
+    Response::builder()
+        .status(status)
+        .body(body)
+        .unwrap_or_else(|_| {
+            // Fallback: return a minimal response with the same status
+            Response::builder()
+                .status(status)
+                .body(Body::empty())
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        })
+}
+
+/// Helper function to build a response with a header safely.
+fn build_response_with_header(
+    status: StatusCode,
+    header_name: &str,
+    header_value: &str,
+    body: Body,
+) -> Response {
+    Response::builder()
+        .status(status)
+        .header(header_name, header_value)
+        .body(body)
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(status)
+                .body(Body::empty())
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        })
+}
+
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
     // Load Upstreams
     let db_upstreams = RouterDatabase::get_all_upstreams(db).await?;
@@ -168,15 +202,12 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
         Ok(new_config) => {
             let mut config_write = state.config.write().await;
             *config_write = new_config;
-            Response::builder()
-                .status(200)
-                .body(Body::from("Reloaded"))
-                .unwrap()
+            build_response(StatusCode::OK, Body::from("Reloaded"))
         }
-        Err(e) => Response::builder()
-            .status(500)
-            .body(Body::from(format!("Reload Failed: {}", e)))
-            .unwrap(),
+        Err(e) => build_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Body::from(format!("Reload Failed: {}", e)),
+        ),
     }
 }
 
@@ -223,11 +254,15 @@ async fn models_handler(State(state): State<AppState>) -> Response {
         "data": model_entries
     });
 
-    Response::builder()
-        .status(200)
-        .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&response_json).unwrap()))
-        .unwrap()
+    build_response_with_header(
+        StatusCode::OK,
+        "content-type",
+        "application/json",
+        Body::from(
+            serde_json::to_string(&response_json)
+                .unwrap_or_else(|_| r#"{"object":"list","data":[]}"#.to_string()),
+        ),
+    )
 }
 
 async fn health_status_handler(State(state): State<AppState>) -> Response {
@@ -265,11 +300,12 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
 
     let json = serde_json::to_string(&health_report).unwrap_or_else(|_| "{}".to_string());
 
-    Response::builder()
-        .status(200)
-        .header("content-type", "application/json")
-        .body(Body::from(json))
-        .unwrap()
+    build_response_with_header(
+        StatusCode::OK,
+        "content-type",
+        "application/json",
+        Body::from(json),
+    )
 }
 
 async fn proxy_handler(
@@ -297,10 +333,10 @@ async fn proxy_handler(
     let user_token = match user_auth {
         Some(token) => token.to_string(),
         None => {
-            return Response::builder()
-                .status(401)
-                .body(Body::from("Unauthorized: Missing Bearer Token"))
-                .unwrap();
+            return build_response(
+                StatusCode::UNAUTHORIZED,
+                Body::from("Unauthorized: Missing Bearer Token"),
+            );
         }
     };
 
@@ -334,62 +370,69 @@ async fn proxy_handler(
                         )
                     },
                     Ok(TokenValidationResult::Expired) => {
-                        return Response::builder()
-                            .status(401)
-                            .header("content-type", "application/json")
-                            .body(Body::from(r#"{"error":{"message":"Token has expired","type":"invalid_request_error","code":"token_expired"}}"#))
-                            .unwrap()
+                        return build_response_with_header(
+                            StatusCode::UNAUTHORIZED,
+                            "content-type",
+                            "application/json",
+                            Body::from(r#"{"error":{"message":"Token has expired","type":"invalid_request_error","code":"token_expired"}}"#),
+                        )
                     }
                     Ok(TokenValidationResult::Invalid) => {
-                        return Response::builder()
-                            .status(401)
-                            .header("content-type", "application/json")
-                            .body(Body::from(r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#))
-                            .unwrap()
+                        return build_response_with_header(
+                            StatusCode::UNAUTHORIZED,
+                            "content-type",
+                            "application/json",
+                            Body::from(r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#),
+                        )
                     }
                     Err(e) => {
-                        return Response::builder()
-                            .status(500)
-                            .header("content-type", "application/json")
-                            .body(Body::from(format!(r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#, e)))
-                            .unwrap()
+                        return build_response_with_header(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "content-type",
+                            "application/json",
+                            Body::from(format!(r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#, e)),
+                        )
                     }
                 }
             }
-            Err(e) => return Response::builder()
-                .status(500)
-                .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#,
-                    e
-                )))
-                .unwrap(),
+            Err(e) => {
+                return build_response_with_header(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "content-type",
+                    "application/json",
+                    Body::from(format!(
+                        r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#,
+                        e
+                    )),
+                )
+            }
         };
 
     if quota_limit >= 0 && used_quota >= quota_limit {
-        return Response::builder()
-            .status(402)
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"error":{"message":"Insufficient quota","type":"insufficient_quota_error","code":"insufficient_quota"}}"#))
-            .unwrap();
+        return build_response_with_header(
+            StatusCode::PAYMENT_REQUIRED,
+            "content-type",
+            "application/json",
+            Body::from(r#"{"error":{"message":"Insufficient quota","type":"insufficient_quota_error","code":"insufficient_quota"}}"#),
+        );
     }
 
     // Rate Limiting Check
     if !state.limiter.check(&user_id, 1.0) {
-        return Response::builder()
-            .status(429)
-            .body(Body::from("Too Many Requests"))
-            .unwrap();
+        return build_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            Body::from("Too Many Requests"),
+        );
     }
 
     // Buffer body for token counting and retries
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(e) => {
-            return Response::builder()
-                .status(400)
-                .body(Body::from(format!("Body Read Error: {}", e)))
-                .unwrap()
+            return build_response(
+                StatusCode::BAD_REQUEST,
+                Body::from(format!("Body Read Error: {}", e)),
+            )
         }
     };
 
@@ -693,14 +736,15 @@ async fn proxy_logic(
                     // NoAvailableChannelsError - all channels are unavailable
                     println!("ModelRouter: No available channels for {}: {}", model, e);
                     return (
-                        Response::builder()
-                            .status(503)
-                            .header("content-type", "application/json")
-                            .body(Body::from(format!(
+                        build_response_with_header(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "content-type",
+                            "application/json",
+                            Body::from(format!(
                                 r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels"}}}}"#,
                                 e
-                            )))
-                            .unwrap(),
+                            )),
+                        ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
                     );
@@ -723,13 +767,13 @@ async fn proxy_logic(
             Some(r) => r,
             None => {
                 return (
-                    Response::builder()
-                        .status(404)
-                        .body(Body::from(format!(
+                    build_response(
+                        StatusCode::NOT_FOUND,
+                        Body::from(format!(
                             "No matching upstream found for path: {}",
                             path
-                        )))
-                        .unwrap(),
+                        )),
+                    ),
                     None,
                     StatusCode::NOT_FOUND,
                 );
@@ -741,13 +785,13 @@ async fn proxy_logic(
             RouteTarget::Group(g) => {
                 if g.members.is_empty() {
                     return (
-                        Response::builder()
-                            .status(503)
-                            .body(Body::from(format!(
+                        build_response(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            Body::from(format!(
                                 "Group '{}' has no healthy members",
                                 g.name
-                            )))
-                            .unwrap(),
+                            )),
+                        ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
                     );
@@ -767,10 +811,10 @@ async fn proxy_logic(
 
     if candidates.is_empty() {
         return (
-            Response::builder()
-                .status(500)
-                .body(Body::from("Configuration Error: No upstreams available"))
-                .unwrap(),
+            build_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Body::from("Configuration Error: No upstreams available"),
+            ),
             None,
             StatusCode::INTERNAL_SERVER_ERROR,
         );
@@ -863,7 +907,9 @@ async fn proxy_logic(
             // Prepare request body - remove 'stream' field for Gemini native API
             let mut passthrough_body = body_json.clone();
             if passthrough_body.get("stream").is_some() {
-                passthrough_body.as_object_mut().unwrap().remove("stream");
+                if let Some(obj) = passthrough_body.as_object_mut() {
+                    obj.remove("stream");
+                }
             }
 
             // Build passthrough request with final URL
@@ -950,7 +996,12 @@ async fn proxy_logic(
                                     .header("cache-control", "no-cache")
                                     .header("connection", "keep-alive")
                                     .body(Body::from_stream(stream))
-                                    .unwrap(),
+                                    .unwrap_or_else(|_| {
+                                        build_response(
+                                            StatusCode::INTERNAL_SERVER_ERROR,
+                                            Body::from("Failed to build streaming response"),
+                                        )
+                                    }),
                                 last_upstream_id,
                                 status,
                             );
@@ -976,11 +1027,12 @@ async fn proxy_logic(
                             }
 
                             return (
-                                Response::builder()
-                                    .status(status)
-                                    .header("content-type", "application/json")
-                                    .body(Body::from(resp_bytes))
-                                    .unwrap(),
+                                build_response_with_header(
+                                    status,
+                                    "content-type",
+                                    "application/json",
+                                    Body::from(resp_bytes),
+                                ),
                                 last_upstream_id,
                                 status,
                             );
@@ -992,10 +1044,7 @@ async fn proxy_logic(
                             Err(e) => {
                                 last_error = format!("Failed to read error response: {}", e);
                                 return (
-                                    Response::builder()
-                                        .status(status)
-                                        .body(Body::from(last_error.clone()))
-                                        .unwrap(),
+                                    build_response(status, Body::from(last_error.clone())),
                                     last_upstream_id,
                                     status,
                                 );
@@ -1024,11 +1073,12 @@ async fn proxy_logic(
                         }
 
                         return (
-                            Response::builder()
-                                .status(status)
-                                .header("content-type", "application/json")
-                                .body(Body::from(body_bytes))
-                                .unwrap(),
+                            build_response_with_header(
+                                status,
+                                "content-type",
+                                "application/json",
+                                Body::from(body_bytes),
+                            ),
                             last_upstream_id,
                             status,
                         );
@@ -1072,7 +1122,14 @@ async fn proxy_logic(
             last_error = "Failed to prepare request body".to_string();
             continue;
         }
-        let mut request_body_json = request_body_json.unwrap();
+        // SAFETY: We just checked that request_body_json is Some
+        let mut request_body_json = match request_body_json {
+            Some(json) => json,
+            None => {
+                last_error = "Failed to prepare request body".to_string();
+                continue;
+            }
+        };
 
         // Check if streaming is requested
         let is_stream = request_body_json
@@ -1244,7 +1301,12 @@ async fn proxy_logic(
                                 .header("cache-control", "no-cache")
                                 .header("connection", "keep-alive")
                                 .body(Body::from_stream(final_stream))
-                                .unwrap(),
+                                .unwrap_or_else(|_| {
+                                    build_response(
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        Body::from("Failed to build streaming response"),
+                                    )
+                                }),
                             last_upstream_id,
                             status,
                         );
@@ -1265,11 +1327,12 @@ async fn proxy_logic(
                     };
 
                     return (
-                        Response::builder()
-                            .status(status)
-                            .header("content-type", "application/json")
-                            .body(Body::from(response_body))
-                            .unwrap(),
+                        build_response_with_header(
+                            status,
+                            "content-type",
+                            "application/json",
+                            Body::from(response_body),
+                        ),
                         last_upstream_id,
                         status,
                     );
@@ -1282,10 +1345,7 @@ async fn proxy_logic(
                             // If we can't read the body, return a simple error
                             last_error = format!("Failed to read response body: {}", e);
                             return (
-                                Response::builder()
-                                    .status(status)
-                                    .body(Body::from(last_error.clone()))
-                                    .unwrap(),
+                                build_response(status, Body::from(last_error.clone())),
                                 last_upstream_id,
                                 status,
                             );
@@ -1405,11 +1465,12 @@ async fn proxy_logic(
                     );
 
                     return (
-                        Response::builder()
-                            .status(status)
-                            .header("content-type", "application/json")
-                            .body(Body::from(body_bytes))
-                            .unwrap(),
+                        build_response_with_header(
+                            status,
+                            "content-type",
+                            "application/json",
+                            Body::from(body_bytes),
+                        ),
                         last_upstream_id,
                         status,
                     );
@@ -1437,13 +1498,13 @@ async fn proxy_logic(
     }
 
     (
-        Response::builder()
-            .status(502)
-            .body(Body::from(format!(
+        build_response(
+            StatusCode::BAD_GATEWAY,
+            Body::from(format!(
                 "All upstreams failed. Last error: {}",
                 last_error
-            )))
-            .unwrap(),
+            )),
+        ),
         None,
         StatusCode::BAD_GATEWAY,
     )
