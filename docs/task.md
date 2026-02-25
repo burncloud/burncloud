@@ -29,7 +29,7 @@
       "在 proxy_logic.rs 中添加 use crate::state::AppState;",
       "运行 cargo build 和 cargo clippy 验证"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactor",

@@ -13,6 +13,7 @@ pub mod passthrough;
 pub mod price_sync;
 pub mod pricing_loader;
 pub mod response_parser;
+mod state;
 pub mod stream_parser;
 pub mod token_counter;
 
@@ -44,20 +45,7 @@ use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
-#[derive(Clone)]
-struct AppState {
-    client: Client,
-    config: Arc<RwLock<RouterConfig>>,
-    db: Arc<Database>,
-    balancer: Arc<RoundRobinBalancer>,
-    limiter: Arc<RateLimiter>,
-    circuit_breaker: Arc<CircuitBreaker>,
-    log_tx: mpsc::Sender<DbRouterLog>,
-    model_router: Arc<ModelRouter>,
-    channel_state_tracker: Arc<ChannelStateTracker>,
-    adaptor_factory: Arc<adaptor::factory::DynamicAdaptorFactory>,
-    api_version_detector: Arc<adaptor::detector::ApiVersionDetector>,
-}
+pub use state::AppState;
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
     // Load Upstreams
