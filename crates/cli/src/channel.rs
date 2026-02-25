@@ -4,6 +4,7 @@
 //! - add: Create a new channel
 //! - list: List all channels
 //! - show: Show channel details
+//! - update: Update a channel
 //! - delete: Delete a channel
 
 use anyhow::{anyhow, Result};
@@ -260,6 +261,65 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+/// Handle channel update command
+pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> {
+    let id: i32 = args
+        .get_one::<String>("id")
+        .ok_or_else(|| anyhow!("Channel ID is required"))?
+        .parse()?;
+
+    // Get existing channel
+    let mut channel = ChannelModel::get_by_id(db, id)
+        .await?
+        .ok_or_else(|| anyhow!("Channel with ID {} not found", id))?;
+
+    // Update fields only if provided
+    if let Some(name) = args.get_one::<String>("name") {
+        channel.name = name.clone();
+    }
+
+    if let Some(key) = args.get_one::<String>("key") {
+        channel.key = key.clone();
+    }
+
+    if let Some(status_str) = args.get_one::<String>("status") {
+        channel.status = status_str
+            .parse()
+            .map_err(|e| anyhow!("Invalid status value '{}': {}", status_str, e))?;
+    }
+
+    if let Some(models) = args.get_one::<String>("models") {
+        channel.models = models.clone();
+    }
+
+    if let Some(priority_str) = args.get_one::<String>("priority") {
+        channel.priority = priority_str
+            .parse()
+            .map_err(|e| anyhow!("Invalid priority value '{}': {}", priority_str, e))?;
+    }
+
+    if let Some(weight_str) = args.get_one::<String>("weight") {
+        channel.weight = weight_str
+            .parse()
+            .map_err(|e| anyhow!("Invalid weight value '{}': {}", weight_str, e))?;
+    }
+
+    if let Some(base_url) = args.get_one::<String>("base-url") {
+        channel.base_url = Some(base_url.clone());
+    }
+
+    if let Some(pricing_region) = args.get_one::<String>("pricing-region") {
+        channel.pricing_region = Some(pricing_region.clone());
+    }
+
+    // Save updates
+    ChannelModel::update(db, &channel).await?;
+
+    println!("Channel {} updated successfully", id);
+
+    Ok(())
+}
+
 /// Handle channel delete command
 pub async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> {
     let id: i32 = args
@@ -300,12 +360,14 @@ pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Resu
         Some(("add", sub_m)) => cmd_channel_add(db, sub_m).await,
         Some(("list", sub_m)) => cmd_channel_list(db, sub_m).await,
         Some(("show", sub_m)) => cmd_channel_show(db, sub_m).await,
+        Some(("update", sub_m)) => cmd_channel_update(db, sub_m).await,
         Some(("delete", sub_m)) => cmd_channel_delete(db, sub_m).await,
         _ => {
             println!("Channel management commands:");
             println!("  add     Add a new channel");
             println!("  list    List all channels");
             println!("  show    Show channel details");
+            println!("  update  Update a channel");
             println!("  delete  Delete a channel");
             println!("\nRun 'burncloud channel <command> --help' for more information.");
             Ok(())

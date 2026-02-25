@@ -105,7 +105,7 @@
       "update 子命令: 位置参数 id, 可选参数 --name, --key, --status, --models, --priority, --weight, --base-url, --pricing-region",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-group-create",

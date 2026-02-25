@@ -119,6 +119,55 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .required(true)
                                 .help("Channel ID to show"),
                         ),
+                )
+                .subcommand(
+                    Command::new("update")
+                        .about("Update a channel")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Channel ID to update"),
+                        )
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .help("Channel name"),
+                        )
+                        .arg(
+                            Arg::new("key")
+                                .long("key")
+                                .help("API key for the channel"),
+                        )
+                        .arg(
+                            Arg::new("status")
+                                .long("status")
+                                .help("Channel status (1=enabled, 2=disabled, 3=auto-disabled)"),
+                        )
+                        .arg(
+                            Arg::new("models")
+                                .long("models")
+                                .help("Comma-separated list of supported models"),
+                        )
+                        .arg(
+                            Arg::new("priority")
+                                .long("priority")
+                                .help("Channel priority"),
+                        )
+                        .arg(
+                            Arg::new("weight")
+                                .long("weight")
+                                .help("Channel weight"),
+                        )
+                        .arg(
+                            Arg::new("base-url")
+                                .long("base-url")
+                                .help("Custom base URL for the channel"),
+                        )
+                        .arg(
+                            Arg::new("pricing-region")
+                                .long("pricing-region")
+                                .help("Pricing region for this channel (cn, international, or omit for universal)"),
+                        ),
                 ),
         )
         .subcommand(
