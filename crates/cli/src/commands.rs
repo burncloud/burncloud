@@ -707,6 +707,29 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .value_parser(["table", "json"])
                                 .help("Output format (table or json)"),
                         ),
+                )
+                .subcommand(
+                    Command::new("topup")
+                        .about("Topup user balance")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .required(true)
+                                .help("User ID to topup"),
+                        )
+                        .arg(
+                            Arg::new("amount")
+                                .long("amount")
+                                .required(true)
+                                .help("Amount to topup (in dollars, e.g., 100.00)"),
+                        )
+                        .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .required(true)
+                                .value_parser(["USD", "CNY", "usd", "cny"])
+                                .help("Currency for topup (USD or CNY)"),
+                        ),
                 ),
         );
 

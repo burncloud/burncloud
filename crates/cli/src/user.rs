@@ -192,6 +192,61 @@ pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+/// Handle user topup command
+pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
+    let user_id = matches.get_one::<String>("user-id").unwrap();
+    let amount_str = matches.get_one::<String>("amount").unwrap();
+    let currency = matches.get_one::<String>("currency").unwrap().to_uppercase();
+
+    // Validate currency
+    if currency != "USD" && currency != "CNY" {
+        return Err(anyhow::anyhow!(
+            "Invalid currency '{}'. Must be USD or CNY",
+            currency
+        ));
+    }
+
+    // Parse amount (in dollars) and convert to nanodollars
+    let amount_dollar: f64 = amount_str
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid amount '{}': {}", amount_str, e))?;
+
+    if amount_dollar <= 0.0 {
+        return Err(anyhow::anyhow!("Amount must be greater than 0"));
+    }
+
+    let amount_nano = (amount_dollar * 1_000_000_000.0) as i64;
+
+    // Create recharge record (this also updates the balance)
+    let recharge = burncloud_database_user::DbRecharge {
+        id: 0, // Auto-generated
+        user_id: user_id.clone(),
+        amount: amount_nano,
+        currency: Some(currency.clone()),
+        description: Some(format!("CLI topup: {} {}", amount_dollar, currency)),
+        created_at: None,
+    };
+
+    let recharge_id = UserDatabase::create_recharge(db, &recharge).await?;
+
+    // Get new balance
+    let new_balance_nano = UserDatabase::update_balance(db, user_id, 0, Some(&currency)).await?;
+
+    // Convert nanodollars to display format
+    let new_balance = new_balance_nano as f64 / 1_000_000_000.0;
+
+    // Output success message
+    println!("Topup successful!");
+    println!();
+    println!("Recharge Details:");
+    println!("  Recharge ID: {}", recharge_id);
+    println!("  User ID: {}", user_id);
+    println!("  Amount: {} {}", amount_dollar, currency);
+    println!("  New Balance ({}): {:.2}", currency, new_balance);
+
+    Ok(())
+}
+
 /// Route user commands
 pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -204,8 +259,11 @@ pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<
         Some(("list", sub_m)) => {
             cmd_user_list(db, sub_m).await?;
         }
+        Some(("topup", sub_m)) => {
+            cmd_user_topup(db, sub_m).await?;
+        }
         _ => {
-            println!("Usage: burncloud user <register|login|list>");
+            println!("Usage: burncloud user <register|login|list|topup>");
             println!("Run 'burncloud user --help' for more information.");
         }
     }

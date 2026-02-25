@@ -61,7 +61,7 @@
       "topup 子命令参数: --user-id, --amount, --currency",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-user-recharges",
