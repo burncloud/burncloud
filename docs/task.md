@@ -274,6 +274,6 @@
       "测试 JSON 格式: ./target/release/burncloud log list --format json --limit 3",
       "验证所有命令输出正确，无报错"
     ],
-    "passes": false
+    "passes": true
   }
 ]
