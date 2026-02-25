@@ -3,6 +3,38 @@ set -e
 
 TASK_FILE="./docs/task.md"
 
+# 加载 .env 文件（如果存在）
+if [[ -f "./.env" ]]; then
+    set -a
+    source "./.env"
+    set +a
+fi
+
+# ============ Telegram 通知配置 ============
+# 从 .env 或环境变量读取
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+
+# 发送 Telegram 消息
+send_telegram() {
+    local message="$1"
+
+    # 如果没有配置，跳过
+    if [[ -z "$TELEGRAM_BOT_TOKEN" ]] || [[ -z "$TELEGRAM_CHAT_ID" ]]; then
+        echo "⚠️  Telegram not configured (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)"
+        return 0
+    fi
+
+    local escaped_message
+    escaped_message=$(echo "$message" | jq -Rs .)
+
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -H "Content-Type: application/json" \
+        -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": ${escaped_message}, \"parse_mode\": \"HTML\"}" \
+        > /dev/null 2>&1 || echo "⚠️  Failed to send Telegram notification"
+}
+
 # 检查 jq 是否安装
 if ! command -v jq &> /dev/null; then
     echo "Error: jq is required. Please install it."
@@ -101,6 +133,14 @@ while true; do
         # 显示当前任务耗时
         echo "⏱️  Task completed in $(format_duration $TASK_DURATION)"
 
+        # 8. 发送 Telegram 通知
+        send_telegram "✅ <b>Task Completed</b>
+
+<b>Category:</b> $CATEGORY
+<b>Description:</b> $DESCRIPTION
+<b>Duration:</b> $(format_duration $TASK_DURATION)
+<b>Completed:</b> $COMPLETED_COUNT tasks so far"
+
         # 6. 更新 task.md 文件 (将 passes 改为 true)
         # 使用临时文件以防 jq 写入错误
         tmp=$(mktemp)
@@ -139,6 +179,13 @@ echo ""
 echo "=================================================="
 echo "📊 TASK COMPLETION REPORT"
 echo "=================================================="
+
+# 发送最终报告到 Telegram
+send_telegram "🎉 <b>All Tasks Completed!</b>
+
+<b>Total tasks:</b> $COMPLETED_COUNT
+<b>Total time:</b> $(format_duration $TOTAL_DURATION)
+$(if [ $COMPLETED_COUNT -gt 0 ]; then echo "<b>Average per task:</b> $(format_duration $((TOTAL_DURATION / COMPLETED_COUNT)))"; fi)"
 echo ""
 echo "📋 Total tasks completed: $COMPLETED_COUNT"
 echo ""

@@ -11,6 +11,7 @@ use crate::currency::handle_currency_command;
 use crate::price::{handle_price_command, handle_tiered_command};
 use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
+use crate::user::handle_user_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
@@ -642,6 +643,32 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Target currency (USD, CNY, EUR)"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("user")
+                .about("Manage users")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("register")
+                        .about("Register a new user")
+                        .arg(
+                            Arg::new("username")
+                                .long("username")
+                                .required(true)
+                                .help("Username for the new user"),
+                        )
+                        .arg(
+                            Arg::new("password")
+                                .long("password")
+                                .required(true)
+                                .help("Password for the new user"),
+                        )
+                        .arg(
+                            Arg::new("email")
+                                .long("email")
+                                .help("Email address (optional)"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -734,6 +761,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("currency", sub_m)) => {
             let db = Database::new().await?;
             handle_currency_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("user", sub_m)) => {
+            let db = Database::new().await?;
+            handle_user_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {

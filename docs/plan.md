@@ -1790,3 +1790,235 @@ grep -r '= "' crates/*/crates/*/Cargo.toml
 | `crates/router/Cargo.toml` | 使用 workspace 依赖 |
 | `crates/common/Cargo.toml` | 使用 workspace 依赖 |
 | `Cargo.toml` (根) | 添加 workspace 依赖 |
+
+---
+
+## 十六、CLI 命令行工具完善
+
+### 背景
+
+当前 CLI 工具已支持部分功能，但还有一些 API 功能缺少对应的 CLI 命令。为方便大模型进行黑盒测试和运维操作，需要补全缺失的 CLI 命令。
+
+### 已有 CLI 命令
+
+| 模块 | 命令 | 说明 |
+|------|------|------|
+| **channel** | add, list, show, delete | 渠道管理 |
+| **price** | list, set, get, show, delete, sync-status, import, export, validate | 价格管理 |
+| **tiered** | list-tiers, add-tier, import-tiered, delete-tiers, check-tiered | 阶梯定价 |
+| **token** | list, create, update, delete | API Token 管理 |
+| **protocol** | list, add, delete, show, test | 协议配置 |
+| **currency** | list-rates, set-rate, refresh, convert | 汇率管理 |
+
+### 缺失 CLI 命令（按优先级）
+
+#### P0 - 高优先级
+
+##### 1. user (用户管理)
+
+```bash
+# 用户注册
+burncloud user register --username <name> --password <pwd> --email <email>
+
+# 用户登录
+burncloud user login --username <name> --password <pwd>
+
+# 列出所有用户
+burncloud user list [--limit 100] [--offset 0]
+
+# 用户充值
+burncloud user topup --user-id <id> --amount <amount> --currency <USD|CNY>
+
+# 充值记录
+burncloud user recharges --user-id <id> [--limit 100]
+
+# 检查用户名
+burncloud user check-username --username <name>
+```
+
+**实现文件**:
+- `crates/cli/src/user.rs` (新建)
+- `crates/cli/src/commands.rs` (添加 user 子命令)
+
+**对应 API**:
+- `POST /console/api/user/register`
+- `POST /console/api/user/login`
+- `GET /console/api/list_users`
+- `POST /console/api/user/topup`
+- `GET /console/api/user/recharges`
+
+---
+
+#### P1 - 中优先级
+
+##### 2. channel update (补全渠道管理)
+
+```bash
+# 更新渠道配置
+burncloud channel update <id> \
+  [--name <name>] \
+  [--key <key>] \
+  [--status <1|2|3>] \
+  [--models <models>] \
+  [--priority <n>] \
+  [--pricing-region <cn|intl|universal>]
+```
+
+**实现文件**:
+- `crates/cli/src/channel.rs` (添加 cmd_channel_update)
+- `crates/cli/src/commands.rs` (添加 update 子命令)
+
+---
+
+##### 3. group (路由组管理)
+
+```bash
+# 创建路由组
+burncloud group create --name <name> [--members <member1,member2>]
+
+# 列出所有组
+burncloud group list [--format table|json]
+
+# 显示组详情
+burncloud group show <id>
+
+# 删除组
+burncloud group delete <id> [-y]
+
+# 查看组成员
+burncloud group members <id>
+
+# 设置组成员
+burncloud group members <id> --set <member1,member2>
+```
+
+**实现文件**:
+- `crates/cli/src/group.rs` (新建)
+- `crates/cli/src/commands.rs` (添加 group 子命令)
+
+**对应 API**:
+- `POST /groups`
+- `GET /groups`
+- `GET /groups/{id}`
+- `DELETE /groups/{id}`
+- `GET/PUT /groups/{id}/members`
+
+---
+
+#### P2 - 低优先级
+
+##### 4. log (日志管理)
+
+```bash
+# 列出请求日志
+burncloud log list [--user-id <id>] [--limit 100] [--offset 0]
+
+# 用户使用统计
+burncloud log usage --user-id <id>
+```
+
+**实现文件**:
+- `crates/cli/src/log.rs` (新建)
+- `crates/cli/src/commands.rs` (添加 log 子命令)
+
+---
+
+##### 5. monitor (系统监控)
+
+```bash
+# 显示系统监控指标
+burncloud monitor status [--format table|json]
+```
+
+**实现文件**:
+- `crates/cli/src/monitor.rs` (新建)
+- `crates/cli/src/commands.rs` (添加 monitor 子命令)
+
+---
+
+### 实现顺序
+
+```
+Phase 1 (P0):
+├── user register
+├── user login
+├── user list
+├── user topup
+└── user recharges
+
+Phase 2 (P1):
+├── channel update
+├── group create
+├── group list
+├── group show
+├── group delete
+└── group members
+
+Phase 3 (P2):
+├── log list
+├── log usage
+└── monitor status
+```
+
+### 代码模板
+
+#### user.rs 模板
+
+```rust
+//! User management CLI commands
+
+use anyhow::Result;
+use burncloud_database::Database;
+use clap::ArgMatches;
+
+/// Handle user register command
+pub async fn cmd_user_register(db: &Database, args: &ArgMatches) -> Result<()> {
+    let username = args.get_one::<String>("username").unwrap();
+    let password = args.get_one::<String>("password").unwrap();
+    let email = args.get_one::<String>("email");
+
+    // TODO: Implement user registration
+    println!("User '{}' registered successfully", username);
+    Ok(())
+}
+
+/// Handle user list command
+pub async fn cmd_user_list(db: &Database, args: &ArgMatches) -> Result<()> {
+    let limit: i32 = args.get_one::<String>("limit").unwrap_or(&"100".to_string()).parse()?;
+    let offset: i32 = args.get_one::<String>("offset").unwrap_or(&"0".to_string()).parse()?;
+
+    // TODO: Implement user listing
+    println!("Listing users (limit={}, offset={})", limit, offset);
+    Ok(())
+}
+
+/// Handle user command routing
+pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+    match matches.subcommand() {
+        Some(("register", sub_m)) => cmd_user_register(db, sub_m).await,
+        Some(("list", sub_m)) => cmd_user_list(db, sub_m).await,
+        // ... other subcommands
+        _ => {
+            println!("User management commands:");
+            println!("  register      Register a new user");
+            println!("  login         User login");
+            println!("  list          List all users");
+            println!("  topup         Top up user balance");
+            println!("  recharges     List recharge history");
+            Ok(())
+        }
+    }
+}
+```
+
+### 相关文件
+
+| 文件 | 改动类型 |
+|------|---------|
+| `crates/cli/src/user.rs` | 新建 |
+| `crates/cli/src/group.rs` | 新建 |
+| `crates/cli/src/log.rs` | 新建 |
+| `crates/cli/src/monitor.rs` | 新建 |
+| `crates/cli/src/channel.rs` | 添加 update 命令 |
+| `crates/cli/src/commands.rs` | 添加所有新子命令 |
+| `crates/cli/src/lib.rs` | 导出新模块 |
