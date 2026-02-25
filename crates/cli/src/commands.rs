@@ -10,6 +10,7 @@ use crate::channel::handle_channel_command;
 use crate::currency::handle_currency_command;
 use crate::group::handle_group_command;
 use crate::log::handle_log_command;
+use crate::monitor::handle_monitor_command;
 use crate::price::{handle_price_command, handle_tiered_command};
 use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
@@ -945,6 +946,22 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Output format (table or json)"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("monitor")
+                .about("Monitor system status")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("status")
+                        .about("Show system status and metrics")
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -1052,6 +1069,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("log", sub_m)) => {
             let db = Database::new().await?;
             handle_log_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("monitor", sub_m)) => {
+            let db = Database::new().await?;
+            handle_monitor_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {

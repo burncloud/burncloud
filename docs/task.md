@@ -230,7 +230,7 @@
       "在 commands.rs 添加 Command::new(\"monitor\") 和 status 子命令",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-test-user",
