@@ -17,7 +17,7 @@
       "修复 crates/router/src/proxy_logic.rs:21 缺少的 >",
       "运行 cargo build 验证编译通过"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactor",
