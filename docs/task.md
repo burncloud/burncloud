@@ -151,7 +151,7 @@
       "在 commands.rs 的 group 子命令下添加 show 子命令",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-group-delete",

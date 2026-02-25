@@ -837,6 +837,15 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .value_parser(["table", "json"])
                                 .help("Output format (table or json)"),
                         ),
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show group details")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Group ID"),
+                        ),
                 ),
         );
 

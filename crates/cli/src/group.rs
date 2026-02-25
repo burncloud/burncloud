@@ -111,6 +111,49 @@ pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()>
     Ok(())
 }
 
+/// Handle group show command
+pub async fn cmd_group_show(db: &Database, matches: &ArgMatches) -> Result<()> {
+    let id = matches.get_one::<String>("id").unwrap();
+
+    // Fetch the group
+    let group = RouterDatabase::get_group_by_id(db, id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Group not found: {}", id))?;
+
+    // Fetch group members
+    let members = RouterDatabase::get_group_members_by_group(db, id).await?;
+
+    // Output group details
+    println!("Group Details:");
+    println!("  ID:          {}", group.id);
+    println!("  Name:        {}", group.name);
+    println!("  Strategy:    {}", group.strategy);
+    println!("  Match Path:  {}", group.match_path);
+    println!();
+
+    // Output members
+    if members.is_empty() {
+        println!("Members: (none)");
+    } else {
+        println!("Members:");
+        println!(
+            "{:<5} {:<40} {:<10}",
+            "#", "Upstream ID", "Weight"
+        );
+        println!("{}", "-".repeat(55));
+        for (i, member) in members.iter().enumerate() {
+            println!(
+                "{:<5} {:<40} {:<10}",
+                i + 1,
+                member.upstream_id,
+                member.weight
+            );
+        }
+    }
+
+    Ok(())
+}
+
 /// Route group commands
 pub async fn handle_group_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -120,8 +163,11 @@ pub async fn handle_group_command(db: &Database, matches: &ArgMatches) -> Result
         Some(("list", sub_m)) => {
             cmd_group_list(db, sub_m).await?;
         }
+        Some(("show", sub_m)) => {
+            cmd_group_show(db, sub_m).await?;
+        }
         _ => {
-            println!("Usage: burncloud group <create|list>");
+            println!("Usage: burncloud group <create|list|show>");
             println!("Run 'burncloud group --help' for more information.");
         }
     }

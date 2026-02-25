@@ -380,6 +380,20 @@ impl RouterDatabase {
         Ok(rows)
     }
 
+    pub async fn get_group_by_id(db: &Database, id: &str) -> Result<Option<DbGroup>> {
+        let conn = db.get_connection()?;
+        let sql = if db.kind() == "postgres" {
+            "SELECT id, name, strategy, match_path FROM router_groups WHERE id = $1"
+        } else {
+            "SELECT id, name, strategy, match_path FROM router_groups WHERE id = ?"
+        };
+        let group = sqlx::query_as::<_, DbGroup>(sql)
+            .bind(id)
+            .fetch_optional(conn.pool())
+            .await?;
+        Ok(group)
+    }
+
     pub async fn get_group_members(db: &Database) -> Result<Vec<DbGroupMember>> {
         let conn = db.get_connection()?;
         let rows = sqlx::query_as::<_, DbGroupMember>(
