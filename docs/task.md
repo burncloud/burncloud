@@ -245,7 +245,7 @@
       "验证所有命令输出正确，无报错",
       "清理测试数据（如需要）"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-test-channel-group",
