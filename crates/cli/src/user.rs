@@ -116,6 +116,82 @@ pub async fn cmd_user_register(db: &Database, matches: &ArgMatches) -> Result<()
     Ok(())
 }
 
+/// Handle user list command
+pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
+    let limit: i64 = matches
+        .get_one::<String>("limit")
+        .unwrap()
+        .parse()
+        .unwrap_or(100);
+    let offset: i64 = matches
+        .get_one::<String>("offset")
+        .unwrap()
+        .parse()
+        .unwrap_or(0);
+    let format = matches
+        .get_one::<String>("format")
+        .map(|s| s.as_str())
+        .unwrap_or("table");
+
+    // Get all users (list_users doesn't support pagination, we'll apply it here)
+    let mut users = UserDatabase::list_users(db).await?;
+
+    // Apply offset and limit
+    let start = offset as usize;
+    let end = std::cmp::min(start + limit as usize, users.len());
+    let users: Vec<_> = if start < users.len() {
+        users.drain(start..end).collect()
+    } else {
+        vec![]
+    };
+
+    if users.is_empty() {
+        println!("No users found");
+        return Ok(());
+    }
+
+    match format {
+        "json" => {
+            // Create a simplified user view for JSON output
+            let users_json: Vec<serde_json::Value> = users
+                .iter()
+                .map(|u| {
+                    serde_json::json!({
+                        "id": u.id,
+                        "username": u.username,
+                        "email": u.email,
+                        "balance_usd": u.balance_usd as f64 / 1_000_000_000.0,
+                        "balance_cny": u.balance_cny as f64 / 1_000_000_000.0,
+                        "status": if u.status == 1 { "Active" } else { "Disabled" }
+                    })
+                })
+                .collect();
+            let json = serde_json::to_string_pretty(&users_json)?;
+            println!("{}", json);
+        }
+        _ => {
+            // Table format
+            println!(
+                "{:<40} {:<20} {:<30} {:<15} {:<15} {:<10}",
+                "ID", "Username", "Email", "Balance_USD", "Balance_CNY", "Status"
+            );
+            println!("{}", "-".repeat(135));
+            for user in users {
+                let balance_usd = user.balance_usd as f64 / 1_000_000_000.0;
+                let balance_cny = user.balance_cny as f64 / 1_000_000_000.0;
+                let email = user.email.as_deref().unwrap_or("N/A");
+                let status = if user.status == 1 { "Active" } else { "Disabled" };
+                println!(
+                    "{:<40} {:<20} {:<30} ${:<14.2} ¥{:<14.2} {:<10}",
+                    user.id, user.username, email, balance_usd, balance_cny, status
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Route user commands
 pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -125,8 +201,11 @@ pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<
         Some(("login", sub_m)) => {
             cmd_user_login(db, sub_m).await?;
         }
+        Some(("list", sub_m)) => {
+            cmd_user_list(db, sub_m).await?;
+        }
         _ => {
-            println!("Usage: burncloud user <register|login>");
+            println!("Usage: burncloud user <register|login|list>");
             println!("Run 'burncloud user --help' for more information.");
         }
     }

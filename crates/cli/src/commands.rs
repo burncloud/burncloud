@@ -684,6 +684,29 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .required(true)
                                 .help("Password for the user"),
                         ),
+                )
+                .subcommand(
+                    Command::new("list")
+                        .about("List all users")
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
                 ),
         );
 
