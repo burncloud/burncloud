@@ -40,7 +40,7 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
     // 3. Setup: Create pricing for test model (using PriceModel with nanodollars)
     let price_input = PriceInput {
         model: "gpt-4o-mini-e2e".to_string(),
-        input_price: dollars_to_nano(0.15),  // $0.15 per 1M tokens -> nanodollars (i64)
+        input_price: dollars_to_nano(0.15), // $0.15 per 1M tokens -> nanodollars (i64)
         output_price: dollars_to_nano(0.60), // $0.60 per 1M tokens -> nanodollars (i64)
         currency: "USD".to_string(),
         cache_read_input_price: None,

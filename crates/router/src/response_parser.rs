@@ -541,8 +541,14 @@ mod tests {
     #[test]
     fn test_parse_openai_rate_limit() {
         let mut headers = HeaderMap::new();
-        headers.insert("x-ratelimit-limit-requests", HeaderValue::from_static("100"));
-        headers.insert("x-ratelimit-limit-tokens", HeaderValue::from_static("100000"));
+        headers.insert(
+            "x-ratelimit-limit-requests",
+            HeaderValue::from_static("100"),
+        );
+        headers.insert(
+            "x-ratelimit-limit-tokens",
+            HeaderValue::from_static("100000"),
+        );
         headers.insert("retry-after", HeaderValue::from_static("30"));
 
         let info = parse_openai_rate_limit(&headers);

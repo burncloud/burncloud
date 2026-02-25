@@ -312,9 +312,15 @@ impl UserDatabase {
     pub async fn assign_role(db: &Database, user_id: &str, role_name: &str) -> Result<()> {
         let conn = db.get_connection()?;
         let (select_sql, insert_sql) = if db.kind() == "postgres" {
-            ("SELECT id FROM roles WHERE name = $1", "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)")
+            (
+                "SELECT id FROM roles WHERE name = $1",
+                "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
+            )
         } else {
-            ("SELECT id FROM roles WHERE name = ?", "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
+            (
+                "SELECT id FROM roles WHERE name = ?",
+                "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+            )
         };
         let role_id: Option<String> = sqlx::query(select_sql)
             .bind(role_name)
@@ -348,9 +354,15 @@ impl UserDatabase {
     pub async fn update_balance_usd(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;
         let (update_sql, select_sql) = if db.kind() == "postgres" {
-            ("UPDATE users SET balance_usd = balance_usd + $1 WHERE id = $2", "SELECT balance_usd FROM users WHERE id = $1")
+            (
+                "UPDATE users SET balance_usd = balance_usd + $1 WHERE id = $2",
+                "SELECT balance_usd FROM users WHERE id = $1",
+            )
         } else {
-            ("UPDATE users SET balance_usd = balance_usd + ? WHERE id = ?", "SELECT balance_usd FROM users WHERE id = ?")
+            (
+                "UPDATE users SET balance_usd = balance_usd + ? WHERE id = ?",
+                "SELECT balance_usd FROM users WHERE id = ?",
+            )
         };
         sqlx::query(update_sql)
             .bind(delta)
@@ -371,9 +383,15 @@ impl UserDatabase {
     pub async fn update_balance_cny(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;
         let (update_sql, select_sql) = if db.kind() == "postgres" {
-            ("UPDATE users SET balance_cny = balance_cny + $1 WHERE id = $2", "SELECT balance_cny FROM users WHERE id = $1")
+            (
+                "UPDATE users SET balance_cny = balance_cny + $1 WHERE id = $2",
+                "SELECT balance_cny FROM users WHERE id = $1",
+            )
         } else {
-            ("UPDATE users SET balance_cny = balance_cny + ? WHERE id = ?", "SELECT balance_cny FROM users WHERE id = ?")
+            (
+                "UPDATE users SET balance_cny = balance_cny + ? WHERE id = ?",
+                "SELECT balance_cny FROM users WHERE id = ?",
+            )
         };
         sqlx::query(update_sql)
             .bind(delta)
@@ -392,7 +410,12 @@ impl UserDatabase {
 
     /// Update balance by delta in nanodollars (generic currency-aware method)
     /// Defaults to USD if currency is not specified
-    pub async fn update_balance(db: &Database, user_id: &str, delta_nano: i64, currency: Option<&str>) -> Result<i64> {
+    pub async fn update_balance(
+        db: &Database,
+        user_id: &str,
+        delta_nano: i64,
+        currency: Option<&str>,
+    ) -> Result<i64> {
         match currency {
             Some("CNY") => Self::update_balance_cny(db, user_id, delta_nano).await,
             _ => Self::update_balance_usd(db, user_id, delta_nano).await,

@@ -329,17 +329,17 @@ impl RouterDatabase {
         );
 
         sqlx::query(&sql)
-        .bind(&log.request_id)
-        .bind(&log.user_id)
-        .bind(&log.path)
-        .bind(&log.upstream_id)
-        .bind(log.status_code)
-        .bind(log.latency_ms)
-        .bind(log.prompt_tokens)
-        .bind(log.completion_tokens)
-        .bind(log.cost)
-        .execute(conn.pool())
-        .await?;
+            .bind(&log.request_id)
+            .bind(&log.user_id)
+            .bind(&log.path)
+            .bind(&log.upstream_id)
+            .bind(log.status_code)
+            .bind(log.latency_ms)
+            .bind(log.prompt_tokens)
+            .bind(log.completion_tokens)
+            .bind(log.cost)
+            .execute(conn.pool())
+            .await?;
 
         if let Some(user_id) = &log.user_id {
             let total_tokens = log.prompt_tokens + log.completion_tokens;
@@ -350,10 +350,10 @@ impl RouterDatabase {
                     "UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?"
                 };
                 sqlx::query(update_sql)
-                .bind(total_tokens)
-                .bind(user_id)
-                .execute(conn.pool())
-                .await?;
+                    .bind(total_tokens)
+                    .bind(user_id)
+                    .execute(conn.pool())
+                    .await?;
             }
         }
 
@@ -401,9 +401,9 @@ impl RouterDatabase {
             "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = ?"
         };
         let rows = sqlx::query_as::<_, DbGroupMember>(sql)
-        .bind(group_id)
-        .fetch_all(conn.pool())
-        .await?;
+            .bind(group_id)
+            .fetch_all(conn.pool())
+            .await?;
         Ok(rows)
     }
 
@@ -415,9 +415,9 @@ impl RouterDatabase {
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'"
         };
         let token = sqlx::query_as::<_, DbToken>(sql)
-         .bind(token)
-         .fetch_optional(conn.pool())
-         .await?;
+            .bind(token)
+            .fetch_optional(conn.pool())
+            .await?;
 
         // Check if token is expired
         if let Some(ref t) = token {
@@ -448,9 +448,9 @@ impl RouterDatabase {
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'"
         };
         let token = sqlx::query_as::<_, DbToken>(sql)
-         .bind(token)
-         .fetch_optional(conn.pool())
-         .await?;
+            .bind(token)
+            .fetch_optional(conn.pool())
+            .await?;
 
         match token {
             Some(t) => {
@@ -537,9 +537,18 @@ impl RouterDatabase {
             placeholders
         );
         sqlx::query(&sql)
-        .bind(&u.id).bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol).bind(&u.param_override).bind(&u.header_override)
-        .execute(conn.pool())
-        .await?;
+            .bind(&u.id)
+            .bind(&u.name)
+            .bind(&u.base_url)
+            .bind(&u.api_key)
+            .bind(&u.match_path)
+            .bind(&u.auth_type)
+            .bind(u.priority)
+            .bind(&u.protocol)
+            .bind(&u.param_override)
+            .bind(&u.header_override)
+            .execute(conn.pool())
+            .await?;
         Ok(())
     }
 
@@ -551,9 +560,9 @@ impl RouterDatabase {
             "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override FROM router_upstreams WHERE id = ?"
         };
         let upstream = sqlx::query_as::<_, DbUpstream>(sql)
-        .bind(id)
-        .fetch_optional(conn.pool())
-        .await?;
+            .bind(id)
+            .fetch_optional(conn.pool())
+            .await?;
         Ok(upstream)
     }
 
@@ -565,9 +574,16 @@ impl RouterDatabase {
             "UPDATE router_upstreams SET name=?, base_url=?, api_key=?, match_path=?, auth_type=?, priority=?, protocol=? WHERE id=?"
         };
         sqlx::query(sql)
-        .bind(&u.name).bind(&u.base_url).bind(&u.api_key).bind(&u.match_path).bind(&u.auth_type).bind(u.priority).bind(&u.protocol).bind(&u.id)
-        .execute(conn.pool())
-        .await?;
+            .bind(&u.name)
+            .bind(&u.base_url)
+            .bind(&u.api_key)
+            .bind(&u.match_path)
+            .bind(&u.auth_type)
+            .bind(u.priority)
+            .bind(&u.protocol)
+            .bind(&u.id)
+            .execute(conn.pool())
+            .await?;
         Ok(())
     }
 
@@ -578,10 +594,7 @@ impl RouterDatabase {
         } else {
             "DELETE FROM router_upstreams WHERE id = ?"
         };
-        sqlx::query(sql)
-            .bind(id)
-            .execute(conn.pool())
-            .await?;
+        sqlx::query(sql).bind(id).execute(conn.pool()).await?;
         Ok(())
     }
 
@@ -594,12 +607,12 @@ impl RouterDatabase {
             placeholders
         );
         sqlx::query(&sql)
-        .bind(&g.id)
-        .bind(&g.name)
-        .bind(&g.strategy)
-        .bind(&g.match_path)
-        .execute(conn.pool())
-        .await?;
+            .bind(&g.id)
+            .bind(&g.name)
+            .bind(&g.strategy)
+            .bind(&g.match_path)
+            .execute(conn.pool())
+            .await?;
         Ok(())
     }
 
@@ -620,10 +633,7 @@ impl RouterDatabase {
         } else {
             "DELETE FROM router_groups WHERE id = ?"
         };
-        sqlx::query(sql_group)
-            .bind(id)
-            .execute(conn.pool())
-            .await?;
+        sqlx::query(sql_group).bind(id).execute(conn.pool()).await?;
         Ok(())
     }
 
@@ -652,11 +662,11 @@ impl RouterDatabase {
 
         for m in members {
             sqlx::query(&insert_sql)
-            .bind(group_id)
-            .bind(&m.upstream_id)
-            .bind(m.weight)
-            .execute(conn.pool())
-            .await?;
+                .bind(group_id)
+                .bind(&m.upstream_id)
+                .bind(m.weight)
+                .execute(conn.pool())
+                .await?;
         }
         Ok(())
     }
@@ -680,9 +690,15 @@ impl RouterDatabase {
             placeholders
         );
         sqlx::query(&sql)
-        .bind(&t.token).bind(&t.user_id).bind(&t.status).bind(t.quota_limit).bind(t.used_quota).bind(t.expired_time).bind(t.accessed_time)
-        .execute(conn.pool())
-        .await?;
+            .bind(&t.token)
+            .bind(&t.user_id)
+            .bind(&t.status)
+            .bind(t.quota_limit)
+            .bind(t.used_quota)
+            .bind(t.expired_time)
+            .bind(t.accessed_time)
+            .execute(conn.pool())
+            .await?;
         Ok(())
     }
 
@@ -693,10 +709,7 @@ impl RouterDatabase {
         } else {
             "DELETE FROM router_tokens WHERE token = ?"
         };
-        sqlx::query(sql)
-            .bind(token)
-            .execute(conn.pool())
-            .await?;
+        sqlx::query(sql).bind(token).execute(conn.pool()).await?;
         Ok(())
     }
 
@@ -723,10 +736,10 @@ impl RouterDatabase {
             limit_offset
         );
         let logs = sqlx::query_as::<_, DbRouterLog>(&sql)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(conn.pool())
-        .await?;
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(conn.pool())
+            .await?;
         Ok(logs)
     }
 
@@ -738,9 +751,9 @@ impl RouterDatabase {
             "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = ?"
         };
         let row: (Option<i64>, Option<i64>) = sqlx::query_as(sql)
-        .bind(user_id)
-        .fetch_one(conn.pool())
-        .await?;
+            .bind(user_id)
+            .fetch_one(conn.pool())
+            .await?;
 
         Ok((row.0.unwrap_or(0), row.1.unwrap_or(0)))
     }
@@ -773,10 +786,10 @@ impl RouterDatabase {
             "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?"
         };
         let unlimited: bool = sqlx::query_scalar(unlimited_sql)
-        .bind(token)
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap_or(0)
+            .bind(token)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap_or(0)
             != 0;
 
         if unlimited {
@@ -801,11 +814,10 @@ impl RouterDatabase {
         } else {
             "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?"
         };
-        let token_quota: Option<(i64, i64)> =
-            sqlx::query_as(quota_sql)
-                .bind(token)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let token_quota: Option<(i64, i64)> = sqlx::query_as(quota_sql)
+            .bind(token)
+            .fetch_optional(&mut *tx)
+            .await?;
 
         if let Some((quota_limit, used_quota)) = token_quota {
             // quota_limit = -1 means unlimited for token
@@ -858,10 +870,10 @@ impl RouterDatabase {
             "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?"
         };
         let unlimited: bool = sqlx::query_scalar(unlimited_sql)
-        .bind(token)
-        .fetch_one(conn.pool())
-        .await
-        .unwrap_or(0)
+            .bind(token)
+            .fetch_one(conn.pool())
+            .await
+            .unwrap_or(0)
             != 0;
 
         if unlimited {
@@ -874,11 +886,10 @@ impl RouterDatabase {
         } else {
             "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?"
         };
-        let token_quota: Option<(i64, i64)> =
-            sqlx::query_as(quota_sql)
-                .bind(token)
-                .fetch_optional(conn.pool())
-                .await?;
+        let token_quota: Option<(i64, i64)> = sqlx::query_as(quota_sql)
+            .bind(token)
+            .fetch_optional(conn.pool())
+            .await?;
 
         if let Some((quota_limit, used_quota)) = token_quota {
             // quota_limit = -1 means unlimited
@@ -907,12 +918,11 @@ impl RouterDatabase {
         } else {
             "SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?"
         };
-        let balance: i64 =
-            sqlx::query_scalar(balance_sql)
-                .bind(user_id)
-                .fetch_one(conn.pool())
-                .await
-                .unwrap_or(0);
+        let balance: i64 = sqlx::query_scalar(balance_sql)
+            .bind(user_id)
+            .fetch_one(conn.pool())
+            .await
+            .unwrap_or(0);
 
         if balance < cost_nano {
             return Ok(false);
@@ -925,12 +935,12 @@ impl RouterDatabase {
             "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
         };
         let rows_affected = sqlx::query(deduct_sql)
-        .bind(cost_nano)
-        .bind(user_id)
-        .bind(cost_nano)
-        .execute(conn.pool())
-        .await?
-        .rows_affected();
+            .bind(cost_nano)
+            .bind(user_id)
+            .bind(cost_nano)
+            .execute(conn.pool())
+            .await?
+            .rows_affected();
 
         Ok(rows_affected > 0)
     }
@@ -952,12 +962,11 @@ impl RouterDatabase {
         } else {
             "SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?"
         };
-        let balance: i64 =
-            sqlx::query_scalar(balance_sql)
-                .bind(user_id)
-                .fetch_one(conn.pool())
-                .await
-                .unwrap_or(0);
+        let balance: i64 = sqlx::query_scalar(balance_sql)
+            .bind(user_id)
+            .fetch_one(conn.pool())
+            .await
+            .unwrap_or(0);
 
         if balance < cost_nano {
             return Ok(false);
@@ -970,12 +979,12 @@ impl RouterDatabase {
             "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
         };
         let rows_affected = sqlx::query(deduct_sql)
-        .bind(cost_nano)
-        .bind(user_id)
-        .bind(cost_nano)
-        .execute(conn.pool())
-        .await?
-        .rows_affected();
+            .bind(cost_nano)
+            .bind(user_id)
+            .bind(cost_nano)
+            .execute(conn.pool())
+            .await?
+            .rows_affected();
 
         Ok(rows_affected > 0)
     }
@@ -1013,9 +1022,9 @@ impl RouterDatabase {
             "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?"
         };
         let balances: Option<(i64, i64)> = sqlx::query_as(balances_sql)
-        .bind(user_id)
-        .fetch_optional(conn.pool())
-        .await?;
+            .bind(user_id)
+            .fetch_optional(conn.pool())
+            .await?;
 
         let (balance_usd, balance_cny) = balances.unwrap_or((0, 0));
 
@@ -1064,11 +1073,11 @@ impl RouterDatabase {
                 "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
             };
             sqlx::query(deduct_usd_sql)
-            .bind(usd_to_deduct)
-            .bind(user_id)
-            .bind(usd_to_deduct)
-            .execute(&mut *tx)
-            .await?;
+                .bind(usd_to_deduct)
+                .bind(user_id)
+                .bind(usd_to_deduct)
+                .execute(&mut *tx)
+                .await?;
 
             tx.commit().await?;
             Ok(true)
@@ -1117,11 +1126,11 @@ impl RouterDatabase {
                 "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
             };
             sqlx::query(deduct_cny_sql)
-            .bind(cny_to_deduct)
-            .bind(user_id)
-            .bind(cny_to_deduct)
-            .execute(&mut *tx)
-            .await?;
+                .bind(cny_to_deduct)
+                .bind(user_id)
+                .bind(cny_to_deduct)
+                .execute(&mut *tx)
+                .await?;
 
             tx.commit().await?;
             Ok(true)

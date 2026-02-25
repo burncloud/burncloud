@@ -365,13 +365,15 @@ async fn proxy_handler(
                             t.quota_limit,
                             t.used_quota,
                         )
-                    },
+                    }
                     Ok(TokenValidationResult::Expired) => {
                         return build_response_with_header(
                             StatusCode::UNAUTHORIZED,
                             "content-type",
                             "application/json",
-                            Body::from(r#"{"error":{"message":"Token has expired","type":"invalid_request_error","code":"token_expired"}}"#),
+                            Body::from(
+                                r#"{"error":{"message":"Token has expired","type":"invalid_request_error","code":"token_expired"}}"#,
+                            ),
                         )
                     }
                     Ok(TokenValidationResult::Invalid) => {
@@ -379,7 +381,9 @@ async fn proxy_handler(
                             StatusCode::UNAUTHORIZED,
                             "content-type",
                             "application/json",
-                            Body::from(r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#),
+                            Body::from(
+                                r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#,
+                            ),
                         )
                     }
                     Err(e) => {
@@ -387,7 +391,10 @@ async fn proxy_handler(
                             StatusCode::INTERNAL_SERVER_ERROR,
                             "content-type",
                             "application/json",
-                            Body::from(format!(r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#, e)),
+                            Body::from(format!(
+                                r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#,
+                                e
+                            )),
                         )
                     }
                 }
@@ -410,7 +417,9 @@ async fn proxy_handler(
             StatusCode::PAYMENT_REQUIRED,
             "content-type",
             "application/json",
-            Body::from(r#"{"error":{"message":"Insufficient quota","type":"insufficient_quota_error","code":"insufficient_quota"}}"#),
+            Body::from(
+                r#"{"error":{"message":"Insufficient quota","type":"insufficient_quota_error","code":"insufficient_quota"}}"#,
+            ),
         );
     }
 
@@ -769,10 +778,7 @@ async fn proxy_logic(
                 return (
                     build_response(
                         StatusCode::NOT_FOUND,
-                        Body::from(format!(
-                            "No matching upstream found for path: {}",
-                            path
-                        )),
+                        Body::from(format!("No matching upstream found for path: {}", path)),
                     ),
                     None,
                     StatusCode::NOT_FOUND,
@@ -787,10 +793,7 @@ async fn proxy_logic(
                     return (
                         build_response(
                             StatusCode::SERVICE_UNAVAILABLE,
-                            Body::from(format!(
-                                "Group '{}' has no healthy members",
-                                g.name
-                            )),
+                            Body::from(format!("Group '{}' has no healthy members", g.name)),
                         ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
@@ -1500,10 +1503,7 @@ async fn proxy_logic(
     (
         build_response(
             StatusCode::BAD_GATEWAY,
-            Body::from(format!(
-                "All upstreams failed. Last error: {}",
-                last_error
-            )),
+            Body::from(format!("All upstreams failed. Last error: {}", last_error)),
         ),
         None,
         StatusCode::BAD_GATEWAY,

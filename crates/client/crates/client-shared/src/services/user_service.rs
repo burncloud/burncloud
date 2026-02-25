@@ -81,7 +81,11 @@ impl UserService {
         Ok(())
     }
 
-    pub async fn topup(user_id: &str, amount_nano: i64, currency: Option<&str>) -> Result<i64, String> {
+    pub async fn topup(
+        user_id: &str,
+        amount_nano: i64,
+        currency: Option<&str>,
+    ) -> Result<i64, String> {
         let url = format!("{}/user/topup", Self::get_base_url());
         let client = reqwest::Client::new();
         let mut body = serde_json::json!({

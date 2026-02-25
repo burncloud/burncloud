@@ -59,7 +59,7 @@ mod option_nano_as_dollars {
         D: Deserializer<'de>,
     {
         let opt_dollars: Option<f64> = Option::deserialize(deserializer)?;
-        Ok(opt_dollars.map(|d| dollars_to_nano(d) as i64))
+        Ok(opt_dollars.map(dollars_to_nano))
     }
 }
 

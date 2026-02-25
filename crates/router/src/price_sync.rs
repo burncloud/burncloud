@@ -197,10 +197,10 @@ impl LiteLLMPrice {
         use burncloud_common::dollars_to_nano;
         let input_price = self
             .input_cost_per_token
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         let output_price = self
             .output_cost_per_token
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         (input_price, output_price)
     }
 
@@ -209,10 +209,10 @@ impl LiteLLMPrice {
         use burncloud_common::dollars_to_nano;
         let cache_read_price = self
             .cache_read_input_token_cost
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         let cache_creation_price = self
             .cache_creation_input_token_cost
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         (cache_read_price, cache_creation_price)
     }
 
@@ -221,10 +221,10 @@ impl LiteLLMPrice {
         use burncloud_common::dollars_to_nano;
         let batch_input_price = self
             .input_cost_per_token_batches
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         let batch_output_price = self
             .output_cost_per_token_batches
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         (batch_input_price, batch_output_price)
     }
 
@@ -233,10 +233,10 @@ impl LiteLLMPrice {
         use burncloud_common::dollars_to_nano;
         let priority_input_price = self
             .input_cost_per_token_priority
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         let priority_output_price = self
             .output_cost_per_token_priority
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64);
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
         (priority_input_price, priority_output_price)
     }
 
@@ -244,7 +244,7 @@ impl LiteLLMPrice {
     pub fn to_audio_per_million_price_nano(&self) -> Option<i64> {
         use burncloud_common::dollars_to_nano;
         self.input_cost_per_audio_token
-            .map(|c| dollars_to_nano(c * 1_000_000.0) as i64)
+            .map(|c| dollars_to_nano(c * 1_000_000.0))
     }
 }
 

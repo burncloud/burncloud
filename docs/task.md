@@ -113,6 +113,6 @@
       "确认无 f64 金额字段: grep -rn 'balance.*f64\\|amount.*f64' crates/",
       "确认所有依赖使用 workspace: grep -rn '= \"[0-9]' crates/*/Cargo.toml"
     ],
-    "passes": false
+    "passes": true
   }
 ]
