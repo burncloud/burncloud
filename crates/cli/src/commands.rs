@@ -846,6 +846,22 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .required(true)
                                 .help("Group ID"),
                         ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete a group")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Group ID"),
+                        )
+                        .arg(
+                            Arg::new("yes")
+                                .short('y')
+                                .long("yes")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Skip confirmation prompt"),
+                        ),
                 ),
         );
 

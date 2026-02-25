@@ -3,6 +3,7 @@ use burncloud_database::Database;
 use burncloud_database_router::{DbGroup, DbGroupMember, RouterDatabase};
 use clap::ArgMatches;
 use serde::Serialize;
+use std::io::{self, Write};
 use uuid::Uuid;
 
 /// Group list item for JSON output
@@ -154,6 +155,36 @@ pub async fn cmd_group_show(db: &Database, matches: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+/// Handle group delete command
+pub async fn cmd_group_delete(db: &Database, matches: &ArgMatches) -> Result<()> {
+    let id = matches.get_one::<String>("id").unwrap();
+    let skip_confirm = matches.get_flag("yes");
+
+    // Check if group exists
+    let group = RouterDatabase::get_group_by_id(db, id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Group not found: {}", id))?;
+
+    // Confirm deletion
+    if !skip_confirm {
+        print!("Delete group '{}' (ID: {})? [y/N] ", group.name, id);
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_lowercase();
+        if input != "y" && input != "yes" {
+            println!("Operation cancelled");
+            return Ok(());
+        }
+    }
+
+    // Delete group (and its members)
+    RouterDatabase::delete_group(db, id).await?;
+    println!("Group '{}' (ID: {}) deleted", group.name, id);
+
+    Ok(())
+}
+
 /// Route group commands
 pub async fn handle_group_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -166,8 +197,11 @@ pub async fn handle_group_command(db: &Database, matches: &ArgMatches) -> Result
         Some(("show", sub_m)) => {
             cmd_group_show(db, sub_m).await?;
         }
+        Some(("delete", sub_m)) => {
+            cmd_group_delete(db, sub_m).await?;
+        }
         _ => {
-            println!("Usage: burncloud group <create|list|show>");
+            println!("Usage: burncloud group <create|list|show|delete>");
             println!("Run 'burncloud group --help' for more information.");
         }
     }
