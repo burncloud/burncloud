@@ -261,7 +261,7 @@
       "测试 group delete: ./target/release/burncloud group delete 1 -y",
       "验证所有命令输出正确，无报错"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-test-log-monitor",
