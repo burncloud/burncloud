@@ -30,7 +30,7 @@
       "login 子命令参数: --username (required), --password (required)",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-user-list",

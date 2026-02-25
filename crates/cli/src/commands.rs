@@ -668,6 +668,22 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .long("email")
                                 .help("Email address (optional)"),
                         ),
+                )
+                .subcommand(
+                    Command::new("login")
+                        .about("Login as a user")
+                        .arg(
+                            Arg::new("username")
+                                .long("username")
+                                .required(true)
+                                .help("Username to login"),
+                        )
+                        .arg(
+                            Arg::new("password")
+                                .long("password")
+                                .required(true)
+                                .help("Password for the user"),
+                        ),
                 ),
         );
 
