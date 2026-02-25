@@ -32,8 +32,11 @@ pub use protocol_config::{ProtocolConfig, ProtocolConfigInput, ProtocolConfigMod
 // Re-export tiered price types
 pub use tiered_price::{TieredPrice, TieredPriceInput, TieredPriceModel};
 
-// Re-export price types
-pub use price::{Price, PriceInput, PriceModel};
+// Re-export price model (Price and PriceInput types come from burncloud_common)
+pub use price::PriceModel;
+
+// Re-export Price types from common for convenience
+pub use burncloud_common::types::{Price, PriceInput};
 
 // Re-export database error
 pub use burncloud_database::DatabaseError;

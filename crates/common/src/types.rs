@@ -597,6 +597,18 @@ impl Default for PriceInput {
     }
 }
 
+impl Price {
+    /// Check if vision is supported
+    pub fn supports_vision_bool(&self) -> Option<bool> {
+        self.supports_vision.map(|v| v != 0)
+    }
+
+    /// Check if function calling is supported
+    pub fn supports_function_calling_bool(&self) -> Option<bool> {
+        self.supports_function_calling.map(|v| v != 0)
+    }
+}
+
 #[cfg(test)]
 mod currency_tests {
     use super::*;

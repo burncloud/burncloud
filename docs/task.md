@@ -41,7 +41,7 @@
       "保留 PriceModel 的方法实现（get, upsert 等）",
       "运行 cargo build 验证"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactor",
