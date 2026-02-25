@@ -96,7 +96,7 @@
       "决定：实现健康检查 或 移除 TODO 注释",
       "运行 cargo clippy 确认无警告"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "verify",

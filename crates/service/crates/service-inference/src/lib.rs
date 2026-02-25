@@ -99,10 +99,24 @@ impl InferenceService {
                 let mut processes = self.processes.lock().await;
                 processes.insert(config.model_id.clone(), child);
 
-                // 更新状态为 Running
-                // TODO: 这里应该等待 health check 成功才标记为 Running
-                self.set_status(&config.model_id, InstanceStatus::Running)
+                // 等待健康检查成功后标记为 Running
+                let health_check_result = self
+                    .wait_for_health_check(&config.model_id, config.port)
                     .await;
+
+                match health_check_result {
+                    Ok(()) => {
+                        self.set_status(&config.model_id, InstanceStatus::Running)
+                            .await;
+                    }
+                    Err(e) => {
+                        // 健康检查失败，移除进程并标记为 Failed
+                        processes.remove(&config.model_id);
+                        self.set_status(&config.model_id, InstanceStatus::Failed(e.to_string()))
+                            .await;
+                        return Err(e);
+                    }
+                }
 
                 // 5. 注册到 Router
                 self.register_upstream(&config).await?;
@@ -206,5 +220,59 @@ impl InferenceService {
         RouterDatabase::delete_upstream(&self.db, &upstream_id).await?;
         println!("Unregistered local upstream: {}", upstream_id);
         Ok(())
+    }
+
+    /// 等待推理服务健康检查通过
+    ///
+    /// 轮询服务的 `/v1/models` 端点，直到服务就绪或超时
+    async fn wait_for_health_check(&self, model_id: &str, port: u16) -> Result<()> {
+        let url = format!("http://127.0.0.1:{}/v1/models", port);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(|e| InferenceError::ProcessSpawnFailed(format!("HTTP client error: {}", e)))?;
+
+        // 最多等待 60 秒，每秒检查一次
+        let max_attempts = 60;
+        let mut attempts = 0;
+
+        while attempts < max_attempts {
+            attempts += 1;
+
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    println!(
+                        "Health check passed for {} after {} attempts",
+                        model_id, attempts
+                    );
+                    return Ok(());
+                }
+                Ok(resp) => {
+                    // 服务器响应了但返回非成功状态码，可能还在初始化
+                    tracing::debug!(
+                        "Health check attempt {} for {}: status {}",
+                        attempts,
+                        model_id,
+                        resp.status()
+                    );
+                }
+                Err(e) => {
+                    // 连接失败，服务可能还没启动
+                    tracing::trace!(
+                        "Health check attempt {} for {}: connection error: {}",
+                        attempts,
+                        model_id,
+                        e
+                    );
+                }
+            }
+
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+
+        Err(InferenceError::ProcessSpawnFailed(format!(
+            "Health check timeout for {} after {} seconds",
+            model_id, max_attempts
+        )))
     }
 }

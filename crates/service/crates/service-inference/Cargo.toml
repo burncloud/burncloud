@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { workspace = true, features = ["process", "io-util"] }
+tokio = { workspace = true, features = ["process", "io-util", "time"] }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+reqwest = { workspace = true }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
 burncloud-service-setting = { workspace = true }
