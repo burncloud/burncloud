@@ -80,26 +80,23 @@ while true; do
     4. When finished, output exactly: <promise>TASK_DONE</promise>
     "
 
-    # 4. 启动 Claude (拉尔夫模式：执行完即退出)
-    # 使用 echo "/exit" 这种 hack 确保它如果卡在交互界面能退出 (视你的 docker/cli 行为而定)
-    # 或者如果 claude-code 有非交互模式，最好用非交互模式
-
-    # 这里假设你是在 Docker 里跑，且需要捕获输出
+    # 4. 启动 Claude (非交互模式)
     TASK_START_TIME=$(date +%s)
-    OUTPUT=$(echo "/exit" | claude --dangerously-skip-permissions -p "$PROMPT")
+    OUTPUT=$(claude --dangerously-skip-permissions --print "$PROMPT" 2>&1)
+    TASK_EXIT_CODE=$?
     TASK_END_TIME=$(date +%s)
 
     echo "$OUTPUT"
 
     # 5. 检查 Claude 是否声称完成了任务
-    if [[ "$OUTPUT" == *"<promise>TASK_DONE</promise>"* ]]; then
+    if [[ $TASK_EXIT_CODE -eq 0 ]] && [[ "$OUTPUT" == *"<promise>TASK_DONE</promise>"* ]]; then
         echo "✅ Task reported done by Claude."
 
         # 计算任务耗时
         TASK_DURATION=$((TASK_END_TIME - TASK_START_TIME))
         TASK_TIMES+=($TASK_DURATION)
         TASK_NAMES+=("[$CATEGORY] $DESCRIPTION")
-        ((COMPLETED_COUNT++))
+        COMPLETED_COUNT=$((COMPLETED_COUNT + 1))
 
         # 显示当前任务耗时
         echo "⏱️  Task completed in $(format_duration $TASK_DURATION)"
@@ -110,13 +107,24 @@ while true; do
         jq ".[$REAL_INDEX].passes = true" "$TASK_FILE" > "$tmp" && mv "$tmp" "$TASK_FILE"
 
         # 7. Git 提交 (存档)
+        # 检查是否有文件需要提交，避免空提交导致 set -e 退出
         git add .
-        git commit -m "feat($CATEGORY): $DESCRIPTION"
-        echo "💾 Progress saved to Git."
+        if git diff --cached --quiet 2>/dev/null; then
+            echo "📝 No code changes (task may have been already done)."
+        else
+            git commit -m "feat($CATEGORY): $DESCRIPTION"
+            echo "💾 Progress saved to Git."
+        fi
 
     else
-        echo "❌ Task failed or timed out. Please check logs."
-        exit 1
+        echo "❌ Task failed! (exit code: $TASK_EXIT_CODE)"
+        echo "Options: [Enter]=retry, [s]=skip, [q]=quit"
+        read -r CHOICE
+        case "$CHOICE" in
+            q|quit) exit 1 ;;
+            s|skip) echo "⏭️  Skipping..." ;;
+            *) echo "🔄 Retrying..."; continue ;;
+        esac
     fi
 
     # 休息一下，防止 API 速率限制

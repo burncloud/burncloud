@@ -8,7 +8,7 @@
       "修复流式响应处理中的 .unwrap()",
       "运行 cargo clippy 验证无警告"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "error-handling",

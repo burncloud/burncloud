@@ -317,9 +317,6 @@ async fn proxy_handler(
 ) -> Response {
     let start_time = Instant::now();
     let request_id = Uuid::new_v4().to_string();
-
-    // DEBUG: Immediate return
-    // return Response::builder().status(200).body(Body::from("DEBUG_OK")).unwrap();
     let path = uri.path().to_string();
 
     println!("Proxy Handler: {} {}, Headers: {:?}", method, path, headers);
