@@ -17,4 +17,4 @@ thiserror.workspace = true
 dirs.workspace = true
 sqlx.workspace = true
 chrono.workspace = true
-bcrypt = "0.15"
+bcrypt.workspace = true

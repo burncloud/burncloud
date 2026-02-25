@@ -86,7 +86,7 @@
       "将 bcrypt = \"0.15\" 改为 bcrypt.workspace = true",
       "运行 cargo build 验证"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "tech-debt",
