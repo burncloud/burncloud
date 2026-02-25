@@ -1,10 +1,10 @@
 mod common;
 
+use burncloud_common::dollars_to_nano;
 use burncloud_common::pricing_config::{
     CachePricingConfig, CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
     TieredPriceConfig,
 };
-use burncloud_common::dollars_to_nano;
 use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
 use burncloud_router::price_sync::LiteLLMPrice;
 use common::setup_db;
@@ -23,15 +23,15 @@ async fn test_litellm_advanced_pricing_sync() -> anyhow::Result<()> {
     // Simulate a LiteLLM price with cache pricing
     let litellm_price = LiteLLMPrice {
         model: Some("test-cache-model".to_string()),
-        input_cost_per_token: Some(3e-6),      // $3/1M
-        output_cost_per_token: Some(15e-6),    // $15/1M
-        cache_read_input_token_cost: Some(3e-7), // $0.30/1M (10% of input)
+        input_cost_per_token: Some(3e-6),               // $3/1M
+        output_cost_per_token: Some(15e-6),             // $15/1M
+        cache_read_input_token_cost: Some(3e-7),        // $0.30/1M (10% of input)
         cache_creation_input_token_cost: Some(3.75e-6), // $3.75/1M
-        input_cost_per_token_batches: Some(1.5e-6), // $1.5/1M (50% of input)
-        output_cost_per_token_batches: Some(7.5e-6), // $7.5/1M (50% of output)
-        input_cost_per_token_priority: Some(5.1e-6), // $5.1/1M (170% of input)
-        output_cost_per_token_priority: Some(25.5e-6), // $25.5/1M (170% of output)
-        input_cost_per_audio_token: Some(21e-6), // $21/1M (7x input)
+        input_cost_per_token_batches: Some(1.5e-6),     // $1.5/1M (50% of input)
+        output_cost_per_token_batches: Some(7.5e-6),    // $7.5/1M (50% of output)
+        input_cost_per_token_priority: Some(5.1e-6),    // $5.1/1M (170% of input)
+        output_cost_per_token_priority: Some(25.5e-6),  // $25.5/1M (170% of output)
+        input_cost_per_audio_token: Some(21e-6),        // $21/1M (7x input)
         max_input_tokens: Some(200000),
         max_output_tokens: Some(8192),
         pricing_model: None,
@@ -45,7 +45,8 @@ async fn test_litellm_advanced_pricing_sync() -> anyhow::Result<()> {
     let (input_price, output_price) = litellm_price.to_per_million_price_nano();
     let (cache_read_price, cache_creation_price) = litellm_price.to_cache_per_million_price_nano();
     let (batch_input_price, batch_output_price) = litellm_price.to_batch_per_million_price_nano();
-    let (priority_input_price, priority_output_price) = litellm_price.to_priority_per_million_price_nano();
+    let (priority_input_price, priority_output_price) =
+        litellm_price.to_priority_per_million_price_nano();
     let audio_input_price = litellm_price.to_audio_per_million_price_nano();
 
     // Create price input with advanced pricing (using i64 nanodollars)
@@ -99,8 +100,8 @@ async fn test_litellm_basic_pricing_sync() -> anyhow::Result<()> {
     // Simulate a basic LiteLLM price without advanced pricing
     let litellm_price = LiteLLMPrice {
         model: Some("test-basic-model".to_string()),
-        input_cost_per_token: Some(1e-6),   // $1/1M
-        output_cost_per_token: Some(3e-6),  // $3/1M
+        input_cost_per_token: Some(1e-6),  // $1/1M
+        output_cost_per_token: Some(3e-6), // $3/1M
         // No cache/batch/priority pricing
         cache_read_input_token_cost: None,
         cache_creation_input_token_cost: None,
@@ -193,7 +194,9 @@ async fn test_litellm_pricing_update() -> anyhow::Result<()> {
     PriceModel::upsert(&_db, &price_input).await?;
 
     // Verify initial price
-    let stored = PriceModel::get(&_db, "test-update-model", "USD", Some("international")).await?.unwrap();
+    let stored = PriceModel::get(&_db, "test-update-model", "USD", Some("international"))
+        .await?
+        .unwrap();
     assert_eq!(stored.input_price, to_nano(10.0));
 
     // Now update with new pricing including cache pricing
@@ -219,7 +222,9 @@ async fn test_litellm_pricing_update() -> anyhow::Result<()> {
     PriceModel::upsert(&_db, &updated_input).await?;
 
     // Verify updated price
-    let stored = PriceModel::get(&_db, "test-update-model", "USD", Some("international")).await?.unwrap();
+    let stored = PriceModel::get(&_db, "test-update-model", "USD", Some("international"))
+        .await?
+        .unwrap();
     assert_eq!(stored.input_price, to_nano(3.0));
     assert_eq!(stored.output_price, to_nano(15.0));
     assert_eq!(stored.cache_read_input_price.unwrap(), to_nano(0.30));
@@ -283,7 +288,10 @@ async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
 
     // Retrieve all currencies for the model (no region filter)
     let all_prices = PriceModel::list(&_db, 100, 0, None).await?;
-    let model_prices: Vec<_> = all_prices.iter().filter(|p| p.model == model_name).collect();
+    let model_prices: Vec<_> = all_prices
+        .iter()
+        .filter(|p| p.model == model_name)
+        .collect();
     assert_eq!(model_prices.len(), 2, "Should have 2 currencies");
 
     // Verify USD price (stored as nanodollars, compare as integers)
@@ -365,7 +373,10 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
     assert_eq!(intl_tiers[0].tier_start, 0);
     assert_eq!(intl_tiers[1].tier_start, 32000);
     assert_eq!(intl_tiers[2].tier_start, 128000);
-    assert!(intl_tiers[2].tier_end.is_none(), "Last tier should have no upper limit");
+    assert!(
+        intl_tiers[2].tier_end.is_none(),
+        "Last tier should have no upper limit"
+    );
 
     // Get CN tiers
     let cn_tiers = TieredPriceModel::get_tiers(&_db, model, Some("cn")).await?;
@@ -379,7 +390,11 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
     // Delete CN tiers
     TieredPriceModel::delete_tiers(&_db, model, Some("cn")).await?;
     let remaining_tiers = TieredPriceModel::get_tiers(&_db, model, None).await?;
-    assert_eq!(remaining_tiers.len(), 3, "Should have 3 tiers after deleting CN");
+    assert_eq!(
+        remaining_tiers.len(),
+        3,
+        "Should have 3 tiers after deleting CN"
+    );
 
     Ok(())
 }
@@ -406,7 +421,7 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
         priority_output_price: None,
         audio_input_price: None,
         source: Some("litellm".to_string()),
-        region: Some("international".to_string()),  // Use a specific region for SQLite unique constraint
+        region: Some("international".to_string()), // Use a specific region for SQLite unique constraint
         context_window: None,
         max_output_tokens: None,
         supports_vision: None,
@@ -415,7 +430,9 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
     PriceModel::upsert(&_db, &litellm_price).await?;
 
     // Verify initial price from LiteLLM
-    let stored = PriceModel::get(&_db, model_name, "USD", Some("international")).await?.unwrap();
+    let stored = PriceModel::get(&_db, model_name, "USD", Some("international"))
+        .await?
+        .unwrap();
     assert_eq!(stored.input_price, to_nano(10.0));
     assert_eq!(stored.source, Some("litellm".to_string()));
 
@@ -442,8 +459,15 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
     PriceModel::upsert(&_db, &community_price).await?;
 
     // Verify price was updated
-    let stored = PriceModel::get(&_db, model_name, "USD", Some("international")).await?.unwrap();
-    assert_eq!(stored.input_price, to_nano(5.0), "Expected 5.0 nanodollars but got {}", stored.input_price);
+    let stored = PriceModel::get(&_db, model_name, "USD", Some("international"))
+        .await?
+        .unwrap();
+    assert_eq!(
+        stored.input_price,
+        to_nano(5.0),
+        "Expected 5.0 nanodollars but got {}",
+        stored.input_price
+    );
     assert_eq!(stored.source, Some("community".to_string()));
 
     // Update with override source (highest priority)
@@ -469,7 +493,9 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
     PriceModel::upsert(&_db, &override_price).await?;
 
     // Verify final price from override
-    let stored = PriceModel::get(&_db, model_name, "USD", Some("international")).await?.unwrap();
+    let stored = PriceModel::get(&_db, model_name, "USD", Some("international"))
+        .await?
+        .unwrap();
     assert_eq!(stored.input_price, to_nano(2.0));
     assert_eq!(stored.source, Some("override".to_string()));
     assert_eq!(stored.cache_read_input_price.unwrap(), to_nano(0.2));
@@ -506,13 +532,21 @@ async fn test_sync_failure_preserves_old_data() -> anyhow::Result<()> {
     PriceModel::upsert(&_db, &initial_price).await?;
 
     // Verify initial data
-    let stored = PriceModel::get(&_db, "test-failure-model", "USD", None).await?.unwrap();
+    let stored = PriceModel::get(&_db, "test-failure-model", "USD", None)
+        .await?
+        .unwrap();
     assert_eq!(stored.input_price, to_nano(5.0));
 
     // Simulate a "failed" sync - the original data should be preserved
     // Verify original data is still there
-    let stored = PriceModel::get(&_db, "test-failure-model", "USD", None).await?.unwrap();
-    assert_eq!(stored.input_price, to_nano(5.0), "Original data should be preserved");
+    let stored = PriceModel::get(&_db, "test-failure-model", "USD", None)
+        .await?
+        .unwrap();
+    assert_eq!(
+        stored.input_price,
+        to_nano(5.0),
+        "Original data should be preserved"
+    );
     assert_eq!(stored.source, Some("community".to_string()));
 
     Ok(())
@@ -617,9 +651,15 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
                 audio_input_price: None,
                 source: pricing.source.clone(),
                 region: None,
-                context_window: model_pricing.metadata.as_ref().and_then(|m| m.context_window),
-                max_output_tokens: model_pricing.metadata.as_ref().and_then(|m| m.max_output_tokens),
-                supports_vision: None,  // SQLite doesn't support boolean type
+                context_window: model_pricing
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.context_window),
+                max_output_tokens: model_pricing
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.max_output_tokens),
+                supports_vision: None, // SQLite doesn't support boolean type
                 supports_function_calling: None,
             };
             PriceModel::upsert(&_db, &input).await?;
@@ -649,18 +689,23 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
     }
 
     // Verify imported data
-    let usd_price = PriceModel::get(&_db, "test-import-model", "USD", None).await?.unwrap();
+    let usd_price = PriceModel::get(&_db, "test-import-model", "USD", None)
+        .await?
+        .unwrap();
     assert_eq!(usd_price.input_price, to_nano(10.0));
     assert_eq!(usd_price.context_window, Some(128000));
     // Note: supports_vision is stored as INTEGER in SQLite, so we skip that check
 
-    let cny_price = PriceModel::get(&_db, "test-import-model", "CNY", None).await?.unwrap();
+    let cny_price = PriceModel::get(&_db, "test-import-model", "CNY", None)
+        .await?
+        .unwrap();
     assert_eq!(cny_price.input_price, to_nano(72.0));
 
     let has_tiered = TieredPriceModel::has_tiered_pricing(&_db, "test-import-model").await?;
     assert!(has_tiered);
 
-    let tiers = TieredPriceModel::get_tiers(&_db, "test-import-model", Some("international")).await?;
+    let tiers =
+        TieredPriceModel::get_tiers(&_db, "test-import-model", Some("international")).await?;
     assert_eq!(tiers.len(), 2);
 
     Ok(())

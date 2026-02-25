@@ -205,11 +205,7 @@ impl Database {
     }
 
     /// 带参数的查询，返回多条记录（防止 SQL 注入）
-    pub async fn fetch_all_with_params<T>(
-        &self,
-        query: &str,
-        params: Vec<String>,
-    ) -> Result<Vec<T>>
+    pub async fn fetch_all_with_params<T>(&self, query: &str, params: Vec<String>) -> Result<Vec<T>>
     where
         T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {

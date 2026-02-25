@@ -40,7 +40,7 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
     // 3. Setup: Create pricing for test model (using PriceModel with nanodollars)
     let price_input = PriceInput {
         model: "gpt-4o-mini-e2e".to_string(),
-        input_price: dollars_to_nano(0.15) as i64,  // $0.15 per 1M tokens -> nanodollars (i64)
+        input_price: dollars_to_nano(0.15) as i64, // $0.15 per 1M tokens -> nanodollars (i64)
         output_price: dollars_to_nano(0.60) as i64, // $0.60 per 1M tokens -> nanodollars (i64)
         currency: "USD".to_string(),
         cache_read_input_price: None,
@@ -68,19 +68,29 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
     let input_dollars = nano_to_dollars(price.input_price as u64);
     let output_dollars = nano_to_dollars(price.output_price as u64);
 
-    assert!((input_dollars - 0.15).abs() < 0.0001, "Input price should be 0.15, got {}", input_dollars);
-    assert!((output_dollars - 0.60).abs() < 0.0001, "Output price should be 0.60, got {}", output_dollars);
+    assert!(
+        (input_dollars - 0.15).abs() < 0.0001,
+        "Input price should be 0.15, got {}",
+        input_dollars
+    );
+    assert!(
+        (output_dollars - 0.60).abs() < 0.0001,
+        "Output price should be 0.60, got {}",
+        output_dollars
+    );
 
     // 5. Test: Calculate expected cost using nanodollars
     // 100 prompt + 200 completion tokens = $0.000015 + $0.00012 = $0.000135
     let cost_nano_f64 = (100.0 / 1_000_000.0) * price.input_price as f64
-                      + (200.0 / 1_000_000.0) * price.output_price as f64;
+        + (200.0 / 1_000_000.0) * price.output_price as f64;
     let cost_dollars = cost_nano_f64 / 1_000_000_000.0;
     let expected_cost: f64 = (100.0 / 1_000_000.0) * 0.15 + (200.0 / 1_000_000.0) * 0.60;
 
     assert!(
         (cost_dollars - expected_cost).abs() < 0.0000001,
-        "Cost calculation should match: got {}, expected {}", cost_dollars, expected_cost
+        "Cost calculation should match: got {}, expected {}",
+        cost_dollars,
+        expected_cost
     );
 
     println!("✓ E2E billing flow setup passed");

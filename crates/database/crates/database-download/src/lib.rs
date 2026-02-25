@@ -65,9 +65,8 @@ impl DownloadDB {
             return Ok(());
         }
 
-        let uris_json = serde_json::to_string(&uris).map_err(|e| {
-            burncloud_database::error::DatabaseError::Serialization(e)
-        })?;
+        let uris_json = serde_json::to_string(&uris)
+            .map_err(burncloud_database::error::DatabaseError::Serialization)?;
         let download_dir_str = download_dir.unwrap_or("").to_string();
 
         // 检查相同的uris和download_dir组合是否已存在（使用参数化查询防止 SQL 注入）

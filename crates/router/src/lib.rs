@@ -5,9 +5,9 @@ pub mod billing;
 mod channel_state;
 mod circuit_breaker;
 mod config;
+pub mod exchange_rate;
 mod limiter;
 mod model_router;
-pub mod exchange_rate;
 pub mod notification;
 pub mod passthrough;
 pub mod price_sync;
@@ -467,7 +467,9 @@ async fn proxy_handler(
             // Try to get price and check for tiered pricing
             // Use new PriceModel API with currency "USD" and no region filter
             let price_result = PriceModel::get(&state.db, model, "USD", None).await;
-            let tiered_result = burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model).await;
+            let tiered_result =
+                burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model)
+                    .await;
 
             // Check if model has tiered pricing
             let has_tiered = matches!(tiered_result, Ok(true));
@@ -500,7 +502,11 @@ async fn proxy_handler(
                     billing::calculate_cache_cost_nano(&usage, &pricing)
                 } else if has_tiered {
                     // Use tiered pricing for models with usage-based tiers (e.g., Qwen)
-                    match burncloud_database_models::TieredPriceModel::get_tiers(&state.db, model, None).await {
+                    match burncloud_database_models::TieredPriceModel::get_tiers(
+                        &state.db, model, None,
+                    )
+                    .await
+                    {
                         Ok(tiers) if !tiers.is_empty() => {
                             // Convert database TieredPrice to billing TieredPrice
                             let billing_tiers: Vec<burncloud_common::types::TieredPrice> = tiers
@@ -523,20 +529,40 @@ async fn proxy_handler(
                                 None,
                             ) {
                                 Ok(cost) => cost,
-                                Err(_) => PriceModel::calculate_cost(&price, prompt_tokens as u64, completion_tokens as u64),
+                                Err(_) => PriceModel::calculate_cost(
+                                    &price,
+                                    prompt_tokens as u64,
+                                    completion_tokens as u64,
+                                ),
                             }
                         }
-                        _ => PriceModel::calculate_cost(&price, prompt_tokens as u64, completion_tokens as u64),
+                        _ => PriceModel::calculate_cost(
+                            &price,
+                            prompt_tokens as u64,
+                            completion_tokens as u64,
+                        ),
                     }
                 } else if is_priority_request {
                     // Use priority pricing for high-priority requests
-                    billing::calculate_priority_cost_nano(prompt_tokens as u64, completion_tokens as u64, &pricing)
+                    billing::calculate_priority_cost_nano(
+                        prompt_tokens as u64,
+                        completion_tokens as u64,
+                        &pricing,
+                    )
                 } else if is_batch_request {
                     // Use batch pricing for batch API requests
-                    billing::calculate_batch_cost_nano(prompt_tokens as u64, completion_tokens as u64, &pricing)
+                    billing::calculate_batch_cost_nano(
+                        prompt_tokens as u64,
+                        completion_tokens as u64,
+                        &pricing,
+                    )
                 } else {
                     // Fall back to simple calculation
-                    PriceModel::calculate_cost(&price, prompt_tokens as u64, completion_tokens as u64)
+                    PriceModel::calculate_cost(
+                        &price,
+                        prompt_tokens as u64,
+                        completion_tokens as u64,
+                    )
                 }
             } else {
                 0
@@ -587,6 +613,7 @@ use circuit_breaker::FailureType;
 use passthrough::{should_passthrough, PassthroughDecision};
 use response_parser::{parse_error_response, parse_rate_limit_info};
 
+#[allow(clippy::too_many_arguments)]
 async fn proxy_logic(
     state: &AppState,
     method: Method,
@@ -618,9 +645,16 @@ async fn proxy_logic(
                 model, user_group
             );
             // Use state-aware routing to filter out unavailable channels
-            match state.model_router.route_with_state(user_group, model, &state.channel_state_tracker).await {
+            match state
+                .model_router
+                .route_with_state(user_group, model, &state.channel_state_tracker)
+                .await
+            {
                 Ok(Some(channel)) => {
-                    println!("ModelRouter: Routed {} -> Channel {} (state-filtered)", model, channel.name);
+                    println!(
+                        "ModelRouter: Routed {} -> Channel {} (state-filtered)",
+                        model, channel.name
+                    );
                     // Map Channel Type
                     let channel_type = ChannelType::from(channel.type_);
 
@@ -657,10 +691,7 @@ async fn proxy_logic(
                 }
                 Err(e) => {
                     // NoAvailableChannelsError - all channels are unavailable
-                    println!(
-                        "ModelRouter: No available channels for {}: {}",
-                        model, e
-                    );
+                    println!("ModelRouter: No available channels for {}: {}", model, e);
                     return (
                         Response::builder()
                             .status(503)
@@ -804,11 +835,8 @@ async fn proxy_logic(
             );
 
             // Build target URL for passthrough
-            let passthrough_url = passthrough::build_gemini_passthrough_url(
-                &upstream.base_url,
-                path,
-                &body_json,
-            );
+            let passthrough_url =
+                passthrough::build_gemini_passthrough_url(&upstream.base_url, path, &body_json);
 
             println!("Passthrough URL: {}", passthrough_url);
 
@@ -820,7 +848,11 @@ async fn proxy_logic(
 
             // Determine final URL (add alt=sse for streaming requests if not already in URL)
             let final_url = if is_stream && !passthrough_url.contains("alt=") {
-                let separator = if passthrough_url.contains('?') { "&" } else { "?" };
+                let separator = if passthrough_url.contains('?') {
+                    "&"
+                } else {
+                    "?"
+                };
                 format!("{}{}alt=sse", passthrough_url, separator)
             } else {
                 passthrough_url.clone()
@@ -835,7 +867,8 @@ async fn proxy_logic(
             }
 
             // Build passthrough request with final URL
-            let mut req_builder = state.client
+            let mut req_builder = state
+                .client
                 .request(method.clone(), &final_url)
                 .header("x-goog-api-key", &upstream.api_key);
 
@@ -878,14 +911,14 @@ async fn proxy_logic(
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
                         // Parse rate limit info from response headers for adaptive limiter
-                        let rate_limit_info = parse_rate_limit_info(
-                            resp.headers(),
-                            None,
-                            &upstream.protocol,
+                        let rate_limit_info =
+                            parse_rate_limit_info(resp.headers(), None, &upstream.protocol);
+                        state.channel_state_tracker.record_success(
+                            channel_id,
+                            model_name,
+                            latency_ms,
+                            rate_limit_info.request_limit,
                         );
-                        state
-                            .channel_state_tracker
-                            .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
 
                         // Handle streaming vs non-streaming passthrough
                         if is_stream {
@@ -907,7 +940,7 @@ async fn proxy_logic(
                                     // Pass through raw bytes (Gemini native format)
                                     Ok(bytes)
                                 }
-                                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                                Err(e) => Err(std::io::Error::other(e)),
                             });
 
                             return (
@@ -1124,9 +1157,12 @@ async fn proxy_logic(
                     // Record success in channel state tracker with learned upstream limit
                     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                     let latency_ms = request_start_time.elapsed().as_millis() as u64;
-                    state
-                        .channel_state_tracker
-                        .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
+                    state.channel_state_tracker.record_success(
+                        channel_id,
+                        model_name,
+                        latency_ms,
+                        rate_limit_info.request_limit,
+                    );
 
                     // Log rate limit info for debugging/monitoring
                     if rate_limit_info.request_limit.is_some()
@@ -1193,7 +1229,7 @@ async fn proxy_logic(
                                     Ok(axum::body::Bytes::new())
                                 }
                             }
-                            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                            Err(e) => Err(std::io::Error::other(e)),
                         });
 
                         let done = futures::stream::once(async {
@@ -1451,7 +1487,7 @@ fn handle_response_with_token_parsing(
 
             Ok(bytes)
         }
-        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        Err(e) => Err(std::io::Error::other(e)),
     });
 
     let body = Body::from_stream(mapped_stream);

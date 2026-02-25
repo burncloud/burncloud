@@ -79,10 +79,7 @@ impl PricingLoader {
     }
 
     /// Load pricing configuration from a specific path
-    pub fn load_from_path(
-        &self,
-        path: &Path,
-    ) -> Result<Option<PricingConfig>, PricingLoaderError> {
+    pub fn load_from_path(&self, path: &Path) -> Result<Option<PricingConfig>, PricingLoaderError> {
         if !path.exists() {
             return Ok(None);
         }
@@ -155,7 +152,9 @@ mod tests {
     #[test]
     fn test_load_nonexistent_file() {
         let loader = PricingLoader::new();
-        let result = loader.load_from_path(Path::new("/nonexistent/path.json")).unwrap();
+        let result = loader
+            .load_from_path(Path::new("/nonexistent/path.json"))
+            .unwrap();
         assert!(result.is_none());
     }
 

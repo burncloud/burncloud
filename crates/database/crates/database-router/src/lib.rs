@@ -71,7 +71,7 @@ pub struct DbRouterLog {
     #[sqlx(default)]
     /// Cost in nanodollars (9 decimal precision)
     pub cost: i64,
-                   // created_at is handled by DB default
+    // created_at is handled by DB default
 }
 
 // DbUser etc are moved to burncloud-database-user
@@ -256,9 +256,11 @@ impl RouterDatabase {
                 .execute(conn.pool())
                 .await;
         } else if kind == "postgres" {
-            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN IF NOT EXISTS api_version TEXT")
-                .execute(conn.pool())
-                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE router_upstreams ADD COLUMN IF NOT EXISTS api_version TEXT",
+            )
+            .execute(conn.pool())
+            .await;
         }
 
         // Insert default demo data if empty
@@ -761,24 +763,27 @@ impl RouterDatabase {
         let conn = db.get_connection()?;
 
         // Check current balance
-        let balance: i64 = sqlx::query_scalar("SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?")
-            .bind(user_id)
-            .fetch_one(conn.pool())
-            .await
-            .unwrap_or(0);
+        let balance: i64 =
+            sqlx::query_scalar("SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?")
+                .bind(user_id)
+                .fetch_one(conn.pool())
+                .await
+                .unwrap_or(0);
 
         if balance < cost_nano {
             return Ok(false);
         }
 
         // Deduct
-        let rows_affected = sqlx::query("UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?")
-            .bind(cost_nano)
-            .bind(user_id)
-            .bind(cost_nano)
-            .execute(conn.pool())
-            .await?
-            .rows_affected();
+        let rows_affected = sqlx::query(
+            "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
+        )
+        .bind(cost_nano)
+        .bind(user_id)
+        .bind(cost_nano)
+        .execute(conn.pool())
+        .await?
+        .rows_affected();
 
         Ok(rows_affected > 0)
     }
@@ -794,24 +799,27 @@ impl RouterDatabase {
         let conn = db.get_connection()?;
 
         // Check current balance
-        let balance: i64 = sqlx::query_scalar("SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?")
-            .bind(user_id)
-            .fetch_one(conn.pool())
-            .await
-            .unwrap_or(0);
+        let balance: i64 =
+            sqlx::query_scalar("SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?")
+                .bind(user_id)
+                .fetch_one(conn.pool())
+                .await
+                .unwrap_or(0);
 
         if balance < cost_nano {
             return Ok(false);
         }
 
         // Deduct
-        let rows_affected = sqlx::query("UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?")
-            .bind(cost_nano)
-            .bind(user_id)
-            .bind(cost_nano)
-            .execute(conn.pool())
-            .await?
-            .rows_affected();
+        let rows_affected = sqlx::query(
+            "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
+        )
+        .bind(cost_nano)
+        .bind(user_id)
+        .bind(cost_nano)
+        .execute(conn.pool())
+        .await?
+        .rows_affected();
 
         Ok(rows_affected > 0)
     }
@@ -843,7 +851,7 @@ impl RouterDatabase {
 
         // Get current balances
         let balances: Option<(i64, i64)> = sqlx::query_as(
-            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?"
+            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?",
         )
         .bind(user_id)
         .fetch_optional(conn.pool())
@@ -863,7 +871,8 @@ impl RouterDatabase {
             // Required USD in nanodollars = required_cny * 10^9 / exchange_rate_nano
             // Using i128 for intermediate calculation to avoid overflow
             let required_cny = cost_nano - balance_cny;
-            let required_usd: i128 = (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
+            let required_usd: i128 =
+                (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
 
             if required_usd > balance_usd as i128 {
                 // Insufficient total balance
@@ -883,12 +892,14 @@ impl RouterDatabase {
 
             // Deduct required USD (already integer, no need to round)
             let usd_to_deduct = required_usd as i64;
-            sqlx::query("UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?")
-                .bind(usd_to_deduct)
-                .bind(user_id)
-                .bind(usd_to_deduct)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
+            )
+            .bind(usd_to_deduct)
+            .bind(user_id)
+            .bind(usd_to_deduct)
+            .execute(&mut *tx)
+            .await?;
 
             tx.commit().await?;
             Ok(true)
@@ -904,7 +915,8 @@ impl RouterDatabase {
             // Required CNY in nanodollars = required_usd * exchange_rate_nano / 10^9
             // Using i128 for intermediate calculation to avoid overflow
             let required_usd = cost_nano - balance_usd;
-            let required_cny: i128 = (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
+            let required_cny: i128 =
+                (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
 
             if required_cny > balance_cny as i128 {
                 // Insufficient total balance
@@ -924,12 +936,14 @@ impl RouterDatabase {
 
             // Deduct required CNY (already integer, no need to round)
             let cny_to_deduct = required_cny as i64;
-            sqlx::query("UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?")
-                .bind(cny_to_deduct)
-                .bind(user_id)
-                .bind(cny_to_deduct)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
+            )
+            .bind(cny_to_deduct)
+            .bind(user_id)
+            .bind(cny_to_deduct)
+            .execute(&mut *tx)
+            .await?;
 
             tx.commit().await?;
             Ok(true)

@@ -465,7 +465,7 @@ impl Schema {
         // 10. Migration: Rename prices_v2 to prices and cleanup deprecated tables
         // This section handles the migration from prices_v2 to prices
         // No new table creation - the prices table above is now the primary table
-        let prices_v2_sql = "";  // Deprecated - prices_v2 will be migrated to prices
+        // Note: prices_v2_sql removed - deprecated table, no longer needed
 
         // Execute all
         if !users_sql.is_empty() {
@@ -494,9 +494,6 @@ impl Schema {
         }
         if !exchange_rates_sql.is_empty() {
             pool.execute(exchange_rates_sql).await?;
-        }
-        if !prices_v2_sql.is_empty() {
-            pool.execute(prices_v2_sql).await?;
         }
 
         // Migration: Add api_version column to channels if it doesn't exist
@@ -536,7 +533,7 @@ impl Schema {
         // Step 1: Check if prices_v2 exists and needs to be migrated to prices
         let prices_v2_exists: bool = if kind == "sqlite" {
             let count: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='prices_v2'"
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='prices_v2'",
             )
             .fetch_one(pool)
             .await
@@ -544,7 +541,7 @@ impl Schema {
             count > 0
         } else {
             let count: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'prices_v2'"
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'prices_v2'",
             )
             .fetch_one(pool)
             .await
@@ -558,7 +555,7 @@ impl Schema {
             // Check if old prices table exists (with REAL columns)
             let old_prices_exists: bool = if kind == "sqlite" {
                 let count: i64 = sqlx::query_scalar(
-                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='prices'"
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='prices'",
                 )
                 .fetch_one(pool)
                 .await
@@ -566,7 +563,7 @@ impl Schema {
                 count > 0
             } else {
                 let count: i64 = sqlx::query_scalar(
-                    "SELECT count(*) FROM information_schema.tables WHERE table_name = 'prices'"
+                    "SELECT count(*) FROM information_schema.tables WHERE table_name = 'prices'",
                 )
                 .fetch_one(pool)
                 .await
@@ -576,17 +573,29 @@ impl Schema {
 
             // Rename old prices table to prices_deprecated
             if old_prices_exists {
-                let _ = sqlx::query("DROP TABLE IF EXISTS prices_deprecated").execute(pool).await;
-                let _ = sqlx::query("ALTER TABLE prices RENAME TO prices_deprecated").execute(pool).await;
+                let _ = sqlx::query("DROP TABLE IF EXISTS prices_deprecated")
+                    .execute(pool)
+                    .await;
+                let _ = sqlx::query("ALTER TABLE prices RENAME TO prices_deprecated")
+                    .execute(pool)
+                    .await;
                 println!("  Renamed old 'prices' table to 'prices_deprecated'");
             }
 
             // Rename prices_v2 to prices
-            let _ = sqlx::query("ALTER TABLE prices_v2 RENAME TO prices").execute(pool).await;
+            let _ = sqlx::query("ALTER TABLE prices_v2 RENAME TO prices")
+                .execute(pool)
+                .await;
 
             // Recreate indexes
-            let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model)").execute(pool).await;
-            let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_prices_model_region ON prices(model, region)").execute(pool).await;
+            let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model)")
+                .execute(pool)
+                .await;
+            let _ = sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_prices_model_region ON prices(model, region)",
+            )
+            .execute(pool)
+            .await;
 
             println!("  Renamed 'prices_v2' to 'prices'");
         }
@@ -596,18 +605,23 @@ impl Schema {
         for table in temp_tables {
             if kind == "sqlite" {
                 let exists: i64 = sqlx::query_scalar(&format!(
-                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='{}'", table
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='{}'",
+                    table
                 ))
                 .fetch_one(pool)
                 .await
                 .unwrap_or(0);
 
                 if exists > 0 {
-                    let _ = sqlx::query(&format!("DROP TABLE {}", table)).execute(pool).await;
+                    let _ = sqlx::query(&format!("DROP TABLE {}", table))
+                        .execute(pool)
+                        .await;
                     println!("  Dropped temporary table '{}'", table);
                 }
             } else {
-                let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {}", table)).execute(pool).await;
+                let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {}", table))
+                    .execute(pool)
+                    .await;
             }
         }
 
@@ -639,7 +653,8 @@ impl Schema {
             let now = current_timestamp();
 
             let migrate_sql = match kind.as_str() {
-                "sqlite" => r#"
+                "sqlite" => {
+                    r#"
                     INSERT INTO prices (
                         model, currency, input_price, output_price,
                         cache_read_input_price, cache_creation_input_price,
@@ -662,8 +677,10 @@ impl Schema {
                         NULL, NULL,
                         ?, ?
                     FROM prices_deprecated
-                "#,
-                "postgres" => r#"
+                "#
+                }
+                "postgres" => {
+                    r#"
                     INSERT INTO prices (
                         model, currency, input_price, output_price,
                         cache_read_input_price, cache_creation_input_price,
@@ -687,7 +704,8 @@ impl Schema {
                         $1, $2
                     FROM prices_deprecated
                     ON CONFLICT (model, region) DO NOTHING
-                "#,
+                "#
+                }
                 _ => "",
             };
 
@@ -706,12 +724,11 @@ impl Schema {
         if kind == "sqlite" {
             // Check if unlimited_quota column type needs migration
             let needs_migration: bool = {
-                let result: Option<String> = sqlx::query_scalar(
-                    "SELECT typeof(unlimited_quota) FROM tokens LIMIT 1"
-                )
-                .fetch_optional(pool)
-                .await
-                .unwrap_or(None);
+                let result: Option<String> =
+                    sqlx::query_scalar("SELECT typeof(unlimited_quota) FROM tokens LIMIT 1")
+                        .fetch_optional(pool)
+                        .await
+                        .unwrap_or(None);
 
                 // If it returns 'boolean' or error, we need to recreate the table
                 result.is_none() || result == Some("boolean".to_string())
@@ -756,9 +773,16 @@ impl Schema {
 
                 // Drop old and rename
                 let _ = sqlx::query("DROP TABLE tokens").execute(pool).await;
-                let _ = sqlx::query("ALTER TABLE tokens_new RENAME TO tokens").execute(pool).await;
-                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key)").execute(pool).await;
-                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)").execute(pool).await;
+                let _ = sqlx::query("ALTER TABLE tokens_new RENAME TO tokens")
+                    .execute(pool)
+                    .await;
+                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key)")
+                    .execute(pool)
+                    .await;
+                let _ =
+                    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)")
+                        .execute(pool)
+                        .await;
 
                 println!("  Migrated tokens table schema");
             }
@@ -781,23 +805,23 @@ impl Schema {
         // balance_usd and balance_cny are stored as BIGINT nanodollars (9 decimal precision)
         // Note: Using i64 (signed BIGINT) for PostgreSQL compatibility, values must be non-negative
         if kind == "sqlite" {
-            let _ = sqlx::query(
-                "ALTER TABLE users ADD COLUMN balance_usd BIGINT DEFAULT 0",
-            )
-            .execute(pool)
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE users ADD COLUMN balance_cny BIGINT DEFAULT 0",
-            )
-            .execute(pool)
-            .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_usd BIGINT DEFAULT 0")
+                .execute(pool)
+                .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_cny BIGINT DEFAULT 0")
+                .execute(pool)
+                .await;
         } else if kind == "postgres" {
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0")
-                .execute(pool)
-                .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0")
-                .execute(pool)
-                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
         }
 
         // Migration: Migrate existing quota to balance_usd for users with zero balance_usd
@@ -958,10 +982,19 @@ impl Schema {
         if pc_count == 0 {
             let now = current_timestamp();
 
+            // Type alias for protocol config: (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint)
+            type ProtocolConfig<'a> = (
+                i32,
+                &'a str,
+                bool,
+                Option<&'a str>,
+                Option<&'a str>,
+                Option<&'a str>,
+            );
+
             // Default protocol configs
             // channel_type values: 1=OpenAI, 2=Anthropic, 3=Azure, 4=Gemini, 5=Vertex
-            let default_protocols: [(i32, &str, bool, Option<&str>, Option<&str>, Option<&str>);
-                4] = [
+            let default_protocols: [ProtocolConfig; 4] = [
                 // OpenAI - default
                 (
                     1,

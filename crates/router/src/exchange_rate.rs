@@ -77,7 +77,8 @@ impl ExchangeRateService {
                 // No rate available, return original amount
                 tracing::warn!(
                     "No exchange rate found for {} -> {}, returning original amount",
-                    from, to
+                    from,
+                    to
                 );
                 amount
             }
@@ -104,10 +105,7 @@ impl ExchangeRateService {
 
     /// Set an exchange rate in the cache (f64 input)
     pub fn set_rate(&self, from: Currency, to: Currency, rate: f64) {
-        self.rates.insert(
-            (from, to),
-            CachedRate::from_rate(rate),
-        );
+        self.rates.insert((from, to), CachedRate::from_rate(rate));
     }
 
     /// Set an exchange rate in the cache (i64 scaled input)
@@ -162,7 +160,7 @@ impl ExchangeRateService {
         to: Currency,
         rate: f64,
     ) -> anyhow::Result<()> {
-        let rate_nano = rate_to_scaled(rate) as i64;
+        let rate_nano = rate_to_scaled(rate);
         self.save_rate_to_db_nano(from, to, rate_nano).await
     }
 
@@ -180,26 +178,30 @@ impl ExchangeRateService {
             .as_secs() as i64;
 
         let sql = match self.db.kind().as_str() {
-            "postgres" => r#"
+            "postgres" => {
+                r#"
                 INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                     rate = EXCLUDED.rate,
                     updated_at = EXCLUDED.updated_at
-            "#,
-            _ => r#"
+            "#
+            }
+            _ => {
+                r#"
                 INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                     rate = excluded.rate,
                     updated_at = excluded.updated_at
-            "#,
+            "#
+            }
         };
 
         sqlx::query(sql)
             .bind(from.code())
             .bind(to.code())
-            .bind(rate_nano)  // Store as BIGINT (scaled i64)
+            .bind(rate_nano) // Store as BIGINT (scaled i64)
             .bind(now)
             .execute(conn.pool())
             .await?;
@@ -207,7 +209,12 @@ impl ExchangeRateService {
         // Update cache
         self.set_rate_nano(from, to, rate_nano);
 
-        tracing::info!("Saved exchange rate {} -> {}: {}", from, to, scaled_to_rate(rate_nano));
+        tracing::info!(
+            "Saved exchange rate {} -> {}: {}",
+            from,
+            to,
+            scaled_to_rate(rate_nano)
+        );
         Ok(())
     }
 
@@ -305,7 +312,12 @@ impl ExchangeRateService {
                         value.as_f64(),
                     ) {
                         self.set_rate(from_currency, to_currency, rate);
-                        tracing::info!("Updated rate: {} -> {} = {}", from_currency, to_currency, rate);
+                        tracing::info!(
+                            "Updated rate: {} -> {} = {}",
+                            from_currency,
+                            to_currency,
+                            rate
+                        );
                     }
                 }
             }
@@ -345,7 +357,10 @@ mod tests {
             let _ = std::fs::remove_file(&db_path);
 
             // Set environment variable for database path
-            std::env::set_var("BURNCLOUD_DATABASE_URL", format!("sqlite://{}?mode=rwc", db_path));
+            std::env::set_var(
+                "BURNCLOUD_DATABASE_URL",
+                format!("sqlite://{}?mode=rwc", db_path),
+            );
 
             let db = Database::new().await.unwrap();
             db
@@ -424,7 +439,9 @@ mod tests {
         let service = create_test_service();
 
         // No rate set
-        assert!(service.get_last_updated(Currency::USD, Currency::CNY).is_none());
+        assert!(service
+            .get_last_updated(Currency::USD, Currency::CNY)
+            .is_none());
 
         // Set rate
         service.set_rate(Currency::USD, Currency::CNY, 7.2);

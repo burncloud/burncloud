@@ -9,14 +9,14 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
 // Import FailureType from circuit_breaker module
+use crate::adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit};
 use crate::circuit_breaker::{FailureType, RateLimitScope};
-use crate::adaptive_limit::{AdaptiveRateLimit, AdaptiveLimitConfig};
 
 /// Represents the balance status of a channel's account.
 ///
 /// This is used to track whether the channel has sufficient quota/credits
 /// to handle requests.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum BalanceStatus {
     /// Account balance is healthy and can handle requests
     Ok,
@@ -25,22 +25,18 @@ pub enum BalanceStatus {
     /// Account balance is exhausted, cannot process requests
     Exhausted,
     /// Balance status is unknown (e.g., unable to check)
+    #[default]
     Unknown,
-}
-
-impl Default for BalanceStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// Represents the operational status of a specific model within a channel.
 ///
 /// This tracks whether a model is available for use or if it has issues
 /// that prevent it from handling requests.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum ModelStatus {
     /// Model is available and can handle requests
+    #[default]
     Available,
     /// Model is temporarily rate limited
     RateLimited,
@@ -50,12 +46,6 @@ pub enum ModelStatus {
     ModelNotFound,
     /// Model is temporarily down (e.g., upstream issues)
     TemporarilyDown,
-}
-
-impl Default for ModelStatus {
-    fn default() -> Self {
-        Self::Available
-    }
 }
 
 /// Represents the state of a specific model within a channel.
@@ -285,7 +275,7 @@ impl ChannelStateTracker {
             }
             FailureType::RateLimited { scope, retry_after } => {
                 let retry_after_duration = retry_after
-                    .map(|s| Duration::from_secs(s))
+                    .map(Duration::from_secs)
                     .unwrap_or(Duration::from_secs(60)); // Default 60s if not specified
 
                 let retry_until = now + retry_after_duration;
@@ -365,7 +355,13 @@ impl ChannelStateTracker {
     /// * `model` - Optional model name if the success is model-specific
     /// * `latency_ms` - The latency of the successful request in milliseconds
     /// * `upstream_limit` - Optional rate limit learned from upstream response headers
-    pub fn record_success(&self, channel_id: i32, model: Option<&str>, latency_ms: u64, upstream_limit: Option<u32>) {
+    pub fn record_success(
+        &self,
+        channel_id: i32,
+        model: Option<&str>,
+        latency_ms: u64,
+        upstream_limit: Option<u32>,
+    ) {
         // Get or create channel state
         let channel_state = self
             .channel_states

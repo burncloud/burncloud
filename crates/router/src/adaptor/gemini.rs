@@ -169,7 +169,7 @@ impl GeminiAdaptor {
             ]
         });
 
-        Some(format!("data: {}\n\n", chunk_json.to_string()))
+        Some(format!("data: {}\n\n", chunk_json))
     }
 }
 

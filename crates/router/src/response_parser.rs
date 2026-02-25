@@ -118,13 +118,13 @@ pub fn parse_openai_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
     if let Some(reset) = headers
         .get("x-ratelimit-reset-requests")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| parse_reset_time(v))
+        .and_then(parse_reset_time)
     {
         info.reset = Some(reset);
     } else if let Some(reset) = headers
         .get("x-ratelimit-reset-tokens")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| parse_reset_time(v))
+        .and_then(parse_reset_time)
     {
         info.reset = Some(reset);
     }

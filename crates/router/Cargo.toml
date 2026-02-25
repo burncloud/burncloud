@@ -3,6 +3,9 @@ name = "burncloud-router"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+exchange-api = []
+
 [dependencies]
 tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true, features = ["derive"] }

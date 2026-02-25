@@ -177,28 +177,37 @@ impl UserDatabase {
             let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_cny BIGINT DEFAULT 0")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'")
-                .execute(conn.pool())
-                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(conn.pool())
+            .await;
+            let _ =
+                sqlx::query("ALTER TABLE recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'")
+                    .execute(conn.pool())
+                    .await;
         }
 
         // Migrations for PostgreSQL (Add columns if missing)
         if kind == "postgres" {
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0")
-                .execute(conn.pool())
-                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
+            )
+            .execute(conn.pool())
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
+            )
+            .execute(conn.pool())
+            .await;
             let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'")
-                .execute(conn.pool())
-                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(conn.pool())
+            .await;
         }
 
         // Initialize default roles

@@ -136,7 +136,11 @@ pub struct CachePricingConfig {
     #[serde(with = "nano_as_dollars")]
     pub cache_read_input_price: i64,
     /// Cache creation price per 1M tokens in nanodollars
-    #[serde(with = "option_nano_as_dollars", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        with = "option_nano_as_dollars",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub cache_creation_input_price: Option<i64>,
 }
 
@@ -229,7 +233,9 @@ impl PricingConfig {
                 // Note: i64 prices should never be negative (enforced by business logic)
 
                 // Warn if price seems unreasonably high (> $1000/1M tokens)
-                if pricing.input_price > high_price_threshold || pricing.output_price > high_price_threshold {
+                if pricing.input_price > high_price_threshold
+                    || pricing.output_price > high_price_threshold
+                {
                     warnings.push(ValidationWarning {
                         field: format!("models.{}.pricing.{}", model_name, currency),
                         message: format!(
@@ -290,7 +296,8 @@ impl PricingConfig {
                 warnings.push(ValidationWarning {
                     field: format!("models.{}", model_name),
                     message: "Model has no pricing configured".to_string(),
-                    suggestion: "Add pricing for at least one currency (USD recommended)".to_string(),
+                    suggestion: "Add pricing for at least one currency (USD recommended)"
+                        .to_string(),
                 });
             }
         }
@@ -377,8 +384,8 @@ mod tests {
         pricing.insert(
             "USD".to_string(),
             CurrencyPricing {
-                input_price: to_nano(10.0),   // $10.0 = 10_000_000_000 nanodollars
-                output_price: to_nano(30.0),  // $30.0 = 30_000_000_000 nanodollars
+                input_price: to_nano(10.0),  // $10.0 = 10_000_000_000 nanodollars
+                output_price: to_nano(30.0), // $30.0 = 30_000_000_000 nanodollars
                 source: Some("openai".to_string()),
             },
         );
@@ -400,7 +407,9 @@ mod tests {
             }),
         };
 
-        config.models.insert("gpt-4-turbo".to_string(), model_pricing);
+        config
+            .models
+            .insert("gpt-4-turbo".to_string(), model_pricing);
 
         let json = config.to_json().unwrap();
         let parsed = PricingConfig::from_json(&json).unwrap();

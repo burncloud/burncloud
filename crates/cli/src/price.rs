@@ -1,12 +1,13 @@
 use anyhow::Result;
-use burncloud_common::{dollars_to_nano, nano_to_dollars, pricing_config::{
-    BatchPricingConfig, CachePricingConfig, CurrencyPricing, ModelMetadata, ModelPricing,
-    PricingConfig, TieredPriceConfig,
-}};
-use burncloud_database::Database;
-use burncloud_database_models::{
-    PriceInput, PriceModel, TieredPriceInput, TieredPriceModel,
+use burncloud_common::{
+    dollars_to_nano, nano_to_dollars,
+    pricing_config::{
+        BatchPricingConfig, CachePricingConfig, CurrencyPricing, ModelMetadata, ModelPricing,
+        PricingConfig, TieredPriceConfig,
+    },
 };
+use burncloud_database::Database;
+use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
 use chrono::Utc;
 use clap::ArgMatches;
 use std::collections::HashMap;
@@ -54,7 +55,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 let region = price.region.as_deref().unwrap_or("-");
                 println!(
                     "{:<30} {:>8} {:>15.4} {:>15.4} {:>10}",
-                    price.model, price.currency, from_nano(price.input_price), from_nano(price.output_price), region
+                    price.model,
+                    price.currency,
+                    from_nano(price.input_price),
+                    from_nano(price.output_price),
+                    region
                 );
             }
         }
@@ -113,7 +118,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             PriceModel::upsert(db, &input).await?;
 
             let region_str = input.region.as_deref().unwrap_or("");
-            let region_display = if region_str.is_empty() { "".to_string() } else { format!(" [{}]", region_str) };
+            let region_display = if region_str.is_empty() {
+                "".to_string()
+            } else {
+                format!(" [{}]", region_str)
+            };
             println!(
                 "✓ Price set for '{}': {} input={:.4}/1M, output={:.4}/1M{}",
                 model, currency, input_price, output_price, region_display
@@ -145,7 +154,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         println!("Model: {}", price.model);
                         println!("Currency: {}", price.currency);
                         println!("Input Price: {:.4}/1M tokens", from_nano(price.input_price));
-                        println!("Output Price: {:.4}/1M tokens", from_nano(price.output_price));
+                        println!(
+                            "Output Price: {:.4}/1M tokens",
+                            from_nano(price.output_price)
+                        );
                         if let Some(region) = &price.region {
                             println!("Region: {}", region);
                         }
@@ -154,13 +166,19 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                             println!("Cache Read Price: {:.4}/1M tokens", from_nano(cache_read));
                         }
                         if let Some(cache_creation) = price.cache_creation_input_price {
-                            println!("Cache Creation Price: {:.4}/1M tokens", from_nano(cache_creation));
+                            println!(
+                                "Cache Creation Price: {:.4}/1M tokens",
+                                from_nano(cache_creation)
+                            );
                         }
                         if let Some(batch_input) = price.batch_input_price {
                             println!("Batch Input Price: {:.4}/1M tokens", from_nano(batch_input));
                         }
                         if let Some(batch_output) = price.batch_output_price {
-                            println!("Batch Output Price: {:.4}/1M tokens", from_nano(batch_output));
+                            println!(
+                                "Batch Output Price: {:.4}/1M tokens",
+                                from_nano(batch_output)
+                            );
                         }
                     }
                     None => {
@@ -181,7 +199,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                             println!("Region: {}", region);
                         }
                         println!("Input Price: {:.4}/1M tokens", from_nano(price.input_price));
-                        println!("Output Price: {:.4}/1M tokens", from_nano(price.output_price));
+                        println!(
+                            "Output Price: {:.4}/1M tokens",
+                            from_nano(price.output_price)
+                        );
                         if let Some(cache_read) = price.cache_read_input_price {
                             println!("Cache Read Price: {:.4}/1M tokens", from_nano(cache_read));
                         }
@@ -200,10 +221,15 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     let tiers = TieredPriceModel::get_tiers(db, model, None).await?;
                     for tier in tiers {
                         let region = tier.region.as_deref().unwrap_or("universal");
-                        let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                        let tier_end =
+                            tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
                         println!(
                             "  [{}] {}-{} tokens: {:.4}/{:.4} per 1M (in/out)",
-                            region, tier.tier_start, tier_end, from_nano(tier.input_price), from_nano(tier.output_price)
+                            region,
+                            tier.tier_start,
+                            tier_end,
+                            from_nano(tier.input_price),
+                            from_nano(tier.output_price)
                         );
                     }
                 } else {
@@ -220,7 +246,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             // Get all prices for this model
             let prices = if let Some(curr) = currency {
-                PriceModel::get(db, model, curr, region).await?
+                PriceModel::get(db, model, curr, region)
+                    .await?
                     .map(|p| vec![p])
                     .unwrap_or_default()
             } else {
@@ -234,13 +261,19 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             // Display standard pricing
             println!("Standard Pricing:");
-            println!("{:<10} {:>15} {:>15} {:>10}", "Currency", "Input ($/1M)", "Output ($/1M)", "Region");
+            println!(
+                "{:<10} {:>15} {:>15} {:>10}",
+                "Currency", "Input ($/1M)", "Output ($/1M)", "Region"
+            );
             println!("{}", "-".repeat(55));
             for price in &prices {
                 let region_str = price.region.as_deref().unwrap_or("-");
                 println!(
                     "{:<10} {:>15.4} {:>15.4} {:>10}",
-                    price.currency, from_nano(price.input_price), from_nano(price.output_price), region_str
+                    price.currency,
+                    from_nano(price.input_price),
+                    from_nano(price.output_price),
+                    region_str
                 );
             }
 
@@ -250,19 +283,23 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             if has_cache {
                 println!("\nCache Pricing:");
-                println!("{:<10} {:>20} {:>20}", "Currency", "Cache Read ($/1M)", "Cache Creation ($/1M)");
+                println!(
+                    "{:<10} {:>20} {:>20}",
+                    "Currency", "Cache Read ($/1M)", "Cache Creation ($/1M)"
+                );
                 println!("{}", "-".repeat(55));
                 for price in &prices {
-                    if price.cache_read_input_price.is_some() || price.cache_creation_input_price.is_some() {
+                    if price.cache_read_input_price.is_some()
+                        || price.cache_creation_input_price.is_some()
+                    {
                         let cache_read = price.cache_read_input_price.map(from_nano).unwrap_or(0.0);
-                        let cache_creation = price.cache_creation_input_price
+                        let cache_creation = price
+                            .cache_creation_input_price
                             .map(|v| format!("{:.4}", from_nano(v)))
                             .unwrap_or("-".to_string());
                         println!(
                             "{:<10} {:>20.4} {:>20}",
-                            price.currency,
-                            cache_read,
-                            cache_creation
+                            price.currency, cache_read, cache_creation
                         );
                     }
                 }
@@ -270,7 +307,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             if has_batch {
                 println!("\nBatch Pricing:");
-                println!("{:<10} {:>20} {:>20}", "Currency", "Batch Input ($/1M)", "Batch Output ($/1M)");
+                println!(
+                    "{:<10} {:>20} {:>20}",
+                    "Currency", "Batch Input ($/1M)", "Batch Output ($/1M)"
+                );
                 println!("{}", "-".repeat(55));
                 for price in &prices {
                     if price.batch_input_price.is_some() || price.batch_output_price.is_some() {
@@ -278,9 +318,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         let batch_output = price.batch_output_price.map(from_nano).unwrap_or(0.0);
                         println!(
                             "{:<10} {:>20.4} {:>20.4}",
-                            price.currency,
-                            batch_input,
-                            batch_output
+                            price.currency, batch_input, batch_output
                         );
                     }
                 }
@@ -291,21 +329,30 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             if has_tiered {
                 let tiers = TieredPriceModel::get_tiers(db, model, region).await?;
                 println!("\nTiered Pricing:");
-                println!("{:<12} {:>12} {:>12} {:>15} {:>15}", "Region", "Tier Start", "Tier End", "Input ($/1M)", "Output ($/1M)");
+                println!(
+                    "{:<12} {:>12} {:>12} {:>15} {:>15}",
+                    "Region", "Tier Start", "Tier End", "Input ($/1M)", "Output ($/1M)"
+                );
                 println!("{}", "-".repeat(70));
                 for tier in tiers {
                     let region = tier.region.as_deref().unwrap_or("universal");
                     let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
                     println!(
                         "{:<12} {:>12} {:>12} {:>15.4} {:>15.4}",
-                        region, tier.tier_start, tier_end, from_nano(tier.input_price), from_nano(tier.output_price)
+                        region,
+                        tier.tier_start,
+                        tier_end,
+                        from_nano(tier.input_price),
+                        from_nano(tier.output_price)
                     );
                 }
             }
 
             // Show metadata
             if let Some(first_price) = prices.first() {
-                if first_price.context_window.is_some() || first_price.supports_vision_bool().unwrap_or(false) {
+                if first_price.context_window.is_some()
+                    || first_price.supports_vision_bool().unwrap_or(false)
+                {
                     println!("\nModel Metadata:");
                     if let Some(cw) = first_price.context_window {
                         println!("  Context Window: {} tokens", cw);
@@ -316,7 +363,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     if first_price.supports_vision_bool().unwrap_or(false) {
                         println!("  Vision: Yes");
                     }
-                    if first_price.supports_function_calling_bool().unwrap_or(false) {
+                    if first_price
+                        .supports_function_calling_bool()
+                        .unwrap_or(false)
+                    {
                         println!("  Function Calling: Yes");
                     }
                 }
@@ -334,7 +384,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             for price in &prices {
                 total += 1;
-                if price.cache_read_input_price.is_some() || price.cache_creation_input_price.is_some() {
+                if price.cache_read_input_price.is_some()
+                    || price.cache_creation_input_price.is_some()
+                {
                     with_cache += 1;
                 }
                 if price.batch_input_price.is_some() || price.batch_output_price.is_some() {
@@ -444,12 +496,17 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         context_window: metadata.as_ref().and_then(|m| m.context_window),
                         max_output_tokens: metadata.as_ref().and_then(|m| m.max_output_tokens),
                         supports_vision: metadata.as_ref().map(|m| m.supports_vision),
-                        supports_function_calling: metadata.as_ref().map(|m| m.supports_function_calling),
+                        supports_function_calling: metadata
+                            .as_ref()
+                            .map(|m| m.supports_function_calling),
                     };
 
                     match PriceModel::upsert(db, &input).await {
                         Ok(_) => prices_imported += 1,
-                        Err(e) => errors.push(format!("Failed to import {} ({}): {}", model_name, currency, e)),
+                        Err(e) => errors.push(format!(
+                            "Failed to import {} ({}): {}",
+                            model_name, currency, e
+                        )),
                     }
                 }
 
@@ -457,9 +514,12 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 if let Some(ref cache_pricing) = model_pricing.cache_pricing {
                     for (currency, cache) in cache_pricing {
                         // Update existing price with cache pricing
-                        if let Some(existing) = PriceModel::get(db, model_name, currency, None).await? {
+                        if let Some(existing) =
+                            PriceModel::get(db, model_name, currency, None).await?
+                        {
                             let supports_vision = existing.supports_vision_bool();
-                            let supports_function_calling = existing.supports_function_calling_bool();
+                            let supports_function_calling =
+                                existing.supports_function_calling_bool();
                             let input = PriceInput {
                                 model: model_name.clone(),
                                 currency: currency.clone(),
@@ -481,7 +541,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                             };
                             match PriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
-                                Err(e) => errors.push(format!("Failed to update cache pricing for {} ({}): {}", model_name, currency, e)),
+                                Err(e) => errors.push(format!(
+                                    "Failed to update cache pricing for {} ({}): {}",
+                                    model_name, currency, e
+                                )),
                             }
                         }
                     }
@@ -490,9 +553,12 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 // Import batch pricing if available
                 if let Some(ref batch_pricing) = model_pricing.batch_pricing {
                     for (currency, batch) in batch_pricing {
-                        if let Some(existing) = PriceModel::get(db, model_name, currency, None).await? {
+                        if let Some(existing) =
+                            PriceModel::get(db, model_name, currency, None).await?
+                        {
                             let supports_vision = existing.supports_vision_bool();
-                            let supports_function_calling = existing.supports_function_calling_bool();
+                            let supports_function_calling =
+                                existing.supports_function_calling_bool();
                             let input = PriceInput {
                                 model: model_name.clone(),
                                 currency: currency.clone(),
@@ -514,7 +580,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                             };
                             match PriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
-                                Err(e) => errors.push(format!("Failed to update batch pricing for {} ({}): {}", model_name, currency, e)),
+                                Err(e) => errors.push(format!(
+                                    "Failed to update batch pricing for {} ({}): {}",
+                                    model_name, currency, e
+                                )),
                             }
                         }
                     }
@@ -581,15 +650,15 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let mut models: HashMap<String, ModelPricing> = HashMap::new();
 
             for price in &prices {
-                let entry = models.entry(price.model.clone()).or_insert_with(|| {
-                    ModelPricing {
+                let entry = models
+                    .entry(price.model.clone())
+                    .or_insert_with(|| ModelPricing {
                         pricing: HashMap::new(),
                         tiered_pricing: None,
                         cache_pricing: None,
                         batch_pricing: None,
                         metadata: None,
-                    }
-                });
+                    });
 
                 // Add standard pricing
                 entry.pricing.insert(
@@ -602,7 +671,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 );
 
                 // Add cache pricing if available
-                if price.cache_read_input_price.is_some() || price.cache_creation_input_price.is_some() {
+                if price.cache_read_input_price.is_some()
+                    || price.cache_creation_input_price.is_some()
+                {
                     let cache_map = entry.cache_pricing.get_or_insert_with(HashMap::new);
                     cache_map.insert(
                         price.currency.clone(),
@@ -631,7 +702,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         context_window: price.context_window,
                         max_output_tokens: price.max_output_tokens,
                         supports_vision: price.supports_vision_bool().unwrap_or(false),
-                        supports_function_calling: price.supports_function_calling_bool().unwrap_or(false),
+                        supports_function_calling: price
+                            .supports_function_calling_bool()
+                            .unwrap_or(false),
                         supports_streaming: true,
                         provider: None,
                         family: None,
@@ -642,15 +715,15 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             // Add tiered pricing
             for tier in &tiered_prices {
-                let entry = models.entry(tier.model.clone()).or_insert_with(|| {
-                    ModelPricing {
+                let entry = models
+                    .entry(tier.model.clone())
+                    .or_insert_with(|| ModelPricing {
                         pricing: HashMap::new(),
                         tiered_pricing: None,
                         cache_pricing: None,
                         batch_pricing: None,
                         metadata: None,
-                    }
-                });
+                    });
 
                 let tiered_map = entry.tiered_pricing.get_or_insert_with(HashMap::new);
                 let currency = if tier.region.as_deref() == Some("cn") {
@@ -659,7 +732,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     "USD".to_string()
                 };
 
-                let tiers = tiered_map.entry(currency).or_insert_with(Vec::new);
+                let tiers = tiered_map.entry(currency).or_default();
                 tiers.push(TieredPriceConfig {
                     tier_start: tier.tier_start,
                     tier_end: tier.tier_end,
@@ -697,12 +770,14 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                             currency,
                             price.input_price,
                             price.output_price,
-                            pricing.cache_pricing
+                            pricing
+                                .cache_pricing
                                 .as_ref()
                                 .and_then(|c| c.get(currency))
                                 .map(|c| c.cache_read_input_price.to_string())
                                 .unwrap_or_default(),
-                            pricing.batch_pricing
+                            pricing
+                                .batch_pricing
                                 .as_ref()
                                 .and_then(|b| b.get(currency))
                                 .map(|b| b.batch_input_price.to_string())
@@ -714,7 +789,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             };
 
             std::fs::write(Path::new(file_path), &output)?;
-            println!("✓ Exported {} models to '{}'", config.models.len(), file_path);
+            println!(
+                "✓ Exported {} models to '{}'",
+                config.models.len(),
+                file_path
+            );
         }
         Some(("validate", sub_m)) => {
             let file_path = sub_m.get_one::<String>("file").unwrap();
@@ -740,7 +819,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     if warnings.is_empty() {
                         println!("✅ Configuration is valid with no warnings.");
                     } else {
-                        println!("✅ Configuration is valid with {} warning(s):", warnings.len());
+                        println!(
+                            "✅ Configuration is valid with {} warning(s):",
+                            warnings.len()
+                        );
                         println!();
                         for warning in &warnings {
                             println!("  Field: {}", warning.field);
@@ -757,7 +839,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         _ => {
-            println!("Usage: burncloud price <list|set|get|delete|import|export|validate|sync-status>");
+            println!(
+                "Usage: burncloud price <list|set|get|delete|import|export|validate|sync-status>"
+            );
             println!("Run 'burncloud price --help' for more information.");
         }
     }
@@ -874,7 +958,8 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                     println!("\nTier configuration:");
                     for tier in tiers {
                         let region = tier.region.as_deref().unwrap_or("universal");
-                        let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                        let tier_end =
+                            tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
                         // Convert nanodollars to dollars for display
                         let input_dollars = from_nano(tier.input_price);
                         let output_dollars = from_nano(tier.output_price);
@@ -885,7 +970,10 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                     }
                 }
             } else {
-                println!("✗ Model '{}' does not have tiered pricing configured", model);
+                println!(
+                    "✗ Model '{}' does not have tiered pricing configured",
+                    model
+                );
                 println!("  This model will use standard per-token pricing.");
             }
         }

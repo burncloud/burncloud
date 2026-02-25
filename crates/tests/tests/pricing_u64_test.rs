@@ -13,11 +13,17 @@ use burncloud_common::{
 fn test_dollar_to_nano_conversion_2_5() {
     let dollars = 2.5;
     let nano = dollars_to_nano(dollars);
-    assert_eq!(nano, 2_500_000_000, "$2.5 should be 2,500,000,000 nanodollars");
+    assert_eq!(
+        nano, 2_500_000_000,
+        "$2.5 should be 2,500,000,000 nanodollars"
+    );
 
     // Roundtrip
     let back = nano_to_dollars(nano);
-    assert!((back - dollars).abs() < 1e-9, "Roundtrip should preserve value");
+    assert!(
+        (back - dollars).abs() < 1e-9,
+        "Roundtrip should preserve value"
+    );
 }
 
 /// Test: $0.000000123 → 123 nanodollars
@@ -29,7 +35,10 @@ fn test_dollar_to_nano_conversion_tiny() {
 
     // Roundtrip
     let back = nano_to_dollars(nano);
-    assert!((back - dollars).abs() < 1e-9, "Roundtrip should preserve tiny values");
+    assert!(
+        (back - dollars).abs() < 1e-9,
+        "Roundtrip should preserve tiny values"
+    );
 }
 
 /// Test: Exchange rate scaling
@@ -38,10 +47,16 @@ fn test_exchange_rate_scaling() {
     // Test USD → CNY rate (7.24)
     let rate = 7.24;
     let scaled = rate_to_scaled(rate);
-    assert_eq!(scaled, 7_240_000_000, "Rate 7.24 should be 7,240,000,000 scaled");
+    assert_eq!(
+        scaled, 7_240_000_000,
+        "Rate 7.24 should be 7,240,000,000 scaled"
+    );
 
     let back = scaled_to_rate(scaled);
-    assert!((back - rate).abs() < 1e-9, "Rate roundtrip should preserve value");
+    assert!(
+        (back - rate).abs() < 1e-9,
+        "Rate roundtrip should preserve value"
+    );
 }
 
 /// Test: Cost calculation with safe overflow protection
@@ -69,11 +84,17 @@ fn test_large_value_handling() {
     let tokens = 10_000_000_000u64;
     let price_per_million = dollars_to_nano(1000.0);
     let cost = calculate_cost_safe(tokens, price_per_million);
-    assert_eq!(cost, 10_000_000_000_000_000u64, "10B tokens at $1000/1M should cost $10M");
+    assert_eq!(
+        cost, 10_000_000_000_000_000u64,
+        "10B tokens at $1000/1M should cost $10M"
+    );
 
     // Verify conversion back to dollars
     let cost_dollars = nano_to_dollars(cost);
-    assert!((cost_dollars - 10_000_000.0).abs() < 1e-3, "Cost should be $10M");
+    assert!(
+        (cost_dollars - 10_000_000.0).abs() < 1e-3,
+        "Cost should be $10M"
+    );
 }
 
 /// Test: 9 decimal precision
@@ -81,17 +102,17 @@ fn test_large_value_handling() {
 fn test_nine_decimal_precision() {
     // Test that we can represent amounts with 9 decimal precision
     let amounts = [
-        (0.000000001, 1),           // 1 nanodollar
-        (0.000000009, 9),           // 9 nanodollars
-        (0.000000010, 10),          // 10 nanodollars
-        (0.000000100, 100),         // 100 nanodollars
-        (0.000001000, 1000),        // 1000 nanodollars
-        (0.000010000, 10000),       // 10000 nanodollars
-        (0.000100000, 100000),      // 100000 nanodollars
-        (0.001000000, 1000000),     // 1000000 nanodollars
-        (0.010000000, 10000000),    // 10000000 nanodollars
-        (0.100000000, 100000000),   // 100000000 nanodollars
-        (1.000000000, 1000000000),  // 1 dollar = 1B nanodollars
+        (0.000000001, 1),          // 1 nanodollar
+        (0.000000009, 9),          // 9 nanodollars
+        (0.000000010, 10),         // 10 nanodollars
+        (0.000000100, 100),        // 100 nanodollars
+        (0.000001000, 1000),       // 1000 nanodollars
+        (0.000010000, 10000),      // 10000 nanodollars
+        (0.000100000, 100000),     // 100000 nanodollars
+        (0.001000000, 1000000),    // 1000000 nanodollars
+        (0.010000000, 10000000),   // 10000000 nanodollars
+        (0.100000000, 100000000),  // 100000000 nanodollars
+        (1.000000000, 1000000000), // 1 dollar = 1B nanodollars
     ];
 
     for (dollars, expected_nano) in amounts {
@@ -107,7 +128,10 @@ fn test_nine_decimal_precision() {
 /// Test: Constants are correct
 #[test]
 fn test_constants() {
-    assert_eq!(NANO_PER_DOLLAR, 1_000_000_000, "NANO_PER_DOLLAR should be 10^9");
+    assert_eq!(
+        NANO_PER_DOLLAR, 1_000_000_000,
+        "NANO_PER_DOLLAR should be 10^9"
+    );
     assert_eq!(RATE_SCALE, 1_000_000_000, "RATE_SCALE should be 10^9");
 }
 
@@ -127,7 +151,8 @@ fn test_edge_cases() {
         assert!(
             (back - dollars).abs() < 1e-9,
             "Roundtrip failed for {}: got {}",
-            dollars, back
+            dollars,
+            back
         );
     }
 }

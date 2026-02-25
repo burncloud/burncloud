@@ -301,7 +301,7 @@ pub struct Channel {
     pub remark: Option<String>,
     pub api_version: Option<String>, // API version for protocol adaptation
     pub pricing_region: Option<String>, // Pricing region: 'cn', 'international', or NULL for universal
-                                     // ChannelInfo fields from New API are flattened or handled separately in logic
+                                        // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
 /// Recharge record. Amount is stored as i64 nanodollars (9 decimal precision).
@@ -670,8 +670,8 @@ mod currency_tests {
         // Prices are in nanodollars: $0.002 = 2_000_000 nanodollars
         let price = MultiCurrencyPrice {
             currency: Currency::CNY,
-            input_price: 2_000_000,    // $0.002 in nanodollars
-            output_price: 6_000_000,   // $0.006 in nanodollars
+            input_price: 2_000_000,  // $0.002 in nanodollars
+            output_price: 6_000_000, // $0.006 in nanodollars
         };
 
         assert_eq!(price.currency, Currency::CNY);

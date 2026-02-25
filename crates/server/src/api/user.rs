@@ -66,7 +66,9 @@ async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> 
                 } else {
                     u.balance_usd as f64 / 1_000_000_000.0
                 };
-                AxumJson(json!({ "success": true, "data": { "balance": balance, "currency": currency } }))
+                AxumJson(
+                    json!({ "success": true, "data": { "balance": balance, "currency": currency } }),
+                )
             }
             _ => AxumJson(json!({ "success": true })),
         },

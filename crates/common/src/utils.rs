@@ -25,8 +25,7 @@ pub fn hash_password(password: &str) -> Result<String> {
 
 /// Verify a password against a bcrypt hash
 pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
-    bcrypt::verify(password, hash)
-        .map_err(|e| BurnCloudError::PasswordHashError(e.to_string()))
+    bcrypt::verify(password, hash).map_err(|e| BurnCloudError::PasswordHashError(e.to_string()))
 }
 
 #[cfg(test)]

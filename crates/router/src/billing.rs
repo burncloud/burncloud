@@ -24,10 +24,7 @@ pub enum BillingError {
     NoTiers,
 
     #[error("Invalid tier configuration: tier_end ({tier_end}) < tier_start ({tier_start})")]
-    InvalidTier {
-        tier_start: i64,
-        tier_end: i64,
-    },
+    InvalidTier { tier_start: i64, tier_end: i64 },
 
     #[error("Invalid price: price cannot be negative")]
     InvalidPrice,
@@ -109,7 +106,11 @@ impl CostResult {
     }
 
     /// Create a new CostResult with local currency
-    pub fn with_local_nano(usd_amount_nano: i64, local_currency: &str, local_amount_nano: i64) -> Self {
+    pub fn with_local_nano(
+        usd_amount_nano: i64,
+        local_currency: &str,
+        local_amount_nano: i64,
+    ) -> Self {
         let display = format_cost_nano(local_amount_nano, local_currency);
         Self {
             usd_amount_nano,
@@ -187,12 +188,17 @@ pub fn calculate_multi_currency_cost(
         calculate_batch_cost_nano(usage.prompt_tokens, usage.completion_tokens, &pricing.usd)
     } else if is_priority {
         calculate_priority_cost_nano(usage.prompt_tokens, usage.completion_tokens, &pricing.usd)
-    } else if usage.cache_read_tokens > 0 || usage.cache_creation_tokens > 0 || usage.audio_tokens > 0 {
+    } else if usage.cache_read_tokens > 0
+        || usage.cache_creation_tokens > 0
+        || usage.audio_tokens > 0
+    {
         calculate_cache_cost_nano(usage, &pricing.usd)
     } else {
         // Standard pricing
-        let input_cost = (usage.prompt_tokens as i128 * pricing.usd.input_price as i128) / 1_000_000;
-        let output_cost = (usage.completion_tokens as i128 * pricing.usd.output_price as i128) / 1_000_000;
+        let input_cost =
+            (usage.prompt_tokens as i128 * pricing.usd.input_price as i128) / 1_000_000;
+        let output_cost =
+            (usage.completion_tokens as i128 * pricing.usd.output_price as i128) / 1_000_000;
         (input_cost + output_cost) as i64
     };
 
@@ -201,12 +207,21 @@ pub fn calculate_multi_currency_cost(
         let local_cost_nano = if is_batch {
             calculate_batch_cost_nano(usage.prompt_tokens, usage.completion_tokens, local_pricing)
         } else if is_priority {
-            calculate_priority_cost_nano(usage.prompt_tokens, usage.completion_tokens, local_pricing)
-        } else if usage.cache_read_tokens > 0 || usage.cache_creation_tokens > 0 || usage.audio_tokens > 0 {
+            calculate_priority_cost_nano(
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                local_pricing,
+            )
+        } else if usage.cache_read_tokens > 0
+            || usage.cache_creation_tokens > 0
+            || usage.audio_tokens > 0
+        {
             calculate_cache_cost_nano(usage, local_pricing)
         } else {
-            let input_cost = (usage.prompt_tokens as i128 * local_pricing.input_price as i128) / 1_000_000;
-            let output_cost = (usage.completion_tokens as i128 * local_pricing.output_price as i128) / 1_000_000;
+            let input_cost =
+                (usage.prompt_tokens as i128 * local_pricing.input_price as i128) / 1_000_000;
+            let output_cost =
+                (usage.completion_tokens as i128 * local_pricing.output_price as i128) / 1_000_000;
             (input_cost + output_cost) as i64
         };
 
@@ -263,12 +278,18 @@ pub fn calculate_tiered_cost_nano(
 
     // Filter tiers by region
     let filtered_tiers: Vec<&TieredPrice> = if let Some(r) = region {
-        let matching: Vec<&TieredPrice> = tiers.iter().filter(|t| t.region.as_deref() == Some(r)).collect();
+        let matching: Vec<&TieredPrice> = tiers
+            .iter()
+            .filter(|t| t.region.as_deref() == Some(r))
+            .collect();
         if matching.is_empty() {
             // Fall back to universal tiers (region = NULL)
-            let universal: Vec<&TieredPrice> = tiers.iter().filter(|t| t.region.is_none()).collect();
+            let universal: Vec<&TieredPrice> =
+                tiers.iter().filter(|t| t.region.is_none()).collect();
             if universal.is_empty() {
-                return Err(BillingError::RegionMismatch { requested: r.to_string() });
+                return Err(BillingError::RegionMismatch {
+                    requested: r.to_string(),
+                });
             }
             universal
         } else {
@@ -372,7 +393,10 @@ pub fn calculate_tiered_cost_full_nano(
     // For output tokens, we need to use output_price
     // Re-filter tiers for output pricing
     let filtered_tiers: Vec<&TieredPrice> = if let Some(r) = region {
-        let matching: Vec<&TieredPrice> = tiers.iter().filter(|t| t.region.as_deref() == Some(r)).collect();
+        let matching: Vec<&TieredPrice> = tiers
+            .iter()
+            .filter(|t| t.region.as_deref() == Some(r))
+            .collect();
         if matching.is_empty() {
             tiers.iter().filter(|t| t.region.is_none()).collect()
         } else {
@@ -432,7 +456,8 @@ pub fn calculate_tiered_cost_full(
     tiers: &[TieredPrice],
     region: Option<&str>,
 ) -> Result<f64, BillingError> {
-    let cost_nano = calculate_tiered_cost_full_nano(prompt_tokens, completion_tokens, tiers, region)?;
+    let cost_nano =
+        calculate_tiered_cost_full_nano(prompt_tokens, completion_tokens, tiers, region)?;
     Ok(nano_to_dollars(cost_nano as u64))
 }
 
@@ -476,10 +501,7 @@ impl AdvancedPricing {
 /// Prompt Caching allows reusing cached prompt prefixes at a reduced rate.
 /// Cache read tokens cost approximately 10% of standard tokens.
 /// Returns cost in nanodollars (i64).
-pub fn calculate_cache_cost_nano(
-    usage: &TokenUsage,
-    pricing: &AdvancedPricing,
-) -> i64 {
+pub fn calculate_cache_cost_nano(usage: &TokenUsage, pricing: &AdvancedPricing) -> i64 {
     let mut total_cost: i128 = 0;
 
     // Standard prompt tokens
@@ -499,8 +521,11 @@ pub fn calculate_cache_cost_nano(
     // Cache creation tokens
     if usage.cache_creation_tokens > 0 {
         // Default cache creation price is 125% of input price
-        let cache_creation_price = pricing.cache_creation_price.unwrap_or(pricing.input_price + pricing.input_price / 4);
-        total_cost += (usage.cache_creation_tokens as i128 * cache_creation_price as i128) / 1_000_000;
+        let cache_creation_price = pricing
+            .cache_creation_price
+            .unwrap_or(pricing.input_price + pricing.input_price / 4);
+        total_cost +=
+            (usage.cache_creation_tokens as i128 * cache_creation_price as i128) / 1_000_000;
     }
 
     // Audio tokens (typically 7x text price)
@@ -514,10 +539,7 @@ pub fn calculate_cache_cost_nano(
 }
 
 /// Calculate cost for Prompt Caching requests (f64 backward compatibility)
-pub fn calculate_cache_cost(
-    usage: &TokenUsage,
-    pricing: &AdvancedPricing,
-) -> f64 {
+pub fn calculate_cache_cost(usage: &TokenUsage, pricing: &AdvancedPricing) -> f64 {
     let cost_nano = calculate_cache_cost_nano(usage, pricing);
     nano_to_dollars(cost_nano as u64)
 }
@@ -533,7 +555,9 @@ pub fn calculate_batch_cost_nano(
 ) -> i64 {
     // Default batch price is 50% of standard price
     let input_price = pricing.batch_input_price.unwrap_or(pricing.input_price / 2);
-    let output_price = pricing.batch_output_price.unwrap_or(pricing.output_price / 2);
+    let output_price = pricing
+        .batch_output_price
+        .unwrap_or(pricing.output_price / 2);
 
     let input_cost = (prompt_tokens as i128 * input_price as i128) / 1_000_000;
     let output_cost = (completion_tokens as i128 * output_price as i128) / 1_000_000;
@@ -562,8 +586,12 @@ pub fn calculate_priority_cost_nano(
 ) -> i64 {
     // Default priority price is 170% of standard price
     // Use 170/100 = 17/10 for integer math
-    let input_price = pricing.priority_input_price.unwrap_or((pricing.input_price as i128 * 17 / 10) as i64);
-    let output_price = pricing.priority_output_price.unwrap_or((pricing.output_price as i128 * 17 / 10) as i64);
+    let input_price = pricing
+        .priority_input_price
+        .unwrap_or((pricing.input_price as i128 * 17 / 10) as i64);
+    let output_price = pricing
+        .priority_output_price
+        .unwrap_or((pricing.output_price as i128 * 17 / 10) as i64);
 
     let input_cost = (prompt_tokens as i128 * input_price as i128) / 1_000_000;
     let output_cost = (completion_tokens as i128 * output_price as i128) / 1_000_000;
@@ -591,7 +619,12 @@ mod tests {
         dollars_to_nano(price) as i64
     }
 
-    fn create_test_tier(tier_start: i64, tier_end: Option<i64>, input_price_dollars: f64, output_price_dollars: f64) -> TieredPrice {
+    fn create_test_tier(
+        tier_start: i64,
+        tier_end: Option<i64>,
+        input_price_dollars: f64,
+        output_price_dollars: f64,
+    ) -> TieredPrice {
         TieredPrice {
             id: 0,
             model: "test-model".to_string(),
@@ -603,7 +636,13 @@ mod tests {
         }
     }
 
-    fn create_regional_tier(tier_start: i64, tier_end: Option<i64>, input_price_dollars: f64, output_price_dollars: f64, region: &str) -> TieredPrice {
+    fn create_regional_tier(
+        tier_start: i64,
+        tier_end: Option<i64>,
+        input_price_dollars: f64,
+        output_price_dollars: f64,
+        region: &str,
+    ) -> TieredPrice {
         TieredPrice {
             id: 0,
             model: "test-model".to_string(),
@@ -643,7 +682,11 @@ mod tests {
         // Tier 3: 22K × $3.0/1M = $0.066
         // Total: $0.3348
         let cost = calculate_tiered_cost(150_000, &tiers, None).unwrap();
-        assert!((cost - 0.3348).abs() < 0.000001, "Expected $0.3348, got ${}", cost);
+        assert!(
+            (cost - 0.3348).abs() < 0.000001,
+            "Expected $0.3348, got ${}",
+            cost
+        );
     }
 
     #[test]
@@ -660,7 +703,11 @@ mod tests {
         // Beyond: 72K × $2.0/1M = $0.144
         // Total: $0.368
         let cost = calculate_tiered_cost(200_000, &tiers, None).unwrap();
-        assert!((cost - 0.368).abs() < 0.000001, "Expected $0.368, got ${}", cost);
+        assert!(
+            (cost - 0.368).abs() < 0.000001,
+            "Expected $0.368, got ${}",
+            cost
+        );
     }
 
     #[test]
@@ -676,7 +723,11 @@ mod tests {
         // Tier 2: 96K × $2.0/1M = $0.192
         // Total: $0.224
         let cost = calculate_tiered_cost(128_000, &tiers, None).unwrap();
-        assert!((cost - 0.224).abs() < 0.000001, "Expected $0.224, got ${}", cost);
+        assert!(
+            (cost - 0.224).abs() < 0.000001,
+            "Expected $0.224, got ${}",
+            cost
+        );
     }
 
     #[test]
@@ -708,7 +759,12 @@ mod tests {
         // CN: 32K × $0.359/1M + 18K × $0.574/1M
         // = $0.011488 + $0.010332 = $0.02182
         let expected_cn = 32_000.0 / 1_000_000.0 * 0.359 + 18_000.0 / 1_000_000.0 * 0.574;
-        assert!((cn_cost - expected_cn).abs() < 0.000001, "Expected ${}, got ${}", expected_cn, cn_cost);
+        assert!(
+            (cn_cost - expected_cn).abs() < 0.000001,
+            "Expected ${}, got ${}",
+            expected_cn,
+            cn_cost
+        );
 
         // Test international region pricing
         let intl_cost = calculate_tiered_cost(50_000, &tiers, Some("international")).unwrap();
@@ -716,7 +772,12 @@ mod tests {
         // International: 32K × $1.2/1M + 18K × $2.4/1M
         // = $0.0384 + $0.0432 = $0.0816
         let expected_intl = 32_000.0 / 1_000_000.0 * 1.2 + 18_000.0 / 1_000_000.0 * 2.4;
-        assert!((intl_cost - expected_intl).abs() < 0.000001, "Expected ${}, got ${}", expected_intl, intl_cost);
+        assert!(
+            (intl_cost - expected_intl).abs() < 0.000001,
+            "Expected ${}, got ${}",
+            expected_intl,
+            intl_cost
+        );
 
         // Verify CN is cheaper than international
         assert!(cn_cost < intl_cost);
@@ -759,7 +820,7 @@ mod tests {
         };
 
         let pricing = AdvancedPricing {
-            input_price: to_nano(3.0),  // Claude 3.5 Sonnet style
+            input_price: to_nano(3.0), // Claude 3.5 Sonnet style
             output_price: to_nano(15.0),
             cache_read_price: Some(to_nano(0.30)), // 10% of standard
             cache_creation_price: Some(to_nano(3.75)),
@@ -772,22 +833,30 @@ mod tests {
         // Cache read: 50K × $0.30/1M = $0.015
         // Total: $0.915
         let cost = calculate_cache_cost(&usage, &pricing);
-        assert!((cost - 0.915).abs() < 0.000001, "Expected $0.915, got ${}", cost);
+        assert!(
+            (cost - 0.915).abs() < 0.000001,
+            "Expected $0.915, got ${}",
+            cost
+        );
     }
 
     #[test]
     fn test_batch_cost_calculation() {
         let pricing = AdvancedPricing {
-            input_price: to_nano(10.0),  // GPT-4 style
+            input_price: to_nano(10.0), // GPT-4 style
             output_price: to_nano(30.0),
-            batch_input_price: Some(to_nano(5.0)),  // 50% of standard
+            batch_input_price: Some(to_nano(5.0)), // 50% of standard
             batch_output_price: Some(to_nano(15.0)),
             ..Default::default()
         };
 
         // 1M input + 1M output at batch prices
         let cost = calculate_batch_cost(1_000_000, 1_000_000, &pricing);
-        assert!((cost - 20.0).abs() < 0.000001, "Expected $20.0, got ${}", cost);
+        assert!(
+            (cost - 20.0).abs() < 0.000001,
+            "Expected $20.0, got ${}",
+            cost
+        );
     }
 
     #[test]
@@ -795,14 +864,18 @@ mod tests {
         let pricing = AdvancedPricing {
             input_price: to_nano(10.0),
             output_price: to_nano(30.0),
-            priority_input_price: Some(to_nano(17.0)),  // 170% of standard
+            priority_input_price: Some(to_nano(17.0)), // 170% of standard
             priority_output_price: Some(to_nano(51.0)),
             ..Default::default()
         };
 
         // 1M input + 1M output at priority prices
         let cost = calculate_priority_cost(1_000_000, 1_000_000, &pricing);
-        assert!((cost - 68.0).abs() < 0.000001, "Expected $68.0, got ${}", cost);
+        assert!(
+            (cost - 68.0).abs() < 0.000001,
+            "Expected $68.0, got ${}",
+            cost
+        );
     }
 
     #[test]
@@ -818,7 +891,11 @@ mod tests {
 
         let cost = calculate_batch_cost(1_000_000, 1_000_000, &pricing);
         // 50% of (10 + 30) = 20
-        assert!((cost - 20.0).abs() < 0.000001, "Expected $20.0, got ${}", cost);
+        assert!(
+            (cost - 20.0).abs() < 0.000001,
+            "Expected $20.0, got ${}",
+            cost
+        );
     }
 
     #[test]
@@ -862,13 +939,13 @@ mod tests {
         };
 
         let usd_pricing = AdvancedPricing {
-            input_price: to_nano(1.2),  // USD per 1M tokens
+            input_price: to_nano(1.2), // USD per 1M tokens
             output_price: to_nano(6.0),
             ..Default::default()
         };
 
         let cny_pricing = AdvancedPricing {
-            input_price: to_nano(0.359),  // CNY per 1M tokens (cheaper for CN region)
+            input_price: to_nano(0.359), // CNY per 1M tokens (cheaper for CN region)
             output_price: to_nano(1.434),
             ..Default::default()
         };
@@ -907,7 +984,7 @@ mod tests {
         let multi_pricing = MultiCurrencyPricing {
             usd: usd_pricing,
             local: None,
-            exchange_rate_nano: Some(to_nano(7.2)),  // 1 USD = 7.2 CNY
+            exchange_rate_nano: Some(to_nano(7.2)), // 1 USD = 7.2 CNY
         };
 
         let result = calculate_multi_currency_cost(&usage, &multi_pricing, false, false);
@@ -1075,7 +1152,7 @@ mod tests {
         };
 
         let eur_pricing = AdvancedPricing {
-            input_price: to_nano(9.3),  // ~1 EUR = 1.08 USD
+            input_price: to_nano(9.3), // ~1 EUR = 1.08 USD
             output_price: to_nano(27.9),
             ..Default::default()
         };
@@ -1108,7 +1185,7 @@ mod tests {
         let usd_pricing = AdvancedPricing {
             input_price: to_nano(1.0),
             output_price: to_nano(4.0),
-            audio_input_price: Some(to_nano(7.0)),  // Audio tokens cost 7x
+            audio_input_price: Some(to_nano(7.0)), // Audio tokens cost 7x
             ..Default::default()
         };
 

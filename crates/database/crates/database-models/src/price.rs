@@ -182,17 +182,10 @@ impl PriceModel {
                    FROM prices WHERE model = ? AND region IS NULL"#
             };
 
-            let universal_price: Option<Price> = if is_postgres {
-                sqlx::query_as(sql_universal)
-                    .bind(model)
-                    .fetch_optional(conn.pool())
-                    .await?
-            } else {
-                sqlx::query_as(sql_universal)
-                    .bind(model)
-                    .fetch_optional(conn.pool())
-                    .await?
-            };
+            let universal_price: Option<Price> = sqlx::query_as(sql_universal)
+                .bind(model)
+                .fetch_optional(conn.pool())
+                .await?;
 
             return Ok(universal_price);
         }
@@ -252,7 +245,12 @@ impl PriceModel {
     }
 
     /// List all prices with pagination
-    pub async fn list(db: &Database, limit: i32, offset: i32, currency: Option<&str>) -> Result<Vec<Price>> {
+    pub async fn list(
+        db: &Database,
+        limit: i32,
+        offset: i32,
+        currency: Option<&str>,
+    ) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -419,7 +417,12 @@ impl PriceModel {
     }
 
     /// Delete a price entry
-    pub async fn delete(db: &Database, model: &str, currency: &str, region: Option<&str>) -> Result<bool> {
+    pub async fn delete(
+        db: &Database,
+        model: &str,
+        currency: &str,
+        region: Option<&str>,
+    ) -> Result<bool> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 

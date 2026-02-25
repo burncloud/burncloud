@@ -113,10 +113,7 @@ impl TieredPriceModel {
                 } else {
                     "DELETE FROM tiered_pricing WHERE model = ?"
                 };
-                sqlx::query(sql)
-                    .bind(model)
-                    .execute(conn.pool())
-                    .await?;
+                sqlx::query(sql).bind(model).execute(conn.pool()).await?;
             }
         }
 
@@ -145,9 +142,7 @@ impl TieredPriceModel {
         let sql = r#"SELECT id, model, region, tier_start, tier_end, input_price, output_price
                      FROM tiered_pricing ORDER BY model, tier_start ASC"#;
 
-        let tiers = sqlx::query_as(sql)
-            .fetch_all(conn.pool())
-            .await?;
+        let tiers = sqlx::query_as(sql).fetch_all(conn.pool()).await?;
 
         Ok(tiers)
     }

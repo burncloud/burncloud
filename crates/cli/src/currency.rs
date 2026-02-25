@@ -61,7 +61,10 @@ async fn cmd_list_rates(db: &Database) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<15} {:<15} {:>15} {:>20}", "From", "To", "Rate", "Updated");
+    println!(
+        "{:<15} {:<15} {:>15} {:>20}",
+        "From", "To", "Rate", "Updated"
+    );
     println!("{}", "-".repeat(70));
 
     for (from, to, rate_nano, updated_at) in rows {
@@ -83,10 +86,10 @@ async fn cmd_list_rates(db: &Database) -> Result<()> {
 /// Set an exchange rate
 async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<()> {
     // Validate currencies
-    let from_currency = Currency::from_str(from)
-        .map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
-    let to_currency = Currency::from_str(to)
-        .map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
+    let from_currency =
+        Currency::from_str(from).map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
+    let to_currency =
+        Currency::from_str(to).map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
 
     if rate <= 0.0 {
         return Err(anyhow::anyhow!("Rate must be positive"));
@@ -102,26 +105,30 @@ async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<
     let rate_nano = rate_to_scaled(rate);
 
     let sql = match db.kind().as_str() {
-        "postgres" => r#"
+        "postgres" => {
+            r#"
             INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                 rate = EXCLUDED.rate,
                 updated_at = EXCLUDED.updated_at
-        "#,
-        _ => r#"
+        "#
+        }
+        _ => {
+            r#"
             INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                 rate = excluded.rate,
                 updated_at = excluded.updated_at
-        "#,
+        "#
+        }
     };
 
     sqlx::query(sql)
         .bind(from_currency.code())
         .bind(to_currency.code())
-        .bind(rate_nano)  // Store as BIGINT (scaled i64)
+        .bind(rate_nano) // Store as BIGINT (scaled i64)
         .bind(now)
         .execute(conn.pool())
         .await?;
@@ -132,8 +139,12 @@ async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<
     );
     println!();
     println!("Note: Remember to also set the reverse rate if needed.");
-    println!("  Example: burncloud currency set-rate --from {} --to {} --rate {:.6}",
-        to_currency, from_currency, 1.0 / rate);
+    println!(
+        "  Example: burncloud currency set-rate --from {} --to {} --rate {:.6}",
+        to_currency,
+        from_currency,
+        1.0 / rate
+    );
 
     Ok(())
 }
@@ -154,10 +165,10 @@ async fn cmd_refresh_rates(_db: &Database) -> Result<()> {
 
 /// Convert an amount between currencies
 async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result<()> {
-    let from_currency = Currency::from_str(from)
-        .map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
-    let to_currency = Currency::from_str(to)
-        .map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
+    let from_currency =
+        Currency::from_str(from).map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
+    let to_currency =
+        Currency::from_str(to).map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
 
     // Simple direct lookup for conversion
     let conn = db.get_connection()?;
@@ -194,7 +205,10 @@ async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result
         } else if from_currency == to_currency {
             amount
         } else {
-            println!("Warning: No exchange rate found for {} → {}", from_currency, to_currency);
+            println!(
+                "Warning: No exchange rate found for {} → {}",
+                from_currency, to_currency
+            );
             amount
         }
     };

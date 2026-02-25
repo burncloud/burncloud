@@ -108,6 +108,6 @@
       "确认无重复定义: grep -r 'pub struct AppState' crates/",
       "确认无硬编码依赖: grep -r '= \"' crates/*/Cargo.toml"
     ],
-    "passes": false
+    "passes": true
   }
 ]
