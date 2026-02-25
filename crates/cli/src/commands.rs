@@ -730,6 +730,22 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .value_parser(["USD", "CNY", "usd", "cny"])
                                 .help("Currency for topup (USD or CNY)"),
                         ),
+                )
+                .subcommand(
+                    Command::new("recharges")
+                        .about("List user recharge history")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .required(true)
+                                .help("User ID to query"),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        ),
                 ),
         );
 

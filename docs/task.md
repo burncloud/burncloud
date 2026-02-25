@@ -75,7 +75,7 @@
       "recharges 子命令参数: --user-id, --limit",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-user-check-username",

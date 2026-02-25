@@ -192,6 +192,47 @@ pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+/// Handle user recharges command
+pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<()> {
+    let user_id = matches.get_one::<String>("user-id").unwrap();
+    let limit: i64 = matches
+        .get_one::<String>("limit")
+        .unwrap()
+        .parse()
+        .unwrap_or(100);
+
+    // Get recharges for user
+    let mut recharges = UserDatabase::list_recharges(db, user_id).await?;
+
+    // Apply limit
+    let recharges: Vec<_> = recharges.drain(..std::cmp::min(limit as usize, recharges.len())).collect();
+
+    if recharges.is_empty() {
+        println!("No recharges found for user: {}", user_id);
+        return Ok(());
+    }
+
+    // Table format output
+    println!(
+        "{:<10} {:<15} {:<10} {:<40} {:<20}",
+        "ID", "Amount", "Currency", "Description", "CreatedAt"
+    );
+    println!("{}", "-".repeat(100));
+    for recharge in recharges {
+        // Convert nanodollars to display format
+        let amount = recharge.amount as f64 / 1_000_000_000.0;
+        let currency = recharge.currency.as_deref().unwrap_or("USD");
+        let description = recharge.description.as_deref().unwrap_or("N/A");
+        let created_at = recharge.created_at.as_deref().unwrap_or("N/A");
+        println!(
+            "{:<10} ${:<14.2} {:<10} {:<40} {:<20}",
+            recharge.id, amount, currency, description, created_at
+        );
+    }
+
+    Ok(())
+}
+
 /// Handle user topup command
 pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
     let user_id = matches.get_one::<String>("user-id").unwrap();
@@ -262,8 +303,11 @@ pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<
         Some(("topup", sub_m)) => {
             cmd_user_topup(db, sub_m).await?;
         }
+        Some(("recharges", sub_m)) => {
+            cmd_user_recharges(db, sub_m).await?;
+        }
         _ => {
-            println!("Usage: burncloud user <register|login|list|topup>");
+            println!("Usage: burncloud user <register|login|list|topup|recharges>");
             println!("Run 'burncloud user --help' for more information.");
         }
     }
