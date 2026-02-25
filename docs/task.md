@@ -77,7 +77,7 @@
       "将 tempfile = \"3\" 改为 tempfile.workspace = true",
       "运行 cargo build 验证依赖解析正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "deps",
