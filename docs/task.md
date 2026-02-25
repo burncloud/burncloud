@@ -86,7 +86,7 @@
       "修复 update_balance 等方法的 SQL 语法",
       "运行 cargo test 验证"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "tech-debt",

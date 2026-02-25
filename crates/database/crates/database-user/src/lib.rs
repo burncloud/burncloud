@@ -235,7 +235,12 @@ impl UserDatabase {
             // Password: "123456"
             let dummy_hash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
             // Give demo user 100 USD in nanodollars (100 * 10^9 = 100_000_000_000)
-            sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ('demo-user', 'demo-user', NULL, ?, NULL, 1, 100000000000, 0, 'USD')")
+            let demo_sql = if kind == "postgres" {
+                "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ('demo-user', 'demo-user', NULL, $1, NULL, 1, 100000000000, 0, 'USD')"
+            } else {
+                "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ('demo-user', 'demo-user', NULL, ?, NULL, 1, 100000000000, 0, 'USD')"
+            };
+            sqlx::query(demo_sql)
                 .bind(dummy_hash)
                 .execute(conn.pool())
                 .await?;
@@ -254,7 +259,12 @@ impl UserDatabase {
 
     pub async fn create_user(db: &Database, user: &DbUser) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        let sql = if db.kind() == "postgres" {
+            "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+        } else {
+            "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        };
+        sqlx::query(sql)
             .bind(&user.id)
             .bind(&user.username)
             .bind(&user.email)
@@ -271,7 +281,12 @@ impl UserDatabase {
 
     pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<DbUser>> {
         let conn = db.get_connection()?;
-        let user = sqlx::query_as::<_, DbUser>("SELECT * FROM users WHERE username = ?")
+        let sql = if db.kind() == "postgres" {
+            "SELECT * FROM users WHERE username = $1"
+        } else {
+            "SELECT * FROM users WHERE username = ?"
+        };
+        let user = sqlx::query_as::<_, DbUser>(sql)
             .bind(username)
             .fetch_optional(conn.pool())
             .await?;
@@ -280,7 +295,12 @@ impl UserDatabase {
 
     pub async fn get_user_roles(db: &Database, user_id: &str) -> Result<Vec<String>> {
         let conn = db.get_connection()?;
-        let rows = sqlx::query("SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = ?")
+        let sql = if db.kind() == "postgres" {
+            "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1"
+        } else {
+            "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = ?"
+        };
+        let rows = sqlx::query(sql)
             .bind(user_id)
             .fetch_all(conn.pool())
             .await?;
@@ -291,14 +311,19 @@ impl UserDatabase {
 
     pub async fn assign_role(db: &Database, user_id: &str, role_name: &str) -> Result<()> {
         let conn = db.get_connection()?;
-        let role_id: Option<String> = sqlx::query("SELECT id FROM roles WHERE name = ?")
+        let (select_sql, insert_sql) = if db.kind() == "postgres" {
+            ("SELECT id FROM roles WHERE name = $1", "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)")
+        } else {
+            ("SELECT id FROM roles WHERE name = ?", "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
+        };
+        let role_id: Option<String> = sqlx::query(select_sql)
             .bind(role_name)
             .fetch_optional(conn.pool())
             .await?
             .map(|r| r.get(0));
 
         if let Some(rid) = role_id {
-            let res = sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
+            let res = sqlx::query(insert_sql)
                 .bind(user_id)
                 .bind(rid)
                 .execute(conn.pool())
@@ -322,13 +347,18 @@ impl UserDatabase {
     /// Update USD balance by delta (in nanodollars)
     pub async fn update_balance_usd(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;
-        sqlx::query("UPDATE users SET balance_usd = balance_usd + ? WHERE id = ?")
+        let (update_sql, select_sql) = if db.kind() == "postgres" {
+            ("UPDATE users SET balance_usd = balance_usd + $1 WHERE id = $2", "SELECT balance_usd FROM users WHERE id = $1")
+        } else {
+            ("UPDATE users SET balance_usd = balance_usd + ? WHERE id = ?", "SELECT balance_usd FROM users WHERE id = ?")
+        };
+        sqlx::query(update_sql)
             .bind(delta)
             .bind(user_id)
             .execute(conn.pool())
             .await?;
 
-        let new_balance: i64 = sqlx::query("SELECT balance_usd FROM users WHERE id = ?")
+        let new_balance: i64 = sqlx::query(select_sql)
             .bind(user_id)
             .fetch_one(conn.pool())
             .await?
@@ -340,13 +370,18 @@ impl UserDatabase {
     /// Update CNY balance by delta (in nanodollars)
     pub async fn update_balance_cny(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;
-        sqlx::query("UPDATE users SET balance_cny = balance_cny + ? WHERE id = ?")
+        let (update_sql, select_sql) = if db.kind() == "postgres" {
+            ("UPDATE users SET balance_cny = balance_cny + $1 WHERE id = $2", "SELECT balance_cny FROM users WHERE id = $1")
+        } else {
+            ("UPDATE users SET balance_cny = balance_cny + ? WHERE id = ?", "SELECT balance_cny FROM users WHERE id = ?")
+        };
+        sqlx::query(update_sql)
             .bind(delta)
             .bind(user_id)
             .execute(conn.pool())
             .await?;
 
-        let new_balance: i64 = sqlx::query("SELECT balance_cny FROM users WHERE id = ?")
+        let new_balance: i64 = sqlx::query(select_sql)
             .bind(user_id)
             .fetch_one(conn.pool())
             .await?
@@ -404,12 +439,15 @@ impl UserDatabase {
 
     pub async fn list_recharges(db: &Database, user_id: &str) -> Result<Vec<DbRecharge>> {
         let conn = db.get_connection()?;
-        let recharges = sqlx::query_as::<_, DbRecharge>(
-            "SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC",
-        )
-        .bind(user_id)
-        .fetch_all(conn.pool())
-        .await?;
+        let sql = if db.kind() == "postgres" {
+            "SELECT * FROM recharges WHERE user_id = $1 ORDER BY created_at DESC"
+        } else {
+            "SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC"
+        };
+        let recharges = sqlx::query_as::<_, DbRecharge>(sql)
+            .bind(user_id)
+            .fetch_all(conn.pool())
+            .await?;
         Ok(recharges)
     }
 }
