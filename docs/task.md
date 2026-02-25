@@ -29,7 +29,7 @@
       "修复 response_parser.rs:557-559, 570-572 的类似问题",
       "使用 .parse().unwrap_or_else() 或定义默认值"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "deps",
