@@ -123,7 +123,7 @@
       "create 子命令参数: --name (required), --members (optional)",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-group-list",

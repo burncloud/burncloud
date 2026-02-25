@@ -8,6 +8,7 @@ use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
 use crate::currency::handle_currency_command;
+use crate::group::handle_group_command;
 use crate::price::{handle_price_command, handle_tiered_command};
 use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
@@ -806,6 +807,26 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Username to check"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("group")
+                .about("Manage router groups")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("create")
+                        .about("Create a new group")
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .required(true)
+                                .help("Group name"),
+                        )
+                        .arg(
+                            Arg::new("members")
+                                .long("members")
+                                .help("Comma-separated list of upstream IDs to add as members"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -903,6 +924,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("user", sub_m)) => {
             let db = Database::new().await?;
             handle_user_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("group", sub_m)) => {
+            let db = Database::new().await?;
+            handle_group_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {
