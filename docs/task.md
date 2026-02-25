@@ -88,7 +88,7 @@
       "在 commands.rs 的 user 子命令下添加 check-username 子命令",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cli-channel-update",

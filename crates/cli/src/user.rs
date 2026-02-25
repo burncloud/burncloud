@@ -233,6 +233,22 @@ pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<(
     Ok(())
 }
 
+/// Handle user check-username command
+pub async fn cmd_user_check_username(db: &Database, matches: &ArgMatches) -> Result<()> {
+    let username = matches.get_one::<String>("username").unwrap();
+
+    // Check if username exists
+    let existing_user = UserDatabase::get_user_by_username(db, username).await?;
+
+    if existing_user.is_some() {
+        println!("Already taken");
+    } else {
+        println!("Available");
+    }
+
+    Ok(())
+}
+
 /// Handle user topup command
 pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
     let user_id = matches.get_one::<String>("user-id").unwrap();
@@ -306,8 +322,11 @@ pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<
         Some(("recharges", sub_m)) => {
             cmd_user_recharges(db, sub_m).await?;
         }
+        Some(("check-username", sub_m)) => {
+            cmd_user_check_username(db, sub_m).await?;
+        }
         _ => {
-            println!("Usage: burncloud user <register|login|list|topup|recharges>");
+            println!("Usage: burncloud user <register|login|list|topup|recharges|check-username>");
             println!("Run 'burncloud user --help' for more information.");
         }
     }

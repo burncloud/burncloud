@@ -746,6 +746,16 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .default_value("100")
                                 .help("Maximum number of results"),
                         ),
+                )
+                .subcommand(
+                    Command::new("check-username")
+                        .about("Check if a username is available")
+                        .arg(
+                            Arg::new("username")
+                                .long("username")
+                                .required(true)
+                                .help("Username to check"),
+                        ),
                 ),
         );
 
