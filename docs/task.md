@@ -756,6 +756,6 @@
       "删除测试价格: ./target/release/burncloud price delete gemini-3-pro-image-preview",
       "删除测试渠道: ./target/release/burncloud channel delete <gemini-channel-id> -y"
     ],
-    "passes": false
+    "passes": true
   }
 ]
