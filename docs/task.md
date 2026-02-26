@@ -743,7 +743,7 @@
       "测试 thinkingBudget 参数穿透: 添加 '\"generationConfig\":{\"thinkingBudget\":1000}'",
       "验证 thinking token 计费正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-cleanup",

@@ -165,8 +165,8 @@ impl RouterDatabase {
                     latency_ms INTEGER NOT NULL,
                     prompt_tokens INTEGER DEFAULT 0,
                     completion_tokens INTEGER DEFAULT 0,
-                    cost REAL DEFAULT 0,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    cost INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
             ),
