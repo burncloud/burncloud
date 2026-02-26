@@ -631,7 +631,7 @@
       "测试 gemini-2.0-flash-thinking",
       "验证复杂推理任务输出"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-passthrough",
