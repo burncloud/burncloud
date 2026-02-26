@@ -708,7 +708,7 @@
       "测试原生路径流式: curl -X POST 'http://localhost:8080/v1beta/models/gemini-2.0-flash:streamGenerateContent' -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Hello\"}]}],\"generationConfig\":{\"responseModalities\":[\"TEXT\"]}}'",
       "验证流式响应格式正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-native-content-passthrough",
