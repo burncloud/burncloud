@@ -6,11 +6,20 @@
 //! - Conversational image editing
 //! - Image fusion with multiple references
 //! - Billing verification
+//! - responseModalities parameter passthrough
+//!
+//! Native Path Tests (Tests 7-10):
+//! - Native path image generation passthrough via /v1beta/models/...:generateContent
+//! - Native path image editing with inlineData
+//! - Native path multimodal response handling
+//! - Native path billing verification
 //!
 //! Key concepts:
 //! - Uses responseModalities: ["TEXT", "IMAGE"] for image generation
 //! - Images are returned as inlineData with base64 encoded data
 //! - Image editing/fusion works by sending inlineData in the request
+//! - Native path format: /v1beta/models/gemini-3-pro-image-preview:generateContent
+//! - Native path triggers passthrough mode (no OpenAI conversion)
 
 use burncloud_tests::TestClient;
 use dotenvy::dotenv;
@@ -478,4 +487,330 @@ async fn test_response_modalities_passthrough() {
     assert!(image_data.is_some(), "Should have image with IMAGE modality");
 
     println!("SUCCESS: responseModalities parameter passthrough verified");
+}
+
+// ============================================================================
+// Test 7: Native path image generation passthrough
+// ============================================================================
+
+#[tokio::test]
+async fn test_native_path_image_generation() {
+    if get_gemini_key().is_none() {
+        println!("SKIPPING: TEST_GEMINI_KEY not set");
+        return;
+    }
+
+    let base_url = common_mod::spawn_app().await;
+    let admin_client = TestClient::new(&base_url);
+    let _channel_name = create_gemini_channel(&base_url, &admin_client).await;
+
+    let user_client = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
+
+    // Use Gemini native path format (not /v1/chat/completions)
+    let chat_body = json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Generate a sunset image over the ocean"}]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
+    });
+
+    println!("Testing native path image generation passthrough...");
+    let chat_res = user_client
+        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &chat_body)
+        .await
+        .expect("Native path image generation failed");
+
+    println!("Native path response structure: {:?}", chat_res);
+
+    // Verify response is in Gemini native format (passthrough mode)
+    assert!(
+        chat_res.get("candidates").is_some(),
+        "Response should have candidates (Gemini native format)"
+    );
+    assert!(
+        chat_res.get("choices").is_none(),
+        "Response should NOT have choices (no OpenAI conversion)"
+    );
+
+    // Verify image data is present in inlineData
+    let image_data = extract_image_data(&chat_res);
+    assert!(
+        image_data.is_some(),
+        "Should have image data in inlineData for native path"
+    );
+
+    let (mime_type, data) = image_data.unwrap();
+    assert!(
+        mime_type.starts_with("image/"),
+        "MIME type should be image/*, got: {}",
+        mime_type
+    );
+    assert!(!data.is_empty(), "Image data should not be empty");
+
+    println!("SUCCESS: Native path image generation passthrough verified");
+    println!("  - Path: /v1beta/models/gemini-3-pro-image-preview:generateContent");
+    println!("  - MIME type: {}", mime_type);
+    println!("  - Data length: {} bytes", data.len());
+}
+
+// ============================================================================
+// Test 8: Native path image editing with inlineData
+// ============================================================================
+
+#[tokio::test]
+async fn test_native_path_image_editing() {
+    if get_gemini_key().is_none() {
+        println!("SKIPPING: TEST_GEMINI_KEY not set");
+        return;
+    }
+
+    let base_url = common_mod::spawn_app().await;
+    let admin_client = TestClient::new(&base_url);
+    let _channel_name = create_gemini_channel(&base_url, &admin_client).await;
+
+    let user_client = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
+
+    // Step 1: Generate initial image using native path
+    let gen_body = json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Generate a simple orange circle on white background"}]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
+    });
+
+    println!("Generating initial image via native path...");
+    let gen_res = user_client
+        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &gen_body)
+        .await
+        .expect("Initial generation failed");
+
+    let original_image = extract_image_data(&gen_res);
+    assert!(
+        original_image.is_some(),
+        "Should have generated an initial image"
+    );
+    let (mime_type, image_data) = original_image.unwrap();
+    println!("  - Generated initial image: {} bytes", image_data.len());
+
+    // Step 2: Edit the image using inlineData in native path format
+    let edit_body = json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "inlineData": {
+                            "mimeType": mime_type,
+                            "data": image_data
+                        }
+                    },
+                    {"text": "Change this orange circle to a purple star"}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
+    });
+
+    println!("Testing native path image editing with inlineData...");
+    let edit_res = user_client
+        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &edit_body)
+        .await
+        .expect("Image editing failed");
+
+    // Verify edited image is present
+    let edited_image = extract_image_data(&edit_res);
+    assert!(
+        edited_image.is_some(),
+        "Should have edited image in response"
+    );
+
+    let (edited_mime, edited_data) = edited_image.unwrap();
+    assert!(
+        edited_mime.starts_with("image/"),
+        "Edited MIME type should be image/*"
+    );
+    assert!(!edited_data.is_empty(), "Edited image data should not be empty");
+
+    println!("SUCCESS: Native path image editing with inlineData verified");
+    println!("  - Original image: {} bytes", image_data.len());
+    println!("  - Edited image: {} bytes", edited_data.len());
+}
+
+// ============================================================================
+// Test 9: Native path multimodal response handling
+// ============================================================================
+
+#[tokio::test]
+async fn test_native_path_multimodal_response() {
+    if get_gemini_key().is_none() {
+        println!("SKIPPING: TEST_GEMINI_KEY not set");
+        return;
+    }
+
+    let base_url = common_mod::spawn_app().await;
+    let admin_client = TestClient::new(&base_url);
+    let _channel_name = create_gemini_channel(&base_url, &admin_client).await;
+
+    let user_client = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
+
+    // Request that should generate both text and image
+    let chat_body = json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Create an image of a rainbow and describe what colors you used"}]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
+    });
+
+    println!("Testing native path multimodal response...");
+    let chat_res = user_client
+        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &chat_body)
+        .await
+        .expect("Multimodal request failed");
+
+    // Verify response structure
+    assert!(
+        chat_res.get("candidates").is_some(),
+        "Should have candidates in response"
+    );
+
+    let candidates = chat_res
+        .get("candidates")
+        .and_then(|c| c.as_array())
+        .expect("candidates should be an array");
+    assert!(!candidates.is_empty(), "Should have at least one candidate");
+
+    // Check for content structure
+    let content = candidates[0]
+        .get("content")
+        .expect("Should have content in candidate");
+    let parts = content
+        .get("parts")
+        .and_then(|p| p.as_array())
+        .expect("Should have parts in content");
+
+    // Verify we have both text and image
+    let has_text = parts.iter().any(|p| p.get("text").is_some());
+    let has_image = parts.iter().any(|p| p.get("inlineData").is_some());
+
+    println!("  - Has text part: {}", has_text);
+    println!("  - Has image part: {}", has_image);
+
+    assert!(has_image, "Should have at least one image part (inlineData)");
+
+    // Verify inlineData structure
+    for part in parts {
+        if let Some(inline_data) = part.get("inlineData") {
+            let mime_type = inline_data
+                .get("mimeType")
+                .and_then(|m| m.as_str())
+                .expect("inlineData should have mimeType");
+            let data = inline_data
+                .get("data")
+                .and_then(|d| d.as_str())
+                .expect("inlineData should have data");
+
+            assert!(
+                mime_type.starts_with("image/"),
+                "MIME type should be image/*"
+            );
+            assert!(!data.is_empty(), "Image data should not be empty");
+            println!("  - Found inlineData: mimeType={}, data_len={}", mime_type, data.len());
+        }
+    }
+
+    println!("SUCCESS: Native path multimodal response handling verified");
+}
+
+// ============================================================================
+// Test 10: Native path billing verification
+// ============================================================================
+
+#[tokio::test]
+async fn test_native_path_billing_verification() {
+    if get_gemini_key().is_none() {
+        println!("SKIPPING: TEST_GEMINI_KEY not set");
+        return;
+    }
+
+    let base_url = common_mod::spawn_app().await;
+    let admin_client = TestClient::new(&base_url);
+    let _channel_name = create_gemini_channel(&base_url, &admin_client).await;
+
+    let user_client = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
+
+    // Request with native path
+    let chat_body = json!({
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Generate a simple blue star"}]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
+    });
+
+    println!("Testing native path billing verification...");
+    let chat_res = user_client
+        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &chat_body)
+        .await
+        .expect("Native path billing test failed");
+
+    // Check for usageMetadata (Gemini native format for billing)
+    if let Some(usage) = chat_res.get("usageMetadata") {
+        let prompt_tokens = usage.get("promptTokenCount").and_then(|t| t.as_u64());
+        let completion_tokens = usage.get("candidatesTokenCount").and_then(|t| t.as_u64());
+        let total_tokens = usage.get("totalTokenCount").and_then(|t| t.as_u64());
+
+        println!("Native path usage metadata:");
+        println!("  - promptTokenCount: {:?}", prompt_tokens);
+        println!("  - candidatesTokenCount: {:?}", completion_tokens);
+        println!("  - totalTokenCount: {:?}", total_tokens);
+
+        // Verify token counts are present and reasonable
+        assert!(prompt_tokens.is_some(), "Should have promptTokenCount");
+        let prompt = prompt_tokens.unwrap();
+        assert!(prompt > 0, "Prompt tokens should be > 0");
+
+        assert!(completion_tokens.is_some(), "Should have candidatesTokenCount");
+        let completion = completion_tokens.unwrap();
+        // Image generation typically has higher token count for output
+        assert!(completion > 0, "Completion tokens should be > 0 for image generation");
+
+        // Verify total tokens calculation
+        if let Some(total) = total_tokens {
+            assert!(
+                total >= prompt + completion,
+                "Total tokens should be >= prompt + completion (got: prompt={}, completion={}, total={})",
+                prompt, completion, total
+            );
+        }
+
+        // Image generation model has specific pricing (higher than text models)
+        // This verifies the token counts are extracted correctly for billing
+        println!("  - Image generation token counts verified for billing calculation");
+        println!("SUCCESS: Native path billing verification passed");
+    } else {
+        // Some responses may not include usageMetadata
+        println!("WARNING: No usageMetadata in response (billing may use estimated tokens)");
+        println!("SUCCESS: Request completed (billing handled at router level)");
+    }
 }

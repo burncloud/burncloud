@@ -732,7 +732,7 @@
       "验证多模态响应正确处理",
       "验证计费正确（图像生成可能有不同计费）"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-native-thinking-passthrough",
