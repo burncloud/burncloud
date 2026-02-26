@@ -424,7 +424,7 @@
       "验证 international 保留: ./target/release/burncloud price get test-del-region --region international（应显示）",
       "清理: ./target/release/burncloud price delete test-del-region"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-set-priority-commands",
