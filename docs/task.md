@@ -595,7 +595,7 @@
       "验证响应速度符合预期",
       "验证计费金额正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-multimodal",

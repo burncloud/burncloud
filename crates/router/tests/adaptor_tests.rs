@@ -456,6 +456,347 @@ async fn test_gemini_25_pro_long_context() -> anyhow::Result<()> {
     Ok(())
 }
 
+// ============================================================================
+// Gemini 2.5 Flash API Tests
+// ============================================================================
+
+const GEMINI_25_FLASH_MODEL: &str = "gemini-2.5-flash";
+
+/// Setup helper for gemini-2.5-flash tests with unique port
+/// Returns None if TEST_GOOGLE_AI_KEY is not set
+async fn setup_gemini_25_flash_with_port(port: u16) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
+    let env_key = env::var("TEST_GOOGLE_AI_KEY").unwrap_or_default();
+    if env_key.is_empty() {
+        println!("Skipping Gemini 2.5 Flash tests: TEST_GOOGLE_AI_KEY not set.");
+        return Ok(None);
+    }
+
+    let (db, pool) = setup_db().await?;
+
+    let id = format!("gemini-25-flash-test-{}", port);
+    let name = "gemini-2.5-flash";
+    let base_url = "https://generativelanguage.googleapis.com";
+    let match_path = "/v1/chat/completions";  // Use OpenAI-compatible endpoint
+    let auth_type = "GoogleAI";
+
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type
+        "#,
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(base_url)
+    .bind(&env_key)
+    .bind(match_path)
+    .bind(auth_type)
+    .execute(&pool)
+    .await?;
+
+    // Setup pricing for gemini-2.5-flash (nanodollars)
+    // Standard tier: $0.075 input / $0.30 output per 1M tokens
+    let price_input = PriceInput {
+        model: GEMINI_25_FLASH_MODEL.to_string(),
+        input_price: dollars_to_nano(0.075) as i64,
+        output_price: dollars_to_nano(0.30) as i64,
+        currency: "USD".to_string(),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: Some(true),
+        supports_function_calling: None,
+    };
+    PriceModel::upsert(&db, &price_input).await?;
+
+    start_test_server(port).await;
+
+    Ok(Some((db, pool)))
+}
+
+/// Test 1: Basic request - gemini-2.5-flash
+#[tokio::test]
+async fn test_gemini_25_flash_basic() -> anyhow::Result<()> {
+    let port: u16 = 3031;
+    let setup = setup_gemini_25_flash_with_port(port).await?;
+    if setup.is_none() {
+        println!("Skipping test_gemini_25_flash_basic: TEST_GOOGLE_AI_KEY not set.");
+        return Ok(());
+    }
+
+    let client = Client::new();
+    // Use OpenAI-compatible endpoint
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
+
+    let openai_body = json!({
+        "model": GEMINI_25_FLASH_MODEL,
+        "messages": [
+            { "role": "user", "content": "What is 2+2? Reply with just the number." }
+        ]
+    });
+
+    let start = std::time::Instant::now();
+    let resp = client
+        .post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .json(&openai_body)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    let resp_json: serde_json::Value = resp.json().await?;
+    let elapsed = start.elapsed();
+
+    println!("Gemini 2.5 Flash Basic Response (status {}, {:?}): {}",
+        status, elapsed, serde_json::to_string_pretty(&resp_json)?);
+
+    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
+    assert_eq!(resp_json["object"], "chat.completion", "Expected chat.completion object");
+
+    let choices = resp_json["choices"].as_array().expect("Expected choices array");
+    assert!(!choices.is_empty(), "Expected at least one choice");
+
+    let content = choices[0]["message"]["content"].as_str().expect("Expected content in response");
+    assert!(content.contains("4"), "Expected response to contain '4', got: {}", content);
+
+    // Verify response speed (Flash should be fast, typically <5s for simple queries)
+    assert!(elapsed.as_secs() < 10, "Response took too long: {:?}", elapsed);
+
+    println!("✓ Basic request test passed: Response time {:?}, correct answer received", elapsed);
+    Ok(())
+}
+
+/// Test 2: Streaming request - gemini-2.5-flash
+#[tokio::test]
+async fn test_gemini_25_flash_streaming() -> anyhow::Result<()> {
+    let port: u16 = 3032;
+    let setup = setup_gemini_25_flash_with_port(port).await?;
+    if setup.is_none() {
+        println!("Skipping test_gemini_25_flash_streaming: TEST_GOOGLE_AI_KEY not set.");
+        return Ok(());
+    }
+
+    let client = Client::new();
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
+
+    let openai_body = json!({
+        "model": GEMINI_25_FLASH_MODEL,
+        "messages": [
+            { "role": "user", "content": "Count from 1 to 5, one number per line." }
+        ],
+        "stream": true
+    });
+
+    let start = std::time::Instant::now();
+    let resp = client
+        .post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .json(&openai_body)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    assert_eq!(status, 200, "Expected 200 status for streaming request");
+
+    // Collect streaming response
+    let mut full_content = String::new();
+    let mut chunk_count = 0;
+
+    use futures::StreamExt;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result?;
+        let chunk_str = String::from_utf8_lossy(&chunk);
+
+        // Parse SSE chunks
+        for line in chunk_str.lines() {
+            if line.starts_with("data: ") {
+                let data = &line[6..];
+                if data == "[DONE]" {
+                    continue;
+                }
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                        full_content.push_str(content);
+                    }
+                    chunk_count += 1;
+                }
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+
+    println!("Gemini 2.5 Flash Streaming Response:");
+    println!("  Total chunks: {}", chunk_count);
+    println!("  Total time: {:?}", elapsed);
+    println!("  Full content: {}", full_content);
+
+    // Verify we received streaming chunks
+    assert!(chunk_count > 1, "Expected multiple streaming chunks, got {}", chunk_count);
+    assert!(!full_content.is_empty(), "Expected non-empty streaming content");
+
+    // Verify response contains expected numbers
+    for i in 1..=5 {
+        assert!(full_content.contains(&i.to_string()),
+            "Expected response to contain '{}', got: {}", i, full_content);
+    }
+
+    println!("✓ Streaming request test passed: {} chunks received in {:?}", chunk_count, elapsed);
+    Ok(())
+}
+
+/// Test 3: Response speed verification - gemini-2.5-flash should be faster than pro
+#[tokio::test]
+async fn test_gemini_25_flash_speed() -> anyhow::Result<()> {
+    let port: u16 = 3033;
+    let setup = setup_gemini_25_flash_with_port(port).await?;
+    if setup.is_none() {
+        println!("Skipping test_gemini_25_flash_speed: TEST_GOOGLE_AI_KEY not set.");
+        return Ok(());
+    }
+
+    let client = Client::new();
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
+
+    let openai_body = json!({
+        "model": GEMINI_25_FLASH_MODEL,
+        "messages": [
+            { "role": "user", "content": "Say 'hello' and nothing else." }
+        ]
+    });
+
+    // Run multiple requests to get average response time
+    let mut total_time = std::time::Duration::ZERO;
+    let iterations = 3;
+
+    for i in 0..iterations {
+        let start = std::time::Instant::now();
+        let resp = client
+            .post(&url)
+            .header("Authorization", "Bearer sk-burncloud-demo")
+            .json(&openai_body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let _resp_json: serde_json::Value = resp.json().await?;
+        let elapsed = start.elapsed();
+        total_time += elapsed;
+
+        println!("  Request {}: {:?}, status: {}", i + 1, elapsed, status);
+        assert_eq!(status, 200, "Expected 200 status on request {}", i + 1);
+    }
+
+    let avg_time = total_time / iterations;
+    println!("Gemini 2.5 Flash Speed Test:");
+    println!("  Average response time over {} requests: {:?}", iterations, avg_time);
+
+    // Flash should be fast - typically <3s for simple queries
+    // Note: Network latency can affect this, so we use a generous threshold
+    assert!(avg_time.as_secs() < 5,
+        "Average response time too slow for Flash model: {:?}", avg_time);
+
+    println!("✓ Speed verification test passed: Average time {:?}", avg_time);
+    Ok(())
+}
+
+/// Test 4: Billing verification for gemini-2.5-flash
+#[tokio::test]
+async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
+    // Billing test doesn't need actual API calls, so we use setup_db directly
+    let (db, _pool) = setup_db().await?;
+
+    // Setup pricing for gemini-2.5-flash (nanodollars)
+    // Standard tier: $0.075 input / $0.30 output per 1M tokens
+    let price_input = PriceInput {
+        model: GEMINI_25_FLASH_MODEL.to_string(),
+        input_price: dollars_to_nano(0.075) as i64,
+        output_price: dollars_to_nano(0.30) as i64,
+        currency: "USD".to_string(),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: Some(true),
+        supports_function_calling: None,
+    };
+    PriceModel::upsert(&db, &price_input).await?;
+
+    // Verify pricing was set correctly
+    let price = PriceModel::get(&db, GEMINI_25_FLASH_MODEL, "USD", Some("international")).await?;
+
+    assert!(price.is_some(), "Price should be found for {}", GEMINI_25_FLASH_MODEL);
+    let price = price.unwrap();
+
+    // Convert from nanodollars to dollars for verification
+    let input_dollars = price.input_price as f64 / 1_000_000_000.0;
+    let output_dollars = price.output_price as f64 / 1_000_000_000.0;
+
+    println!("Gemini 2.5 Flash Pricing:");
+    println!("  Input: ${:.3}/1M tokens", input_dollars);
+    println!("  Output: ${:.2}/1M tokens", output_dollars);
+
+    // Verify pricing matches expected values (with tolerance for floating point)
+    assert!(
+        (input_dollars - 0.075).abs() < 0.001,
+        "Expected input price $0.075, got ${:.3}",
+        input_dollars
+    );
+    assert!(
+        (output_dollars - 0.30).abs() < 0.01,
+        "Expected output price $0.30, got ${:.2}",
+        output_dollars
+    );
+
+    // Calculate expected cost for a sample request
+    // Example: 1000 prompt tokens + 500 completion tokens
+    let prompt_tokens = 1000;
+    let completion_tokens = 500;
+
+    let cost_nano = PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
+    let cost_dollars = cost_nano as f64 / 1_000_000_000.0;
+
+    // Expected: (1000/1M * $0.075) + (500/1M * $0.30) = $0.000075 + $0.00015 = $0.000225
+    let expected_cost = (prompt_tokens as f64 / 1_000_000.0) * input_dollars
+        + (completion_tokens as f64 / 1_000_000.0) * output_dollars;
+
+    println!("\nBilling Calculation Example:");
+    println!("  Prompt tokens: {}", prompt_tokens);
+    println!("  Completion tokens: {}", completion_tokens);
+    println!("  Calculated cost: ${:.6}", cost_dollars);
+    println!("  Expected cost: ${:.6}", expected_cost);
+
+    assert!(
+        (cost_dollars - expected_cost).abs() < 0.0000001,
+        "Cost calculation mismatch: got ${:.6}, expected ${:.6}",
+        cost_dollars,
+        expected_cost
+    );
+
+    println!("✓ Billing verification test passed: Pricing and cost calculation correct");
+    Ok(())
+}
+
 /// Test 4: Billing verification (doesn't need API key, just tests pricing logic)
 #[tokio::test]
 async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
