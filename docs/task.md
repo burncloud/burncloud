@@ -359,7 +359,7 @@
       "修改 PriceModel::list 调用，传递 region 参数",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-list-region-test",
