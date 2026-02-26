@@ -573,7 +573,7 @@
       "验证 token 计数正确",
       "测试流式请求: 添加 'stream': true 参数"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-2.5-pro",
