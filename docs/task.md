@@ -373,7 +373,7 @@
       "测试无区域过滤: ./target/release/burncloud price list",
       "验证: 显示所有价格"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-delete-region-commands",
