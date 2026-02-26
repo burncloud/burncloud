@@ -680,7 +680,7 @@
       "设置 cn CNY 价格: ./target/release/burncloud price set gemini-3-pro-image-preview --input 1.08 --output 4.32 --region cn --currency CNY",
       "验证价格: ./target/release/burncloud price get gemini-3-pro-image-preview --region international"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-3-pro-image",
