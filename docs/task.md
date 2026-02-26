@@ -657,7 +657,7 @@
       "验证用户余额正确扣除",
       "验证日志记录正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-region-pricing",
