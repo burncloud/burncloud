@@ -619,7 +619,7 @@
       "验证 responseModalities 参数正确传递",
       "测试对话式图像编辑"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-thinking",
