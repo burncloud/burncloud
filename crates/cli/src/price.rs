@@ -144,12 +144,13 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         Some(("get", sub_m)) => {
             let model = sub_m.get_one::<String>("model").unwrap();
             let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
+            let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
             let verbose = sub_m.get_flag("verbose");
 
             // Use PriceModel for multi-currency support
             if let Some(curr) = currency {
                 // Get specific currency
-                match PriceModel::get(db, model, curr, None).await? {
+                match PriceModel::get(db, model, curr, region).await? {
                     Some(price) => {
                         println!("Model: {}", price.model);
                         println!("Currency: {}", price.currency);
@@ -187,7 +188,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             } else {
                 // Get all currencies
-                let prices = PriceModel::get_all_currencies(db, model, None).await?;
+                let prices = PriceModel::get_all_currencies(db, model, region).await?;
                 if prices.is_empty() {
                     println!("No prices found for model '{}'", model);
                 } else {

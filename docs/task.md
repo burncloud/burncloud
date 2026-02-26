@@ -299,7 +299,7 @@
       "修改第190行: PriceModel::get_all_currencies(db, model, None) 改为 PriceModel::get_all_currencies(db, model, region)",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-get-region-test",
