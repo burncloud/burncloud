@@ -313,7 +313,7 @@
       "验证: 应返回空或回退到 universal 价格",
       "清理: ./target/release/burncloud price delete test-get-region"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-list-region-commands",
