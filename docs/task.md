@@ -695,7 +695,7 @@
       "测试图像融合: 多张参考图合成",
       "验证计费金额正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-native-path-passthrough",
