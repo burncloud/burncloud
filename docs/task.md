@@ -670,7 +670,7 @@
       "使用 international 渠道发送请求",
       "验证使用 USD 价格计费"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-price-3-pro-image",
