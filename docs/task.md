@@ -539,7 +539,7 @@
       "设置 cn CNY 价格: ./target/release/burncloud price set gemini-2.5-pro --input 9.1 --output 72.9 --region cn --currency CNY",
       "验证价格: ./target/release/burncloud price get gemini-2.5-pro -v --region international"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-price-2.5-flash",
