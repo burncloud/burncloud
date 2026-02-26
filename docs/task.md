@@ -528,7 +528,7 @@
       "验证价格: ./target/release/burncloud price get gemini-2.0-flash --region international --currency USD",
       "验证价格: ./target/release/burncloud price get gemini-2.0-flash --region cn --currency CNY"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-price-2.5-pro",
