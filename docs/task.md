@@ -452,7 +452,7 @@
       "在输出中添加: if let Some(pi) = priority_input_price { println!(\"  Priority input: {:.4}/1M\", pi); }",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-set-audio-commands",
