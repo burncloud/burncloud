@@ -258,6 +258,16 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("alias")
                                 .long("alias")
                                 .help("Alias to another model's pricing"),
+                        )
+                        .arg(
+                            Arg::new("priority-input")
+                                .long("priority-input")
+                                .help("Priority input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("priority-output")
+                                .long("priority-output")
+                                .help("Priority output price per 1M tokens"),
                         ),
                 )
                 .subcommand(

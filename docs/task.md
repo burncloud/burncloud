@@ -437,7 +437,7 @@
       "  .arg(Arg::new(\"priority-output\").long(\"priority-output\").help(\"Priority output price per 1M tokens\"))",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-set-priority-cli",
