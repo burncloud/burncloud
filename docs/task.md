@@ -384,7 +384,7 @@
       "在 Arg::new(\"model\") 之后添加: .arg(Arg::new(\"region\").long(\"region\").help(\"Delete only for a specific region\"))",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-delete-region-db",

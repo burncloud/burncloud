@@ -312,6 +312,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("model")
                                 .required(true)
                                 .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Delete only for a specific region"),
                         ),
                 )
                 .subcommand(
