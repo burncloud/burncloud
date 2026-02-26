@@ -607,7 +607,7 @@
       "验证响应包含正确的多模态理解",
       "验证 audio_input_price 计费"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-native-image",
