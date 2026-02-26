@@ -476,7 +476,7 @@
       "在输出中添加: if let Some(ai) = audio_input_price { println!(\"  Audio input: {:.4}/1M\", ai); }",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-set-advanced-test",

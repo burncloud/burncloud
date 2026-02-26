@@ -99,6 +99,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let priority_output_price: Option<f64> = sub_m
                 .get_one::<String>("priority-output")
                 .and_then(|s| s.parse().ok());
+            let audio_input_price: Option<f64> = sub_m
+                .get_one::<String>("audio-input")
+                .and_then(|s| s.parse().ok());
 
             // Use PriceModel for multi-currency support
             // Convert f64 dollar input to i64 nanodollars
@@ -113,7 +116,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 batch_output_price: batch_output_price.map(to_nano),
                 priority_input_price: priority_input_price.map(to_nano),
                 priority_output_price: priority_output_price.map(to_nano),
-                audio_input_price: None,
+                audio_input_price: audio_input_price.map(to_nano),
                 source: Some("cli".to_string()),
                 region,
                 context_window: None,
@@ -146,6 +149,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
             if let Some(po) = priority_output_price {
                 println!("  Priority output: {:.4}/1M", po);
+            }
+            if let Some(ai) = audio_input_price {
+                println!("  Audio input: {:.4}/1M", ai);
             }
         }
         Some(("delete", sub_m)) => {
