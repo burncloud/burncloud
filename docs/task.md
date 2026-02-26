@@ -490,7 +490,7 @@
       "验证数据库: ./target/release/burncloud price get gpt-4o-test -v",
       "清理: ./target/release/burncloud price delete gpt-4o-test && ./target/release/burncloud price delete gpt-4o-audio"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-region-integration-test",
