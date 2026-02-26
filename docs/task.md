@@ -324,7 +324,7 @@
       "在 Arg::new(\"currency\") 之后添加: .arg(Arg::new(\"region\").long(\"region\").help(\"Filter by region (cn, international)\"))",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-list-region-db",

@@ -196,6 +196,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("currency")
                                 .long("currency")
                                 .help("Filter by currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
                         ),
                 )
                 .subcommand(
