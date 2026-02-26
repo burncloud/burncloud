@@ -584,7 +584,7 @@
       "测试长上下文: 发送超长 prompt (>10K tokens)",
       "验证计费金额正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-2.5-flash",
