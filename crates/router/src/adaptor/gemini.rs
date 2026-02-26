@@ -1,3 +1,4 @@
+use super::current_unix_timestamp;
 use burncloud_common::types::OpenAIChatRequest;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -82,7 +83,27 @@ impl GeminiAdaptor {
             }
         }
 
-        // TODO: Robust error handling if gemini_resp is error
+        // Check for Gemini error response
+        if let Some(error) = gemini_resp.get("error") {
+            let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown Gemini API error");
+            let status = error
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("error");
+            let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(500);
+
+            return json!({
+                "error": {
+                    "message": message,
+                    "type": status,
+                    "code": code
+                }
+            });
+        }
+
         let candidate = gemini_resp.get("candidates").and_then(|c| c.get(0));
 
         let text = candidate
@@ -96,7 +117,7 @@ impl GeminiAdaptor {
         json!({
             "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
             "object": "chat.completion",
-            "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "created": current_unix_timestamp(),
             "model": model,
             "choices": [
                 {
@@ -156,7 +177,7 @@ impl GeminiAdaptor {
         let chunk_json = json!({
             "id": "chatcmpl-stream", // Static ID for now as we don't have state
             "object": "chat.completion.chunk",
-            "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "created": current_unix_timestamp(),
             "model": "gemini-model",
             "choices": [
                 {
@@ -169,7 +190,7 @@ impl GeminiAdaptor {
             ]
         });
 
-        Some(format!("data: {}\n\n", chunk_json.to_string()))
+        Some(format!("data: {}\n\n", chunk_json))
     }
 }
 
@@ -224,6 +245,24 @@ mod tests {
         assert_eq!(openai_val["model"], "gemini-pro");
         assert_eq!(openai_val["choices"][0]["message"]["content"], "Hi there!");
         assert_eq!(openai_val["choices"][0]["message"]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_gemini_error_response() {
+        let gemini_error = json!({
+            "error": {
+                "code": 400,
+                "message": "API key not valid",
+                "status": "INVALID_ARGUMENT"
+            }
+        });
+
+        let openai_val = GeminiAdaptor::convert_response(gemini_error, "gemini-pro");
+
+        assert!(openai_val.get("error").is_some());
+        assert_eq!(openai_val["error"]["message"], "API key not valid");
+        assert_eq!(openai_val["error"]["type"], "INVALID_ARGUMENT");
+        assert_eq!(openai_val["error"]["code"], 400);
     }
 
     #[test]

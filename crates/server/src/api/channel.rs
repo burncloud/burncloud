@@ -1,6 +1,6 @@
 use crate::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::Json,
     routing::{get, post},
     Router,
@@ -9,6 +9,21 @@ use burncloud_common::types::Channel;
 use burncloud_database_models::ChannelModel;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+/// Pagination query parameters
+#[derive(Debug, Deserialize)]
+pub struct PaginationParams {
+    /// Number of items per page (default: 20, max: 100)
+    #[serde(default = "default_limit")]
+    pub limit: i32,
+    /// Offset from the start (default: 0)
+    #[serde(default)]
+    pub offset: i32,
+}
+
+fn default_limit() -> i32 {
+    20
+}
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct ChannelDto {
@@ -72,12 +87,20 @@ pub fn routes() -> Router<AppState> {
 
 async fn list_channels(
     State(state): State<AppState>,
-    // TODO: Add pagination params
+    Query(params): Query<PaginationParams>,
 ) -> Json<Value> {
-    match ChannelModel::list(&state.db, 100, 0).await {
+    // Clamp limit to reasonable bounds
+    let limit = params.limit.clamp(1, 100);
+    let offset = params.offset.max(0);
+
+    match ChannelModel::list(&state.db, limit, offset).await {
         Ok(channels) => Json(json!({
             "success": true,
-            "data": channels
+            "data": channels,
+            "pagination": {
+                "limit": limit,
+                "offset": offset
+            }
         })),
         Err(e) => Json(json!({ "success": false, "message": e.to_string() })),
     }

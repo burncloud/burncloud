@@ -7,8 +7,12 @@ pub struct User {
     pub username: String,
     #[serde(default)]
     pub role: String, // "admin", "user", etc.
+    /// USD balance in nanodollars (9 decimal precision)
     #[serde(default)]
-    pub balance: f64, // Remaining quota
+    pub balance_usd: i64,
+    /// CNY balance in nanodollars (9 decimal precision)
+    #[serde(default)]
+    pub balance_cny: i64,
     #[serde(default)]
     pub group: String,
     #[serde(default)]
@@ -77,13 +81,20 @@ impl UserService {
         Ok(())
     }
 
-    pub async fn topup(user_id: &str, amount: f64) -> Result<f64, String> {
+    pub async fn topup(
+        user_id: &str,
+        amount_nano: i64,
+        currency: Option<&str>,
+    ) -> Result<i64, String> {
         let url = format!("{}/user/topup", Self::get_base_url());
         let client = reqwest::Client::new();
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "user_id": user_id,
-            "amount": amount
+            "amount": amount_nano
         });
+        if let Some(c) = currency {
+            body["currency"] = serde_json::json!(c);
+        }
 
         let resp = client
             .post(&url)
@@ -100,8 +111,8 @@ impl UserService {
         let new_balance = json
             .get("data")
             .and_then(|d| d.get("balance"))
-            .and_then(|b| b.as_f64())
-            .unwrap_or(0.0);
+            .and_then(|b| b.as_i64())
+            .unwrap_or(0);
 
         Ok(new_balance)
     }

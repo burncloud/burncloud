@@ -65,17 +65,17 @@ impl DownloadDB {
             return Ok(());
         }
 
-        let uris_json = serde_json::to_string(&uris).unwrap();
+        let uris_json = serde_json::to_string(&uris)
+            .map_err(burncloud_database::error::DatabaseError::Serialization)?;
         let download_dir_str = download_dir.unwrap_or("").to_string();
 
-        // 检查相同的uris和download_dir组合是否已存在
+        // 检查相同的uris和download_dir组合是否已存在（使用参数化查询防止 SQL 注入）
         let existing = self
             .db
-            .fetch_optional::<Download>(&format!(
-                "SELECT * FROM downloads WHERE uris = '{}' AND download_dir = '{}'",
-                uris_json.replace("'", "''"),
-                download_dir_str.replace("'", "''")
-            ))
+            .fetch_optional_with_params::<Download>(
+                "SELECT * FROM downloads WHERE uris = ? AND download_dir = ?",
+                vec![uris_json.clone(), download_dir_str.clone()],
+            )
             .await?;
 
         if existing.is_some() {
@@ -83,7 +83,7 @@ impl DownloadDB {
                 .db
                 .execute_query_with_params(
                     "UPDATE downloads SET gid = ? WHERE uris = ? AND download_dir = ?",
-                    vec![gid.to_string(), uris_json.clone(), download_dir_str.clone()],
+                    vec![gid.to_string(), uris_json, download_dir_str],
                 )
                 .await
                 .map(|_| ());
@@ -139,19 +139,29 @@ impl DownloadDB {
 
     pub async fn get(&self, gid: &str) -> Result<Option<Download>> {
         self.db
-            .fetch_optional::<Download>(&format!("SELECT * FROM downloads WHERE gid = '{}'", gid))
+            .fetch_optional_with_params::<Download>(
+                "SELECT * FROM downloads WHERE gid = ?",
+                vec![gid.to_string()],
+            )
             .await
     }
 
     pub async fn list(&self, status: Option<&str>) -> Result<Vec<Download>> {
-        let query = match status {
-            Some(s) => format!(
-                "SELECT * FROM downloads WHERE status = '{}' ORDER BY created_at DESC",
-                s
-            ),
-            None => "SELECT * FROM downloads ORDER BY created_at DESC".to_string(),
-        };
-        self.db.fetch_all::<Download>(&query).await
+        match status {
+            Some(s) => {
+                self.db
+                    .fetch_all_with_params::<Download>(
+                        "SELECT * FROM downloads WHERE status = ? ORDER BY created_at DESC",
+                        vec![s.to_string()],
+                    )
+                    .await
+            }
+            None => {
+                self.db
+                    .fetch_all::<Download>("SELECT * FROM downloads ORDER BY created_at DESC")
+                    .await
+            }
+        }
     }
 
     pub async fn delete(&self, gid: &str) -> Result<()> {

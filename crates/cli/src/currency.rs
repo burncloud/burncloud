@@ -3,7 +3,7 @@
 //! This module provides CLI commands for managing exchange rates and currency conversion.
 
 use anyhow::Result;
-use burncloud_common::Currency;
+use burncloud_common::{rate_to_scaled, scaled_to_rate, Currency};
 use burncloud_database::sqlx;
 use burncloud_database::Database;
 use clap::ArgMatches;
@@ -48,7 +48,8 @@ async fn cmd_list_rates(db: &Database) -> Result<()> {
     let conn = db.get_connection()?;
     let sql = "SELECT from_currency, to_currency, rate, updated_at FROM exchange_rates ORDER BY from_currency, to_currency";
 
-    let rows = sqlx::query_as::<_, (String, String, f64, Option<i64>)>(sql)
+    // Rate is stored as BIGINT (scaled i64)
+    let rows = sqlx::query_as::<_, (String, String, i64, Option<i64>)>(sql)
         .fetch_all(conn.pool())
         .await?;
 
@@ -60,10 +61,14 @@ async fn cmd_list_rates(db: &Database) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<15} {:<15} {:>15} {:>20}", "From", "To", "Rate", "Updated");
+    println!(
+        "{:<15} {:<15} {:>15} {:>20}",
+        "From", "To", "Rate", "Updated"
+    );
     println!("{}", "-".repeat(70));
 
-    for (from, to, rate, updated_at) in rows {
+    for (from, to, rate_nano, updated_at) in rows {
+        let rate = scaled_to_rate(rate_nano);
         let updated = updated_at
             .map(|ts| {
                 chrono::DateTime::from_timestamp(ts, 0)
@@ -81,10 +86,10 @@ async fn cmd_list_rates(db: &Database) -> Result<()> {
 /// Set an exchange rate
 async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<()> {
     // Validate currencies
-    let from_currency = Currency::from_str(from)
-        .map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
-    let to_currency = Currency::from_str(to)
-        .map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
+    let from_currency =
+        Currency::from_str(from).map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
+    let to_currency =
+        Currency::from_str(to).map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
 
     if rate <= 0.0 {
         return Err(anyhow::anyhow!("Rate must be positive"));
@@ -96,27 +101,34 @@ async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<
         .map_err(|e| anyhow::anyhow!("Time error: {}", e))?
         .as_secs() as i64;
 
+    // Convert f64 rate to i64 scaled value for storage
+    let rate_nano = rate_to_scaled(rate);
+
     let sql = match db.kind().as_str() {
-        "postgres" => r#"
+        "postgres" => {
+            r#"
             INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                 rate = EXCLUDED.rate,
                 updated_at = EXCLUDED.updated_at
-        "#,
-        _ => r#"
+        "#
+        }
+        _ => {
+            r#"
             INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                 rate = excluded.rate,
                 updated_at = excluded.updated_at
-        "#,
+        "#
+        }
     };
 
     sqlx::query(sql)
         .bind(from_currency.code())
         .bind(to_currency.code())
-        .bind(rate)
+        .bind(rate_nano) // Store as BIGINT (scaled i64)
         .bind(now)
         .execute(conn.pool())
         .await?;
@@ -127,8 +139,12 @@ async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<
     );
     println!();
     println!("Note: Remember to also set the reverse rate if needed.");
-    println!("  Example: burncloud currency set-rate --from {} --to {} --rate {:.6}",
-        to_currency, from_currency, 1.0 / rate);
+    println!(
+        "  Example: burncloud currency set-rate --from {} --to {} --rate {:.6}",
+        to_currency,
+        from_currency,
+        1.0 / rate
+    );
 
     Ok(())
 }
@@ -149,31 +165,36 @@ async fn cmd_refresh_rates(_db: &Database) -> Result<()> {
 
 /// Convert an amount between currencies
 async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result<()> {
-    let from_currency = Currency::from_str(from)
-        .map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
-    let to_currency = Currency::from_str(to)
-        .map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
+    let from_currency =
+        Currency::from_str(from).map_err(|e| anyhow::anyhow!("Invalid 'from' currency: {}", e))?;
+    let to_currency =
+        Currency::from_str(to).map_err(|e| anyhow::anyhow!("Invalid 'to' currency: {}", e))?;
 
     // Simple direct lookup for conversion
     let conn = db.get_connection()?;
     let sql = "SELECT rate FROM exchange_rates WHERE from_currency = ? AND to_currency = ?";
 
-    let rate: Option<f64> = sqlx::query_scalar(sql)
+    // Rate is stored as BIGINT (scaled i64)
+    let rate_nano: Option<i64> = sqlx::query_scalar(sql)
         .bind(from_currency.code())
         .bind(to_currency.code())
         .fetch_optional(conn.pool())
         .await?;
+
+    let rate = rate_nano.map(scaled_to_rate);
 
     let converted = if let Some(r) = rate {
         amount * r
     } else {
         // Try reverse rate
         let sql = "SELECT rate FROM exchange_rates WHERE from_currency = ? AND to_currency = ?";
-        let reverse_rate: Option<f64> = sqlx::query_scalar(sql)
+        let reverse_rate_nano: Option<i64> = sqlx::query_scalar(sql)
             .bind(to_currency.code())
             .bind(from_currency.code())
             .fetch_optional(conn.pool())
             .await?;
+
+        let reverse_rate = reverse_rate_nano.map(scaled_to_rate);
 
         if let Some(rr) = reverse_rate {
             if rr > 0.0 {
@@ -184,7 +205,10 @@ async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result
         } else if from_currency == to_currency {
             amount
         } else {
-            println!("Warning: No exchange rate found for {} → {}", from_currency, to_currency);
+            println!(
+                "Warning: No exchange rate found for {} → {}",
+                from_currency, to_currency
+            );
             amount
         }
     };

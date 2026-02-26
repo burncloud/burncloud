@@ -1,0 +1,68 @@
+use burncloud_database::{Database, Result};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ModelInfo {
+    pub model_id: String,
+    pub private: bool,
+    pub pipeline_tag: Option<String>,
+    pub library_name: Option<String>,
+    pub model_type: Option<String>,
+    pub downloads: i64,
+    pub likes: i64,
+    pub sha: Option<String>,
+    pub last_modified: Option<String>,
+    pub gated: bool,
+    pub disabled: bool,
+    pub tags: String,
+    pub config: String,
+    pub widget_data: String,
+    pub card_data: String,
+    pub transformers_info: String,
+    pub siblings: String,
+    pub spaces: String,
+    pub safetensors: String,
+    pub used_storage: i64,
+    pub filename: Option<String>,
+    pub size: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+pub struct ModelDatabase {
+    db: Database,
+}
+
+impl ModelDatabase {
+    pub async fn new() -> Result<Self> {
+        Ok(Self {
+            db: Database::new().await?,
+        })
+    }
+
+    pub async fn close(self) -> Result<()> {
+        self.db.close().await
+    }
+
+    pub async fn add_model(&self, _model: &ModelInfo) -> Result<()> {
+        Ok(())
+    }
+    pub async fn update(&self, _model: &ModelInfo) -> Result<()> {
+        Ok(())
+    }
+    pub async fn get_model(&self, _model_id: &str) -> Result<Option<ModelInfo>> {
+        Ok(None)
+    }
+    pub async fn list_models(&self) -> Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    pub async fn search_by_pipeline(&self, _pipeline_tag: &str) -> Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    pub async fn get_popular_models(&self, _limit: i64) -> Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    pub async fn delete(&self, _model_id: &str) -> Result<()> {
+        Ok(())
+    }
+}

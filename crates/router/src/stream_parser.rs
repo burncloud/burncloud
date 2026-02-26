@@ -58,8 +58,7 @@ impl StreamingTokenParser {
         let line = line.trim();
 
         // Parse event type
-        if line.starts_with("data: ") {
-            let data = &line[6..];
+        if let Some(data) = line.strip_prefix("data: ") {
             if let Ok(json) = serde_json::from_str::<Value>(data) {
                 // Handle message_start event
                 if json.get("type").and_then(|v| v.as_str()) == Some("message_start") {
@@ -71,10 +70,16 @@ impl StreamingTokenParser {
                             }
 
                             // Extract cache tokens (Anthropic Prompt Caching)
-                            if let Some(cache_read) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+                            if let Some(cache_read) = usage
+                                .get("cache_read_input_tokens")
+                                .and_then(|v| v.as_u64())
+                            {
                                 counter.set_cache_read_tokens(cache_read as u32);
                             }
-                            if let Some(cache_creation) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+                            if let Some(cache_creation) = usage
+                                .get("cache_creation_input_tokens")
+                                .and_then(|v| v.as_u64())
+                            {
                                 counter.set_cache_creation_tokens(cache_creation as u32);
                             }
                         }
@@ -88,10 +93,16 @@ impl StreamingTokenParser {
                         }
 
                         // Cache tokens can also appear in message_delta
-                        if let Some(cache_read) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+                        if let Some(cache_read) = usage
+                            .get("cache_read_input_tokens")
+                            .and_then(|v| v.as_u64())
+                        {
                             counter.set_cache_read_tokens(cache_read as u32);
                         }
-                        if let Some(cache_creation) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+                        if let Some(cache_creation) = usage
+                            .get("cache_creation_input_tokens")
+                            .and_then(|v| v.as_u64())
+                        {
                             counter.set_cache_creation_tokens(cache_creation as u32);
                         }
                     }
@@ -129,7 +140,10 @@ impl StreamingTokenParser {
                 }
 
                 // Gemini also supports cached_content_token_count for context caching
-                if let Some(cached) = metadata.get("cachedContentTokenCount").and_then(|v| v.as_u64()) {
+                if let Some(cached) = metadata
+                    .get("cachedContentTokenCount")
+                    .and_then(|v| v.as_u64())
+                {
                     counter.set_cache_read_tokens(cached as u32);
                 }
             }

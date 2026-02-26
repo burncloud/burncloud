@@ -1,7 +1,18 @@
 mod common;
 
+use burncloud_common::dollars_to_nano;
 use burncloud_database_models::{PriceInput, PriceModel};
 use common::setup_db;
+
+/// Helper to convert dollars to nanodollars as i64
+fn to_nano(price: f64) -> i64 {
+    dollars_to_nano(price) as i64
+}
+
+/// Helper to convert nanodollars back to dollars
+fn from_nano(nano: i64) -> f64 {
+    nano as f64 / 1_000_000_000.0
+}
 
 /// Test pricing logic: verify cost calculation matches expected formula
 /// Formula: cost = (prompt_tokens * input_price / 1M) + (completion_tokens * output_price / 1M)
@@ -11,28 +22,41 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
 
     // Set up pricing for test model
     // Input: $30/1M tokens, Output: $60/1M tokens (like GPT-4)
+    // All prices are stored as i64 nanodollars
     let input = PriceInput {
         model: "test-pricing-model".to_string(),
-        input_price: 30.0,
-        output_price: 60.0,
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        ..Default::default()
+        currency: "USD".to_string(),
+        input_price: to_nano(30.0),
+        output_price: to_nano(60.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
     };
     PriceModel::upsert(&_db, &input).await?;
 
     // Get the price and verify
-    let price = PriceModel::get(&_db, "test-pricing-model").await?;
+    let price = PriceModel::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
     assert!(price.is_some(), "Price should be found");
 
     let price = price.unwrap();
-    assert_eq!(price.input_price, 30.0);
-    assert_eq!(price.output_price, 60.0);
+    assert_eq!(price.input_price, to_nano(30.0));
+    assert_eq!(price.output_price, to_nano(60.0));
 
     // Calculate cost for 100 prompt + 200 completion tokens
     // Expected: (100 * 30 / 1_000_000) + (200 * 60 / 1_000_000)
     //         = 0.003 + 0.012 = 0.015
-    let cost = PriceModel::calculate_cost(&price, 100, 200);
+    let cost_nano = PriceModel::calculate_cost(&price, 100, 200);
+    let cost = from_nano(cost_nano);
     let expected_cost = (100.0 / 1_000_000.0) * 30.0 + (200.0 / 1_000_000.0) * 60.0;
 
     println!("Calculated cost: ${:.6}", cost);
@@ -46,52 +70,13 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Test model alias resolution for pricing
-#[tokio::test]
-async fn test_pricing_alias_resolution() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
-
-    // Set up base model pricing
-    let base_input = PriceInput {
-        model: "gpt-4".to_string(),
-        input_price: 30.0,
-        output_price: 60.0,
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        ..Default::default()
-    };
-    PriceModel::upsert(&_db, &base_input).await?;
-
-    // Set up alias model
-    let alias_input = PriceInput {
-        model: "gpt-4-turbo".to_string(),
-        input_price: 0.0,  // Not used
-        output_price: 0.0, // Not used
-        currency: Some("USD".to_string()),
-        alias_for: Some("gpt-4".to_string()),
-        ..Default::default()
-    };
-    PriceModel::upsert(&_db, &alias_input).await?;
-
-    // Get price for alias - should resolve to base model's price
-    let price = PriceModel::get(&_db, "gpt-4-turbo").await?;
-    assert!(price.is_some(), "Price should be found via alias");
-
-    let price = price.unwrap();
-    assert_eq!(price.model, "gpt-4", "Should resolve to base model");
-    assert_eq!(price.input_price, 30.0);
-    assert_eq!(price.output_price, 60.0);
-
-    Ok(())
-}
-
 /// Test price listing
 #[tokio::test]
 async fn test_pricing_list() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
     // List all prices (should include default pricing)
-    let prices = PriceModel::list(&_db, 100, 0).await?;
+    let prices = PriceModel::list(&_db, 100, 0, None).await?;
 
     println!("Found {} prices", prices.len());
 
@@ -101,8 +86,11 @@ async fn test_pricing_list() -> anyhow::Result<()> {
     // Print all prices for debugging
     for price in &prices {
         println!(
-            "  {} -> ${:.4}/1M input, ${:.4}/1M output",
-            price.model, price.input_price, price.output_price
+            "  {} -> ${:.4}/1M input, ${:.4}/1M output (region: {:?})",
+            price.model,
+            from_nano(price.input_price),
+            from_nano(price.output_price),
+            price.region
         );
     }
 
@@ -117,42 +105,64 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
     // Create a test model
     let input = PriceInput {
         model: "test-delete-model".to_string(),
-        input_price: 10.0,
-        output_price: 20.0,
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        ..Default::default()
+        currency: "USD".to_string(),
+        input_price: to_nano(10.0),
+        output_price: to_nano(20.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
     };
     PriceModel::upsert(&_db, &input).await?;
 
     // Verify it exists
-    let price = PriceModel::get(&_db, "test-delete-model").await?;
+    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
 
     // Delete it
-    PriceModel::delete(&_db, "test-delete-model").await?;
+    PriceModel::delete(&_db, "test-delete-model", "USD", Some("international")).await?;
 
     // Verify it's gone
-    let price = PriceModel::get(&_db, "test-delete-model").await?;
+    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_none());
 
     // Recreate with different price
     let input2 = PriceInput {
         model: "test-delete-model".to_string(),
-        input_price: 50.0,
-        output_price: 100.0,
-        currency: Some("USD".to_string()),
-        alias_for: None,
-        ..Default::default()
+        currency: "USD".to_string(),
+        input_price: to_nano(50.0),
+        output_price: to_nano(100.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
     };
     PriceModel::upsert(&_db, &input2).await?;
 
     // Verify new price
-    let price = PriceModel::get(&_db, "test-delete-model").await?;
+    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
     let price = price.unwrap();
-    assert_eq!(price.input_price, 50.0);
-    assert_eq!(price.output_price, 100.0);
+    assert_eq!(price.input_price, to_nano(50.0));
+    assert_eq!(price.output_price, to_nano(100.0));
 
     Ok(())
 }

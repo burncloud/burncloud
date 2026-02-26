@@ -5,6 +5,12 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
+// Re-export nanodollar conversion utilities from price_u64 module
+pub use crate::price_u64::{
+    dollars_to_nano as dollars_to_nanodollars, nano_to_dollars as nanodollars_to_dollars,
+    NANO_PER_DOLLAR as NANODOLLAR_SCALE,
+};
+
 /// Supported currencies for pricing
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -55,23 +61,28 @@ impl FromStr for Currency {
 }
 
 /// Multi-currency price information
+/// Prices are stored as i64 nanodollars (9 decimal precision)
+/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiCurrencyPrice {
     /// Currency of the price
     pub currency: Currency,
-    /// Input price per 1M tokens
-    pub input_price: f64,
-    /// Output price per 1M tokens
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
 }
 
 /// Exchange rate for currency conversion
+/// Rate is stored as scaled i64 (rate * 10^9) for precision
+/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ExchangeRate {
     pub id: i32,
     pub from_currency: String,
     pub to_currency: String,
-    pub rate: f64,
+    /// Exchange rate scaled by 10^9 (e.g., 7.24 CNY/USD = 7_240_000_000)
+    pub rate: i64,
     pub updated_at: Option<i64>,
 }
 
@@ -296,14 +307,16 @@ pub struct Channel {
     pub remark: Option<String>,
     pub api_version: Option<String>, // API version for protocol adaptation
     pub pricing_region: Option<String>, // Pricing region: 'cn', 'international', or NULL for universal
-                                     // ChannelInfo fields from New API are flattened or handled separately in logic
+                                        // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
+/// Recharge record. Amount is stored as i64 nanodollars (9 decimal precision).
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Recharge {
     pub id: i32,
     pub user_id: String,
-    pub amount: f64,
+    /// Amount in nanodollars (9 decimal precision)
+    pub amount: i64,
     pub description: Option<String>,
     pub created_at: Option<i64>, // Unix timestamp
 }
@@ -318,6 +331,8 @@ pub struct Ability {
     pub weight: i32,
 }
 
+/// User with dual-currency wallet for regional pricing support.
+/// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: String,
@@ -331,13 +346,18 @@ pub struct User {
     pub github_id: Option<String>,
     pub wechat_id: Option<String>,
     pub access_token: Option<String>,
-    pub quota: i64, // 500000 = $1
-    pub used_quota: i64,
+    /// USD balance in nanodollars (9 decimal precision)
+    /// For display: divide by 1_000_000_000 to get dollars
+    #[sqlx(default)]
+    pub balance_usd: i64,
+    /// CNY balance in nanodollars (9 decimal precision)
+    /// For display: divide by 1_000_000_000 to get yuan
+    #[sqlx(default)]
+    pub balance_cny: i64,
     pub request_count: i32,
     pub group: String,
     pub aff_code: Option<String>,
     pub aff_count: i32,
-    pub aff_quota: i64,
     pub inviter_id: Option<String>,
     /// User's preferred currency for display (USD, CNY, EUR)
     #[sqlx(default)]
@@ -346,6 +366,7 @@ pub struct User {
     pub created_at: Option<i64>, // Unix timestamp
 }
 
+/// Token without quota tracking - quota is now managed at user level via dual-currency wallet.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Token {
     pub id: i32,
@@ -353,9 +374,6 @@ pub struct Token {
     pub key: String,
     pub status: i32,
     pub name: String,
-    pub remain_quota: i64, // -1 for unlimited
-    pub unlimited_quota: bool,
-    pub used_quota: i64,
     pub created_time: i64,
     pub accessed_time: i64,
     pub expired_time: i64, // -1 for never
@@ -436,6 +454,8 @@ pub struct ResponseMapping {
 
 /// Tiered pricing configuration for models with usage-based pricing tiers
 /// (e.g., Qwen models with different prices based on context length)
+/// Prices are stored as i64 nanodollars (9 decimal precision)
+/// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TieredPrice {
     pub id: i32,
@@ -447,10 +467,10 @@ pub struct TieredPrice {
     pub tier_start: i64,
     /// Ending token count for this tier (NULL means no upper limit)
     pub tier_end: Option<i64>,
-    /// Input price per 1M tokens for this tier
-    pub input_price: f64,
-    /// Output price per 1M tokens for this tier
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
 }
 
 /// Input for creating/updating a tiered price
@@ -460,8 +480,10 @@ pub struct TieredPriceInput {
     pub region: Option<String>,
     pub tier_start: i64,
     pub tier_end: Option<i64>,
-    pub input_price: f64,
-    pub output_price: f64,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
 }
 
 /// Full pricing configuration for extensibility
@@ -473,33 +495,36 @@ pub struct FullPricing {
     pub additional_fields: HashMap<String, Value>,
 }
 
-/// Multi-currency price entry for prices_v2 table
+/// Multi-currency price entry for prices table
 /// Supports USD, CNY, EUR and advanced pricing fields
+/// All prices are stored in nanodollars (i64, 9 decimal precision)
+/// Note: Using i64 for PostgreSQL BIGINT compatibility (BIGINT is signed)
+/// Values must always be non-negative (>= 0)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct PriceV2 {
+pub struct Price {
     pub id: i32,
     /// Model name
     pub model: String,
     /// Currency (USD, CNY, EUR)
     pub currency: String,
-    /// Input price per 1M tokens
-    pub input_price: f64,
-    /// Output price per 1M tokens
-    pub output_price: f64,
-    /// Cache read input price per 1M tokens (for Prompt Caching)
-    pub cache_read_input_price: Option<f64>,
-    /// Cache creation input price per 1M tokens
-    pub cache_creation_input_price: Option<f64>,
-    /// Batch input price per 1M tokens (typically 50% of standard)
-    pub batch_input_price: Option<f64>,
-    /// Batch output price per 1M tokens
-    pub batch_output_price: Option<f64>,
-    /// Priority input price per 1M tokens (typically 170% of standard)
-    pub priority_input_price: Option<f64>,
-    /// Priority output price per 1M tokens
-    pub priority_output_price: Option<f64>,
-    /// Audio input price per 1M tokens (typically 7x text)
-    pub audio_input_price: Option<f64>,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
+    /// Cache read input price per 1M tokens in nanodollars (for Prompt Caching)
+    pub cache_read_input_price: Option<i64>,
+    /// Cache creation input price per 1M tokens in nanodollars
+    pub cache_creation_input_price: Option<i64>,
+    /// Batch input price per 1M tokens in nanodollars (typically 50% of standard)
+    pub batch_input_price: Option<i64>,
+    /// Batch output price per 1M tokens in nanodollars
+    pub batch_output_price: Option<i64>,
+    /// Priority input price per 1M tokens in nanodollars (typically 170% of standard)
+    pub priority_input_price: Option<i64>,
+    /// Priority output price per 1M tokens in nanodollars
+    pub priority_output_price: Option<i64>,
+    /// Audio input price per 1M tokens in nanodollars (typically 7x text)
+    pub audio_input_price: Option<i64>,
     /// Source of pricing data (litellm, manual, community, etc.)
     pub source: Option<String>,
     /// Region for pricing (cn, international, NULL for universal)
@@ -508,10 +533,12 @@ pub struct PriceV2 {
     pub context_window: Option<i64>,
     /// Maximum output tokens
     pub max_output_tokens: Option<i64>,
-    /// Whether the model supports vision/image input
-    pub supports_vision: Option<bool>,
-    /// Whether the model supports function calling
-    pub supports_function_calling: Option<bool>,
+    /// Whether the model supports vision/image input (stored as INTEGER 0/1 in DB)
+    #[sqlx(default)]
+    pub supports_vision: Option<i32>,
+    /// Whether the model supports function calling (stored as INTEGER 0/1 in DB)
+    #[sqlx(default)]
+    pub supports_function_calling: Option<i32>,
     /// Last sync timestamp
     pub synced_at: Option<i64>,
     /// Creation timestamp
@@ -520,20 +547,30 @@ pub struct PriceV2 {
     pub updated_at: Option<i64>,
 }
 
-/// Input for creating/updating a PriceV2 entry
+/// Input for creating/updating a Price entry
+/// All prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriceV2Input {
+pub struct PriceInput {
     pub model: String,
     pub currency: String,
-    pub input_price: f64,
-    pub output_price: f64,
-    pub cache_read_input_price: Option<f64>,
-    pub cache_creation_input_price: Option<f64>,
-    pub batch_input_price: Option<f64>,
-    pub batch_output_price: Option<f64>,
-    pub priority_input_price: Option<f64>,
-    pub priority_output_price: Option<f64>,
-    pub audio_input_price: Option<f64>,
+    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub input_price: i64,
+    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    pub output_price: i64,
+    /// Cache read input price per 1M tokens in nanodollars
+    pub cache_read_input_price: Option<i64>,
+    /// Cache creation input price per 1M tokens in nanodollars
+    pub cache_creation_input_price: Option<i64>,
+    /// Batch input price per 1M tokens in nanodollars
+    pub batch_input_price: Option<i64>,
+    /// Batch output price per 1M tokens in nanodollars
+    pub batch_output_price: Option<i64>,
+    /// Priority input price per 1M tokens in nanodollars
+    pub priority_input_price: Option<i64>,
+    /// Priority output price per 1M tokens in nanodollars
+    pub priority_output_price: Option<i64>,
+    /// Audio input price per 1M tokens in nanodollars
+    pub audio_input_price: Option<i64>,
     pub source: Option<String>,
     pub region: Option<String>,
     pub context_window: Option<i64>,
@@ -542,13 +579,13 @@ pub struct PriceV2Input {
     pub supports_function_calling: Option<bool>,
 }
 
-impl Default for PriceV2Input {
+impl Default for PriceInput {
     fn default() -> Self {
         Self {
             model: String::new(),
             currency: "USD".to_string(),
-            input_price: 0.0,
-            output_price: 0.0,
+            input_price: 0,
+            output_price: 0,
             cache_read_input_price: None,
             cache_creation_input_price: None,
             batch_input_price: None,
@@ -563,6 +600,18 @@ impl Default for PriceV2Input {
             supports_vision: None,
             supports_function_calling: None,
         }
+    }
+}
+
+impl Price {
+    /// Check if vision is supported
+    pub fn supports_vision_bool(&self) -> Option<bool> {
+        self.supports_vision.map(|v| v != 0)
+    }
+
+    /// Check if function calling is supported
+    pub fn supports_function_calling_bool(&self) -> Option<bool> {
+        self.supports_function_calling.map(|v| v != 0)
     }
 }
 
@@ -624,15 +673,16 @@ mod currency_tests {
 
     #[test]
     fn test_multi_currency_price() {
+        // Prices are in nanodollars: $0.002 = 2_000_000 nanodollars
         let price = MultiCurrencyPrice {
             currency: Currency::CNY,
-            input_price: 0.002,
-            output_price: 0.006,
+            input_price: 2_000_000,  // $0.002 in nanodollars
+            output_price: 6_000_000, // $0.006 in nanodollars
         };
 
         assert_eq!(price.currency, Currency::CNY);
-        assert!((price.input_price - 0.002).abs() < 0.0001);
-        assert!((price.output_price - 0.006).abs() < 0.0001);
+        assert_eq!(price.input_price, 2_000_000);
+        assert_eq!(price.output_price, 6_000_000);
 
         // Test serialization
         let json = serde_json::to_string(&price).unwrap();

@@ -41,7 +41,11 @@ pub enum PassthroughDecision {
 ///
 /// `PassthroughDecision::Passthrough` if the request should be forwarded as-is,
 /// `PassthroughDecision::Convert` if protocol conversion should be applied.
-pub fn should_passthrough(path: &str, body: &Value, channel_type: ChannelType) -> PassthroughDecision {
+pub fn should_passthrough(
+    path: &str,
+    body: &Value,
+    channel_type: ChannelType,
+) -> PassthroughDecision {
     // Only Gemini channels support passthrough
     if channel_type != ChannelType::Gemini && channel_type != ChannelType::VertexAi {
         return PassthroughDecision::Convert;
@@ -84,8 +88,7 @@ fn is_gemini_native_path(path: &str) -> bool {
 /// (as opposed to OpenAI's `messages` field).
 fn is_gemini_native_content(body: &Value) -> bool {
     // Check for Gemini-specific "contents" field
-    body.get("contents").is_some()
-        && body.get("contents").map_or(false, |c| c.is_array())
+    body.get("contents").is_some() && body.get("contents").is_some_and(|c| c.is_array())
 }
 
 /// Builds the target URL for Gemini passthrough mode.
@@ -130,12 +133,7 @@ pub fn build_gemini_passthrough_url(base_url: &str, path: &str, body: &Value) ->
         "generateContent"
     };
 
-    format!(
-        "{}/v1beta/models/{}:{}",
-        clean_base,
-        model,
-        method
-    )
+    format!("{}/v1beta/models/{}:{}", clean_base, model, method)
 }
 
 /// Extracts the model name from a Gemini native path.
@@ -232,9 +230,15 @@ mod tests {
 
     #[test]
     fn test_is_gemini_native_path() {
-        assert!(is_gemini_native_path("/v1beta/models/gemini-pro:generateContent"));
-        assert!(is_gemini_native_path("/v1/models/gemini-pro:streamGenerateContent"));
-        assert!(is_gemini_native_path("/v1beta/models/gemini-2.0-flash:countTokens"));
+        assert!(is_gemini_native_path(
+            "/v1beta/models/gemini-pro:generateContent"
+        ));
+        assert!(is_gemini_native_path(
+            "/v1/models/gemini-pro:streamGenerateContent"
+        ));
+        assert!(is_gemini_native_path(
+            "/v1beta/models/gemini-2.0-flash:countTokens"
+        ));
         assert!(!is_gemini_native_path("/v1/chat/completions"));
         assert!(!is_gemini_native_path("/v1/embeddings"));
     }
@@ -369,10 +373,7 @@ mod tests {
             extract_model_from_gemini_path("/v1/models/gemini-2.0-flash:streamGenerateContent"),
             Some("gemini-2.0-flash".to_string())
         );
-        assert_eq!(
-            extract_model_from_gemini_path("/v1/chat/completions"),
-            None
-        );
+        assert_eq!(extract_model_from_gemini_path("/v1/chat/completions"), None);
     }
 
     #[test]

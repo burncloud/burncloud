@@ -6,20 +6,15 @@ use std::time::{Duration, Instant};
 /// Represents the scope of a rate limit.
 ///
 /// Used to distinguish between account-level and model-level rate limits.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum RateLimitScope {
     /// Rate limit applies at the account level (affects all models)
     Account,
     /// Rate limit applies at the model level (specific model only)
     Model,
     /// Rate limit scope is unknown
+    #[default]
     Unknown,
-}
-
-impl Default for RateLimitScope {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// Represents the type of failure encountered when communicating with an upstream.
@@ -156,7 +151,7 @@ impl CircuitBreaker {
             } => {
                 // Set rate limit expiry time
                 let duration = retry_after
-                    .map(|s| Duration::from_secs(s))
+                    .map(Duration::from_secs)
                     .unwrap_or(Duration::from_secs(60));
                 entry.rate_limit_until = Some(Instant::now() + duration);
 
