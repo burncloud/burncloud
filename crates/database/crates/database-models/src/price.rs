@@ -559,6 +559,27 @@ impl PriceModel {
         Ok(())
     }
 
+    /// Delete price for a model in a specific region
+    /// Returns the number of deleted rows
+    pub async fn delete_by_region(db: &Database, model: &str, region: &str) -> Result<u64> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            "DELETE FROM prices WHERE model = $1 AND region = $2"
+        } else {
+            "DELETE FROM prices WHERE model = ? AND region = ?"
+        };
+
+        let result = sqlx::query(sql)
+            .bind(model)
+            .bind(region)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
     /// Calculate cost for a request using Price
     /// Returns cost in nanodollars (i64, 9 decimal precision)
     pub fn calculate_cost(price: &Price, prompt_tokens: u64, completion_tokens: u64) -> i64 {

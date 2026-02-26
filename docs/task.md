@@ -397,7 +397,7 @@
       "同时支持 PostgreSQL ($1, $2) 和 SQLite (?, ?) 语法",
       "返回删除的行数"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-delete-region-cli",
