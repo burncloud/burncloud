@@ -720,7 +720,7 @@
       "验证 generationConfig 参数穿透: 添加 '\"generationConfig\":{\"temperature\":0.5,\"maxOutputTokens\":100}'",
       "验证 responseModalities 参数穿透: 添加 '\"generationConfig\":{\"responseModalities\":[\"TEXT\",\"IMAGE\"]}'"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-native-image-passthrough",

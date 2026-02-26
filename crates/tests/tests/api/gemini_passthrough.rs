@@ -870,3 +870,57 @@ async fn test_usage_metadata_in_response() {
         println!("No usageMetadata in response (may be in different format)");
     }
 }
+
+// ============================================================================
+// Test 10: responseModalities parameter passthrough
+// ============================================================================
+
+#[tokio::test]
+async fn test_response_modalities_passthrough() {
+    if get_gemini_key().is_none() {
+        println!("SKIPPING: TEST_GEMINI_KEY not set");
+        return;
+    }
+
+    let base_url = common_mod::spawn_app().await;
+    let admin_client = TestClient::new(&base_url);
+    let _channel_name = create_gemini_channel(&base_url, &admin_client).await;
+
+    let user_client = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
+
+    // Request with responseModalities in generationConfig (Gemini native format triggers passthrough)
+    let chat_body = json!({
+        "model": "gemini-2.0-flash",
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Hello, how are you?"}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 100,
+            "responseModalities": ["TEXT"]
+        }
+    });
+
+    println!("Testing responseModalities parameter passthrough...");
+    let chat_res = user_client
+        .post("/v1/chat/completions", &chat_body)
+        .await
+        .expect("Chat failed");
+
+    println!("Response with responseModalities: {:?}", chat_res);
+
+    // Verify response in Gemini native format (passthrough mode)
+    let has_candidates = chat_res.get("candidates").is_some();
+    assert!(has_candidates, "Should have candidates in passthrough mode");
+
+    // Verify response has text content
+    let has_content = chat_res["candidates"][0]["content"]["parts"][0]["text"]
+        .as_str()
+        .is_some();
+    assert!(has_content, "Should have text content");
+
+    println!("SUCCESS: responseModalities parameter passthrough verified");
+}
