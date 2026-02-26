@@ -644,7 +644,7 @@
       "验证 safetySettings 参数穿透",
       "验证 generationConfig 参数穿透"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-billing",

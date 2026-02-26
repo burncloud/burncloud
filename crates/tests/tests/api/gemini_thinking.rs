@@ -96,7 +96,10 @@ async fn test_gemini_2_0_flash_thinking_basic() {
     assert!(content.is_some(), "Message should have content");
     assert!(!content.unwrap().is_empty(), "Content should not be empty");
 
-    println!("SUCCESS: Basic thinking request returned content: {}", content.unwrap());
+    println!(
+        "SUCCESS: Basic thinking request returned content: {}",
+        content.unwrap()
+    );
 }
 
 // ============================================================================
@@ -154,8 +157,7 @@ async fn test_gemini_thinking_output_format() {
             // Thinking models may include thoughts in parts
             // Check for both "thought" field and regular "text" field
             let has_thought = parts.unwrap().iter().any(|part| {
-                part.get("thought").is_some()
-                    || part.get("thoughtSignature").is_some()
+                part.get("thought").is_some() || part.get("thoughtSignature").is_some()
             });
 
             println!("Thinking detected in response: {}", has_thought);
@@ -215,10 +217,15 @@ async fn test_gemini_thinking_disabled() {
             .as_str()
             .is_some()
     } else {
-        chat_res["choices"][0]["message"]["content"].as_str().is_some()
+        chat_res["choices"][0]["message"]["content"]
+            .as_str()
+            .is_some()
     };
 
-    assert!(has_content, "Should have content even with thinking disabled");
+    assert!(
+        has_content,
+        "Should have content even with thinking disabled"
+    );
     println!("SUCCESS: Response received with thinking disabled");
 }
 
@@ -360,7 +367,10 @@ async fn test_gemini_thinking_native_path() {
 
     // Verify response structure (should be Gemini native format due to contents field)
     let has_candidates = chat_res.get("candidates").is_some();
-    println!("Response has Gemini native format (candidates): {}", has_candidates);
+    println!(
+        "Response has Gemini native format (candidates): {}",
+        has_candidates
+    );
 
     println!("SUCCESS: Native path request completed");
 }

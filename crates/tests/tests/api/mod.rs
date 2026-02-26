@@ -3,6 +3,7 @@ pub mod auth;
 pub mod auth_handlers;
 pub mod channel;
 pub mod claude_relay;
+pub mod gemini_passthrough;
 pub mod gemini_thinking;
 pub mod log;
 pub mod monitor;
