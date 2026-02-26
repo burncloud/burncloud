@@ -255,8 +255,53 @@ impl PriceModel {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
-        let prices = match currency {
-            Some(curr) => {
+        let prices = match (currency, region) {
+            (Some(curr), Some(reg)) => {
+                // Filter by both currency and region
+                let sql = if is_postgres {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
+                       ORDER BY model LIMIT $3 OFFSET $4"#
+                } else {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+                       ORDER BY model LIMIT ? OFFSET ?"#
+                };
+                if is_postgres {
+                    sqlx::query_as(sql)
+                        .bind(curr)
+                        .bind(reg)
+                        .bind(limit)
+                        .bind(offset)
+                        .fetch_all(conn.pool())
+                        .await?
+                } else {
+                    sqlx::query_as(sql)
+                        .bind(curr)
+                        .bind(reg)
+                        .bind(reg)
+                        .bind(limit)
+                        .bind(offset)
+                        .fetch_all(conn.pool())
+                        .await?
+                }
+            }
+            (Some(curr), None) => {
+                // Filter by currency only
                 let sql = if is_postgres {
                     r#"SELECT id, model, currency, input_price, output_price,
                               cache_read_input_price, cache_creation_input_price,
@@ -287,7 +332,50 @@ impl PriceModel {
                     .fetch_all(conn.pool())
                     .await?
             }
-            None => {
+            (None, Some(reg)) => {
+                // Filter by region only
+                let sql = if is_postgres {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices WHERE region IS NOT DISTINCT FROM $1
+                       ORDER BY model, currency LIMIT $2 OFFSET $3"#
+                } else {
+                    r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              synced_at, created_at, updated_at
+                       FROM prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
+                       ORDER BY model, currency LIMIT ? OFFSET ?"#
+                };
+                if is_postgres {
+                    sqlx::query_as(sql)
+                        .bind(reg)
+                        .bind(limit)
+                        .bind(offset)
+                        .fetch_all(conn.pool())
+                        .await?
+                } else {
+                    sqlx::query_as(sql)
+                        .bind(reg)
+                        .bind(reg)
+                        .bind(limit)
+                        .bind(offset)
+                        .fetch_all(conn.pool())
+                        .await?
+                }
+            }
+            (None, None) => {
+                // No filters
                 let sql = if is_postgres {
                     r#"SELECT id, model, currency, input_price, output_price,
                               cache_read_input_price, cache_creation_input_price,

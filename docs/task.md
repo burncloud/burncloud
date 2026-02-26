@@ -347,7 +347,7 @@
       "在 sqlx::query_as 调用中 bind region 参数",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-list-region-cli",

@@ -36,9 +36,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
             let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
+            let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
             // Use PriceModel for multi-currency support
-            let prices = PriceModel::list(db, limit, offset, currency).await?;
+            let prices = PriceModel::list(db, limit, offset, currency, region).await?;
 
             if prices.is_empty() {
                 println!("No prices found.");
@@ -375,7 +376,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         }
         Some(("sync-status", _)) => {
             // Show sync status by counting models with advanced pricing
-            let prices = PriceModel::list(db, 10000, 0, None).await?;
+            let prices = PriceModel::list(db, 10000, 0, None, None).await?;
 
             let mut total = 0;
             let mut with_cache = 0;
@@ -639,7 +640,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let format = sub_m.get_one::<String>("format").unwrap();
 
             // Fetch all prices from prices table
-            let prices = PriceModel::list(db, 100000, 0, None).await?;
+            let prices = PriceModel::list(db, 100000, 0, None, None).await?;
             let tiered_prices = TieredPriceModel::list_all(db).await?;
 
             if prices.is_empty() {
