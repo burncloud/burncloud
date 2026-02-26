@@ -55,7 +55,7 @@ async fn test_concurrent_database_access() {
 
         for i in 0..num_tasks {
             let connection = db
-                .connection()
+                .get_connection()
                 .expect("Database should be initialized")
                 .clone();
             let handle = tokio::spawn(async move {

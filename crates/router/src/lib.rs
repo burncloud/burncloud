@@ -5,14 +5,15 @@ pub mod billing;
 mod channel_state;
 mod circuit_breaker;
 mod config;
+pub mod exchange_rate;
 mod limiter;
 mod model_router;
-pub mod exchange_rate;
 pub mod notification;
 pub mod passthrough;
 pub mod price_sync;
 pub mod pricing_loader;
 pub mod response_parser;
+mod state;
 pub mod stream_parser;
 pub mod token_counter;
 
@@ -44,19 +45,40 @@ use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
-#[derive(Clone)]
-struct AppState {
-    client: Client,
-    config: Arc<RwLock<RouterConfig>>,
-    db: Arc<Database>,
-    balancer: Arc<RoundRobinBalancer>,
-    limiter: Arc<RateLimiter>,
-    circuit_breaker: Arc<CircuitBreaker>,
-    log_tx: mpsc::Sender<DbRouterLog>,
-    model_router: Arc<ModelRouter>,
-    channel_state_tracker: Arc<ChannelStateTracker>,
-    adaptor_factory: Arc<adaptor::factory::DynamicAdaptorFactory>,
-    api_version_detector: Arc<adaptor::detector::ApiVersionDetector>,
+pub use state::AppState;
+
+/// Helper function to build a response safely without panicking.
+/// Falls back to an empty body with the same status if body construction fails.
+fn build_response(status: StatusCode, body: Body) -> Response {
+    Response::builder()
+        .status(status)
+        .body(body)
+        .unwrap_or_else(|_| {
+            // Fallback: return a minimal response with the same status
+            Response::builder()
+                .status(status)
+                .body(Body::empty())
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        })
+}
+
+/// Helper function to build a response with a header safely.
+fn build_response_with_header(
+    status: StatusCode,
+    header_name: &str,
+    header_value: &str,
+    body: Body,
+) -> Response {
+    Response::builder()
+        .status(status)
+        .header(header_name, header_value)
+        .body(body)
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(status)
+                .body(Body::empty())
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        })
 }
 
 async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
@@ -180,15 +202,12 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
         Ok(new_config) => {
             let mut config_write = state.config.write().await;
             *config_write = new_config;
-            Response::builder()
-                .status(200)
-                .body(Body::from("Reloaded"))
-                .unwrap()
+            build_response(StatusCode::OK, Body::from("Reloaded"))
         }
-        Err(e) => Response::builder()
-            .status(500)
-            .body(Body::from(format!("Reload Failed: {}", e)))
-            .unwrap(),
+        Err(e) => build_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Body::from(format!("Reload Failed: {}", e)),
+        ),
     }
 }
 
@@ -235,11 +254,15 @@ async fn models_handler(State(state): State<AppState>) -> Response {
         "data": model_entries
     });
 
-    Response::builder()
-        .status(200)
-        .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&response_json).unwrap()))
-        .unwrap()
+    build_response_with_header(
+        StatusCode::OK,
+        "content-type",
+        "application/json",
+        Body::from(
+            serde_json::to_string(&response_json)
+                .unwrap_or_else(|_| r#"{"object":"list","data":[]}"#.to_string()),
+        ),
+    )
 }
 
 async fn health_status_handler(State(state): State<AppState>) -> Response {
@@ -277,11 +300,12 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
 
     let json = serde_json::to_string(&health_report).unwrap_or_else(|_| "{}".to_string());
 
-    Response::builder()
-        .status(200)
-        .header("content-type", "application/json")
-        .body(Body::from(json))
-        .unwrap()
+    build_response_with_header(
+        StatusCode::OK,
+        "content-type",
+        "application/json",
+        Body::from(json),
+    )
 }
 
 async fn proxy_handler(
@@ -293,9 +317,6 @@ async fn proxy_handler(
 ) -> Response {
     let start_time = Instant::now();
     let request_id = Uuid::new_v4().to_string();
-
-    // DEBUG: Immediate return
-    // return Response::builder().status(200).body(Body::from("DEBUG_OK")).unwrap();
     let path = uri.path().to_string();
 
     println!("Proxy Handler: {} {}, Headers: {:?}", method, path, headers);
@@ -309,10 +330,10 @@ async fn proxy_handler(
     let user_token = match user_auth {
         Some(token) => token.to_string(),
         None => {
-            return Response::builder()
-                .status(401)
-                .body(Body::from("Unauthorized: Missing Bearer Token"))
-                .unwrap();
+            return build_response(
+                StatusCode::UNAUTHORIZED,
+                Body::from("Unauthorized: Missing Bearer Token"),
+            );
         }
     };
 
@@ -344,69 +365,88 @@ async fn proxy_handler(
                             t.quota_limit,
                             t.used_quota,
                         )
-                    },
+                    }
                     Ok(TokenValidationResult::Expired) => {
-                        return Response::builder()
-                            .status(401)
-                            .header("content-type", "application/json")
-                            .body(Body::from(r#"{"error":{"message":"Token has expired","type":"invalid_request_error","code":"token_expired"}}"#))
-                            .unwrap()
+                        return build_response_with_header(
+                            StatusCode::UNAUTHORIZED,
+                            "content-type",
+                            "application/json",
+                            Body::from(
+                                r#"{"error":{"message":"Token has expired","type":"invalid_request_error","code":"token_expired"}}"#,
+                            ),
+                        )
                     }
                     Ok(TokenValidationResult::Invalid) => {
-                        return Response::builder()
-                            .status(401)
-                            .header("content-type", "application/json")
-                            .body(Body::from(r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#))
-                            .unwrap()
+                        return build_response_with_header(
+                            StatusCode::UNAUTHORIZED,
+                            "content-type",
+                            "application/json",
+                            Body::from(
+                                r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#,
+                            ),
+                        )
                     }
                     Err(e) => {
-                        return Response::builder()
-                            .status(500)
-                            .header("content-type", "application/json")
-                            .body(Body::from(format!(r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#, e)))
-                            .unwrap()
+                        return build_response_with_header(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "content-type",
+                            "application/json",
+                            Body::from(format!(
+                                r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#,
+                                e
+                            )),
+                        )
                     }
                 }
             }
-            Err(e) => return Response::builder()
-                .status(500)
-                .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#,
-                    e
-                )))
-                .unwrap(),
+            Err(e) => {
+                return build_response_with_header(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "content-type",
+                    "application/json",
+                    Body::from(format!(
+                        r#"{{"error":{{"message":"Internal Auth Error: {}","type":"server_error"}}}}"#,
+                        e
+                    )),
+                )
+            }
         };
 
     if quota_limit >= 0 && used_quota >= quota_limit {
-        return Response::builder()
-            .status(402)
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"error":{"message":"Insufficient quota","type":"insufficient_quota_error","code":"insufficient_quota"}}"#))
-            .unwrap();
+        return build_response_with_header(
+            StatusCode::PAYMENT_REQUIRED,
+            "content-type",
+            "application/json",
+            Body::from(
+                r#"{"error":{"message":"Insufficient quota","type":"insufficient_quota_error","code":"insufficient_quota"}}"#,
+            ),
+        );
     }
 
     // Rate Limiting Check
     if !state.limiter.check(&user_id, 1.0) {
-        return Response::builder()
-            .status(429)
-            .body(Body::from("Too Many Requests"))
-            .unwrap();
+        return build_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            Body::from("Too Many Requests"),
+        );
     }
 
     // Buffer body for token counting and retries
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(e) => {
-            return Response::builder()
-                .status(400)
-                .body(Body::from(format!("Body Read Error: {}", e)))
-                .unwrap()
+            return build_response(
+                StatusCode::BAD_REQUEST,
+                Body::from(format!("Body Read Error: {}", e)),
+            )
         }
     };
 
     // Estimate Prompt Tokens (Simple approximation: 1 token ~= 4 bytes)
-    // TODO: Integrate tiktoken-rs for precise counting
+    // TODO(issue): Integrate tiktoken-rs for precise counting
+    //   - Current approximation is inaccurate for non-ASCII text
+    //   - tiktoken-rs provides accurate token counting for OpenAI models
+    //   - Consider: model-specific tokenizers (cl100k_base, o200k_base, etc.)
     let estimated_prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
 
     // Extract model name for pricing before proxy_logic consumes body_bytes
@@ -453,7 +493,7 @@ async fn proxy_handler(
     ));
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status) = proxy_logic(
+    let (response, upstream_id, final_status, pricing_region) = proxy_logic(
         &state,
         method,
         uri,
@@ -473,23 +513,32 @@ async fn proxy_handler(
     // Get cache token counts
     let (cache_read_tokens, cache_creation_tokens) = token_counter.get_cache_usage();
 
-    // Calculate cost if we have token usage
-    let cost = if prompt_tokens > 0 || completion_tokens > 0 {
+    // Calculate cost if we have token usage (returns i64 nanodollars)
+    let cost: i64 = if prompt_tokens > 0 || completion_tokens > 0 {
         if let Some(model) = &model_name {
             // Try to get price and check for tiered pricing
-            let price_result = PriceModel::get(&state.db, model).await;
-            let tiered_result = burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model).await;
+            // Use channel's pricing_region for region-specific pricing
+            let price_result = PriceModel::get(
+                &state.db,
+                model,
+                "USD",
+                pricing_region.as_deref(),
+            )
+            .await;
+            let tiered_result =
+                burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model)
+                    .await;
 
             // Check if model has tiered pricing
             let has_tiered = matches!(tiered_result, Ok(true));
 
             if let Ok(Some(price)) = price_result {
-                // Build advanced pricing struct
+                // Build advanced pricing struct (prices are already in i64 nanodollars)
                 let pricing = billing::AdvancedPricing {
                     input_price: price.input_price,
                     output_price: price.output_price,
-                    cache_read_price: price.cache_read_price,
-                    cache_creation_price: price.cache_creation_price,
+                    cache_read_price: price.cache_read_input_price,
+                    cache_creation_price: price.cache_creation_input_price,
                     batch_input_price: price.batch_input_price,
                     batch_output_price: price.batch_output_price,
                     priority_input_price: price.priority_input_price,
@@ -508,10 +557,16 @@ async fn proxy_handler(
                         audio_tokens: 0,
                     };
 
-                    billing::calculate_cache_cost(&usage, &pricing)
+                    billing::calculate_cache_cost_nano(&usage, &pricing)
                 } else if has_tiered {
                     // Use tiered pricing for models with usage-based tiers (e.g., Qwen)
-                    match burncloud_database_models::TieredPriceModel::get_tiers(&state.db, model, None).await {
+                    match burncloud_database_models::TieredPriceModel::get_tiers(
+                        &state.db,
+                        model,
+                        pricing_region.as_deref(),
+                    )
+                    .await
+                    {
                         Ok(tiers) if !tiers.is_empty() => {
                             // Convert database TieredPrice to billing TieredPrice
                             let billing_tiers: Vec<burncloud_common::types::TieredPrice> = tiers
@@ -527,40 +582,61 @@ async fn proxy_handler(
                                 })
                                 .collect();
 
-                            match billing::calculate_tiered_cost_full(
+                            match billing::calculate_tiered_cost_full_nano(
                                 prompt_tokens as u64,
                                 completion_tokens as u64,
                                 &billing_tiers,
                                 None,
                             ) {
                                 Ok(cost) => cost,
-                                Err(_) => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                                Err(_) => PriceModel::calculate_cost(
+                                    &price,
+                                    prompt_tokens as u64,
+                                    completion_tokens as u64,
+                                ),
                             }
                         }
-                        _ => PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens),
+                        _ => PriceModel::calculate_cost(
+                            &price,
+                            prompt_tokens as u64,
+                            completion_tokens as u64,
+                        ),
                     }
                 } else if is_priority_request {
                     // Use priority pricing for high-priority requests
-                    billing::calculate_priority_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
+                    billing::calculate_priority_cost_nano(
+                        prompt_tokens as u64,
+                        completion_tokens as u64,
+                        &pricing,
+                    )
                 } else if is_batch_request {
                     // Use batch pricing for batch API requests
-                    billing::calculate_batch_cost(prompt_tokens as u64, completion_tokens as u64, &pricing)
+                    billing::calculate_batch_cost_nano(
+                        prompt_tokens as u64,
+                        completion_tokens as u64,
+                        &pricing,
+                    )
                 } else {
                     // Fall back to simple calculation
-                    PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens)
+                    PriceModel::calculate_cost(
+                        &price,
+                        prompt_tokens as u64,
+                        completion_tokens as u64,
+                    )
                 }
             } else {
-                0.0
+                0
             }
         } else {
-            0.0
+            0
         }
     } else {
-        0.0
+        0
     };
 
     // Async Log
     let log = DbRouterLog {
+        id: 0, // Auto-generated by database
         request_id,
         user_id: Some(user_id.clone()),
         path,
@@ -570,6 +646,7 @@ async fn proxy_handler(
         prompt_tokens: prompt_tokens as i32,
         completion_tokens: completion_tokens as i32,
         cost,
+        created_at: None, // Auto-generated by database
     };
 
     let _ = state.log_tx.send(log).await;
@@ -581,8 +658,8 @@ async fn proxy_handler(
         let token_for_quota = user_token.to_string();
         let user_id_for_quota = user_id.clone();
         tokio::spawn(async move {
-            // Deduct quota in token units
-            let quota_cost = total_tokens as f64;
+            // Deduct quota in nanodollars (i64)
+            let quota_cost = cost; // cost is already in nanodollars
             let _ =
                 RouterDatabase::deduct_quota(&db, &user_id_for_quota, &token_for_quota, quota_cost)
                     .await;
@@ -598,6 +675,7 @@ use circuit_breaker::FailureType;
 use passthrough::{should_passthrough, PassthroughDecision};
 use response_parser::{parse_error_response, parse_rate_limit_info};
 
+#[allow(clippy::too_many_arguments)]
 async fn proxy_logic(
     state: &AppState,
     method: Method,
@@ -609,11 +687,13 @@ async fn proxy_logic(
     token_counter: Arc<StreamingTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
-) -> (Response, Option<String>, StatusCode) {
+) -> (Response, Option<String>, StatusCode, Option<String>) {
     let config = state.config.read().await;
 
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
+    // Track pricing_region from selected channel for billing
+    let mut selected_pricing_region: Option<String> = None;
 
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
@@ -629,9 +709,16 @@ async fn proxy_logic(
                 model, user_group
             );
             // Use state-aware routing to filter out unavailable channels
-            match state.model_router.route_with_state(user_group, model, &state.channel_state_tracker).await {
+            match state
+                .model_router
+                .route_with_state(user_group, model, &state.channel_state_tracker)
+                .await
+            {
                 Ok(Some(channel)) => {
-                    println!("ModelRouter: Routed {} -> Channel {} (state-filtered)", model, channel.name);
+                    println!(
+                        "ModelRouter: Routed {} -> Channel {} (state-filtered)",
+                        model, channel.name
+                    );
                     // Map Channel Type
                     let channel_type = ChannelType::from(channel.type_);
 
@@ -645,6 +732,9 @@ async fn proxy_logic(
                         }
                         _ => (AuthType::Bearer, "openai".to_string()),
                     };
+
+                    // Save pricing_region for billing
+                    selected_pricing_region = channel.pricing_region.clone();
 
                     candidates.push(Upstream {
                         id: channel.id.to_string(),
@@ -668,21 +758,20 @@ async fn proxy_logic(
                 }
                 Err(e) => {
                     // NoAvailableChannelsError - all channels are unavailable
-                    println!(
-                        "ModelRouter: No available channels for {}: {}",
-                        model, e
-                    );
+                    println!("ModelRouter: No available channels for {}: {}", model, e);
                     return (
-                        Response::builder()
-                            .status(503)
-                            .header("content-type", "application/json")
-                            .body(Body::from(format!(
+                        build_response_with_header(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "content-type",
+                            "application/json",
+                            Body::from(format!(
                                 r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels"}}}}"#,
                                 e
-                            )))
-                            .unwrap(),
+                            )),
+                        ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
+                        None,
                     );
                 }
             }
@@ -703,15 +792,13 @@ async fn proxy_logic(
             Some(r) => r,
             None => {
                 return (
-                    Response::builder()
-                        .status(404)
-                        .body(Body::from(format!(
-                            "No matching upstream found for path: {}",
-                            path
-                        )))
-                        .unwrap(),
+                    build_response(
+                        StatusCode::NOT_FOUND,
+                        Body::from(format!("No matching upstream found for path: {}", path)),
+                    ),
                     None,
                     StatusCode::NOT_FOUND,
+                    None,
                 );
             }
         };
@@ -721,15 +808,13 @@ async fn proxy_logic(
             RouteTarget::Group(g) => {
                 if g.members.is_empty() {
                     return (
-                        Response::builder()
-                            .status(503)
-                            .body(Body::from(format!(
-                                "Group '{}' has no healthy members",
-                                g.name
-                            )))
-                            .unwrap(),
+                        build_response(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            Body::from(format!("Group '{}' has no healthy members", g.name)),
+                        ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
+                        None,
                     );
                 }
 
@@ -747,12 +832,13 @@ async fn proxy_logic(
 
     if candidates.is_empty() {
         return (
-            Response::builder()
-                .status(500)
-                .body(Body::from("Configuration Error: No upstreams available"))
-                .unwrap(),
+            build_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Body::from("Configuration Error: No upstreams available"),
+            ),
             None,
             StatusCode::INTERNAL_SERVER_ERROR,
+            None,
         );
     }
 
@@ -815,11 +901,8 @@ async fn proxy_logic(
             );
 
             // Build target URL for passthrough
-            let passthrough_url = passthrough::build_gemini_passthrough_url(
-                &upstream.base_url,
-                path,
-                &body_json,
-            );
+            let passthrough_url =
+                passthrough::build_gemini_passthrough_url(&upstream.base_url, path, &body_json);
 
             println!("Passthrough URL: {}", passthrough_url);
 
@@ -831,7 +914,11 @@ async fn proxy_logic(
 
             // Determine final URL (add alt=sse for streaming requests if not already in URL)
             let final_url = if is_stream && !passthrough_url.contains("alt=") {
-                let separator = if passthrough_url.contains('?') { "&" } else { "?" };
+                let separator = if passthrough_url.contains('?') {
+                    "&"
+                } else {
+                    "?"
+                };
                 format!("{}{}alt=sse", passthrough_url, separator)
             } else {
                 passthrough_url.clone()
@@ -842,11 +929,14 @@ async fn proxy_logic(
             // Prepare request body - remove 'stream' field for Gemini native API
             let mut passthrough_body = body_json.clone();
             if passthrough_body.get("stream").is_some() {
-                passthrough_body.as_object_mut().unwrap().remove("stream");
+                if let Some(obj) = passthrough_body.as_object_mut() {
+                    obj.remove("stream");
+                }
             }
 
             // Build passthrough request with final URL
-            let mut req_builder = state.client
+            let mut req_builder = state
+                .client
                 .request(method.clone(), &final_url)
                 .header("x-goog-api-key", &upstream.api_key);
 
@@ -889,14 +979,14 @@ async fn proxy_logic(
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
                         // Parse rate limit info from response headers for adaptive limiter
-                        let rate_limit_info = parse_rate_limit_info(
-                            resp.headers(),
-                            None,
-                            &upstream.protocol,
+                        let rate_limit_info =
+                            parse_rate_limit_info(resp.headers(), None, &upstream.protocol);
+                        state.channel_state_tracker.record_success(
+                            channel_id,
+                            model_name,
+                            latency_ms,
+                            rate_limit_info.request_limit,
                         );
-                        state
-                            .channel_state_tracker
-                            .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
 
                         // Handle streaming vs non-streaming passthrough
                         if is_stream {
@@ -918,7 +1008,7 @@ async fn proxy_logic(
                                     // Pass through raw bytes (Gemini native format)
                                     Ok(bytes)
                                 }
-                                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                                Err(e) => Err(std::io::Error::other(e)),
                             });
 
                             return (
@@ -928,9 +1018,15 @@ async fn proxy_logic(
                                     .header("cache-control", "no-cache")
                                     .header("connection", "keep-alive")
                                     .body(Body::from_stream(stream))
-                                    .unwrap(),
+                                    .unwrap_or_else(|_| {
+                                        build_response(
+                                            StatusCode::INTERNAL_SERVER_ERROR,
+                                            Body::from("Failed to build streaming response"),
+                                        )
+                                    }),
                                 last_upstream_id,
                                 status,
+                                selected_pricing_region.clone(),
                             );
                         } else {
                             // Non-streaming passthrough
@@ -954,13 +1050,15 @@ async fn proxy_logic(
                             }
 
                             return (
-                                Response::builder()
-                                    .status(status)
-                                    .header("content-type", "application/json")
-                                    .body(Body::from(resp_bytes))
-                                    .unwrap(),
+                                build_response_with_header(
+                                    status,
+                                    "content-type",
+                                    "application/json",
+                                    Body::from(resp_bytes),
+                                ),
                                 last_upstream_id,
                                 status,
+                                selected_pricing_region.clone(),
                             );
                         }
                     } else {
@@ -970,12 +1068,10 @@ async fn proxy_logic(
                             Err(e) => {
                                 last_error = format!("Failed to read error response: {}", e);
                                 return (
-                                    Response::builder()
-                                        .status(status)
-                                        .body(Body::from(last_error.clone()))
-                                        .unwrap(),
+                                    build_response(status, Body::from(last_error.clone())),
                                     last_upstream_id,
                                     status,
+                                    selected_pricing_region.clone(),
                                 );
                             }
                         };
@@ -1002,13 +1098,15 @@ async fn proxy_logic(
                         }
 
                         return (
-                            Response::builder()
-                                .status(status)
-                                .header("content-type", "application/json")
-                                .body(Body::from(body_bytes))
-                                .unwrap(),
+                            build_response_with_header(
+                                status,
+                                "content-type",
+                                "application/json",
+                                Body::from(body_bytes),
+                            ),
                             last_upstream_id,
                             status,
+                            selected_pricing_region.clone(),
                         );
                     }
                 }
@@ -1050,7 +1148,14 @@ async fn proxy_logic(
             last_error = "Failed to prepare request body".to_string();
             continue;
         }
-        let mut request_body_json = request_body_json.unwrap();
+        // SAFETY: We just checked that request_body_json is Some
+        let mut request_body_json = match request_body_json {
+            Some(json) => json,
+            None => {
+                last_error = "Failed to prepare request body".to_string();
+                continue;
+            }
+        };
 
         // Check if streaming is requested
         let is_stream = request_body_json
@@ -1135,9 +1240,12 @@ async fn proxy_logic(
                     // Record success in channel state tracker with learned upstream limit
                     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                     let latency_ms = request_start_time.elapsed().as_millis() as u64;
-                    state
-                        .channel_state_tracker
-                        .record_success(channel_id, model_name, latency_ms, rate_limit_info.request_limit);
+                    state.channel_state_tracker.record_success(
+                        channel_id,
+                        model_name,
+                        latency_ms,
+                        rate_limit_info.request_limit,
+                    );
 
                     // Log rate limit info for debugging/monitoring
                     if rate_limit_info.request_limit.is_some()
@@ -1160,6 +1268,7 @@ async fn proxy_logic(
                             handle_response_with_token_parsing(resp, &token_counter, "openai"),
                             last_upstream_id,
                             status,
+                            selected_pricing_region.clone(),
                         );
                     }
 
@@ -1204,7 +1313,7 @@ async fn proxy_logic(
                                     Ok(axum::body::Bytes::new())
                                 }
                             }
-                            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                            Err(e) => Err(std::io::Error::other(e)),
                         });
 
                         let done = futures::stream::once(async {
@@ -1219,9 +1328,15 @@ async fn proxy_logic(
                                 .header("cache-control", "no-cache")
                                 .header("connection", "keep-alive")
                                 .body(Body::from_stream(final_stream))
-                                .unwrap(),
+                                .unwrap_or_else(|_| {
+                                    build_response(
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        Body::from("Failed to build streaming response"),
+                                    )
+                                }),
                             last_upstream_id,
                             status,
+                            selected_pricing_region.clone(),
                         );
                     }
 
@@ -1240,13 +1355,15 @@ async fn proxy_logic(
                     };
 
                     return (
-                        Response::builder()
-                            .status(status)
-                            .header("content-type", "application/json")
-                            .body(Body::from(response_body))
-                            .unwrap(),
+                        build_response_with_header(
+                            status,
+                            "content-type",
+                            "application/json",
+                            Body::from(response_body),
+                        ),
                         last_upstream_id,
                         status,
+                        selected_pricing_region.clone(),
                     );
                 } else {
                     // Handle non-success responses (4xx errors)
@@ -1257,12 +1374,10 @@ async fn proxy_logic(
                             // If we can't read the body, return a simple error
                             last_error = format!("Failed to read response body: {}", e);
                             return (
-                                Response::builder()
-                                    .status(status)
-                                    .body(Body::from(last_error.clone()))
-                                    .unwrap(),
+                                build_response(status, Body::from(last_error.clone())),
                                 last_upstream_id,
                                 status,
+                                selected_pricing_region.clone(),
                             );
                         }
                     };
@@ -1380,13 +1495,15 @@ async fn proxy_logic(
                     );
 
                     return (
-                        Response::builder()
-                            .status(status)
-                            .header("content-type", "application/json")
-                            .body(Body::from(body_bytes))
-                            .unwrap(),
+                        build_response_with_header(
+                            status,
+                            "content-type",
+                            "application/json",
+                            Body::from(body_bytes),
+                        ),
                         last_upstream_id,
                         status,
+                        selected_pricing_region.clone(),
                     );
                 }
             }
@@ -1412,15 +1529,13 @@ async fn proxy_logic(
     }
 
     (
-        Response::builder()
-            .status(502)
-            .body(Body::from(format!(
-                "All upstreams failed. Last error: {}",
-                last_error
-            )))
-            .unwrap(),
+        build_response(
+            StatusCode::BAD_GATEWAY,
+            Body::from(format!("All upstreams failed. Last error: {}", last_error)),
+        ),
         None,
         StatusCode::BAD_GATEWAY,
+        None,
     )
 }
 
@@ -1462,7 +1577,7 @@ fn handle_response_with_token_parsing(
 
             Ok(bytes)
         }
-        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        Err(e) => Err(std::io::Error::other(e)),
     });
 
     let body = Body::from_stream(mapped_stream);

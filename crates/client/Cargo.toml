@@ -38,12 +38,12 @@ once_cell.workspace = true
 
 # LiveView specific dependencies
 dioxus-liveview = { workspace = true, optional = true }
-axum = { version = "0.8.7", features = ["macros", "ws"], optional = true }
+axum = { workspace = true, optional = true }
 burncloud-database = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi.workspace = true
-burncloud-client-tray.workspace = true    
+burncloud-client-tray.workspace = true
 
 [dev-dependencies]
-dioxus-ssr = "0.7.2"
+dioxus-ssr = { workspace = true }

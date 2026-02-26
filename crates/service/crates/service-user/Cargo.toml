@@ -7,13 +7,13 @@ edition = "2021"
 burncloud-database-user.workspace = true
 burncloud-database.workspace = true
 burncloud-common.workspace = true
-bcrypt = "0.17.1"
+bcrypt.workspace = true
 uuid.workspace = true
-jsonwebtoken = "9.3"
+jsonwebtoken.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-anyhow.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+anyhow.workspace = true

@@ -1,6 +1,15 @@
 use crate::{Database, Result};
 use sqlx::Executor;
 
+/// Get current Unix timestamp in seconds
+/// Returns 0 if system time is before Unix epoch (extremely unlikely)
+fn current_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub struct Schema;
 
 impl Schema {
@@ -11,6 +20,8 @@ impl Schema {
         // 1. Users Table
         // Note: 'group' is a reserved keyword in SQL, so we quote it or use a different name in DB if needed.
         // But New API uses 'group' in GORM. In raw SQL, we should quote it: "group" or `group`.
+        // Note: balance_usd and balance_cny are stored as BIGINT nanodollars (9 decimal precision)
+        // Using i64 (signed BIGINT) for PostgreSQL compatibility, values must be non-negative
         let users_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -33,7 +44,10 @@ impl Schema {
                     aff_count INTEGER DEFAULT 0,
                     aff_quota INTEGER DEFAULT 0,
                     inviter_id TEXT,
-                    deleted_at TEXT
+                    deleted_at TEXT,
+                    balance_usd BIGINT DEFAULT 0,
+                    balance_cny BIGINT DEFAULT 0,
+                    preferred_currency VARCHAR(10) DEFAULT 'USD'
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -60,7 +74,10 @@ impl Schema {
                     aff_count INTEGER DEFAULT 0,
                     aff_quota BIGINT DEFAULT 0,
                     inviter_id TEXT,
-                    deleted_at TIMESTAMP
+                    deleted_at TIMESTAMP,
+                    balance_usd BIGINT DEFAULT 0,
+                    balance_cny BIGINT DEFAULT 0,
+                    preferred_currency VARCHAR(10) DEFAULT 'USD'
                 );
                 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -175,6 +192,10 @@ impl Schema {
         };
 
         // 4. Tokens Table (App Tokens)
+        // Note: Token-level quota fields (remain_quota, unlimited_quota, used_quota) are deprecated.
+        // Token quotas are now managed at the user level via dual-currency wallet (balance_usd, balance_cny).
+        // These fields are retained for backward compatibility and will be removed in a future migration.
+        // Note: unlimited_quota uses INTEGER (0/1) for SQLite compatibility (SQLite has no native BOOLEAN)
         let tokens_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -185,7 +206,7 @@ impl Schema {
                     status INTEGER DEFAULT 1,
                     name VARCHAR(255),
                     remain_quota INTEGER DEFAULT 0,
-                    unlimited_quota BOOLEAN DEFAULT 0,
+                    unlimited_quota INTEGER DEFAULT 0,
                     used_quota INTEGER DEFAULT 0,
                     created_time INTEGER,
                     accessed_time INTEGER,
@@ -204,7 +225,7 @@ impl Schema {
                     status INTEGER DEFAULT 1,
                     name VARCHAR(255),
                     remain_quota BIGINT DEFAULT 0,
-                    unlimited_quota BOOLEAN DEFAULT FALSE,
+                    unlimited_quota INTEGER DEFAULT 0,
                     used_quota BIGINT DEFAULT 0,
                     created_time BIGINT,
                     accessed_time BIGINT,
@@ -218,57 +239,72 @@ impl Schema {
         };
 
         // 5. Prices Table (Model Pricing) with Advanced Pricing Fields
+        // ============================================================================
+        // NEW: Prices table now uses BIGINT nanodollars (9 decimal precision)
+        // - All prices stored as BIGINT nanodollars (1 dollar = 1,000,000,000 nanodollars)
+        // - Supports multi-currency pricing with regional support
+        // - Unique constraint: UNIQUE(model, region) - one currency per region per model
+        // - Old prices table (with REAL columns) has been migrated and renamed to prices_deprecated
+        // ============================================================================
         let prices_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
                 CREATE TABLE IF NOT EXISTS prices (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    model TEXT NOT NULL UNIQUE,
-                    input_price REAL NOT NULL DEFAULT 0,
-                    output_price REAL NOT NULL DEFAULT 0,
-                    currency TEXT DEFAULT 'USD',
-                    alias_for TEXT,
+                    model TEXT NOT NULL,
+                    currency TEXT NOT NULL DEFAULT 'USD',
+                    input_price BIGINT NOT NULL DEFAULT 0,
+                    output_price BIGINT NOT NULL DEFAULT 0,
+                    cache_read_input_price BIGINT,
+                    cache_creation_input_price BIGINT,
+                    batch_input_price BIGINT,
+                    batch_output_price BIGINT,
+                    priority_input_price BIGINT,
+                    priority_output_price BIGINT,
+                    audio_input_price BIGINT,
+                    source TEXT,
+                    region TEXT,
+                    context_window INTEGER,
+                    max_output_tokens INTEGER,
+                    supports_vision INTEGER DEFAULT 0,
+                    supports_function_calling INTEGER DEFAULT 0,
+                    synced_at INTEGER,
                     created_at INTEGER,
                     updated_at INTEGER,
-                    cache_read_price REAL,
-                    cache_creation_price REAL,
-                    batch_input_price REAL,
-                    batch_output_price REAL,
-                    priority_input_price REAL,
-                    priority_output_price REAL,
-                    audio_input_price REAL,
-                    full_pricing TEXT,
-                    original_currency TEXT,
-                    original_input_price REAL,
-                    original_output_price REAL
+                    UNIQUE(model, region)
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
+                CREATE INDEX IF NOT EXISTS idx_prices_model_region ON prices(model, region);
             "#
             }
             "postgres" => {
                 r#"
                 CREATE TABLE IF NOT EXISTS prices (
                     id SERIAL PRIMARY KEY,
-                    model VARCHAR(255) NOT NULL UNIQUE,
-                    input_price DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    output_price DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    currency VARCHAR(10) DEFAULT 'USD',
-                    alias_for VARCHAR(255),
+                    model VARCHAR(255) NOT NULL,
+                    currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+                    input_price BIGINT NOT NULL DEFAULT 0,
+                    output_price BIGINT NOT NULL DEFAULT 0,
+                    cache_read_input_price BIGINT,
+                    cache_creation_input_price BIGINT,
+                    batch_input_price BIGINT,
+                    batch_output_price BIGINT,
+                    priority_input_price BIGINT,
+                    priority_output_price BIGINT,
+                    audio_input_price BIGINT,
+                    source VARCHAR(64),
+                    region VARCHAR(32),
+                    context_window BIGINT,
+                    max_output_tokens BIGINT,
+                    supports_vision INTEGER DEFAULT 0,
+                    supports_function_calling INTEGER DEFAULT 0,
+                    synced_at BIGINT,
                     created_at BIGINT,
                     updated_at BIGINT,
-                    cache_read_price DOUBLE PRECISION,
-                    cache_creation_price DOUBLE PRECISION,
-                    batch_input_price DOUBLE PRECISION,
-                    batch_output_price DOUBLE PRECISION,
-                    priority_input_price DOUBLE PRECISION,
-                    priority_output_price DOUBLE PRECISION,
-                    audio_input_price DOUBLE PRECISION,
-                    full_pricing TEXT,
-                    original_currency VARCHAR(10),
-                    original_input_price DOUBLE PRECISION,
-                    original_output_price DOUBLE PRECISION
+                    UNIQUE(model, region)
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
+                CREATE INDEX IF NOT EXISTS idx_prices_model_region ON prices(model, region);
             "#
             }
             _ => "",
@@ -359,6 +395,7 @@ impl Schema {
         };
 
         // 8. Tiered Pricing Table (for models with tiered pricing like Qwen)
+        // Note: Prices are stored as BIGINT nanodollars (9 decimal precision)
         let tiered_pricing_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -368,8 +405,8 @@ impl Schema {
                     region TEXT,
                     tier_start INTEGER NOT NULL,
                     tier_end INTEGER,
-                    input_price REAL NOT NULL,
-                    output_price REAL NOT NULL,
+                    input_price BIGINT NOT NULL,
+                    output_price BIGINT NOT NULL,
                     UNIQUE(model, region, tier_start)
                 );
                 CREATE INDEX IF NOT EXISTS idx_tiered_pricing_model ON tiered_pricing(model);
@@ -383,8 +420,8 @@ impl Schema {
                     region VARCHAR(32),
                     tier_start BIGINT NOT NULL,
                     tier_end BIGINT,
-                    input_price DOUBLE PRECISION NOT NULL,
-                    output_price DOUBLE PRECISION NOT NULL,
+                    input_price BIGINT NOT NULL,
+                    output_price BIGINT NOT NULL,
                     UNIQUE(model, region, tier_start)
                 );
                 CREATE INDEX IF NOT EXISTS idx_tiered_pricing_model ON tiered_pricing(model);
@@ -394,6 +431,7 @@ impl Schema {
         };
 
         // 9. Exchange Rates Table (for multi-currency support)
+        // Note: Rate is stored as BIGINT scaled by 10^9 (9 decimal precision)
         let exchange_rates_sql = match kind.as_str() {
             "sqlite" => {
                 r#"
@@ -401,7 +439,7 @@ impl Schema {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     from_currency TEXT NOT NULL,
                     to_currency TEXT NOT NULL,
-                    rate REAL NOT NULL,
+                    rate BIGINT NOT NULL,
                     updated_at INTEGER,
                     UNIQUE(from_currency, to_currency)
                 );
@@ -414,7 +452,7 @@ impl Schema {
                     id SERIAL PRIMARY KEY,
                     from_currency VARCHAR(10) NOT NULL,
                     to_currency VARCHAR(10) NOT NULL,
-                    rate DOUBLE PRECISION NOT NULL,
+                    rate BIGINT NOT NULL,
                     updated_at BIGINT,
                     UNIQUE(from_currency, to_currency)
                 );
@@ -424,70 +462,10 @@ impl Schema {
             _ => "",
         };
 
-        // 10. Prices V2 Table (multi-currency pricing with advanced pricing fields)
-        let prices_v2_sql = match kind.as_str() {
-            "sqlite" => {
-                r#"
-                CREATE TABLE IF NOT EXISTS prices_v2 (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    model TEXT NOT NULL,
-                    currency TEXT NOT NULL DEFAULT 'USD',
-                    input_price REAL NOT NULL DEFAULT 0,
-                    output_price REAL NOT NULL DEFAULT 0,
-                    cache_read_input_price REAL,
-                    cache_creation_input_price REAL,
-                    batch_input_price REAL,
-                    batch_output_price REAL,
-                    priority_input_price REAL,
-                    priority_output_price REAL,
-                    audio_input_price REAL,
-                    source TEXT,
-                    region TEXT,
-                    context_window INTEGER,
-                    max_output_tokens INTEGER,
-                    supports_vision INTEGER DEFAULT 0,
-                    supports_function_calling INTEGER DEFAULT 0,
-                    synced_at INTEGER,
-                    created_at INTEGER,
-                    updated_at INTEGER,
-                    UNIQUE(model, currency, region)
-                );
-                CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
-                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
-            "#
-            }
-            "postgres" => {
-                r#"
-                CREATE TABLE IF NOT EXISTS prices_v2 (
-                    id SERIAL PRIMARY KEY,
-                    model VARCHAR(255) NOT NULL,
-                    currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-                    input_price DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    output_price DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    cache_read_input_price DOUBLE PRECISION,
-                    cache_creation_input_price DOUBLE PRECISION,
-                    batch_input_price DOUBLE PRECISION,
-                    batch_output_price DOUBLE PRECISION,
-                    priority_input_price DOUBLE PRECISION,
-                    priority_output_price DOUBLE PRECISION,
-                    audio_input_price DOUBLE PRECISION,
-                    source VARCHAR(64),
-                    region VARCHAR(32),
-                    context_window BIGINT,
-                    max_output_tokens BIGINT,
-                    supports_vision BOOLEAN DEFAULT FALSE,
-                    supports_function_calling BOOLEAN DEFAULT FALSE,
-                    synced_at BIGINT,
-                    created_at BIGINT,
-                    updated_at BIGINT,
-                    UNIQUE(model, currency, region)
-                );
-                CREATE INDEX IF NOT EXISTS idx_prices_v2_model ON prices_v2(model);
-                CREATE INDEX IF NOT EXISTS idx_prices_v2_model_currency ON prices_v2(model, currency);
-            "#
-            }
-            _ => "",
-        };
+        // 10. Migration: Rename prices_v2 to prices and cleanup deprecated tables
+        // This section handles the migration from prices_v2 to prices
+        // No new table creation - the prices table above is now the primary table
+        // Note: prices_v2_sql removed - deprecated table, no longer needed
 
         // Execute all
         if !users_sql.is_empty() {
@@ -516,9 +494,6 @@ impl Schema {
         }
         if !exchange_rates_sql.is_empty() {
             pool.execute(exchange_rates_sql).await?;
-        }
-        if !prices_v2_sql.is_empty() {
-            pool.execute(prices_v2_sql).await?;
         }
 
         // Migration: Add api_version column to channels if it doesn't exist
@@ -549,57 +524,267 @@ impl Schema {
                 .await;
         }
 
-        // Migration: Add advanced pricing columns to prices table if they don't exist
-        // Note: full_pricing is TEXT, others are REAL/DOUBLE PRECISION
-        let advanced_pricing_columns_real = [
-            "cache_read_price",
-            "cache_creation_price",
-            "batch_input_price",
-            "batch_output_price",
-            "priority_input_price",
-            "priority_output_price",
-            "audio_input_price",
-        ];
+        // Migration: Migrate prices_v2 to prices and cleanup deprecated tables
+        // This handles the transition from:
+        //   - Old prices table (REAL columns) → prices_deprecated
+        //   - prices_v2 (BIGINT columns) → prices (new primary table)
+        //   - Cleanup: prices_v2_new, tiered_pricing_new, exchange_rates_new
 
-        for column in advanced_pricing_columns_real {
+        // Step 1: Check if prices_v2 exists and needs to be migrated to prices
+        let prices_v2_exists: bool = if kind == "sqlite" {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='prices_v2'",
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+            count > 0
+        } else {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'prices_v2'",
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+            count > 0
+        };
+
+        if prices_v2_exists {
+            println!("Migrating prices_v2 to prices table...");
+
+            // Check if old prices table exists (with REAL columns)
+            let old_prices_exists: bool = if kind == "sqlite" {
+                let count: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='prices'",
+                )
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+                count > 0
+            } else {
+                let count: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_name = 'prices'",
+                )
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+                count > 0
+            };
+
+            // Rename old prices table to prices_deprecated
+            if old_prices_exists {
+                let _ = sqlx::query("DROP TABLE IF EXISTS prices_deprecated")
+                    .execute(pool)
+                    .await;
+                let _ = sqlx::query("ALTER TABLE prices RENAME TO prices_deprecated")
+                    .execute(pool)
+                    .await;
+                println!("  Renamed old 'prices' table to 'prices_deprecated'");
+            }
+
+            // Rename prices_v2 to prices
+            let _ = sqlx::query("ALTER TABLE prices_v2 RENAME TO prices")
+                .execute(pool)
+                .await;
+
+            // Recreate indexes
+            let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model)")
+                .execute(pool)
+                .await;
+            let _ = sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_prices_model_region ON prices(model, region)",
+            )
+            .execute(pool)
+            .await;
+
+            println!("  Renamed 'prices_v2' to 'prices'");
+        }
+
+        // Step 2: Cleanup temporary migration tables
+        let temp_tables = ["prices_v2_new", "tiered_pricing_new", "exchange_rates_new"];
+        for table in temp_tables {
             if kind == "sqlite" {
-                let sql = format!("ALTER TABLE prices ADD COLUMN {} REAL", column);
-                let _ = sqlx::query(&sql).execute(pool).await;
-            } else if kind == "postgres" {
-                let sql = format!(
-                    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS {} DOUBLE PRECISION",
-                    column
-                );
-                let _ = sqlx::query(&sql).execute(pool).await;
+                let exists: i64 = sqlx::query_scalar(&format!(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='{}'",
+                    table
+                ))
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+
+                if exists > 0 {
+                    let _ = sqlx::query(&format!("DROP TABLE {}", table))
+                        .execute(pool)
+                        .await;
+                    println!("  Dropped temporary table '{}'", table);
+                }
+            } else {
+                let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {}", table))
+                    .execute(pool)
+                    .await;
             }
         }
 
-        // Add full_pricing column as TEXT separately
-        if kind == "sqlite" {
-            let _ = sqlx::query("ALTER TABLE prices ADD COLUMN full_pricing TEXT")
-                .execute(pool)
-                .await;
-        } else if kind == "postgres" {
-            let _ = sqlx::query("ALTER TABLE prices ADD COLUMN IF NOT EXISTS full_pricing TEXT")
-                .execute(pool)
-                .await;
+        // Step 3: Migrate data from prices_deprecated to prices (if prices is empty)
+        let prices_count: i64 = sqlx::query_scalar("SELECT count(*) FROM prices")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+
+        let deprecated_exists: bool = if kind == "sqlite" {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='prices_deprecated'"
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+            count > 0
+        } else {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'prices_deprecated'"
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+            count > 0
+        };
+
+        if prices_count == 0 && deprecated_exists {
+            let now = current_timestamp();
+
+            let migrate_sql = match kind.as_str() {
+                "sqlite" => {
+                    r#"
+                    INSERT INTO prices (
+                        model, currency, input_price, output_price,
+                        cache_read_input_price, cache_creation_input_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, source, region,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        model, 'USD',
+                        CAST(ROUND(input_price * 1000000000) AS BIGINT),
+                        CAST(ROUND(output_price * 1000000000) AS BIGINT),
+                        CASE WHEN cache_read_price IS NOT NULL THEN CAST(ROUND(cache_read_price * 1000000000) AS BIGINT) END,
+                        CASE WHEN cache_creation_price IS NOT NULL THEN CAST(ROUND(cache_creation_price * 1000000000) AS BIGINT) END,
+                        CASE WHEN batch_input_price IS NOT NULL THEN CAST(ROUND(batch_input_price * 1000000000) AS BIGINT) END,
+                        CASE WHEN batch_output_price IS NOT NULL THEN CAST(ROUND(batch_output_price * 1000000000) AS BIGINT) END,
+                        CASE WHEN priority_input_price IS NOT NULL THEN CAST(ROUND(priority_input_price * 1000000000) AS BIGINT) END,
+                        CASE WHEN priority_output_price IS NOT NULL THEN CAST(ROUND(priority_output_price * 1000000000) AS BIGINT) END,
+                        CASE WHEN audio_input_price IS NOT NULL THEN CAST(ROUND(audio_input_price * 1000000000) AS BIGINT) END,
+                        NULL, NULL,
+                        ?, ?
+                    FROM prices_deprecated
+                "#
+                }
+                "postgres" => {
+                    r#"
+                    INSERT INTO prices (
+                        model, currency, input_price, output_price,
+                        cache_read_input_price, cache_creation_input_price,
+                        batch_input_price, batch_output_price,
+                        priority_input_price, priority_output_price,
+                        audio_input_price, source, region,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        model, 'USD',
+                        ROUND(input_price * 1000000000)::BIGINT,
+                        ROUND(output_price * 1000000000)::BIGINT,
+                        CASE WHEN cache_read_price IS NOT NULL THEN ROUND(cache_read_price * 1000000000)::BIGINT END,
+                        CASE WHEN cache_creation_price IS NOT NULL THEN ROUND(cache_creation_price * 1000000000)::BIGINT END,
+                        CASE WHEN batch_input_price IS NOT NULL THEN ROUND(batch_input_price * 1000000000)::BIGINT END,
+                        CASE WHEN batch_output_price IS NOT NULL THEN ROUND(batch_output_price * 1000000000)::BIGINT END,
+                        CASE WHEN priority_input_price IS NOT NULL THEN ROUND(priority_input_price * 1000000000)::BIGINT END,
+                        CASE WHEN priority_output_price IS NOT NULL THEN ROUND(priority_output_price * 1000000000)::BIGINT END,
+                        CASE WHEN audio_input_price IS NOT NULL THEN ROUND(audio_input_price * 1000000000)::BIGINT END,
+                        NULL, NULL,
+                        $1, $2
+                    FROM prices_deprecated
+                    ON CONFLICT (model, region) DO NOTHING
+                "#
+                }
+                _ => "",
+            };
+
+            if !migrate_sql.is_empty() {
+                let _ = sqlx::query(migrate_sql)
+                    .bind(now)
+                    .bind(now)
+                    .execute(pool)
+                    .await;
+                println!("  Migrated data from prices_deprecated to prices");
+            }
         }
 
-        // Migration: Add multi-currency fields to prices table
-        let multi_currency_columns = [
-            ("original_currency", "VARCHAR(10)"),
-            ("original_input_price", "REAL"),
-            ("original_output_price", "REAL"),
-        ];
+        // Step 4: Migrate unlimited_quota from BOOLEAN to INTEGER for SQLite compatibility
+        // SQLite doesn't have native BOOLEAN, it stores as INTEGER but sqlx Any driver expects INTEGER type
+        if kind == "sqlite" {
+            // Check if unlimited_quota column type needs migration
+            let needs_migration: bool = {
+                let result: Option<String> =
+                    sqlx::query_scalar("SELECT typeof(unlimited_quota) FROM tokens LIMIT 1")
+                        .fetch_optional(pool)
+                        .await
+                        .unwrap_or(None);
 
-        for (column, col_type) in multi_currency_columns {
-            if kind == "sqlite" {
-                let sql = format!("ALTER TABLE prices ADD COLUMN {} {}", column, col_type);
-                let _ = sqlx::query(&sql).execute(pool).await;
-            } else if kind == "postgres" {
-                let pg_type = if col_type == "REAL" { "DOUBLE PRECISION" } else { col_type };
-                let sql = format!("ALTER TABLE prices ADD COLUMN IF NOT EXISTS {} {}", column, pg_type);
-                let _ = sqlx::query(&sql).execute(pool).await;
+                // If it returns 'boolean' or error, we need to recreate the table
+                result.is_none() || result == Some("boolean".to_string())
+            };
+
+            if needs_migration {
+                println!("Migrating tokens.unlimited_quota from BOOLEAN to INTEGER...");
+
+                // Create new tokens table with correct schema
+                let _ = sqlx::query(
+                    r#"
+                    CREATE TABLE IF NOT EXISTS tokens_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id TEXT NOT NULL,
+                        key CHAR(48) NOT NULL,
+                        status INTEGER DEFAULT 1,
+                        name VARCHAR(255),
+                        remain_quota INTEGER DEFAULT 0,
+                        unlimited_quota INTEGER DEFAULT 0,
+                        used_quota INTEGER DEFAULT 0,
+                        created_time INTEGER,
+                        accessed_time INTEGER,
+                        expired_time INTEGER DEFAULT -1
+                    )
+                    "#,
+                )
+                .execute(pool)
+                .await;
+
+                // Copy data
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO tokens_new
+                    SELECT id, user_id, key, status, name, remain_quota,
+                           CASE WHEN unlimited_quota = 1 OR unlimited_quota = 'true' THEN 1 ELSE 0 END,
+                           used_quota, created_time, accessed_time, expired_time
+                    FROM tokens
+                    "#,
+                )
+                .execute(pool)
+                .await;
+
+                // Drop old and rename
+                let _ = sqlx::query("DROP TABLE tokens").execute(pool).await;
+                let _ = sqlx::query("ALTER TABLE tokens_new RENAME TO tokens")
+                    .execute(pool)
+                    .await;
+                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key)")
+                    .execute(pool)
+                    .await;
+                let _ =
+                    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)")
+                        .execute(pool)
+                        .await;
+
+                println!("  Migrated tokens table schema");
             }
         }
 
@@ -616,6 +801,41 @@ impl Schema {
                 .await;
         }
 
+        // Migration: Add dual-currency wallet columns to users table
+        // balance_usd and balance_cny are stored as BIGINT nanodollars (9 decimal precision)
+        // Note: Using i64 (signed BIGINT) for PostgreSQL compatibility, values must be non-negative
+        if kind == "sqlite" {
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_usd BIGINT DEFAULT 0")
+                .execute(pool)
+                .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_cny BIGINT DEFAULT 0")
+                .execute(pool)
+                .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
+        }
+
+        // Migration: Migrate existing quota to balance_usd for users with zero balance_usd
+        // Quota system: 500000 quota = $1
+        // Nanodollar conversion: $1 = 1_000_000_000 nanodollars
+        // So: balance_usd = quota * 1_000_000_000 / 500000 = quota * 2000
+        // Note: This only migrates users who haven't been migrated yet (balance_usd = 0)
+        // Same SQL for both SQLite and PostgreSQL
+        let _ = sqlx::query(
+            "UPDATE users SET balance_usd = (quota - used_quota) * 2000 WHERE balance_usd = 0 AND quota > used_quota",
+        )
+        .execute(pool)
+        .await;
+
         // Migration: Add currency column to tiered_pricing table for multi-currency support
         if kind == "sqlite" {
             let _ = sqlx::query(
@@ -627,78 +847,6 @@ impl Schema {
             let _ = sqlx::query("ALTER TABLE tiered_pricing ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'")
                 .execute(pool)
                 .await;
-        }
-
-        // Migration: Migrate existing prices to prices_v2 table (USD only)
-        // Only run if prices_v2 is empty but prices has data
-        let prices_v2_count: i64 = match kind.as_str() {
-            "sqlite" => sqlx::query_scalar("SELECT count(*) FROM prices_v2")
-                .fetch_one(pool)
-                .await
-                .unwrap_or(0),
-            "postgres" => sqlx::query_scalar("SELECT count(*) FROM prices_v2")
-                .fetch_one(pool)
-                .await
-                .unwrap_or(0),
-            _ => 0,
-        };
-
-        if prices_v2_count == 0 {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
-
-            // Insert from prices to prices_v2 (USD currency, no region)
-            let migrate_sql = match kind.as_str() {
-                "sqlite" => r#"
-                    INSERT INTO prices_v2 (
-                        model, currency, input_price, output_price,
-                        cache_read_input_price, cache_creation_input_price,
-                        batch_input_price, batch_output_price,
-                        priority_input_price, priority_output_price,
-                        audio_input_price, source, region,
-                        created_at, updated_at
-                    )
-                    SELECT
-                        model, 'USD', input_price, output_price,
-                        cache_read_price, cache_creation_price,
-                        batch_input_price, batch_output_price,
-                        priority_input_price, priority_output_price,
-                        audio_input_price, NULL, NULL,
-                        ?, ?
-                    FROM prices
-                "#,
-                "postgres" => r#"
-                    INSERT INTO prices_v2 (
-                        model, currency, input_price, output_price,
-                        cache_read_input_price, cache_creation_input_price,
-                        batch_input_price, batch_output_price,
-                        priority_input_price, priority_output_price,
-                        audio_input_price, source, region,
-                        created_at, updated_at
-                    )
-                    SELECT
-                        model, 'USD', input_price, output_price,
-                        cache_read_price, cache_creation_price,
-                        batch_input_price, batch_output_price,
-                        priority_input_price, priority_output_price,
-                        audio_input_price, NULL, NULL,
-                        $1, $2
-                    FROM prices
-                    ON CONFLICT (model, currency, region) DO NOTHING
-                "#,
-                _ => "",
-            };
-
-            if !migrate_sql.is_empty() {
-                let _ = sqlx::query(migrate_sql)
-                    .bind(now)
-                    .bind(now)
-                    .execute(pool)
-                    .await;
-                println!("Migrated existing prices to prices_v2 table");
-            }
         }
 
         // Init Root User if not exists
@@ -740,13 +888,10 @@ impl Schema {
         if t_count == 0 {
             // User 'demo-user' must exist (created by UserDatabase::init)
             // created_time, accessed_time use current timestamp
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = current_timestamp();
             let insert_token_sql = match kind.as_str() {
                 "sqlite" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, ?, ?, -1)",
-                "postgres" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, TRUE, 0, $1, $2, -1)",
+                "postgres" => "INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time) VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', -1, 1, 0, $1, $2, -1)",
                 _ => ""
             };
             if !insert_token_sql.is_empty() {
@@ -774,10 +919,7 @@ impl Schema {
         };
 
         if p_count == 0 {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = current_timestamp();
 
             // Default pricing (prices per 1M tokens)
             // Format: (model, input_price, output_price, alias_for)
@@ -838,15 +980,21 @@ impl Schema {
         };
 
         if pc_count == 0 {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
+            let now = current_timestamp();
+
+            // Type alias for protocol config: (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint)
+            type ProtocolConfig<'a> = (
+                i32,
+                &'a str,
+                bool,
+                Option<&'a str>,
+                Option<&'a str>,
+                Option<&'a str>,
+            );
 
             // Default protocol configs
             // channel_type values: 1=OpenAI, 2=Anthropic, 3=Azure, 4=Gemini, 5=Vertex
-            let default_protocols: [(i32, &str, bool, Option<&str>, Option<&str>, Option<&str>);
-                4] = [
+            let default_protocols: [ProtocolConfig; 4] = [
                 // OpenAI - default
                 (
                     1,

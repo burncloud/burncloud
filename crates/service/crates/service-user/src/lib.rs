@@ -14,8 +14,8 @@ use uuid::Uuid;
 /// Default user status when created
 const ACTIVE_STATUS: i32 = 1;
 
-/// Default signup bonus for new users
-const SIGNUP_BONUS: f64 = 10.0;
+/// Default signup bonus for new users (in nanodollars: $10 = 10_000_000_000)
+const SIGNUP_BONUS_NANO: i64 = 10_000_000_000;
 
 /// Default token expiration time in hours
 const DEFAULT_TOKEN_EXPIRATION_HOURS: i64 = 24;
@@ -148,7 +148,9 @@ impl UserService {
             password_hash: Some(password_hash),
             github_id: None,
             status: ACTIVE_STATUS,
-            balance: SIGNUP_BONUS,
+            balance_usd: SIGNUP_BONUS_NANO,
+            balance_cny: 0,
+            preferred_currency: Some("USD".to_string()),
         };
 
         UserDatabase::create_user(db, &user).await?;

@@ -3,6 +3,7 @@ use burncloud_client_shared::components::{
 };
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::user_service::UserService;
+use burncloud_common::nano_to_dollars;
 use dioxus::prelude::*;
 
 #[component]
@@ -24,9 +25,12 @@ pub fn UserPage() -> Element {
 
     let handle_confirm_topup = move |_| {
         is_loading.set(true);
+        let amount_dollars = *topup_amount.read();
+        let amount_nano = burncloud_common::dollars_to_nano(amount_dollars);
         spawn(async move {
-            match UserService::topup(&selected_user_id(), topup_amount()).await {
-                Ok(new_balance) => {
+            match UserService::topup(&selected_user_id(), amount_nano, Some("CNY")).await {
+                Ok(new_balance_nano) => {
+                    let new_balance = nano_to_dollars(new_balance_nano);
                     toast.success(&format!("充值成功，当前余额: ¥ {:.2}", new_balance));
                     is_topup_open.set(false);
                     users.restart();
@@ -149,7 +153,7 @@ pub fn UserPage() -> Element {
                                                     span { class: "text-xs text-base-content/40", "Group: {user.group}" }
                                                 }
                                             }
-                                            td { class: "font-mono font-medium text-emerald-600", "¥ {user.balance:.2}" }
+                                            td { class: "font-mono font-medium text-emerald-600", "¥ {nano_to_dollars(user.balance_cny):.2}" }
                                             td { class: "font-mono text-base-content/60", "¥ 1,240.00" } // Mock LTV
                                             td { class: "text-xs text-base-content/60", "2 mins ago" }   // Mock Last Seen
                                             td {

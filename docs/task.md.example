@@ -1,0 +1,22 @@
+[
+    {
+        "category": "ui",
+        "description": "完成登录按钮优化",
+        "steps": [
+            "生成登录css",
+            "优化动态点击效果",
+            "测试动画是否生效"
+        ],
+        "passes": false
+    },
+    {
+        "category": "functional",
+        "description": "编写登录api",
+        "steps": [
+            "完成登录功能",
+            "编写测试单元",
+            "编写黑盒测试，以人类视角进行测试，严禁修改数据库"
+        ],
+        "passes": false
+    }
+]

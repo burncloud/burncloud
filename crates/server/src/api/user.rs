@@ -27,7 +27,11 @@ pub struct LoginDto {
 #[derive(Deserialize)]
 pub struct TopupDto {
     pub user_id: String,
-    pub amount: f64,
+    /// Amount in nanodollars (9 decimal precision: $1 = 1_000_000_000)
+    pub amount: i64,
+    /// Currency for the topup (USD or CNY, defaults to USD)
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 pub fn routes() -> Router<AppState> {
@@ -41,16 +45,29 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> AxumJson<Value> {
+    let currency = payload.currency.unwrap_or_else(|| "USD".to_string());
+
     let recharge = DbRecharge {
         id: 0,
         user_id: payload.user_id.clone(),
         amount: payload.amount,
+        currency: Some(currency.clone()),
         description: Some("账户充值".to_string()),
         created_at: None,
     };
     match UserDatabase::create_recharge(&state.db, &recharge).await {
         Ok(_) => match UserDatabase::get_user_by_username(&state.db, "demo-user").await {
-            Ok(Some(u)) => AxumJson(json!({ "success": true, "data": { "balance": u.balance } })),
+            Ok(Some(u)) => {
+                // Return balance in nanodollars
+                let balance = if currency == "CNY" {
+                    u.balance_cny
+                } else {
+                    u.balance_usd
+                };
+                AxumJson(
+                    json!({ "success": true, "data": { "balance": balance, "currency": currency } }),
+                )
+            }
             _ => AxumJson(json!({ "success": true })),
         },
         Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
@@ -79,7 +96,9 @@ async fn register(
         password_hash: Some(password_hash),
         github_id: None,
         status: 1,
-        balance: 10.0,
+        balance_usd: 10_000_000_000, // 10 USD in nanodollars
+        balance_cny: 0,
+        preferred_currency: Some("USD".to_string()),
     };
 
     match UserDatabase::create_user(&state.db, &user).await {
@@ -161,12 +180,15 @@ async fn list_users(State(state): State<AppState>) -> AxumJson<Value> {
                     .unwrap_or_default();
                 let role = roles.first().map(|s| s.as_str()).unwrap_or("user");
 
+                // Balances are returned in nanodollars (i64)
                 safe_users.push(json!({
                     "id": u.id,
                     "username": u.username,
                     "email": u.email,
                     "status": u.status,
-                    "balance": u.balance,
+                    "balance_usd": u.balance_usd,
+                    "balance_cny": u.balance_cny,
+                    "preferred_currency": u.preferred_currency,
                     "role": role,
                     "group": "default"
                 }));
