@@ -269,6 +269,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Filter by currency (USD, CNY, EUR)"),
                         )
                         .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
+                        )
+                        .arg(
                             Arg::new("verbose")
                                 .short('v')
                                 .long("verbose")

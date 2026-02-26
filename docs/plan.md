@@ -2022,3 +2022,302 @@ pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<
 | `crates/cli/src/channel.rs` | 添加 update 命令 |
 | `crates/cli/src/commands.rs` | 添加所有新子命令 |
 | `crates/cli/src/lib.rs` | 导出新模块 |
+
+---
+
+## 十九、Price 模块 CLI 功能完善
+
+### 背景
+
+当前 `price` CLI 命令存在以下问题：
+1. `price get` 不支持 `--region` 参数，导致查询有区域的定价时返回空
+2. `price list` 不支持 `--region` 过滤
+3. `price delete` 不支持 `--region` 参数，无法删除特定区域的价格
+4. `price set` 缺少 `--priority-input/output` 和 `--audio-input` 参数
+
+### 当前功能状态
+
+| 命令 | 功能 | 状态 |
+|------|------|------|
+| `price set` | 设置价格 | ✅ 支持 region, cache, batch |
+| `price list` | 列出价格 | ⚠️ 不支持 --region 过滤 |
+| `price get` | 查询价格 | ❌ 不支持 --region |
+| `price show` | 显示详情 | ✅ 支持 --region |
+| `price delete` | 删除价格 | ⚠️ 不支持 --region |
+| `tiered add-tier` | 阶梯定价 | ✅ 支持 --region |
+
+### 缺失功能清单
+
+#### P0 - 必须修复（Bug）
+
+##### 1. price get --region
+
+**问题**: `price get` 查询时硬编码 `region=None`，无法查询特定区域的价格
+
+```bash
+# 当前行为（错误）
+$ burncloud price set test-model --input 1.0 --output 2.0 --region cn
+✓ Price set for 'test-model': USD input=1.0000/1M, output=2.0000/1M [cn]
+
+$ burncloud price get test-model --currency USD
+No USD price found for model 'test-model'  # ❌ 找不到
+
+# 期望行为
+$ burncloud price get test-model --currency USD --region cn
+Model: test-model
+Currency: USD
+Input Price: 1.0000/1M tokens
+Output Price: 2.0000/1M tokens
+Region: cn
+```
+
+**实现文件**:
+- `crates/cli/src/price.rs` (修改 `price get` 处理逻辑)
+- `crates/cli/src/commands.rs` (添加 `--region` 参数)
+
+**改动点**:
+- Line 152: `PriceModel::get(db, model, curr, None)` → `PriceModel::get(db, model, curr, region)`
+- Line 190: `PriceModel::get_all_currencies(db, model, None)` → 添加 region 参数支持
+
+---
+
+##### 2. price list --region
+
+**问题**: `price list` 无法按区域过滤，管理大量价格时不便
+
+```bash
+# 期望行为
+$ burncloud price list --region cn
+Model                          Currency    Input ($/1M)   Output ($/1M)     Region
+--------------------------------------------------------------------------------
+deepseek-chat                       CNY          0.1400          0.2800         cn
+qwen-max                            CNY          2.5880         10.3390         cn
+
+$ burncloud price list --region international
+Model                          Currency    Input ($/1M)   Output ($/1M)     Region
+--------------------------------------------------------------------------------
+deepseek-chat                       USD          0.0190          0.0380 international
+qwen-max                            USD          5.0000         20.0000 international
+```
+
+**实现文件**:
+- `crates/cli/src/price.rs` (修改 `price list` 处理逻辑)
+- `crates/cli/src/commands.rs` (添加 `--region` 参数)
+- `crates/database/crates/database-models/src/price.rs` (list 函数添加 region 参数)
+
+**改动点**:
+- `PriceModel::list()` 函数签名添加 `region: Option<&str>` 参数
+- CLI handler 传递 region 参数
+
+---
+
+#### P1 - 建议修复
+
+##### 3. price delete --region
+
+**问题**: `price delete` 删除模型的所有价格，无法删除特定区域
+
+```bash
+# 当前行为
+$ burncloud price delete test-model
+✓ All prices deleted for 'test-model'  # 删除所有区域
+
+# 期望行为
+$ burncloud price delete test-model --region cn
+✓ Deleted cn region price for 'test-model'
+
+$ burncloud price delete test-model  # 不带 --region 删除所有
+✓ All prices deleted for 'test-model'
+```
+
+**实现文件**:
+- `crates/cli/src/price.rs` (修改 `price delete` 处理逻辑)
+- `crates/cli/src/commands.rs` (添加 `--region` 参数)
+- `crates/database/crates/database-models/src/price.rs` (添加 delete_by_region 函数)
+
+---
+
+#### P2 - 可选增强
+
+##### 4. price set 高级定价参数
+
+**问题**: `price set` 缺少 `priority` 和 `audio` 价格参数
+
+```bash
+# 期望行为
+$ burncloud price set gpt-4o \
+    --input 2.5 --output 10.0 \
+    --priority-input 4.25 \
+    --priority-output 17.0 \
+    --audio-input 17.5
+```
+
+**新增参数**:
+| 参数 | 说明 | 类型 |
+|------|------|------|
+| `--priority-input` | 优先输入价格 ($/1M tokens) | f64 |
+| `--priority-output` | 优先输出价格 ($/1M tokens) | f64 |
+| `--audio-input` | 音频输入价格 ($/1M tokens) | f64 |
+
+**实现文件**:
+- `crates/cli/src/price.rs` (添加参数解析)
+- `crates/cli/src/commands.rs` (添加参数定义)
+
+---
+
+### 实现顺序
+
+```
+Phase 1 (P0 Bug 修复):
+├── price get --region
+└── price list --region
+
+Phase 2 (P1 功能增强):
+└── price delete --region
+
+Phase 3 (P2 可选):
+├── price set --priority-input
+├── price set --priority-output
+└── price set --audio-input
+```
+
+### 代码改动详情
+
+#### commands.rs 改动
+
+```rust
+// price get 子命令添加 --region
+Command::new("get")
+    .about("Get price for a model")
+    .arg(Arg::new("model").required(true))
+    .arg(Arg::new("currency").long("currency"))
+    .arg(Arg::new("region")        // 新增
+        .long("region")
+        .help("Filter by region (cn, international)"))
+    .arg(Arg::new("verbose").short('v').long("verbose"))
+
+// price list 子命令添加 --region
+Command::new("list")
+    .about("List all prices")
+    .arg(Arg::new("limit").long("limit").default_value("100"))
+    .arg(Arg::new("offset").long("offset").default_value("0"))
+    .arg(Arg::new("currency").long("currency"))
+    .arg(Arg::new("region")        // 新增
+        .long("region")
+        .help("Filter by region (cn, international)"))
+
+// price delete 子命令添加 --region
+Command::new("delete")
+    .about("Delete price for a model")
+    .arg(Arg::new("model").required(true))
+    .arg(Arg::new("region")        // 新增
+        .long("region")
+        .help("Delete only for a specific region"))
+
+// price set 子命令添加高级参数
+Command::new("set")
+    // ... 现有参数 ...
+    .arg(Arg::new("priority-input")    // 新增
+        .long("priority-input")
+        .help("Priority input price per 1M tokens"))
+    .arg(Arg::new("priority-output")   // 新增
+        .long("priority-output")
+        .help("Priority output price per 1M tokens"))
+    .arg(Arg::new("audio-input")       // 新增
+        .long("audio-input")
+        .help("Audio input price per 1M tokens"))
+```
+
+#### price.rs (CLI) 改动
+
+```rust
+// price get 处理
+Some(("get", sub_m)) => {
+    let model = sub_m.get_one::<String>("model").unwrap();
+    let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
+    let region = sub_m.get_one::<String>("region").map(|s| s.as_str());  // 新增
+    // ...
+
+    match PriceModel::get(db, model, curr, region).await? {  // 传递 region
+        // ...
+    }
+}
+
+// price list 处理
+Some(("list", sub_m)) => {
+    let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
+    let region = sub_m.get_one::<String>("region").map(|s| s.as_str());  // 新增
+
+    let prices = PriceModel::list(db, limit, offset, currency, region).await?;  // 传递 region
+    // ...
+}
+
+// price set 处理 - 新增参数
+let priority_input_price: Option<f64> = sub_m
+    .get_one::<String>("priority-input")
+    .and_then(|s| s.parse().ok());
+let priority_output_price: Option<f64> = sub_m
+    .get_one::<String>("priority-output")
+    .and_then(|s| s.parse().ok());
+let audio_input_price: Option<f64> = sub_m
+    .get_one::<String>("audio-input")
+    .and_then(|s| s.parse().ok());
+```
+
+#### price.rs (Database) 改动
+
+```rust
+// list 函数添加 region 参数
+pub async fn list(
+    db: &Database,
+    limit: i32,
+    offset: i32,
+    currency: Option<&str>,
+    region: Option<&str>,  // 新增
+) -> Result<Vec<Price>> {
+    // 根据 region 构建 SQL WHERE 条件
+}
+
+// 新增 delete_by_region 函数
+pub async fn delete_by_region(
+    db: &Database,
+    model: &str,
+    region: &str,
+) -> Result<u64> {
+    let sql = "DELETE FROM prices WHERE model = ? AND region = ?";
+    // ...
+}
+```
+
+### 测试用例
+
+```bash
+# P0 测试
+# 1. price get --region
+burncloud price set test-model --input 1.0 --output 2.0 --region cn
+burncloud price get test-model --currency USD --region cn
+# 期望: 显示 cn 区域价格
+
+# 2. price list --region
+burncloud price list --region cn
+# 期望: 仅显示 cn 区域价格
+
+# P1 测试
+# 3. price delete --region
+burncloud price delete test-model --region cn
+# 期望: 仅删除 cn 区域，保留其他区域
+
+# P2 测试
+# 4. price set 高级参数
+burncloud price set gpt-4o --input 2.5 --output 10.0 --priority-input 4.25
+burncloud price get gpt-4o -v
+# 期望: 显示 priority input price
+```
+
+### 相关文件
+
+| 文件 | 改动类型 |
+|------|---------|
+| `crates/cli/src/price.rs` | 修改 get/list/delete/set 处理逻辑 |
+| `crates/cli/src/commands.rs` | 添加新参数定义 |
+| `crates/database/crates/database-models/src/price.rs` | list 添加 region 参数，新增 delete_by_region |

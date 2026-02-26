@@ -275,5 +275,237 @@
       "验证所有命令输出正确，无报错"
     ],
     "passes": true
+  },
+  {
+    "category": "price-get-region-commands",
+    "description": "P0-1: commands.rs 添加 price get --region 参数",
+    "steps": [
+      "打开 crates/cli/src/commands.rs",
+      "找到 Command::new(\"get\") 子命令定义（约第259行）",
+      "在现有参数后添加: .arg(Arg::new(\"region\").long(\"region\").help(\"Filter by region (cn, international)\"))",
+      "位置: 在 Arg::new(\"verbose\") 之前",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": true
+  },
+  {
+    "category": "price-get-region-cli",
+    "description": "P0-2: price.rs (CLI) 修改 price get 处理逻辑",
+    "steps": [
+      "打开 crates/cli/src/price.rs",
+      "找到 Some((\"get\", sub_m)) 分支（约第144行）",
+      "在 let currency = ... 之后添加: let region = sub_m.get_one::<String>(\"region\").map(|s| s.as_str());",
+      "修改第152行: PriceModel::get(db, model, curr, None) 改为 PriceModel::get(db, model, curr, region)",
+      "修改第190行: PriceModel::get_all_currencies(db, model, None) 改为 PriceModel::get_all_currencies(db, model, region)",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-get-region-test",
+    "description": "P0-3: 测试 price get --region 功能",
+    "steps": [
+      "编译: cargo build --release -p burncloud",
+      "准备测试数据: ./target/release/burncloud price set test-get-region --input 1.0 --output 2.0 --region cn",
+      "测试带 region 查询: ./target/release/burncloud price get test-get-region --currency USD --region cn",
+      "验证: 输出应显示 Model, Currency, Input Price, Output Price, Region: cn",
+      "测试无 region 查询: ./target/release/burncloud price get test-get-region --currency USD",
+      "验证: 应返回空或回退到 universal 价格",
+      "清理: ./target/release/burncloud price delete test-get-region"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-list-region-commands",
+    "description": "P0-4: commands.rs 添加 price list --region 参数",
+    "steps": [
+      "打开 crates/cli/src/commands.rs",
+      "找到 Command::new(\"list\") 子命令定义（在 price 子命令下，约第181行）",
+      "在 Arg::new(\"currency\") 之后添加: .arg(Arg::new(\"region\").long(\"region\").help(\"Filter by region (cn, international)\"))",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-list-region-db",
+    "description": "P0-5: database price.rs 修改 list 函数签名",
+    "steps": [
+      "打开 crates/database/crates/database-models/src/price.rs",
+      "找到 pub async fn list 函数（约第248行）",
+      "修改函数签名，添加参数: region: Option<&str>",
+      "完整签名: pub async fn list(db: &Database, limit: i32, offset: i32, currency: Option<&str>, region: Option<&str>) -> Result<Vec<Price>>"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-list-region-sql",
+    "description": "P0-6: database price.rs 修改 list 函数 SQL 查询",
+    "steps": [
+      "在 list 函数中，根据 region 参数构建 SQL WHERE 条件",
+      "当 region.is_some() 时，在 SQL 中添加 AND region IS NOT DISTINCT FROM ? 条件",
+      "PostgreSQL 使用 IS NOT DISTINCT FROM，SQLite 使用 (region = ? OR (region IS NULL AND ? IS NULL))",
+      "在 sqlx::query_as 调用中 bind region 参数",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-list-region-cli",
+    "description": "P0-7: price.rs (CLI) 修改 price list 处理逻辑",
+    "steps": [
+      "打开 crates/cli/src/price.rs",
+      "找到 Some((\"list\", sub_m)) 分支（约第29行）",
+      "在 let currency = ... 之后添加: let region = sub_m.get_one::<String>(\"region\").map(|s| s.as_str());",
+      "修改 PriceModel::list 调用，传递 region 参数",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-list-region-test",
+    "description": "P0-8: 测试 price list --region 功能",
+    "steps": [
+      "编译: cargo build --release -p burncloud",
+      "测试 cn 区域过滤: ./target/release/burncloud price list --region cn",
+      "验证: 列表仅显示 region=cn 的模型（deepseek-chat, qwen-max 等）",
+      "测试 international 区域过滤: ./target/release/burncloud price list --region international",
+      "验证: 列表仅显示 region=international 的模型",
+      "测试无区域过滤: ./target/release/burncloud price list",
+      "验证: 显示所有价格"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-delete-region-commands",
+    "description": "P1-1: commands.rs 添加 price delete --region 参数",
+    "steps": [
+      "打开 crates/cli/src/commands.rs",
+      "找到 Command::new(\"delete\") 子命令定义（在 price 子命令下）",
+      "在 Arg::new(\"model\") 之后添加: .arg(Arg::new(\"region\").long(\"region\").help(\"Delete only for a specific region\"))",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-delete-region-db",
+    "description": "P1-2: database price.rs 添加 delete_by_region 函数",
+    "steps": [
+      "打开 crates/database/crates/database-models/src/price.rs",
+      "在 impl PriceModel 块中添加新函数",
+      "函数签名: pub async fn delete_by_region(db: &Database, model: &str, region: &str) -> Result<u64>",
+      "实现 SQL: DELETE FROM prices WHERE model = ? AND region = ?",
+      "同时支持 PostgreSQL ($1, $2) 和 SQLite (?, ?) 语法",
+      "返回删除的行数"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-delete-region-cli",
+    "description": "P1-3: price.rs (CLI) 修改 price delete 处理逻辑",
+    "steps": [
+      "打开 crates/cli/src/price.rs",
+      "找到 Some((\"delete\", sub_m)) 分支（约第138行）",
+      "添加读取 region 参数: let region = sub_m.get_one::<String>(\"region\").map(|s| s.as_str());",
+      "修改逻辑: if let Some(r) = region { PriceModel::delete_by_region(db, model, r).await?; } else { PriceModel::delete_all_for_model(db, model).await?; }",
+      "更新输出信息: 带region时输出 'Deleted {region} region price for {model}'，不带时输出 'All prices deleted'",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-delete-region-test",
+    "description": "P1-4: 测试 price delete --region 功能",
+    "steps": [
+      "编译: cargo build --release -p burncloud",
+      "准备测试数据: ./target/release/burncloud price set test-del-region --input 1.0 --output 2.0 --region cn",
+      "准备测试数据: ./target/release/burncloud price set test-del-region --input 0.8 --output 1.5 --region international",
+      "删除 cn 区域: ./target/release/burncloud price delete test-del-region --region cn",
+      "验证 cn 已删除: ./target/release/burncloud price get test-del-region --region cn（应为空）",
+      "验证 international 保留: ./target/release/burncloud price get test-del-region --region international（应显示）",
+      "清理: ./target/release/burncloud price delete test-del-region"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-set-priority-commands",
+    "description": "P2-1: commands.rs 添加 price set --priority-input/output 参数",
+    "steps": [
+      "打开 crates/cli/src/commands.rs",
+      "找到 price set 子命令的 Command::new(\"set\") 定义",
+      "在现有参数后添加两个新参数:",
+      "  .arg(Arg::new(\"priority-input\").long(\"priority-input\").help(\"Priority input price per 1M tokens\"))",
+      "  .arg(Arg::new(\"priority-output\").long(\"priority-output\").help(\"Priority output price per 1M tokens\"))",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-set-priority-cli",
+    "description": "P2-2: price.rs (CLI) 解析 priority 参数",
+    "steps": [
+      "打开 crates/cli/src/price.rs",
+      "找到 Some((\"set\", sub_m)) 分支",
+      "在 batch_output_price 解析后添加:",
+      "  let priority_input_price: Option<f64> = sub_m.get_one::<String>(\"priority-input\").and_then(|s| s.parse().ok());",
+      "  let priority_output_price: Option<f64> = sub_m.get_one::<String>(\"priority-output\").and_then(|s| s.parse().ok());",
+      "在 PriceInput 构建中设置: priority_input_price: priority_input_price.map(to_nano), priority_output_price: priority_output_price.map(to_nano),",
+      "在输出中添加: if let Some(pi) = priority_input_price { println!(\"  Priority input: {:.4}/1M\", pi); }",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-set-audio-commands",
+    "description": "P2-3: commands.rs 添加 price set --audio-input 参数",
+    "steps": [
+      "打开 crates/cli/src/commands.rs",
+      "在 price set 子命令的 priority-output 参数后添加:",
+      "  .arg(Arg::new(\"audio-input\").long(\"audio-input\").help(\"Audio input price per 1M tokens\"))",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-set-audio-cli",
+    "description": "P2-4: price.rs (CLI) 解析 audio 参数",
+    "steps": [
+      "打开 crates/cli/src/price.rs",
+      "在 priority_output_price 解析后添加:",
+      "  let audio_input_price: Option<f64> = sub_m.get_one::<String>(\"audio-input\").and_then(|s| s.parse().ok());",
+      "在 PriceInput 构建中设置: audio_input_price: audio_input_price.map(to_nano),",
+      "在输出中添加: if let Some(ai) = audio_input_price { println!(\"  Audio input: {:.4}/1M\", ai); }",
+      "编译验证: cargo build -p burncloud"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-set-advanced-test",
+    "description": "P2-5: 测试 price set 高级定价参数",
+    "steps": [
+      "编译: cargo build --release -p burncloud",
+      "测试 priority 参数: ./target/release/burncloud price set gpt-4o-test --input 2.5 --output 10.0 --priority-input 4.25 --priority-output 17.0",
+      "验证输出包含: Priority input: 4.2500/1M, Priority output: 17.0000/1M",
+      "测试 audio 参数: ./target/release/burncloud price set gpt-4o-audio --input 2.5 --output 10.0 --audio-input 17.5",
+      "验证输出包含: Audio input: 17.5000/1M",
+      "验证数据库: ./target/release/burncloud price get gpt-4o-test -v",
+      "清理: ./target/release/burncloud price delete gpt-4o-test && ./target/release/burncloud price delete gpt-4o-audio"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price-region-integration-test",
+    "description": "集成测试: price 模块所有 region 功能",
+    "steps": [
+      "编译: cargo build --release -p burncloud",
+      "创建多区域价格: ./target/release/burncloud price set test-integration --input 1.0 --output 2.0 --region cn --currency CNY",
+      "创建多区域价格: ./target/release/burncloud price set test-integration --input 0.15 --output 0.3 --region international --currency USD",
+      "测试 list 过滤: ./target/release/burncloud price list --region cn | grep test-integration",
+      "测试 get cn: ./target/release/burncloud price get test-integration --currency CNY --region cn",
+      "测试 get international: ./target/release/burncloud price get test-integration --currency USD --region international",
+      "删除 cn: ./target/release/burncloud price delete test-integration --region cn",
+      "验证 cn 已删除 international 保留: ./target/release/burncloud price list --region international | grep test-integration",
+      "清理: ./target/release/burncloud price delete test-integration"
+    ],
+    "passes": false
   }
 ]
