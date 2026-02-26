@@ -250,6 +250,7 @@ impl PriceModel {
         limit: i32,
         offset: i32,
         currency: Option<&str>,
+        region: Option<&str>,
     ) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";

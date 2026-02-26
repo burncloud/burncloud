@@ -335,7 +335,7 @@
       "修改函数签名，添加参数: region: Option<&str>",
       "完整签名: pub async fn list(db: &Database, limit: i32, offset: i32, currency: Option<&str>, region: Option<&str>) -> Result<Vec<Price>>"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-list-region-sql",
