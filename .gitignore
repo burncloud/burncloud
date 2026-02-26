@@ -17,6 +17,7 @@ Cargo.lock
 /*.json
 /*.pid
 /*.md
+/*.db
 /spec
 /progress.txt
 /MESSAGE.md
