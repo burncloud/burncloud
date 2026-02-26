@@ -14,7 +14,8 @@ pub struct UsageStats {
 pub struct Recharge {
     pub id: i32,
     pub user_id: String,
-    pub amount: f64,
+    /// Amount in nanodollars (9 decimal precision)
+    pub amount: i64,
     pub description: Option<String>,
     pub created_at: Option<String>,
 }

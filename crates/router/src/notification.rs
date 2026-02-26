@@ -216,7 +216,11 @@ impl NotificationService {
             self.send_webhook(webhook_url, &notification).await?;
         }
 
-        // TODO: Implement email sending when email_recipients is configured
+        // TODO(issue): Implement email sending when email_recipients is configured
+        //   - Requires: SMTP configuration in settings
+        //   - Consider: using lettre crate for email sending
+        //   - Need: email templates for different notification types
+        //   - Consider: async email queue for reliability
 
         Ok(())
     }

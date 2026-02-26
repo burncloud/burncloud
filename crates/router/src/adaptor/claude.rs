@@ -1,3 +1,4 @@
+use super::current_unix_timestamp;
 use burncloud_common::types::OpenAIChatRequest;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -62,7 +63,7 @@ impl ClaudeAdaptor {
         json!({
             "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
             "object": "chat.completion",
-            "created": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "created": current_unix_timestamp(),
             "model": model,
             "choices": [
                 {

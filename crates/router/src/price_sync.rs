@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use burncloud_common::PricingConfig;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::{PriceInput, PriceModel, PriceV2Input, PriceV2Model, TieredPriceInput, TieredPriceModel};
+use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::Deserialize;
@@ -189,6 +189,63 @@ impl LiteLLMPrice {
     pub fn to_audio_per_million_price(&self) -> Option<f64> {
         self.input_cost_per_audio_token.map(|c| c * 1_000_000.0)
     }
+
+    // ========== Nanodollar conversion methods (for Price) ==========
+
+    /// Convert per-token cost to per-1M tokens price in nanodollars (i64)
+    pub fn to_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let input_price = self
+            .input_cost_per_token
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        let output_price = self
+            .output_cost_per_token
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        (input_price, output_price)
+    }
+
+    /// Convert cache pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_cache_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let cache_read_price = self
+            .cache_read_input_token_cost
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        let cache_creation_price = self
+            .cache_creation_input_token_cost
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        (cache_read_price, cache_creation_price)
+    }
+
+    /// Convert batch pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_batch_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let batch_input_price = self
+            .input_cost_per_token_batches
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        let batch_output_price = self
+            .output_cost_per_token_batches
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        (batch_input_price, batch_output_price)
+    }
+
+    /// Convert priority pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_priority_per_million_price_nano(&self) -> (Option<i64>, Option<i64>) {
+        use burncloud_common::dollars_to_nano;
+        let priority_input_price = self
+            .input_cost_per_token_priority
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        let priority_output_price = self
+            .output_cost_per_token_priority
+            .map(|c| dollars_to_nano(c * 1_000_000.0));
+        (priority_input_price, priority_output_price)
+    }
+
+    /// Convert audio pricing to per-1M tokens in nanodollars (i64)
+    pub fn to_audio_per_million_price_nano(&self) -> Option<i64> {
+        use burncloud_common::dollars_to_nano;
+        self.input_cost_per_audio_token
+            .map(|c| dollars_to_nano(c * 1_000_000.0))
+    }
 }
 
 /// Service for syncing prices from LiteLLM
@@ -243,8 +300,8 @@ impl PriceSyncService {
                 None => key.clone(),
             };
 
-            // Get pricing info
-            let (input_price, output_price) = price_data.to_per_million_price();
+            // Get pricing info (in nanodollars)
+            let (input_price, output_price) = price_data.to_per_million_price_nano();
 
             // Skip if no pricing info
             let (input, output) = match (input_price, output_price) {
@@ -254,32 +311,34 @@ impl PriceSyncService {
                 (None, None) => continue,  // No pricing info, skip
             };
 
-            // Get advanced pricing info
-            let (cache_read_price, cache_creation_price) = price_data.to_cache_per_million_price();
-            let (batch_input_price, batch_output_price) = price_data.to_batch_per_million_price();
+            // Get advanced pricing info (in nanodollars)
+            let (cache_read_price, cache_creation_price) =
+                price_data.to_cache_per_million_price_nano();
+            let (batch_input_price, batch_output_price) =
+                price_data.to_batch_per_million_price_nano();
             let (priority_input_price, priority_output_price) =
-                price_data.to_priority_per_million_price();
-            let audio_input_price = price_data.to_audio_per_million_price();
+                price_data.to_priority_per_million_price_nano();
+            let audio_input_price = price_data.to_audio_per_million_price_nano();
 
-            // Create price input with advanced pricing fields
+            // Create price input with advanced pricing fields (using new PriceInput with i64 nanodollars)
             let price_input = PriceInput {
                 model: model_name.clone(),
+                currency: "USD".to_string(),
                 input_price: input,
                 output_price: output,
-                currency: Some("USD".to_string()),
-                alias_for: price_data.pricing_model.clone(),
-                cache_read_price,
-                cache_creation_price,
+                cache_read_input_price: cache_read_price,
+                cache_creation_input_price: cache_creation_price,
                 batch_input_price,
                 batch_output_price,
                 priority_input_price,
                 priority_output_price,
                 audio_input_price,
-                full_pricing: None,
-                // Multi-currency fields
-                original_currency: None,
-                original_input_price: None,
-                original_output_price: None,
+                source: Some("litellm".to_string()),
+                region: None,
+                context_window: price_data.max_input_tokens.map(|t| t as i64),
+                max_output_tokens: price_data.max_output_tokens.map(|t| t as i64),
+                supports_vision: price_data.supports_vision,
+                supports_function_calling: price_data.supports_function_calling,
             };
 
             // Upsert to database
@@ -390,15 +449,12 @@ impl PriceSyncService {
     ///
     /// This is used for models like Qwen that have tiered pricing based on context length.
     /// LiteLLM doesn't include this data, so it must be manually configured.
-    pub async fn import_tiered_pricing(
-        &self,
-        tiers: &[TieredPriceInput],
-    ) -> anyhow::Result<usize> {
+    pub async fn import_tiered_pricing(&self, tiers: &[TieredPriceInput]) -> anyhow::Result<usize> {
         let mut imported_count = 0;
 
         for tier in tiers {
-            // Validate tier data
-            if tier.input_price < 0.0 || tier.output_price < 0.0 {
+            // Validate tier data (prices are now i64 nanodollars, so compare with 0)
+            if tier.input_price < 0 || tier.output_price < 0 {
                 eprintln!(
                     "Skipping tier with invalid price for model {}: prices must be >= 0",
                     tier.model
@@ -434,7 +490,10 @@ impl PriceSyncService {
             }
         }
 
-        println!("Tiered pricing import complete: {} tiers imported", imported_count);
+        println!(
+            "Tiered pricing import complete: {} tiers imported",
+            imported_count
+        );
         Ok(imported_count)
     }
 }
@@ -693,7 +752,7 @@ impl PriceSyncServiceV2 {
         for (model_name, model_pricing) in &config.models {
             // Apply standard pricing for each currency
             for (currency, currency_pricing) in &model_pricing.pricing {
-                let price_input = PriceV2Input {
+                let price_input = PriceInput {
                     model: model_name.clone(),
                     currency: currency.clone(),
                     input_price: currency_pricing.input_price,
@@ -702,13 +761,16 @@ impl PriceSyncServiceV2 {
                     ..Default::default()
                 };
 
-                match PriceV2Model::upsert(&self.db, &price_input).await {
+                match PriceModel::upsert(&self.db, &price_input).await {
                     Ok(_) => {
                         result.models_synced += 1;
                         result.currencies_synced += 1;
                     }
                     Err(e) => {
-                        eprintln!("Failed to upsert price for {} ({}): {}", model_name, currency, e);
+                        eprintln!(
+                            "Failed to upsert price for {} ({}): {}",
+                            model_name, currency, e
+                        );
                         result.errors += 1;
                     }
                 }
@@ -718,11 +780,14 @@ impl PriceSyncServiceV2 {
             if let Some(ref cache_pricing) = model_pricing.cache_pricing {
                 for (currency, cache_config) in cache_pricing {
                     // Get existing price and update with cache pricing
-                    if let Ok(Some(mut existing)) = PriceV2Model::get(&self.db, model_name, currency, None).await {
+                    if let Ok(Some(mut existing)) =
+                        PriceModel::get(&self.db, model_name, currency, None).await
+                    {
                         existing.cache_read_input_price = Some(cache_config.cache_read_input_price);
-                        existing.cache_creation_input_price = cache_config.cache_creation_input_price;
+                        existing.cache_creation_input_price =
+                            cache_config.cache_creation_input_price;
 
-                        let update_input = PriceV2Input {
+                        let update_input = PriceInput {
                             model: existing.model.clone(),
                             currency: existing.currency.clone(),
                             input_price: existing.input_price,
@@ -742,7 +807,7 @@ impl PriceSyncServiceV2 {
                             supports_function_calling: existing.supports_function_calling_bool(),
                         };
 
-                        if let Err(e) = PriceV2Model::upsert(&self.db, &update_input).await {
+                        if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
                             eprintln!("Failed to update cache pricing for {}: {}", model_name, e);
                         }
                     }
@@ -781,10 +846,7 @@ impl PriceSyncServiceV2 {
 
         println!(
             "Applied {} models, {} currencies, {} tiers from {}",
-            result.models_synced,
-            result.currencies_synced,
-            result.tiered_pricing_synced,
-            source
+            result.models_synced, result.currencies_synced, result.tiered_pricing_synced, source
         );
 
         Ok(result)
@@ -805,7 +867,7 @@ impl PriceSyncServiceV2 {
         self.apply_prices(&config, "community").await
     }
 
-    /// Sync prices from LiteLLM to prices_v2 table
+    /// Sync prices from LiteLLM to prices table
     async fn sync_litellm_to_v2(&self) -> anyhow::Result<SyncResult> {
         let mut result = SyncResult {
             source: "litellm".to_string(),
@@ -825,7 +887,7 @@ impl PriceSyncServiceV2 {
                 None => key,
             };
 
-            let (input_price, output_price) = price_data.to_per_million_price();
+            let (input_price, output_price) = price_data.to_per_million_price_nano();
 
             let (input, output) = match (input_price, output_price) {
                 (Some(i), Some(o)) => (i, o),
@@ -834,12 +896,12 @@ impl PriceSyncServiceV2 {
                 (None, None) => continue,
             };
 
-            let (cache_read, cache_creation) = price_data.to_cache_per_million_price();
-            let (batch_input, batch_output) = price_data.to_batch_per_million_price();
-            let (priority_input, priority_output) = price_data.to_priority_per_million_price();
-            let audio_input = price_data.to_audio_per_million_price();
+            let (cache_read, cache_creation) = price_data.to_cache_per_million_price_nano();
+            let (batch_input, batch_output) = price_data.to_batch_per_million_price_nano();
+            let (priority_input, priority_output) = price_data.to_priority_per_million_price_nano();
+            let audio_input = price_data.to_audio_per_million_price_nano();
 
-            let price_input = PriceV2Input {
+            let price_input = PriceInput {
                 model: model_name.clone(),
                 currency: "USD".to_string(),
                 input_price: input,
@@ -859,7 +921,7 @@ impl PriceSyncServiceV2 {
                 supports_function_calling: price_data.supports_function_calling,
             };
 
-            match PriceV2Model::upsert(&self.db, &price_input).await {
+            match PriceModel::upsert(&self.db, &price_input).await {
                 Ok(_) => {
                     result.models_synced += 1;
                 }
@@ -870,10 +932,7 @@ impl PriceSyncServiceV2 {
             }
         }
 
-        println!(
-            "Synced {} models from LiteLLM",
-            result.models_synced
-        );
+        println!("Synced {} models from LiteLLM", result.models_synced);
 
         Ok(result)
     }
@@ -999,7 +1058,7 @@ mod tests {
         // Test cache pricing conversion
         let price = LiteLLMPrice {
             model: Some("claude-3-5-sonnet".to_string()),
-            input_cost_per_token: Some(0.000003), // $3 per 1M
+            input_cost_per_token: Some(0.000003),  // $3 per 1M
             output_cost_per_token: Some(0.000015), // $15 per 1M
             cache_read_input_token_cost: Some(0.0000003), // $0.30 per 1M (10% of input)
             cache_creation_input_token_cost: Some(0.00000375), // $3.75 per 1M
@@ -1069,7 +1128,10 @@ mod tests {
         assert!(!path.exists());
 
         // Verify the path configuration
-        assert_eq!(config.local_config_path, dir.path().join("nonexistent.json"));
+        assert_eq!(
+            config.local_config_path,
+            dir.path().join("nonexistent.json")
+        );
     }
 
     #[test]

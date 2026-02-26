@@ -8,5 +8,4 @@ redis = { workspace = true, features = ["tokio-comp"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-anyhow = { workspace = true }
 burncloud-common = { workspace = true }

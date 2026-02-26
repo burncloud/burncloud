@@ -2,6 +2,8 @@ use burncloud_database::{Database, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row};
 
+/// User with dual-currency wallet for regional pricing support.
+/// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct DbUser {
     pub id: String,
@@ -11,8 +13,15 @@ pub struct DbUser {
     pub github_id: Option<String>,
     #[sqlx(default)]
     pub status: i32, // 1: Active, 0: Disabled
+    /// USD balance in nanodollars (9 decimal precision)
     #[sqlx(default)]
-    pub balance: f64,
+    pub balance_usd: i64,
+    /// CNY balance in nanodollars (9 decimal precision)
+    #[sqlx(default)]
+    pub balance_cny: i64,
+    /// User's preferred currency for display
+    #[sqlx(default)]
+    pub preferred_currency: Option<String>,
     // created_at handled by DB
 }
 
@@ -29,11 +38,17 @@ pub struct DbUserRole {
     pub role_id: String,
 }
 
+/// Recharge record with dual-currency support.
+/// Amount is stored as i64 nanodollars (9 decimal precision).
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct DbRecharge {
     pub id: i32,
     pub user_id: String,
-    pub amount: f64,
+    /// Amount in nanodollars (9 decimal precision)
+    pub amount: i64,
+    /// Currency of the recharge (USD, CNY)
+    #[sqlx(default)]
+    pub currency: Option<String>,
     pub description: Option<String>,
     pub created_at: Option<String>, // SQL datetime string
 }
@@ -46,6 +61,7 @@ impl UserDatabase {
         let kind = db.kind();
 
         // Table definitions
+        // Note: balance_usd and balance_cny use BIGINT nanodollars (9 decimal precision)
         let (users_sql, roles_sql, user_roles_sql, recharges_sql) = match kind.as_str() {
             "sqlite" => (
                 r#"
@@ -56,7 +72,9 @@ impl UserDatabase {
                     password_hash TEXT,
                     github_id TEXT,
                     status INTEGER DEFAULT 1,
-                    balance REAL DEFAULT 0.0,
+                    balance_usd BIGINT DEFAULT 0,
+                    balance_cny BIGINT DEFAULT 0,
+                    preferred_currency VARCHAR(10) DEFAULT 'USD',
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
@@ -80,7 +98,8 @@ impl UserDatabase {
                 CREATE TABLE IF NOT EXISTS recharges (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
-                    amount REAL NOT NULL,
+                    amount BIGINT NOT NULL,
+                    currency VARCHAR(10) DEFAULT 'USD',
                     description TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -96,7 +115,9 @@ impl UserDatabase {
                     password_hash TEXT,
                     github_id TEXT,
                     status INTEGER DEFAULT 1,
-                    balance DOUBLE PRECISION DEFAULT 0.0,
+                    balance_usd BIGINT DEFAULT 0,
+                    balance_cny BIGINT DEFAULT 0,
+                    preferred_currency VARCHAR(10) DEFAULT 'USD',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
@@ -120,7 +141,8 @@ impl UserDatabase {
                 CREATE TABLE IF NOT EXISTS recharges (
                     id SERIAL PRIMARY KEY,
                     user_id TEXT NOT NULL,
-                    amount DOUBLE PRECISION NOT NULL,
+                    amount BIGINT NOT NULL,
+                    currency VARCHAR(10) DEFAULT 'USD',
                     description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -149,9 +171,43 @@ impl UserDatabase {
             let _ = sqlx::query("ALTER TABLE users ADD COLUMN status INTEGER DEFAULT 1")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0")
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_usd BIGINT DEFAULT 0")
                 .execute(conn.pool())
                 .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_cny BIGINT DEFAULT 0")
+                .execute(conn.pool())
+                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(conn.pool())
+            .await;
+            let _ =
+                sqlx::query("ALTER TABLE recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'")
+                    .execute(conn.pool())
+                    .await;
+        }
+
+        // Migrations for PostgreSQL (Add columns if missing)
+        if kind == "postgres" {
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
+            )
+            .execute(conn.pool())
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
+            )
+            .execute(conn.pool())
+            .await;
+            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
+                .execute(conn.pool())
+                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(conn.pool())
+            .await;
         }
 
         // Initialize default roles
@@ -178,7 +234,13 @@ impl UserDatabase {
             println!("UserDatabase: inserting demo user...");
             // Password: "123456"
             let dummy_hash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
-            sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id, status, balance) VALUES ('demo-user', 'demo-user', NULL, ?, NULL, 1, 100.0)")
+            // Give demo user 100 USD in nanodollars (100 * 10^9 = 100_000_000_000)
+            let demo_sql = if kind == "postgres" {
+                "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ('demo-user', 'demo-user', NULL, $1, NULL, 1, 100000000000, 0, 'USD')"
+            } else {
+                "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ('demo-user', 'demo-user', NULL, ?, NULL, 1, 100000000000, 0, 'USD')"
+            };
+            sqlx::query(demo_sql)
                 .bind(dummy_hash)
                 .execute(conn.pool())
                 .await?;
@@ -197,14 +259,21 @@ impl UserDatabase {
 
     pub async fn create_user(db: &Database, user: &DbUser) -> Result<()> {
         let conn = db.get_connection()?;
-        sqlx::query("INSERT INTO users (id, username, email, password_hash, github_id, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        let sql = if db.kind() == "postgres" {
+            "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+        } else {
+            "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        };
+        sqlx::query(sql)
             .bind(&user.id)
             .bind(&user.username)
             .bind(&user.email)
             .bind(&user.password_hash)
             .bind(&user.github_id)
             .bind(user.status)
-            .bind(user.balance)
+            .bind(user.balance_usd)
+            .bind(user.balance_cny)
+            .bind(&user.preferred_currency)
             .execute(conn.pool())
             .await?;
         Ok(())
@@ -212,7 +281,12 @@ impl UserDatabase {
 
     pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<DbUser>> {
         let conn = db.get_connection()?;
-        let user = sqlx::query_as::<_, DbUser>("SELECT * FROM users WHERE username = ?")
+        let sql = if db.kind() == "postgres" {
+            "SELECT * FROM users WHERE username = $1"
+        } else {
+            "SELECT * FROM users WHERE username = ?"
+        };
+        let user = sqlx::query_as::<_, DbUser>(sql)
             .bind(username)
             .fetch_optional(conn.pool())
             .await?;
@@ -221,7 +295,12 @@ impl UserDatabase {
 
     pub async fn get_user_roles(db: &Database, user_id: &str) -> Result<Vec<String>> {
         let conn = db.get_connection()?;
-        let rows = sqlx::query("SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = ?")
+        let sql = if db.kind() == "postgres" {
+            "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1"
+        } else {
+            "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = ?"
+        };
+        let rows = sqlx::query(sql)
             .bind(user_id)
             .fetch_all(conn.pool())
             .await?;
@@ -232,14 +311,25 @@ impl UserDatabase {
 
     pub async fn assign_role(db: &Database, user_id: &str, role_name: &str) -> Result<()> {
         let conn = db.get_connection()?;
-        let role_id: Option<String> = sqlx::query("SELECT id FROM roles WHERE name = ?")
+        let (select_sql, insert_sql) = if db.kind() == "postgres" {
+            (
+                "SELECT id FROM roles WHERE name = $1",
+                "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
+            )
+        } else {
+            (
+                "SELECT id FROM roles WHERE name = ?",
+                "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+            )
+        };
+        let role_id: Option<String> = sqlx::query(select_sql)
             .bind(role_name)
             .fetch_optional(conn.pool())
             .await?
             .map(|r| r.get(0));
 
         if let Some(rid) = role_id {
-            let res = sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
+            let res = sqlx::query(insert_sql)
                 .bind(user_id)
                 .bind(rid)
                 .execute(conn.pool())
@@ -260,15 +350,27 @@ impl UserDatabase {
         Ok(users)
     }
 
-    pub async fn update_balance(db: &Database, user_id: &str, delta: f64) -> Result<f64> {
+    /// Update USD balance by delta (in nanodollars)
+    pub async fn update_balance_usd(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;
-        sqlx::query("UPDATE users SET balance = balance + ? WHERE id = ?")
+        let (update_sql, select_sql) = if db.kind() == "postgres" {
+            (
+                "UPDATE users SET balance_usd = balance_usd + $1 WHERE id = $2",
+                "SELECT balance_usd FROM users WHERE id = $1",
+            )
+        } else {
+            (
+                "UPDATE users SET balance_usd = balance_usd + ? WHERE id = ?",
+                "SELECT balance_usd FROM users WHERE id = ?",
+            )
+        };
+        sqlx::query(update_sql)
             .bind(delta)
             .bind(user_id)
             .execute(conn.pool())
             .await?;
 
-        let new_balance: f64 = sqlx::query("SELECT balance FROM users WHERE id = ?")
+        let new_balance: i64 = sqlx::query(select_sql)
             .bind(user_id)
             .fetch_one(conn.pool())
             .await?
@@ -277,13 +379,58 @@ impl UserDatabase {
         Ok(new_balance)
     }
 
+    /// Update CNY balance by delta (in nanodollars)
+    pub async fn update_balance_cny(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
+        let conn = db.get_connection()?;
+        let (update_sql, select_sql) = if db.kind() == "postgres" {
+            (
+                "UPDATE users SET balance_cny = balance_cny + $1 WHERE id = $2",
+                "SELECT balance_cny FROM users WHERE id = $1",
+            )
+        } else {
+            (
+                "UPDATE users SET balance_cny = balance_cny + ? WHERE id = ?",
+                "SELECT balance_cny FROM users WHERE id = ?",
+            )
+        };
+        sqlx::query(update_sql)
+            .bind(delta)
+            .bind(user_id)
+            .execute(conn.pool())
+            .await?;
+
+        let new_balance: i64 = sqlx::query(select_sql)
+            .bind(user_id)
+            .fetch_one(conn.pool())
+            .await?
+            .get(0);
+
+        Ok(new_balance)
+    }
+
+    /// Update balance by delta in nanodollars (generic currency-aware method)
+    /// Defaults to USD if currency is not specified
+    pub async fn update_balance(
+        db: &Database,
+        user_id: &str,
+        delta_nano: i64,
+        currency: Option<&str>,
+    ) -> Result<i64> {
+        match currency {
+            Some("CNY") => Self::update_balance_cny(db, user_id, delta_nano).await,
+            _ => Self::update_balance_usd(db, user_id, delta_nano).await,
+        }
+    }
+
     pub async fn create_recharge(db: &Database, recharge: &DbRecharge) -> Result<i32> {
         let conn = db.get_connection()?;
+        let currency = recharge.currency.as_deref().unwrap_or("USD");
         let id: i32 = match db.kind().as_str() {
             "sqlite" => {
-                sqlx::query("INSERT INTO recharges (user_id, amount, description) VALUES (?, ?, ?)")
+                sqlx::query("INSERT INTO recharges (user_id, amount, currency, description) VALUES (?, ?, ?, ?)")
                     .bind(&recharge.user_id)
                     .bind(recharge.amount)
+                    .bind(currency)
                     .bind(&recharge.description)
                     .execute(conn.pool())
                     .await?
@@ -291,9 +438,10 @@ impl UserDatabase {
                     .unwrap_or(0) as i32
             }
             "postgres" => {
-                sqlx::query("INSERT INTO recharges (user_id, amount, description) VALUES ($1, $2, $3) RETURNING id")
+                sqlx::query("INSERT INTO recharges (user_id, amount, currency, description) VALUES ($1, $2, $3, $4) RETURNING id")
                     .bind(&recharge.user_id)
                     .bind(recharge.amount)
+                    .bind(currency)
                     .bind(&recharge.description)
                     .fetch_one(conn.pool())
                     .await?
@@ -302,20 +450,27 @@ impl UserDatabase {
             _ => unreachable!(),
         };
 
-        // Also update user balance
-        Self::update_balance(db, &recharge.user_id, recharge.amount).await?;
+        // Also update user balance based on currency
+        if currency == "CNY" {
+            Self::update_balance_cny(db, &recharge.user_id, recharge.amount).await?;
+        } else {
+            Self::update_balance_usd(db, &recharge.user_id, recharge.amount).await?;
+        }
 
         Ok(id)
     }
 
     pub async fn list_recharges(db: &Database, user_id: &str) -> Result<Vec<DbRecharge>> {
         let conn = db.get_connection()?;
-        let recharges = sqlx::query_as::<_, DbRecharge>(
-            "SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC",
-        )
-        .bind(user_id)
-        .fetch_all(conn.pool())
-        .await?;
+        let sql = if db.kind() == "postgres" {
+            "SELECT * FROM recharges WHERE user_id = $1 ORDER BY created_at DESC"
+        } else {
+            "SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC"
+        };
+        let recharges = sqlx::query_as::<_, DbRecharge>(sql)
+            .bind(user_id)
+            .fetch_all(conn.pool())
+            .await?;
         Ok(recharges)
     }
 }

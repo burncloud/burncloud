@@ -11,20 +11,15 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 /// Represents the state of the adaptive rate limit state machine.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum RateLimitState {
     /// Initial state - learning the actual rate limits
+    #[default]
     Learning,
     /// Stable state - operating within known limits
     Stable,
     /// Cooldown state - recovering from rate limit errors
     Cooldown,
-}
-
-impl Default for RateLimitState {
-    fn default() -> Self {
-        Self::Learning
-    }
 }
 
 /// Configuration for the adaptive rate limiter.

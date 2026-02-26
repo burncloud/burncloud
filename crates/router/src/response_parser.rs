@@ -118,13 +118,13 @@ pub fn parse_openai_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
     if let Some(reset) = headers
         .get("x-ratelimit-reset-requests")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| parse_reset_time(v))
+        .and_then(parse_reset_time)
     {
         info.reset = Some(reset);
     } else if let Some(reset) = headers
         .get("x-ratelimit-reset-tokens")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| parse_reset_time(v))
+        .and_then(parse_reset_time)
     {
         info.reset = Some(reset);
     }
@@ -510,6 +510,7 @@ fn parse_duration_string(s: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderValue;
 
     #[test]
     fn test_parse_reset_time() {
@@ -540,9 +541,15 @@ mod tests {
     #[test]
     fn test_parse_openai_rate_limit() {
         let mut headers = HeaderMap::new();
-        headers.insert("x-ratelimit-limit-requests", "100".parse().unwrap());
-        headers.insert("x-ratelimit-limit-tokens", "100000".parse().unwrap());
-        headers.insert("retry-after", "30".parse().unwrap());
+        headers.insert(
+            "x-ratelimit-limit-requests",
+            HeaderValue::from_static("100"),
+        );
+        headers.insert(
+            "x-ratelimit-limit-tokens",
+            HeaderValue::from_static("100000"),
+        );
+        headers.insert("retry-after", HeaderValue::from_static("30"));
 
         let info = parse_openai_rate_limit(&headers);
 
@@ -554,9 +561,15 @@ mod tests {
     #[test]
     fn test_parse_anthropic_rate_limit() {
         let mut headers = HeaderMap::new();
-        headers.insert("anthropic-ratelimit-requests-limit", "50".parse().unwrap());
-        headers.insert("anthropic-ratelimit-requests-reset", "1m".parse().unwrap());
-        headers.insert("retry-after", "60".parse().unwrap());
+        headers.insert(
+            "anthropic-ratelimit-requests-limit",
+            HeaderValue::from_static("50"),
+        );
+        headers.insert(
+            "anthropic-ratelimit-requests-reset",
+            HeaderValue::from_static("1m"),
+        );
+        headers.insert("retry-after", HeaderValue::from_static("60"));
 
         let info = parse_anthropic_rate_limit(&headers);
 
@@ -567,9 +580,9 @@ mod tests {
     #[test]
     fn test_parse_azure_rate_limit() {
         let mut headers = HeaderMap::new();
-        headers.insert("x-ratelimit-limit", "1000".parse().unwrap());
-        headers.insert("x-ratelimit-remaining", "500".parse().unwrap());
-        headers.insert("x-ratelimit-reset", "3600".parse().unwrap());
+        headers.insert("x-ratelimit-limit", HeaderValue::from_static("1000"));
+        headers.insert("x-ratelimit-remaining", HeaderValue::from_static("500"));
+        headers.insert("x-ratelimit-reset", HeaderValue::from_static("3600"));
 
         let info = parse_azure_rate_limit(&headers);
 
@@ -594,7 +607,10 @@ mod tests {
         let info = parse_anthropic_error(body);
 
         assert_eq!(info.error_type, Some("rate_limit_error".to_string()));
-        assert!(info.message.as_ref().unwrap().contains("Rate limit"));
+        assert!(info
+            .message
+            .as_ref()
+            .is_some_and(|m| m.contains("Rate limit")));
     }
 
     #[test]
@@ -608,7 +624,10 @@ mod tests {
     #[test]
     fn test_parse_rate_limit_info_routing() {
         let mut headers = HeaderMap::new();
-        headers.insert("x-ratelimit-limit-requests", "100".parse().unwrap());
+        headers.insert(
+            "x-ratelimit-limit-requests",
+            HeaderValue::from_static("100"),
+        );
 
         // Test OpenAI routing
         let info = parse_rate_limit_info(&headers, None, "openai");

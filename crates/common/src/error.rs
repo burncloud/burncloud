@@ -14,4 +14,12 @@ pub enum BurnCloudError {
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("JSON serialization error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    #[error("Password hash error: {0}")]
+    PasswordHashError(String),
 }
+
+pub type Result<T> = std::result::Result<T, BurnCloudError>;

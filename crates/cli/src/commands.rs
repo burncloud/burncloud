@@ -8,9 +8,13 @@ use std::io::{self, Write};
 
 use crate::channel::handle_channel_command;
 use crate::currency::handle_currency_command;
+use crate::group::handle_group_command;
+use crate::log::handle_log_command;
+use crate::monitor::handle_monitor_command;
 use crate::price::{handle_price_command, handle_tiered_command};
 use crate::protocol::handle_protocol_command;
 use crate::token::handle_token_command;
+use crate::user::handle_user_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
@@ -76,6 +80,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .short('n')
                                 .long("name")
                                 .help("Channel name (uses default if not specified)"),
+                        )
+                        .arg(
+                            Arg::new("pricing-region")
+                                .long("pricing-region")
+                                .help("Pricing region for this channel (cn, international, or omit for universal)"),
                         ),
                 )
                 .subcommand(
@@ -113,6 +122,55 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .required(true)
                                 .help("Channel ID to show"),
                         ),
+                )
+                .subcommand(
+                    Command::new("update")
+                        .about("Update a channel")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Channel ID to update"),
+                        )
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .help("Channel name"),
+                        )
+                        .arg(
+                            Arg::new("key")
+                                .long("key")
+                                .help("API key for the channel"),
+                        )
+                        .arg(
+                            Arg::new("status")
+                                .long("status")
+                                .help("Channel status (1=enabled, 2=disabled, 3=auto-disabled)"),
+                        )
+                        .arg(
+                            Arg::new("models")
+                                .long("models")
+                                .help("Comma-separated list of supported models"),
+                        )
+                        .arg(
+                            Arg::new("priority")
+                                .long("priority")
+                                .help("Channel priority"),
+                        )
+                        .arg(
+                            Arg::new("weight")
+                                .long("weight")
+                                .help("Channel weight"),
+                        )
+                        .arg(
+                            Arg::new("base-url")
+                                .long("base-url")
+                                .help("Custom base URL for the channel"),
+                        )
+                        .arg(
+                            Arg::new("pricing-region")
+                                .long("pricing-region")
+                                .help("Pricing region for this channel (cn, international, or omit for universal)"),
+                        ),
                 ),
         )
         .subcommand(
@@ -138,6 +196,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("currency")
                                 .long("currency")
                                 .help("Filter by currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
                         ),
                 )
                 .subcommand(
@@ -195,6 +258,21 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("alias")
                                 .long("alias")
                                 .help("Alias to another model's pricing"),
+                        )
+                        .arg(
+                            Arg::new("priority-input")
+                                .long("priority-input")
+                                .help("Priority input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("priority-output")
+                                .long("priority-output")
+                                .help("Priority output price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("audio-input")
+                                .long("audio-input")
+                                .help("Audio input price per 1M tokens"),
                         ),
                 )
                 .subcommand(
@@ -209,6 +287,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("currency")
                                 .long("currency")
                                 .help("Filter by currency (USD, CNY, EUR)"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Filter by region (cn, international)"),
                         )
                         .arg(
                             Arg::new("verbose")
@@ -244,6 +327,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("model")
                                 .required(true)
                                 .help("Model name"),
+                        )
+                        .arg(
+                            Arg::new("region")
+                                .long("region")
+                                .help("Delete only for a specific region"),
                         ),
                 )
                 .subcommand(
@@ -637,6 +725,273 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .help("Target currency (USD, CNY, EUR)"),
                         ),
                 ),
+        )
+        .subcommand(
+            Command::new("user")
+                .about("Manage users")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("register")
+                        .about("Register a new user")
+                        .arg(
+                            Arg::new("username")
+                                .long("username")
+                                .required(true)
+                                .help("Username for the new user"),
+                        )
+                        .arg(
+                            Arg::new("password")
+                                .long("password")
+                                .required(true)
+                                .help("Password for the new user"),
+                        )
+                        .arg(
+                            Arg::new("email")
+                                .long("email")
+                                .help("Email address (optional)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("login")
+                        .about("Login as a user")
+                        .arg(
+                            Arg::new("username")
+                                .long("username")
+                                .required(true)
+                                .help("Username to login"),
+                        )
+                        .arg(
+                            Arg::new("password")
+                                .long("password")
+                                .required(true)
+                                .help("Password for the user"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("list")
+                        .about("List all users")
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("topup")
+                        .about("Topup user balance")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .required(true)
+                                .help("User ID to topup"),
+                        )
+                        .arg(
+                            Arg::new("amount")
+                                .long("amount")
+                                .required(true)
+                                .help("Amount to topup (in dollars, e.g., 100.00)"),
+                        )
+                        .arg(
+                            Arg::new("currency")
+                                .long("currency")
+                                .required(true)
+                                .value_parser(["USD", "CNY", "usd", "cny"])
+                                .help("Currency for topup (USD or CNY)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("recharges")
+                        .about("List user recharge history")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .required(true)
+                                .help("User ID to query"),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("check-username")
+                        .about("Check if a username is available")
+                        .arg(
+                            Arg::new("username")
+                                .long("username")
+                                .required(true)
+                                .help("Username to check"),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("group")
+                .about("Manage router groups")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("create")
+                        .about("Create a new group")
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .required(true)
+                                .help("Group name"),
+                        )
+                        .arg(
+                            Arg::new("members")
+                                .long("members")
+                                .help("Comma-separated list of upstream IDs to add as members"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("list")
+                        .about("List all groups")
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show group details")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Group ID"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete a group")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Group ID"),
+                        )
+                        .arg(
+                            Arg::new("yes")
+                                .short('y')
+                                .long("yes")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Skip confirmation prompt"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("members")
+                        .about("Manage group members")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Group ID"),
+                        )
+                        .arg(
+                            Arg::new("set")
+                                .long("set")
+                                .help("Set members (comma-separated, format: upstream_id:weight or upstream_id)"),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("log")
+                .about("Manage request logs")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("list")
+                        .about("List request logs")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .help("Filter by user ID"),
+                        )
+                        .arg(
+                            Arg::new("channel-id")
+                                .long("channel-id")
+                                .help("Filter by channel ID (upstream ID)"),
+                        )
+                        .arg(
+                            Arg::new("model")
+                                .long("model")
+                                .help("Filter by model name"),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .long("limit")
+                                .default_value("100")
+                                .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .default_value("0")
+                                .help("Offset for pagination"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("usage")
+                        .about("Show usage statistics for a user")
+                        .arg(
+                            Arg::new("user-id")
+                                .long("user-id")
+                                .required(true)
+                                .help("User ID to show usage for"),
+                        )
+                        .arg(
+                            Arg::new("period")
+                                .long("period")
+                                .default_value("month")
+                                .value_parser(["day", "week", "month"])
+                                .help("Time period (day, week, month)"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("monitor")
+                .about("Monitor system status")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("status")
+                        .about("Show system status and metrics")
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
+                        ),
+                ),
         );
 
     let matches = app.try_get_matches_from(
@@ -729,6 +1084,26 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("currency", sub_m)) => {
             let db = Database::new().await?;
             handle_currency_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("user", sub_m)) => {
+            let db = Database::new().await?;
+            handle_user_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("group", sub_m)) => {
+            let db = Database::new().await?;
+            handle_group_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("log", sub_m)) => {
+            let db = Database::new().await?;
+            handle_log_command(&db, sub_m).await?;
+            db.close().await?;
+        }
+        Some(("monitor", sub_m)) => {
+            let db = Database::new().await?;
+            handle_monitor_command(&db, sub_m).await?;
             db.close().await?;
         }
         _ => {

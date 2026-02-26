@@ -14,3 +14,4 @@ sqlx = { workspace = true, features = ["sqlite", "runtime-tokio-rustls"] }
 dotenvy = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 axum = { workspace = true }
+burncloud-common.workspace = true

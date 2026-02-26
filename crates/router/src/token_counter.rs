@@ -69,7 +69,8 @@ impl StreamingTokenCounter {
             self.prompt_tokens.store(prompt_tokens, Ordering::Relaxed);
         }
         if completion_tokens > 0 {
-            self.completion_tokens.store(completion_tokens, Ordering::Relaxed);
+            self.completion_tokens
+                .store(completion_tokens, Ordering::Relaxed);
         }
     }
 
@@ -79,7 +80,8 @@ impl StreamingTokenCounter {
             self.cache_read_tokens.store(cache_read, Ordering::Relaxed);
         }
         if cache_creation > 0 {
-            self.cache_creation_tokens.store(cache_creation, Ordering::Relaxed);
+            self.cache_creation_tokens
+                .store(cache_creation, Ordering::Relaxed);
         }
     }
 
