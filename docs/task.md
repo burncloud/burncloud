@@ -560,7 +560,7 @@
       "设置 gemini-3-flash-thinking 价格: ./target/release/burncloud price set gemini-3-flash-thinking --input 0.20 --output 0.80 --region international --currency USD",
       "验证所有 3.x 价格: ./target/release/burncloud price list | grep gemini-3"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "gemini-test-2.0-flash",
