@@ -506,6 +506,6 @@
       "验证 cn 已删除 international 保留: ./target/release/burncloud price list --region international | grep test-integration",
       "清理: ./target/release/burncloud price delete test-integration"
     ],
-    "passes": false
+    "passes": true
   }
 ]
