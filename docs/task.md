@@ -410,7 +410,7 @@
       "更新输出信息: 带region时输出 'Deleted {region} region price for {model}'，不带时输出 'All prices deleted'",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-delete-region-test",

@@ -138,9 +138,15 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         }
         Some(("delete", sub_m)) => {
             let model = sub_m.get_one::<String>("model").unwrap();
+            let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
-            PriceModel::delete_all_for_model(db, model).await?;
-            println!("✓ All prices deleted for '{}'", model);
+            if let Some(r) = region {
+                PriceModel::delete_by_region(db, model, r).await?;
+                println!("✓ Deleted {} region price for '{}'", r, model);
+            } else {
+                PriceModel::delete_all_for_model(db, model).await?;
+                println!("✓ All prices deleted for '{}'", model);
+            }
         }
         Some(("get", sub_m)) => {
             let model = sub_m.get_one::<String>("model").unwrap();
