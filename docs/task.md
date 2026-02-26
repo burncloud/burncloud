@@ -463,7 +463,7 @@
       "  .arg(Arg::new(\"audio-input\").long(\"audio-input\").help(\"Audio input price per 1M tokens\"))",
       "编译验证: cargo build -p burncloud"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "price-set-audio-cli",

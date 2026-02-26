@@ -268,6 +268,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("priority-output")
                                 .long("priority-output")
                                 .help("Priority output price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("audio-input")
+                                .long("audio-input")
+                                .help("Audio input price per 1M tokens"),
                         ),
                 )
                 .subcommand(
