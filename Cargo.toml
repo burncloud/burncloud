@@ -67,6 +67,7 @@ uuid = { version = "1.4", features = ["v4", "serde"] }
 
 # Utilities
 async-trait = "0.1"
+base64 = "0.22"
 dirs = "5.0"
 tempfile = "3.8"
 futures = "0.3"

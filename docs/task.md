@@ -507,5 +507,255 @@
       "清理: ./target/release/burncloud price delete test-integration"
     ],
     "passes": true
+  },
+  {
+    "category": "gemini-channel-create",
+    "description": "P0: 创建 Gemini AI Studio 渠道",
+    "steps": [
+      "编译: cargo build --release -p burncloud",
+      "创建渠道: ./target/release/burncloud channel add --name gemini-aistudio --type 1 --key 'AIza...' --base-url 'https://generativelanguage.googleapis.com/v1beta' --models 'gemini-2.0-flash,gemini-2.5-pro,gemini-2.5-flash' --pricing-region international",
+      "验证渠道: ./target/release/burncloud channel list | grep gemini",
+      "测试渠道状态: ./target/release/burncloud channel show <id>"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-price-2.0-flash",
+    "description": "P0: 配置 gemini-2.0-flash 价格",
+    "steps": [
+      "设置 international USD 价格: ./target/release/burncloud price set gemini-2.0-flash --input 0.10 --output 0.40 --region international --currency USD",
+      "设置 cn CNY 价格: ./target/release/burncloud price set gemini-2.0-flash --input 0.72 --output 2.88 --region cn --currency CNY",
+      "验证价格: ./target/release/burncloud price get gemini-2.0-flash --region international --currency USD",
+      "验证价格: ./target/release/burncloud price get gemini-2.0-flash --region cn --currency CNY"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-price-2.5-pro",
+    "description": "P0: 配置 gemini-2.5-pro 价格",
+    "steps": [
+      "设置 standard 价格 (<=200K): ./target/release/burncloud price set gemini-2.5-pro --input 1.25 --output 10.0 --region international --currency USD",
+      "设置 priority 价格 (>200K): ./target/release/burncloud price set gemini-2.5-pro --input 1.25 --output 10.0 --priority-input 2.50 --priority-output 15.0 --region international --currency USD",
+      "设置 cn CNY 价格: ./target/release/burncloud price set gemini-2.5-pro --input 9.1 --output 72.9 --region cn --currency CNY",
+      "验证价格: ./target/release/burncloud price get gemini-2.5-pro -v --region international"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-price-2.5-flash",
+    "description": "P0: 配置 gemini-2.5-flash 价格",
+    "steps": [
+      "设置 international USD 价格: ./target/release/burncloud price set gemini-2.5-flash --input 0.075 --output 0.30 --region international --currency USD",
+      "设置 cn CNY 价格: ./target/release/burncloud price set gemini-2.5-flash --input 0.54 --output 2.16 --region cn --currency CNY",
+      "验证价格: ./target/release/burncloud price get gemini-2.5-flash --region international"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-price-3.x",
+    "description": "P1: 配置 Gemini 3.x 系列价格",
+    "steps": [
+      "设置 gemini-3-pro 价格: ./target/release/burncloud price set gemini-3-pro --input 2.0 --output 12.0 --region international --currency USD",
+      "设置 gemini-3-flash 价格: ./target/release/burncloud price set gemini-3-flash --input 0.15 --output 0.60 --region international --currency USD",
+      "设置 gemini-3-flash-thinking 价格: ./target/release/burncloud price set gemini-3-flash-thinking --input 0.20 --output 0.80 --region international --currency USD",
+      "验证所有 3.x 价格: ./target/release/burncloud price list | grep gemini-3"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-2.0-flash",
+    "description": "P0: 测试 gemini-2.0-flash API 调用",
+    "steps": [
+      "启动服务器: cargo run --release -p burncloud-server",
+      "测试简单请求: curl -X POST http://localhost:8080/v1/chat/completions -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"model\":\"gemini-2.0-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'",
+      "验证响应状态码 200",
+      "验证响应包含 choices 数组",
+      "验证 token 计数正确",
+      "测试流式请求: 添加 'stream': true 参数"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-2.5-pro",
+    "description": "P0: 测试 gemini-2.5-pro API 调用",
+    "steps": [
+      "测试基础请求: curl -X POST http://localhost:8080/v1/chat/completions -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"model\":\"gemini-2.5-pro\",\"messages\":[{\"role\":\"user\",\"content\":\"What is 2+2?\"}]}'",
+      "测试多模态请求: 发送带图片的消息",
+      "测试长上下文: 发送超长 prompt (>10K tokens)",
+      "验证计费金额正确"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-2.5-flash",
+    "description": "P0: 测试 gemini-2.5-flash API 调用",
+    "steps": [
+      "测试基础请求: curl 调用 gemini-2.5-flash",
+      "测试流式输出: stream: true",
+      "验证响应速度符合预期",
+      "验证计费金额正确"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-multimodal",
+    "description": "P1: 测试 Gemini 多模态输入",
+    "steps": [
+      "测试图片输入: 发送 image_url 类型消息",
+      "测试 PDF 输入: 发送 base64 编码 PDF",
+      "测试音频输入: 发送 base64 编码音频",
+      "验证响应包含正确的多模态理解",
+      "验证 audio_input_price 计费"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-native-image",
+    "description": "P1: 测试 gemini-2.5-flash-image 原生图像生成",
+    "steps": [
+      "配置价格: ./target/release/burncloud price set gemini-2.5-flash-image --input 0.10 --output 0.50 --region international",
+      "测试图像生成: curl 请求生成图片",
+      "验证响应包含图像数据",
+      "验证 responseModalities 参数正确传递",
+      "测试对话式图像编辑"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-thinking",
+    "description": "P1: 测试 Gemini thinking 模型",
+    "steps": [
+      "测试 gemini-3-flash-thinking 基础请求",
+      "验证 thinking 输出格式",
+      "测试关闭 thinking 模式",
+      "测试 gemini-2.0-flash-thinking",
+      "验证复杂推理任务输出"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-passthrough",
+    "description": "P1: 测试路径穿透",
+    "steps": [
+      "验证请求头 Authorization 正确转发",
+      "验证请求体 OpenAI → Gemini 格式转换正确",
+      "验证错误响应正确处理和返回",
+      "验证流式 SSE 响应正确转发",
+      "验证 safetySettings 参数穿透",
+      "验证 generationConfig 参数穿透"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-billing",
+    "description": "P0: 测试计费准确性",
+    "steps": [
+      "发送已知 token 数量的请求",
+      "验证 prompt_tokens 计数准确",
+      "验证 completion_tokens 计数准确",
+      "验证 total_cost 计算正确",
+      "验证用户余额正确扣除",
+      "验证日志记录正确"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-region-pricing",
+    "description": "P0: 测试区域差异化定价",
+    "steps": [
+      "创建 cn 区域渠道",
+      "创建 international 区域渠道",
+      "使用 cn 渠道发送请求",
+      "验证使用 CNY 价格计费",
+      "使用 international 渠道发送请求",
+      "验证使用 USD 价格计费"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-price-3-pro-image",
+    "description": "P1: 配置 gemini-3-pro-image-preview 价格",
+    "steps": [
+      "设置 international USD 价格: ./target/release/burncloud price set gemini-3-pro-image-preview --input 0.15 --output 0.60 --region international --currency USD",
+      "设置 cn CNY 价格: ./target/release/burncloud price set gemini-3-pro-image-preview --input 1.08 --output 4.32 --region cn --currency CNY",
+      "验证价格: ./target/release/burncloud price get gemini-3-pro-image-preview --region international"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-3-pro-image",
+    "description": "P1: 测试 gemini-3-pro-image-preview 原生图像生成",
+    "steps": [
+      "更新渠道添加模型: ./target/release/burncloud channel update <id> --models '...,gemini-3-pro-image-preview'",
+      "测试基础图像生成: curl 请求生成图片",
+      "测试文本+图像混合输出: responseModalities: ['TEXT', 'IMAGE']",
+      "验证响应包含图像数据",
+      "验证 responseModalities 参数正确传递",
+      "测试对话式图像编辑: 对已生成图片进行修改",
+      "测试图像融合: 多张参考图合成",
+      "验证计费金额正确"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-native-path-passthrough",
+    "description": "P1: 测试 Gemini 原生路径穿透",
+    "steps": [
+      "测试原生路径非流式: curl -X POST 'http://localhost:8080/v1beta/models/gemini-2.0-flash:generateContent' -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Hello\"}]}]}'",
+      "验证响应状态码 200",
+      "验证响应包含 Gemini 原生格式 (candidates[].content.parts[].text)",
+      "验证 token 从 usageMetadata 正确解析",
+      "测试原生路径流式: curl -X POST 'http://localhost:8080/v1beta/models/gemini-2.0-flash:streamGenerateContent' -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Hello\"}]}],\"generationConfig\":{\"responseModalities\":[\"TEXT\"]}}'",
+      "验证流式响应格式正确"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-native-content-passthrough",
+    "description": "P1: 测试 Gemini 原生内容格式穿透（通过 /v1/chat/completions 路径）",
+    "steps": [
+      "测试 contents 字段触发穿透: curl -X POST http://localhost:8080/v1/chat/completions -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"model\":\"gemini-2.0-flash\",\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Hello\"}]}]}'",
+      "验证响应为 Gemini 原生格式（包含 candidates 而非 choices）",
+      "验证 safetySettings 参数穿透: 添加 '\"safetySettings\":[{\"category\":\"HARM_CATEGORY_HARASSMENT\",\"threshold\":\"BLOCK_NONE\"}]'",
+      "验证 generationConfig 参数穿透: 添加 '\"generationConfig\":{\"temperature\":0.5,\"maxOutputTokens\":100}'",
+      "验证 responseModalities 参数穿透: 添加 '\"generationConfig\":{\"responseModalities\":[\"TEXT\",\"IMAGE\"]}'"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-native-image-passthrough",
+    "description": "P1: 测试 Gemini 原生图像生成穿透",
+    "steps": [
+      "测试原生路径图像生成: curl -X POST 'http://localhost:8080/v1beta/models/gemini-3-pro-image-preview:generateContent' -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Generate a sunset image\"}]}],\"generationConfig\":{\"responseModalities\":[\"TEXT\",\"IMAGE\"]}}'",
+      "验证响应包含图像数据 (parts[].inlineData)",
+      "测试图像编辑穿透: 发送包含 inlineData 的请求进行编辑",
+      "验证多模态响应正确处理",
+      "验证计费正确（图像生成可能有不同计费）"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-test-native-thinking-passthrough",
+    "description": "P2: 测试 Gemini thinking 模型原生穿透",
+    "steps": [
+      "测试 thinking 模型原生路径: curl -X POST 'http://localhost:8080/v1beta/models/gemini-3-flash-thinking:generateContent' -H 'Authorization: Bearer sk-xxx' -H 'Content-Type: application/json' -d '{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Solve: What is 15*17?\"}]}]}'",
+      "验证 thinking 输出在响应中（可能为 thought 或 separate part）",
+      "测试 thinkingBudget 参数穿透: 添加 '\"generationConfig\":{\"thinkingBudget\":1000}'",
+      "验证 thinking token 计费正确"
+    ],
+    "passes": true
+  },
+  {
+    "category": "gemini-cleanup",
+    "description": "清理测试数据",
+    "steps": [
+      "删除测试价格: ./target/release/burncloud price delete gemini-2.0-flash",
+      "删除测试价格: ./target/release/burncloud price delete gemini-2.5-pro",
+      "删除测试价格: ./target/release/burncloud price delete gemini-2.5-flash",
+      "删除测试价格: ./target/release/burncloud price delete gemini-3-pro",
+      "删除测试价格: ./target/release/burncloud price delete gemini-3-pro-image-preview",
+      "删除测试渠道: ./target/release/burncloud channel delete <gemini-channel-id> -y"
+    ],
+    "passes": true
   }
 ]

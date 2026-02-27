@@ -238,6 +238,54 @@ impl Schema {
             _ => "",
         };
 
+        // 4.5. Router Logs Table (API Request Logging)
+        // ============================================================================
+        // Stores logs of all API requests through the router
+        // - cost stored as BIGINT nanodollars (9 decimal precision)
+        // - created_at as TEXT for SQLite compatibility (avoid DATETIME type issues with sqlx Any driver)
+        // ============================================================================
+        let router_logs_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS router_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id TEXT NOT NULL,
+                    user_id TEXT,
+                    path TEXT NOT NULL,
+                    upstream_id TEXT,
+                    status_code INTEGER NOT NULL,
+                    latency_ms INTEGER NOT NULL,
+                    prompt_tokens INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    cost INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id);
+                CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS router_logs (
+                    id SERIAL PRIMARY KEY,
+                    request_id TEXT NOT NULL,
+                    user_id TEXT,
+                    path TEXT NOT NULL,
+                    upstream_id TEXT,
+                    status_code INTEGER NOT NULL,
+                    latency_ms BIGINT NOT NULL,
+                    prompt_tokens INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    cost BIGINT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id);
+                CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at);
+            "#
+            }
+            _ => "",
+        };
+
         // 5. Prices Table (Model Pricing) with Advanced Pricing Fields
         // ============================================================================
         // NEW: Prices table now uses BIGINT nanodollars (9 decimal precision)
@@ -480,6 +528,9 @@ impl Schema {
         if !tokens_sql.is_empty() {
             pool.execute(tokens_sql).await?;
         }
+        if !router_logs_sql.is_empty() {
+            pool.execute(router_logs_sql).await?;
+        }
         if !prices_sql.is_empty() {
             pool.execute(prices_sql).await?;
         }
@@ -522,6 +573,92 @@ impl Schema {
             let _ = sqlx::query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS pricing_region VARCHAR(32) DEFAULT 'international'")
                 .execute(pool)
                 .await;
+        }
+
+        // Migration: Fix router_logs table schema for SQLite
+        // The old schema used DATETIME and REAL which are incompatible with sqlx Any driver
+        // SQLite doesn't support ALTER COLUMN, so we recreate the table
+        if kind == "sqlite" {
+            // Check if router_logs table exists
+            let table_exists: bool = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='router_logs'",
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0) > 0;
+
+            // Check if migration is needed by examining column types via pragma_table_info
+            // Use a raw query that doesn't try to decode any DATETIME columns
+            let needs_migration = if table_exists {
+                // Query the column type directly without decoding any data
+                let col_type: Option<String> = sqlx::query_scalar(
+                    "SELECT type FROM pragma_table_info('router_logs') WHERE name='created_at'",
+                )
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(None);
+
+                col_type.as_ref().map(|t| t == "DATETIME").unwrap_or(false)
+            } else {
+                false
+            };
+
+            if needs_migration {
+                eprintln!("[Migration] Migrating router_logs table: DATETIME -> TEXT, REAL -> INTEGER");
+
+                // Drop temp table if exists from previous failed migration
+                let _ = sqlx::query("DROP TABLE IF EXISTS router_logs_new")
+                    .execute(pool)
+                    .await;
+
+                // Create new table with correct schema
+                let _ = sqlx::query(
+                    r#"
+                    CREATE TABLE router_logs_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        request_id TEXT NOT NULL,
+                        user_id TEXT,
+                        path TEXT NOT NULL,
+                        upstream_id TEXT,
+                        status_code INTEGER NOT NULL,
+                        latency_ms INTEGER NOT NULL,
+                        prompt_tokens INTEGER DEFAULT 0,
+                        completion_tokens INTEGER DEFAULT 0,
+                        cost INTEGER DEFAULT 0,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                    "#,
+                )
+                .execute(pool)
+                .await;
+
+                // Copy data with type conversion
+                let _ = sqlx::query(
+                    "INSERT INTO router_logs_new SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, CAST(COALESCE(cost, 0) AS INTEGER), created_at FROM router_logs"
+                )
+                .execute(pool)
+                .await;
+
+                // Drop old table
+                let _ = sqlx::query("DROP TABLE router_logs")
+                    .execute(pool)
+                    .await;
+
+                // Rename new table
+                let _ = sqlx::query("ALTER TABLE router_logs_new RENAME TO router_logs")
+                    .execute(pool)
+                    .await;
+
+                // Recreate indexes
+                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id)")
+                    .execute(pool)
+                    .await;
+                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at)")
+                    .execute(pool)
+                    .await;
+
+                eprintln!("[Migration] router_logs table migration completed successfully");
+            }
         }
 
         // Migration: Migrate prices_v2 to prices and cleanup deprecated tables

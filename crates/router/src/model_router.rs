@@ -132,7 +132,7 @@ impl ModelRouter {
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version
+                    header_override, remark, api_version, pricing_region
                 FROM channels WHERE id IN ({})
                 "#,
                 placeholders
@@ -144,7 +144,7 @@ impl ModelRouter {
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version
+                    header_override, remark, api_version, pricing_region
                 FROM channels WHERE id IN ({})
                 "#,
                 placeholders
