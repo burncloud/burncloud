@@ -282,38 +282,7 @@ impl RouterDatabase {
             let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN api_version TEXT")
                 .execute(conn.pool())
                 .await;
-            // Fix router_logs table: migrate DATETIME to TEXT, REAL to INTEGER
-            // SQLite doesn't support ALTER COLUMN, so we recreate the table
-            let _ = sqlx::query(
-                r#"
-                CREATE TABLE IF NOT EXISTS router_logs_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    request_id TEXT NOT NULL,
-                    user_id TEXT,
-                    path TEXT NOT NULL,
-                    upstream_id TEXT,
-                    status_code INTEGER NOT NULL,
-                    latency_ms INTEGER NOT NULL,
-                    prompt_tokens INTEGER DEFAULT 0,
-                    completion_tokens INTEGER DEFAULT 0,
-                    cost INTEGER DEFAULT 0,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-                "#,
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "INSERT INTO router_logs_new SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, CAST(cost AS INTEGER), created_at FROM router_logs"
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query("DROP TABLE router_logs")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE router_logs_new RENAME TO router_logs")
-                .execute(conn.pool())
-                .await;
+            // Note: router_logs migration moved to schema.rs for CLI compatibility
         } else if kind == "postgres" {
             let _ = sqlx::query(
                 "ALTER TABLE router_upstreams ADD COLUMN IF NOT EXISTS api_version TEXT",
