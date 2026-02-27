@@ -119,19 +119,50 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
             .and_then(|m| m.as_str())
             .unwrap_or("gemini-2.0-flash");
 
+        // Check if streaming is requested (before conversion)
+        let is_stream = body
+            .get("stream")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
+
         // Convert OpenAI request to Gemini format
+        // The conversion removes non-Gemini fields like 'stream'
         let openai_req: Option<OpenAIChatRequest> = serde_json::from_value(body.clone()).ok();
-        let gemini_body = if let Some(req) = openai_req {
+        let mut gemini_body = if let Some(req) = openai_req {
             crate::adaptor::gemini::GeminiAdaptor::convert_request(req)
         } else {
-            body.clone()
+            let mut body = body.clone();
+            // Remove 'stream' field if present (Gemini doesn't accept it)
+            if let Some(obj) = body.as_object_mut() {
+                obj.remove("stream");
+            }
+            body
         };
 
-        // Construct correct Gemini API URL: /v1beta/models/{model}:generateContent
-        let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-            model
-        );
+        // Also remove 'stream' from gemini_body if somehow present
+        if let Some(obj) = gemini_body.as_object_mut() {
+            obj.remove("stream");
+        }
+
+        // Construct correct Gemini API URL with streaming support
+        let method = if is_stream {
+            "streamGenerateContent"
+        } else {
+            "generateContent"
+        };
+
+        // For streaming, add alt=sse for Server-Sent Events format
+        let url = if is_stream {
+            format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:{}?alt=sse",
+                model, method
+            )
+        } else {
+            format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:{}",
+                model, method
+            )
+        };
 
         client
             .post(&url)

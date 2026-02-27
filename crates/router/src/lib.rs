@@ -1134,11 +1134,27 @@ async fn proxy_logic(
             .await;
 
         // 6. Prepare Request Body (for conversion mode)
+        // Preserve stream flag from original request before conversion
+        let original_stream = body_json
+            .get("stream")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         let request_body_json: Option<serde_json::Value> =
             if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
-                adaptor
+                let mut converted = adaptor
                     .convert_request(&req)
-                    .or_else(|| Some(serde_json::json!(req))) // Use converted or original
+                    .or_else(|| Some(serde_json::json!(req))); // Use converted or original
+
+                // Preserve stream flag in converted body for adaptor's build_request
+                if let Some(ref mut body) = converted {
+                    if let serde_json::Value::Object(ref mut map) = body {
+                        if original_stream {
+                            map.insert("stream".to_string(), serde_json::Value::Bool(true));
+                        }
+                    }
+                }
+                converted
             } else {
                 // Use the already parsed JSON
                 Some(body_json)

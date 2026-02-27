@@ -295,6 +295,28 @@ impl Default for PriceInput {
 
 ## 4. 数据库交互规范 (Persistence Patterns)
 
+### 4.0 数据库表命名规范 (Table Naming Conventions)
+
+**核心原则**: 数据库表和结构体命名**禁止使用版本号后缀** (v2, v3 等)
+
+| ✅ 正确 | 🛑 禁止 | 说明 |
+|--------|--------|------|
+| `prices` | ~~`prices_v2`~~, ~~`prices_v3`~~ | 直接修改原表 |
+| `router_logs` | ~~`router_logs_v2`~~ | 直接扩展原表 |
+| `DbRouterLog` | ~~`DbRouterLogV2`~~ | 直接扩展原结构体 |
+| `Price` | ~~`PriceV3`~~ | 直接修改原类型 |
+
+**迁移策略**:
+1. **ALTER TABLE**: 使用 `ALTER TABLE ADD COLUMN` 添加新字段
+2. **数据迁移**: 编写迁移脚本处理已有数据
+3. **向后兼容**: 新字段必须有 `DEFAULT` 值或允许 `NULL`
+4. **代码更新**: 直接修改原有结构体和函数，不创建新版本
+
+**原因**:
+- 避免表名混乱，保持代码库整洁
+- 减少维护成本，无需同时维护多个版本
+- Git 已经提供版本控制，无需在表名中体现
+
 ### 4.1 兼容性抽象 (Polyglot Persistence)
 
 代码必须同时兼容 SQLite 和 PostgreSQL。
