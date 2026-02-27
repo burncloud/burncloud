@@ -165,8 +165,8 @@ impl RouterDatabase {
                     latency_ms INTEGER NOT NULL,
                     prompt_tokens INTEGER DEFAULT 0,
                     completion_tokens INTEGER DEFAULT 0,
-                    cost REAL DEFAULT 0,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    cost INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
             ),
@@ -282,6 +282,7 @@ impl RouterDatabase {
             let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN api_version TEXT")
                 .execute(conn.pool())
                 .await;
+            // Note: router_logs migration moved to schema.rs for CLI compatibility
         } else if kind == "postgres" {
             let _ = sqlx::query(
                 "ALTER TABLE router_upstreams ADD COLUMN IF NOT EXISTS api_version TEXT",
