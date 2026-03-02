@@ -14,3 +14,6 @@ burncloud-database-router = { workspace = true }
 burncloud-service-setting = { workspace = true }
 burncloud-service-models = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }

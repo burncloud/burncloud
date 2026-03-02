@@ -85,7 +85,7 @@ async fn test_database_initialization_patterns() {
     match db_initialized_result {
         Ok(db) => {
             // Should be initialized and functional
-            let connection_result = db.connection();
+            let connection_result = db.get_connection();
             assert!(connection_result.is_ok(), "Database should be initialized");
 
             // Should be able to perform operations

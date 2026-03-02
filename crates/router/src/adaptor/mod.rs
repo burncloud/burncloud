@@ -5,6 +5,7 @@ pub mod factory;
 pub mod gemini;
 pub mod mapping;
 pub mod vertex;
+pub mod zai;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
