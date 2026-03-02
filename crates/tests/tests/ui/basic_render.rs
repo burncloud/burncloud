@@ -1,5 +1,4 @@
 use crate::common;
-use burncloud_tests::TestClient;
 
 #[tokio::test]
 async fn test_ui_endpoints_availability() {

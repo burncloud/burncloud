@@ -76,7 +76,7 @@ async fn test_pricing_list() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
     // List all prices (should include default pricing)
-    let prices = PriceModel::list(&_db, 100, 0, None).await?;
+    let prices = PriceModel::list(&_db, 100, 0, None, None).await?;
 
     println!("Found {} prices", prices.len());
 
