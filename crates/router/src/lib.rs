@@ -730,6 +730,8 @@ async fn proxy_logic(
                         ChannelType::Gemini | ChannelType::VertexAi => {
                             (AuthType::GoogleAI, "gemini".to_string())
                         }
+                        // z.ai uses OpenAI-compatible protocol with Bearer auth
+                        ChannelType::Zai => (AuthType::Bearer, "zai".to_string()),
                         _ => (AuthType::Bearer, "openai".to_string()),
                     };
 
@@ -877,6 +879,7 @@ async fn proxy_logic(
             "claude" => ChannelType::Anthropic,
             "gemini" => ChannelType::Gemini,
             "vertex" => ChannelType::VertexAi,
+            "zai" => ChannelType::Zai,
             _ => ChannelType::OpenAI,
         };
 

@@ -193,7 +193,8 @@ impl AdaptorFactory {
             ChannelType::OpenAI
             | ChannelType::Azure
             | ChannelType::DeepSeek
-            | ChannelType::Moonshot => Box::new(OpenAIAdaptor),
+            | ChannelType::Moonshot
+            | ChannelType::Zai => Box::new(OpenAIAdaptor),
             ChannelType::Anthropic => Box::new(AnthropicAdaptor),
             ChannelType::Gemini => Box::new(GoogleGeminiAdaptor),
             ChannelType::VertexAi => Box::new(crate::adaptor::vertex::VertexAdaptor::default()),
