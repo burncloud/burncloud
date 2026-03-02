@@ -85,7 +85,7 @@ fn test_large_value_handling() {
     let price_per_million = dollars_to_nano(1000.0);
     let cost = calculate_cost_safe(tokens, price_per_million);
     assert_eq!(
-        cost, 10_000_000_000_000_000u64,
+        cost, 10_000_000_000_000_000i64,
         "10B tokens at $1000/1M should cost $10M"
     );
 

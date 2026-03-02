@@ -287,7 +287,7 @@ async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
     PriceModel::upsert(&_db, &cny_price).await?;
 
     // Retrieve all currencies for the model (no region filter)
-    let all_prices = PriceModel::list(&_db, 100, 0, None).await?;
+    let all_prices = PriceModel::list(&_db, 100, 0, None, None).await?;
     let model_prices: Vec<_> = all_prices
         .iter()
         .filter(|p| p.model == model_name)
