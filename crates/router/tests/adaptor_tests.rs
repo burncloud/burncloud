@@ -1933,3 +1933,215 @@ async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
     println!("✓ Pricing configuration test passed");
     Ok(())
 }
+
+/// Test z.ai Adaptor with real API
+/// z.ai uses Anthropic-compatible API with Bearer authentication
+#[tokio::test]
+async fn test_zai_adaptor() -> anyhow::Result<()> {
+    let env_key = std::env::var("ZAI_API_KEY").unwrap_or_default();
+    if env_key.is_empty() {
+        println!("Skipping z.ai Adaptor test: ZAI_API_KEY not set.");
+        return Ok(());
+    }
+
+    let (_db, pool) = setup_db().await?;
+
+    let id = "zai-adaptor-test";
+    let name = "zai-glm-5";
+    let base_url = "https://api.z.ai/api/anthropic";
+    let match_path = "/v1/messages";
+    let auth_type = "Bearer";
+    let protocol = "zai"; // Use zai protocol for adaptor
+
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type,
+            protocol = excluded.protocol
+        "#,
+    )
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(&env_key)
+    .bind(match_path)
+    .bind(auth_type)
+    .bind(protocol)
+    .execute(&pool)
+    .await?;
+
+    // Setup pricing for z.ai model
+    let price_input = PriceInput {
+        model: "glm-5".to_string(),
+        input_price: burncloud_common::dollars_to_nano(0.0) as i64, // $0/1M tokens (example)
+        output_price: burncloud_common::dollars_to_nano(0.0) as i64,
+        currency: "USD".to_string(),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+    };
+    PriceModel::upsert(&_db, &price_input).await?;
+
+    let port = 3015;
+    start_test_server(port).await;
+
+    let client = Client::new();
+    let url = format!("http://localhost:{}/v1/messages", port);
+
+    let openai_body = json!({
+        "model": "glm-5",
+        "messages": [
+            { "role": "user", "content": "Say 'ZAI_ADAPTOR_WORKS' in exactly those words" }
+        ],
+        "max_tokens": 50
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .header("x-use-adaptor", "true")
+        .json(&openai_body)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    let resp_json: serde_json::Value = resp.json().await?;
+
+    println!("z.ai Response Status: {}", status);
+    println!("z.ai Response: {}", serde_json::to_string_pretty(&resp_json)?);
+
+    assert_eq!(status, 200, "Expected 200 status, got {}", status);
+
+    // Verify the response has OpenAI-compatible structure
+    assert_eq!(resp_json["object"], "chat.completion", "Expected chat.completion object");
+    assert!(resp_json["choices"].is_array(), "Expected choices array");
+
+    let choices = resp_json["choices"].as_array().unwrap();
+    assert!(!choices.is_empty(), "Expected non-empty choices");
+
+    let content = choices[0]["message"]["content"].as_str().unwrap_or("");
+    println!("z.ai Content: {}", content);
+
+    // Verify usage tokens are present
+    assert!(resp_json["usage"]["prompt_tokens"].is_i64() || resp_json["usage"]["prompt_tokens"].is_u64());
+    assert!(resp_json["usage"]["completion_tokens"].is_i64() || resp_json["usage"]["completion_tokens"].is_u64());
+
+    println!("✓ z.ai Adaptor test passed");
+    Ok(())
+}
+
+/// Test z.ai streaming adaptor with real API
+#[tokio::test]
+async fn test_zai_streaming_adaptor() -> anyhow::Result<()> {
+    let env_key = std::env::var("ZAI_API_KEY").unwrap_or_default();
+    if env_key.is_empty() {
+        println!("Skipping z.ai Streaming Adaptor test: ZAI_API_KEY not set.");
+        return Ok(());
+    }
+
+    let (_db, pool) = setup_db().await?;
+
+    let id = "zai-streaming-test";
+    let name = "zai-glm-5-stream";
+    let base_url = "https://api.z.ai/api/anthropic";
+    let match_path = "/v1/messages";
+    let auth_type = "Bearer";
+    let protocol = "zai";
+
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type,
+            protocol = excluded.protocol
+        "#,
+    )
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(&env_key)
+    .bind(match_path)
+    .bind(auth_type)
+    .bind(protocol)
+    .execute(&pool)
+    .await?;
+
+    // Setup pricing
+    let price_input = PriceInput {
+        model: "glm-5".to_string(),
+        input_price: 0,
+        output_price: 0,
+        currency: "USD".to_string(),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+    };
+    PriceModel::upsert(&_db, &price_input).await?;
+
+    let port = 3016;
+    start_test_server(port).await;
+
+    let client = Client::new();
+    let url = format!("http://localhost:{}/v1/messages", port);
+
+    let openai_body = json!({
+        "model": "glm-5",
+        "messages": [
+            { "role": "user", "content": "Count from 1 to 3" }
+        ],
+        "max_tokens": 50,
+        "stream": true
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .header("x-use-adaptor", "true")
+        .json(&openai_body)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    println!("z.ai Streaming Response Status: {}", status);
+
+    assert_eq!(status, 200, "Expected 200 status for streaming, got {}", status);
+
+    // Read the streaming response
+    let body = resp.text().await?;
+    println!("z.ai Streaming Response (first 500 chars): {}", &body[..body.len().min(500)]);
+
+    // Verify we got SSE-formatted response with OpenAI-compatible chunks
+    assert!(body.contains("data:"), "Expected SSE data format");
+
+    println!("✓ z.ai Streaming Adaptor test passed");
+    Ok(())
+}

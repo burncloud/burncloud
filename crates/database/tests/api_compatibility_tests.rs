@@ -13,7 +13,7 @@ async fn test_database_creation_methods() {
     if db_result.is_ok() {
         let db = db_result.unwrap();
         assert!(
-            db.connection().is_ok(),
+            db.get_connection().is_ok(),
             "Default database should be initialized"
         );
         let _ = db.close().await;
@@ -25,7 +25,7 @@ async fn test_database_creation_methods() {
     if default_db_result.is_ok() {
         let explicit_db = default_db_result.unwrap();
         assert!(
-            explicit_db.connection().is_ok(),
+            explicit_db.get_connection().is_ok(),
             "Default database should be initialized"
         );
         let _ = explicit_db.close().await;
@@ -36,7 +36,7 @@ async fn test_database_creation_methods() {
 
     if let Ok(default_convenience_db) = default_convenience_result {
         assert!(
-            default_convenience_db.connection().is_ok(),
+            default_convenience_db.get_connection().is_ok(),
             "Default convenience database should be initialized"
         );
         let _ = default_convenience_db.close().await;
@@ -139,7 +139,7 @@ async fn test_database_operation_consistency() {
         }
 
         // Test connection access
-        let connection_result = db.connection();
+        let connection_result = db.get_connection();
         assert!(
             connection_result.is_ok(),
             "{} database should provide connection access",
@@ -266,7 +266,7 @@ async fn test_database_connection_consistency() {
     let databases = create_test_databases().await;
 
     for (db_type, db) in &databases {
-        if let Ok(connection) = db.connection() {
+        if let Ok(connection) = db.get_connection() {
             // Test pool access
             let pool = connection.pool();
             assert!(

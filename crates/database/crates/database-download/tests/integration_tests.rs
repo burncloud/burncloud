@@ -22,7 +22,7 @@ mod tests {
         db.update_status(gid, "active").await.unwrap();
 
         // 更新进度
-        db.update_progress(gid, 1024, 512).await.unwrap();
+        db.update_progress(gid, 2048, 1024, 512).await.unwrap();
 
         // 验证更新
         let updated = db.get(gid).await.unwrap().unwrap();

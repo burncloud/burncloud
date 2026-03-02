@@ -217,6 +217,7 @@ pub enum ChannelType {
     DoubaoVideo = 54,
     Sora = 55,
     Replicate = 56,
+    Zai = 57,
     Dummy,
 }
 
@@ -275,6 +276,7 @@ impl From<i32> for ChannelType {
             54 => ChannelType::DoubaoVideo,
             55 => ChannelType::Sora,
             56 => ChannelType::Replicate,
+            57 => ChannelType::Zai,
             _ => ChannelType::Unknown,
         }
     }

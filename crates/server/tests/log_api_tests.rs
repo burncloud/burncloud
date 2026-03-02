@@ -11,6 +11,7 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
     RouterDatabase::init(&db).await?; // Ensure tables exist
 
     let log_entry = DbRouterLog {
+        id: 0,
         request_id: uuid::Uuid::new_v4().to_string(),
         user_id: Some("test-api-user".to_string()),
         path: "/v1/test/log".to_string(),
@@ -19,7 +20,8 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
         latency_ms: 150,
         prompt_tokens: 10,
         completion_tokens: 20,
-        cost: 0.001,
+        cost: 1_000_000, // 0.001 in nanodollars
+        created_at: None,
     };
 
     RouterDatabase::insert_log(&db, &log_entry).await?;
