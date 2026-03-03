@@ -8,6 +8,7 @@ pub mod gemini_billing;
 pub mod gemini_passthrough;
 pub mod gemini_region_pricing;
 pub mod gemini_thinking;
+pub mod gemini_veo_test;
 pub mod log;
 pub mod monitor;
 pub mod relay;
