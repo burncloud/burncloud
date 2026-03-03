@@ -96,6 +96,7 @@ bcrypt = "0.17.1"
 
 # Archive
 zip = "0.6"
+png = "0.17"
 
 # Testing
 tokio-test = "0.4"
@@ -104,6 +105,9 @@ mockito = "1.7"
 # System
 libc = "0.2"
 winapi = { version = "0.3", features = ["winuser", "pdh", "psapi", "winbase", "winnt", "fileapi", "handleapi", "winerror", "sysinfoapi", "winreg"] }
+
+# Build dependencies
+winres = "0.1"
 
 # UI
 dioxus-desktop = "0.7.2"

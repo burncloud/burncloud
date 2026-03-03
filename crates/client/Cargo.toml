@@ -35,6 +35,7 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 once_cell.workspace = true
+png.workspace = true
 
 # LiveView specific dependencies
 dioxus-liveview = { workspace = true, optional = true }
@@ -47,3 +48,9 @@ burncloud-client-tray.workspace = true
 
 [dev-dependencies]
 dioxus-ssr = { workspace = true }
+
+# winres is always included as a build dependency so cross-compilation works
+# (e.g., building Windows .exe from Linux CI). The build.rs script checks the
+# TARGET environment variable and only uses winres when building for Windows.
+[build-dependencies]
+winres.workspace = true
