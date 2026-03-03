@@ -121,14 +121,20 @@ async fn test_basic_image_generation() {
     println!("Response structure: {:?}", chat_res);
 
     // Verify response has candidates (Gemini native format in passthrough mode)
-    assert!(chat_res.get("candidates").is_some(), "Should have candidates");
+    assert!(
+        chat_res.get("candidates").is_some(),
+        "Should have candidates"
+    );
 
     // Verify image data is present
     let image_data = extract_image_data(&chat_res);
     assert!(image_data.is_some(), "Should have image data in response");
 
     let (mime_type, data) = image_data.unwrap();
-    assert!(mime_type.starts_with("image/"), "MIME type should be image/*");
+    assert!(
+        mime_type.starts_with("image/"),
+        "MIME type should be image/*"
+    );
     assert!(!data.is_empty(), "Image data should not be empty");
 
     println!("SUCCESS: Basic image generation verified");
@@ -174,7 +180,10 @@ async fn test_text_image_mixed_output() {
         .expect("Chat failed");
 
     // Verify response has candidates
-    assert!(chat_res.get("candidates").is_some(), "Should have candidates");
+    assert!(
+        chat_res.get("candidates").is_some(),
+        "Should have candidates"
+    );
 
     // Check for any parts in response
     let parts = chat_res["candidates"][0]["content"]["parts"].as_array();
@@ -257,11 +266,20 @@ async fn test_conversational_image_editing() {
 
     // Verify edited image is present
     let edited_image = extract_image_data(&edit_res);
-    assert!(edited_image.is_some(), "Should have edited image in response");
+    assert!(
+        edited_image.is_some(),
+        "Should have edited image in response"
+    );
 
     let (edited_mime, edited_data) = edited_image.unwrap();
-    assert!(edited_mime.starts_with("image/"), "Edited MIME type should be image/*");
-    assert!(!edited_data.is_empty(), "Edited image data should not be empty");
+    assert!(
+        edited_mime.starts_with("image/"),
+        "Edited MIME type should be image/*"
+    );
+    assert!(
+        !edited_data.is_empty(),
+        "Edited image data should not be empty"
+    );
 
     println!("SUCCESS: Conversational image editing verified");
 }
@@ -368,8 +386,14 @@ async fn test_image_fusion_multiple_references() {
     assert!(fused_image.is_some(), "Should have fused image in response");
 
     let (fused_mime, fused_data) = fused_image.unwrap();
-    assert!(fused_mime.starts_with("image/"), "Fused MIME type should be image/*");
-    assert!(!fused_data.is_empty(), "Fused image data should not be empty");
+    assert!(
+        fused_mime.starts_with("image/"),
+        "Fused MIME type should be image/*"
+    );
+    assert!(
+        !fused_data.is_empty(),
+        "Fused image data should not be empty"
+    );
 
     println!("SUCCESS: Image fusion with multiple references verified");
 }
@@ -425,9 +449,15 @@ async fn test_billing_verification() {
         assert!(prompt_tokens.is_some(), "Should have promptTokenCount");
         assert!(prompt_tokens.unwrap() > 0, "Prompt tokens should be > 0");
 
-        assert!(completion_tokens.is_some(), "Should have candidatesTokenCount");
+        assert!(
+            completion_tokens.is_some(),
+            "Should have candidatesTokenCount"
+        );
         // Image generation typically has higher token count for output
-        assert!(completion_tokens.unwrap() > 0, "Completion tokens should be > 0");
+        assert!(
+            completion_tokens.unwrap() > 0,
+            "Completion tokens should be > 0"
+        );
 
         // Verify total = prompt + completion (approximately, may have cached tokens)
         if let (Some(pt), Some(ct), Some(tt)) = (prompt_tokens, completion_tokens, total_tokens) {
@@ -484,7 +514,10 @@ async fn test_response_modalities_passthrough() {
 
     // Verify response has image
     let image_data = extract_image_data(&chat_res);
-    assert!(image_data.is_some(), "Should have image with IMAGE modality");
+    assert!(
+        image_data.is_some(),
+        "Should have image with IMAGE modality"
+    );
 
     println!("SUCCESS: responseModalities parameter passthrough verified");
 }
@@ -521,7 +554,10 @@ async fn test_native_path_image_generation() {
 
     println!("Testing native path image generation passthrough...");
     let chat_res = user_client
-        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &chat_body)
+        .post(
+            "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+            &chat_body,
+        )
         .await
         .expect("Native path image generation failed");
 
@@ -590,7 +626,10 @@ async fn test_native_path_image_editing() {
 
     println!("Generating initial image via native path...");
     let gen_res = user_client
-        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &gen_body)
+        .post(
+            "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+            &gen_body,
+        )
         .await
         .expect("Initial generation failed");
 
@@ -625,7 +664,10 @@ async fn test_native_path_image_editing() {
 
     println!("Testing native path image editing with inlineData...");
     let edit_res = user_client
-        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &edit_body)
+        .post(
+            "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+            &edit_body,
+        )
         .await
         .expect("Image editing failed");
 
@@ -641,7 +683,10 @@ async fn test_native_path_image_editing() {
         edited_mime.starts_with("image/"),
         "Edited MIME type should be image/*"
     );
-    assert!(!edited_data.is_empty(), "Edited image data should not be empty");
+    assert!(
+        !edited_data.is_empty(),
+        "Edited image data should not be empty"
+    );
 
     println!("SUCCESS: Native path image editing with inlineData verified");
     println!("  - Original image: {} bytes", image_data.len());
@@ -680,7 +725,10 @@ async fn test_native_path_multimodal_response() {
 
     println!("Testing native path multimodal response...");
     let chat_res = user_client
-        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &chat_body)
+        .post(
+            "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+            &chat_body,
+        )
         .await
         .expect("Multimodal request failed");
 
@@ -712,7 +760,10 @@ async fn test_native_path_multimodal_response() {
     println!("  - Has text part: {}", has_text);
     println!("  - Has image part: {}", has_image);
 
-    assert!(has_image, "Should have at least one image part (inlineData)");
+    assert!(
+        has_image,
+        "Should have at least one image part (inlineData)"
+    );
 
     // Verify inlineData structure
     for part in parts {
@@ -731,7 +782,11 @@ async fn test_native_path_multimodal_response() {
                 "MIME type should be image/*"
             );
             assert!(!data.is_empty(), "Image data should not be empty");
-            println!("  - Found inlineData: mimeType={}, data_len={}", mime_type, data.len());
+            println!(
+                "  - Found inlineData: mimeType={}, data_len={}",
+                mime_type,
+                data.len()
+            );
         }
     }
 
@@ -770,7 +825,10 @@ async fn test_native_path_billing_verification() {
 
     println!("Testing native path billing verification...");
     let chat_res = user_client
-        .post("/v1beta/models/gemini-3-pro-image-preview:generateContent", &chat_body)
+        .post(
+            "/v1beta/models/gemini-3-pro-image-preview:generateContent",
+            &chat_body,
+        )
         .await
         .expect("Native path billing test failed");
 
@@ -790,10 +848,16 @@ async fn test_native_path_billing_verification() {
         let prompt = prompt_tokens.unwrap();
         assert!(prompt > 0, "Prompt tokens should be > 0");
 
-        assert!(completion_tokens.is_some(), "Should have candidatesTokenCount");
+        assert!(
+            completion_tokens.is_some(),
+            "Should have candidatesTokenCount"
+        );
         let completion = completion_tokens.unwrap();
         // Image generation typically has higher token count for output
-        assert!(completion > 0, "Completion tokens should be > 0 for image generation");
+        assert!(
+            completion > 0,
+            "Completion tokens should be > 0 for image generation"
+        );
 
         // Verify total tokens calculation
         if let Some(total) = total_tokens {

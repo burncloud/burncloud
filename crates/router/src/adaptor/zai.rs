@@ -122,15 +122,16 @@ impl ZaiAdaptor {
                 }
 
                 // Check if this is a stop event based on event: line or data content
-                if current_event == Some("message_stop") || current_event == Some("content_block_stop") {
+                if current_event == Some("message_stop")
+                    || current_event == Some("content_block_stop")
+                {
                     return Some("data: [DONE]\n\n".to_string());
                 }
 
                 if let Ok(json) = serde_json::from_str::<Value>(data) {
                     // Handle different event types from z.ai
                     // Use type from JSON data, or fall back to event: line
-                    let event_type = json.get("type").and_then(|t| t.as_str())
-                        .or(current_event);
+                    let event_type = json.get("type").and_then(|t| t.as_str()).or(current_event);
 
                     if let Some(event_type) = event_type {
                         match event_type {

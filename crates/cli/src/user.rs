@@ -51,7 +51,14 @@ pub async fn cmd_user_login(db: &Database, matches: &ArgMatches) -> Result<()> {
     if let Some(email) = &user.email {
         println!("  Email: {}", email);
     }
-    println!("  Status: {}", if user.status == 1 { "Active" } else { "Disabled" });
+    println!(
+        "  Status: {}",
+        if user.status == 1 {
+            "Active"
+        } else {
+            "Disabled"
+        }
+    );
 
     // Convert nanodollar balances to display format
     let balance_usd = user.balance_usd as f64 / 1_000_000_000.0;
@@ -78,11 +85,11 @@ pub async fn cmd_user_register(db: &Database, matches: &ArgMatches) -> Result<()
     let email = matches.get_one::<String>("email").cloned();
 
     // Check if user already exists
-    if UserDatabase::get_user_by_username(db, username).await?.is_some() {
-        return Err(anyhow::anyhow!(
-            "User '{}' already exists",
-            username
-        ));
+    if UserDatabase::get_user_by_username(db, username)
+        .await?
+        .is_some()
+    {
+        return Err(anyhow::anyhow!("User '{}' already exists", username));
     }
 
     // Hash password
@@ -180,7 +187,11 @@ pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
                 let balance_usd = user.balance_usd as f64 / 1_000_000_000.0;
                 let balance_cny = user.balance_cny as f64 / 1_000_000_000.0;
                 let email = user.email.as_deref().unwrap_or("N/A");
-                let status = if user.status == 1 { "Active" } else { "Disabled" };
+                let status = if user.status == 1 {
+                    "Active"
+                } else {
+                    "Disabled"
+                };
                 println!(
                     "{:<40} {:<20} {:<30} ${:<14.2} ¥{:<14.2} {:<10}",
                     user.id, user.username, email, balance_usd, balance_cny, status
@@ -205,7 +216,9 @@ pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<(
     let mut recharges = UserDatabase::list_recharges(db, user_id).await?;
 
     // Apply limit
-    let recharges: Vec<_> = recharges.drain(..std::cmp::min(limit as usize, recharges.len())).collect();
+    let recharges: Vec<_> = recharges
+        .drain(..std::cmp::min(limit as usize, recharges.len()))
+        .collect();
 
     if recharges.is_empty() {
         println!("No recharges found for user: {}", user_id);
@@ -253,7 +266,10 @@ pub async fn cmd_user_check_username(db: &Database, matches: &ArgMatches) -> Res
 pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
     let user_id = matches.get_one::<String>("user-id").unwrap();
     let amount_str = matches.get_one::<String>("amount").unwrap();
-    let currency = matches.get_one::<String>("currency").unwrap().to_uppercase();
+    let currency = matches
+        .get_one::<String>("currency")
+        .unwrap()
+        .to_uppercase();
 
     // Validate currency
     if currency != "USD" && currency != "CNY" {

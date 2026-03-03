@@ -23,9 +23,13 @@ members = [
     "crates/core",
     "crates/database",
     "crates/database/crates/database-download",
+    "crates/database/crates/database-group",
     "crates/database/crates/database-models",
     "crates/database/crates/database-router",
+    "crates/database/crates/database-router-log",
     "crates/database/crates/database-setting",
+    "crates/database/crates/database-token",
+    "crates/database/crates/database-upstream",
     "crates/database/crates/database-user",
     "crates/download",
     "crates/download/crates/download-aria2",
@@ -139,9 +143,13 @@ burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }
 burncloud-database = { path = "crates/database" }
 burncloud-database-download = { path = "crates/database/crates/database-download" }
+burncloud-database-group = { path = "crates/database/crates/database-group" }
 burncloud-database-models = { path = "crates/database/crates/database-models" }
 burncloud-database-router = { path = "crates/database/crates/database-router" }
+burncloud-database-router-log = { path = "crates/database/crates/database-router-log" }
 burncloud-database-setting = { path = "crates/database/crates/database-setting" }
+burncloud-database-token = { path = "crates/database/crates/database-token" }
+burncloud-database-upstream = { path = "crates/database/crates/database-upstream" }
 burncloud-database-user = { path = "crates/database/crates/database-user" }
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
