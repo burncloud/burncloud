@@ -44,6 +44,10 @@ members = [
     "crates/service/crates/service-inference",
     "crates/service/crates/service-redis",
     "crates/service/crates/service-user",
+    "crates/service/crates/service-upstream",
+    "crates/service/crates/service-token",
+    "crates/service/crates/service-group",
+    "crates/service/crates/service-router-log",
     "crates/tests",
 ]
 
@@ -164,6 +168,10 @@ burncloud-service-setting = { path = "crates/service/crates/service-setting" }
 burncloud-service-inference = { path = "crates/service/crates/service-inference" }
 burncloud-service-redis = { path = "crates/service/crates/service-redis" }
 burncloud-service-user = { path = "crates/service/crates/service-user" }
+burncloud-service-upstream = { path = "crates/service/crates/service-upstream" }
+burncloud-service-token = { path = "crates/service/crates/service-token" }
+burncloud-service-group = { path = "crates/service/crates/service-group" }
+burncloud-service-router-log = { path = "crates/service/crates/service-router-log" }
 
 [package]
 name = "burncloud"
