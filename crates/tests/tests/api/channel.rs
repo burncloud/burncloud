@@ -149,7 +149,10 @@ async fn test_ch01_create_openai_channel() {
         .post("/console/api/channel", &body)
         .await
         .expect("Create OpenAI channel failed");
-    assert_eq!(res["success"], true, "OpenAI channel creation should succeed");
+    assert_eq!(
+        res["success"], true,
+        "OpenAI channel creation should succeed"
+    );
 
     let id = res["data"]["id"].as_i64().expect("No ID returned");
     println!("✓ CH-01: OpenAI channel created with ID: {}", id);
@@ -522,10 +525,7 @@ async fn test_ch02_update_channel_models() {
         .put("/console/api/channel", &update_body)
         .await
         .expect("Update failed");
-    assert_eq!(
-        update_res["success"], true,
-        "Models update should succeed"
-    );
+    assert_eq!(update_res["success"], true, "Models update should succeed");
 
     // Verify models were updated
     let get_res = client
@@ -533,8 +533,7 @@ async fn test_ch02_update_channel_models() {
         .await
         .expect("Get failed");
     assert_eq!(
-        get_res["data"]["models"],
-        "gpt-4,gpt-4-turbo,gpt-3.5-turbo",
+        get_res["data"]["models"], "gpt-4,gpt-4-turbo,gpt-3.5-turbo",
         "Models should be updated"
     );
 
@@ -572,7 +571,10 @@ async fn test_ch03_delete_channel_normal() {
         .get(&format!("/console/api/channel/{}", id))
         .await
         .expect("Get failed");
-    assert_eq!(get_res["success"], true, "Channel should exist before delete");
+    assert_eq!(
+        get_res["success"], true,
+        "Channel should exist before delete"
+    );
 
     // Delete the channel
     let del_res = client
@@ -690,10 +692,7 @@ async fn test_ch04_list_channels_default() {
         .expect("List failed");
 
     assert_eq!(list_res["success"], true, "List should succeed");
-    assert!(
-        list_res["data"].is_array(),
-        "Data should be an array"
-    );
+    assert!(list_res["data"].is_array(), "Data should be an array");
     assert!(
         list_res["pagination"].is_object(),
         "Pagination should be present"
@@ -701,10 +700,7 @@ async fn test_ch04_list_channels_default() {
 
     // Default pagination values
     assert_eq!(list_res["pagination"]["limit"], 20, "Default limit is 20");
-    assert_eq!(
-        list_res["pagination"]["offset"], 0,
-        "Default offset is 0"
-    );
+    assert_eq!(list_res["pagination"]["offset"], 0, "Default offset is 0");
 
     println!("✓ CH-04: List channels with default pagination");
 }
@@ -798,7 +794,11 @@ async fn test_ch04_get_channel_by_id() {
     assert_eq!(get_res["success"], true, "Get should succeed");
     assert_eq!(get_res["data"]["id"], id, "ID should match");
     assert_eq!(get_res["data"]["name"], channel_name, "Name should match");
-    assert_eq!(get_res["data"]["type"], channel_types::OPENAI, "Type should match");
+    assert_eq!(
+        get_res["data"]["type"],
+        channel_types::OPENAI,
+        "Type should match"
+    );
     assert_eq!(get_res["data"]["group"], "test-group", "Group should match");
     assert_eq!(get_res["data"]["weight"], 15, "Weight should match");
     assert_eq!(get_res["data"]["priority"], 200, "Priority should match");
@@ -818,10 +818,7 @@ async fn test_ch04_get_nonexistent_channel() {
         .await
         .expect("Get failed");
 
-    assert_eq!(
-        get_res["success"], false,
-        "Get non-existent should fail"
-    );
+    assert_eq!(get_res["success"], false, "Get non-existent should fail");
     assert_eq!(
         get_res["message"], "channel not found",
         "Should return 'not found' message"
@@ -1045,10 +1042,7 @@ async fn test_ch05_channel_zero_weight() {
         .get(&format!("/console/api/channel/{}", id))
         .await
         .expect("Get failed");
-    assert_eq!(
-        get_res["data"]["weight"], 0,
-        "Weight should be 0"
-    );
+    assert_eq!(get_res["data"]["weight"], 0, "Weight should be 0");
 
     println!("✓ CH-05: Channel with zero weight created successfully");
 
@@ -1108,7 +1102,10 @@ async fn test_ch05_channel_group_segregation() {
         .get(&format!("/console/api/channel/{}", id_vip))
         .await
         .expect("Get VIP failed");
-    assert_eq!(get_vip["data"]["group"], "vip", "VIP channel group should be 'vip'");
+    assert_eq!(
+        get_vip["data"]["group"], "vip",
+        "VIP channel group should be 'vip'"
+    );
 
     let get_default = client
         .get(&format!("/console/api/channel/{}", id_default))
