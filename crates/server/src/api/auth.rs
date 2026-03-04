@@ -16,6 +16,12 @@ use serde_json::{json, Value};
 use std::env;
 use uuid::Uuid;
 
+/// Minimum password length
+const MIN_PASSWORD_LENGTH: usize = 6;
+
+/// Minimum username length
+const MIN_USERNAME_LENGTH: usize = 3;
+
 #[derive(Deserialize)]
 pub struct RegisterDto {
     pub username: String,
@@ -73,6 +79,87 @@ pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     Ok(token_data.claims)
 }
 
+/// Validate username format and length
+fn validate_username(username: &str) -> Result<(), String> {
+    let trimmed = username.trim();
+
+    if trimmed.is_empty() {
+        return Err("Username cannot be empty".to_string());
+    }
+
+    if trimmed.len() < MIN_USERNAME_LENGTH {
+        return Err(format!(
+            "Username must be at least {} characters long",
+            MIN_USERNAME_LENGTH
+        ));
+    }
+
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(
+            "Username can only contain letters, numbers, underscores, and hyphens".to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+/// Validate password strength
+fn validate_password(password: &str) -> Result<(), String> {
+    if password.is_empty() {
+        return Err("Password cannot be empty".to_string());
+    }
+
+    if password.len() < MIN_PASSWORD_LENGTH {
+        return Err(format!(
+            "Password must be at least {} characters long",
+            MIN_PASSWORD_LENGTH
+        ));
+    }
+
+    let has_letter = password.chars().any(|c| c.is_alphabetic());
+    let has_number = password.chars().any(|c| c.is_numeric());
+
+    if !has_letter || !has_number {
+        return Err("Password must contain at least one letter and one number".to_string());
+    }
+
+    Ok(())
+}
+
+/// Validate email format
+fn validate_email(email: &str) -> Result<(), String> {
+    if email.is_empty() {
+        return Ok(()); // Empty email is allowed (optional field)
+    }
+
+    // Check for basic email format: something@something.something
+    if !email.contains('@') {
+        return Err("Invalid email format".to_string());
+    }
+
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return Err("Invalid email format".to_string());
+    }
+
+    let (local, domain) = (parts[0], parts[1]);
+
+    // Local part should not be empty
+    if local.is_empty() {
+        return Err("Invalid email format".to_string());
+    }
+
+    // Domain should have at least a dot and something after it
+    if !domain.contains('.') || domain.ends_with('.') || domain.starts_with('.') {
+        return Err("Invalid email format".to_string());
+    }
+
+    Ok(())
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/auth/register", post(create_user))
@@ -83,7 +170,24 @@ async fn create_user(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
 ) -> AxumJson<Value> {
-    // 1. Check if user exists
+    // Validate username
+    if let Err(msg) = validate_username(&payload.username) {
+        return AxumJson(json!({ "success": false, "message": msg }));
+    }
+
+    // Validate password
+    if let Err(msg) = validate_password(&payload.password) {
+        return AxumJson(json!({ "success": false, "message": msg }));
+    }
+
+    // Validate email if provided
+    if let Some(ref email) = payload.email {
+        if let Err(msg) = validate_email(email) {
+            return AxumJson(json!({ "success": false, "message": msg }));
+        }
+    }
+
+    // Check if user exists
     match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(_)) => {
             return AxumJson(json!({ "success": false, "message": "Username already exists" }))
@@ -95,7 +199,7 @@ async fn create_user(
         _ => {}
     }
 
-    // 2. Hash password
+    // Hash password
     let password_hash = match hash(&payload.password, DEFAULT_COST) {
         Ok(h) => h,
         Err(e) => {
@@ -104,7 +208,7 @@ async fn create_user(
         }
     };
 
-    // 3. Create user
+    // Create user
     let user = DbUser {
         id: Uuid::new_v4().to_string(),
         username: payload.username.clone(),
@@ -221,5 +325,52 @@ pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Respo
             Ok(next.run(req).await)
         }
         Err(_) => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_username() {
+        // Valid usernames
+        assert!(validate_username("abc").is_ok());
+        assert!(validate_username("test_user").is_ok());
+        assert!(validate_username("test-user").is_ok());
+        assert!(validate_username("user123").is_ok());
+
+        // Invalid usernames
+        assert!(validate_username("").is_err());
+        assert!(validate_username("ab").is_err());
+        assert!(validate_username("   ").is_err());
+        assert!(validate_username("test@user").is_err());
+        assert!(validate_username("test user").is_err());
+    }
+
+    #[test]
+    fn test_validate_password() {
+        // Valid passwords
+        assert!(validate_password("abc123").is_ok());
+        assert!(validate_password("password1").is_ok());
+        assert!(validate_password("SecurePass123!").is_ok());
+
+        // Invalid passwords
+        assert!(validate_password("").is_err());
+        assert!(validate_password("12345").is_err());
+        assert!(validate_password("abcde").is_err());
+        assert!(validate_password("abcdef").is_err());
+        assert!(validate_password("123456").is_err());
+    }
+
+    #[test]
+    fn test_validate_email() {
+        // Valid emails
+        assert!(validate_email("").is_ok());
+        assert!(validate_email("test@example.com").is_ok());
+
+        // Invalid emails
+        assert!(validate_email("invalid-email").is_err());
+        assert!(validate_email("test@").is_err());
     }
 }

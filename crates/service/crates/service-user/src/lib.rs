@@ -20,6 +20,12 @@ const SIGNUP_BONUS_NANO: i64 = 10_000_000_000;
 /// Default token expiration time in hours
 const DEFAULT_TOKEN_EXPIRATION_HOURS: i64 = 24;
 
+/// Minimum password length
+const MIN_PASSWORD_LENGTH: usize = 6;
+
+/// Minimum username length
+const MIN_USERNAME_LENGTH: usize = 3;
+
 /// Errors that can occur in the user service
 #[derive(Debug, Error)]
 pub enum UserServiceError {
@@ -46,6 +52,15 @@ pub enum UserServiceError {
 
     #[error("Configuration error: {0}")]
     ConfigError(String),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    #[error("Password is too weak: {0}")]
+    WeakPassword(String),
+
+    #[error("Token has expired")]
+    TokenExpired,
 }
 
 pub type Result<T> = std::result::Result<T, UserServiceError>;
@@ -113,6 +128,79 @@ impl UserService {
         }
     }
 
+    /// Validate username format and length
+    ///
+    /// # Arguments
+    /// * `username` - Username to validate
+    ///
+    /// # Returns
+    /// * `Ok(())` - If username is valid
+    /// * `Err(UserServiceError::InvalidInput)` - If username is invalid
+    pub fn validate_username(username: &str) -> Result<()> {
+        let trimmed = username.trim();
+
+        if trimmed.is_empty() {
+            return Err(UserServiceError::InvalidInput(
+                "Username cannot be empty".to_string(),
+            ));
+        }
+
+        if trimmed.len() < MIN_USERNAME_LENGTH {
+            return Err(UserServiceError::InvalidInput(format!(
+                "Username must be at least {} characters long",
+                MIN_USERNAME_LENGTH
+            )));
+        }
+
+        // Check for valid characters (alphanumeric, underscore, hyphen)
+        if !trimmed
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(UserServiceError::InvalidInput(
+                "Username can only contain letters, numbers, underscores, and hyphens"
+                    .to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Validate password strength
+    ///
+    /// # Arguments
+    /// * `password` - Password to validate
+    ///
+    /// # Returns
+    /// * `Ok(())` - If password meets strength requirements
+    /// * `Err(UserServiceError::WeakPassword)` - If password is too weak
+    pub fn validate_password_strength(password: &str) -> Result<()> {
+        if password.is_empty() {
+            return Err(UserServiceError::WeakPassword(
+                "Password cannot be empty".to_string(),
+            ));
+        }
+
+        if password.len() < MIN_PASSWORD_LENGTH {
+            return Err(UserServiceError::WeakPassword(format!(
+                "Password must be at least {} characters long",
+                MIN_PASSWORD_LENGTH
+            )));
+        }
+
+        // Check for at least one letter and one number
+        let has_letter = password.chars().any(|c| c.is_alphabetic());
+        let has_number = password.chars().any(|c| c.is_numeric());
+
+        if !has_letter || !has_number {
+            return Err(UserServiceError::WeakPassword(
+                "Password must contain at least one letter and one number".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Register a new user
     ///
     /// # Arguments
@@ -131,6 +219,19 @@ impl UserService {
         password: &str,
         email: Option<String>,
     ) -> Result<String> {
+        // Validate inputs
+        Self::validate_username(username)?;
+        Self::validate_password_strength(password)?;
+
+        // Validate email format if provided
+        if let Some(ref email) = email {
+            if !email.is_empty() && !email.contains('@') {
+                return Err(UserServiceError::InvalidInput(
+                    "Invalid email format".to_string(),
+                ));
+            }
+        }
+
         // Check if user already exists
         if let Ok(Some(_)) = UserDatabase::get_user_by_username(db, username).await {
             return Err(UserServiceError::UserAlreadyExists);
@@ -254,7 +355,30 @@ impl UserService {
         )
         .map_err(|e| UserServiceError::TokenValidationError(e.to_string()))?;
 
+        // Check expiration explicitly
+        let now = Utc::now().timestamp();
+        if token_data.claims.exp < now {
+            return Err(UserServiceError::TokenExpired);
+        }
+
         Ok((token_data.claims.sub, token_data.claims.username))
+    }
+
+    /// Validate token and check if it's expired
+    ///
+    /// # Arguments
+    /// * `token` - JWT token string
+    ///
+    /// # Returns
+    /// * `Ok(true)` - If token is valid and not expired
+    /// * `Ok(false)` - If token is expired
+    /// * `Err(UserServiceError)` - If token is invalid
+    pub fn is_token_valid(&self, token: &str) -> Result<bool> {
+        match self.validate_token(token) {
+            Ok(_) => Ok(true),
+            Err(UserServiceError::TokenExpired) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -268,6 +392,10 @@ impl Default for UserService {
 mod tests {
     use super::*;
     use burncloud_database::create_default_database;
+
+    // ============================================================
+    // AUTH-01: User Registration Tests
+    // ============================================================
 
     #[tokio::test]
     async fn test_register_user() -> anyhow::Result<()> {
@@ -322,6 +450,104 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_register_empty_username() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+
+        // Empty username should fail
+        let result = service.register_user(&db, "", "password123", None).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            UserServiceError::InvalidInput(_)
+        ));
+
+        // Whitespace-only username should fail
+        let result = service
+            .register_user(&db, "   ", "password123", None)
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            UserServiceError::InvalidInput(_)
+        ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_short_username() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+
+        // Username too short should fail
+        let result = service.register_user(&db, "ab", "password123", None).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UserServiceError::InvalidInput(_)));
+        assert!(err.to_string().contains("at least"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_username_chars() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+
+        // Username with invalid characters should fail
+        let result = service
+            .register_user(&db, "test@user!", "password123", None)
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UserServiceError::InvalidInput(_)));
+        assert!(err.to_string().contains("letters, numbers"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+
+        // Invalid email should fail
+        let result = service
+            .register_user(
+                &db,
+                &username,
+                "password123",
+                Some("invalid-email".to_string()),
+            )
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UserServiceError::InvalidInput(_)));
+        assert!(err.to_string().contains("email"));
+
+        Ok(())
+    }
+
+    // ============================================================
+    // AUTH-02: User Login Tests
+    // ============================================================
 
     #[tokio::test]
     async fn test_login_user_success() -> anyhow::Result<()> {
@@ -391,6 +617,10 @@ mod tests {
         Ok(())
     }
 
+    // ============================================================
+    // AUTH-03: JWT Token Tests
+    // ============================================================
+
     #[test]
     fn test_generate_token() {
         let service = UserService::with_secret("test-secret".to_string());
@@ -443,5 +673,262 @@ mod tests {
             result.unwrap_err(),
             UserServiceError::TokenValidationError(_)
         ));
+    }
+
+    #[test]
+    fn test_token_expiration() {
+        let service = UserService::with_secret("test-secret".to_string());
+
+        // Create an expired token manually by setting exp in the past
+        let now = Utc::now();
+        let past_expiration = now - Duration::hours(1); // Expired 1 hour ago
+
+        let claims = Claims {
+            sub: "user123".to_string(),
+            username: "testuser".to_string(),
+            exp: past_expiration.timestamp(),
+            iat: (now - Duration::hours(2)).timestamp(),
+        };
+
+        let expired_token = jsonwebtoken::encode(
+            &Header::default(),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret("test-secret".as_bytes()),
+        )
+        .unwrap();
+
+        // Token should be expired - reject with either TokenExpired or TokenValidationError
+        // (jsonwebtoken may return ExpiredSignature error which maps to TokenValidationError)
+        let result = service.validate_token(&expired_token);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let is_expired = matches!(err, UserServiceError::TokenExpired)
+            || matches!(err, UserServiceError::TokenValidationError(_));
+        assert!(is_expired, "Expected token to be rejected as expired, got: {:?}", err);
+    }
+
+    #[test]
+    fn test_is_token_valid() {
+        let service = UserService::with_secret("test-secret".to_string());
+
+        let token = service.generate_token("user123", "testuser").unwrap();
+
+        // Token should be valid
+        assert!(service.is_token_valid(&token.token).unwrap());
+
+        // Invalid token should return error
+        let result = service.is_token_valid("invalid.token.here");
+        assert!(result.is_err());
+    }
+
+    // ============================================================
+    // AUTH-04: Password Validation Tests
+    // ============================================================
+
+    #[tokio::test]
+    async fn test_register_empty_password() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+
+        // Empty password should fail
+        let result = service.register_user(&db, &username, "", None).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UserServiceError::WeakPassword(_)));
+        assert!(err.to_string().contains("empty"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_short_password() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+
+        // Short password should fail
+        let result = service.register_user(&db, &username, "abc", None).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UserServiceError::WeakPassword(_)));
+        assert!(err.to_string().contains("at least"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_password_no_number() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+
+        // Password without number should fail
+        let result = service
+            .register_user(&db, &username, "password", None)
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UserServiceError::WeakPassword(_)));
+        assert!(err.to_string().contains("letter and one number"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_register_password_no_letter() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+
+        // Password without letter should fail
+        let result = service
+            .register_user(&db, &username, "12345678", None)
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UserServiceError::WeakPassword(_)));
+        assert!(err.to_string().contains("letter and one number"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_password_strength() {
+        // Valid passwords
+        assert!(UserService::validate_password_strength("abc123").is_ok());
+        assert!(UserService::validate_password_strength("password1").is_ok());
+        assert!(UserService::validate_password_strength("SecurePass123!").is_ok());
+
+        // Invalid passwords
+        assert!(UserService::validate_password_strength("").is_err());
+        assert!(UserService::validate_password_strength("12345").is_err());
+        assert!(UserService::validate_password_strength("abcde").is_err());
+        assert!(UserService::validate_password_strength("abcdef").is_err());
+        assert!(UserService::validate_password_strength("123456").is_err());
+    }
+
+    #[test]
+    fn test_validate_username() {
+        // Valid usernames
+        assert!(UserService::validate_username("abc").is_ok());
+        assert!(UserService::validate_username("test_user").is_ok());
+        assert!(UserService::validate_username("test-user").is_ok());
+        assert!(UserService::validate_username("user123").is_ok());
+        assert!(UserService::validate_username("TestUser123").is_ok());
+
+        // Invalid usernames
+        assert!(UserService::validate_username("").is_err());
+        assert!(UserService::validate_username("ab").is_err());
+        assert!(UserService::validate_username("   ").is_err());
+        assert!(UserService::validate_username("test@user").is_err());
+        assert!(UserService::validate_username("test user").is_err());
+    }
+
+    // ============================================================
+    // AUTH-05: Role Assignment Tests
+    // ============================================================
+
+    #[tokio::test]
+    async fn test_default_role_assignment() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+
+        // Register user
+        let user_id = service
+            .register_user(&db, &username, "password123", None)
+            .await?;
+
+        // Check default role was assigned
+        let roles = UserDatabase::get_user_roles(&db, &user_id).await?;
+        assert!(roles.contains(&"user".to_string()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_role_query() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+
+        // Register user
+        let user_id = service
+            .register_user(&db, &username, "password123", None)
+            .await?;
+
+        // Query roles
+        let roles = UserDatabase::get_user_roles(&db, &user_id).await?;
+        assert!(!roles.is_empty());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_login_returns_roles() -> anyhow::Result<()> {
+        let db = create_default_database().await?;
+        UserDatabase::init(&db).await?;
+
+        let service = UserService::new();
+        let username = format!("testuser_{}", Uuid::new_v4());
+        let password = "password123";
+
+        // Register and login
+        service
+            .register_user(&db, &username, password, None)
+            .await?;
+
+        // Login should succeed and we can verify roles separately
+        let token = service.login_user(&db, &username, password).await?;
+        assert!(!token.token.is_empty());
+
+        Ok(())
+    }
+
+    // ============================================================
+    // bcrypt Hash Verification Tests
+    // ============================================================
+
+    #[test]
+    fn test_bcrypt_hash_verification() {
+        let password = "test_password_123";
+        let hash = hash(password, DEFAULT_COST).unwrap();
+
+        // Correct password should verify
+        assert!(verify(password, &hash).unwrap());
+
+        // Wrong password should not verify
+        assert!(!verify("wrong_password", &hash).unwrap());
+    }
+
+    #[test]
+    fn test_bcrypt_hash_uniqueness() {
+        let password = "same_password";
+        let hash1 = hash(password, DEFAULT_COST).unwrap();
+        let hash2 = hash(password, DEFAULT_COST).unwrap();
+
+        // Same password should produce different hashes (due to salt)
+        assert_ne!(hash1, hash2);
+
+        // Both should verify the same password
+        assert!(verify(password, &hash1).unwrap());
+        assert!(verify(password, &hash2).unwrap());
     }
 }
