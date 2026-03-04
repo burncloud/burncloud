@@ -15,3 +15,6 @@ dotenvy = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 axum = { workspace = true }
 burncloud-common.workspace = true
+burncloud-router.workspace = true
+burncloud-database-router-log.workspace = true
+burncloud-service-monitor.workspace = true
