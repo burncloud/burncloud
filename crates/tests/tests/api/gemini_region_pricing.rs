@@ -56,7 +56,11 @@ async fn create_cn_channel(admin_client: &TestClient) -> String {
         .post("/console/api/channel", &body)
         .await
         .expect("Create channel failed");
-    assert_eq!(res["success"], true, "Failed to create CN channel: {:?}", res);
+    assert_eq!(
+        res["success"], true,
+        "Failed to create CN channel: {:?}",
+        res
+    );
     channel_name
 }
 
@@ -84,7 +88,11 @@ async fn create_intl_channel(admin_client: &TestClient) -> String {
         .post("/console/api/channel", &body)
         .await
         .expect("Create channel failed");
-    assert_eq!(res["success"], true, "Failed to create Intl channel: {:?}", res);
+    assert_eq!(
+        res["success"], true,
+        "Failed to create Intl channel: {:?}",
+        res
+    );
     channel_name
 }
 
@@ -143,8 +151,16 @@ async fn test_cn_channel_uses_cny_pricing() {
     // Get initial balances
     let (usd_before, cny_before) = get_demo_user_balances(&admin_client).await;
     println!("Before request:");
-    println!("  USD Balance: ${:.9} ({} nanodollars)", nano_to_dollars(usd_before), usd_before);
-    println!("  CNY Balance: ¥{:.9} ({} nanodollars)", nano_to_dollars(cny_before), cny_before);
+    println!(
+        "  USD Balance: ${:.9} ({} nanodollars)",
+        nano_to_dollars(usd_before),
+        usd_before
+    );
+    println!(
+        "  CNY Balance: ¥{:.9} ({} nanodollars)",
+        nano_to_dollars(cny_before),
+        cny_before
+    );
 
     // Send request through CN channel
     let chat_body = json!({
@@ -168,16 +184,32 @@ async fn test_cn_channel_uses_cny_pricing() {
     // Get balances after request
     let (usd_after, cny_after) = get_demo_user_balances(&admin_client).await;
     println!("\nAfter request:");
-    println!("  USD Balance: ${:.9} ({} nanodollars)", nano_to_dollars(usd_after), usd_after);
-    println!("  CNY Balance: ¥{:.9} ({} nanodollars)", nano_to_dollars(cny_after), cny_after);
+    println!(
+        "  USD Balance: ${:.9} ({} nanodollars)",
+        nano_to_dollars(usd_after),
+        usd_after
+    );
+    println!(
+        "  CNY Balance: ¥{:.9} ({} nanodollars)",
+        nano_to_dollars(cny_after),
+        cny_after
+    );
 
     // Calculate deductions
     let usd_deducted = usd_before - usd_after;
     let cny_deducted = cny_before - cny_after;
 
     println!("\nDeductions:");
-    println!("  USD deducted: ${:.9} ({} nanodollars)", nano_to_dollars(usd_deducted), usd_deducted);
-    println!("  CNY deducted: ¥{:.9} ({} nanodollars)", nano_to_dollars(cny_deducted), cny_deducted);
+    println!(
+        "  USD deducted: ${:.9} ({} nanodollars)",
+        nano_to_dollars(usd_deducted),
+        usd_deducted
+    );
+    println!(
+        "  CNY deducted: ¥{:.9} ({} nanodollars)",
+        nano_to_dollars(cny_deducted),
+        cny_deducted
+    );
 
     // Verify pricing region lookup worked
     // Note: The actual currency deduction depends on the price's currency field
@@ -200,10 +232,16 @@ async fn test_cn_channel_uses_cny_pricing() {
 
     // For CN region with CNY pricing, one of the balances should be deducted
     let total_deducted = usd_deducted + cny_deducted;
-    assert!(total_deducted > 0, "At least one balance should be deducted for CN region");
+    assert!(
+        total_deducted > 0,
+        "At least one balance should be deducted for CN region"
+    );
 
     println!("\n✓ SUCCESS: CN region channel pricing verified");
-    println!("  Total deducted: ${:.9} equivalent", nano_to_dollars(total_deducted));
+    println!(
+        "  Total deducted: ${:.9} equivalent",
+        nano_to_dollars(total_deducted)
+    );
 }
 
 // ============================================================================
@@ -228,8 +266,16 @@ async fn test_intl_channel_uses_usd_pricing() {
     // Get initial balances
     let (usd_before, cny_before) = get_demo_user_balances(&admin_client).await;
     println!("Before request:");
-    println!("  USD Balance: ${:.9} ({} nanodollars)", nano_to_dollars(usd_before), usd_before);
-    println!("  CNY Balance: ¥{:.9} ({} nanodollars)", nano_to_dollars(cny_before), cny_before);
+    println!(
+        "  USD Balance: ${:.9} ({} nanodollars)",
+        nano_to_dollars(usd_before),
+        usd_before
+    );
+    println!(
+        "  CNY Balance: ¥{:.9} ({} nanodollars)",
+        nano_to_dollars(cny_before),
+        cny_before
+    );
 
     // Send request through International channel
     let chat_body = json!({
@@ -253,16 +299,32 @@ async fn test_intl_channel_uses_usd_pricing() {
     // Get balances after request
     let (usd_after, cny_after) = get_demo_user_balances(&admin_client).await;
     println!("\nAfter request:");
-    println!("  USD Balance: ${:.9} ({} nanodollars)", nano_to_dollars(usd_after), usd_after);
-    println!("  CNY Balance: ¥{:.9} ({} nanodollars)", nano_to_dollars(cny_after), cny_after);
+    println!(
+        "  USD Balance: ${:.9} ({} nanodollars)",
+        nano_to_dollars(usd_after),
+        usd_after
+    );
+    println!(
+        "  CNY Balance: ¥{:.9} ({} nanodollars)",
+        nano_to_dollars(cny_after),
+        cny_after
+    );
 
     // Calculate deductions
     let usd_deducted = usd_before - usd_after;
     let cny_deducted = cny_before - cny_after;
 
     println!("\nDeductions:");
-    println!("  USD deducted: ${:.9} ({} nanodollars)", nano_to_dollars(usd_deducted), usd_deducted);
-    println!("  CNY deducted: ¥{:.9} ({} nanodollars)", nano_to_dollars(cny_deducted), cny_deducted);
+    println!(
+        "  USD deducted: ${:.9} ({} nanodollars)",
+        nano_to_dollars(usd_deducted),
+        usd_deducted
+    );
+    println!(
+        "  CNY deducted: ¥{:.9} ({} nanodollars)",
+        nano_to_dollars(cny_deducted),
+        cny_deducted
+    );
 
     // Get the log to verify the cost was calculated
     if let Some(log) = get_latest_log(&admin_client).await {
@@ -280,10 +342,16 @@ async fn test_intl_channel_uses_usd_pricing() {
 
     // For international region with USD pricing, USD balance should be deducted
     let total_deducted = usd_deducted + cny_deducted;
-    assert!(total_deducted > 0, "At least one balance should be deducted for Intl region");
+    assert!(
+        total_deducted > 0,
+        "At least one balance should be deducted for Intl region"
+    );
 
     println!("\n✓ SUCCESS: International region channel pricing verified");
-    println!("  Total deducted: ${:.9} equivalent", nano_to_dollars(total_deducted));
+    println!(
+        "  Total deducted: ${:.9} equivalent",
+        nano_to_dollars(total_deducted)
+    );
 }
 
 // ============================================================================
@@ -364,15 +432,26 @@ async fn test_region_pricing_comparison() {
 
     // Summary
     println!("\n=== Summary ===");
-    println!("CN channel: USD={:.9}, CNY={:.9}", nano_to_dollars(cn_usd_deducted), nano_to_dollars(cn_cny_deducted));
-    println!("Intl channel: USD={:.9}, CNY={:.9}", nano_to_dollars(intl_usd_deducted), nano_to_dollars(intl_cny_deducted));
+    println!(
+        "CN channel: USD={:.9}, CNY={:.9}",
+        nano_to_dollars(cn_usd_deducted),
+        nano_to_dollars(cn_cny_deducted)
+    );
+    println!(
+        "Intl channel: USD={:.9}, CNY={:.9}",
+        nano_to_dollars(intl_usd_deducted),
+        nano_to_dollars(intl_cny_deducted)
+    );
 
     // Verify total deductions
     let total_deducted = cn_usd_deducted + cn_cny_deducted + intl_usd_deducted + intl_cny_deducted;
     assert!(total_deducted > 0, "Total deductions should be positive");
 
     println!("\n✓ SUCCESS: Region pricing comparison completed");
-    println!("  Total deductions: ${:.9} equivalent", nano_to_dollars(total_deducted));
+    println!(
+        "  Total deductions: ${:.9} equivalent",
+        nano_to_dollars(total_deducted)
+    );
 }
 
 // ============================================================================
@@ -406,7 +485,10 @@ async fn test_price_lookup_by_region() {
     let cn_channel = channels
         .get("data")
         .and_then(|d| d.as_array())
-        .and_then(|arr| arr.iter().find(|c| c["name"].as_str() == Some(&cn_channel_name)));
+        .and_then(|arr| {
+            arr.iter()
+                .find(|c| c["name"].as_str() == Some(&cn_channel_name))
+        });
 
     assert!(cn_channel.is_some(), "CN channel should exist");
     let cn_channel = cn_channel.unwrap();
@@ -417,7 +499,11 @@ async fn test_price_lookup_by_region() {
 
     // Verify pricing_region is set to "cn"
     let pricing_region = cn_channel.get("pricing_region").and_then(|r| r.as_str());
-    assert_eq!(pricing_region, Some("cn"), "CN channel should have pricing_region='cn'");
+    assert_eq!(
+        pricing_region,
+        Some("cn"),
+        "CN channel should have pricing_region='cn'"
+    );
 
     println!("\n✓ SUCCESS: Price lookup by region verified");
 }
@@ -467,13 +553,25 @@ async fn test_full_billing_cycle_with_region() {
     // Extract token counts
     let (prompt_tokens, completion_tokens) = if let Some(usage) = chat_res.get("usageMetadata") {
         (
-            usage.get("promptTokenCount").and_then(|t| t.as_u64()).unwrap_or(0),
-            usage.get("candidatesTokenCount").and_then(|t| t.as_u64()).unwrap_or(0),
+            usage
+                .get("promptTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+            usage
+                .get("candidatesTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
         )
     } else if let Some(usage) = chat_res.get("usage") {
         (
-            usage.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-            usage.get("completion_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
+            usage
+                .get("prompt_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+            usage
+                .get("completion_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
         )
     } else {
         (0, 0)
@@ -507,15 +605,31 @@ async fn test_full_billing_cycle_with_region() {
 
         println!("\n[6] Log entry:");
         println!("    Model: {:?}", log_model);
-        println!("    Cost: {} nanodollars (${:.9})", log_cost.unwrap_or(0), nano_to_dollars(log_cost.unwrap_or(0)));
-        println!("    Tokens: {} prompt + {} completion", log_prompt.unwrap_or(0), log_completion.unwrap_or(0));
+        println!(
+            "    Cost: {} nanodollars (${:.9})",
+            log_cost.unwrap_or(0),
+            nano_to_dollars(log_cost.unwrap_or(0))
+        );
+        println!(
+            "    Tokens: {} prompt + {} completion",
+            log_prompt.unwrap_or(0),
+            log_completion.unwrap_or(0)
+        );
 
         // Verify log matches response tokens
         if prompt_tokens > 0 {
-            assert_eq!(log_prompt.unwrap_or(0) as u64, prompt_tokens, "Log prompt tokens should match response");
+            assert_eq!(
+                log_prompt.unwrap_or(0) as u64,
+                prompt_tokens,
+                "Log prompt tokens should match response"
+            );
         }
         if completion_tokens > 0 {
-            assert_eq!(log_completion.unwrap_or(0) as u64, completion_tokens, "Log completion tokens should match response");
+            assert_eq!(
+                log_completion.unwrap_or(0) as u64,
+                completion_tokens,
+                "Log completion tokens should match response"
+            );
         }
     }
 

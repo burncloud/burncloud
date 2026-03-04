@@ -1,0 +1,10 @@
+[package]
+name = "burncloud-service-router-log"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database-router-log.workspace = true
+burncloud-database.workspace = true
+tokio.workspace = true
+serde.workspace = true

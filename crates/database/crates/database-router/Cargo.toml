@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 burncloud-database.workspace = true
+burncloud-database-upstream = { path = "../database-upstream" }
+burncloud-database-token = { path = "../database-token" }
+burncloud-database-group = { path = "../database-group" }
+burncloud-database-router-log = { path = "../database-router-log" }
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true

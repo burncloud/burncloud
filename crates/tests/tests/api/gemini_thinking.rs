@@ -470,7 +470,10 @@ async fn test_gemini_3_flash_thinking_native_path() {
     println!("Path: /v1beta/models/gemini-3-flash-thinking:generateContent");
 
     let chat_res = user_client
-        .post("/v1beta/models/gemini-3-flash-thinking:generateContent", &chat_body)
+        .post(
+            "/v1beta/models/gemini-3-flash-thinking:generateContent",
+            &chat_body,
+        )
         .await
         .expect("Native path thinking request failed");
 
@@ -565,7 +568,10 @@ async fn test_gemini_3_flash_thinking_output_format() {
     println!("Testing gemini-3-flash-thinking output format with complex reasoning...");
 
     let chat_res = user_client
-        .post("/v1beta/models/gemini-3-flash-thinking:generateContent", &chat_body)
+        .post(
+            "/v1beta/models/gemini-3-flash-thinking:generateContent",
+            &chat_body,
+        )
         .await
         .expect("Thinking output format test failed");
 
@@ -577,7 +583,9 @@ async fn test_gemini_3_flash_thinking_output_format() {
         .and_then(|c| c.as_array())
         .expect("Should have candidates array");
 
-    let first_candidate = candidates.first().expect("Should have at least one candidate");
+    let first_candidate = candidates
+        .first()
+        .expect("Should have at least one candidate");
 
     let content = first_candidate.get("content").expect("Should have content");
     let parts = content
@@ -620,7 +628,10 @@ async fn test_gemini_3_flash_thinking_output_format() {
     println!("  - Thought indicators: {}", thought_parts.len());
 
     // Verify we got a response
-    assert!(!parts.is_empty(), "Should have at least one part in response");
+    assert!(
+        !parts.is_empty(),
+        "Should have at least one part in response"
+    );
 
     // The answer should mention $0.05
     let all_text = text_parts.join(" ");
@@ -665,7 +676,10 @@ async fn test_gemini_3_flash_thinking_budget_passthrough() {
     println!("Request thinkingBudget: 1000");
 
     let chat_res = user_client
-        .post("/v1beta/models/gemini-3-flash-thinking:generateContent", &chat_body)
+        .post(
+            "/v1beta/models/gemini-3-flash-thinking:generateContent",
+            &chat_body,
+        )
         .await
         .expect("thinkingBudget passthrough test failed");
 
@@ -722,7 +736,10 @@ async fn test_gemini_3_flash_thinking_billing() {
     println!("Testing gemini-3-flash-thinking billing verification...");
 
     let chat_res = user_client
-        .post("/v1beta/models/gemini-3-flash-thinking:generateContent", &chat_body)
+        .post(
+            "/v1beta/models/gemini-3-flash-thinking:generateContent",
+            &chat_body,
+        )
         .await
         .expect("Thinking billing test failed");
 
@@ -736,7 +753,9 @@ async fn test_gemini_3_flash_thinking_billing() {
 
         // Check for thinking tokens (may be in a separate field)
         let thought_tokens = usage.get("thoughtTokensCount").and_then(|t| t.as_u64());
-        let cached_tokens = usage.get("cachedContentTokenCount").and_then(|t| t.as_u64());
+        let cached_tokens = usage
+            .get("cachedContentTokenCount")
+            .and_then(|t| t.as_u64());
 
         println!("Usage metadata:");
         println!("  - promptTokenCount: {:?}", prompt_tokens);
@@ -750,9 +769,15 @@ async fn test_gemini_3_flash_thinking_billing() {
         let prompt = prompt_tokens.unwrap();
         assert!(prompt > 0, "Prompt tokens should be > 0");
 
-        assert!(completion_tokens.is_some(), "Should have candidatesTokenCount");
+        assert!(
+            completion_tokens.is_some(),
+            "Should have candidatesTokenCount"
+        );
         let completion = completion_tokens.unwrap();
-        assert!(completion > 0, "Completion tokens should be > 0 for thinking model");
+        assert!(
+            completion > 0,
+            "Completion tokens should be > 0 for thinking model"
+        );
 
         // Verify total tokens calculation
         if let Some(total) = total_tokens {

@@ -8,3 +8,7 @@ burncloud-service-ip.workspace = true
 burncloud-service-models.workspace = true
 burncloud-service-monitor.workspace = true
 burncloud-service-inference.workspace = true
+burncloud-service-upstream.workspace = true
+burncloud-service-token.workspace = true
+burncloud-service-group.workspace = true
+burncloud-service-router-log.workspace = true
