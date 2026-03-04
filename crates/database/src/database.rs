@@ -71,6 +71,16 @@ impl Database {
         Ok(db)
     }
 
+    /// Create a database with a specific URL (for testing purposes)
+    pub async fn with_url(database_url: &str) -> Result<Self> {
+        let mut db = Self {
+            connection: None,
+            database_url: database_url.to_string(),
+        };
+        db.initialize().await?;
+        Ok(db)
+    }
+
     pub async fn initialize(&mut self) -> Result<()> {
         sqlx::any::install_default_drivers();
         let connection = DatabaseConnection::new(&self.database_url).await?;

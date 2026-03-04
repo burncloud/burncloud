@@ -10,8 +10,10 @@ reqwest = { workspace = true, features = ["blocking"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-sqlx = { workspace = true, features = ["sqlite", "runtime-tokio-rustls"] }
+sqlx = { workspace = true, features = ["sqlite", "postgres", "any", "runtime-tokio-rustls"] }
 dotenvy = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 axum = { workspace = true }
+serial_test = "3.0"
 burncloud-common.workspace = true
+burncloud-database.workspace = true
