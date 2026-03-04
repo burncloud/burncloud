@@ -4,7 +4,7 @@
 //! - status: Show system status and metrics
 
 use anyhow::Result;
-use burncloud_database::{Database, sqlx};
+use burncloud_database::{sqlx, Database};
 use burncloud_database_models::ChannelModel;
 use clap::ArgMatches;
 use serde::Serialize;
@@ -33,8 +33,7 @@ pub async fn cmd_monitor_status(db: &Database, matches: &ArgMatches) -> Result<(
     let active_channels = channels.iter().filter(|c| c.status == 1).count();
 
     // Get today's statistics from router_logs
-    let (today_requests, today_tokens, today_revenue_nano) =
-        get_today_stats(db).await?;
+    let (today_requests, today_tokens, today_revenue_nano) = get_today_stats(db).await?;
 
     // Convert nanodollars to dollars
     let today_revenue_usd = today_revenue_nano as f64 / 1_000_000_000.0;
@@ -60,7 +59,10 @@ pub async fn cmd_monitor_status(db: &Database, matches: &ArgMatches) -> Result<(
             println!("  Channels:");
             println!("    Total:      {}", status.total_channels);
             println!("    Active:     {}", status.active_channels);
-            println!("    Inactive:   {}", status.total_channels - status.active_channels);
+            println!(
+                "    Inactive:   {}",
+                status.total_channels - status.active_channels
+            );
             println!();
             println!("  Today's Statistics:");
             println!("    Requests:   {}", status.today_requests);
@@ -114,11 +116,7 @@ async fn get_today_stats(db: &Database) -> Result<(i64, i64, i64)> {
         .fetch_one(conn.pool())
         .await?;
 
-    Ok((
-        row.0.unwrap_or(0),
-        row.1.unwrap_or(0),
-        row.2.unwrap_or(0),
-    ))
+    Ok((row.0.unwrap_or(0), row.1.unwrap_or(0), row.2.unwrap_or(0)))
 }
 
 /// Route monitor commands

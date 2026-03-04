@@ -87,8 +87,8 @@ pub async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
         .unwrap_or("table");
 
     // Fetch logs with optional filtering
-    let logs = RouterDatabase::get_logs_filtered(db, user_id, channel_id, model, limit, offset)
-        .await?;
+    let logs =
+        RouterDatabase::get_logs_filtered(db, user_id, channel_id, model, limit, offset).await?;
 
     if logs.is_empty() {
         println!("No logs found");
@@ -107,7 +107,14 @@ pub async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
             // Table format
             println!(
                 "{:<8} {:<36} {:<36} {:<20} {:<15} {:<15} {:<12} {:<20}",
-                "ID", "UserID", "ChannelID", "Model", "PromptTokens", "CompletionTokens", "Cost", "Timestamp"
+                "ID",
+                "UserID",
+                "ChannelID",
+                "Model",
+                "PromptTokens",
+                "CompletionTokens",
+                "Cost",
+                "Timestamp"
             );
             println!("{}", "-".repeat(170));
             for item in &list_items {
@@ -218,8 +225,10 @@ pub async fn cmd_log_usage(db: &Database, matches: &ArgMatches) -> Result<()> {
                 "  Total Completion Tokens: {}",
                 stats.total_completion_tokens
             );
-            println!("  Total Tokens:           {}",
-                stats.total_prompt_tokens + stats.total_completion_tokens);
+            println!(
+                "  Total Tokens:           {}",
+                stats.total_prompt_tokens + stats.total_completion_tokens
+            );
             println!();
             println!("  Cost (USD):            ${:.6}", cost_usd);
             println!("  Cost (CNY):            ¥{:.6}", cost_cny);

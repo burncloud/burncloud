@@ -92,7 +92,12 @@ fn nano_to_dollars(nano: i64) -> f64 {
 /// Calculate expected cost in nanodollars
 /// Formula: (prompt_tokens * input_price + completion_tokens * output_price) / 1_000_000
 #[allow(dead_code)]
-fn calculate_expected_cost(prompt_tokens: u64, completion_tokens: u64, input_price: i64, output_price: i64) -> i64 {
+fn calculate_expected_cost(
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    input_price: i64,
+    output_price: i64,
+) -> i64 {
     let input_cost = (prompt_tokens as i128 * input_price as i128) / 1_000_000;
     let output_cost = (completion_tokens as i128 * output_price as i128) / 1_000_000;
     (input_cost + output_cost) as i64
@@ -147,8 +152,14 @@ async fn test_token_counting_gemini_native() {
         assert!(prompt_tokens.is_some(), "Should have promptTokenCount");
         assert!(prompt_tokens.unwrap() > 0, "Prompt tokens should be > 0");
 
-        assert!(completion_tokens.is_some(), "Should have candidatesTokenCount");
-        assert!(completion_tokens.unwrap() > 0, "Completion tokens should be > 0");
+        assert!(
+            completion_tokens.is_some(),
+            "Should have candidatesTokenCount"
+        );
+        assert!(
+            completion_tokens.unwrap() > 0,
+            "Completion tokens should be > 0"
+        );
 
         // Verify total = prompt + completion
         if let (Some(pt), Some(ct), Some(tt)) = (prompt_tokens, completion_tokens, total_tokens) {
@@ -208,7 +219,10 @@ async fn test_token_counting_openai_format() {
         assert!(prompt_tokens.unwrap() > 0, "Prompt tokens should be > 0");
 
         assert!(completion_tokens.is_some(), "Should have completion_tokens");
-        assert!(completion_tokens.unwrap() > 0, "Completion tokens should be > 0");
+        assert!(
+            completion_tokens.unwrap() > 0,
+            "Completion tokens should be > 0"
+        );
 
         // Verify total = prompt + completion
         if let (Some(pt), Some(ct), Some(tt)) = (prompt_tokens, completion_tokens, total_tokens) {
@@ -262,13 +276,25 @@ async fn test_cost_calculation() {
     // Extract token counts
     let (prompt_tokens, completion_tokens) = if let Some(usage) = chat_res.get("usageMetadata") {
         (
-            usage.get("promptTokenCount").and_then(|t| t.as_u64()).unwrap_or(0),
-            usage.get("candidatesTokenCount").and_then(|t| t.as_u64()).unwrap_or(0),
+            usage
+                .get("promptTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+            usage
+                .get("candidatesTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
         )
     } else if let Some(usage) = chat_res.get("usage") {
         (
-            usage.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-            usage.get("completion_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
+            usage
+                .get("prompt_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+            usage
+                .get("completion_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
         )
     } else {
         (0, 0)
@@ -286,16 +312,25 @@ async fn test_cost_calculation() {
 
     // Calculate balance deduction
     let balance_deducted = balance_before - balance_after;
-    println!("Balance deducted: ${:.9}", nano_to_dollars(balance_deducted));
+    println!(
+        "Balance deducted: ${:.9}",
+        nano_to_dollars(balance_deducted)
+    );
 
     // Verify cost was deducted (should be positive if tokens were used)
     if prompt_tokens > 0 && completion_tokens > 0 {
-        assert!(balance_deducted > 0, "Balance should be deducted after API call");
+        assert!(
+            balance_deducted > 0,
+            "Balance should be deducted after API call"
+        );
 
         // Gemini-2.0-flash pricing: ~$0.00001/input token, ~$0.00004/output token
         // These are approximate - actual prices may vary
         // The key assertion is that cost > 0 and balance was deducted
-        println!("SUCCESS: Cost calculation verified - balance deducted: ${:.9}", nano_to_dollars(balance_deducted));
+        println!(
+            "SUCCESS: Cost calculation verified - balance deducted: ${:.9}",
+            nano_to_dollars(balance_deducted)
+        );
     } else {
         println!("WARNING: Could not extract token counts for cost verification");
     }
@@ -320,7 +355,11 @@ async fn test_balance_deduction() {
 
     // Get initial balance
     let balance_before = get_demo_user_balance(&admin_client).await;
-    println!("Balance before: {} nanodollars (${:.9})", balance_before, nano_to_dollars(balance_before));
+    println!(
+        "Balance before: {} nanodollars (${:.9})",
+        balance_before,
+        nano_to_dollars(balance_before)
+    );
 
     // Make multiple requests to verify cumulative deduction
     for i in 1..=3 {
@@ -345,13 +384,24 @@ async fn test_balance_deduction() {
 
     // Get balance after
     let balance_after = get_demo_user_balance(&admin_client).await;
-    println!("Balance after: {} nanodollars (${:.9})", balance_after, nano_to_dollars(balance_after));
+    println!(
+        "Balance after: {} nanodollars (${:.9})",
+        balance_after,
+        nano_to_dollars(balance_after)
+    );
 
     let total_deducted = balance_before - balance_after;
-    println!("Total deducted: {} nanodollars (${:.9})", total_deducted, nano_to_dollars(total_deducted));
+    println!(
+        "Total deducted: {} nanodollars (${:.9})",
+        total_deducted,
+        nano_to_dollars(total_deducted)
+    );
 
     // Verify balance was deducted
-    assert!(balance_after < balance_before, "Balance should decrease after API calls");
+    assert!(
+        balance_after < balance_before,
+        "Balance should decrease after API calls"
+    );
     assert!(total_deducted > 0, "Total deduction should be positive");
 
     println!("SUCCESS: Balance deduction verified over multiple requests");
@@ -394,13 +444,25 @@ async fn test_log_recording() {
     // Extract token counts from response
     let (prompt_tokens, completion_tokens) = if let Some(usage) = chat_res.get("usageMetadata") {
         (
-            usage.get("promptTokenCount").and_then(|t| t.as_u64()).unwrap_or(0) as i32,
-            usage.get("candidatesTokenCount").and_then(|t| t.as_u64()).unwrap_or(0) as i32,
+            usage
+                .get("promptTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as i32,
+            usage
+                .get("candidatesTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as i32,
         )
     } else if let Some(usage) = chat_res.get("usage") {
         (
-            usage.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as i32,
-            usage.get("completion_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as i32,
+            usage
+                .get("prompt_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as i32,
+            usage
+                .get("completion_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as i32,
         )
     } else {
         (0, 0)
@@ -436,19 +498,24 @@ async fn test_log_recording() {
         );
 
         assert!(log_prompt_tokens.is_some(), "Log should have prompt_tokens");
-        assert!(log_completion_tokens.is_some(), "Log should have completion_tokens");
+        assert!(
+            log_completion_tokens.is_some(),
+            "Log should have completion_tokens"
+        );
         assert!(log_cost.is_some(), "Log should have cost");
 
         // Verify token counts match
         if prompt_tokens > 0 {
             assert_eq!(
-                log_prompt_tokens.unwrap() as i32, prompt_tokens,
+                log_prompt_tokens.unwrap() as i32,
+                prompt_tokens,
                 "Log prompt_tokens should match response"
             );
         }
         if completion_tokens > 0 {
             assert_eq!(
-                log_completion_tokens.unwrap() as i32, completion_tokens,
+                log_completion_tokens.unwrap() as i32,
+                completion_tokens,
                 "Log completion_tokens should match response"
             );
         }
@@ -486,7 +553,10 @@ async fn test_full_billing_cycle() {
 
     // 1. Get initial balance
     let balance_before = get_demo_user_balance(&admin_client).await;
-    println!("[1] Initial balance: ${:.9}", nano_to_dollars(balance_before));
+    println!(
+        "[1] Initial balance: ${:.9}",
+        nano_to_dollars(balance_before)
+    );
 
     // 2. Send request
     let chat_body = json!({
@@ -506,37 +576,60 @@ async fn test_full_billing_cycle() {
     // 3. Extract token counts from response
     let (prompt_tokens, completion_tokens) = if let Some(usage) = chat_res.get("usageMetadata") {
         (
-            usage.get("promptTokenCount").and_then(|t| t.as_u64()).unwrap_or(0),
-            usage.get("candidatesTokenCount").and_then(|t| t.as_u64()).unwrap_or(0),
+            usage
+                .get("promptTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+            usage
+                .get("candidatesTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
         )
     } else if let Some(usage) = chat_res.get("usage") {
         (
-            usage.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-            usage.get("completion_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
+            usage
+                .get("prompt_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+            usage
+                .get("completion_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
         )
     } else {
         (0, 0)
     };
 
-    println!("[3] Token counts - prompt: {}, completion: {}", prompt_tokens, completion_tokens);
+    println!(
+        "[3] Token counts - prompt: {}, completion: {}",
+        prompt_tokens, completion_tokens
+    );
 
     // 4. Verify response has content
-    let has_content = chat_res.get("choices").and_then(|c| c.as_array())
-        .map(|arr| arr.first()
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .is_some())
+    let has_content = chat_res
+        .get("choices")
+        .and_then(|c| c.as_array())
+        .map(|arr| {
+            arr.first()
+                .and_then(|c| c.get("message"))
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .is_some()
+        })
         .unwrap_or(false)
-        || chat_res.get("candidates").and_then(|c| c.as_array())
-            .map(|arr| arr.first()
-                .and_then(|c| c.get("content"))
-                .and_then(|c| c.get("parts"))
-                .and_then(|p| p.as_array())
-                .and_then(|parts| parts.first())
-                .and_then(|part| part.get("text"))
-                .and_then(|t| t.as_str())
-                .is_some())
+        || chat_res
+            .get("candidates")
+            .and_then(|c| c.as_array())
+            .map(|arr| {
+                arr.first()
+                    .and_then(|c| c.get("content"))
+                    .and_then(|c| c.get("parts"))
+                    .and_then(|p| p.as_array())
+                    .and_then(|parts| parts.first())
+                    .and_then(|part| part.get("text"))
+                    .and_then(|t| t.as_str())
+                    .is_some()
+            })
             .unwrap_or(false);
 
     assert!(has_content, "Response should have content");
@@ -548,7 +641,8 @@ async fn test_full_billing_cycle() {
     // 6. Verify balance was deducted
     let balance_after = get_demo_user_balance(&admin_client).await;
     let balance_deducted = balance_before - balance_after;
-    println!("[5] Balance after: ${:.9}, deducted: ${:.9}",
+    println!(
+        "[5] Balance after: ${:.9}, deducted: ${:.9}",
         nano_to_dollars(balance_after),
         nano_to_dollars(balance_deducted)
     );
@@ -563,8 +657,10 @@ async fn test_full_billing_cycle() {
         let log_model = log.get("model").and_then(|m| m.as_str());
         let log_cost = log.get("cost").and_then(|c| c.as_i64());
 
-        println!("[6] Log recorded - model: {:?}, cost: {:?} nanodollars",
-            log_model, log_cost);
+        println!(
+            "[6] Log recorded - model: {:?}, cost: {:?} nanodollars",
+            log_model, log_cost
+        );
 
         assert!(log_model.is_some(), "Log should have model");
 
@@ -576,7 +672,8 @@ async fn test_full_billing_cycle() {
             assert!(
                 diff <= tolerance,
                 "Log cost ({}) should approximately match balance deduction ({})",
-                log_cost, deducted
+                log_cost,
+                deducted
             );
         }
     }

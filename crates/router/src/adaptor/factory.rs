@@ -206,7 +206,9 @@ impl ChannelAdaptor for ZaiAdaptor {
     }
 
     fn convert_request(&self, request: &OpenAIChatRequest) -> Option<Value> {
-        Some(crate::adaptor::zai::ZaiAdaptor::convert_request(request.clone()))
+        Some(crate::adaptor::zai::ZaiAdaptor::convert_request(
+            request.clone(),
+        ))
     }
 
     fn convert_response(&self, response: Value, model_name: &str) -> Option<Value> {

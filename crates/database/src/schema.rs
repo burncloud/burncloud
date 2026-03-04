@@ -585,7 +585,8 @@ impl Schema {
             )
             .fetch_one(pool)
             .await
-            .unwrap_or(0) > 0;
+            .unwrap_or(0)
+                > 0;
 
             // Check if migration is needed by examining column types via pragma_table_info
             // Use a raw query that doesn't try to decode any DATETIME columns
@@ -604,7 +605,9 @@ impl Schema {
             };
 
             if needs_migration {
-                eprintln!("[Migration] Migrating router_logs table: DATETIME -> TEXT, REAL -> INTEGER");
+                eprintln!(
+                    "[Migration] Migrating router_logs table: DATETIME -> TEXT, REAL -> INTEGER"
+                );
 
                 // Drop temp table if exists from previous failed migration
                 let _ = sqlx::query("DROP TABLE IF EXISTS router_logs_new")
@@ -640,9 +643,7 @@ impl Schema {
                 .await;
 
                 // Drop old table
-                let _ = sqlx::query("DROP TABLE router_logs")
-                    .execute(pool)
-                    .await;
+                let _ = sqlx::query("DROP TABLE router_logs").execute(pool).await;
 
                 // Rename new table
                 let _ = sqlx::query("ALTER TABLE router_logs_new RENAME TO router_logs")
@@ -650,9 +651,11 @@ impl Schema {
                     .await;
 
                 // Recreate indexes
-                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id)")
-                    .execute(pool)
-                    .await;
+                let _ = sqlx::query(
+                    "CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id)",
+                )
+                .execute(pool)
+                .await;
                 let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at)")
                     .execute(pool)
                     .await;
