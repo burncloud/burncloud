@@ -23,9 +23,13 @@ members = [
     "crates/core",
     "crates/database",
     "crates/database/crates/database-download",
+    "crates/database/crates/database-group",
     "crates/database/crates/database-models",
     "crates/database/crates/database-router",
+    "crates/database/crates/database-router-log",
     "crates/database/crates/database-setting",
+    "crates/database/crates/database-token",
+    "crates/database/crates/database-upstream",
     "crates/database/crates/database-user",
     "crates/download",
     "crates/download/crates/download-aria2",
@@ -40,6 +44,10 @@ members = [
     "crates/service/crates/service-inference",
     "crates/service/crates/service-redis",
     "crates/service/crates/service-user",
+    "crates/service/crates/service-upstream",
+    "crates/service/crates/service-token",
+    "crates/service/crates/service-group",
+    "crates/service/crates/service-router-log",
     "crates/tests",
 ]
 
@@ -139,9 +147,13 @@ burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }
 burncloud-database = { path = "crates/database" }
 burncloud-database-download = { path = "crates/database/crates/database-download" }
+burncloud-database-group = { path = "crates/database/crates/database-group" }
 burncloud-database-models = { path = "crates/database/crates/database-models" }
 burncloud-database-router = { path = "crates/database/crates/database-router" }
+burncloud-database-router-log = { path = "crates/database/crates/database-router-log" }
 burncloud-database-setting = { path = "crates/database/crates/database-setting" }
+burncloud-database-token = { path = "crates/database/crates/database-token" }
+burncloud-database-upstream = { path = "crates/database/crates/database-upstream" }
 burncloud-database-user = { path = "crates/database/crates/database-user" }
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
@@ -156,6 +168,10 @@ burncloud-service-setting = { path = "crates/service/crates/service-setting" }
 burncloud-service-inference = { path = "crates/service/crates/service-inference" }
 burncloud-service-redis = { path = "crates/service/crates/service-redis" }
 burncloud-service-user = { path = "crates/service/crates/service-user" }
+burncloud-service-upstream = { path = "crates/service/crates/service-upstream" }
+burncloud-service-token = { path = "crates/service/crates/service-token" }
+burncloud-service-group = { path = "crates/service/crates/service-group" }
+burncloud-service-router-log = { path = "crates/service/crates/service-router-log" }
 
 [package]
 name = "burncloud"
