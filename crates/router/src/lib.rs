@@ -30,11 +30,11 @@ use burncloud_common::types::OpenAIChatRequest;
 use burncloud_database::Database;
 use burncloud_database_router::{DbRouterLog, RouterDatabase, TokenValidationResult};
 use channel_state::ChannelStateTracker;
-use circuit_breaker::CircuitBreaker;
+pub use circuit_breaker::{CircuitBreaker, FailureType, RateLimitScope};
 use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
 use futures::stream::StreamExt;
 use http_body_util::BodyExt;
-use limiter::RateLimiter;
+pub use limiter::RateLimiter;
 use model_router::ModelRouter;
 use reqwest::Client;
 use std::sync::Arc;
@@ -46,6 +46,9 @@ use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
 pub use state::AppState;
+
+// Re-export types for testing
+pub use adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit, RateLimitState};
 
 /// Helper function to build a response safely without panicking.
 /// Falls back to an empty body with the same status if body construction fails.
@@ -666,7 +669,6 @@ async fn proxy_handler(
 
 use burncloud_common::types::ChannelType;
 use burncloud_database_models::PriceModel;
-use circuit_breaker::FailureType;
 use passthrough::{should_passthrough, PassthroughDecision};
 use response_parser::{parse_error_response, parse_rate_limit_info};
 
