@@ -18,6 +18,7 @@ Cargo.lock
 /*.pid
 /*.md
 /*.db
+/bundle
 /spec
 /progress.txt
 /MESSAGE.md

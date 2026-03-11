@@ -1,0 +1,32 @@
+[package]
+name = "burncloud-installer"
+version = "0.1.0"
+edition = "2021"
+description = "Third-party software installer for BurnCloud"
+authors = ["BurnCloud Team"]
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+homepage = "https://burncloud.dev"
+documentation = "https://docs.burncloud.dev"
+keywords = ["installer", "software-manager", "burncloud"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+regex.workspace = true
+zip.workspace = true
+sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+winapi.workspace = true
+
+[dev-dependencies]
+env_logger.workspace = true

@@ -3,6 +3,7 @@ members = [
     "crates/auto-update",
     "crates/cli",
     "crates/client",
+    "crates/installer",
     "crates/client/crates/client-api",
     "crates/client/crates/client-dashboard",
     "crates/client/crates/client-deploy",
@@ -23,6 +24,7 @@ members = [
     "crates/core",
     "crates/database",
     "crates/database/crates/database-download",
+    "crates/database/crates/database-installer",
     "crates/database/crates/database-models",
     "crates/database/crates/database-router",
     "crates/database/crates/database-setting",
@@ -139,12 +141,14 @@ burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }
 burncloud-database = { path = "crates/database" }
 burncloud-database-download = { path = "crates/database/crates/database-download" }
+burncloud-database-installer = { path = "crates/database/crates/database-installer" }
 burncloud-database-models = { path = "crates/database/crates/database-models" }
 burncloud-database-router = { path = "crates/database/crates/database-router" }
 burncloud-database-setting = { path = "crates/database/crates/database-setting" }
 burncloud-database-user = { path = "crates/database/crates/database-user" }
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
+burncloud-installer = { path = "crates/installer" }
 burncloud-router = { path = "crates/router" }
 burncloud-router-aws = { path = "crates/router/crates/router-aws" }
 burncloud-server = { path = "crates/server" }
@@ -182,7 +186,7 @@ burncloud-core.workspace = true
 burncloud-cli.workspace = true
 burncloud-server.workspace = true
 burncloud-code.workspace = true
-burncloud-client = { workspace = true, default-features = false, features = ["liveview"] }
+burncloud-client = { workspace = true, default-features = false, features = ["liveview", "desktop"] }
 burncloud-router.workspace = true
 
 tokio.workspace = true
