@@ -35,9 +35,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # 只编译 installer 相关的 CLI，不编译整个项目
-      - name: Build CLI (installer only)
-        run: cargo build --release --bin burncloud -p burncloud-cli
+      # 只编译 CLI binary
+      - name: Build CLI
+        run: cargo build --release --bin burncloud
 
       - name: Create Bundle
         run: ./target/release/burncloud.exe bundle create openclaw -o ./bundles
