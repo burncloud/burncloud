@@ -615,9 +615,17 @@ impl Installer {
                 warn!("Dependency {} not found", dep.name);
 
                 if self.config.auto_deps {
-                    if let Some(auto_install) = &dep.auto_install {
+                    if let Some(_auto_install) = &dep.auto_install {
                         info!("Auto-installing dependency: {}", dep.name);
-                        self.install_dependency(dep, auto_install).await?;
+
+                        // If bundle directory is set, install from bundle
+                        if self.config.bundle_dir.is_some() {
+                            info!("Installing {} from bundle...", dep.name);
+                            self.install_dependency_from_bundle(&dep.name).await?;
+                        } else {
+                            // Otherwise use the auto_install method
+                            self.install_dependency(dep, _auto_install).await?;
+                        }
                     } else if let Some(hint) = &dep.install_hint {
                         return Err(InstallerError::DependencyNotFound(format!(
                             "{} not found. Install it from: {}",
