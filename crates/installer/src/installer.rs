@@ -510,6 +510,96 @@ impl Installer {
                     }
                 }
             }
+
+            // Special handling for fnm: configure environment and install Node.js
+            if dep_name.to_lowercase() == "node.js" || dep_name.to_lowercase() == "fnm" {
+                info!("Configuring fnm environment and installing Node.js...");
+
+                // Find fnm.exe in the extracted directory
+                let fnm_exe = if self.config.platform.is_windows() {
+                    temp_dir.join("fnm.exe")
+                } else {
+                    temp_dir.join("fnm")
+                };
+
+                if fnm_exe.exists() {
+                    // Add fnm directory to PATH for current session
+                    let fnm_dir = fnm_exe.parent().unwrap();
+                    let current_path = std::env::var("PATH").unwrap_or_default();
+                    let new_path = if self.config.platform.is_windows() {
+                        format!("{};{}", fnm_dir.display(), current_path)
+                    } else {
+                        format!("{}:{}", fnm_dir.display(), current_path)
+                    };
+                    std::env::set_var("PATH", &new_path);
+                    info!("Added fnm to PATH: {}", fnm_dir.display());
+
+                    // Install Node.js LTS
+                    info!("Installing Node.js LTS via fnm...");
+                    let install_result = Command::new(&fnm_exe).args(["install", "--lts"]).status();
+
+                    match install_result {
+                        Ok(status) if status.success() => {
+                            info!("Node.js LTS installed successfully via fnm");
+
+                            // Run fnm use to activate the installed version
+                            let _ = Command::new(&fnm_exe).args(["use", "--lts"]).status();
+
+                            // Configure environment variables for fnm
+                            // fnm env outputs shell commands to set up the environment
+                            if self.config.platform.is_windows() {
+                                // For Windows, fnm env --shell powershell outputs PowerShell commands
+                                let env_output = Command::new(&fnm_exe)
+                                    .args(["env", "--shell", "powershell"])
+                                    .output();
+
+                                if let Ok(output) = env_output {
+                                    if output.status.success() {
+                                        let env_text = String::from_utf8_lossy(&output.stdout);
+                                        // Parse and set environment variables from fnm env output
+                                        for line in env_text.lines() {
+                                            // PowerShell format: $env:VAR = "value" or $env:VAR = 'value'
+                                            if line.contains("$env:") {
+                                                let parts: Vec<&str> =
+                                                    line.splitn(2, '=').collect();
+                                                if parts.len() == 2 {
+                                                    let var_name = parts[0]
+                                                        .replace("$env:", "")
+                                                        .trim()
+                                                        .to_string();
+                                                    let var_value = parts[1]
+                                                        .trim()
+                                                        .trim_matches('"')
+                                                        .trim_matches('\'')
+                                                        .to_string();
+
+                                                    // Set FNM_MULTISHELL_PATH, FNM_DIR, FNM_LOGLEVEL, etc.
+                                                    if !var_name.is_empty() && !var_value.is_empty()
+                                                    {
+                                                        std::env::set_var(&var_name, &var_value);
+                                                        info!(
+                                                            "Set fnm env: {} = {}",
+                                                            var_name, var_value
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Ok(status) => {
+                            warn!("fnm install --lts exited with code: {:?}", status.code());
+                        }
+                        Err(e) => {
+                            warn!("Failed to run fnm install --lts: {}", e);
+                        }
+                    }
+                } else {
+                    warn!("fnm executable not found at {}", fnm_exe.display());
+                }
+            }
         }
 
         info!("Successfully installed {} from bundle", dep_name);
