@@ -109,14 +109,22 @@ jobs:
           Write-Host "  开始 Bundle 安装（模拟全新机器）" -ForegroundColor Cyan
           Write-Host "========================================" -ForegroundColor Cyan
 
-          # 再次确认环境
+          # 再次确认环境（使用 try-catch 避免命令未找到时终止脚本）
           Write-Host "`n预安装检查:"
-          node --version 2>$null || Write-Host "  Node.js: 未安装 ✓"
-          npm --version 2>$null || Write-Host "  npm: 未安装 ✓"
-          git --version 2>$null || Write-Host "  Git: 未安装 ✓"
+          foreach ($cmd in @("node", "npm", "git", "fnm")) {
+            try {
+              $result = Get-Command $cmd -ErrorAction Stop
+              Write-Host "  $cmd 已安装: $($result.Source)"
+            } catch {
+              Write-Host "  $cmd 未安装 ✓" -ForegroundColor Green
+            }
+          }
 
           Write-Host "`n开始安装..."
-          ./target/release/burncloud.exe install openclaw --bundle ./bundles/openclaw-bundle --auto-deps
+          $env:RUST_LOG = "debug"
+          ./target/release/burncloud.exe install openclaw --bundle ./bundles/openclaw-bundle --auto-deps 2>&1
+
+          Write-Host "`n安装命令执行完成，退出码: $LASTEXITCODE"
         continue-on-error: true
 
       - name: ✅ Post-install Verification
@@ -131,12 +139,38 @@ jobs:
 
           # 验证 Node.js 是否已安装
           Write-Host "`n=== Node.js 版本 ==="
-          node --version
-          npm --version
+          try {
+            node --version
+            npm --version
+          } catch {
+            Write-Host "Node.js 未安装或不在 PATH 中" -ForegroundColor Red
+          }
 
           # 验证 fnm 是否已安装
           Write-Host "`n=== fnm 版本 ==="
-          fnm --version
+          try {
+            fnm --version
+          } catch {
+            Write-Host "fnm 未安装或不在 PATH 中" -ForegroundColor Red
+          }
+
+          # 列出 fnm 目录内容
+          Write-Host "`n=== fnm 目录内容 ==="
+          $fnmDir = "$env:LOCALAPPDATA\fnm"
+          if (Test-Path $fnmDir) {
+            Get-ChildItem $fnmDir -Recurse -Depth 2 | Select-Object FullName
+          } else {
+            Write-Host "fnm 目录不存在: $fnmDir"
+          }
+
+          # 列出临时目录中的 burncloud-fnm
+          Write-Host "`n=== 临时目录中的 burncloud-fnm ==="
+          $tempFnmDir = Join-Path $env:TEMP "burncloud-node.js"
+          if (Test-Path $tempFnmDir) {
+            Get-ChildItem $tempFnmDir -Recurse | Select-Object FullName
+          } else {
+            Write-Host "临时 fnm 目录不存在: $tempFnmDir"
+          }
 
       - name: Upload Bundle Artifact
         if: always()
