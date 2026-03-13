@@ -406,24 +406,42 @@ impl Installer {
             })?;
 
         // Look for the dependency in the bundle directory
-        // Convention: bundle/<dep-name>/<platform>/<arch>/<file>
+        // Convention: bundle/dependencies/<dep-name>/<platform>/<arch>/<file>
+        // First try with "dependencies" subdirectory (bundle creation format)
         let mut platform_dir = bundle_dir
-            .join(dep_name)
+            .join("dependencies")
+            .join(dep_name.to_lowercase())
             .join(self.config.platform.os.to_string().to_lowercase())
             .join(self.config.platform.arch.to_string().to_lowercase());
 
         if !platform_dir.exists() {
             // Try without arch distinction
             platform_dir = bundle_dir
-                .join(dep_name)
+                .join("dependencies")
+                .join(dep_name.to_lowercase())
                 .join(self.config.platform.os.to_string().to_lowercase());
 
             if !platform_dir.exists() {
-                return Err(InstallerError::DependencyNotFound(format!(
-                    "Dependency '{}' not found in bundle: {}",
-                    dep_name,
-                    bundle_dir.display()
-                )));
+                // Fallback: try without "dependencies" subdirectory (legacy format)
+                platform_dir = bundle_dir
+                    .join(dep_name.to_lowercase())
+                    .join(self.config.platform.os.to_string().to_lowercase())
+                    .join(self.config.platform.arch.to_string().to_lowercase());
+
+                if !platform_dir.exists() {
+                    // Try without arch distinction (legacy format)
+                    platform_dir = bundle_dir
+                        .join(dep_name.to_lowercase())
+                        .join(self.config.platform.os.to_string().to_lowercase());
+
+                    if !platform_dir.exists() {
+                        return Err(InstallerError::DependencyNotFound(format!(
+                            "Dependency '{}' not found in bundle: {}",
+                            dep_name,
+                            bundle_dir.display()
+                        )));
+                    }
+                }
             }
         }
 
