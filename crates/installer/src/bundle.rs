@@ -1,7 +1,7 @@
 //! Bundle creation and verification for offline installation
 
 use chrono::Utc;
-use log::info;
+use log::{info, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -112,8 +112,14 @@ pub struct BundleCreator {
 impl BundleCreator {
     /// Create a new bundle creator
     pub fn new(output_dir: PathBuf) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(300)) // 5 minute timeout
+            .user_agent("BurnCloud-Installer/1.0")
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            client: Client::new(),
+            client,
             platform: Platform::current(),
             output_dir,
         }
@@ -427,8 +433,42 @@ impl BundleCreator {
         )))
     }
 
-    /// Download file
+    /// Download file with retry logic
     async fn download_file(&self, url: &str, path: &Path) -> InstallerResult<()> {
+        let max_retries = 3;
+        let mut last_error = None;
+
+        for attempt in 1..=max_retries {
+            match self.download_file_inner(url, path).await {
+                Ok(()) => {
+                    if attempt > 1 {
+                        info!("Download succeeded on attempt {}", attempt);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < max_retries {
+                        let delay = std::time::Duration::from_secs(2 * attempt as u64);
+                        warn!(
+                            "Download attempt {}/{} failed, retrying in {:?}...",
+                            attempt, max_retries, delay
+                        );
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            InstallerError::Download("Download failed after all retries".to_string())
+        }))
+    }
+
+    /// Download file (internal implementation)
+    async fn download_file_inner(&self, url: &str, path: &Path) -> InstallerResult<()> {
+        info!("Downloading: {}", url);
+
         let response = self.client.get(url).send().await?;
 
         if !response.status().is_success() {
@@ -440,6 +480,12 @@ impl BundleCreator {
 
         let bytes = response.bytes().await?;
         std::fs::write(path, bytes)?;
+
+        info!(
+            "Downloaded: {} ({} bytes)",
+            path.display(),
+            path.metadata().map(|m| m.len()).unwrap_or(0)
+        );
 
         Ok(())
     }

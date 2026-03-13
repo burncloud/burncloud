@@ -47,10 +47,7 @@ pub async fn cmd_group_list(db: &Database, matches: &ArgMatches) -> Result<()> {
         }
         _ => {
             // Table format
-            println!(
-                "{:<40} {:<30} {:<15}",
-                "ID", "Name", "Member Count"
-            );
+            println!("{:<40} {:<30} {:<15}", "ID", "Name", "Member Count");
             println!("{}", "-".repeat(85));
             for item in &list_items {
                 println!(
@@ -85,7 +82,11 @@ pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()>
 
     // If members are provided, add them to the group
     if let Some(members) = members_str {
-        let member_ids: Vec<&str> = members.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let member_ids: Vec<&str> = members
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
 
         if !member_ids.is_empty() {
             let group_members: Vec<DbGroupMember> = member_ids
@@ -99,7 +100,11 @@ pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()>
 
             RouterDatabase::set_group_members(db, &group_id, group_members).await?;
 
-            println!("Group '{}' created successfully with {} member(s)!", name, member_ids.len());
+            println!(
+                "Group '{}' created successfully with {} member(s)!",
+                name,
+                member_ids.len()
+            );
         } else {
             println!("Group '{}' created successfully!", name);
         }
@@ -137,10 +142,7 @@ pub async fn cmd_group_show(db: &Database, matches: &ArgMatches) -> Result<()> {
         println!("Members: (none)");
     } else {
         println!("Members:");
-        println!(
-            "{:<5} {:<40} {:<10}",
-            "#", "Upstream ID", "Weight"
-        );
+        println!("{:<5} {:<40} {:<10}", "#", "Upstream ID", "Weight");
         println!("{}", "-".repeat(55));
         for (i, member) in members.iter().enumerate() {
             println!(
@@ -230,10 +232,7 @@ pub async fn cmd_group_members(db: &Database, matches: &ArgMatches) -> Result<()
 
                 let count = group_members.len();
                 RouterDatabase::set_group_members(db, id, group_members).await?;
-                println!(
-                    "Set {} member(s) for group '{}'",
-                    count, group.name
-                );
+                println!("Set {} member(s) for group '{}'", count, group.name);
             }
         }
         None => {
@@ -244,10 +243,7 @@ pub async fn cmd_group_members(db: &Database, matches: &ArgMatches) -> Result<()
                 println!("Group '{}' has no members", group.name);
             } else {
                 println!("Members of group '{}':", group.name);
-                println!(
-                    "{:<5} {:<40} {:<10}",
-                    "#", "Upstream ID", "Weight"
-                );
+                println!("{:<5} {:<40} {:<10}", "#", "Upstream ID", "Weight");
                 println!("{}", "-".repeat(55));
                 for (i, member) in members.iter().enumerate() {
                     println!(

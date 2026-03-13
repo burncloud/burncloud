@@ -19,12 +19,15 @@ Cargo.lock
 /*.md
 /*.db
 /bundle
+/offline-bundle
+/test-bundle
 /spec
 /progress.txt
 /MESSAGE.md
 /ISSUE.md
 /home-current.jpeg
 /.entire
+
 
 # LLM files
 /.ralph

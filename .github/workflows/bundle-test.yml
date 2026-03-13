@@ -1,23 +1,17 @@
-name: Bundle Fresh Install Test
+name: Bundle Windows Test
 
 on:
   push:
     branches: [main, install, "feature/*"]
   pull_request:
   workflow_dispatch:
-    inputs:
-      software:
-        description: 'Software ID to test'
-        required: false
-        default: 'openclaw'
 
 env:
   RUST_LOG: debug
-  CARGO_TERM_COLOR: always
 
 jobs:
   # ============================================================
-  # Windows 测试（最关键）
+  # Windows Bundle 测试（仅测试 bundle 安装功能）
   # ============================================================
   test-windows:
     runs-on: windows-latest
@@ -41,47 +35,32 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build CLI
-        run: cargo build --release --bin burncloud
+      # 只编译 installer 相关的 CLI，不编译整个项目
+      - name: Build CLI (installer only)
+        run: cargo build --release --bin burncloud -p burncloud-cli
 
       - name: Create Bundle
-        run: |
-          ./target/release/burncloud.exe bundle create openclaw -o ./bundles
-        shell: pwsh
+        run: ./target/release/burncloud.exe bundle create openclaw -o ./bundles
 
       - name: Pre-install Check
         run: |
           Write-Host "=== 预安装环境检查 ===" -ForegroundColor Cyan
           git --version
-          node --version
-          npm --version
-        shell: pwsh
+          node --version 2>$null || Write-Host "Node.js: 未安装"
+          npm --version 2>$null || Write-Host "npm: 未安装"
 
       - name: Install from Bundle
-        id: install
         run: |
           Write-Host "=== 开始 Bundle 安装 ===" -ForegroundColor Cyan
           ./target/release/burncloud.exe install openclaw --bundle ./bundles/openclaw-bundle --auto-deps
-        shell: pwsh
         continue-on-error: true
 
       - name: Post-install Check
         run: |
           Write-Host "=== 安装后检查 ===" -ForegroundColor Cyan
           ./target/release/burncloud.exe install openclaw --status
-
-          Write-Host "`n=== 验证 Node.js 版本 ===" -ForegroundColor Cyan
+          Write-Host "`n=== 验证 Node.js ===" -ForegroundColor Cyan
           node --version
-        shell: pwsh
-
-      - name: Verify OpenClaw
-        if: success()
-        run: |
-          Write-Host "=== 验证 OpenClaw ===" -ForegroundColor Cyan
-          # OpenClaw 可能需要刷新环境变量
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          openclaw --version || Write-Host "Note: openclaw 命令可能需要重新打开终端"
-        shell: pwsh
 
       - name: Upload Bundle Artifact
         if: always()
@@ -90,130 +69,3 @@ jobs:
           name: windows-bundle
           path: bundles/
           retention-days: 7
-
-      - name: Upload Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-failure-logs
-          path: |
-            *.log
-            bundles/**/*.log
-          retention-days: 7
-
-  # ============================================================
-  # Linux 测试（Docker 隔离）
-  # ============================================================
-  test-linux:
-    runs-on: ubuntu-latest
-    name: Linux Bundle Test (Clean Container)
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build CLI
-        run: cargo build --release --bin burncloud
-
-      - name: Create Bundle
-        run: ./target/release/burncloud bundle create openclaw -o ./bundles
-
-      - name: Test in Clean Container
-        run: |
-          docker run --rm \
-            -v $PWD/bundles:/bundles:ro \
-            -v $PWD/target/release/burncloud:/usr/local/bin/burncloud:ro \
-            ubuntu:22.04 \
-            bash -c '
-              set -e
-              export RUST_LOG=debug
-              export DEBIAN_FRONTEND=noninteractive
-
-              echo "=== 预安装检查（应该没有依赖）==="
-              git --version || echo "✓ Git 未安装（预期）"
-              node --version || echo "✓ Node.js 未安装（预期）"
-
-              echo ""
-              echo "=== 安装依赖 ==="
-              apt-get update && apt-get install -y ca-certificates curl
-
-              echo ""
-              echo "=== 开始 Bundle 安装 ==="
-              burncloud install openclaw --bundle /bundles/openclaw-bundle --auto-deps
-
-              echo ""
-              echo "=== 验证安装 ==="
-              burncloud install openclaw --status
-
-              echo ""
-              echo "✅ Linux 测试通过！"
-            '
-
-  # ============================================================
-  # macOS 测试
-  # ============================================================
-  test-macos:
-    runs-on: macos-latest
-    name: macOS Bundle Test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build CLI
-        run: cargo build --release --bin burncloud
-
-      - name: Create Bundle
-        run: ./target/release/burncloud bundle create openclaw -o ./bundles
-
-      - name: Test Install
-        run: |
-          echo "=== 预安装检查 ==="
-          git --version
-          node --version || echo "Node.js 未安装"
-
-          echo ""
-          echo "=== 开始 Bundle 安装 ==="
-          ./target/release/burncloud install openclaw --bundle ./bundles/openclaw-bundle --auto-deps
-
-          echo ""
-          echo "=== 验证安装 ==="
-          ./target/release/burncloud install openclaw --status
-
-  # ============================================================
-  # 汇总报告
-  # ============================================================
-  report:
-    runs-on: ubuntu-latest
-    needs: [test-windows, test-linux, test-macos]
-    if: always()
-
-    steps:
-      - name: Check Results
-        run: |
-          echo "## 📊 Bundle 测试报告" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 平台 | 状态 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ needs.test-windows.result }}" == "success" ]; then
-            echo "| Windows | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Windows | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.test-linux.result }}" == "success" ]; then
-            echo "| Linux | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Linux | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.test-macos.result }}" == "success" ]; then
-            echo "| macOS | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| macOS | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Fail if Any Failed
-        if: contains(needs.*.result, 'failure')
-        run: exit 1

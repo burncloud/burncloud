@@ -215,7 +215,9 @@ const GEMINI_25_PRO_MODEL: &str = "gemini-2.5-pro";
 
 /// Setup helper for gemini-2.5-pro tests with unique port
 /// Returns None if TEST_GOOGLE_AI_KEY is not set
-async fn setup_gemini_25_pro_with_port(port: u16) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
+async fn setup_gemini_25_pro_with_port(
+    port: u16,
+) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
     let env_key = env::var("TEST_GOOGLE_AI_KEY").unwrap_or_default();
     if env_key.is_empty() {
         println!("Skipping Gemini 2.5 Pro tests: TEST_GOOGLE_AI_KEY not set.");
@@ -227,7 +229,7 @@ async fn setup_gemini_25_pro_with_port(port: u16) -> anyhow::Result<Option<(burn
     let id = format!("gemini-25-pro-test-{}", port);
     let name = "gemini-2.5-pro";
     let base_url = "https://generativelanguage.googleapis.com";
-    let match_path = "/v1/chat/completions";  // Use OpenAI-compatible endpoint
+    let match_path = "/v1/chat/completions"; // Use OpenAI-compatible endpoint
     let auth_type = "GoogleAI";
 
     sqlx::query(
@@ -308,16 +310,35 @@ async fn test_gemini_25_pro_basic() -> anyhow::Result<()> {
     let status = resp.status();
     let resp_json: serde_json::Value = resp.json().await?;
 
-    println!("Gemini 2.5 Pro Basic Response (status {}): {}", status, serde_json::to_string_pretty(&resp_json)?);
+    println!(
+        "Gemini 2.5 Pro Basic Response (status {}): {}",
+        status,
+        serde_json::to_string_pretty(&resp_json)?
+    );
 
-    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
-    assert_eq!(resp_json["object"], "chat.completion", "Expected chat.completion object");
+    assert_eq!(
+        status, 200,
+        "Expected 200 status, got {}. Response: {:?}",
+        status, resp_json
+    );
+    assert_eq!(
+        resp_json["object"], "chat.completion",
+        "Expected chat.completion object"
+    );
 
-    let choices = resp_json["choices"].as_array().expect("Expected choices array");
+    let choices = resp_json["choices"]
+        .as_array()
+        .expect("Expected choices array");
     assert!(!choices.is_empty(), "Expected at least one choice");
 
-    let content = choices[0]["message"]["content"].as_str().expect("Expected content in response");
-    assert!(content.contains("4"), "Expected response to contain '4', got: {}", content);
+    let content = choices[0]["message"]["content"]
+        .as_str()
+        .expect("Expected content in response");
+    assert!(
+        content.contains("4"),
+        "Expected response to contain '4', got: {}",
+        content
+    );
 
     println!("✓ Basic request test passed: Response contains correct answer");
     Ok(())
@@ -368,22 +389,34 @@ async fn test_gemini_25_pro_multimodal() -> anyhow::Result<()> {
     let status = resp.status();
     let resp_json: serde_json::Value = resp.json().await?;
 
-    println!("Gemini 2.5 Pro Multimodal Response (status {}): {}", status, serde_json::to_string_pretty(&resp_json)?);
+    println!(
+        "Gemini 2.5 Pro Multimodal Response (status {}): {}",
+        status,
+        serde_json::to_string_pretty(&resp_json)?
+    );
 
     // Note: Multimodal support depends on adaptor implementation
     // This test may fail if the adaptor doesn't support image_url content type
     if status == 200 {
         assert_eq!(resp_json["object"], "chat.completion");
-        let choices = resp_json["choices"].as_array().expect("Expected choices array");
+        let choices = resp_json["choices"]
+            .as_array()
+            .expect("Expected choices array");
         if !choices.is_empty() {
             let content = choices[0]["message"]["content"].as_str().unwrap_or("");
             println!("Multimodal response content: {}", content);
             // Just verify we got a response, color detection may vary
-            assert!(!content.is_empty(), "Expected non-empty response for image query");
+            assert!(
+                !content.is_empty(),
+                "Expected non-empty response for image query"
+            );
         }
         println!("✓ Multimodal request test passed: Image processed successfully");
     } else {
-        println!("⚠ Multimodal test skipped: Status {} (adaptor may not support multimodal yet)", status);
+        println!(
+            "⚠ Multimodal test skipped: Status {} (adaptor may not support multimodal yet)",
+            status
+        );
     }
 
     Ok(())
@@ -405,7 +438,10 @@ async fn test_gemini_25_pro_long_context() -> anyhow::Result<()> {
     // Generate a long prompt with repeated text (~500 chars per line, ~200 lines = ~100K chars)
     let mut long_text = String::new();
     for i in 1..=200 {
-        long_text.push_str(&format!("Line {}: This is a test line with some meaningful content to simulate a document. ", i));
+        long_text.push_str(&format!(
+            "Line {}: This is a test line with some meaningful content to simulate a document. ",
+            i
+        ));
     }
     // This creates ~20K chars which should be around 5K+ tokens
 
@@ -422,7 +458,10 @@ async fn test_gemini_25_pro_long_context() -> anyhow::Result<()> {
         ]
     });
 
-    println!("Sending long context request with {} chars...", long_text.len());
+    println!(
+        "Sending long context request with {} chars...",
+        long_text.len()
+    );
 
     let resp = client
         .post(&url)
@@ -435,22 +474,37 @@ async fn test_gemini_25_pro_long_context() -> anyhow::Result<()> {
     let status = resp.status();
     let resp_json: serde_json::Value = resp.json().await?;
 
-    println!("Gemini 2.5 Pro Long Context Response (status {}): {}", status,
+    println!(
+        "Gemini 2.5 Pro Long Context Response (status {}): {}",
+        status,
         if resp_json.to_string().len() > 500 {
             format!("{}...(truncated)", &resp_json.to_string()[..500])
         } else {
             resp_json.to_string()
-        });
+        }
+    );
 
-    assert_eq!(status, 200, "Expected 200 status for long context, got {}. Response: {:?}", status, resp_json);
+    assert_eq!(
+        status, 200,
+        "Expected 200 status for long context, got {}. Response: {:?}",
+        status, resp_json
+    );
     assert_eq!(resp_json["object"], "chat.completion");
 
-    let choices = resp_json["choices"].as_array().expect("Expected choices array");
+    let choices = resp_json["choices"]
+        .as_array()
+        .expect("Expected choices array");
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"].as_str().unwrap_or("");
-    println!("Long context response content (first 200 chars): {}",
-        if content.len() > 200 { &content[..200] } else { content });
+    println!(
+        "Long context response content (first 200 chars): {}",
+        if content.len() > 200 {
+            &content[..200]
+        } else {
+            content
+        }
+    );
 
     println!("✓ Long context request test passed: Model processed long input successfully");
     Ok(())
@@ -464,7 +518,9 @@ const GEMINI_25_FLASH_MODEL: &str = "gemini-2.5-flash";
 
 /// Setup helper for gemini-2.5-flash tests with unique port
 /// Returns None if TEST_GOOGLE_AI_KEY is not set
-async fn setup_gemini_25_flash_with_port(port: u16) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
+async fn setup_gemini_25_flash_with_port(
+    port: u16,
+) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
     let env_key = env::var("TEST_GOOGLE_AI_KEY").unwrap_or_default();
     if env_key.is_empty() {
         println!("Skipping Gemini 2.5 Flash tests: TEST_GOOGLE_AI_KEY not set.");
@@ -476,7 +532,7 @@ async fn setup_gemini_25_flash_with_port(port: u16) -> anyhow::Result<Option<(bu
     let id = format!("gemini-25-flash-test-{}", port);
     let name = "gemini-2.5-flash";
     let base_url = "https://generativelanguage.googleapis.com";
-    let match_path = "/v1/chat/completions";  // Use OpenAI-compatible endpoint
+    let match_path = "/v1/chat/completions"; // Use OpenAI-compatible endpoint
     let auth_type = "GoogleAI";
 
     sqlx::query(
@@ -559,22 +615,48 @@ async fn test_gemini_25_flash_basic() -> anyhow::Result<()> {
     let resp_json: serde_json::Value = resp.json().await?;
     let elapsed = start.elapsed();
 
-    println!("Gemini 2.5 Flash Basic Response (status {}, {:?}): {}",
-        status, elapsed, serde_json::to_string_pretty(&resp_json)?);
+    println!(
+        "Gemini 2.5 Flash Basic Response (status {}, {:?}): {}",
+        status,
+        elapsed,
+        serde_json::to_string_pretty(&resp_json)?
+    );
 
-    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
-    assert_eq!(resp_json["object"], "chat.completion", "Expected chat.completion object");
+    assert_eq!(
+        status, 200,
+        "Expected 200 status, got {}. Response: {:?}",
+        status, resp_json
+    );
+    assert_eq!(
+        resp_json["object"], "chat.completion",
+        "Expected chat.completion object"
+    );
 
-    let choices = resp_json["choices"].as_array().expect("Expected choices array");
+    let choices = resp_json["choices"]
+        .as_array()
+        .expect("Expected choices array");
     assert!(!choices.is_empty(), "Expected at least one choice");
 
-    let content = choices[0]["message"]["content"].as_str().expect("Expected content in response");
-    assert!(content.contains("4"), "Expected response to contain '4', got: {}", content);
+    let content = choices[0]["message"]["content"]
+        .as_str()
+        .expect("Expected content in response");
+    assert!(
+        content.contains("4"),
+        "Expected response to contain '4', got: {}",
+        content
+    );
 
     // Verify response speed (Flash should be fast, typically <5s for simple queries)
-    assert!(elapsed.as_secs() < 10, "Response took too long: {:?}", elapsed);
+    assert!(
+        elapsed.as_secs() < 10,
+        "Response took too long: {:?}",
+        elapsed
+    );
 
-    println!("✓ Basic request test passed: Response time {:?}, correct answer received", elapsed);
+    println!(
+        "✓ Basic request test passed: Response time {:?}, correct answer received",
+        elapsed
+    );
     Ok(())
 }
 
@@ -645,16 +727,30 @@ async fn test_gemini_25_flash_streaming() -> anyhow::Result<()> {
     println!("  Full content: {}", full_content);
 
     // Verify we received streaming chunks
-    assert!(chunk_count > 1, "Expected multiple streaming chunks, got {}", chunk_count);
-    assert!(!full_content.is_empty(), "Expected non-empty streaming content");
+    assert!(
+        chunk_count > 1,
+        "Expected multiple streaming chunks, got {}",
+        chunk_count
+    );
+    assert!(
+        !full_content.is_empty(),
+        "Expected non-empty streaming content"
+    );
 
     // Verify response contains expected numbers
     for i in 1..=5 {
-        assert!(full_content.contains(&i.to_string()),
-            "Expected response to contain '{}', got: {}", i, full_content);
+        assert!(
+            full_content.contains(&i.to_string()),
+            "Expected response to contain '{}', got: {}",
+            i,
+            full_content
+        );
     }
 
-    println!("✓ Streaming request test passed: {} chunks received in {:?}", chunk_count, elapsed);
+    println!(
+        "✓ Streaming request test passed: {} chunks received in {:?}",
+        chunk_count, elapsed
+    );
     Ok(())
 }
 
@@ -702,14 +798,23 @@ async fn test_gemini_25_flash_speed() -> anyhow::Result<()> {
 
     let avg_time = total_time / iterations;
     println!("Gemini 2.5 Flash Speed Test:");
-    println!("  Average response time over {} requests: {:?}", iterations, avg_time);
+    println!(
+        "  Average response time over {} requests: {:?}",
+        iterations, avg_time
+    );
 
     // Flash should be fast - typically <3s for simple queries
     // Note: Network latency can affect this, so we use a generous threshold
-    assert!(avg_time.as_secs() < 5,
-        "Average response time too slow for Flash model: {:?}", avg_time);
+    assert!(
+        avg_time.as_secs() < 5,
+        "Average response time too slow for Flash model: {:?}",
+        avg_time
+    );
 
-    println!("✓ Speed verification test passed: Average time {:?}", avg_time);
+    println!(
+        "✓ Speed verification test passed: Average time {:?}",
+        avg_time
+    );
     Ok(())
 }
 
@@ -745,7 +850,11 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
     // Verify pricing was set correctly
     let price = PriceModel::get(&db, GEMINI_25_FLASH_MODEL, "USD", Some("international")).await?;
 
-    assert!(price.is_some(), "Price should be found for {}", GEMINI_25_FLASH_MODEL);
+    assert!(
+        price.is_some(),
+        "Price should be found for {}",
+        GEMINI_25_FLASH_MODEL
+    );
     let price = price.unwrap();
 
     // Convert from nanodollars to dollars for verification
@@ -829,7 +938,11 @@ async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
     // Verify pricing was set correctly
     let price = PriceModel::get(&db, GEMINI_25_PRO_MODEL, "USD", Some("international")).await?;
 
-    assert!(price.is_some(), "Price should be found for {}", GEMINI_25_PRO_MODEL);
+    assert!(
+        price.is_some(),
+        "Price should be found for {}",
+        GEMINI_25_PRO_MODEL
+    );
     let price = price.unwrap();
 
     // Convert from nanodollars to dollars for verification
@@ -890,7 +1003,9 @@ use base64::Engine;
 
 /// Setup helper for Gemini multimodal tests with unique port
 /// Returns None if TEST_GOOGLE_AI_KEY is not set
-async fn setup_gemini_multimodal_with_port(port: u16) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
+async fn setup_gemini_multimodal_with_port(
+    port: u16,
+) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
     let env_key = env::var("TEST_GOOGLE_AI_KEY").unwrap_or_default();
     if env_key.is_empty() {
         println!("Skipping Gemini multimodal tests: TEST_GOOGLE_AI_KEY not set.");
@@ -1000,12 +1115,22 @@ async fn test_gemini_multimodal_image_input() -> anyhow::Result<()> {
     let status = resp.status();
     let resp_json: serde_json::Value = resp.json().await?;
 
-    println!("Gemini Image Input Response (status {}): {}", status, serde_json::to_string_pretty(&resp_json)?);
+    println!(
+        "Gemini Image Input Response (status {}): {}",
+        status,
+        serde_json::to_string_pretty(&resp_json)?
+    );
 
-    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
+    assert_eq!(
+        status, 200,
+        "Expected 200 status, got {}. Response: {:?}",
+        status, resp_json
+    );
     assert_eq!(resp_json["object"], "chat.completion");
 
-    let choices = resp_json["choices"].as_array().expect("Expected choices array");
+    let choices = resp_json["choices"]
+        .as_array()
+        .expect("Expected choices array");
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"].as_str().unwrap_or("");
@@ -1108,21 +1233,33 @@ startxref
     let status = resp.status();
     let resp_json: serde_json::Value = resp.json().await?;
 
-    println!("Gemini PDF Input Response (status {}): {}", status, serde_json::to_string_pretty(&resp_json)?);
+    println!(
+        "Gemini PDF Input Response (status {}): {}",
+        status,
+        serde_json::to_string_pretty(&resp_json)?
+    );
 
     // Note: PDF support may not be fully implemented in the adaptor
     // This test verifies the request doesn't crash and returns a valid response
     if status == 200 {
         assert_eq!(resp_json["object"], "chat.completion");
-        let choices = resp_json["choices"].as_array().expect("Expected choices array");
+        let choices = resp_json["choices"]
+            .as_array()
+            .expect("Expected choices array");
         if !choices.is_empty() {
             let content = choices[0]["message"]["content"].as_str().unwrap_or("");
             println!("PDF understanding response: {}", content);
-            assert!(!content.is_empty(), "Expected non-empty response for PDF query");
+            assert!(
+                !content.is_empty(),
+                "Expected non-empty response for PDF query"
+            );
         }
         println!("✓ PDF input test passed: Model successfully processed PDF content");
     } else {
-        println!("⚠ PDF input test skipped: Status {} (adaptor may not fully support PDF yet)", status);
+        println!(
+            "⚠ PDF input test skipped: Status {} (adaptor may not fully support PDF yet)",
+            status
+        );
     }
 
     Ok(())
@@ -1151,12 +1288,12 @@ async fn test_gemini_multimodal_audio_input() -> anyhow::Result<()> {
         // fmt chunk
         b'f', b'm', b't', b' ', // "fmt "
         0x10, 0x00, 0x00, 0x00, // Chunk size (16)
-        0x01, 0x00,             // Audio format (1 = PCM)
-        0x01, 0x00,             // Channels (1 = mono)
+        0x01, 0x00, // Audio format (1 = PCM)
+        0x01, 0x00, // Channels (1 = mono)
         0x40, 0x1f, 0x00, 0x00, // Sample rate (8000)
         0x80, 0x3e, 0x00, 0x00, // Byte rate (16000)
-        0x02, 0x00,             // Block align (2)
-        0x10, 0x00,             // Bits per sample (16)
+        0x02, 0x00, // Block align (2)
+        0x10, 0x00, // Bits per sample (16)
         // data chunk
         b'd', b'a', b't', b'a', // "data"
         0x00, 0x00, 0x00, 0x00, // Data size (0 = minimal silent audio)
@@ -1196,20 +1333,32 @@ async fn test_gemini_multimodal_audio_input() -> anyhow::Result<()> {
     let status = resp.status();
     let resp_json: serde_json::Value = resp.json().await?;
 
-    println!("Gemini Audio Input Response (status {}): {}", status, serde_json::to_string_pretty(&resp_json)?);
+    println!(
+        "Gemini Audio Input Response (status {}): {}",
+        status,
+        serde_json::to_string_pretty(&resp_json)?
+    );
 
     // Note: Audio support depends on adaptor implementation
     if status == 200 {
         assert_eq!(resp_json["object"], "chat.completion");
-        let choices = resp_json["choices"].as_array().expect("Expected choices array");
+        let choices = resp_json["choices"]
+            .as_array()
+            .expect("Expected choices array");
         if !choices.is_empty() {
             let content = choices[0]["message"]["content"].as_str().unwrap_or("");
             println!("Audio understanding response: {}", content);
-            assert!(!content.is_empty(), "Expected non-empty response for audio query");
+            assert!(
+                !content.is_empty(),
+                "Expected non-empty response for audio query"
+            );
         }
         println!("✓ Audio input test passed: Model processed audio content");
     } else {
-        println!("⚠ Audio input test skipped: Status {} (adaptor may not fully support audio yet)", status);
+        println!(
+            "⚠ Audio input test skipped: Status {} (adaptor may not fully support audio yet)",
+            status
+        );
     }
 
     Ok(())
@@ -1289,15 +1438,20 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     let text_cost_dollars = text_cost_nano as f64 / 1_000_000_000.0;
 
     // Audio input cost calculation (manual with audio price)
-    let audio_input_cost_nano = (prompt_tokens as i128 * price.audio_input_price.unwrap() as i128) / 1_000_000;
-    let audio_output_cost_nano = (completion_tokens as i128 * price.output_price as i128) / 1_000_000;
+    let audio_input_cost_nano =
+        (prompt_tokens as i128 * price.audio_input_price.unwrap() as i128) / 1_000_000;
+    let audio_output_cost_nano =
+        (completion_tokens as i128 * price.output_price as i128) / 1_000_000;
     let audio_cost_nano = (audio_input_cost_nano + audio_output_cost_nano) as i64;
     let audio_cost_dollars = audio_cost_nano as f64 / 1_000_000_000.0;
 
     println!("\nBilling Comparison (10K prompt + 1K completion tokens):");
     println!("  Text input cost:  ${:.6}", text_cost_dollars);
     println!("  Audio input cost: ${:.6}", audio_cost_dollars);
-    println!("  Audio premium:    {:.1}x", audio_cost_dollars / text_cost_dollars);
+    println!(
+        "  Audio premium:    {:.1}x",
+        audio_cost_dollars / text_cost_dollars
+    );
 
     // Verify audio cost is higher than text cost (premium applies to input only)
     // Calculate expected premium based on the token ratio
@@ -1306,7 +1460,10 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     let input_ratio = prompt_tokens as f64 / (prompt_tokens + completion_tokens) as f64;
     let expected_premium = (input_ratio * audio_input_price + (1.0 - input_ratio) * output_price)
         / (input_ratio * text_input_price + (1.0 - input_ratio) * output_price);
-    println!("  Expected premium (based on token ratio): {:.1}x", expected_premium);
+    println!(
+        "  Expected premium (based on token ratio): {:.1}x",
+        expected_premium
+    );
 
     assert!(
         audio_cost_dollars > text_cost_dollars,
@@ -1319,7 +1476,9 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
         audio_premium
     );
 
-    println!("✓ Audio input price billing test passed: Audio pricing configured and verified correctly");
+    println!(
+        "✓ Audio input price billing test passed: Audio pricing configured and verified correctly"
+    );
     Ok(())
 }
 
@@ -1374,13 +1533,23 @@ async fn test_gemini_multimodal_combined_input() -> anyhow::Result<()> {
     let resp_json: serde_json::Value = resp.json().await?;
     let elapsed = start.elapsed();
 
-    println!("Gemini Combined Multimodal Response (status {}, {:?}): {}",
-        status, elapsed, serde_json::to_string_pretty(&resp_json)?);
+    println!(
+        "Gemini Combined Multimodal Response (status {}, {:?}): {}",
+        status,
+        elapsed,
+        serde_json::to_string_pretty(&resp_json)?
+    );
 
-    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
+    assert_eq!(
+        status, 200,
+        "Expected 200 status, got {}. Response: {:?}",
+        status, resp_json
+    );
     assert_eq!(resp_json["object"], "chat.completion");
 
-    let choices = resp_json["choices"].as_array().expect("Expected choices array");
+    let choices = resp_json["choices"]
+        .as_array()
+        .expect("Expected choices array");
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"].as_str().unwrap_or("");
@@ -1401,7 +1570,9 @@ async fn test_gemini_multimodal_combined_input() -> anyhow::Result<()> {
         println!("Token usage: {:?}", usage);
     }
 
-    println!("✓ Combined multimodal test passed: Model successfully processed text + image content");
+    println!(
+        "✓ Combined multimodal test passed: Model successfully processed text + image content"
+    );
     Ok(())
 }
 
@@ -1413,7 +1584,9 @@ const GEMINI_25_FLASH_IMAGE_MODEL: &str = "gemini-2.5-flash-preview-05-20";
 
 /// Setup helper for gemini-2.5-flash-image tests with unique port
 /// Returns None if TEST_GOOGLE_AI_KEY is not set
-async fn setup_gemini_25_flash_image_with_port(port: u16) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
+async fn setup_gemini_25_flash_image_with_port(
+    port: u16,
+) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
     let env_key = env::var("TEST_GOOGLE_AI_KEY").unwrap_or_default();
     if env_key.is_empty() {
         println!("Skipping Gemini 2.5 Flash Image tests: TEST_GOOGLE_AI_KEY not set.");
@@ -1509,7 +1682,10 @@ async fn test_gemini_25_flash_image_generation() -> anyhow::Result<()> {
     });
 
     println!("Sending native image generation request to: {}", url);
-    println!("Request body: {}", serde_json::to_string_pretty(&gemini_body)?);
+    println!(
+        "Request body: {}",
+        serde_json::to_string_pretty(&gemini_body)?
+    );
 
     let start = std::time::Instant::now();
     let resp = client
@@ -1524,8 +1700,10 @@ async fn test_gemini_25_flash_image_generation() -> anyhow::Result<()> {
     let resp_text = resp.text().await?;
     let elapsed = start.elapsed();
 
-    println!("Gemini 2.5 Flash Image Generation Response (status {}, {:?}):",
-        status, elapsed);
+    println!(
+        "Gemini 2.5 Flash Image Generation Response (status {}, {:?}):",
+        status, elapsed
+    );
 
     // Parse response as JSON for verification
     let resp_json: serde_json::Value = match serde_json::from_str(&resp_text) {
@@ -1550,15 +1728,26 @@ async fn test_gemini_25_flash_image_generation() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
+    assert_eq!(
+        status, 200,
+        "Expected 200 status, got {}. Response: {:?}",
+        status, resp_json
+    );
 
     // Verify response structure (Gemini native format)
-    assert!(resp_json.get("candidates").is_some(), "Expected 'candidates' field in response");
+    assert!(
+        resp_json.get("candidates").is_some(),
+        "Expected 'candidates' field in response"
+    );
 
-    let candidates = resp_json["candidates"].as_array().expect("Expected candidates array");
+    let candidates = resp_json["candidates"]
+        .as_array()
+        .expect("Expected candidates array");
     assert!(!candidates.is_empty(), "Expected at least one candidate");
 
-    let parts = candidates[0]["content"]["parts"].as_array().expect("Expected parts array");
+    let parts = candidates[0]["content"]["parts"]
+        .as_array()
+        .expect("Expected parts array");
 
     // Check if response contains image data
     let mut has_image = false;
@@ -1572,17 +1761,27 @@ async fn test_gemini_25_flash_image_generation() -> anyhow::Result<()> {
             println!("Found image data:");
             println!("  mimeType: {:?}", inline_data.get("mimeType"));
             // Don't print full base64 data, just check it exists
-            let data_len = inline_data.get("data")
+            let data_len = inline_data
+                .get("data")
                 .and_then(|d| d.as_str())
                 .map(|s| s.len())
                 .unwrap_or(0);
             println!("  data length: {} bytes (base64)", data_len);
-            assert!(data_len > 100, "Expected image data to be >100 bytes, got {}", data_len);
+            assert!(
+                data_len > 100,
+                "Expected image data to be >100 bytes, got {}",
+                data_len
+            );
         }
         // Check for text
         if part.get("text").is_some() {
             has_text = true;
-            println!("Found text: {:?}", part["text"].as_str().map(|s| if s.len() > 100 { &s[..100] } else { s }));
+            println!(
+                "Found text: {:?}",
+                part["text"]
+                    .as_str()
+                    .map(|s| if s.len() > 100 { &s[..100] } else { s })
+            );
         }
     }
 
@@ -1614,7 +1813,9 @@ async fn test_gemini_25_flash_image_via_chat_completions() -> anyhow::Result<()>
     let port: u16 = 3052;
     let setup = setup_gemini_25_flash_image_with_port(port).await?;
     if setup.is_none() {
-        println!("Skipping test_gemini_25_flash_image_via_chat_completions: TEST_GOOGLE_AI_KEY not set.");
+        println!(
+            "Skipping test_gemini_25_flash_image_via_chat_completions: TEST_GOOGLE_AI_KEY not set."
+        );
         return Ok(());
     }
 
@@ -1639,7 +1840,10 @@ async fn test_gemini_25_flash_image_via_chat_completions() -> anyhow::Result<()>
     });
 
     println!("Sending image generation request via /v1/chat/completions (passthrough mode)...");
-    println!("Request body: {}", serde_json::to_string_pretty(&gemini_body)?);
+    println!(
+        "Request body: {}",
+        serde_json::to_string_pretty(&gemini_body)?
+    );
 
     let resp = client
         .post(&url)
@@ -1678,7 +1882,11 @@ async fn test_gemini_25_flash_image_via_chat_completions() -> anyhow::Result<()>
         return Ok(());
     }
 
-    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
+    assert_eq!(
+        status, 200,
+        "Expected 200 status, got {}. Response: {:?}",
+        status, resp_json
+    );
 
     // When using passthrough, response should be Gemini native format (candidates, not choices)
     // Check if this is passthrough mode (candidates) or converted (choices)
@@ -1692,7 +1900,10 @@ async fn test_gemini_25_flash_image_via_chat_completions() -> anyhow::Result<()>
                     println!("✓ Found image data in passthrough response");
                 }
                 if part.get("text").is_some() {
-                    println!("Found text in response: {:?}", part["text"].as_str().map(|s| &s[..50.min(s.len())]));
+                    println!(
+                        "Found text in response: {:?}",
+                        part["text"].as_str().map(|s| &s[..50.min(s.len())])
+                    );
                 }
             }
         }
@@ -1745,7 +1956,10 @@ async fn test_gemini_25_flash_image_editing() -> anyhow::Result<()> {
     });
 
     println!("Sending conversational image editing request...");
-    println!("Request body: {}", serde_json::to_string_pretty(&gemini_body)?);
+    println!(
+        "Request body: {}",
+        serde_json::to_string_pretty(&gemini_body)?
+    );
 
     let resp = client
         .post(&url)
@@ -1773,7 +1987,11 @@ async fn test_gemini_25_flash_image_editing() -> anyhow::Result<()> {
         println!("{}", pretty);
     }
 
-    assert_eq!(status, 200, "Expected 200 status, got {}. Response: {:?}", status, resp_json);
+    assert_eq!(
+        status, 200,
+        "Expected 200 status, got {}. Response: {:?}",
+        status, resp_json
+    );
 
     // Verify response structure
     if let Some(candidates) = resp_json.get("candidates").and_then(|c| c.as_array()) {
@@ -1803,7 +2021,9 @@ async fn test_gemini_response_modalities_passthrough() -> anyhow::Result<()> {
     let port: u16 = 3054;
     let setup = setup_gemini_25_flash_image_with_port(port).await?;
     if setup.is_none() {
-        println!("Skipping test_gemini_response_modalities_passthrough: TEST_GOOGLE_AI_KEY not set.");
+        println!(
+            "Skipping test_gemini_response_modalities_passthrough: TEST_GOOGLE_AI_KEY not set."
+        );
         return Ok(());
     }
 
@@ -1907,9 +2127,19 @@ async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
     PriceModel::upsert(&db, &price_input).await?;
 
     // Verify pricing was set correctly
-    let price = PriceModel::get(&db, GEMINI_25_FLASH_IMAGE_MODEL, "USD", Some("international")).await?;
+    let price = PriceModel::get(
+        &db,
+        GEMINI_25_FLASH_IMAGE_MODEL,
+        "USD",
+        Some("international"),
+    )
+    .await?;
 
-    assert!(price.is_some(), "Price should be found for {}", GEMINI_25_FLASH_IMAGE_MODEL);
+    assert!(
+        price.is_some(),
+        "Price should be found for {}",
+        GEMINI_25_FLASH_IMAGE_MODEL
+    );
     let price = price.unwrap();
 
     let input_dollars = price.input_price as f64 / 1_000_000_000.0;

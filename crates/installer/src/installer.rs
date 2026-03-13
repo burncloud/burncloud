@@ -944,8 +944,8 @@ impl Installer {
     async fn install_npm_from_bundle(
         &self,
         software: &Software,
-        package: &str,
-        version: Option<&str>,
+        _package: &str,
+        _version: Option<&str>,
         global: bool,
         bundle_dir: &Path,
     ) -> InstallerResult<()> {
@@ -1023,7 +1023,7 @@ impl Installer {
         url: &str,
         branch: Option<&str>,
         build_command: Option<&str>,
-        package_manager: Option<&str>,
+        _package_manager: Option<&str>,
     ) -> InstallerResult<()> {
         info!("Installing {} from Git repository: {}", software.name, url);
 

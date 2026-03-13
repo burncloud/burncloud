@@ -46,6 +46,20 @@ pub fn list_software() -> Vec<&'static Software> {
 
 /// Create OpenClaw software definition
 fn create_openclaw() -> Software {
+    // Git asset patterns for offline bundle
+    let mut git_asset_patterns = HashMap::new();
+    git_asset_patterns.insert((OS::Windows, Arch::X64), "Git-*-64-bit.exe".to_string());
+    git_asset_patterns.insert((OS::Windows, Arch::ARM64), "Git-*-64-bit.exe".to_string());
+
+    // fnm asset patterns for offline bundle (for Node.js installation)
+    let mut fnm_asset_patterns = HashMap::new();
+    fnm_asset_patterns.insert((OS::Windows, Arch::X64), "fnm-windows.zip".to_string());
+    fnm_asset_patterns.insert((OS::Windows, Arch::ARM64), "fnm-arm64.zip".to_string());
+    fnm_asset_patterns.insert((OS::MacOS, Arch::X64), "fnm-macos.zip".to_string());
+    fnm_asset_patterns.insert((OS::MacOS, Arch::ARM64), "fnm-macos.zip".to_string());
+    fnm_asset_patterns.insert((OS::Linux, Arch::X64), "fnm-linux.zip".to_string());
+    fnm_asset_patterns.insert((OS::Linux, Arch::ARM64), "fnm-arm64.zip".to_string());
+
     Software::new(
         "openclaw",
         "OpenClaw",
@@ -64,25 +78,29 @@ fn create_openclaw() -> Software {
     .with_tag("automation")
     .with_tag("npm")
     // Git dependency - required for git-based installation and general usage
+    // Uses GitHub Release for offline bundle support
     .with_dependency(
         Dependency::new("Git", "git --version")
             .with_expected_output("git version")
             .with_install_hint("https://git-scm.com/downloads")
-            .with_auto_install(InstallMethod::PackageManager {
-                windows: Some("winget install Git.Git".to_string()),
-                macos: Some("brew install git".to_string()),
-                linux: Some("apt install git -y".to_string()),
+            .with_auto_install(InstallMethod::GitHubRelease {
+                owner: "git-for-windows".to_string(),
+                repo: "git".to_string(),
+                asset_patterns: git_asset_patterns,
+                extract_archive: Some(false), // It's an installer exe
             }),
     )
     // Node.js dependency - required for OpenClaw (needs v22+)
+    // Uses fnm (Fast Node Manager) from GitHub Release for offline bundle support
     .with_dependency(
         Dependency::new("Node.js", "node --version")
             .with_expected_output("v2")  // Expects v22+
             .with_install_hint("Use 'burncloud install fnm' to install Node.js via fnm, then 'fnm install 22'")
-            .with_auto_install(InstallMethod::PackageManager {
-                windows: Some("fnm install 22".to_string()),
-                macos: Some("fnm install 22".to_string()),
-                linux: Some("fnm install 22".to_string()),
+            .with_auto_install(InstallMethod::GitHubRelease {
+                owner: "Schniz".to_string(),
+                repo: "fnm".to_string(),
+                asset_patterns: fnm_asset_patterns,
+                extract_archive: Some(true),
             }),
     )
     .with_platforms(vec![
@@ -288,6 +306,17 @@ mod tests {
         assert!(software.homepage.is_some());
         // OpenClaw should have Git and Node.js dependencies
         assert!(software.dependencies.len() >= 2);
+
+        // Check that dependencies use GitHub Release for offline support
+        for dep in &software.dependencies {
+            if let Some(auto_install) = &dep.auto_install {
+                assert!(
+                    matches!(auto_install, InstallMethod::GitHubRelease { .. }),
+                    "Dependency {} should use GitHubRelease for offline support",
+                    dep.name
+                );
+            }
+        }
     }
 
     #[test]

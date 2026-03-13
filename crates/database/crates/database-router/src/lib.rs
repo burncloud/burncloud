@@ -1250,11 +1250,7 @@ pub struct ModelUsageStats {
 
 /// Get aggregated usage statistics for a user over a time period
 /// Period can be: "day", "week", "month"
-pub async fn get_usage_stats(
-    db: &Database,
-    user_id: &str,
-    period: &str,
-) -> Result<UsageStats> {
+pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Result<UsageStats> {
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
@@ -1402,12 +1398,14 @@ pub async fn get_usage_stats_by_model(
 
     Ok(rows
         .into_iter()
-        .map(|(model, requests, prompt_tokens, completion_tokens, cost_nano)| ModelUsageStats {
-            model,
-            requests,
-            prompt_tokens,
-            completion_tokens,
-            cost_nano,
-        })
+        .map(
+            |(model, requests, prompt_tokens, completion_tokens, cost_nano)| ModelUsageStats {
+                model,
+                requests,
+                prompt_tokens,
+                completion_tokens,
+                cost_nano,
+            },
+        )
         .collect())
 }

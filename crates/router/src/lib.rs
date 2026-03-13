@@ -518,13 +518,8 @@ async fn proxy_handler(
         if let Some(model) = &model_name {
             // Try to get price and check for tiered pricing
             // Use channel's pricing_region for region-specific pricing
-            let price_result = PriceModel::get(
-                &state.db,
-                model,
-                "USD",
-                pricing_region.as_deref(),
-            )
-            .await;
+            let price_result =
+                PriceModel::get(&state.db, model, "USD", pricing_region.as_deref()).await;
             let tiered_result =
                 burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model)
                     .await;
