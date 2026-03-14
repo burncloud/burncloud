@@ -9,7 +9,8 @@
 //! - [`group`] - Group management (DbGroup, GroupModel, GroupMemberModel)
 //! - [`log`] - Router logs and usage stats (DbRouterLog, RouterLogModel)
 
-use burncloud_database::{Database, Result};
+use burncloud_database::{Database, DatabaseError, Result};
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 // Re-export sub-crates as modules
@@ -20,10 +21,7 @@ pub use burncloud_database_upstream as upstream;
 
 // Re-export common types for backward compatibility
 pub use burncloud_database_group::{DbGroup, DbGroupMember, GroupMemberModel, GroupModel};
-pub use burncloud_database_router_log::{
-    get_usage_stats, get_usage_stats_by_model, BalanceModel, DbRouterLog, ModelUsageStats,
-    RouterLogModel, UsageStats,
-};
+pub use burncloud_database_router_log::{BalanceModel, DbRouterLog, RouterLogModel};
 pub use burncloud_database_token::{DbToken, TokenModel, TokenValidationResult};
 pub use burncloud_database_upstream::{DbUpstream, UpstreamModel};
 
