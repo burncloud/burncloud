@@ -39,7 +39,7 @@ async fn test_uninitialized_database_operations() {
     match db_result {
         Ok(db) => {
             // If initialization succeeded, verify it works correctly
-            let connection_result = db.connection();
+            let connection_result = db.get_connection();
             assert!(
                 connection_result.is_ok(),
                 "Initialized database should have connection"
@@ -108,7 +108,7 @@ async fn test_connection_pool_exhaustion() {
 
         for i in 0..num_operations {
             let connection = db
-                .connection()
+                .get_connection()
                 .expect("Database should be initialized")
                 .clone();
             let handle = tokio::spawn(async move {

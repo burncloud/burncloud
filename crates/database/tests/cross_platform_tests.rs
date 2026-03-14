@@ -100,30 +100,6 @@ fn validate_windows_path(path: &Path) {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-fn validate_unix_path(path: &Path) {
-    let path_str = path.to_string_lossy();
-
-    // Should contain Unix-specific path components
-    assert!(
-        path_str.contains(".burncloud"),
-        "Unix path should contain .burncloud, got: {}",
-        path_str
-    );
-
-    // Should use forward slashes
-    assert!(
-        path_str.contains('/'),
-        "Unix path should contain forward slashes"
-    );
-
-    // Should start with root or home
-    assert!(
-        path_str.starts_with('/') || path_str.starts_with('~'),
-        "Unix path should be absolute"
-    );
-}
-
 #[tokio::test]
 async fn test_path_edge_cases() {
     // Test various edge cases in path handling

@@ -185,6 +185,44 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
     }
 }
 
+/// z.ai Adaptor - Uses Anthropic-compatible protocol with Bearer authentication
+pub struct ZaiAdaptor;
+
+#[async_trait]
+impl ChannelAdaptor for ZaiAdaptor {
+    fn name(&self) -> &'static str {
+        "Zai"
+    }
+
+    async fn build_request(
+        &self,
+        _client: &reqwest::Client,
+        builder: RequestBuilder,
+        api_key: &str,
+        body: &Value,
+    ) -> RequestBuilder {
+        // z.ai uses Bearer auth (like OpenAI) with Anthropic-compatible body
+        builder.bearer_auth(api_key).json(body)
+    }
+
+    fn convert_request(&self, request: &OpenAIChatRequest) -> Option<Value> {
+        Some(crate::adaptor::zai::ZaiAdaptor::convert_request(
+            request.clone(),
+        ))
+    }
+
+    fn convert_response(&self, response: Value, model_name: &str) -> Option<Value> {
+        Some(crate::adaptor::zai::ZaiAdaptor::convert_response(
+            response, model_name,
+        ))
+    }
+
+    fn convert_stream_response(&self, chunk: &str) -> Option<String> {
+        // Extract model from context if needed, for now use empty string
+        crate::adaptor::zai::ZaiAdaptor::convert_stream_chunk(chunk, "")
+    }
+}
+
 pub struct AdaptorFactory;
 
 impl AdaptorFactory {
@@ -194,6 +232,8 @@ impl AdaptorFactory {
             | ChannelType::Azure
             | ChannelType::DeepSeek
             | ChannelType::Moonshot => Box::new(OpenAIAdaptor),
+            // z.ai uses Anthropic-compatible API with Bearer auth
+            ChannelType::Zai => Box::new(ZaiAdaptor),
             ChannelType::Anthropic => Box::new(AnthropicAdaptor),
             ChannelType::Gemini => Box::new(GoogleGeminiAdaptor),
             ChannelType::VertexAi => Box::new(crate::adaptor::vertex::VertexAdaptor::default()),

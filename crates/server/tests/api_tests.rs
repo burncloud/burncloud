@@ -6,7 +6,7 @@ use tokio::time::sleep;
 async fn test_api_health() -> anyhow::Result<()> {
     let port = 4000;
     tokio::spawn(async move {
-        if let Err(e) = burncloud_server::start_server(port).await {
+        if let Err(e) = burncloud_server::start_server(port, false).await {
             eprintln!("Server error: {}", e);
         }
     });
@@ -25,7 +25,7 @@ async fn test_api_health() -> anyhow::Result<()> {
 async fn test_token_api() -> anyhow::Result<()> {
     let port = 4001;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server(port).await {
+        if let Err(_e) = burncloud_server::start_server(port, false).await {
             // Ignore
         }
     });

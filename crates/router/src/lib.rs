@@ -725,6 +725,8 @@ async fn proxy_logic(
                         ChannelType::Gemini | ChannelType::VertexAi => {
                             (AuthType::GoogleAI, "gemini".to_string())
                         }
+                        // z.ai uses Anthropic-compatible protocol with Bearer auth
+                        ChannelType::Zai => (AuthType::Bearer, "zai".to_string()),
                         _ => (AuthType::Bearer, "openai".to_string()),
                     };
 
@@ -872,6 +874,7 @@ async fn proxy_logic(
             "claude" => ChannelType::Anthropic,
             "gemini" => ChannelType::Gemini,
             "vertex" => ChannelType::VertexAi,
+            "zai" => ChannelType::Zai,
             _ => ChannelType::OpenAI,
         };
 
@@ -1296,7 +1299,7 @@ async fn proxy_logic(
 
                                 // Parse token usage from streaming response
                                 match protocol.as_str() {
-                                    "claude" => {
+                                    "claude" | "zai" => {
                                         StreamingTokenParser::parse_anthropic_chunk(
                                             &text,
                                             &counter_clone,
@@ -1575,7 +1578,7 @@ fn handle_response_with_token_parsing(
 
             // Parse token usage from streaming response
             match protocol.as_str() {
-                "claude" => {
+                "claude" | "zai" => {
                     StreamingTokenParser::parse_anthropic_chunk(&text, &counter_clone);
                 }
                 "gemini" | "vertex" => {
