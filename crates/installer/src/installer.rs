@@ -253,6 +253,12 @@ impl Installer {
         fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await?;
 
         info!("Successfully installed {}", software.name);
+
+        // Update system PATH environment variable for        #[cfg(target_os = "windows")]
+        if let Err(e) = self.update_system_path() {
+            warn!("Failed to update system PATH: {}", e);
+        }
+
         Ok(())
     }
 
@@ -497,19 +503,85 @@ impl Installer {
             }
         } else if extension == "exe" {
             // EXE installer (silent install)
-            let status = Command::new(&installer_path)
-                .args(["/S", "/silent", "/quiet"])
-                .status()
-                .unwrap_or_else(|_| {
-                    // Try without args (some installers don't support silent)
-                    Command::new(&installer_path).status().unwrap()
-                });
+            // Git for Windows uses Inno Setup which requires /SILENT or /VERYSILENT
+            // NSIS installers use /S
+            // Try different silent flags based on installer type
+            let installer_name = installer_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+
+            let status = if installer_name.contains("git") && installer_name.contains("64-bit") {
+                // Git for Windows (Inno Setup) - use /SILENT
+                info!("Detected Git for Windows installer, using /SILENT flag");
+                Command::new(&installer_path)
+                    .args(["/SILENT", "/NORESTART"])
+                    .status()
+            } else {
+                // Try NSIS style first (/S), then Inno Setup style (/SILENT)
+                Command::new(&installer_path)
+                    .args(["/S"])
+                    .status()
+                    .or_else(|_| {
+                        Command::new(&installer_path)
+                            .args(["/SILENT", "/NORESTART"])
+                            .status()
+                    })
+                    .or_else(|_| {
+                        // Try without args (some installers don't support silent)
+                        Command::new(&installer_path).status()
+                    })
+            };
+
+            let status = status.map_err(|e| {
+                InstallerError::Script(format!("Failed to run EXE installer: {}", e))
+            })?;
 
             if !status.success() {
                 return Err(InstallerError::InstallationFailed(format!(
                     "Installer failed for {}",
                     dep_name
                 )));
+            }
+
+            // Special handling for Git: add to PATH for current session
+            if dep_name.to_lowercase() == "git" {
+                // Git for Windows installs to C:\Program Files\Git by default
+                let git_cmd_dir = PathBuf::from("C:\\Program Files\\Git\\cmd");
+                let git_bin_dir = PathBuf::from("C:\\Program Files\\Git\\bin");
+
+                let current_path = std::env::var("PATH").unwrap_or_default();
+                let mut new_path = current_path.clone();
+
+                if git_cmd_dir.exists() {
+                    new_path = if self.config.platform.is_windows() {
+                        format!("{};{}", git_cmd_dir.display(), new_path)
+                    } else {
+                        format!("{}:{}", git_cmd_dir.display(), new_path)
+                    };
+                    info!("[git] Added Git cmd to PATH: {}", git_cmd_dir.display());
+                }
+
+                if git_bin_dir.exists() {
+                    new_path = if self.config.platform.is_windows() {
+                        format!("{};{}", git_bin_dir.display(), new_path)
+                    } else {
+                        format!("{}:{}", git_bin_dir.display(), new_path)
+                    };
+                    info!("[git] Added Git bin to PATH: {}", git_bin_dir.display());
+                }
+
+                std::env::set_var("PATH", &new_path);
+                info!("[git] Updated PATH for current session");
+
+                // Verify git is now accessible
+                if let Ok(output) = Command::new("git").arg("--version").output() {
+                    info!(
+                        "[git] Git version: {}",
+                        String::from_utf8_lossy(&output.stdout).trim()
+                    );
+                }
             }
         } else if extension == "zip" {
             // Zip archive - extract to a temp location and run any installer inside
@@ -529,93 +601,17 @@ impl Installer {
                 }
             }
 
-            // Special handling for fnm: configure environment and install Node.js
-            if dep_name.to_lowercase() == "node.js" || dep_name.to_lowercase() == "fnm" {
-                info!("Configuring fnm environment and installing Node.js...");
-
-                // Find fnm.exe in the extracted directory
-                let fnm_exe = if self.config.platform.is_windows() {
-                    temp_dir.join("fnm.exe")
-                } else {
-                    temp_dir.join("fnm")
-                };
-
-                if fnm_exe.exists() {
-                    // Add fnm directory to PATH for current session
-                    let fnm_dir = fnm_exe.parent().unwrap();
-                    let current_path = std::env::var("PATH").unwrap_or_default();
-                    let new_path = if self.config.platform.is_windows() {
-                        format!("{};{}", fnm_dir.display(), current_path)
-                    } else {
-                        format!("{}:{}", fnm_dir.display(), current_path)
-                    };
-                    std::env::set_var("PATH", &new_path);
-                    info!("Added fnm to PATH: {}", fnm_dir.display());
-
-                    // Install Node.js LTS
-                    info!("Installing Node.js LTS via fnm...");
-                    let install_result = Command::new(&fnm_exe).args(["install", "--lts"]).status();
-
-                    match install_result {
-                        Ok(status) if status.success() => {
-                            info!("Node.js LTS installed successfully via fnm");
-
-                            // Run fnm use to activate the installed version
-                            let _ = Command::new(&fnm_exe).args(["use", "--lts"]).status();
-
-                            // Configure environment variables for fnm
-                            // fnm env outputs shell commands to set up the environment
-                            if self.config.platform.is_windows() {
-                                // For Windows, fnm env --shell powershell outputs PowerShell commands
-                                let env_output = Command::new(&fnm_exe)
-                                    .args(["env", "--shell", "powershell"])
-                                    .output();
-
-                                if let Ok(output) = env_output {
-                                    if output.status.success() {
-                                        let env_text = String::from_utf8_lossy(&output.stdout);
-                                        // Parse and set environment variables from fnm env output
-                                        for line in env_text.lines() {
-                                            // PowerShell format: $env:VAR = "value" or $env:VAR = 'value'
-                                            if line.contains("$env:") {
-                                                let parts: Vec<&str> =
-                                                    line.splitn(2, '=').collect();
-                                                if parts.len() == 2 {
-                                                    let var_name = parts[0]
-                                                        .replace("$env:", "")
-                                                        .trim()
-                                                        .to_string();
-                                                    let var_value = parts[1]
-                                                        .trim()
-                                                        .trim_matches('"')
-                                                        .trim_matches('\'')
-                                                        .to_string();
-
-                                                    // Set FNM_MULTISHELL_PATH, FNM_DIR, FNM_LOGLEVEL, etc.
-                                                    if !var_name.is_empty() && !var_value.is_empty()
-                                                    {
-                                                        std::env::set_var(&var_name, &var_value);
-                                                        info!(
-                                                            "Set fnm env: {} = {}",
-                                                            var_name, var_value
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Ok(status) => {
-                            warn!("fnm install --lts exited with code: {:?}", status.code());
-                        }
-                        Err(e) => {
-                            warn!("Failed to run fnm install --lts: {}", e);
-                        }
-                    }
-                } else {
-                    warn!("fnm executable not found at {}", fnm_exe.display());
+            // Special handling for Node.js dependency
+            if dep_name.to_lowercase() == "node.js" {
+                // Install Node.js directly from bundle
+                info!(
+                    "[bundle] Installing Node.js from bundle, platform_dir: {}",
+                    platform_dir.display()
+                );
+                let installed = self.install_nodejs_from_bundle(&platform_dir)?;
+                info!("[bundle] Node.js installation result: {}", installed);
+                if !installed {
+                    warn!("[bundle] Node.js was not installed from bundle, falling back may be needed");
                 }
             }
         }
@@ -1019,12 +1015,41 @@ impl Installer {
         version: Option<&str>,
         global: bool,
     ) -> InstallerResult<()> {
-        info!("Installing {} via npm...", software.name);
+        use std::time::Instant;
+        let start = Instant::now();
+        info!("[npm] Installing {} via npm...", software.name);
 
         let package_spec = match version {
             Some(v) => format!("{}@{}", package, v),
             None => package.to_string(),
         };
+
+        // Check if we should use a mirror for faster downloads in China
+        let use_mirror = std::env::var("NPM_MIRROR")
+            .map(|m| {
+                info!("[npm] Using custom mirror: {}", m);
+                m
+            })
+            .unwrap_or_else(|_| {
+                // Check if we're in China (simple heuristic: check language/region)
+                let in_china = std::env::var("LANG")
+                    .map(|l| l.contains("zh") || l.contains("CN"))
+                    .unwrap_or(false)
+                    || std::env::var("LC_ALL")
+                        .map(|l| l.contains("zh") || l.contains("CN"))
+                        .unwrap_or(false);
+
+                if in_china {
+                    let mirror = "https://registry.npmmirror.com".to_string();
+                    info!(
+                        "[npm] Detected China region, using taobao mirror: {}",
+                        mirror
+                    );
+                    mirror
+                } else {
+                    String::new()
+                }
+            });
 
         let mut args = vec!["install"];
         if global {
@@ -1032,17 +1057,40 @@ impl Installer {
         }
         args.push(&package_spec);
 
+        // Add mirror registry if specified
+        let registry_arg;
+        if !use_mirror.is_empty() {
+            registry_arg = format!("--registry={}", use_mirror);
+            args.push(&registry_arg);
+        }
+
+        info!("[npm] Running: npm {}", args.join(" "));
+
+        // Get current PATH to pass to child process (includes Node.js path if installed from bundle)
+        let current_path = std::env::var("PATH").unwrap_or_default();
+
         let result = if self.config.platform.is_windows() {
-            Command::new("cmd").args(["/C", "npm"]).args(&args).status()
+            Command::new("cmd")
+                .args(["/C", "npm"])
+                .args(&args)
+                .env("PATH", &current_path)
+                .status()
         } else {
             Command::new("sh")
                 .args(["-c", &format!("npm {}", args.join(" "))])
+                .env("PATH", &current_path)
                 .status()
         };
 
+        let elapsed = start.elapsed();
+        info!(
+            "[npm] npm install completed in {:.2}s",
+            elapsed.as_secs_f64()
+        );
+
         match result {
             Ok(status) if status.success() => {
-                info!("Successfully installed {} via npm", software.name);
+                info!("[npm] Successfully installed {} via npm", software.name);
                 Ok(())
             }
             Ok(status) => Err(InstallerError::InstallationFailed(format!(
@@ -1065,13 +1113,18 @@ impl Installer {
         global: bool,
         bundle_dir: &Path,
     ) -> InstallerResult<()> {
-        info!("Installing {} from bundle...", software.name);
+        use std::time::Instant;
+        let _start = Instant::now();
+        info!("[bundle] Installing {} from bundle...", software.name);
+        info!("[bundle] Bundle directory: {}", bundle_dir.display());
 
         // Look for the tarball in bundle/software/<id>/npm-package/
         let npm_dir = bundle_dir
             .join("software")
             .join(&software.id)
             .join("npm-package");
+
+        info!("[bundle] Looking for npm package in: {}", npm_dir.display());
 
         if !npm_dir.exists() {
             return Err(InstallerError::FileSystem(format!(
@@ -1098,7 +1151,19 @@ impl Installer {
             })?
             .path();
 
-        info!("Installing from tarball: {}", tarball_path.display());
+        info!(
+            "[bundle] Installing from tarball: {}",
+            tarball_path.display()
+        );
+
+        // Get tarball size for progress info
+        if let Ok(metadata) = std::fs::metadata(&tarball_path) {
+            info!(
+                "[bundle] Tarball size: {} bytes ({:.2} MB)",
+                metadata.len(),
+                metadata.len() as f64 / 1024.0 / 1024.0
+            );
+        }
 
         // Install from tarball
         let tarball_str = tarball_path.to_string_lossy();
@@ -1108,23 +1173,81 @@ impl Installer {
         }
         args.push(&tarball_str);
 
+        info!("[bundle] Running: npm {}", args.join(" "));
+
+        let npm_start = Instant::now();
+
+        // Get current PATH to pass to child process (includes Node.js path if installed from bundle)
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        info!("[bundle] Current PATH: {}", current_path);
+
+        // Check if npm is accessible
+        let npm_check = if self.config.platform.is_windows() {
+            Command::new("cmd").args(["/C", "where", "npm"]).output()
+        } else {
+            Command::new("sh").args(["-c", "which npm"]).output()
+        };
+
+        match npm_check {
+            Ok(output) => {
+                if output.status.success() {
+                    info!(
+                        "[bundle] npm found at: {}",
+                        String::from_utf8_lossy(&output.stdout).trim()
+                    );
+                } else {
+                    warn!("[bundle] npm not found in PATH!");
+                    warn!(
+                        "[bundle] stderr: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+            }
+            Err(e) => {
+                warn!("[bundle] Failed to check npm location: {}", e);
+            }
+        }
+
         let result = if self.config.platform.is_windows() {
-            Command::new("cmd").args(["/C", "npm"]).args(&args).status()
+            Command::new("cmd")
+                .args(["/C", "npm"])
+                .args(&args)
+                .env("PATH", &current_path)
+                .output()
         } else {
             Command::new("sh")
                 .args(["-c", &format!("npm {}", args.join(" "))])
-                .status()
+                .env("PATH", &current_path)
+                .output()
         };
 
+        let npm_elapsed = npm_start.elapsed();
+        info!(
+            "[bundle] npm install completed in {:.2}s",
+            npm_elapsed.as_secs_f64()
+        );
+
         match result {
-            Ok(status) if status.success() => {
+            Ok(output) if output.status.success() => {
+                info!(
+                    "[bundle] npm stdout: {}",
+                    String::from_utf8_lossy(&output.stdout)
+                );
                 info!("Successfully installed {} from bundle", software.name);
                 Ok(())
             }
-            Ok(status) => Err(InstallerError::InstallationFailed(format!(
-                "npm install from bundle exited with code: {}",
-                status.code().unwrap_or(-1)
-            ))),
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                warn!("[bundle] npm stdout: {}", stdout);
+                warn!("[bundle] npm stderr: {}", stderr);
+                Err(InstallerError::InstallationFailed(format!(
+                    "npm install from bundle exited with code: {}\nstdout: {}\nstderr: {}",
+                    output.status.code().unwrap_or(-1),
+                    stdout,
+                    stderr
+                )))
+            }
             Err(e) => Err(InstallerError::InstallationFailed(format!(
                 "Failed to run npm install from bundle: {}",
                 e
@@ -1214,6 +1337,343 @@ impl Installer {
         }
 
         info!("Successfully installed {} from Git", software.name);
+        Ok(())
+    }
+
+    /// Install Node.js directly from bundle (offline mode)
+    /// Returns true if Node.js was installed from bundle, false if fallback needed
+    fn install_nodejs_from_bundle(&self, platform_dir: &Path) -> InstallerResult<bool> {
+        use std::time::Instant;
+        let start = Instant::now();
+        info!(
+            "[nodejs] Looking for offline Node.js package in: {}",
+            platform_dir.display()
+        );
+        info!(
+            "[nodejs] Platform directory exists: {}",
+            platform_dir.exists()
+        );
+
+        // List all files in the directory for debugging
+        if let Ok(entries) = std::fs::read_dir(platform_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                info!(
+                    "[nodejs]   Found file: {}",
+                    entry.file_name().to_string_lossy()
+                );
+            }
+        }
+
+        // Look for Node.js official package (node-v*.zip or node-v*.tar.gz)
+        let nodejs_package = std::fs::read_dir(platform_dir)
+            .map_err(|e| InstallerError::FileSystem(e.to_string()))?
+            .filter_map(|e| e.ok())
+            .find(|e| {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                let matches = name.starts_with("node-v")
+                    && (name.ends_with(".zip") || name.ends_with(".tar.gz"));
+                info!("[nodejs]   Checking file: {} -> matches: {}", name, matches);
+                matches
+            });
+
+        let Some(nodejs_entry) = nodejs_package else {
+            warn!("[nodejs] No offline Node.js package found in bundle");
+            return Ok(false);
+        };
+
+        let nodejs_path = nodejs_entry.path();
+
+        // Get file size
+        if let Ok(metadata) = std::fs::metadata(&nodejs_path) {
+            info!(
+                "[nodejs] Found offline Node.js package: {} ({:.2} MB)",
+                nodejs_path.display(),
+                metadata.len() as f64 / 1024.0 / 1024.0
+            );
+        } else {
+            info!(
+                "[nodejs] Found offline Node.js package: {}",
+                nodejs_path.display()
+            );
+        }
+
+        // Determine installation directory
+        // Use %LOCALAPPDATA%\burncloud\nodejs on Windows
+        let nodejs_install_dir = if self.config.platform.is_windows() {
+            dirs::data_local_dir()
+                .unwrap_or_else(|| PathBuf::from("./apps"))
+                .join("burncloud")
+                .join("nodejs")
+        } else {
+            dirs::data_local_dir()
+                .unwrap_or_else(|| PathBuf::from("./apps"))
+                .join("burncloud")
+                .join("nodejs")
+        };
+
+        info!(
+            "[nodejs] Installation directory: {}",
+            nodejs_install_dir.display()
+        );
+
+        // Create installation directory
+        std::fs::create_dir_all(&nodejs_install_dir).map_err(|e| {
+            InstallerError::FileSystem(format!("Failed to create Node.js directory: {}", e))
+        })?;
+
+        // Extract Node.js package
+        let extract_start = Instant::now();
+        let extension = nodejs_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        info!(
+            "[nodejs] Extracting Node.js package (format: {})...",
+            extension
+        );
+
+        if extension == "zip" {
+            self.extract_zip(&nodejs_path, &nodejs_install_dir)?;
+        } else if extension == "gz" {
+            // tar.gz extraction
+            let status = Command::new("tar")
+                .args([
+                    "-xzf",
+                    nodejs_path.to_str().unwrap(),
+                    "-C",
+                    nodejs_install_dir.to_str().unwrap(),
+                ])
+                .status()
+                .map_err(|e| InstallerError::Script(format!("Failed to extract tar.gz: {}", e)))?;
+
+            if !status.success() {
+                return Err(InstallerError::InstallationFailed(
+                    "Failed to extract Node.js tar.gz".to_string(),
+                ));
+            }
+        }
+
+        let extract_elapsed = extract_start.elapsed();
+        info!(
+            "[nodejs] Extraction completed in {:.2}s",
+            extract_elapsed.as_secs_f64()
+        );
+
+        // Find the extracted Node.js directory (usually node-v22.14.0-win-x64)
+        let extracted_dir = std::fs::read_dir(&nodejs_install_dir)
+            .map_err(|e| InstallerError::FileSystem(e.to_string()))?
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name().to_string_lossy().starts_with("node-v"));
+
+        if let Some(extracted) = extracted_dir {
+            let extracted_path = extracted.path();
+            info!(
+                "[nodejs] Node.js extracted to: {}",
+                extracted_path.display()
+            );
+
+            // Add to system PATH for current session
+            let nodejs_bin = extracted_path.clone();
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            let new_path = if self.config.platform.is_windows() {
+                format!("{};{}", nodejs_bin.display(), current_path)
+            } else {
+                format!("{}:{}", nodejs_bin.display(), current_path)
+            };
+            std::env::set_var("PATH", &new_path);
+            info!("Added Node.js to PATH: {}", nodejs_bin.display());
+
+            // Verify installation
+            let node_exe = if self.config.platform.is_windows() {
+                nodejs_bin.join("node.exe")
+            } else {
+                nodejs_bin.join("bin").join("node")
+            };
+
+            if node_exe.exists() {
+                info!("Node.js installation verified: {}", node_exe.display());
+
+                // Test node --version
+                if let Ok(output) = Command::new(&node_exe).arg("--version").output() {
+                    let version = String::from_utf8_lossy(&output.stdout);
+                    info!("[nodejs] Node.js version: {}", version.trim());
+                }
+            } else {
+                warn!(
+                    "[nodejs] Node.js executable not found at expected location: {}",
+                    node_exe.display()
+                );
+            }
+        }
+
+        let total_elapsed = start.elapsed();
+        info!(
+            "[nodejs] Node.js installed successfully from bundle in {:.2}s",
+            total_elapsed.as_secs_f64()
+        );
+        Ok(true)
+    }
+
+    /// Update system PATH environment variable to include installed tools
+    ///
+    /// On Windows, this uses `setx` to permanently add paths to user's PATH.
+    /// This allows Node.js, Git, and npm global packages (like openclaw) to be
+    /// accessible from any new command prompt.
+    #[cfg(target_os = "windows")]
+    fn update_system_path(&self) -> InstallerResult<()> {
+        use std::process::Command;
+
+        let mut paths_to_add = Vec::new();
+
+        // Node.js path - installed to %LOCALAPPDATA%\burncloud\nodejs\node-v24.14.0-win-x64
+        let nodejs_base = dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("./apps"))
+            .join("burncloud")
+            .join("nodejs");
+
+        info!("[env] Looking for Node.js in: {}", nodejs_base.display());
+
+        // List all directories in nodejs_base for debugging
+        if nodejs_base.exists() {
+            if let Ok(entries) = std::fs::read_dir(&nodejs_base) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    info!("[env]   Found in nodejs dir: {}", path.display());
+                }
+            }
+        }
+
+        if nodejs_base.exists() {
+            // Find the actual Node.js directory (e.g., node-v24.14.0-win-x64)
+            if let Ok(entries) = std::fs::read_dir(&nodejs_base) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+                    info!("[env]   Checking: {} (is_dir: {})", name, path.is_dir());
+                    if path.is_dir() && name.starts_with("node-v") {
+                        paths_to_add.push(path.to_string_lossy().to_string());
+                        info!("[env] Adding Node.js to PATH: {}", path.display());
+                        break;
+                    }
+                }
+            }
+        } else {
+            warn!(
+                "[env] Node.js directory does not exist: {}",
+                nodejs_base.display()
+            );
+        }
+
+        // Git paths - installed to C:\Program Files\Git by Git for Windows installer
+        let git_install_dir = PathBuf::from("C:\\Program Files\\Git");
+        info!("[env] Looking for Git in: {}", git_install_dir.display());
+        if git_install_dir.exists() {
+            let git_cmd = git_install_dir.join("cmd");
+            let git_bin = git_install_dir.join("bin");
+
+            if git_cmd.exists() {
+                paths_to_add.push(git_cmd.to_string_lossy().to_string());
+                info!("[env] Adding Git/cmd to PATH: {}", git_cmd.display());
+            }
+            if git_bin.exists() {
+                paths_to_add.push(git_bin.to_string_lossy().to_string());
+                info!("[env] Adding Git/bin to PATH: {}", git_bin.display());
+            }
+        } else {
+            warn!(
+                "[env] Git installation directory does not exist: {}",
+                git_install_dir.display()
+            );
+        }
+
+        // npm global bin path (for openclaw and other global packages)
+        // npm stores global packages in %APPDATA%\npm on Windows
+        if let Some(appdata) = dirs::config_dir() {
+            let npm_global = appdata.join("npm");
+            // Always add npm global path, even if it doesn't exist yet
+            // It will be created when npm installs global packages
+            paths_to_add.push(npm_global.to_string_lossy().to_string());
+            info!(
+                "[env] Adding npm global to PATH: {} (exists: {})",
+                npm_global.display(),
+                npm_global.exists()
+            );
+        }
+
+        if paths_to_add.is_empty() {
+            warn!("[env] No paths to add to PATH");
+            return Ok(());
+        }
+
+        // Get current user PATH
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        info!("[env] Current PATH length: {} chars", current_path.len());
+
+        // Check which paths are not already in PATH
+        let current_path_lower = current_path.to_lowercase();
+        let new_paths: Vec<String> = paths_to_add
+            .into_iter()
+            .filter(|p| {
+                // Check if path is not already in PATH (case-insensitive on Windows)
+                let already_exists = current_path_lower.contains(&p.to_lowercase());
+                if already_exists {
+                    info!("[env] Path already in PATH: {}", p);
+                }
+                !already_exists
+            })
+            .collect();
+
+        if new_paths.is_empty() {
+            info!("[env] All paths already in PATH");
+            return Ok(());
+        }
+
+        info!("[env] New paths to add: {:?}", new_paths);
+
+        // Use setx to permanently add paths to user PATH
+        // We need to get the current user PATH from registry, add new paths, and set it back
+        let new_path_value = if current_path.is_empty() {
+            new_paths.join(";")
+        } else {
+            format!("{};{}", current_path, new_paths.join(";"))
+        };
+
+        info!(
+            "[env] Setting new PATH with {} additional entries",
+            new_paths.len()
+        );
+
+        // Use setx to set the user PATH permanently
+        let output = Command::new("setx")
+            .args(["PATH", &new_path_value])
+            .output()
+            .map_err(|e| {
+                InstallerError::InstallationFailed(format!("Failed to run setx: {}", e))
+            })?;
+
+        if output.status.success() {
+            info!("[env] Successfully updated system PATH");
+            info!("[env] Please restart your terminal for changes to take effect");
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            warn!("[env] setx failed: {}", stderr);
+            Err(InstallerError::InstallationFailed(format!(
+                "Failed to update PATH: {}",
+                stderr
+            )))
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn update_system_path(&self) -> InstallerResult<()> {
+        // On non-Windows, users typically manage PATH themselves or via shell config
+        info!("[env] PATH update not implemented for this platform");
         Ok(())
     }
 }

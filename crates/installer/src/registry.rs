@@ -30,6 +30,10 @@ pub fn get_registry() -> &'static HashMap<&'static str, Software> {
         let git = create_git();
         registry.insert("git", git);
 
+        // Node.js (standalone)
+        let nodejs = create_nodejs();
+        registry.insert("nodejs", nodejs);
+
         registry
     })
 }
@@ -51,14 +55,30 @@ fn create_openclaw() -> Software {
     git_asset_patterns.insert((OS::Windows, Arch::X64), "Git-*-64-bit.exe".to_string());
     git_asset_patterns.insert((OS::Windows, Arch::ARM64), "Git-*-64-bit.exe".to_string());
 
-    // fnm asset patterns for offline bundle (for Node.js installation)
-    let mut fnm_asset_patterns = HashMap::new();
-    fnm_asset_patterns.insert((OS::Windows, Arch::X64), "fnm-windows.zip".to_string());
-    fnm_asset_patterns.insert((OS::Windows, Arch::ARM64), "fnm-arm64.zip".to_string());
-    fnm_asset_patterns.insert((OS::MacOS, Arch::X64), "fnm-macos.zip".to_string());
-    fnm_asset_patterns.insert((OS::MacOS, Arch::ARM64), "fnm-macos.zip".to_string());
-    fnm_asset_patterns.insert((OS::Linux, Arch::X64), "fnm-linux.zip".to_string());
-    fnm_asset_patterns.insert((OS::Linux, Arch::ARM64), "fnm-arm64.zip".to_string());
+    // Node.js direct download patterns for offline bundle
+    // We use a placeholder pattern - actual download URL is generated dynamically
+    let mut nodejs_asset_patterns = HashMap::new();
+    nodejs_asset_patterns.insert((OS::Windows, Arch::X64), "node-v*-win-x64.zip".to_string());
+    nodejs_asset_patterns.insert(
+        (OS::Windows, Arch::ARM64),
+        "node-v*-win-arm64.zip".to_string(),
+    );
+    nodejs_asset_patterns.insert(
+        (OS::MacOS, Arch::X64),
+        "node-v*-darwin-x64.tar.gz".to_string(),
+    );
+    nodejs_asset_patterns.insert(
+        (OS::MacOS, Arch::ARM64),
+        "node-v*-darwin-arm64.tar.gz".to_string(),
+    );
+    nodejs_asset_patterns.insert(
+        (OS::Linux, Arch::X64),
+        "node-v*-linux-x64.tar.gz".to_string(),
+    );
+    nodejs_asset_patterns.insert(
+        (OS::Linux, Arch::ARM64),
+        "node-v*-linux-arm64.tar.gz".to_string(),
+    );
 
     Software::new(
         "openclaw",
@@ -90,17 +110,15 @@ fn create_openclaw() -> Software {
                 extract_archive: Some(false), // It's an installer exe
             }),
     )
-    // Node.js dependency - required for OpenClaw (needs v22+)
-    // Uses fnm (Fast Node Manager) from GitHub Release for offline bundle support
+    // Node.js dependency - required for OpenClaw (needs v24+)
+    // Uses DirectDownload for offline bundle - Node.js is downloaded directly from nodejs.org
     .with_dependency(
         Dependency::new("Node.js", "node --version")
-            .with_expected_output("v2")  // Expects v22+
-            .with_install_hint("Use 'burncloud install fnm' to install Node.js via fnm, then 'fnm install 22'")
-            .with_auto_install(InstallMethod::GitHubRelease {
-                owner: "Schniz".to_string(),
-                repo: "fnm".to_string(),
-                asset_patterns: fnm_asset_patterns,
-                extract_archive: Some(true),
+            .with_expected_output("v2")  // Expects v24+
+            .with_install_hint("Install Node.js v24+ from https://nodejs.org")
+            .with_auto_install(InstallMethod::DirectDownload {
+                url: "https://nodejs.org/dist/".to_string(), // Placeholder, actual URL is generated dynamically
+                filename: None,
             }),
     )
     .with_platforms(vec![
@@ -252,6 +270,36 @@ fn create_git() -> Software {
         (OS::Windows, Arch::X64),
         (OS::Windows, Arch::X86),
         (OS::Windows, Arch::ARM64),
+    ])
+}
+
+/// Create Node.js software definition
+/// Node.js is downloaded directly from nodejs.org
+fn create_nodejs() -> Software {
+    // Node.js uses DirectDownload - the actual URL is generated dynamically
+    // based on the version and platform in bundle.rs
+    Software::new(
+        "nodejs",
+        "Node.js",
+        "JavaScript runtime built on Chrome's V8 engine. Required for running JavaScript applications.",
+        InstallMethod::DirectDownload {
+            url: "https://nodejs.org/dist/".to_string(), // Placeholder, actual URL generated dynamically
+            filename: None,
+        },
+    )
+    .with_homepage("https://nodejs.org")
+    .with_version("24.14.0") // Current version
+    .with_category("Development")
+    .with_tag("nodejs")
+    .with_tag("javascript")
+    .with_tag("runtime")
+    .with_platforms(vec![
+        (OS::Windows, Arch::X64),
+        (OS::Windows, Arch::ARM64),
+        (OS::MacOS, Arch::X64),
+        (OS::MacOS, Arch::ARM64),
+        (OS::Linux, Arch::X64),
+        (OS::Linux, Arch::ARM64),
     ])
 }
 

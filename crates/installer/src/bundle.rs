@@ -11,9 +11,35 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{InstallerError, InstallerResult};
 use crate::npm::NpmInstaller;
-use crate::platform::Platform;
+use crate::platform::{Arch, Platform, OS};
 use crate::registry::get_software;
 use crate::software::{GitHubRelease, InstallMethod};
+
+/// Node.js version to bundle (LTS)
+pub const NODEJS_LTS_VERSION: &str = "22.14.0";
+
+/// Node.js Current version (latest)
+pub const NODEJS_CURRENT_VERSION: &str = "24.14.0";
+
+/// Node.js download URL template
+/// Format: https://nodejs.org/dist/v{version}/node-v{version}-{platform}-{arch}.{ext}
+pub fn get_nodejs_download_url(version: &str, os: OS, arch: Arch) -> Option<String> {
+    let (platform, arch_str, ext) = match (os, arch) {
+        (OS::Windows, Arch::X64) => ("win", "x64", "zip"),
+        (OS::Windows, Arch::ARM64) => ("win", "arm64", "zip"),
+        (OS::Windows, Arch::X86) => ("win", "x86", "zip"),
+        (OS::MacOS, Arch::X64) => ("darwin", "x64", "tar.gz"),
+        (OS::MacOS, Arch::ARM64) => ("darwin", "arm64", "tar.gz"),
+        (OS::Linux, Arch::X64) => ("linux", "x64", "tar.gz"),
+        (OS::Linux, Arch::ARM64) => ("linux", "arm64", "tar.gz"),
+        _ => return None,
+    };
+
+    Some(format!(
+        "https://nodejs.org/dist/v{}/node-v{}-{}-{}.{}",
+        version, version, platform, arch_str, ext
+    ))
+}
 
 /// Bundle version
 pub const BUNDLE_VERSION: &str = "1.0.0";
@@ -214,6 +240,42 @@ impl BundleCreator {
                     ));
                 }
             }
+            InstallMethod::DirectDownload { .. } => {
+                // Special handling for Node.js - download from nodejs.org
+                if software_id == "nodejs" {
+                    let nodejs_dir = software_dir.join("nodejs");
+                    std::fs::create_dir_all(&nodejs_dir)?;
+
+                    // Get the version from software definition or use default
+                    let version = software.version.as_deref().unwrap_or(NODEJS_LTS_VERSION);
+
+                    // Download Node.js official package
+                    if let Some(nodejs_url) =
+                        get_nodejs_download_url(version, self.platform.os, self.platform.arch)
+                    {
+                        let nodejs_filename = nodejs_url.split('/').last().unwrap_or("nodejs.zip");
+                        let nodejs_path = nodejs_dir.join(nodejs_filename);
+
+                        info!("Downloading Node.js {} from: {}", version, nodejs_url);
+                        self.download_file(&nodejs_url, &nodejs_path).await?;
+
+                        info!("Downloaded Node.js {} for offline installation", version);
+
+                        let file_info = self.add_file_info(&nodejs_path, &bundle_dir)?;
+                        files.push(file_info);
+                    } else {
+                        return Err(InstallerError::PlatformNotSupported(format!(
+                            "No Node.js download available for {}",
+                            self.platform
+                        )));
+                    }
+                } else {
+                    return Err(InstallerError::Configuration(format!(
+                        "DirectDownload bundling not implemented for: {}",
+                        software_id
+                    )));
+                }
+            }
             _ => {
                 return Err(InstallerError::Configuration(format!(
                     "Bundling not supported for this installation method: {:?}",
@@ -310,7 +372,89 @@ impl BundleCreator {
                     .await?;
 
                 info!("Downloaded dependency {}: {}", dep_name, asset.name);
+
+                // Special handling for Node.js: also download Node.js official package
+                // This enables offline installation without network access
+                if dep_name.to_lowercase() == "node.js" {
+                    info!("Downloading Node.js offline package for offline installation...");
+                    if let Some(nodejs_url) = get_nodejs_download_url(
+                        NODEJS_CURRENT_VERSION,
+                        self.platform.os,
+                        self.platform.arch,
+                    ) {
+                        // Determine filename from URL
+                        let nodejs_filename = nodejs_url.split('/').last().unwrap_or("nodejs.zip");
+                        let nodejs_path = platform_dir.join(nodejs_filename);
+
+                        info!("Downloading Node.js from: {}", nodejs_url);
+                        match self.download_file(&nodejs_url, &nodejs_path).await {
+                            Ok(()) => {
+                                info!(
+                                    "Downloaded Node.js {} for offline installation",
+                                    NODEJS_CURRENT_VERSION
+                                );
+                            }
+                            Err(e) => {
+                                warn!("Failed to download Node.js offline package: {}", e);
+                                warn!(
+                                    "Installation will require network access to download Node.js"
+                                );
+                            }
+                        }
+                    }
+                }
+
                 Ok(Some(platform_dir))
+            }
+            InstallMethod::DirectDownload {
+                url: _,
+                filename: _,
+            } => {
+                // Special handling for Node.js: download from nodejs.org
+                if dep_name.to_lowercase() == "node.js" {
+                    info!("Downloading Node.js directly from nodejs.org...");
+
+                    // Create platform-specific directory
+                    let platform_dir = deps_dir
+                        .join(dep_name.to_lowercase())
+                        .join(self.platform.os.to_string().to_lowercase())
+                        .join(self.platform.arch.to_string().to_lowercase());
+
+                    std::fs::create_dir_all(&platform_dir)?;
+
+                    // Get Node.js download URL
+                    let nodejs_url = get_nodejs_download_url(
+                        NODEJS_CURRENT_VERSION,
+                        self.platform.os,
+                        self.platform.arch,
+                    )
+                    .ok_or_else(|| {
+                        InstallerError::PlatformNotSupported(format!(
+                            "No Node.js download available for {}",
+                            self.platform
+                        ))
+                    })?;
+
+                    // Determine filename from URL
+                    let nodejs_filename = nodejs_url.split('/').last().unwrap_or("nodejs.zip");
+                    let nodejs_path = platform_dir.join(nodejs_filename);
+
+                    info!("Downloading Node.js from: {}", nodejs_url);
+                    self.download_file(&nodejs_url, &nodejs_path).await?;
+
+                    info!(
+                        "Downloaded Node.js {} for offline installation",
+                        NODEJS_CURRENT_VERSION
+                    );
+
+                    Ok(Some(platform_dir))
+                } else {
+                    info!(
+                        "Skipping dependency {} (DirectDownload not implemented for this dependency)",
+                        dep_name
+                    );
+                    Ok(None)
+                }
             }
             _ => {
                 info!(
