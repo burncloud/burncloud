@@ -6,9 +6,11 @@ use clap::{Arg, Command};
 use log::{error, info};
 use std::io::{self, Write};
 
+use crate::bundle::handle_bundle_command;
 use crate::channel::handle_channel_command;
 use crate::currency::handle_currency_command;
 use crate::group::handle_group_command;
+use crate::install::handle_install_command;
 use crate::log::handle_log_command;
 use crate::monitor::handle_monitor_command;
 use crate::price::{handle_price_command, handle_tiered_command};
@@ -41,6 +43,77 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                     .help("仅检查更新，不执行更新")
                     .action(clap::ArgAction::SetTrue),
             ),
+        )
+        .subcommand(
+            Command::new("install")
+                .about("Install third-party AI software")
+                .arg(
+                    Arg::new("software")
+                        .help("Software ID to install (e.g., openclaw, cherry-studio)"),
+                )
+                .arg(
+                    Arg::new("list")
+                        .long("list")
+                        .help("List available software")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("status")
+                        .long("status")
+                        .help("Check installation status")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("auto-deps")
+                        .long("auto-deps")
+                        .help("Automatically install dependencies")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("local")
+                        .long("local")
+                        .value_name("PATH")
+                        .help("Install from local file/directory instead of downloading")
+                        .value_parser(clap::value_parser!(String)),
+                )
+                .arg(
+                    Arg::new("bundle")
+                        .long("bundle")
+                        .value_name("DIR")
+                        .help("Use local bundle directory for dependencies (offline mode)")
+                        .value_parser(clap::value_parser!(String)),
+                ),
+        )
+        .subcommand(
+            Command::new("bundle")
+                .about("Manage offline installation bundles")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("create")
+                        .about("Create an offline installation bundle")
+                        .arg(
+                            Arg::new("software")
+                                .required(true)
+                                .help("Software ID to bundle (e.g., 'openclaw')"),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .long("output")
+                                .value_name("DIR")
+                                .help("Output directory for the bundle (default: ./bundles)")
+                                .value_parser(clap::value_parser!(String)),
+                        ),
+                )
+                .subcommand(
+                    Command::new("verify")
+                        .about("Verify bundle integrity")
+                        .arg(
+                            Arg::new("bundle")
+                                .required(true)
+                                .help("Path to the bundle directory to verify"),
+                        ),
+                ),
         )
         .subcommand(
             Command::new("channel")
@@ -1056,6 +1129,12 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 Err(e) => return Err(anyhow::anyhow!(format!("更新线程失败: {:?}", e))),
             }
         }
+        Some(("install", sub_m)) => {
+            handle_install_command(sub_m).await?;
+        }
+        Some(("bundle", sub_m)) => {
+            handle_bundle_command(sub_m).await?;
+        }
         Some(("channel", sub_m)) => {
             let db = Database::new().await?;
             handle_channel_command(&db, sub_m).await?;
@@ -1175,6 +1254,17 @@ pub fn show_help() {
     println!("  burncloud list                - 列出模型");
     println!("  burncloud update              - 更新应用程序");
     println!("  burncloud update --check-only - 仅检查更新");
+    println!();
+    println!("软件安装:");
+    println!("  burncloud install --list              - 列出可安装软件");
+    println!("  burncloud install <software>          - 安装软件");
+    println!("  burncloud install <software> --status - 查看安装状态");
+    println!("  burncloud install <software> --auto-deps - 自动安装依赖");
+    println!();
+    println!("离线安装包:");
+    println!("  burncloud bundle create <software> -o <dir> - 创建离线安装包");
+    println!("  burncloud bundle verify <bundle-dir>         - 验证离线包");
+    println!("  burncloud install <software> --bundle <dir>  - 从离线包安装");
     println!();
     println!("定价管理:");
     println!("  burncloud price list          - 列出模型价格");
