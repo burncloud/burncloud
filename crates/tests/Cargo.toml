@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 tokio = { workspace = true, features = ["full"] }
-reqwest = { workspace = true, features = ["blocking"] }
+reqwest = { workspace = true, features = ["blocking", "json", "rustls-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -15,3 +15,13 @@ dotenvy = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 axum = { workspace = true }
 burncloud-common.workspace = true
+ssh2 = "0.9"
+hmac = "0.12"
+sha1 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+chrono = { workspace = true }
+
+[[test]]
+name = "local_nodejs_test"
+path = "tests/installer/local_nodejs_test.rs"

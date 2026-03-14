@@ -310,6 +310,7 @@ impl Schema {
                     priority_input_price BIGINT,
                     priority_output_price BIGINT,
                     audio_input_price BIGINT,
+                    alias_for TEXT,
                     source TEXT,
                     region TEXT,
                     context_window INTEGER,
@@ -340,6 +341,7 @@ impl Schema {
                     priority_input_price BIGINT,
                     priority_output_price BIGINT,
                     audio_input_price BIGINT,
+                    alias_for VARCHAR(255),
                     source VARCHAR(64),
                     region VARCHAR(32),
                     context_window BIGINT,
@@ -862,16 +864,29 @@ impl Schema {
         // Step 4: Migrate unlimited_quota from BOOLEAN to INTEGER for SQLite compatibility
         // SQLite doesn't have native BOOLEAN, it stores as INTEGER but sqlx Any driver expects INTEGER type
         if kind == "sqlite" {
-            // Check if unlimited_quota column type needs migration
-            let needs_migration: bool = {
-                let result: Option<String> =
-                    sqlx::query_scalar("SELECT typeof(unlimited_quota) FROM tokens LIMIT 1")
-                        .fetch_optional(pool)
-                        .await
-                        .unwrap_or(None);
+            // Check if tokens table exists first
+            let table_exists: bool = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tokens'",
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0)
+                > 0;
 
-                // If it returns 'boolean' or error, we need to recreate the table
-                result.is_none() || result == Some("boolean".to_string())
+            // Check if unlimited_quota column type needs migration
+            // Use pragma_table_info to check column type, not typeof() which requires data
+            let needs_migration = if table_exists {
+                let col_type: Option<String> = sqlx::query_scalar(
+                    "SELECT type FROM pragma_table_info('tokens') WHERE name='unlimited_quota'",
+                )
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(None);
+
+                // Only migrate if the column type is actually 'boolean' (from old schema)
+                col_type.as_ref().map(|t| t == "boolean").unwrap_or(false)
+            } else {
+                false
             };
 
             if needs_migration {
@@ -899,7 +914,7 @@ impl Schema {
                 .await;
 
                 // Copy data
-                let _ = sqlx::query(
+                let copy_result = sqlx::query(
                     r#"
                     INSERT INTO tokens_new
                     SELECT id, user_id, key, status, name, remain_quota,
@@ -911,18 +926,59 @@ impl Schema {
                 .execute(pool)
                 .await;
 
-                // Drop old and rename
-                let _ = sqlx::query("DROP TABLE tokens").execute(pool).await;
-                let _ = sqlx::query("ALTER TABLE tokens_new RENAME TO tokens")
-                    .execute(pool)
-                    .await;
-                let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key)")
-                    .execute(pool)
-                    .await;
-                let _ =
-                    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)")
+                if copy_result.is_err() {
+                    // If copy failed (table might not exist), just create new table directly
+                    let _ = sqlx::query("DROP TABLE IF EXISTS tokens_new")
                         .execute(pool)
                         .await;
+                    let _ = sqlx::query("DROP TABLE IF EXISTS tokens")
+                        .execute(pool)
+                        .await;
+                    let _ = sqlx::query(
+                        r#"
+                        CREATE TABLE IF NOT EXISTS tokens (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id TEXT NOT NULL,
+                            key CHAR(48) NOT NULL,
+                            status INTEGER DEFAULT 1,
+                            name VARCHAR(255),
+                            remain_quota INTEGER DEFAULT 0,
+                            unlimited_quota INTEGER DEFAULT 0,
+                            used_quota INTEGER DEFAULT 0,
+                            created_time INTEGER,
+                            accessed_time INTEGER,
+                            expired_time INTEGER DEFAULT -1
+                        )
+                        "#,
+                    )
+                    .execute(pool)
+                    .await;
+                    // Create indexes for fresh table
+                    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key)")
+                        .execute(pool)
+                        .await;
+                    let _ = sqlx::query(
+                        "CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)",
+                    )
+                    .execute(pool)
+                    .await;
+                } else {
+                    // Copy succeeded: drop old and rename
+                    let _ = sqlx::query("DROP TABLE IF EXISTS tokens")
+                        .execute(pool)
+                        .await;
+                    let _ = sqlx::query("ALTER TABLE tokens_new RENAME TO tokens")
+                        .execute(pool)
+                        .await;
+                    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key)")
+                        .execute(pool)
+                        .await;
+                    let _ = sqlx::query(
+                        "CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)",
+                    )
+                    .execute(pool)
+                    .await;
+                }
 
                 println!("  Migrated tokens table schema");
             }
