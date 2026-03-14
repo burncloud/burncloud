@@ -1,0 +1,6 @@
+{
+  "models_dir": "models",
+  "server_port": 3000,
+  "max_memory": 8192,
+  "gpu_enabled": false
+}

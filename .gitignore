@@ -18,12 +18,26 @@ Cargo.lock
 /*.pid
 /*.md
 /*.db
+/*.ps1
+/test-*
+/bundle
+*.pyc
+__pycache__
+*bundle*
+/offline-bundle
+/test-bundle
 /spec
 /progress.txt
 /MESSAGE.md
 /ISSUE.md
 /home-current.jpeg
 /.entire
+
+# ZIP files
+*.zip
+*.exe
+*.tgz
+*.tar.gz
 
 # LLM files
 /.ralph

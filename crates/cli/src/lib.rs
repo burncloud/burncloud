@@ -1,7 +1,9 @@
+pub mod bundle;
 pub mod channel;
 pub mod commands;
 pub mod currency;
 pub mod group;
+pub mod install;
 pub mod log;
 pub mod monitor;
 pub mod output;
@@ -10,10 +12,12 @@ pub mod protocol;
 pub mod token;
 pub mod user;
 
+pub use bundle::*;
 pub use channel::*;
 pub use commands::*;
 pub use currency::*;
 pub use group::*;
+pub use install::*;
 pub use log::*;
 pub use monitor::*;
 pub use output::*;
