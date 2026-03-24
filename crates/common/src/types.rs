@@ -527,6 +527,16 @@ pub struct Price {
     pub priority_output_price: Option<i64>,
     /// Audio input price per 1M tokens in nanodollars (typically 7x text)
     pub audio_input_price: Option<i64>,
+    /// Audio output price per 1M tokens in nanodollars
+    pub audio_output_price: Option<i64>,
+    /// Reasoning token price per 1M tokens in nanodollars (defaults to output rate)
+    pub reasoning_price: Option<i64>,
+    /// Embedding token price per 1M tokens in nanodollars (defaults to input rate)
+    pub embedding_price: Option<i64>,
+    /// Image generation/input price per 1M tokens in nanodollars
+    pub image_price: Option<i64>,
+    /// Video generation/input price per 1M tokens in nanodollars
+    pub video_price: Option<i64>,
     /// Source of pricing data (litellm, manual, community, etc.)
     pub source: Option<String>,
     /// Region for pricing (cn, international, NULL for universal)
@@ -573,6 +583,16 @@ pub struct PriceInput {
     pub priority_output_price: Option<i64>,
     /// Audio input price per 1M tokens in nanodollars
     pub audio_input_price: Option<i64>,
+    /// Audio output price per 1M tokens in nanodollars
+    pub audio_output_price: Option<i64>,
+    /// Reasoning token price per 1M tokens in nanodollars (defaults to output rate)
+    pub reasoning_price: Option<i64>,
+    /// Embedding token price per 1M tokens in nanodollars (defaults to input rate)
+    pub embedding_price: Option<i64>,
+    /// Image generation/input price per 1M tokens in nanodollars
+    pub image_price: Option<i64>,
+    /// Video generation/input price per 1M tokens in nanodollars
+    pub video_price: Option<i64>,
     pub source: Option<String>,
     pub region: Option<String>,
     pub context_window: Option<i64>,
@@ -595,6 +615,11 @@ impl Default for PriceInput {
             priority_input_price: None,
             priority_output_price: None,
             audio_input_price: None,
+            audio_output_price: None,
+            reasoning_price: None,
+            embedding_price: None,
+            image_price: None,
+            video_price: None,
             source: None,
             region: None,
             context_window: None,

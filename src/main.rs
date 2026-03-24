@@ -2,6 +2,9 @@ use anyhow::Result;
 use std::env;
 
 fn main() -> Result<()> {
+    // Load .env file if present
+    dotenvy::dotenv().ok();
+
     // 初始化日志
     env_logger::init();
 
@@ -16,13 +19,15 @@ fn main() -> Result<()> {
                 std::thread::spawn(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
+                        let host = std::env::var("HOST")
+                            .unwrap_or_else(|_| "127.0.0.1".to_string());
                         let port = std::env::var("PORT")
                             .unwrap_or_else(|_| {
                                 burncloud_common::constants::DEFAULT_PORT.to_string()
                             })
                             .parse()
                             .unwrap_or(burncloud_common::constants::DEFAULT_PORT);
-                        if let Err(e) = burncloud_server::start_server(port, false).await {
+                        if let Err(e) = burncloud_server::start_server(&host, port, false).await {
                             eprintln!("Server failed to start: {}", e);
                         }
                     });
@@ -72,11 +77,13 @@ fn main() -> Result<()> {
 
 #[tokio::main]
 async fn run_async_server() -> Result<()> {
+    let host = std::env::var("HOST")
+        .unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| burncloud_common::constants::DEFAULT_PORT.to_string())
         .parse()
         .unwrap_or(burncloud_common::constants::DEFAULT_PORT);
-    burncloud_server::start_server(port, true).await
+    burncloud_server::start_server(&host, port, true).await
 }
 
 #[tokio::main]

@@ -21,6 +21,7 @@ burncloud-database-router = { workspace = true }
 burncloud-database-models = { workspace = true }
 burncloud-router-aws = { workspace = true }
 burncloud-common = { workspace = true }
+burncloud-service-billing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 jsonwebtoken = { workspace = true }
 once_cell = { workspace = true }

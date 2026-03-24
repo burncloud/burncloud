@@ -181,10 +181,18 @@ pub fn parse_gemini_usage(response: &Value) -> (u32, u32) {
             .and_then(|t| t.as_u64())
             .unwrap_or(0) as u32;
 
-        let completion_tokens = usage
+        let candidates_tokens = usage
             .get("candidatesTokenCount")
             .and_then(|t| t.as_u64())
             .unwrap_or(0) as u32;
+
+        // thoughtsTokenCount (Gemini 2.5 thinking tokens) are billed at output rate
+        let thoughts_tokens = usage
+            .get("thoughtsTokenCount")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(0) as u32;
+
+        let completion_tokens = candidates_tokens + thoughts_tokens;
 
         (prompt_tokens, completion_tokens)
     } else {
@@ -410,5 +418,35 @@ mod tests {
         let (prompt, completion) = parse_gemini_streaming_usage(chunk);
         assert_eq!(prompt, 3);
         assert_eq!(completion, 7);
+    }
+
+    #[test]
+    fn test_parse_gemini_usage_with_thoughts() {
+        // Gemini 2.5 thinking tokens added to completion count
+        let response = json!({
+            "candidates": [],
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 25,
+                "thoughtsTokenCount": 15,
+                "totalTokenCount": 50
+            }
+        });
+
+        let (prompt, completion) = parse_gemini_usage(&response);
+        assert_eq!(prompt, 10);
+        // completion = candidatesTokenCount + thoughtsTokenCount = 25 + 15 = 40
+        assert_eq!(completion, 40);
+    }
+
+    #[test]
+    fn test_parse_gemini_streaming_usage_with_thoughts() {
+        // Gemini 2.5 streaming: thoughtsTokenCount billed at output rate
+        let chunk = r#"{"candidates":[],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":10,"thoughtsTokenCount":8}}"#;
+
+        let (prompt, completion) = parse_gemini_streaming_usage(chunk);
+        assert_eq!(prompt, 5);
+        // completion = 10 + 8 = 18
+        assert_eq!(completion, 18);
     }
 }

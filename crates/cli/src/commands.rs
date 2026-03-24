@@ -1027,12 +1027,16 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 )
                 .subcommand(
                     Command::new("usage")
-                        .about("Show usage statistics for a user")
+                        .about("Show usage statistics for a user or token")
                         .arg(
                             Arg::new("user-id")
                                 .long("user-id")
-                                .required(true)
                                 .help("User ID to show usage for"),
+                        )
+                        .arg(
+                            Arg::new("token")
+                                .long("token")
+                                .help("API token key to show usage for (e.g. sk-xxx)"),
                         )
                         .arg(
                             Arg::new("period")
