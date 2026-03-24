@@ -2,7 +2,7 @@ use anyhow::Result;
 use burncloud_common::scaled_to_rate;
 use burncloud_database::sqlx;
 use burncloud_database::Database;
-use burncloud_database_router::{get_usage_stats, DbRouterLog, RouterDatabase};
+use burncloud_database_router::{get_usage_stats, get_usage_stats_by_token, DbRouterLog, RouterDatabase};
 use clap::ArgMatches;
 use serde::Serialize;
 
@@ -159,11 +159,6 @@ pub async fn handle_log_command(db: &Database, matches: &ArgMatches) -> Result<(
 
 /// Handle log usage command
 pub async fn cmd_log_usage(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let user_id = matches
-        .get_one::<String>("user-id")
-        .map(|s| s.as_str())
-        .ok_or_else(|| anyhow::anyhow!("--user-id is required"))?;
-
     let period = matches
         .get_one::<String>("period")
         .map(|s| s.as_str())
@@ -182,8 +177,25 @@ pub async fn cmd_log_usage(db: &Database, matches: &ArgMatches) -> Result<()> {
         .map(|s| s.as_str())
         .unwrap_or("table");
 
-    // Get usage stats from database
-    let stats = get_usage_stats(db, user_id, period).await?;
+    // Resolve user_id: either directly via --user-id or by looking up --token
+    let token_key = matches.get_one::<String>("token").map(|s| s.as_str());
+    let user_id_opt = matches.get_one::<String>("user-id").map(|s| s.clone());
+
+    let (user_id, stats) = if let Some(token) = token_key {
+        match get_usage_stats_by_token(db, token, period).await? {
+            Some((uid, s)) => (uid, s),
+            None => {
+                return Err(anyhow::anyhow!("Token not found: {}", token));
+            }
+        }
+    } else if let Some(uid) = user_id_opt {
+        let s = get_usage_stats(db, &uid, period).await?;
+        (uid, s)
+    } else {
+        return Err(anyhow::anyhow!("Either --user-id or --token is required"));
+    };
+
+    let user_id = user_id.as_str();
 
     // Get USD to CNY exchange rate for cost conversion
     let cny_rate = get_usd_to_cny_rate(db).await?;

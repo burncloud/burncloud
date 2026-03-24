@@ -9,6 +9,7 @@ use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
 use burncloud_database::Database;
 use burncloud_database_router::DbRouterLog;
+use burncloud_service_billing::{CostCalculator, PriceCache};
 use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
@@ -26,4 +27,6 @@ pub struct AppState {
     pub channel_state_tracker: Arc<ChannelStateTracker>,
     pub adaptor_factory: Arc<adaptor::factory::DynamicAdaptorFactory>,
     pub api_version_detector: Arc<adaptor::detector::ApiVersionDetector>,
+    pub price_cache: PriceCache,
+    pub cost_calculator: CostCalculator,
 }

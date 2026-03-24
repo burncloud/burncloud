@@ -1,0 +1,17 @@
+[package]
+name = "burncloud-service-billing"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-common.workspace = true
+burncloud-database.workspace = true
+burncloud-database-models.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

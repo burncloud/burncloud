@@ -12,3 +12,4 @@ burncloud-service-upstream.workspace = true
 burncloud-service-token.workspace = true
 burncloud-service-group.workspace = true
 burncloud-service-router-log.workspace = true
+burncloud-service-billing.workspace = true

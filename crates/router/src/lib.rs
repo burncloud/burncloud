@@ -39,8 +39,7 @@ use model_router::ModelRouter;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Instant;
-use stream_parser::StreamingTokenParser;
-use token_counter::StreamingTokenCounter;
+use burncloud_service_billing::{get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter};
 use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
@@ -145,6 +144,14 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let adaptor_factory = Arc::new(adaptor::factory::DynamicAdaptorFactory::new(db.clone()));
     // API Version Detector for handling deprecated versions
     let api_version_detector = Arc::new(adaptor::detector::ApiVersionDetector::new(db.clone()));
+    // Price cache + cost calculator (loaded at startup; refreshed on POST /api/v1/prices)
+    let price_cache = burncloud_service_billing::PriceCache::load(&db)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to load price cache at startup: {e} — using empty cache");
+            burncloud_service_billing::PriceCache::empty()
+        });
+    let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -175,6 +182,8 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         channel_state_tracker,
         adaptor_factory,
         api_version_detector,
+        price_cache,
+        cost_calculator,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -322,10 +331,16 @@ async fn proxy_handler(
     println!("Proxy Handler: {} {}, Headers: {:?}", method, path, headers);
 
     // 0. Authenticate User
+    // Support both "Authorization: Bearer sk-xxx" and "x-goog-api-key: sk-xxx" (Gemini native)
     let user_auth = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "));
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .or_else(|| {
+            headers
+                .get("x-goog-api-key")
+                .and_then(|h| h.to_str().ok())
+        });
 
     let user_token = match user_auth {
         Some(token) => token.to_string(),
@@ -449,14 +464,17 @@ async fn proxy_handler(
     //   - Consider: model-specific tokenizers (cl100k_base, o200k_base, etc.)
     let estimated_prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
 
-    // Extract model name for pricing before proxy_logic consumes body_bytes
+    // Extract model name for pricing before proxy_logic consumes body_bytes.
+    // For Gemini native paths (e.g. /v1beta/models/gemini-2.5-flash:generateContent),
+    // the model name is in the URL path, not the body.
     let model_name = serde_json::from_slice::<serde_json::Value>(&body_bytes)
         .ok()
         .and_then(|v| {
             v.get("model")
                 .and_then(|m| m.as_str())
                 .map(|s| s.to_string())
-        });
+        })
+        .or_else(|| crate::passthrough::extract_model_from_gemini_path(&path));
 
     // Detect request type for advanced billing
     // 1. Batch API: detected via headers or metadata.batch_id
@@ -487,10 +505,8 @@ async fn proxy_handler(
         (batch, priority)
     };
 
-    // Create token counter for streaming response parsing
-    let token_counter = Arc::new(StreamingTokenCounter::with_prompt_tokens(
-        estimated_prompt_tokens as u32,
-    ));
+    // Create unified token counter for streaming response parsing
+    let token_counter = Arc::new(UnifiedTokenCounter::new());
 
     // Perform Proxy Logic
     let (response, upstream_id, final_status, pricing_region) = proxy_logic(
@@ -507,120 +523,23 @@ async fn proxy_handler(
     )
     .await;
 
-    // Get final token counts
-    let (prompt_tokens, completion_tokens) = token_counter.get_usage();
+    // Get final unified token usage
+    let usage = token_counter.get_usage();
 
-    // Get cache token counts
-    let (cache_read_tokens, cache_creation_tokens) = token_counter.get_cache_usage();
-
-    // Calculate cost if we have token usage (returns i64 nanodollars)
-    let cost: i64 = if prompt_tokens > 0 || completion_tokens > 0 {
+    // Calculate cost using CostCalculator (nanodollars)
+    let cost: i64 = if !usage.is_empty() {
         if let Some(model) = &model_name {
-            // Try to get price and check for tiered pricing
-            // Use channel's pricing_region for region-specific pricing
-            let price_result =
-                PriceModel::get(&state.db, model, "USD", pricing_region.as_deref()).await;
-            let tiered_result =
-                burncloud_database_models::TieredPriceModel::has_tiered_pricing(&state.db, model)
-                    .await;
-
-            // Check if model has tiered pricing
-            let has_tiered = matches!(tiered_result, Ok(true));
-
-            if let Ok(Some(price)) = price_result {
-                // Build advanced pricing struct (prices are already in i64 nanodollars)
-                let pricing = billing::AdvancedPricing {
-                    input_price: price.input_price,
-                    output_price: price.output_price,
-                    cache_read_price: price.cache_read_input_price,
-                    cache_creation_price: price.cache_creation_input_price,
-                    batch_input_price: price.batch_input_price,
-                    batch_output_price: price.batch_output_price,
-                    priority_input_price: price.priority_input_price,
-                    priority_output_price: price.priority_output_price,
-                    audio_input_price: price.audio_input_price,
-                };
-
-                // Determine billing type with priority: cache > tiered > priority > batch > standard
-                if cache_read_tokens > 0 || cache_creation_tokens > 0 {
-                    // Use advanced pricing with cache cost calculation
-                    let usage = billing::TokenUsage {
-                        prompt_tokens: prompt_tokens as u64,
-                        completion_tokens: completion_tokens as u64,
-                        cache_read_tokens: cache_read_tokens as u64,
-                        cache_creation_tokens: cache_creation_tokens as u64,
-                        audio_tokens: 0,
-                    };
-
-                    billing::calculate_cache_cost_nano(&usage, &pricing)
-                } else if has_tiered {
-                    // Use tiered pricing for models with usage-based tiers (e.g., Qwen)
-                    match burncloud_database_models::TieredPriceModel::get_tiers(
-                        &state.db,
-                        model,
-                        pricing_region.as_deref(),
-                    )
-                    .await
-                    {
-                        Ok(tiers) if !tiers.is_empty() => {
-                            // Convert database TieredPrice to billing TieredPrice
-                            let billing_tiers: Vec<burncloud_common::types::TieredPrice> = tiers
-                                .into_iter()
-                                .map(|t| burncloud_common::types::TieredPrice {
-                                    id: t.id,
-                                    model: t.model,
-                                    region: t.region,
-                                    tier_start: t.tier_start,
-                                    tier_end: t.tier_end,
-                                    input_price: t.input_price,
-                                    output_price: t.output_price,
-                                })
-                                .collect();
-
-                            match billing::calculate_tiered_cost_full_nano(
-                                prompt_tokens as u64,
-                                completion_tokens as u64,
-                                &billing_tiers,
-                                None,
-                            ) {
-                                Ok(cost) => cost,
-                                Err(_) => PriceModel::calculate_cost(
-                                    &price,
-                                    prompt_tokens as u64,
-                                    completion_tokens as u64,
-                                ),
-                            }
-                        }
-                        _ => PriceModel::calculate_cost(
-                            &price,
-                            prompt_tokens as u64,
-                            completion_tokens as u64,
-                        ),
-                    }
-                } else if is_priority_request {
-                    // Use priority pricing for high-priority requests
-                    billing::calculate_priority_cost_nano(
-                        prompt_tokens as u64,
-                        completion_tokens as u64,
-                        &pricing,
-                    )
-                } else if is_batch_request {
-                    // Use batch pricing for batch API requests
-                    billing::calculate_batch_cost_nano(
-                        prompt_tokens as u64,
-                        completion_tokens as u64,
-                        &pricing,
-                    )
-                } else {
-                    // Fall back to simple calculation
-                    PriceModel::calculate_cost(
-                        &price,
-                        prompt_tokens as u64,
-                        completion_tokens as u64,
-                    )
+            match state
+                .cost_calculator
+                .calculate(model, &usage, &request_id, is_batch_request, is_priority_request)
+                .await
+            {
+                Ok(result) => result.total_cost,
+                Err(burncloud_service_billing::BillingError::PriceNotFound(_)) => 0,
+                Err(e) => {
+                    tracing::warn!("Cost calculation error for {model}: {e}");
+                    0
                 }
-            } else {
-                0
             }
         } else {
             0
@@ -679,7 +598,7 @@ async fn proxy_logic(
     body_bytes: axum::body::Bytes,
     path: &str,
     user_group: &str,
-    token_counter: Arc<StreamingTokenCounter>,
+    token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
 ) -> (Response, Option<String>, StatusCode, Option<String>) {
@@ -992,16 +911,14 @@ async fn proxy_logic(
                             let body_stream = resp.bytes_stream();
                             let counter_clone = token_counter.clone();
 
+                            let parser = get_parser(channel_type);
                             let stream = body_stream.map(move |chunk_result| match chunk_result {
                                 Ok(bytes) => {
                                     let text = String::from_utf8_lossy(&bytes);
 
                                     // Parse token usage from Gemini streaming response
-                                    let (prompt, completion) =
-                                        passthrough::parse_gemini_streaming_usage(&text);
-                                    if prompt > 0 || completion > 0 {
-                                        counter_clone.add_tokens(prompt, completion);
-                                    }
+                                    let chunk_usage = parse_chunk_or_default(parser.as_ref(), &text);
+                                    counter_clone.set_from_usage(chunk_usage);
 
                                     // Pass through raw bytes (Gemini native format)
                                     Ok(bytes)
@@ -1040,11 +957,11 @@ async fn proxy_logic(
                             if let Ok(resp_json) =
                                 serde_json::from_slice::<serde_json::Value>(&resp_bytes)
                             {
-                                let (prompt, completion) =
-                                    passthrough::parse_gemini_usage(&resp_json);
-                                if prompt > 0 || completion > 0 {
-                                    token_counter.add_tokens(prompt, completion);
-                                }
+                                let resp_usage = parse_response_or_default(
+                                    get_parser(channel_type).as_ref(),
+                                    &resp_json,
+                                );
+                                token_counter.set_from_usage(resp_usage);
                             }
 
                             return (
@@ -1138,17 +1055,24 @@ async fn proxy_logic(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        // Extract model name from original request before conversion
+        let original_model = body_json.get("model").and_then(|m| m.as_str()).map(|s| s.to_string());
+
         let request_body_json: Option<serde_json::Value> =
             if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
                 let mut converted = adaptor
                     .convert_request(&req)
                     .or_else(|| Some(serde_json::json!(req))); // Use converted or original
 
-                // Preserve stream flag in converted body for adaptor's build_request
+                // Preserve stream flag and model in converted body for adaptor's build_request
                 if let Some(ref mut body) = converted {
                     if let serde_json::Value::Object(ref mut map) = body {
                         if original_stream {
                             map.insert("stream".to_string(), serde_json::Value::Bool(true));
+                        }
+                        // Preserve model name for adaptors that need it (e.g., Gemini)
+                        if let Some(ref model) = original_model {
+                            map.insert("model".to_string(), serde_json::Value::String(model.clone()));
                         }
                     }
                 }
@@ -1279,7 +1203,7 @@ async fn proxy_logic(
                     // This satisfies the "Passthrough Principle" and enables streaming.
                     if upstream.protocol == "openai" {
                         return (
-                            handle_response_with_token_parsing(resp, &token_counter, "openai"),
+                            handle_response_with_token_parsing(resp, &token_counter, channel_type),
                             last_upstream_id,
                             status,
                             selected_pricing_region.clone(),
@@ -1291,32 +1215,19 @@ async fn proxy_logic(
                         let body_stream = resp.bytes_stream();
                         let adaptor_clone = adaptor.clone();
                         let counter_clone = token_counter.clone();
-                        let protocol = upstream.protocol.clone();
+                        let parser = get_parser(channel_type);
 
                         let stream = body_stream.map(move |chunk_result| match chunk_result {
                             Ok(bytes) => {
                                 let text = String::from_utf8_lossy(&bytes);
 
                                 // Parse token usage from streaming response
-                                match protocol.as_str() {
-                                    "claude" | "zai" => {
-                                        StreamingTokenParser::parse_anthropic_chunk(
-                                            &text,
-                                            &counter_clone,
-                                        );
-                                    }
-                                    "gemini" | "vertex" => {
-                                        StreamingTokenParser::parse_gemini_chunk(
-                                            &text,
-                                            &counter_clone,
-                                        );
-                                    }
-                                    _ => {
-                                        StreamingTokenParser::parse_openai_chunk(
-                                            &text,
-                                            &counter_clone,
-                                        );
-                                    }
+                                let chunk_usage =
+                                    parse_chunk_or_default(parser.as_ref(), &text);
+                                // Anthropic sends incremental events; others send cumulative totals
+                                match parser.provider_name() {
+                                    "anthropic" => counter_clone.accumulate(chunk_usage),
+                                    _ => counter_clone.set_from_usage(chunk_usage),
                                 }
 
                                 if let Some(converted) =
@@ -1359,9 +1270,24 @@ async fn proxy_logic(
                     let resp_json: serde_json::Value =
                         resp.json().await.unwrap_or(serde_json::json!({}));
 
+                    // Extract token usage from non-streaming response for billing
+                    {
+                        let resp_usage =
+                            parse_response_or_default(get_parser(channel_type).as_ref(), &resp_json);
+                        token_counter.set_from_usage(resp_usage);
+                    }
+
                     let response_body = if let Some(converted) =
                         adaptor.convert_response(resp_json.clone(), &upstream.name)
                     {
+                        // Also extract usage from converted response if not yet captured
+                        if token_counter.get_usage().is_empty() {
+                            let conv_usage = parse_response_or_default(
+                                get_parser(channel_type).as_ref(),
+                                &converted,
+                            );
+                            token_counter.set_from_usage(conv_usage);
+                        }
                         serde_json::to_string(&converted).unwrap_or_else(|_| "{}".to_string())
                     } else {
                         // No conversion needed (e.g. OpenAI), return original body
@@ -1556,8 +1482,8 @@ async fn proxy_logic(
 /// Handle streaming response with token parsing for OpenAI protocol
 fn handle_response_with_token_parsing(
     resp: reqwest::Response,
-    token_counter: &Arc<StreamingTokenCounter>,
-    protocol: &str,
+    token_counter: &Arc<UnifiedTokenCounter>,
+    channel_type: ChannelType,
 ) -> Response {
     let status = resp.status();
     let mut response_builder = Response::builder().status(status);
@@ -1569,26 +1495,17 @@ fn handle_response_with_token_parsing(
     }
 
     let counter_clone = Arc::clone(token_counter);
-    let protocol = protocol.to_string();
+    let parser = get_parser(channel_type);
     let stream = resp.bytes_stream();
 
     let mapped_stream = stream.map(move |chunk_result| match chunk_result {
         Ok(bytes) => {
             let text = String::from_utf8_lossy(&bytes);
-
-            // Parse token usage from streaming response
-            match protocol.as_str() {
-                "claude" | "zai" => {
-                    StreamingTokenParser::parse_anthropic_chunk(&text, &counter_clone);
-                }
-                "gemini" | "vertex" => {
-                    StreamingTokenParser::parse_gemini_chunk(&text, &counter_clone);
-                }
-                _ => {
-                    StreamingTokenParser::parse_openai_chunk(&text, &counter_clone);
-                }
+            let chunk_usage = parse_chunk_or_default(parser.as_ref(), &text);
+            match parser.provider_name() {
+                "anthropic" => counter_clone.accumulate(chunk_usage),
+                _ => counter_clone.set_from_usage(chunk_usage),
             }
-
             Ok(bytes)
         }
         Err(e) => Err(std::io::Error::other(e)),
