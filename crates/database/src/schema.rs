@@ -310,6 +310,11 @@ impl Schema {
                     priority_input_price BIGINT,
                     priority_output_price BIGINT,
                     audio_input_price BIGINT,
+                    audio_output_price BIGINT,
+                    reasoning_price BIGINT,
+                    embedding_price BIGINT,
+                    image_price BIGINT,
+                    video_price BIGINT,
                     alias_for TEXT,
                     source TEXT,
                     region TEXT,
@@ -341,6 +346,11 @@ impl Schema {
                     priority_input_price BIGINT,
                     priority_output_price BIGINT,
                     audio_input_price BIGINT,
+                    audio_output_price BIGINT,
+                    reasoning_price BIGINT,
+                    embedding_price BIGINT,
+                    image_price BIGINT,
+                    video_price BIGINT,
                     alias_for VARCHAR(255),
                     source VARCHAR(64),
                     region VARCHAR(32),
@@ -861,7 +871,41 @@ impl Schema {
             }
         }
 
-        // Step 4: Migrate unlimited_quota from BOOLEAN to INTEGER for SQLite compatibility
+        // Step 4: Add multimodal price columns to prices table (v0.1.17+)
+        // These columns may not exist in databases created before this version
+        let multimodal_cols = [
+            "audio_output_price",
+            "reasoning_price",
+            "embedding_price",
+            "image_price",
+            "video_price",
+        ];
+        for col in multimodal_cols {
+            if kind == "sqlite" {
+                let exists: i64 = sqlx::query_scalar(&format!(
+                    "SELECT COUNT(*) FROM pragma_table_info('prices') WHERE name='{col}'"
+                ))
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+                if exists == 0 {
+                    let _ = sqlx::query(&format!(
+                        "ALTER TABLE prices ADD COLUMN {col} BIGINT"
+                    ))
+                    .execute(pool)
+                    .await;
+                }
+            } else {
+                // PostgreSQL: ADD COLUMN IF NOT EXISTS
+                let _ = sqlx::query(&format!(
+                    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS {col} BIGINT"
+                ))
+                .execute(pool)
+                .await;
+            }
+        }
+
+        // Step 5: Migrate unlimited_quota from BOOLEAN to INTEGER for SQLite compatibility
         // SQLite doesn't have native BOOLEAN, it stores as INTEGER but sqlx Any driver expects INTEGER type
         if kind == "sqlite" {
             // Check if tokens table exists first

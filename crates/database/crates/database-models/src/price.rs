@@ -22,7 +22,10 @@ impl PriceModel {
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
-                      audio_input_price, source, region,
+                      audio_input_price, audio_output_price,
+                      reasoning_price, embedding_price,
+                      image_price, video_price,
+                      source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
@@ -32,7 +35,10 @@ impl PriceModel {
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
-                      audio_input_price, source, region,
+                      audio_input_price, audio_output_price,
+                      reasoning_price, embedding_price,
+                      image_price, video_price,
+                      source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
@@ -122,7 +128,10 @@ impl PriceModel {
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
-                      audio_input_price, source, region,
+                      audio_input_price, audio_output_price,
+                      reasoning_price, embedding_price,
+                      image_price, video_price,
+                      source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
@@ -132,7 +141,10 @@ impl PriceModel {
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
-                      audio_input_price, source, region,
+                      audio_input_price, audio_output_price,
+                      reasoning_price, embedding_price,
+                      image_price, video_price,
+                      source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
@@ -207,7 +219,10 @@ impl PriceModel {
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
-                      audio_input_price, source, region,
+                      audio_input_price, audio_output_price,
+                      reasoning_price, embedding_price,
+                      image_price, video_price,
+                      source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
@@ -218,7 +233,10 @@ impl PriceModel {
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
-                      audio_input_price, source, region,
+                      audio_input_price, audio_output_price,
+                      reasoning_price, embedding_price,
+                      image_price, video_price,
+                      source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
                       synced_at, created_at, updated_at
@@ -421,11 +439,14 @@ impl PriceModel {
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
                 priority_input_price, priority_output_price,
-                audio_input_price, source, region,
+                audio_input_price, audio_output_price,
+                reasoning_price, embedding_price,
+                image_price, video_price,
+                source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
                 synced_at, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
@@ -437,6 +458,11 @@ impl PriceModel {
                 priority_input_price = EXCLUDED.priority_input_price,
                 priority_output_price = EXCLUDED.priority_output_price,
                 audio_input_price = EXCLUDED.audio_input_price,
+                audio_output_price = EXCLUDED.audio_output_price,
+                reasoning_price = EXCLUDED.reasoning_price,
+                embedding_price = EXCLUDED.embedding_price,
+                image_price = EXCLUDED.image_price,
+                video_price = EXCLUDED.video_price,
                 source = EXCLUDED.source,
                 context_window = EXCLUDED.context_window,
                 max_output_tokens = EXCLUDED.max_output_tokens,
@@ -452,11 +478,14 @@ impl PriceModel {
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
                 priority_input_price, priority_output_price,
-                audio_input_price, source, region,
+                audio_input_price, audio_output_price,
+                reasoning_price, embedding_price,
+                image_price, video_price,
+                source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
                 synced_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = excluded.currency,
                 input_price = excluded.input_price,
@@ -468,6 +497,11 @@ impl PriceModel {
                 priority_input_price = excluded.priority_input_price,
                 priority_output_price = excluded.priority_output_price,
                 audio_input_price = excluded.audio_input_price,
+                audio_output_price = excluded.audio_output_price,
+                reasoning_price = excluded.reasoning_price,
+                embedding_price = excluded.embedding_price,
+                image_price = excluded.image_price,
+                video_price = excluded.video_price,
                 source = excluded.source,
                 context_window = excluded.context_window,
                 max_output_tokens = excluded.max_output_tokens,
@@ -490,6 +524,11 @@ impl PriceModel {
             .bind(input.priority_input_price)
             .bind(input.priority_output_price)
             .bind(input.audio_input_price)
+            .bind(input.audio_output_price)
+            .bind(input.reasoning_price)
+            .bind(input.embedding_price)
+            .bind(input.image_price)
+            .bind(input.video_price)
             .bind(&input.source)
             .bind(&input.region)
             .bind(input.context_window)

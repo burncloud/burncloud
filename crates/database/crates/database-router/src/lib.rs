@@ -583,6 +583,35 @@ pub struct ModelUsageStats {
     pub cost_nano: i64,
 }
 
+/// Get aggregated usage statistics by token key over a time period.
+/// Looks up the user_id from router_tokens, then queries router_logs.
+pub async fn get_usage_stats_by_token(
+    db: &Database,
+    token_key: &str,
+    period: &str,
+) -> Result<Option<(String, UsageStats)>> {
+    let conn = db.get_connection()?;
+    let is_postgres = db.kind() == "postgres";
+
+    let sql = if is_postgres {
+        "SELECT user_id FROM router_tokens WHERE token = $1 AND status = 'active'"
+    } else {
+        "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'"
+    };
+    let user_id: Option<String> = sqlx::query_scalar(sql)
+        .bind(token_key)
+        .fetch_optional(conn.pool())
+        .await?;
+
+    match user_id {
+        None => Ok(None),
+        Some(uid) => {
+            let stats = get_usage_stats(db, &uid, period).await?;
+            Ok(Some((uid, stats)))
+        }
+    }
+}
+
 /// Get aggregated usage statistics for a user over a time period
 /// Period can be: "day", "week", "month"
 pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Result<UsageStats> {
@@ -612,6 +641,8 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
         WHERE user_id = $1 AND created_at IS NOT NULL AND CAST(created_at AS BIGINT) >= $2
         "#
     } else {
+        // SQLite: created_at is stored as datetime string "2026-03-21 08:18:27"
+        // Use strftime('%s', ...) to convert to unix timestamp for comparison
         r#"
         SELECT
             COUNT(*) as total_requests,
@@ -619,7 +650,7 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
             COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
             COALESCE(SUM(cost), 0) as total_cost
         FROM router_logs
-        WHERE user_id = ? AND created_at IS NOT NULL AND CAST(created_at AS INTEGER) >= ?
+        WHERE user_id = ? AND created_at IS NOT NULL AND CAST(strftime('%s', created_at) AS INTEGER) >= ?
         "#
     };
 

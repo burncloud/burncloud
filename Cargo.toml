@@ -50,6 +50,7 @@ members = [
     "crates/service/crates/service-token",
     "crates/service/crates/service-group",
     "crates/service/crates/service-router-log",
+    "crates/service/crates/service-billing",
     "crates/tests",
 ]
 
@@ -176,6 +177,7 @@ burncloud-service-upstream = { path = "crates/service/crates/service-upstream" }
 burncloud-service-token = { path = "crates/service/crates/service-token" }
 burncloud-service-group = { path = "crates/service/crates/service-group" }
 burncloud-service-router-log = { path = "crates/service/crates/service-router-log" }
+burncloud-service-billing = { path = "crates/service/crates/service-billing" }
 
 [package]
 name = "burncloud"
@@ -208,3 +210,4 @@ burncloud-router.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 env_logger.workspace = true
+dotenvy.workspace = true

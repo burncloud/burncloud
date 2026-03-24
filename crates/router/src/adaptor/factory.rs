@@ -113,11 +113,20 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
         api_key: &str,
         body: &Value,
     ) -> RequestBuilder {
-        // Extract model name from body
-        let model = body
-            .get("model")
-            .and_then(|m| m.as_str())
-            .unwrap_or("gemini-2.0-flash");
+        // Extract model name from body BEFORE conversion (conversion removes it)
+        // Validate model name to prevent URL injection (SSRF): allow only alphanumeric, '-', '.'
+        let model = {
+            let raw = body
+                .get("model")
+                .and_then(|m| m.as_str())
+                .unwrap_or("gemini-2.0-flash");
+            if raw.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.') {
+                raw
+            } else {
+                tracing::warn!("Invalid Gemini model name '{}', using default", raw);
+                "gemini-2.0-flash"
+            }
+        };
 
         // Check if streaming is requested (before conversion)
         let is_stream = body
@@ -126,7 +135,7 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
             .unwrap_or(false);
 
         // Convert OpenAI request to Gemini format
-        // The conversion removes non-Gemini fields like 'stream'
+        // The conversion removes non-Gemini fields like 'stream' and 'model'
         let openai_req: Option<OpenAIChatRequest> = serde_json::from_value(body.clone()).ok();
         let mut gemini_body = if let Some(req) = openai_req {
             crate::adaptor::gemini::GeminiAdaptor::convert_request(req)
@@ -139,12 +148,12 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
             body
         };
 
-        // Also remove 'stream' from gemini_body if somehow present
+        // Remove 'stream' from gemini_body if somehow present
         if let Some(obj) = gemini_body.as_object_mut() {
             obj.remove("stream");
         }
 
-        // Construct correct Gemini API URL with streaming support
+        // Construct correct Gemini API URL with the extracted model name
         let method = if is_stream {
             "streamGenerateContent"
         } else {
@@ -163,6 +172,8 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
                 model, method
             )
         };
+
+        tracing::debug!("GoogleGeminiAdaptor: Building request to URL: {}", url);
 
         client
             .post(&url)

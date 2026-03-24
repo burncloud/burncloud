@@ -132,12 +132,16 @@ impl StreamingTokenParser {
                 if let Some(prompt) = metadata.get("promptTokenCount").and_then(|v| v.as_u64()) {
                     counter.set_prompt_tokens(prompt as u32);
                 }
-                if let Some(completion) = metadata
+                let candidates = metadata
                     .get("candidatesTokenCount")
                     .and_then(|v| v.as_u64())
-                {
-                    counter.set_completion_tokens(completion as u32);
-                }
+                    .unwrap_or(0) as u32;
+                // thoughtsTokenCount (Gemini 2.5 thinking tokens) billed at output rate
+                let thoughts = metadata
+                    .get("thoughtsTokenCount")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                counter.set_completion_tokens(candidates + thoughts);
 
                 // Gemini also supports cached_content_token_count for context caching
                 if let Some(cached) = metadata
@@ -272,5 +276,28 @@ mod tests {
 
         assert_eq!(counter.get_usage(), (100, 50));
         assert_eq!(counter.get_cache_usage(), (40, 0));
+    }
+
+    #[test]
+    fn test_parse_gemini_thoughts_token_count() {
+        // Gemini 2.5 thinking tokens (thoughtsTokenCount) billed at output rate
+        let counter = StreamingTokenCounter::new();
+        let chunk = r#"{"candidates":[],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":40,"thoughtsTokenCount":25}}"#;
+
+        StreamingTokenParser::parse_gemini_chunk(chunk, &counter);
+
+        // completion_tokens = candidatesTokenCount + thoughtsTokenCount = 40 + 25 = 65
+        assert_eq!(counter.get_usage(), (30, 65));
+    }
+
+    #[test]
+    fn test_parse_gemini_thoughts_token_count_zero() {
+        // thoughtsTokenCount absent → should not affect counter
+        let counter = StreamingTokenCounter::new();
+        let chunk = r#"{"candidates":[],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":40}}"#;
+
+        StreamingTokenParser::parse_gemini_chunk(chunk, &counter);
+
+        assert_eq!(counter.get_usage(), (30, 40));
     }
 }

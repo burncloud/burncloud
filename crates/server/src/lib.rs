@@ -51,7 +51,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     Ok(app)
 }
 
-pub async fn start_server(port: u16, enable_liveview: bool) -> anyhow::Result<()> {
+pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
@@ -62,12 +62,12 @@ pub async fn start_server(port: u16, enable_liveview: bool) -> anyhow::Result<()
 
     let app = create_app(db, enable_liveview).await?;
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     println!("Unified Gateway listening on {}", addr);
     if enable_liveview {
-        println!("- Dashboard: http://127.0.0.1:{}", port);
+        println!("- Dashboard: http://{}:{}/", host, port);
     }
-    println!("- LLM API:   http://127.0.0.1:{}/v1/...", port);
+    println!("- LLM API:   http://{}:{}/v1/...", host, port);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
