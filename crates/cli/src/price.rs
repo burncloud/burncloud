@@ -935,9 +935,94 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             }
         }
+        Some(("sync", sub_m)) => {
+            const DEFAULT_CATALOG_URL: &str =
+                "https://raw.githubusercontent.com/burncloud/pricing-data/main/pricing/latest.json";
+            let url = sub_m
+                .get_one::<String>("url")
+                .cloned()
+                .unwrap_or_else(|| DEFAULT_CATALOG_URL.to_string());
+
+            println!("Syncing prices from: {}", url);
+            println!("{}", "-".repeat(60));
+
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()?;
+
+            let text = match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => resp.text().await?,
+                Ok(resp) => {
+                    eprintln!("❌ Server returned {}: {}", resp.status(), url);
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to fetch catalog: {}", e);
+                    return Ok(());
+                }
+            };
+
+            let config = match PricingConfig::from_json(&text) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("❌ Invalid catalog format: {}", e);
+                    return Ok(());
+                }
+            };
+
+            println!("Catalog version: {}  models: {}", config.version, config.models.len());
+            println!("Updated at: {}", config.updated_at.format("%Y-%m-%d %H:%M UTC"));
+            println!();
+
+            let (mut ok, mut err) = (0usize, 0usize);
+            for (model_name, model_pricing) in &config.models {
+                for (currency, cp) in &model_pricing.pricing {
+                    let meta = model_pricing.metadata.as_ref();
+                    let cache = model_pricing.cache_pricing.as_ref()
+                        .and_then(|m| m.get(currency));
+                    let batch = model_pricing.batch_pricing.as_ref()
+                        .and_then(|m| m.get(currency));
+
+                    let input = PriceInput {
+                        model: model_name.clone(),
+                        currency: currency.clone(),
+                        input_price: cp.input_price,
+                        output_price: cp.output_price,
+                        cache_read_input_price: cache.map(|c| c.cache_read_input_price),
+                        cache_creation_input_price: cache.and_then(|c| c.cache_creation_input_price),
+                        batch_input_price: batch.map(|b| b.batch_input_price),
+                        batch_output_price: batch.map(|b| b.batch_output_price),
+                        priority_input_price: None,
+                        priority_output_price: None,
+                        audio_input_price: None,
+                        audio_output_price: None,
+                        reasoning_price: None,
+                        embedding_price: None,
+                        image_price: None,
+                        video_price: None,
+                        source: cp.source.clone(),
+                        region: None,
+                        context_window: meta.and_then(|m| m.context_window),
+                        max_output_tokens: meta.and_then(|m| m.max_output_tokens),
+                        supports_vision: meta.map(|m| m.supports_vision),
+                        supports_function_calling: meta.map(|m| m.supports_function_calling),
+                    };
+
+                    match PriceModel::upsert(db, &input).await {
+                        Ok(_) => ok += 1,
+                        Err(e) => {
+                            eprintln!("  ⚠ {}/{}: {}", model_name, currency, e);
+                            err += 1;
+                        }
+                    }
+                }
+            }
+
+            println!("✅ Sync complete: {} upserted, {} errors", ok, err);
+        }
         _ => {
             println!(
-                "Usage: burncloud price <list|set|get|delete|import|export|validate|sync-status>"
+                "Usage: burncloud price <list|set|get|delete|import|export|validate|sync|sync-status>"
             );
             println!("Run 'burncloud price --help' for more information.");
         }
