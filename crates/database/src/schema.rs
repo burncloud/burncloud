@@ -317,7 +317,7 @@ impl Schema {
                     video_price BIGINT,
                     alias_for TEXT,
                     source TEXT,
-                    region TEXT,
+                    region TEXT NOT NULL DEFAULT '',
                     context_window INTEGER,
                     max_output_tokens INTEGER,
                     supports_vision INTEGER DEFAULT 0,
@@ -353,7 +353,7 @@ impl Schema {
                     video_price BIGINT,
                     alias_for VARCHAR(255),
                     source VARCHAR(64),
-                    region VARCHAR(32),
+                    region VARCHAR(32) NOT NULL DEFAULT '',
                     context_window BIGINT,
                     max_output_tokens BIGINT,
                     supports_vision INTEGER DEFAULT 0,
@@ -1011,6 +1011,73 @@ impl Schema {
                 let _ = sqlx::query(&update_sql).execute(pool).await;
                 println!("  Converted small-integer USD prices to nanodollar format");
             }
+        }
+
+        // Step 4.7: Fix NULL region values and deduplicate prices table
+        // SQLite UNIQUE(model, region) does NOT deduplicate when region IS NULL
+        // (SQL standard: NULL != NULL). Normalize NULL region to '' and remove duplicates.
+        //
+        // Two-step approach to avoid UNIQUE constraint violation:
+        // 1. Delete NULL-region rows that already have a '' counterpart (same model+currency)
+        // 2. Update remaining NULL regions to ''
+        if kind == "sqlite" {
+            // Step 1: Remove NULL rows that would conflict after normalization
+            let _ = sqlx::query(
+                "DELETE FROM prices
+                 WHERE region IS NULL
+                   AND EXISTS (
+                       SELECT 1 FROM prices p2
+                       WHERE p2.model = prices.model
+                         AND p2.currency = prices.currency
+                         AND p2.region = ''
+                   )",
+            )
+            .execute(pool)
+            .await;
+
+            // Step 2: Normalize remaining NULL regions to ''
+            let _ = sqlx::query("UPDATE prices SET region = '' WHERE region IS NULL")
+                .execute(pool)
+                .await;
+
+            // Deduplicate: keep the row with the highest id for each (model, region) pair
+            let dedup_result = sqlx::query(
+                "DELETE FROM prices WHERE id NOT IN (
+                     SELECT MAX(id) FROM prices GROUP BY model, region
+                 )",
+            )
+            .execute(pool)
+            .await;
+            if let Ok(r) = dedup_result {
+                let removed = r.rows_affected();
+                if removed > 0 {
+                    println!("  Removed {} duplicate price rows", removed);
+                }
+            }
+        } else {
+            // PostgreSQL: same two-step logic
+            let _ = sqlx::query(
+                "DELETE FROM prices
+                 WHERE region IS NULL
+                   AND EXISTS (
+                       SELECT 1 FROM prices p2
+                       WHERE p2.model = prices.model
+                         AND p2.currency = prices.currency
+                         AND p2.region = ''
+                   )",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query("UPDATE prices SET region = '' WHERE region IS NULL")
+                .execute(pool)
+                .await;
+            let _ = sqlx::query(
+                "DELETE FROM prices WHERE id NOT IN (
+                     SELECT MAX(id) FROM prices GROUP BY model, region
+                 )",
+            )
+            .execute(pool)
+            .await;
         }
 
         // Step 5: Migrate unlimited_quota from BOOLEAN to INTEGER for SQLite compatibility

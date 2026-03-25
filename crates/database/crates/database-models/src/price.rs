@@ -528,6 +528,10 @@ impl PriceModel {
             "#
         };
 
+        // Normalize region: None → "" to ensure UNIQUE(model, region) works correctly.
+        // SQLite treats NULL != NULL, so NULL regions can't deduplicate via ON CONFLICT.
+        let region = input.region.as_deref().unwrap_or("").to_string();
+
         sqlx::query(sql)
             .bind(&input.model)
             .bind(&input.currency)
@@ -546,7 +550,7 @@ impl PriceModel {
             .bind(input.image_price)
             .bind(input.video_price)
             .bind(&input.source)
-            .bind(&input.region)
+            .bind(&region)
             .bind(input.context_window)
             .bind(input.max_output_tokens)
             .bind(input.supports_vision.map(|v| v as i32))
