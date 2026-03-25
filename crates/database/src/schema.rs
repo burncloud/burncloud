@@ -905,6 +905,114 @@ impl Schema {
             }
         }
 
+        // Step 4.5: Fix mixed data types in prices table
+        // Some rows may have been inserted with REAL (dollar) values before the nanodollar migration,
+        // while newer rows use INTEGER (nanodollar) values. Normalize all rows to nanodollars.
+        // SQLite's typeof() detects actual storage type, not the declared column type.
+        if kind == "sqlite" {
+            let real_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM prices WHERE typeof(input_price) = 'real'",
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+
+            if real_count > 0 {
+                println!(
+                    "Fixing {} rows with REAL-typed prices (converting dollars to nanodollars)...",
+                    real_count
+                );
+                let price_cols = [
+                    "input_price",
+                    "output_price",
+                    "cache_read_input_price",
+                    "cache_creation_input_price",
+                    "batch_input_price",
+                    "batch_output_price",
+                    "priority_input_price",
+                    "priority_output_price",
+                    "audio_input_price",
+                    "audio_output_price",
+                    "reasoning_price",
+                    "embedding_price",
+                    "image_price",
+                    "video_price",
+                ];
+                let set_clauses = price_cols
+                    .iter()
+                    .map(|col| {
+                        format!(
+                            "{col} = CASE WHEN typeof({col}) = 'real' \
+                             THEN CAST(ROUND({col} * 1000000000) AS INTEGER) \
+                             ELSE {col} END"
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let update_sql = format!(
+                    "UPDATE prices SET {} WHERE typeof(input_price) = 'real'",
+                    set_clauses
+                );
+                let _ = sqlx::query(&update_sql).execute(pool).await;
+                println!("  Converted dollar-format prices to nanodollar format");
+            }
+        }
+
+        // Step 4.6: Fix small-integer price values (old USD dollar format) in prices table
+        // Some rows have integer-typed prices that are USD dollar values (e.g., 30 for $30/M)
+        // rather than nanodollar values (which are >= 75_000_000 for the cheapest models).
+        // Threshold: any non-zero price < 10_000 is treated as old USD format.
+        if kind == "sqlite" {
+            let small_int_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM prices WHERE (input_price > 0 AND input_price < 10000) \
+                 OR (output_price > 0 AND output_price < 10000)",
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+
+            if small_int_count > 0 {
+                println!(
+                    "Fixing {} rows with small-integer prices (old USD dollar format → nanodollars)...",
+                    small_int_count
+                );
+                let price_cols = [
+                    "input_price",
+                    "output_price",
+                    "cache_read_input_price",
+                    "cache_creation_input_price",
+                    "batch_input_price",
+                    "batch_output_price",
+                    "priority_input_price",
+                    "priority_output_price",
+                    "audio_input_price",
+                    "audio_output_price",
+                    "reasoning_price",
+                    "embedding_price",
+                    "image_price",
+                    "video_price",
+                ];
+                let set_clauses = price_cols
+                    .iter()
+                    .map(|col| {
+                        format!(
+                            "{col} = CASE WHEN {col} IS NOT NULL AND {col} > 0 AND {col} < 10000 \
+                             THEN {col} * 1000000000 ELSE {col} END"
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let update_sql = format!(
+                    "UPDATE prices SET {} WHERE \
+                     (input_price > 0 AND input_price < 10000) \
+                     OR (output_price > 0 AND output_price < 10000)",
+                    set_clauses
+                );
+                let _ = sqlx::query(&update_sql).execute(pool).await;
+                println!("  Converted small-integer USD prices to nanodollar format");
+            }
+        }
+
         // Step 5: Migrate unlimited_quota from BOOLEAN to INTEGER for SQLite compatibility
         // SQLite doesn't have native BOOLEAN, it stores as INTEGER but sqlx Any driver expects INTEGER type
         if kind == "sqlite" {

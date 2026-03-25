@@ -7,7 +7,7 @@ use tokio::time::sleep;
 async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
     let port = 4005;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server(port, false).await {
+        if let Err(_e) = burncloud_server::start_server("127.0.0.1", port, false).await {
             // Ignore
         }
     });
@@ -99,7 +99,7 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
 async fn test_token_management_lifecycle() -> anyhow::Result<()> {
     let port = 4006;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server(port, false).await {
+        if let Err(_e) = burncloud_server::start_server("127.0.0.1", port, false).await {
             // Ignore
         }
     });

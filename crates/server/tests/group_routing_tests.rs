@@ -50,7 +50,7 @@ async fn test_group_routing_logic() -> anyhow::Result<()> {
     // 2. Start BurnCloud Gateway
     let gateway_port = 3005;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server(gateway_port, false).await {
+        if let Err(_e) = burncloud_server::start_server("127.0.0.1", gateway_port, false).await {
             // ignore
         }
     });

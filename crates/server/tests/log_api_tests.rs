@@ -29,7 +29,7 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
     // 2. Start Server
     let port = 4002;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server(port, false).await {
+        if let Err(_e) = burncloud_server::start_server("127.0.0.1", port, false).await {
             // Ignore bind errors if already running
         }
     });
