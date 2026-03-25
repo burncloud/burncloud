@@ -475,6 +475,21 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .required(true)
                                 .help("JSON file to validate"),
                         ),
+                )
+                .subcommand(
+                    Command::new("sync")
+                        .about("Sync prices from the remote catalog (default: burncloud official)")
+                        .arg(
+                            Arg::new("url")
+                                .long("url")
+                                .help("Custom catalog URL (default: burncloud official)"),
+                        )
+                        .arg(
+                            Arg::new("no-litellm")
+                                .long("no-litellm")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Skip LiteLLM fallback sync"),
+                        ),
                 ),
         )
         .subcommand(
