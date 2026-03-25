@@ -102,6 +102,21 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let audio_input_price: Option<f64> = sub_m
                 .get_one::<String>("audio-input")
                 .and_then(|s| s.parse().ok());
+            let audio_output_price: Option<f64> = sub_m
+                .get_one::<String>("audio-output")
+                .and_then(|s| s.parse().ok());
+            let reasoning_price: Option<f64> = sub_m
+                .get_one::<String>("reasoning")
+                .and_then(|s| s.parse().ok());
+            let embedding_price: Option<f64> = sub_m
+                .get_one::<String>("embedding")
+                .and_then(|s| s.parse().ok());
+            let image_price: Option<f64> = sub_m
+                .get_one::<String>("image")
+                .and_then(|s| s.parse().ok());
+            let video_price: Option<f64> = sub_m
+                .get_one::<String>("video")
+                .and_then(|s| s.parse().ok());
 
             // Use PriceModel for multi-currency support
             // Convert f64 dollar input to i64 nanodollars
@@ -117,6 +132,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 priority_input_price: priority_input_price.map(to_nano),
                 priority_output_price: priority_output_price.map(to_nano),
                 audio_input_price: audio_input_price.map(to_nano),
+                audio_output_price: audio_output_price.map(to_nano),
+                reasoning_price: reasoning_price.map(to_nano),
+                embedding_price: embedding_price.map(to_nano),
+                image_price: image_price.map(to_nano),
+                video_price: video_price.map(to_nano),
                 source: Some("cli".to_string()),
                 region,
                 context_window: None,
@@ -206,6 +226,24 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 from_nano(batch_output)
                             );
                         }
+                        if let Some(v) = price.audio_input_price {
+                            println!("Audio Input Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.audio_output_price {
+                            println!("Audio Output Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.reasoning_price {
+                            println!("Reasoning Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.embedding_price {
+                            println!("Embedding Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.image_price {
+                            println!("Image Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.video_price {
+                            println!("Video Price: {:.4}/1M tokens", from_nano(v));
+                        }
                     }
                     None => {
                         println!("No {} price found for model '{}'", curr, model);
@@ -234,6 +272,24 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         }
                         if let Some(batch_input) = price.batch_input_price {
                             println!("Batch Input Price: {:.4}/1M tokens", from_nano(batch_input));
+                        }
+                        if let Some(v) = price.audio_input_price {
+                            println!("Audio Input Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.audio_output_price {
+                            println!("Audio Output Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.reasoning_price {
+                            println!("Reasoning Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.embedding_price {
+                            println!("Embedding Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.image_price {
+                            println!("Image Price: {:.4}/1M tokens", from_nano(v));
+                        }
+                        if let Some(v) = price.video_price {
+                            println!("Video Price: {:.4}/1M tokens", from_nano(v));
                         }
                     }
                 }
@@ -517,6 +573,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         priority_input_price: None,
                         priority_output_price: None,
                         audio_input_price: None,
+                        audio_output_price: None,
+                        reasoning_price: None,
+                        embedding_price: None,
+                        image_price: None,
+                        video_price: None,
                         source: pricing.source.clone(),
                         region,
                         context_window: metadata.as_ref().and_then(|m| m.context_window),
@@ -558,6 +619,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 priority_input_price: existing.priority_input_price,
                                 priority_output_price: existing.priority_output_price,
                                 audio_input_price: existing.audio_input_price,
+                                audio_output_price: existing.audio_output_price,
+                                reasoning_price: existing.reasoning_price,
+                                embedding_price: existing.embedding_price,
+                                image_price: existing.image_price,
+                                video_price: existing.video_price,
                                 source: existing.source.clone(),
                                 region: existing.region.clone(),
                                 context_window: existing.context_window,
@@ -597,6 +663,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 priority_input_price: existing.priority_input_price,
                                 priority_output_price: existing.priority_output_price,
                                 audio_input_price: existing.audio_input_price,
+                                audio_output_price: existing.audio_output_price,
+                                reasoning_price: existing.reasoning_price,
+                                embedding_price: existing.embedding_price,
+                                image_price: existing.image_price,
+                                video_price: existing.video_price,
                                 source: existing.source.clone(),
                                 region: existing.region.clone(),
                                 context_window: existing.context_window,

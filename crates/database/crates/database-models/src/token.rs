@@ -4,7 +4,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 /// Token for API authentication
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
     pub id: i32,
     pub user_id: String,
@@ -17,6 +17,27 @@ pub struct Token {
     pub created_time: Option<i64>,
     pub accessed_time: Option<i64>,
     pub expired_time: i64,
+}
+
+// Manual FromRow: SQLite stores unlimited_quota as INTEGER (BIGINT in sqlx::Any),
+// which cannot be automatically decoded into bool. Convert i64 → bool explicitly.
+impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for Token {
+    fn from_row(row: &'r sqlx::any::AnyRow) -> std::result::Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Token {
+            id: row.try_get("id")?,
+            user_id: row.try_get("user_id")?,
+            key: row.try_get("key")?,
+            status: row.try_get("status")?,
+            name: row.try_get("name")?,
+            remain_quota: row.try_get("remain_quota")?,
+            unlimited_quota: row.try_get::<i64, _>("unlimited_quota")? != 0,
+            used_quota: row.try_get("used_quota")?,
+            created_time: row.try_get("created_time")?,
+            accessed_time: row.try_get("accessed_time")?,
+            expired_time: row.try_get("expired_time")?,
+        })
+    }
 }
 
 /// Input for creating a token

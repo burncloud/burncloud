@@ -346,6 +346,31 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("audio-input")
                                 .long("audio-input")
                                 .help("Audio input price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("audio-output")
+                                .long("audio-output")
+                                .help("Audio output price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("reasoning")
+                                .long("reasoning")
+                                .help("Reasoning token price per 1M tokens (o1/DeepSeek-R1)"),
+                        )
+                        .arg(
+                            Arg::new("embedding")
+                                .long("embedding")
+                                .help("Embedding token price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("image")
+                                .long("image")
+                                .help("Image token price per 1M tokens"),
+                        )
+                        .arg(
+                            Arg::new("video")
+                                .long("video")
+                                .help("Video token price per 1M tokens"),
                         ),
                 )
                 .subcommand(
