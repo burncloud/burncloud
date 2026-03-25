@@ -197,6 +197,8 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
         .route("/v1/models", axum::routing::get(models_handler))
+        .route("/api/v1/usage", axum::routing::get(usage_handler))
+        .route("/api/v1/usage/models", axum::routing::get(usage_models_handler))
         .fallback(proxy_handler)
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -272,6 +274,121 @@ async fn models_handler(State(state): State<AppState>) -> Response {
                 .unwrap_or_else(|_| r#"{"object":"list","data":[]}"#.to_string()),
         ),
     )
+}
+
+/// Helper: extract and validate the Bearer token from an Authorization header.
+/// Returns (user_id, user_group) on success or an error Response.
+async fn extract_token_user(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Result<String, Response> {
+    let token = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            build_response(
+                StatusCode::UNAUTHORIZED,
+                Body::from(r#"{"error":"Missing Bearer token"}"#),
+            )
+        })?;
+
+    match RouterDatabase::validate_token_and_get_info(&state.db, &token).await {
+        Ok(Some(info)) => Ok(info.0.to_string()),
+        Ok(None) => {
+            // Fall back to legacy token table
+            match RouterDatabase::validate_token_detailed(&state.db, &token).await {
+                Ok(TokenValidationResult::Valid(t)) => {
+                    Ok(t.user_id)
+                }
+                _ => Err(build_response(
+                    StatusCode::UNAUTHORIZED,
+                    Body::from(r#"{"error":"Invalid token"}"#),
+                )),
+            }
+        }
+        Err(e) => {
+            tracing::error!("Token validation DB error: {e}");
+            Err(build_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                Body::from(r#"{"error":"Service temporarily unavailable"}"#),
+            ))
+        }
+    }
+}
+
+/// GET /api/v1/usage — overall usage for the authenticated token holder.
+async fn usage_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let user_id = match extract_token_user(&state, &headers).await {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    match burncloud_database_router::get_usage_stats(&state.db, &user_id, "month").await {
+        Ok(stats) => build_response_with_header(
+            StatusCode::OK,
+            "content-type",
+            "application/json",
+            Body::from(
+                serde_json::to_string(&serde_json::json!({
+                    "user_id": user_id,
+                    "period": "month",
+                    "total_requests": stats.total_requests,
+                    "prompt_tokens": stats.total_prompt_tokens,
+                    "completion_tokens": stats.total_completion_tokens,
+                    "total_cost_nano": stats.total_cost_nano,
+                    "total_cost_usd": stats.total_cost_nano as f64 / 1_000_000_000.0,
+                }))
+                .unwrap_or_else(|_| "{}".to_string()),
+            ),
+        ),
+        Err(e) => build_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Body::from(serde_json::json!({"error": e.to_string()}).to_string()),
+        ),
+    }
+}
+
+/// GET /api/v1/usage/models — usage broken down by model for the authenticated token holder.
+async fn usage_models_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let user_id = match extract_token_user(&state, &headers).await {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    match burncloud_database_router::get_usage_stats_by_model(&state.db, &user_id, "month").await {
+        Ok(rows) => build_response_with_header(
+            StatusCode::OK,
+            "content-type",
+            "application/json",
+            Body::from(
+                serde_json::to_string(&serde_json::json!({
+                    "user_id": user_id,
+                    "period": "month",
+                    "models": rows.iter().map(|r| serde_json::json!({
+                        "model": r.model,
+                        "requests": r.requests,
+                        "prompt_tokens": r.prompt_tokens,
+                        "completion_tokens": r.completion_tokens,
+                        "cost_nano": r.cost_nano,
+                        "cost_usd": r.cost_nano as f64 / 1_000_000_000.0,
+                    })).collect::<Vec<_>>(),
+                }))
+                .unwrap_or_else(|_| "{}".to_string()),
+            ),
+        ),
+        Err(e) => build_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Body::from(serde_json::json!({"error": e.to_string()}).to_string()),
+        ),
+    }
 }
 
 async fn health_status_handler(State(state): State<AppState>) -> Response {
@@ -462,7 +579,6 @@ async fn proxy_handler(
     //   - Current approximation is inaccurate for non-ASCII text
     //   - tiktoken-rs provides accurate token counting for OpenAI models
     //   - Consider: model-specific tokenizers (cl100k_base, o200k_base, etc.)
-    let estimated_prompt_tokens = (body_bytes.len() as f32 / 4.0).ceil() as i32;
 
     // Extract model name for pricing before proxy_logic consumes body_bytes.
     // For Gemini native paths (e.g. /v1beta/models/gemini-2.5-flash:generateContent),
@@ -474,7 +590,13 @@ async fn proxy_handler(
                 .and_then(|m| m.as_str())
                 .map(|s| s.to_string())
         })
-        .or_else(|| crate::passthrough::extract_model_from_gemini_path(&path));
+        .or_else(|| crate::passthrough::extract_model_from_gemini_path(&path))
+        // Strip Gemini method suffixes like ":generateContent", ":streamGenerateContent"
+        .map(|s| {
+            s.split_once(':')
+                .map(|(base, _)| base.to_string())
+                .unwrap_or(s)
+        });
 
     // Detect request type for advanced billing
     // 1. Batch API: detected via headers or metadata.batch_id
@@ -509,7 +631,7 @@ async fn proxy_handler(
     let token_counter = Arc::new(UnifiedTokenCounter::new());
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status, pricing_region) = proxy_logic(
+    let (response, upstream_id, final_status, _pricing_region) = proxy_logic(
         &state,
         method,
         uri,
@@ -534,8 +656,11 @@ async fn proxy_handler(
                 .calculate(model, &usage, &request_id, is_batch_request, is_priority_request)
                 .await
             {
-                Ok(result) => result.total_cost,
-                Err(burncloud_service_billing::BillingError::PriceNotFound(_)) => 0,
+                Ok(result) => result.usd_amount_nano,
+                Err(burncloud_service_billing::BillingError::PriceNotFound(m)) => {
+                    tracing::warn!(model = %m, "PriceNotFound — no price configured for this model");
+                    0
+                }
                 Err(e) => {
                     tracing::warn!("Cost calculation error for {model}: {e}");
                     0
@@ -557,8 +682,8 @@ async fn proxy_handler(
         upstream_id,
         status_code: final_status.as_u16() as i32,
         latency_ms: start_time.elapsed().as_millis() as i64,
-        prompt_tokens: prompt_tokens as i32,
-        completion_tokens: completion_tokens as i32,
+        prompt_tokens: usage.input_tokens as i32,
+        completion_tokens: usage.output_tokens as i32,
         cost,
         created_at: None, // Auto-generated by database
     };
@@ -566,7 +691,7 @@ async fn proxy_handler(
     let _ = state.log_tx.send(log).await;
 
     // Deduct quota (non-blocking)
-    let total_tokens = prompt_tokens + completion_tokens;
+    let total_tokens = usage.input_tokens + usage.output_tokens;
     if total_tokens > 0 {
         let db = state.db.clone();
         let token_for_quota = user_token.to_string();
@@ -584,7 +709,6 @@ async fn proxy_handler(
 }
 
 use burncloud_common::types::ChannelType;
-use burncloud_database_models::PriceModel;
 use circuit_breaker::FailureType;
 use passthrough::{should_passthrough, PassthroughDecision};
 use response_parser::{parse_error_response, parse_rate_limit_info};
@@ -758,6 +882,14 @@ async fn proxy_logic(
         );
     }
 
+    // Preflight billing check: warn if no price is configured for this model.
+    // Non-blocking — routing continues even when price data is absent.
+    if let Some(model) = model_name {
+        if let Err(e) = state.cost_calculator.preflight(model).await {
+            tracing::warn!(model = %model, "Preflight billing check failed: {e}");
+        }
+    }
+
     let mut last_error = String::new();
     #[allow(unused_assignments)]
     let mut last_upstream_id = None;
@@ -917,8 +1049,9 @@ async fn proxy_logic(
                                     let text = String::from_utf8_lossy(&bytes);
 
                                     // Parse token usage from Gemini streaming response
-                                    let chunk_usage = parse_chunk_or_default(parser.as_ref(), &text);
-                                    counter_clone.set_from_usage(chunk_usage);
+                                    if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "passthrough") {
+                                        counter_clone.set_from_usage(&u);
+                                    }
 
                                     // Pass through raw bytes (Gemini native format)
                                     Ok(bytes)
@@ -960,8 +1093,9 @@ async fn proxy_logic(
                                 let resp_usage = parse_response_or_default(
                                     get_parser(channel_type).as_ref(),
                                     &resp_json,
+                                    "passthrough",
                                 );
-                                token_counter.set_from_usage(resp_usage);
+                                token_counter.set_from_usage(&resp_usage);
                             }
 
                             return (
@@ -1222,12 +1356,12 @@ async fn proxy_logic(
                                 let text = String::from_utf8_lossy(&bytes);
 
                                 // Parse token usage from streaming response
-                                let chunk_usage =
-                                    parse_chunk_or_default(parser.as_ref(), &text);
                                 // Anthropic sends incremental events; others send cumulative totals
-                                match parser.provider_name() {
-                                    "anthropic" => counter_clone.accumulate(chunk_usage),
-                                    _ => counter_clone.set_from_usage(chunk_usage),
+                                if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "stream") {
+                                    match parser.provider_name() {
+                                        "anthropic" => counter_clone.accumulate(&u),
+                                        _ => counter_clone.set_from_usage(&u),
+                                    }
                                 }
 
                                 if let Some(converted) =
@@ -1273,8 +1407,8 @@ async fn proxy_logic(
                     // Extract token usage from non-streaming response for billing
                     {
                         let resp_usage =
-                            parse_response_or_default(get_parser(channel_type).as_ref(), &resp_json);
-                        token_counter.set_from_usage(resp_usage);
+                            parse_response_or_default(get_parser(channel_type).as_ref(), &resp_json, "non-stream");
+                        token_counter.set_from_usage(&resp_usage);
                     }
 
                     let response_body = if let Some(converted) =
@@ -1285,8 +1419,9 @@ async fn proxy_logic(
                             let conv_usage = parse_response_or_default(
                                 get_parser(channel_type).as_ref(),
                                 &converted,
+                                "non-stream-converted",
                             );
-                            token_counter.set_from_usage(conv_usage);
+                            token_counter.set_from_usage(&conv_usage);
                         }
                         serde_json::to_string(&converted).unwrap_or_else(|_| "{}".to_string())
                     } else {
@@ -1501,10 +1636,11 @@ fn handle_response_with_token_parsing(
     let mapped_stream = stream.map(move |chunk_result| match chunk_result {
         Ok(bytes) => {
             let text = String::from_utf8_lossy(&bytes);
-            let chunk_usage = parse_chunk_or_default(parser.as_ref(), &text);
-            match parser.provider_name() {
-                "anthropic" => counter_clone.accumulate(chunk_usage),
-                _ => counter_clone.set_from_usage(chunk_usage),
+            if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "stream") {
+                match parser.provider_name() {
+                    "anthropic" => counter_clone.accumulate(&u),
+                    _ => counter_clone.set_from_usage(&u),
+                }
             }
             Ok(bytes)
         }
