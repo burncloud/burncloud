@@ -154,7 +154,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
 
     // Start background price sync task (every 24 hours)
-    // Priority: local docs/pricing.json → COMMUNITY_PRICES_URL → LiteLLM fallback
+    // Priority: local conf/pricing.json → COMMUNITY_PRICES_URL → LiteLLM fallback
     price_sync::start_price_sync_task_v2(db.clone(), 86400, None);
 
     // Setup Async Logging Channel
