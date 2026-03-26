@@ -590,8 +590,8 @@ pub struct PriceSyncConfig {
 impl Default for PriceSyncConfig {
     fn default() -> Self {
         Self {
-            override_config_path: PathBuf::from("config/pricing.override.json"),
-            local_config_path: PathBuf::from("config/pricing.json"),
+            override_config_path: PathBuf::from("docs/pricing.override.json"),
+            local_config_path: PathBuf::from("docs/pricing.json"),
             community_repo_url: COMMUNITY_PRICES_URL.to_string(),
             litellm_url: LITELLM_PRICES_URL.to_string(),
             community_sync_enabled: true,
@@ -1115,11 +1115,11 @@ mod tests {
         let config = PriceSyncConfig::default();
         assert_eq!(
             config.override_config_path,
-            PathBuf::from("config/pricing.override.json")
+            PathBuf::from("docs/pricing.override.json")
         );
         assert_eq!(
             config.local_config_path,
-            PathBuf::from("config/pricing.json")
+            PathBuf::from("docs/pricing.json")
         );
         assert_eq!(config.community_repo_url, COMMUNITY_PRICES_URL);
         assert_eq!(config.litellm_url, LITELLM_PRICES_URL);

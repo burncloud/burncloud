@@ -9,8 +9,8 @@ use burncloud_common::{PricingConfig, ValidationWarning};
 use thiserror::Error;
 
 /// Default paths for pricing configuration files
-pub const DEFAULT_CONFIG_PATH: &str = "config/pricing.json";
-pub const DEFAULT_OVERRIDE_PATH: &str = "config/pricing.override.json";
+pub const DEFAULT_CONFIG_PATH: &str = "docs/pricing.json";
+pub const DEFAULT_OVERRIDE_PATH: &str = "docs/pricing.override.json";
 
 /// Errors that can occur when loading pricing configuration
 #[derive(Debug, Error)]
