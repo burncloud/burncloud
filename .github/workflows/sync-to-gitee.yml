@@ -1,0 +1,34 @@
+name: Sync to Gitee
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync to Gitee
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          # Add Gitee remote
+          git remote add gitee https://burncloud:${GITEE_TOKEN}@gitee.com/burncloud/burncloud.git
+
+          # Push all branches
+          git push gitee --all --force
+
+          # Push all tags
+          git push gitee --tags --force
+
+          echo "✅ Synced to Gitee successfully"

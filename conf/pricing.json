@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-03-26T00:00:00Z",
+  "updated_at": "2026-03-27T00:00:00Z",
   "source": "burncloud-official",
   "models": {
 
@@ -1670,6 +1670,104 @@
         "context_window": 131072, "max_output_tokens": 131072,
         "supports_vision": false, "supports_function_calling": true,
         "provider": "xai", "family": "grok-3"
+      }
+    },
+
+    "gpt-5.4": {
+      "pricing": {
+        "USD": { "input_price": 2.5, "output_price": 15.0, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.25, "cache_creation_input_price": 2.5 }
+      },
+      "metadata": {
+        "context_window": 270000, "max_output_tokens": 16384,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-5"
+      }
+    },
+
+    "gpt-5.4-mini": {
+      "pricing": {
+        "USD": { "input_price": 0.75, "output_price": 4.5, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.075, "cache_creation_input_price": 0.75 }
+      },
+      "metadata": {
+        "context_window": 270000, "max_output_tokens": 16384,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-5"
+      }
+    },
+
+    "gpt-5.4-nano": {
+      "pricing": {
+        "USD": { "input_price": 0.2, "output_price": 1.25, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.02, "cache_creation_input_price": 0.2 }
+      },
+      "metadata": {
+        "context_window": 270000, "max_output_tokens": 16384,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-5"
+      }
+    },
+
+    "claude-opus-4-6": {
+      "pricing": {
+        "USD": { "input_price": 15.0, "output_price": 75.0, "source": "anthropic" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 1.5, "cache_creation_input_price": 18.75 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 32000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-opus"
+      }
+    },
+
+    "claude-sonnet-4-6": {
+      "pricing": {
+        "USD": { "input_price": 3.0, "output_price": 15.0, "source": "anthropic" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.3, "cache_creation_input_price": 3.75 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 16384,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-sonnet"
+      }
+    },
+
+    "gemini-2.5-pro-preview-03-25": {
+      "pricing": {
+        "USD": { "input_price": 1.25, "output_price": 10.0, "source": "google" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.3125 }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 65536,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-2.5"
+      }
+    },
+
+    "gemini-2.5-flash-preview-04-17": {
+      "pricing": {
+        "USD": { "input_price": 0.15, "output_price": 0.6, "source": "google" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.0375 }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 65536,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-2.5"
       }
     }
 
