@@ -685,8 +685,14 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
     assert!(warnings.is_empty(), "Config should be valid");
 
     // Import pricing data
+    // Schema UNIQUE(model, region): USD uses region="" (global), CNY uses region="cn"
     for (model_name, model_pricing) in &config.models {
         for (currency, pricing) in &model_pricing.pricing {
+            let region = if currency == "CNY" {
+                Some("cn".to_string())
+            } else {
+                None // USD → region ""
+            };
             let input = PriceInput {
                 model: model_name.clone(),
                 currency: currency.clone(),
@@ -699,13 +705,13 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
                 priority_input_price: None,
                 priority_output_price: None,
                 audio_input_price: None,
-        audio_output_price: None,
-        reasoning_price: None,
-        embedding_price: None,
-        image_price: None,
-        video_price: None,
+                audio_output_price: None,
+                reasoning_price: None,
+                embedding_price: None,
+                image_price: None,
+                video_price: None,
                 source: pricing.source.clone(),
-                region: None,
+                region,
                 context_window: model_pricing
                     .metadata
                     .as_ref()
@@ -751,7 +757,7 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
     assert_eq!(usd_price.context_window, Some(128000));
     // Note: supports_vision is stored as INTEGER in SQLite, so we skip that check
 
-    let cny_price = PriceModel::get(&_db, "test-import-model", "CNY", None)
+    let cny_price = PriceModel::get(&_db, "test-import-model", "CNY", Some("cn"))
         .await?
         .unwrap();
     assert_eq!(cny_price.input_price, to_nano(72.0));
@@ -762,6 +768,127 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
     let tiers =
         TieredPriceModel::get_tiers(&_db, "test-import-model", Some("international")).await?;
     assert_eq!(tiers.len(), 2);
+
+    Ok(())
+}
+
+/// Regression test: PriceCache must be refreshed after sync.
+/// Before this fix, start_price_sync_task_v2 never called cache.refresh(),
+/// so the in-memory cache stayed empty after every sync run.
+#[tokio::test]
+async fn test_cache_refresh_after_sync() -> anyhow::Result<()> {
+    use burncloud_service_billing::PriceCache;
+    use std::sync::Arc;
+
+    let (db, _pool) = setup_db().await?;
+    let db = Arc::new(db);
+
+    // Insert a price directly into the DB
+    let input = burncloud_database_models::PriceInput {
+        model: "cache-refresh-test-model".to_string(),
+        currency: "USD".to_string(),
+        input_price: to_nano(3.0),
+        output_price: to_nano(15.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        audio_output_price: None,
+        reasoning_price: None,
+        embedding_price: None,
+        image_price: None,
+        video_price: None,
+        source: Some("test".to_string()),
+        region: None,
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+    };
+    PriceModel::upsert(&db, &input).await?;
+
+    // Create an empty cache (simulates server start before first sync)
+    let cache = PriceCache::empty();
+    assert!(
+        cache.get("cache-refresh-test-model").await.is_none(),
+        "Cache should be empty before refresh"
+    );
+
+    // Simulate what start_price_sync_task_v2 now does after a successful sync
+    cache.refresh(&db).await?;
+
+    // Cache must now contain the model
+    let price = cache.get("cache-refresh-test-model").await;
+    assert!(
+        price.is_some(),
+        "Cache must contain model after refresh — sync task must call cache.refresh()"
+    );
+    let price = price.unwrap();
+    assert_eq!(price.input_price, to_nano(3.0));
+
+    Ok(())
+}
+
+/// Regression test: sync failure must not corrupt previously stored prices.
+/// Simulates a scenario where prices exist in DB before a sync attempt that fails.
+/// The existing DB prices must remain intact after the failed sync.
+#[tokio::test]
+async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
+    use burncloud_router::price_sync::{PriceSyncConfig, PriceSyncServiceV2};
+    use std::sync::Arc;
+
+    let (db, _pool) = setup_db().await?;
+    let db = Arc::new(db);
+
+    // Pre-populate a price before any sync
+    let input = burncloud_database_models::PriceInput {
+        model: "sync-failure-test-model".to_string(),
+        currency: "USD".to_string(),
+        input_price: to_nano(5.0),
+        output_price: to_nano(20.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        audio_output_price: None,
+        reasoning_price: None,
+        embedding_price: None,
+        image_price: None,
+        video_price: None,
+        source: Some("pre-existing".to_string()),
+        region: None,
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+    };
+    PriceModel::upsert(&db, &input).await?;
+
+    // Configure sync with an invalid URL so the HTTP fetch will fail
+    let config = PriceSyncConfig {
+        litellm_url: "http://127.0.0.1:19999/nonexistent".to_string(),
+        community_repo_url: "http://127.0.0.1:19999/nonexistent".to_string(),
+        ..PriceSyncConfig::default()
+    };
+    let mut service = PriceSyncServiceV2::with_config(db.clone(), config);
+
+    // sync_all may return an error — that's expected
+    let _ = service.sync_all().await;
+
+    // The pre-existing price must still be in the DB
+    let price = PriceModel::get(&db, "sync-failure-test-model", "USD", None).await?;
+    assert!(
+        price.is_some(),
+        "Pre-existing price must survive a failed sync"
+    );
+    let price = price.unwrap();
+    assert_eq!(price.input_price, to_nano(5.0));
 
     Ok(())
 }

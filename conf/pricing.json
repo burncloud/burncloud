@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-03-25T00:00:00Z",
+  "updated_at": "2026-03-26T00:00:00Z",
   "source": "burncloud-official",
   "models": {
 
@@ -38,7 +38,55 @@
       }
     },
 
+    "gpt-4o-2024-08-06": {
+      "pricing": {
+        "USD": { "input_price": 2.5, "output_price": 10.0, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 1.25, "cache_creation_input_price": 2.5 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 1.25, "batch_output_price": 5.0 }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 16384,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4o"
+      }
+    },
+
+    "gpt-4o-2024-05-13": {
+      "pricing": {
+        "USD": { "input_price": 5.0, "output_price": 15.0, "source": "openai" }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 2.5, "batch_output_price": 7.5 }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4o"
+      }
+    },
+
     "gpt-4o-mini": {
+      "pricing": {
+        "USD": { "input_price": 0.15, "output_price": 0.6, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.075, "cache_creation_input_price": 0.15 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.075, "batch_output_price": 0.3 }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 16384,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4o-mini"
+      }
+    },
+
+    "gpt-4o-mini-2024-07-18": {
       "pricing": {
         "USD": { "input_price": 0.15, "output_price": 0.6, "source": "openai" }
       },
@@ -72,6 +120,23 @@
       }
     },
 
+    "o1-2024-12-17": {
+      "pricing": {
+        "USD": { "input_price": 15.0, "output_price": 60.0, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 7.5 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 7.5, "batch_output_price": 30.0 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 100000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "o1"
+      }
+    },
+
     "o1-mini": {
       "pricing": {
         "USD": { "input_price": 1.1, "output_price": 4.4, "source": "openai" }
@@ -83,6 +148,62 @@
         "context_window": 128000, "max_output_tokens": 65536,
         "supports_vision": false, "supports_function_calling": false,
         "provider": "openai", "family": "o1"
+      }
+    },
+
+    "o1-mini-2024-09-12": {
+      "pricing": {
+        "USD": { "input_price": 3.0, "output_price": 12.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 65536,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "openai", "family": "o1"
+      }
+    },
+
+    "o1-preview": {
+      "pricing": {
+        "USD": { "input_price": 15.0, "output_price": 60.0, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 7.5 }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 32768,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "openai", "family": "o1"
+      }
+    },
+
+    "o1-preview-2024-09-12": {
+      "pricing": {
+        "USD": { "input_price": 15.0, "output_price": 60.0, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 7.5 }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 32768,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "openai", "family": "o1"
+      }
+    },
+
+    "o3": {
+      "pricing": {
+        "USD": { "input_price": 10.0, "output_price": 40.0, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 2.5 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 5.0, "batch_output_price": 20.0 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 100000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "o3"
       }
     },
 
@@ -103,6 +224,57 @@
       }
     },
 
+    "o3-mini-2025-01-31": {
+      "pricing": {
+        "USD": { "input_price": 1.1, "output_price": 4.4, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.55 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.55, "batch_output_price": 2.2 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 100000,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "o3"
+      }
+    },
+
+    "o4-mini": {
+      "pricing": {
+        "USD": { "input_price": 1.1, "output_price": 4.4, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.275 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.55, "batch_output_price": 2.2 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 100000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "o4"
+      }
+    },
+
+    "o4-mini-2025-04-16": {
+      "pricing": {
+        "USD": { "input_price": 1.1, "output_price": 4.4, "source": "openai" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.275 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.55, "batch_output_price": 2.2 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 100000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "o4"
+      }
+    },
+
     "gpt-4-turbo": {
       "pricing": {
         "USD": { "input_price": 10.0, "output_price": 30.0, "source": "openai" }
@@ -117,6 +289,86 @@
       }
     },
 
+    "gpt-4-turbo-2024-04-09": {
+      "pricing": {
+        "USD": { "input_price": 10.0, "output_price": 30.0, "source": "openai" }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 5.0, "batch_output_price": 15.0 }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4-turbo"
+      }
+    },
+
+    "gpt-4-turbo-preview": {
+      "pricing": {
+        "USD": { "input_price": 10.0, "output_price": 30.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4-turbo"
+      }
+    },
+
+    "gpt-4-0125-preview": {
+      "pricing": {
+        "USD": { "input_price": 10.0, "output_price": 30.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4-turbo"
+      }
+    },
+
+    "gpt-4-1106-preview": {
+      "pricing": {
+        "USD": { "input_price": 10.0, "output_price": 30.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4-turbo"
+      }
+    },
+
+    "gpt-4": {
+      "pricing": {
+        "USD": { "input_price": 30.0, "output_price": 60.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4"
+      }
+    },
+
+    "gpt-4-0613": {
+      "pricing": {
+        "USD": { "input_price": 30.0, "output_price": 60.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4"
+      }
+    },
+
+    "gpt-4-32k": {
+      "pricing": {
+        "USD": { "input_price": 60.0, "output_price": 120.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 32768,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-4"
+      }
+    },
+
     "gpt-3.5-turbo": {
       "pricing": {
         "USD": { "input_price": 0.5, "output_price": 1.5, "source": "openai" }
@@ -127,6 +379,42 @@
       "metadata": {
         "context_window": 16385, "max_output_tokens": 4096,
         "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-3.5"
+      }
+    },
+
+    "gpt-3.5-turbo-0125": {
+      "pricing": {
+        "USD": { "input_price": 0.5, "output_price": 1.5, "source": "openai" }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.25, "batch_output_price": 0.75 }
+      },
+      "metadata": {
+        "context_window": 16385, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-3.5"
+      }
+    },
+
+    "gpt-3.5-turbo-1106": {
+      "pricing": {
+        "USD": { "input_price": 1.0, "output_price": 2.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 16385, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "openai", "family": "gpt-3.5"
+      }
+    },
+
+    "gpt-3.5-turbo-instruct": {
+      "pricing": {
+        "USD": { "input_price": 1.5, "output_price": 2.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 4096, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": false,
         "provider": "openai", "family": "gpt-3.5"
       }
     },
@@ -156,6 +444,121 @@
         "context_window": 8191, "max_output_tokens": 0,
         "supports_vision": false, "supports_function_calling": false,
         "provider": "openai", "family": "text-embedding-3"
+      }
+    },
+
+    "text-embedding-ada-002": {
+      "pricing": {
+        "USD": { "input_price": 0.1, "output_price": 0.0, "source": "openai" }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.05, "batch_output_price": 0.0 }
+      },
+      "metadata": {
+        "context_window": 8191, "max_output_tokens": 0,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "openai", "family": "text-embedding-ada"
+      }
+    },
+
+    "tts-1": {
+      "pricing": {
+        "USD": { "input_price": 15.0, "output_price": 0.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 4096, "max_output_tokens": 0,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "openai", "family": "tts"
+      }
+    },
+
+    "tts-1-hd": {
+      "pricing": {
+        "USD": { "input_price": 30.0, "output_price": 0.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 4096, "max_output_tokens": 0,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "openai", "family": "tts"
+      }
+    },
+
+    "whisper-1": {
+      "pricing": {
+        "USD": { "input_price": 0.006, "output_price": 0.0, "source": "openai" }
+      },
+      "metadata": {
+        "context_window": 0, "max_output_tokens": 0,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "openai", "family": "whisper"
+      }
+    },
+
+    "claude-opus-4-6": {
+      "pricing": {
+        "USD": { "input_price": 15.0, "output_price": 75.0, "source": "anthropic" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 1.5, "cache_creation_input_price": 18.75 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 7.5, "batch_output_price": 37.5 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 32000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-4-opus"
+      }
+    },
+
+    "claude-sonnet-4-6": {
+      "pricing": {
+        "USD": { "input_price": 3.0, "output_price": 15.0, "source": "anthropic" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.3, "cache_creation_input_price": 3.75 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 1.5, "batch_output_price": 7.5 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 16000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-4-sonnet"
+      }
+    },
+
+    "claude-haiku-4-5-20251001": {
+      "pricing": {
+        "USD": { "input_price": 0.8, "output_price": 4.0, "source": "anthropic" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.08, "cache_creation_input_price": 1.0 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.4, "batch_output_price": 2.0 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 8192,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-4-haiku"
+      }
+    },
+
+    "claude-haiku-4-5": {
+      "pricing": {
+        "USD": { "input_price": 0.8, "output_price": 4.0, "source": "anthropic" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.08, "cache_creation_input_price": 1.0 }
+      },
+      "batch_pricing": {
+        "USD": { "batch_input_price": 0.4, "batch_output_price": 2.0 }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 8192,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-4-haiku"
       }
     },
 
@@ -258,6 +661,39 @@
       }
     },
 
+    "claude-2.1": {
+      "pricing": {
+        "USD": { "input_price": 8.0, "output_price": 24.0, "source": "anthropic" }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-2"
+      }
+    },
+
+    "claude-2.0": {
+      "pricing": {
+        "USD": { "input_price": 8.0, "output_price": 24.0, "source": "anthropic" }
+      },
+      "metadata": {
+        "context_window": 100000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "anthropic", "family": "claude-2"
+      }
+    },
+
+    "claude-instant-1.2": {
+      "pricing": {
+        "USD": { "input_price": 0.8, "output_price": 2.4, "source": "anthropic" }
+      },
+      "metadata": {
+        "context_window": 100000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "anthropic", "family": "claude-instant"
+      }
+    },
+
     "gemini-2.5-pro": {
       "pricing": {
         "USD": { "input_price": 1.25, "output_price": 10.0, "source": "google" }
@@ -280,9 +716,20 @@
       }
     },
 
+    "gemini-2.5-pro-exp-03-25": {
+      "pricing": {
+        "USD": { "input_price": 1.25, "output_price": 10.0, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 65536,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-2.5"
+      }
+    },
+
     "gemini-2.5-flash": {
       "pricing": {
-        "USD": { "input_price": 0.15, "output_price": 0.6, "source": "google" }
+        "USD": { "input_price": 0.3, "output_price": 2.5, "source": "litellm" }
       },
       "metadata": {
         "context_window": 1048576, "max_output_tokens": 65536,
@@ -293,7 +740,18 @@
 
     "gemini-2.5-flash-preview-04-17": {
       "pricing": {
-        "USD": { "input_price": 0.15, "output_price": 0.6, "source": "google" }
+        "USD": { "input_price": 0.3, "output_price": 2.5, "source": "litellm" }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 65536,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-2.5"
+      }
+    },
+
+    "gemini-2.5-flash-lite": {
+      "pricing": {
+        "USD": { "input_price": 0.1, "output_price": 0.4, "source": "litellm" }
       },
       "metadata": {
         "context_window": 1048576, "max_output_tokens": 65536,
@@ -303,6 +761,17 @@
     },
 
     "gemini-2.0-flash": {
+      "pricing": {
+        "USD": { "input_price": 0.1, "output_price": 0.4, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 8192,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-2.0"
+      }
+    },
+
+    "gemini-2.0-flash-001": {
       "pricing": {
         "USD": { "input_price": 0.1, "output_price": 0.4, "source": "google" }
       },
@@ -324,7 +793,40 @@
       }
     },
 
+    "gemini-2.0-flash-lite-001": {
+      "pricing": {
+        "USD": { "input_price": 0.075, "output_price": 0.3, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 8192,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-2.0"
+      }
+    },
+
+    "gemini-2.0-flash-thinking-exp": {
+      "pricing": {
+        "USD": { "input_price": 0.0, "output_price": 0.0, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 65536,
+        "supports_vision": true, "supports_function_calling": false,
+        "provider": "google", "family": "gemini-2.0"
+      }
+    },
+
     "gemini-1.5-pro": {
+      "pricing": {
+        "USD": { "input_price": 1.25, "output_price": 5.0, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 2097152, "max_output_tokens": 8192,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-1.5"
+      }
+    },
+
+    "gemini-1.5-pro-002": {
       "pricing": {
         "USD": { "input_price": 1.25, "output_price": 5.0, "source": "google" }
       },
@@ -346,7 +848,29 @@
       }
     },
 
+    "gemini-1.5-flash-002": {
+      "pricing": {
+        "USD": { "input_price": 0.075, "output_price": 0.3, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 8192,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-1.5"
+      }
+    },
+
     "gemini-1.5-flash-8b": {
+      "pricing": {
+        "USD": { "input_price": 0.0375, "output_price": 0.15, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 1048576, "max_output_tokens": 8192,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "google", "family": "gemini-1.5"
+      }
+    },
+
+    "gemini-1.5-flash-8b-001": {
       "pricing": {
         "USD": { "input_price": 0.0375, "output_price": 0.15, "source": "google" }
       },
@@ -368,15 +892,29 @@
       }
     },
 
+    "text-embedding-004": {
+      "pricing": {
+        "USD": { "input_price": 0.0, "output_price": 0.0, "source": "google" }
+      },
+      "metadata": {
+        "context_window": 2048, "max_output_tokens": 0,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "google", "family": "text-embedding"
+      }
+    },
+
     "deepseek-chat": {
       "pricing": {
-        "USD": { "input_price": 0.27, "output_price": 1.1, "source": "deepseek" }
+        "USD": { "input_price": 0.27, "output_price": 1.1, "source": "deepseek" },
+        "CNY": { "input_price": 2.0, "output_price": 8.0, "source": "deepseek" }
       },
       "cache_pricing": {
-        "USD": { "cache_read_input_price": 0.07 }
+        "USD": { "cache_read_input_price": 0.07 },
+        "CNY": { "cache_read_input_price": 0.5 }
       },
       "batch_pricing": {
-        "USD": { "batch_input_price": 0.135, "batch_output_price": 0.55 }
+        "USD": { "batch_input_price": 0.135, "batch_output_price": 0.55 },
+        "CNY": { "batch_input_price": 1.0, "batch_output_price": 4.0 }
       },
       "metadata": {
         "context_window": 65536, "max_output_tokens": 8192,
@@ -387,18 +925,722 @@
 
     "deepseek-reasoner": {
       "pricing": {
-        "USD": { "input_price": 0.55, "output_price": 2.19, "source": "deepseek" }
+        "USD": { "input_price": 0.55, "output_price": 2.19, "source": "deepseek" },
+        "CNY": { "input_price": 4.0, "output_price": 16.0, "source": "deepseek" }
       },
       "cache_pricing": {
-        "USD": { "cache_read_input_price": 0.14 }
+        "USD": { "cache_read_input_price": 0.14 },
+        "CNY": { "cache_read_input_price": 1.0 }
       },
       "batch_pricing": {
-        "USD": { "batch_input_price": 0.275, "batch_output_price": 1.095 }
+        "USD": { "batch_input_price": 0.275, "batch_output_price": 1.095 },
+        "CNY": { "batch_input_price": 2.0, "batch_output_price": 8.0 }
       },
       "metadata": {
         "context_window": 65536, "max_output_tokens": 65536,
         "supports_vision": false, "supports_function_calling": false,
         "provider": "deepseek", "family": "deepseek-r1"
+      }
+    },
+
+    "deepseek-v3": {
+      "pricing": {
+        "USD": { "input_price": 0.27, "output_price": 1.1, "source": "deepseek" },
+        "CNY": { "input_price": 2.0, "output_price": 8.0, "source": "deepseek" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.07 },
+        "CNY": { "cache_read_input_price": 0.5 }
+      },
+      "metadata": {
+        "context_window": 65536, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "deepseek", "family": "deepseek-v3"
+      }
+    },
+
+    "deepseek-r1": {
+      "pricing": {
+        "USD": { "input_price": 0.55, "output_price": 2.19, "source": "deepseek" },
+        "CNY": { "input_price": 4.0, "output_price": 16.0, "source": "deepseek" }
+      },
+      "cache_pricing": {
+        "USD": { "cache_read_input_price": 0.14 },
+        "CNY": { "cache_read_input_price": 1.0 }
+      },
+      "metadata": {
+        "context_window": 65536, "max_output_tokens": 65536,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "deepseek", "family": "deepseek-r1"
+      }
+    },
+
+    "qwen-max": {
+      "pricing": {
+        "CNY": { "input_price": 40.0, "output_price": 120.0, "source": "alicloud" },
+        "USD": { "input_price": 5.5, "output_price": 16.5, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen"
+      }
+    },
+
+    "qwen-max-2025-01-25": {
+      "pricing": {
+        "CNY": { "input_price": 40.0, "output_price": 120.0, "source": "alicloud" },
+        "USD": { "input_price": 5.5, "output_price": 16.5, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen"
+      }
+    },
+
+    "qwen-plus": {
+      "pricing": {
+        "CNY": { "input_price": 4.0, "output_price": 12.0, "source": "alicloud" },
+        "USD": { "input_price": 0.55, "output_price": 1.65, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen"
+      }
+    },
+
+    "qwen-plus-2025-01-25": {
+      "pricing": {
+        "CNY": { "input_price": 4.0, "output_price": 12.0, "source": "alicloud" },
+        "USD": { "input_price": 0.55, "output_price": 1.65, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen"
+      }
+    },
+
+    "qwen-turbo": {
+      "pricing": {
+        "CNY": { "input_price": 0.3, "output_price": 0.6, "source": "alicloud" },
+        "USD": { "input_price": 0.041, "output_price": 0.082, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 1000000, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen"
+      }
+    },
+
+    "qwen-turbo-2025-02-11": {
+      "pricing": {
+        "CNY": { "input_price": 0.3, "output_price": 0.6, "source": "alicloud" },
+        "USD": { "input_price": 0.041, "output_price": 0.082, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 1000000, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen"
+      }
+    },
+
+    "qwen-long": {
+      "pricing": {
+        "CNY": { "input_price": 0.5, "output_price": 2.0, "source": "alicloud" },
+        "USD": { "input_price": 0.069, "output_price": 0.274, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 10000000, "max_output_tokens": 6000,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen"
+      }
+    },
+
+    "qwq-32b": {
+      "pricing": {
+        "CNY": { "input_price": 2.0, "output_price": 6.0, "source": "alicloud" },
+        "USD": { "input_price": 0.27, "output_price": 0.82, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 65536,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "alicloud", "family": "qwq"
+      }
+    },
+
+    "qwen-vl-max": {
+      "pricing": {
+        "CNY": { "input_price": 3.0, "output_price": 9.0, "source": "alicloud" },
+        "USD": { "input_price": 0.41, "output_price": 1.24, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 32000, "max_output_tokens": 2000,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "alicloud", "family": "qwen-vl"
+      }
+    },
+
+    "qwen-vl-plus": {
+      "pricing": {
+        "CNY": { "input_price": 1.5, "output_price": 4.5, "source": "alicloud" },
+        "USD": { "input_price": 0.21, "output_price": 0.62, "source": "alicloud" }
+      },
+      "metadata": {
+        "context_window": 32000, "max_output_tokens": 2000,
+        "supports_vision": true, "supports_function_calling": false,
+        "provider": "alicloud", "family": "qwen-vl"
+      }
+    },
+
+    "ernie-4.0-8k": {
+      "pricing": {
+        "CNY": { "input_price": 30.0, "output_price": 90.0, "source": "baidu" },
+        "USD": { "input_price": 4.1, "output_price": 12.3, "source": "baidu" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 2048,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "baidu", "family": "ernie-4.0"
+      }
+    },
+
+    "ernie-4.0-turbo-8k": {
+      "pricing": {
+        "CNY": { "input_price": 20.0, "output_price": 60.0, "source": "baidu" },
+        "USD": { "input_price": 2.74, "output_price": 8.22, "source": "baidu" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 2048,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "baidu", "family": "ernie-4.0"
+      }
+    },
+
+    "ernie-3.5-8k": {
+      "pricing": {
+        "CNY": { "input_price": 0.8, "output_price": 2.0, "source": "baidu" },
+        "USD": { "input_price": 0.11, "output_price": 0.27, "source": "baidu" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 2048,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "baidu", "family": "ernie-3.5"
+      }
+    },
+
+    "ernie-speed-8k": {
+      "pricing": {
+        "CNY": { "input_price": 0.0, "output_price": 0.0, "source": "baidu" },
+        "USD": { "input_price": 0.0, "output_price": 0.0, "source": "baidu" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 2048,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "baidu", "family": "ernie-speed"
+      }
+    },
+
+    "ernie-speed-128k": {
+      "pricing": {
+        "CNY": { "input_price": 0.0, "output_price": 0.0, "source": "baidu" },
+        "USD": { "input_price": 0.0, "output_price": 0.0, "source": "baidu" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "baidu", "family": "ernie-speed"
+      }
+    },
+
+    "ernie-lite-8k": {
+      "pricing": {
+        "CNY": { "input_price": 0.3, "output_price": 0.3, "source": "baidu" },
+        "USD": { "input_price": 0.041, "output_price": 0.041, "source": "baidu" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 2048,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "baidu", "family": "ernie-lite"
+      }
+    },
+
+    "glm-4": {
+      "pricing": {
+        "CNY": { "input_price": 100.0, "output_price": 100.0, "source": "zhipu" },
+        "USD": { "input_price": 13.7, "output_price": 13.7, "source": "zhipu" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4095,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "zhipu", "family": "glm-4"
+      }
+    },
+
+    "glm-4-0520": {
+      "pricing": {
+        "CNY": { "input_price": 100.0, "output_price": 100.0, "source": "zhipu" },
+        "USD": { "input_price": 13.7, "output_price": 13.7, "source": "zhipu" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4095,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "zhipu", "family": "glm-4"
+      }
+    },
+
+    "glm-4-flash": {
+      "pricing": {
+        "CNY": { "input_price": 0.0, "output_price": 0.0, "source": "zhipu" },
+        "USD": { "input_price": 0.0, "output_price": 0.0, "source": "zhipu" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4095,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "zhipu", "family": "glm-4"
+      }
+    },
+
+    "glm-4v": {
+      "pricing": {
+        "CNY": { "input_price": 50.0, "output_price": 50.0, "source": "zhipu" },
+        "USD": { "input_price": 6.85, "output_price": 6.85, "source": "zhipu" }
+      },
+      "metadata": {
+        "context_window": 2048, "max_output_tokens": 1024,
+        "supports_vision": true, "supports_function_calling": false,
+        "provider": "zhipu", "family": "glm-4"
+      }
+    },
+
+    "glm-4-long": {
+      "pricing": {
+        "CNY": { "input_price": 1.0, "output_price": 1.0, "source": "zhipu" },
+        "USD": { "input_price": 0.14, "output_price": 0.14, "source": "zhipu" }
+      },
+      "metadata": {
+        "context_window": 1000000, "max_output_tokens": 4095,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "zhipu", "family": "glm-4"
+      }
+    },
+
+    "glm-4-plus": {
+      "pricing": {
+        "CNY": { "input_price": 50.0, "output_price": 50.0, "source": "zhipu" },
+        "USD": { "input_price": 6.85, "output_price": 6.85, "source": "zhipu" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4095,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "zhipu", "family": "glm-4"
+      }
+    },
+
+    "moonshot-v1-8k": {
+      "pricing": {
+        "CNY": { "input_price": 12.0, "output_price": 12.0, "source": "moonshot" },
+        "USD": { "input_price": 1.65, "output_price": 1.65, "source": "moonshot" }
+      },
+      "metadata": {
+        "context_window": 8192, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "moonshot", "family": "moonshot-v1"
+      }
+    },
+
+    "moonshot-v1-32k": {
+      "pricing": {
+        "CNY": { "input_price": 24.0, "output_price": 24.0, "source": "moonshot" },
+        "USD": { "input_price": 3.29, "output_price": 3.29, "source": "moonshot" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "moonshot", "family": "moonshot-v1"
+      }
+    },
+
+    "moonshot-v1-128k": {
+      "pricing": {
+        "CNY": { "input_price": 60.0, "output_price": 60.0, "source": "moonshot" },
+        "USD": { "input_price": 8.22, "output_price": 8.22, "source": "moonshot" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "moonshot", "family": "moonshot-v1"
+      }
+    },
+
+    "hunyuan-turbo": {
+      "pricing": {
+        "CNY": { "input_price": 15.0, "output_price": 50.0, "source": "tencent" },
+        "USD": { "input_price": 2.05, "output_price": 6.85, "source": "tencent" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "tencent", "family": "hunyuan"
+      }
+    },
+
+    "hunyuan-pro": {
+      "pricing": {
+        "CNY": { "input_price": 30.0, "output_price": 100.0, "source": "tencent" },
+        "USD": { "input_price": 4.11, "output_price": 13.7, "source": "tencent" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "tencent", "family": "hunyuan"
+      }
+    },
+
+    "hunyuan-standard": {
+      "pricing": {
+        "CNY": { "input_price": 4.5, "output_price": 5.0, "source": "tencent" },
+        "USD": { "input_price": 0.62, "output_price": 0.68, "source": "tencent" }
+      },
+      "metadata": {
+        "context_window": 256000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "tencent", "family": "hunyuan"
+      }
+    },
+
+    "yi-large": {
+      "pricing": {
+        "CNY": { "input_price": 20.0, "output_price": 20.0, "source": "01ai" },
+        "USD": { "input_price": 2.74, "output_price": 2.74, "source": "01ai" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "01ai", "family": "yi"
+      }
+    },
+
+    "yi-medium": {
+      "pricing": {
+        "CNY": { "input_price": 2.5, "output_price": 2.5, "source": "01ai" },
+        "USD": { "input_price": 0.34, "output_price": 0.34, "source": "01ai" }
+      },
+      "metadata": {
+        "context_window": 16384, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "01ai", "family": "yi"
+      }
+    },
+
+    "yi-spark": {
+      "pricing": {
+        "CNY": { "input_price": 1.0, "output_price": 1.0, "source": "01ai" },
+        "USD": { "input_price": 0.14, "output_price": 0.14, "source": "01ai" }
+      },
+      "metadata": {
+        "context_window": 16384, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "01ai", "family": "yi"
+      }
+    },
+
+    "mistral-large-2411": {
+      "pricing": {
+        "USD": { "input_price": 2.0, "output_price": 6.0, "source": "mistral" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "mistral", "family": "mistral-large"
+      }
+    },
+
+    "mistral-large-latest": {
+      "pricing": {
+        "USD": { "input_price": 2.0, "output_price": 6.0, "source": "mistral" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "mistral", "family": "mistral-large"
+      }
+    },
+
+    "mistral-small-2503": {
+      "pricing": {
+        "USD": { "input_price": 0.1, "output_price": 0.3, "source": "mistral" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "mistral", "family": "mistral-small"
+      }
+    },
+
+    "mistral-small-latest": {
+      "pricing": {
+        "USD": { "input_price": 0.1, "output_price": 0.3, "source": "mistral" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "mistral", "family": "mistral-small"
+      }
+    },
+
+    "open-mistral-nemo": {
+      "pricing": {
+        "USD": { "input_price": 0.15, "output_price": 0.15, "source": "mistral" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4096,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "mistral", "family": "mistral-nemo"
+      }
+    },
+
+    "codestral-2501": {
+      "pricing": {
+        "USD": { "input_price": 0.3, "output_price": 0.9, "source": "mistral" }
+      },
+      "metadata": {
+        "context_window": 262144, "max_output_tokens": 16384,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "mistral", "family": "codestral"
+      }
+    },
+
+    "codestral-latest": {
+      "pricing": {
+        "USD": { "input_price": 0.3, "output_price": 0.9, "source": "mistral" }
+      },
+      "metadata": {
+        "context_window": 262144, "max_output_tokens": 16384,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "mistral", "family": "codestral"
+      }
+    },
+
+    "command-r": {
+      "pricing": {
+        "USD": { "input_price": 0.15, "output_price": 0.6, "source": "cohere" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4000,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "cohere", "family": "command-r"
+      }
+    },
+
+    "command-r-plus": {
+      "pricing": {
+        "USD": { "input_price": 2.5, "output_price": 10.0, "source": "cohere" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 4000,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "cohere", "family": "command-r"
+      }
+    },
+
+    "command-a-03-2025": {
+      "pricing": {
+        "USD": { "input_price": 2.5, "output_price": 10.0, "source": "cohere" }
+      },
+      "metadata": {
+        "context_window": 256000, "max_output_tokens": 8000,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "cohere", "family": "command-a"
+      }
+    },
+
+    "meta-llama-3.1-8b-instruct": {
+      "pricing": {
+        "USD": { "input_price": 0.18, "output_price": 0.18, "source": "meta" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "meta", "family": "llama-3.1"
+      }
+    },
+
+    "meta-llama-3.1-70b-instruct": {
+      "pricing": {
+        "USD": { "input_price": 0.88, "output_price": 0.88, "source": "meta" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "meta", "family": "llama-3.1"
+      }
+    },
+
+    "meta-llama-3.1-405b-instruct": {
+      "pricing": {
+        "USD": { "input_price": 5.0, "output_price": 15.0, "source": "meta" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "meta", "family": "llama-3.1"
+      }
+    },
+
+    "meta-llama-3.3-70b-instruct": {
+      "pricing": {
+        "USD": { "input_price": 0.88, "output_price": 0.88, "source": "meta" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "meta", "family": "llama-3.3"
+      }
+    },
+
+    "llama-3.1-sonar-small-128k-online": {
+      "pricing": {
+        "USD": { "input_price": 0.2, "output_price": 0.2, "source": "perplexity" }
+      },
+      "metadata": {
+        "context_window": 127072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "perplexity", "family": "sonar"
+      }
+    },
+
+    "llama-3.1-sonar-large-128k-online": {
+      "pricing": {
+        "USD": { "input_price": 1.0, "output_price": 1.0, "source": "perplexity" }
+      },
+      "metadata": {
+        "context_window": 127072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "perplexity", "family": "sonar"
+      }
+    },
+
+    "sonar": {
+      "pricing": {
+        "USD": { "input_price": 1.0, "output_price": 1.0, "source": "perplexity" }
+      },
+      "metadata": {
+        "context_window": 127072, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "perplexity", "family": "sonar"
+      }
+    },
+
+    "sonar-pro": {
+      "pricing": {
+        "USD": { "input_price": 3.0, "output_price": 15.0, "source": "perplexity" }
+      },
+      "metadata": {
+        "context_window": 200000, "max_output_tokens": 8192,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "perplexity", "family": "sonar"
+      }
+    },
+
+    "sonar-reasoning": {
+      "pricing": {
+        "USD": { "input_price": 1.0, "output_price": 5.0, "source": "perplexity" }
+      },
+      "metadata": {
+        "context_window": 127072, "max_output_tokens": 65536,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "perplexity", "family": "sonar"
+      }
+    },
+
+    "sonar-reasoning-pro": {
+      "pricing": {
+        "USD": { "input_price": 2.0, "output_price": 8.0, "source": "perplexity" }
+      },
+      "metadata": {
+        "context_window": 127072, "max_output_tokens": 65536,
+        "supports_vision": false, "supports_function_calling": false,
+        "provider": "perplexity", "family": "sonar"
+      }
+    },
+
+    "amazon-nova-pro-v1": {
+      "pricing": {
+        "USD": { "input_price": 0.8, "output_price": 3.2, "source": "amazon" }
+      },
+      "metadata": {
+        "context_window": 300000, "max_output_tokens": 5120,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "amazon", "family": "nova"
+      }
+    },
+
+    "amazon-nova-lite-v1": {
+      "pricing": {
+        "USD": { "input_price": 0.06, "output_price": 0.24, "source": "amazon" }
+      },
+      "metadata": {
+        "context_window": 300000, "max_output_tokens": 5120,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "amazon", "family": "nova"
+      }
+    },
+
+    "amazon-nova-micro-v1": {
+      "pricing": {
+        "USD": { "input_price": 0.035, "output_price": 0.14, "source": "amazon" }
+      },
+      "metadata": {
+        "context_window": 128000, "max_output_tokens": 5120,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "amazon", "family": "nova"
+      }
+    },
+
+    "grok-2-1212": {
+      "pricing": {
+        "USD": { "input_price": 2.0, "output_price": 10.0, "source": "xai" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 131072,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "xai", "family": "grok-2"
+      }
+    },
+
+    "grok-2-vision-1212": {
+      "pricing": {
+        "USD": { "input_price": 2.0, "output_price": 10.0, "source": "xai" }
+      },
+      "metadata": {
+        "context_window": 32768, "max_output_tokens": 32768,
+        "supports_vision": true, "supports_function_calling": true,
+        "provider": "xai", "family": "grok-2"
+      }
+    },
+
+    "grok-3": {
+      "pricing": {
+        "USD": { "input_price": 3.0, "output_price": 15.0, "source": "xai" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 131072,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "xai", "family": "grok-3"
+      }
+    },
+
+    "grok-3-mini": {
+      "pricing": {
+        "USD": { "input_price": 0.3, "output_price": 0.5, "source": "xai" }
+      },
+      "metadata": {
+        "context_window": 131072, "max_output_tokens": 131072,
+        "supports_vision": false, "supports_function_calling": true,
+        "provider": "xai", "family": "grok-3"
       }
     }
 
