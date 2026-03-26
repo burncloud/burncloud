@@ -4,6 +4,21 @@ use crate::types::{CostBreakdown, CostResult, UnifiedUsage};
 use burncloud_common::types::Price;
 use std::collections::HashMap;
 
+// === Pricing percentage constants ===
+// These define default multipliers when model-specific prices aren't configured.
+// All values are percentages (100 = standard rate).
+
+/// Priority requests cost 170% of standard rate (70% surcharge)
+const PRIORITY_SURCHARGE_PERCENT: i64 = 170;
+/// Batch requests cost 50% of standard rate (50% discount)
+const BATCH_DISCOUNT_PERCENT: i64 = 50;
+/// Cache read tokens cost 10% of standard input rate
+const CACHE_READ_DISCOUNT_PERCENT: i64 = 10;
+/// Cache write tokens cost 125% of standard input rate (creation overhead)
+const CACHE_WRITE_SURCHARGE_PERCENT: i64 = 125;
+/// Audio input tokens cost 700% of standard input rate (7x multiplier)
+const AUDIO_INPUT_SURCHARGE_PERCENT: i64 = 700;
+
 /// Calculates request costs using the in-memory [`PriceCache`].
 ///
 /// # Preflight check
@@ -82,7 +97,17 @@ impl CostCalculator {
 /// - JSON parsing fails
 pub fn lookup_voice_price(voices_json: &Option<String>, voice_id: &str) -> Option<i64> {
     let json = voices_json.as_ref()?;
-    let voices: HashMap<String, i64> = serde_json::from_str(json).ok()?;
+    let voices: HashMap<String, i64> = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                voice_id = %voice_id,
+                error = %e,
+                "Failed to parse voices_pricing JSON; falling back to default audio pricing"
+            );
+            return None;
+        }
+    };
     voices.get(voice_id).copied()
 }
 
@@ -111,21 +136,19 @@ fn compute_breakdown(
     let (effective_input_price, effective_output_price) = if is_priority {
         (
             price.priority_input_price.unwrap_or(
-                // default: 170% of standard
-                saturating_mul_percent(price.input_price, 170),
+                saturating_mul_percent(price.input_price, PRIORITY_SURCHARGE_PERCENT),
             ),
             price.priority_output_price.unwrap_or(
-                saturating_mul_percent(price.output_price, 170),
+                saturating_mul_percent(price.output_price, PRIORITY_SURCHARGE_PERCENT),
             ),
         )
     } else if is_batch {
         (
             price.batch_input_price.unwrap_or(
-                // default: 50% of standard
-                saturating_mul_percent(price.input_price, 50),
+                saturating_mul_percent(price.input_price, BATCH_DISCOUNT_PERCENT),
             ),
             price.batch_output_price.unwrap_or(
-                saturating_mul_percent(price.output_price, 50),
+                saturating_mul_percent(price.output_price, BATCH_DISCOUNT_PERCENT),
             ),
         )
     } else {
@@ -141,20 +164,17 @@ fn compute_breakdown(
 
     // --- Cache tokens ---
     let cache_read_price = price.cache_read_input_price.unwrap_or(
-        // default: 10% of standard input price
-        saturating_mul_percent(price.input_price, 10),
+        saturating_mul_percent(price.input_price, CACHE_READ_DISCOUNT_PERCENT),
     );
     let cache_write_price = price.cache_creation_input_price.unwrap_or(
-        // default: 125% of standard input price
-        saturating_mul_percent(price.input_price, 125),
+        saturating_mul_percent(price.input_price, CACHE_WRITE_SURCHARGE_PERCENT),
     );
     let cache_cost = nano(usage.cache_read_tokens, cache_read_price, request_id, "cache_read")
         .saturating_add(nano(usage.cache_write_tokens, cache_write_price, request_id, "cache_write"));
 
     // --- Audio tokens ---
     let audio_input_price = price.audio_input_price.unwrap_or(
-        // default: 7x standard input price
-        saturating_mul_percent(price.input_price, 700),
+        saturating_mul_percent(price.input_price, AUDIO_INPUT_SURCHARGE_PERCENT),
     );
     let audio_output_price = price.audio_output_price.unwrap_or(effective_output_price);
     let audio_cost = nano(usage.audio_input_tokens, audio_input_price, request_id, "audio_input")
