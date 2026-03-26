@@ -154,9 +154,9 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
 
     // Start background price sync task (every 24 hours)
-    // Priority: local conf/pricing.json → COMMUNITY_PRICES_URL → LiteLLM fallback
+    // Priority: local conf/pricing.json → burncloud repo (GitHub/Gitee fallback)
     // Price cache is passed so it gets refreshed after each successful sync.
-    price_sync::start_price_sync_task_v2(db.clone(), 86400, None, price_cache.clone());
+    price_sync::start_price_sync_task(db.clone(), 86400, None, price_cache.clone());
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
