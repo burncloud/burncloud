@@ -19,13 +19,18 @@ use std::sync::Arc;
 use burncloud_common::PricingConfig;
 use burncloud_database::{sqlx, Database};
 use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
+use burncloud_service_billing::PriceCache;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::Deserialize;
 
-/// URL for LiteLLM's model prices JSON file
+/// URL for LiteLLM's model prices JSON file (GitHub)
 const LITELLM_PRICES_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+
+/// Gitee mirror for LiteLLM prices — used as fallback when GitHub times out in CN environments
+const LITELLM_PRICES_URL_GITEE: &str =
+    "https://gitee.com/mirrors/litellm/raw/main/model_prices_and_context_window.json";
 
 /// LiteLLM price data structure from the JSON file
 #[derive(Debug, Clone, Deserialize)]
@@ -344,21 +349,26 @@ impl PriceSyncService {
                 max_output_tokens: price_data.max_output_tokens.map(|t| t as i64),
                 supports_vision: price_data.supports_vision,
                 supports_function_calling: price_data.supports_function_calling,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
+                model_type: None,
             };
 
             // Upsert to database
             match PriceModel::upsert(&self.db, &price_input).await {
                 Ok(_) => {
                     updated_count += 1;
-                    println!("Synced price for model: {}", model_name);
+                    tracing::info!("Synced price for model: {}", model_name);
                 }
                 Err(e) => {
-                    eprintln!("Failed to sync price for {}: {}", model_name, e);
+                    tracing::error!("Failed to sync price for {}: {}", model_name, e);
                 }
             }
         }
 
-        println!("Price sync complete: {} models updated", updated_count);
+        tracing::info!("Price sync complete: {} models updated", updated_count);
         Ok(updated_count)
     }
 
@@ -438,12 +448,12 @@ impl PriceSyncService {
                     updated_count += 1;
                 }
                 Err(e) => {
-                    eprintln!("Failed to sync capabilities for {}: {}", model_name, e);
+                    tracing::error!("Failed to sync capabilities for {}: {}", model_name, e);
                 }
             }
         }
 
-        println!(
+        tracing::info!(
             "Capabilities sync complete: {} models updated",
             updated_count
         );
@@ -460,7 +470,7 @@ impl PriceSyncService {
         for tier in tiers {
             // Validate tier data (prices are now i64 nanodollars, so compare with 0)
             if tier.input_price < 0 || tier.output_price < 0 {
-                eprintln!(
+                tracing::error!(
                     "Skipping tier with invalid price for model {}: prices must be >= 0",
                     tier.model
                 );
@@ -469,7 +479,7 @@ impl PriceSyncService {
 
             if let Some(tier_end) = tier.tier_end {
                 if tier.tier_start >= tier_end {
-                    eprintln!(
+                    tracing::error!(
                         "Skipping tier with invalid range for model {}: tier_start ({}) must be < tier_end ({})",
                         tier.model, tier.tier_start, tier_end
                     );
@@ -480,7 +490,7 @@ impl PriceSyncService {
             match TieredPriceModel::upsert_tier(&self.db, tier).await {
                 Ok(_) => {
                     imported_count += 1;
-                    println!(
+                    tracing::info!(
                         "Imported tier for model {} ({}-{} tokens): ${:.4}/${:.4} per 1M",
                         tier.model,
                         tier.tier_start,
@@ -490,12 +500,12 @@ impl PriceSyncService {
                     );
                 }
                 Err(e) => {
-                    eprintln!("Failed to import tier for {}: {}", tier.model, e);
+                    tracing::error!("Failed to import tier for {}: {}", tier.model, e);
                 }
             }
         }
 
-        println!(
+        tracing::info!(
             "Tiered pricing import complete: {} tiers imported",
             imported_count
         );
@@ -515,33 +525,33 @@ pub fn start_price_sync_task(
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
 
         // Initial sync
-        println!("Starting initial price sync from LiteLLM...");
+        tracing::info!("Starting initial price sync from LiteLLM...");
         match service.sync_from_litellm().await {
-            Ok(count) => println!("Initial price sync complete: {} models", count),
-            Err(e) => eprintln!("Initial price sync failed: {}", e),
+            Ok(count) => tracing::info!("Initial price sync complete: {} models", count),
+            Err(e) => tracing::error!("Initial price sync failed: {}", e),
         }
 
         // Initial capabilities sync
-        println!("Starting initial capabilities sync from LiteLLM...");
+        tracing::info!("Starting initial capabilities sync from LiteLLM...");
         match service.sync_capabilities().await {
-            Ok(count) => println!("Initial capabilities sync complete: {} models", count),
-            Err(e) => eprintln!("Initial capabilities sync failed: {}", e),
+            Ok(count) => tracing::info!("Initial capabilities sync complete: {} models", count),
+            Err(e) => tracing::error!("Initial capabilities sync failed: {}", e),
         }
 
         // Periodic sync
         loop {
             interval.tick().await;
-            println!("Starting periodic price sync from LiteLLM...");
+            tracing::info!("Starting periodic price sync from LiteLLM...");
             match service.sync_from_litellm().await {
-                Ok(count) => println!("Periodic price sync complete: {} models updated", count),
-                Err(e) => eprintln!("Periodic price sync failed: {}", e),
+                Ok(count) => tracing::info!("Periodic price sync complete: {} models updated", count),
+                Err(e) => tracing::error!("Periodic price sync failed: {}", e),
             }
             match service.sync_capabilities().await {
-                Ok(count) => println!(
+                Ok(count) => tracing::info!(
                     "Periodic capabilities sync complete: {} models updated",
                     count
                 ),
-                Err(e) => eprintln!("Periodic capabilities sync failed: {}", e),
+                Err(e) => tracing::error!("Periodic capabilities sync failed: {}", e),
             }
         }
     })
@@ -553,7 +563,7 @@ pub fn start_price_sync_task(
 
 /// URL for the community pricing repository
 pub const COMMUNITY_PRICES_URL: &str =
-    "https://raw.githubusercontent.com/burncloud/pricing-data/main/pricing/latest.json";
+    "https://raw.githubusercontent.com/burncloud/burncloud/main/conf/pricing.json";
 
 /// Result of a sync operation
 #[derive(Debug, Clone, Default)]
@@ -579,8 +589,10 @@ pub struct PriceSyncConfig {
     pub local_config_path: PathBuf,
     /// URL for community price repository
     pub community_repo_url: String,
-    /// URL for LiteLLM prices
+    /// URL for LiteLLM prices (primary, typically GitHub)
     pub litellm_url: String,
+    /// Fallback URL for LiteLLM prices when primary times out (e.g. Gitee mirror for CN)
+    pub litellm_url_fallback: Option<String>,
     /// Enable community price sync (default: true)
     pub community_sync_enabled: bool,
     /// Community sync interval in seconds (default: 86400 = 24 hours)
@@ -594,6 +606,7 @@ impl Default for PriceSyncConfig {
             local_config_path: PathBuf::from("conf/pricing.json"),
             community_repo_url: COMMUNITY_PRICES_URL.to_string(),
             litellm_url: LITELLM_PRICES_URL.to_string(),
+            litellm_url_fallback: Some(LITELLM_PRICES_URL_GITEE.to_string()),
             community_sync_enabled: true,
             community_sync_interval_secs: 86400, // 24 hours
         }
@@ -658,7 +671,7 @@ impl PriceSyncServiceV2 {
 
         // 1. Load local override configuration (highest priority)
         if let Some(config) = self.load_local_override()? {
-            println!("Applying local override pricing configuration...");
+            tracing::info!("Applying local override pricing configuration...");
             let result = self.apply_prices(&config, "local_override").await?;
             total_result.models_synced += result.models_synced;
             total_result.currencies_synced += result.currencies_synced;
@@ -670,7 +683,7 @@ impl PriceSyncServiceV2 {
 
         // 2. Load local main configuration
         if let Some(config) = self.load_local_config()? {
-            println!("Applying local pricing configuration...");
+            tracing::info!("Applying local pricing configuration...");
             let result = self.apply_prices(&config, "local").await?;
             total_result.models_synced += result.models_synced;
             total_result.currencies_synced += result.currencies_synced;
@@ -682,7 +695,7 @@ impl PriceSyncServiceV2 {
 
         // 3. Sync from community repository (if enabled and due)
         if self.config.community_sync_enabled && self.should_sync_community() {
-            println!("Syncing from community price repository...");
+            tracing::info!("Syncing from community price repository...");
             match self.sync_community_prices().await {
                 Ok(result) => {
                     total_result.models_synced += result.models_synced;
@@ -692,14 +705,14 @@ impl PriceSyncServiceV2 {
                     self.last_community_sync = Some(Utc::now());
                 }
                 Err(e) => {
-                    eprintln!("Community price sync failed: {}", e);
+                    tracing::error!("Community price sync failed: {}", e);
                     // Fall through to LiteLLM
                 }
             }
         }
 
         // 4. Sync from LiteLLM (USD fallback only)
-        println!("Syncing from LiteLLM (USD prices)...");
+        tracing::info!("Syncing from LiteLLM (USD prices)...");
         let litellm_result = self.sync_litellm_to_v2().await?;
         total_result.models_synced += litellm_result.models_synced;
         total_result.errors += litellm_result.errors;
@@ -755,14 +768,98 @@ impl PriceSyncServiceV2 {
         };
 
         for (model_name, model_pricing) in &config.models {
+            // Extract model_type from metadata
+            let model_type = model_pricing.metadata.as_ref().and_then(|_m| {
+                // Infer model_type from model capabilities or explicit setting
+                // For now, we use None as model_type is not stored in ModelMetadata
+                None::<String>
+            });
+
+            // Convert extended pricing configs to JSON strings
+            let voices_pricing_json = model_pricing.voices_pricing.as_ref().and_then(|vp| {
+                vp.get("USD").and_then(|config| {
+                    serde_json::to_string(&config.voices).ok()
+                })
+            });
+
+            let video_pricing_json = model_pricing.video_pricing.as_ref().and_then(|vp| {
+                vp.get("USD").and_then(|config| {
+                    serde_json::to_string(&config.resolutions).ok()
+                })
+            });
+
+            let asr_pricing_json = model_pricing.asr_pricing.as_ref().and_then(|ap| {
+                ap.get("USD").and_then(|config| {
+                    serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok()
+                })
+            });
+
+            let realtime_pricing_json = model_pricing.realtime_pricing.as_ref().and_then(|rp| {
+                rp.get("USD").and_then(|config| {
+                    let mut map = serde_json::Map::new();
+                    if let Some(v) = config.audio_input {
+                        map.insert("audio_input".to_string(), serde_json::json!(v));
+                    }
+                    if let Some(v) = config.audio_output {
+                        map.insert("audio_output".to_string(), serde_json::json!(v));
+                    }
+                    if let Some(v) = config.image_input {
+                        map.insert("image_input".to_string(), serde_json::json!(v));
+                    }
+                    if map.is_empty() {
+                        None
+                    } else {
+                        serde_json::to_string(&map).ok()
+                    }
+                })
+            });
+
             // Apply standard pricing for each currency
             for (currency, currency_pricing) in &model_pricing.pricing {
+                // Get currency-specific extended pricing if available
+                let currency_voices = model_pricing.voices_pricing.as_ref()
+                    .and_then(|vp| vp.get(currency))
+                    .and_then(|config| serde_json::to_string(&config.voices).ok())
+                    .or_else(|| voices_pricing_json.clone());
+
+                let currency_video = model_pricing.video_pricing.as_ref()
+                    .and_then(|vp| vp.get(currency))
+                    .and_then(|config| serde_json::to_string(&config.resolutions).ok())
+                    .or_else(|| video_pricing_json.clone());
+
+                let currency_asr = model_pricing.asr_pricing.as_ref()
+                    .and_then(|ap| ap.get(currency))
+                    .and_then(|config| serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok())
+                    .or_else(|| asr_pricing_json.clone());
+
+                let currency_realtime = model_pricing.realtime_pricing.as_ref()
+                    .and_then(|rp| rp.get(currency))
+                    .and_then(|config| {
+                        let mut map = serde_json::Map::new();
+                        if let Some(v) = config.audio_input {
+                            map.insert("audio_input".to_string(), serde_json::json!(v));
+                        }
+                        if let Some(v) = config.audio_output {
+                            map.insert("audio_output".to_string(), serde_json::json!(v));
+                        }
+                        if let Some(v) = config.image_input {
+                            map.insert("image_input".to_string(), serde_json::json!(v));
+                        }
+                        if map.is_empty() { None } else { serde_json::to_string(&map).ok() }
+                    })
+                    .or_else(|| realtime_pricing_json.clone());
+
                 let price_input = PriceInput {
                     model: model_name.clone(),
                     currency: currency.clone(),
                     input_price: currency_pricing.input_price,
                     output_price: currency_pricing.output_price,
                     source: currency_pricing.source.clone().or(Some(source.to_string())),
+                    voices_pricing: currency_voices,
+                    video_pricing: currency_video,
+                    asr_pricing: currency_asr,
+                    realtime_pricing: currency_realtime,
+                    model_type: model_type.clone(),
                     ..Default::default()
                 };
 
@@ -772,7 +869,7 @@ impl PriceSyncServiceV2 {
                         result.currencies_synced += 1;
                     }
                     Err(e) => {
-                        eprintln!(
+                        tracing::error!(
                             "Failed to upsert price for {} ({}): {}",
                             model_name, currency, e
                         );
@@ -815,10 +912,15 @@ impl PriceSyncServiceV2 {
                             max_output_tokens: existing.max_output_tokens,
                             supports_vision: existing.supports_vision_bool(),
                             supports_function_calling: existing.supports_function_calling_bool(),
+                            voices_pricing: existing.voices_pricing.clone(),
+                            video_pricing: existing.video_pricing.clone(),
+                            asr_pricing: existing.asr_pricing.clone(),
+                            realtime_pricing: existing.realtime_pricing.clone(),
+                            model_type: existing.model_type.clone(),
                         };
 
                         if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
-                            eprintln!("Failed to update cache pricing for {}: {}", model_name, e);
+                            tracing::error!("Failed to update cache pricing for {}: {}", model_name, e);
                         }
                     }
                 }
@@ -831,6 +933,8 @@ impl PriceSyncServiceV2 {
                         let tier_input = TieredPriceInput {
                             model: model_name.clone(),
                             region: Some(currency.clone()), // Use currency as region identifier
+                            currency: Some(currency.clone()),
+                            tier_type: Some("context_length".to_string()),
                             tier_start: tier.tier_start,
                             tier_end: tier.tier_end,
                             input_price: tier.input_price,
@@ -842,7 +946,7 @@ impl PriceSyncServiceV2 {
                                 result.tiered_pricing_synced += 1;
                             }
                             Err(e) => {
-                                eprintln!(
+                                tracing::error!(
                                     "Failed to upsert tiered pricing for {} ({}): {}",
                                     model_name, currency, e
                                 );
@@ -854,7 +958,7 @@ impl PriceSyncServiceV2 {
             }
         }
 
-        println!(
+        tracing::info!(
             "Applied {} models, {} currencies, {} tiers from {}",
             result.models_synced, result.currencies_synced, result.tiered_pricing_synced, source
         );
@@ -886,6 +990,10 @@ impl PriceSyncServiceV2 {
 
         let prices = self.fetch_litellm_prices().await?;
 
+        // Collect all valid PriceInputs first, then batch-upsert in a single transaction.
+        // For ~4000 LiteLLM models this reduces individual SQLite round-trips to one commit.
+        let mut inputs: Vec<PriceInput> = Vec::with_capacity(prices.len());
+
         for (key, price_data) in prices {
             // Skip embedding models
             if price_data.mode.as_deref() == Some("embedding") {
@@ -911,8 +1019,8 @@ impl PriceSyncServiceV2 {
             let (priority_input, priority_output) = price_data.to_priority_per_million_price_nano();
             let audio_input = price_data.to_audio_per_million_price_nano();
 
-            let price_input = PriceInput {
-                model: model_name.clone(),
+            inputs.push(PriceInput {
+                model: model_name,
                 currency: "USD".to_string(),
                 input_price: input,
                 output_price: output,
@@ -934,37 +1042,62 @@ impl PriceSyncServiceV2 {
                 max_output_tokens: price_data.max_output_tokens.map(|t| t as i64),
                 supports_vision: price_data.supports_vision,
                 supports_function_calling: price_data.supports_function_calling,
-            };
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
+                model_type: None,
+            });
+        }
 
-            match PriceModel::upsert(&self.db, &price_input).await {
-                Ok(_) => {
-                    result.models_synced += 1;
-                }
-                Err(e) => {
-                    eprintln!("Failed to upsert price for {}: {}", model_name, e);
-                    result.errors += 1;
-                }
+        match PriceModel::batch_upsert(&self.db, &inputs).await {
+            Ok(n) => {
+                result.models_synced = n;
+            }
+            Err(e) => {
+                tracing::error!("LiteLLM batch upsert failed: {}", e);
+                result.errors += 1;
+                return Err(e.into());
             }
         }
 
-        println!("Synced {} models from LiteLLM", result.models_synced);
+        tracing::info!("Synced {} models from LiteLLM (batch)", result.models_synced);
 
         Ok(result)
     }
 
-    /// Fetch LiteLLM prices
+    /// Fetch LiteLLM prices, with automatic fallback to a mirror URL on timeout/error.
     async fn fetch_litellm_prices(&self) -> anyhow::Result<HashMap<String, LiteLLMPrice>> {
-        let response = self
+        match self
             .http_client
             .get(&self.config.litellm_url)
             .send()
-            .await?
-            .error_for_status()?;
-
-        let text = response.text().await?;
-        let prices: HashMap<String, LiteLLMPrice> = serde_json::from_str(&text)?;
-
-        Ok(prices)
+            .await
+            .and_then(|r| r.error_for_status())
+        {
+            Ok(response) => {
+                let text = response.text().await?;
+                return Ok(serde_json::from_str(&text)?);
+            }
+            Err(e) => {
+                if let Some(fallback_url) = &self.config.litellm_url_fallback {
+                    tracing::warn!(
+                        primary_url = %self.config.litellm_url,
+                        error = %e,
+                        "Primary LiteLLM URL failed, trying fallback mirror"
+                    );
+                    let response = self
+                        .http_client
+                        .get(fallback_url)
+                        .send()
+                        .await?
+                        .error_for_status()?;
+                    let text = response.text().await?;
+                    return Ok(serde_json::from_str(&text)?);
+                }
+                return Err(e.into());
+            }
+        }
     }
 }
 
@@ -975,34 +1108,49 @@ pub fn start_price_sync_task_v2(
     db: Arc<Database>,
     interval_secs: u64,
     config: Option<PriceSyncConfig>,
+    price_cache: PriceCache,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut service = match config {
-            Some(cfg) => PriceSyncServiceV2::with_config(db, cfg),
-            None => PriceSyncServiceV2::new(db),
+            Some(cfg) => PriceSyncServiceV2::with_config(db.clone(), cfg),
+            None => PriceSyncServiceV2::new(db.clone()),
         };
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
 
         // Initial sync
-        println!("Starting initial multi-source price sync...");
+        tracing::info!("Starting initial multi-source price sync...");
         match service.sync_all().await {
-            Ok(result) => println!(
-                "Initial price sync complete: {} models, {} currencies, {} tiers",
-                result.models_synced, result.currencies_synced, result.tiered_pricing_synced
-            ),
-            Err(e) => eprintln!("Initial price sync failed: {}", e),
+            Ok(result) => {
+                tracing::info!(
+                    models = result.models_synced,
+                    currencies = result.currencies_synced,
+                    tiers = result.tiered_pricing_synced,
+                    "Initial price sync complete"
+                );
+                if let Err(e) = price_cache.refresh(&db).await {
+                    tracing::error!("Failed to refresh price cache after initial sync: {e}");
+                }
+            }
+            Err(e) => tracing::error!("Initial price sync failed: {e}"),
         }
 
         // Periodic sync
         loop {
             interval.tick().await;
-            println!("Starting periodic multi-source price sync...");
+            tracing::info!("Starting periodic multi-source price sync...");
             match service.sync_all().await {
-                Ok(result) => println!(
-                    "Periodic price sync complete: {} models, {} currencies, {} tiers",
-                    result.models_synced, result.currencies_synced, result.tiered_pricing_synced
-                ),
-                Err(e) => eprintln!("Periodic price sync failed: {}", e),
+                Ok(result) => {
+                    tracing::info!(
+                        models = result.models_synced,
+                        currencies = result.currencies_synced,
+                        tiers = result.tiered_pricing_synced,
+                        "Periodic price sync complete"
+                    );
+                    if let Err(e) = price_cache.refresh(&db).await {
+                        tracing::error!("Failed to refresh price cache after periodic sync: {e}");
+                    }
+                }
+                Err(e) => tracing::error!("Periodic price sync failed: {e}"),
             }
         }
     })

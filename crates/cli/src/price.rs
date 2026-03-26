@@ -143,6 +143,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 max_output_tokens: None,
                 supports_vision: None,
                 supports_function_calling: None,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
+                model_type: None,
             };
 
             PriceModel::upsert(db, &input).await?;
@@ -406,6 +411,86 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             }
 
+            // Show voices pricing (TTS)
+            let has_voices = prices.iter().any(|p| p.voices_pricing.is_some());
+            if has_voices {
+                println!("\nTTS Voices Pricing ($/1M chars):");
+                for price in &prices {
+                    if let Some(ref voices_json) = price.voices_pricing {
+                        if let Ok(voices) = serde_json::from_str::<std::collections::HashMap<String, i64>>(voices_json) {
+                            println!("  {}:", price.currency);
+                            let mut voice_list: Vec<_> = voices.iter().collect();
+                            voice_list.sort_by_key(|(k, _)| *k);
+                            for (voice, nano_price) in voice_list {
+                                println!("    {:<12} {:>10.4}", voice, from_nano(*nano_price));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Show video pricing
+            let has_video = prices.iter().any(|p| p.video_pricing.is_some());
+            if has_video {
+                println!("\nVideo Pricing ($/second):");
+                for price in &prices {
+                    if let Some(ref video_json) = price.video_pricing {
+                        if let Ok(resolutions) = serde_json::from_str::<std::collections::HashMap<String, i64>>(video_json) {
+                            println!("  {}:", price.currency);
+                            let mut res_list: Vec<_> = resolutions.iter().collect();
+                            res_list.sort_by_key(|(k, _)| *k);
+                            for (res, nano_price) in res_list {
+                                println!("    {:<12} {:>10.6}", res, from_nano(*nano_price));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Show ASR pricing
+            let has_asr = prices.iter().any(|p| p.asr_pricing.is_some());
+            if has_asr {
+                println!("\nASR Pricing ($/minute):");
+                for price in &prices {
+                    if let Some(ref asr_json) = price.asr_pricing {
+                        if let Ok(asr) = serde_json::from_str::<serde_json::Value>(asr_json) {
+                            if let Some(per_minute) = asr.get("per_minute").and_then(|v| v.as_i64()) {
+                                println!("  {:<10} {:>10.4}", price.currency, from_nano(per_minute));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Show realtime pricing
+            let has_realtime = prices.iter().any(|p| p.realtime_pricing.is_some());
+            if has_realtime {
+                println!("\nRealtime API Pricing ($/1M tokens):");
+                for price in &prices {
+                    if let Some(ref rt_json) = price.realtime_pricing {
+                        if let Ok(rt) = serde_json::from_str::<serde_json::Value>(rt_json) {
+                            println!("  {}:", price.currency);
+                            if let Some(audio_in) = rt.get("audio_input").and_then(|v| v.as_i64()) {
+                                println!("    {:<20} {:>10.4}", "Audio Input", from_nano(audio_in));
+                            }
+                            if let Some(audio_out) = rt.get("audio_output").and_then(|v| v.as_i64()) {
+                                println!("    {:<20} {:>10.4}", "Audio Output", from_nano(audio_out));
+                            }
+                            if let Some(img_in) = rt.get("image_input").and_then(|v| v.as_i64()) {
+                                println!("    {:<20} {:>10.4}", "Image Input", from_nano(img_in));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Show model type
+            if let Some(first_price) = prices.first() {
+                if let Some(ref model_type) = first_price.model_type {
+                    println!("\nModel Type: {}", model_type);
+                }
+            }
+
             // Show tiered pricing
             let has_tiered = TieredPriceModel::has_tiered_pricing(db, model).await?;
             if has_tiered {
@@ -586,6 +671,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         supports_function_calling: metadata
                             .as_ref()
                             .map(|m| m.supports_function_calling),
+                        voices_pricing: None,
+                        video_pricing: None,
+                        asr_pricing: None,
+                        realtime_pricing: None,
+                        model_type: None,
                     };
 
                     match PriceModel::upsert(db, &input).await {
@@ -630,6 +720,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 max_output_tokens: existing.max_output_tokens,
                                 supports_vision,
                                 supports_function_calling,
+                                voices_pricing: existing.voices_pricing.clone(),
+                                video_pricing: existing.video_pricing.clone(),
+                                asr_pricing: existing.asr_pricing.clone(),
+                                realtime_pricing: existing.realtime_pricing.clone(),
+                                model_type: existing.model_type.clone(),
                             };
                             match PriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
@@ -674,6 +769,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 max_output_tokens: existing.max_output_tokens,
                                 supports_vision,
                                 supports_function_calling,
+                                voices_pricing: existing.voices_pricing.clone(),
+                                video_pricing: existing.video_pricing.clone(),
+                                asr_pricing: existing.asr_pricing.clone(),
+                                realtime_pricing: existing.realtime_pricing.clone(),
+                                model_type: existing.model_type.clone(),
                             };
                             match PriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
@@ -702,6 +802,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                             let tier_input = TieredPriceInput {
                                 model: model_name.clone(),
                                 region: region.clone(),
+                                currency: Some(currency.clone()),
+                                tier_type: Some("context_length".to_string()),
                                 tier_start: tier.tier_start,
                                 tier_end: tier.tier_end,
                                 input_price: tier.input_price,
@@ -754,6 +856,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         tiered_pricing: None,
                         cache_pricing: None,
                         batch_pricing: None,
+                        voices_pricing: None,
+                        video_pricing: None,
+                        asr_pricing: None,
+                        realtime_pricing: None,
                         metadata: None,
                     });
 
@@ -819,6 +925,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         tiered_pricing: None,
                         cache_pricing: None,
                         batch_pricing: None,
+                        voices_pricing: None,
+                        video_pricing: None,
+                        asr_pricing: None,
+                        realtime_pricing: None,
                         metadata: None,
                     });
 
@@ -1006,6 +1116,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         max_output_tokens: meta.and_then(|m| m.max_output_tokens),
                         supports_vision: meta.map(|m| m.supports_vision),
                         supports_function_calling: meta.map(|m| m.supports_function_calling),
+                        voices_pricing: None,
+                        video_pricing: None,
+                        asr_pricing: None,
+                        realtime_pricing: None,
+                        model_type: None,
                     };
 
                     match PriceModel::upsert(db, &input).await {
@@ -1087,6 +1202,8 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             let input = TieredPriceInput {
                 model: model.clone(),
                 region,
+                currency: None,
+                tier_type: Some("context_length".to_string()),
                 tier_start,
                 tier_end,
                 input_price: to_nano(input_price),

@@ -61,6 +61,11 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &price_input).await?;
 
