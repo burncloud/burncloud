@@ -155,7 +155,8 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
 
     // Start background price sync task (every 24 hours)
     // Priority: local conf/pricing.json → COMMUNITY_PRICES_URL → LiteLLM fallback
-    price_sync::start_price_sync_task_v2(db.clone(), 86400, None);
+    // Price cache is passed so it gets refreshed after each successful sync.
+    price_sync::start_price_sync_task_v2(db.clone(), 86400, None, price_cache.clone());
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -886,11 +887,25 @@ async fn proxy_logic(
         );
     }
 
-    // Preflight billing check: warn if no price is configured for this model.
-    // Non-blocking — routing continues even when price data is absent.
+    // Preflight billing check: reject requests for models with no price configured.
+    // Returns 400 to prevent unbilled usage on unknown models.
     if let Some(model) = model_name {
         if let Err(e) = state.cost_calculator.preflight(model).await {
-            tracing::warn!(model = %model, "Preflight billing check failed: {e}");
+            tracing::warn!(model = %model, "Preflight billing check failed — rejecting request: {e}");
+            return (
+                build_response_with_header(
+                    StatusCode::BAD_REQUEST,
+                    "content-type",
+                    "application/json",
+                    Body::from(format!(
+                        r#"{{"error":{{"message":"Model '{}' is not supported or has no price configured","type":"invalid_request_error","code":"model_not_found"}}}}"#,
+                        model
+                    )),
+                ),
+                None,
+                StatusCode::BAD_REQUEST,
+                None,
+            );
         }
     }
 

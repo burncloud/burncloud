@@ -63,6 +63,35 @@ mod option_nano_as_dollars {
     }
 }
 
+/// Custom serde module for HashMap<String, i64> where values are nanodollars serialized as f64 dollars
+mod nano_map_as_dollars {
+    use super::{dollars_to_nano, nano_to_dollars};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    pub fn serialize<S>(value: &HashMap<String, i64>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let dollars_map: HashMap<String, f64> = value
+            .iter()
+            .map(|(k, v)| (k.clone(), nano_to_dollars(*v)))
+            .collect();
+        dollars_map.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, i64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let dollars_map: HashMap<String, f64> = HashMap::deserialize(deserializer)?;
+        Ok(dollars_map
+            .into_iter()
+            .map(|(k, v)| (k, dollars_to_nano(v) as i64))
+            .collect())
+    }
+}
+
 /// Root structure for pricing.json configuration file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PricingConfig {
@@ -91,6 +120,18 @@ pub struct ModelPricing {
     /// Batch pricing per currency (for Batch API)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub batch_pricing: Option<HashMap<String, BatchPricingConfig>>,
+    /// TTS voices pricing per currency
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voices_pricing: Option<HashMap<String, VoicesPricingConfig>>,
+    /// Video pricing per currency
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_pricing: Option<HashMap<String, VideoPricingConfig>>,
+    /// ASR pricing per currency
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asr_pricing: Option<HashMap<String, ASRPricingConfig>>,
+    /// Realtime API pricing per currency
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub realtime_pricing: Option<HashMap<String, RealtimePricingConfig>>,
     /// Model metadata (context window, capabilities, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<ModelMetadata>,
@@ -154,6 +195,64 @@ pub struct BatchPricingConfig {
     /// Batch output price per 1M tokens in nanodollars
     #[serde(with = "nano_as_dollars")]
     pub batch_output_price: i64,
+}
+
+/// TTS voices pricing for text-to-speech models.
+/// Prices are stored as HashMap<voice_id, price_per_1M_chars> in nanodollars.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoicesPricingConfig {
+    /// Voice ID to price mapping (e.g., "alloy" -> $15/1M chars)
+    /// Prices are stored as i64 nanodollars but serialized as f64 dollars
+    #[serde(with = "nano_map_as_dollars")]
+    #[serde(flatten)]
+    pub voices: HashMap<String, i64>,
+}
+
+/// Video pricing for video generation models.
+/// Prices are stored as HashMap<resolution, price_per_second> in nanodollars.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoPricingConfig {
+    /// Resolution to price mapping (e.g., "1080p" -> $0.10/second)
+    /// Prices are stored as i64 nanodollars but serialized as f64 dollars
+    #[serde(with = "nano_map_as_dollars")]
+    #[serde(flatten)]
+    pub resolutions: HashMap<String, i64>,
+}
+
+/// ASR (Automatic Speech Recognition) pricing.
+/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ASRPricingConfig {
+    /// Price per minute of audio in nanodollars (serialized as f64 dollars)
+    #[serde(with = "nano_as_dollars")]
+    pub per_minute: i64,
+}
+
+/// Realtime API pricing for voice/video models.
+/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RealtimePricingConfig {
+    /// Audio input price per 1M tokens in nanodollars
+    #[serde(
+        with = "option_nano_as_dollars",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub audio_input: Option<i64>,
+    /// Audio output price per 1M tokens in nanodollars
+    #[serde(
+        with = "option_nano_as_dollars",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub audio_output: Option<i64>,
+    /// Image input price per 1M tokens in nanodollars
+    #[serde(
+        with = "option_nano_as_dollars",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub image_input: Option<i64>,
 }
 
 /// Model metadata for capabilities and limits.
@@ -395,6 +494,10 @@ mod tests {
             tiered_pricing: None,
             cache_pricing: None,
             batch_pricing: None,
+            voices_pricing: None,
+            video_pricing: None,
+            asr_pricing: None,
+            realtime_pricing: None,
             metadata: Some(ModelMetadata {
                 context_window: Some(128000),
                 max_output_tokens: Some(4096),
@@ -440,6 +543,10 @@ mod tests {
                 tiered_pricing: None,
                 cache_pricing: None,
                 batch_pricing: None,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
                 metadata: None,
             },
         );
@@ -487,6 +594,10 @@ mod tests {
                 tiered_pricing: Some(tiered_map),
                 cache_pricing: None,
                 batch_pricing: None,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
                 metadata: None,
             },
         );
@@ -528,6 +639,10 @@ mod tests {
                 tiered_pricing: Some(tiered_map),
                 cache_pricing: None,
                 batch_pricing: None,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
                 metadata: None,
             },
         );
@@ -564,6 +679,10 @@ mod tests {
                 tiered_pricing: None,
                 cache_pricing: Some(cache_map),
                 batch_pricing: None,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
                 metadata: None,
             },
         );

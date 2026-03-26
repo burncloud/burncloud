@@ -35,7 +35,8 @@ impl PriceCache {
 
     /// Reload all prices from the database, replacing the current cache atomically.
     pub async fn refresh(&self, db: &Database) -> Result<(), burncloud_database::DatabaseError> {
-        let prices = PriceModel::list(db, 10_000, 0, None, None).await?;
+        // No limit: load all prices regardless of count to avoid silent truncation.
+        let prices = PriceModel::list(db, i32::MAX, 0, None, None).await?;
 
         let mut map = HashMap::with_capacity(prices.len());
         for price in prices {
@@ -51,10 +52,32 @@ impl PriceCache {
     }
 
     /// Look up a price by model name (case-insensitive).
-    /// Returns `None` when the model is not in the cache.
+    ///
+    /// Lookup order:
+    /// 1. Exact match (e.g. `gpt-4o-2024-11-20`)
+    /// 2. Prefix match: strip the last `-<segment>` until a match is found
+    ///    (e.g. `gpt-4o-2024-11-20` → `gpt-4o-2024-11` → `gpt-4o`)
+    ///
+    /// Returns `None` when neither exact nor prefix match succeeds.
     pub async fn get(&self, model: &str) -> Option<Price> {
+        let key = model.to_lowercase();
         let guard = self.inner.read().await;
-        guard.get(&model.to_lowercase()).cloned()
+
+        // 1. Exact match
+        if let Some(price) = guard.get(&key) {
+            return Some(price.clone());
+        }
+
+        // 2. Prefix match: iteratively strip last `-segment`
+        let mut prefix = key.as_str();
+        while let Some(idx) = prefix.rfind('-') {
+            prefix = &prefix[..idx];
+            if let Some(price) = guard.get(prefix) {
+                return Some(price.clone());
+            }
+        }
+
+        None
     }
 
     /// Number of entries in the cache.
@@ -106,6 +129,11 @@ mod tests {
             max_output_tokens: None,
             supports_vision: None,
             supports_function_calling: None,
+            voices_pricing: None,
+            video_pricing: None,
+            asr_pricing: None,
+            realtime_pricing: None,
+            model_type: None,
             synced_at: None,
             created_at: None,
             updated_at: None,
