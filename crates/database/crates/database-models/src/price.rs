@@ -32,6 +32,7 @@ impl PriceModel {
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
+                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM prices WHERE model = $1 AND currency = $2 AND region = $3"#
         } else {
@@ -45,6 +46,7 @@ impl PriceModel {
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
+                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM prices WHERE model = ? AND currency = ? AND region = ?"#
         };
@@ -73,6 +75,7 @@ impl PriceModel {
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
+                          voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
                    FROM prices WHERE model = $1 AND currency = 'USD' AND region = $2"#
             } else {
@@ -86,6 +89,7 @@ impl PriceModel {
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
+                          voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
                    FROM prices WHERE model = ? AND currency = 'USD' AND region = ?"#
             };
@@ -129,6 +133,7 @@ impl PriceModel {
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
+                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM prices WHERE model = $1 AND region = $2"#
         } else {
@@ -142,6 +147,7 @@ impl PriceModel {
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
+                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM prices WHERE model = ? AND region = ?"#
         };
@@ -169,6 +175,7 @@ impl PriceModel {
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
+                          voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
                    FROM prices WHERE model = $1 AND region = ''"#
             } else {
@@ -182,6 +189,7 @@ impl PriceModel {
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
+                          voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
                    FROM prices WHERE model = ? AND region = ''"#
             };
@@ -217,6 +225,7 @@ impl PriceModel {
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
+                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM prices WHERE model = $1 AND region IS NOT DISTINCT FROM $2
                ORDER BY currency"#
@@ -231,6 +240,7 @@ impl PriceModel {
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
+                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM prices WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
                ORDER BY currency"#
@@ -265,35 +275,27 @@ impl PriceModel {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
+        let base_select = r#"SELECT id, model, currency, input_price, output_price,
+                              cache_read_input_price, cache_creation_input_price,
+                              batch_input_price, batch_output_price,
+                              priority_input_price, priority_output_price,
+                              audio_input_price, audio_output_price,
+                              reasoning_price, embedding_price, image_price, video_price,
+                              source, region,
+                              context_window, max_output_tokens,
+                              supports_vision, supports_function_calling,
+                              voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
+                              synced_at, created_at, updated_at"#;
+
         let prices = match (currency, region) {
             (Some(curr), Some(reg)) => {
                 // Filter by both currency and region
                 let sql = if is_postgres {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
-                       ORDER BY model LIMIT $3 OFFSET $4"#
+                    &format!(r#"{} FROM prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
+                       ORDER BY model LIMIT $3 OFFSET $4"#, base_select)
                 } else {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
-                       ORDER BY model LIMIT ? OFFSET ?"#
+                    &format!(r#"{} FROM prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+                       ORDER BY model LIMIT ? OFFSET ?"#, base_select)
                 };
                 if is_postgres {
                     sqlx::query_as(sql)
@@ -317,31 +319,11 @@ impl PriceModel {
             (Some(curr), None) => {
                 // Filter by currency only
                 let sql = if is_postgres {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices WHERE currency = $1
-                       ORDER BY model LIMIT $2 OFFSET $3"#
+                    &format!(r#"{} FROM prices WHERE currency = $1
+                       ORDER BY model LIMIT $2 OFFSET $3"#, base_select)
                 } else {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices WHERE currency = ?
-                       ORDER BY model LIMIT ? OFFSET ?"#
+                    &format!(r#"{} FROM prices WHERE currency = ?
+                       ORDER BY model LIMIT ? OFFSET ?"#, base_select)
                 };
                 sqlx::query_as(sql)
                     .bind(curr)
@@ -353,31 +335,11 @@ impl PriceModel {
             (None, Some(reg)) => {
                 // Filter by region only
                 let sql = if is_postgres {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices WHERE region IS NOT DISTINCT FROM $1
-                       ORDER BY model, currency LIMIT $2 OFFSET $3"#
+                    &format!(r#"{} FROM prices WHERE region IS NOT DISTINCT FROM $1
+                       ORDER BY model, currency LIMIT $2 OFFSET $3"#, base_select)
                 } else {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
-                       ORDER BY model, currency LIMIT ? OFFSET ?"#
+                    &format!(r#"{} FROM prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
+                       ORDER BY model, currency LIMIT ? OFFSET ?"#, base_select)
                 };
                 if is_postgres {
                     sqlx::query_as(sql)
@@ -399,29 +361,9 @@ impl PriceModel {
             (None, None) => {
                 // No filters
                 let sql = if is_postgres {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices ORDER BY model, currency LIMIT $1 OFFSET $2"#
+                    &format!(r#"{} FROM prices ORDER BY model, currency LIMIT $1 OFFSET $2"#, base_select)
                 } else {
-                    r#"SELECT id, model, currency, input_price, output_price,
-                              cache_read_input_price, cache_creation_input_price,
-                              batch_input_price, batch_output_price,
-                              priority_input_price, priority_output_price,
-                              audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
-                              source, region,
-                              context_window, max_output_tokens,
-                              supports_vision, supports_function_calling,
-                              synced_at, created_at, updated_at
-                       FROM prices ORDER BY model, currency LIMIT ? OFFSET ?"#
+                    &format!(r#"{} FROM prices ORDER BY model, currency LIMIT ? OFFSET ?"#, base_select)
                 };
                 sqlx::query_as(sql)
                     .bind(limit)
@@ -453,8 +395,9 @@ impl PriceModel {
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
+                voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
@@ -476,6 +419,11 @@ impl PriceModel {
                 max_output_tokens = EXCLUDED.max_output_tokens,
                 supports_vision = EXCLUDED.supports_vision,
                 supports_function_calling = EXCLUDED.supports_function_calling,
+                voices_pricing = EXCLUDED.voices_pricing,
+                video_pricing = EXCLUDED.video_pricing,
+                asr_pricing = EXCLUDED.asr_pricing,
+                realtime_pricing = EXCLUDED.realtime_pricing,
+                model_type = EXCLUDED.model_type,
                 synced_at = EXCLUDED.synced_at,
                 updated_at = EXCLUDED.updated_at
             "#
@@ -492,8 +440,9 @@ impl PriceModel {
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
+                voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = excluded.currency,
                 input_price = excluded.input_price,
@@ -515,6 +464,11 @@ impl PriceModel {
                 max_output_tokens = excluded.max_output_tokens,
                 supports_vision = excluded.supports_vision,
                 supports_function_calling = excluded.supports_function_calling,
+                voices_pricing = excluded.voices_pricing,
+                video_pricing = excluded.video_pricing,
+                asr_pricing = excluded.asr_pricing,
+                realtime_pricing = excluded.realtime_pricing,
+                model_type = excluded.model_type,
                 synced_at = excluded.synced_at,
                 updated_at = excluded.updated_at
             "#
@@ -547,6 +501,11 @@ impl PriceModel {
             .bind(input.max_output_tokens)
             .bind(input.supports_vision.map(|v| v as i32))
             .bind(input.supports_function_calling.map(|v| v as i32))
+            .bind(&input.voices_pricing)
+            .bind(&input.video_pricing)
+            .bind(&input.asr_pricing)
+            .bind(&input.realtime_pricing)
+            .bind(&input.model_type)
             .bind(now) // synced_at
             .bind(now) // created_at
             .bind(now) // updated_at
@@ -586,8 +545,9 @@ impl PriceModel {
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
+                voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
@@ -609,6 +569,11 @@ impl PriceModel {
                 max_output_tokens = EXCLUDED.max_output_tokens,
                 supports_vision = EXCLUDED.supports_vision,
                 supports_function_calling = EXCLUDED.supports_function_calling,
+                voices_pricing = EXCLUDED.voices_pricing,
+                video_pricing = EXCLUDED.video_pricing,
+                asr_pricing = EXCLUDED.asr_pricing,
+                realtime_pricing = EXCLUDED.realtime_pricing,
+                model_type = EXCLUDED.model_type,
                 synced_at = EXCLUDED.synced_at,
                 updated_at = EXCLUDED.updated_at
             "#
@@ -625,8 +590,9 @@ impl PriceModel {
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
+                voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = excluded.currency,
                 input_price = excluded.input_price,
@@ -648,6 +614,11 @@ impl PriceModel {
                 max_output_tokens = excluded.max_output_tokens,
                 supports_vision = excluded.supports_vision,
                 supports_function_calling = excluded.supports_function_calling,
+                voices_pricing = excluded.voices_pricing,
+                video_pricing = excluded.video_pricing,
+                asr_pricing = excluded.asr_pricing,
+                realtime_pricing = excluded.realtime_pricing,
+                model_type = excluded.model_type,
                 synced_at = excluded.synced_at,
                 updated_at = excluded.updated_at
             "#
@@ -683,6 +654,11 @@ impl PriceModel {
                 .bind(input.max_output_tokens)
                 .bind(input.supports_vision.map(|v| v as i32))
                 .bind(input.supports_function_calling.map(|v| v as i32))
+                .bind(&input.voices_pricing)
+                .bind(&input.video_pricing)
+                .bind(&input.asr_pricing)
+                .bind(&input.realtime_pricing)
+                .bind(&input.model_type)
                 .bind(now) // synced_at
                 .bind(now) // created_at
                 .bind(now) // updated_at

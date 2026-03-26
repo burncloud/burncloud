@@ -465,6 +465,16 @@
       "pricing": {
         "USD": { "input_price": 15.0, "output_price": 0.0, "source": "openai" }
       },
+      "voices_pricing": {
+        "USD": {
+          "alloy": 15.0,
+          "echo": 15.0,
+          "fable": 15.0,
+          "onyx": 15.0,
+          "nova": 15.0,
+          "shimmer": 15.0
+        }
+      },
       "metadata": {
         "context_window": 4096, "max_output_tokens": 0,
         "supports_vision": false, "supports_function_calling": false,
@@ -476,6 +486,16 @@
       "pricing": {
         "USD": { "input_price": 30.0, "output_price": 0.0, "source": "openai" }
       },
+      "voices_pricing": {
+        "USD": {
+          "alloy": 30.0,
+          "echo": 30.0,
+          "fable": 30.0,
+          "onyx": 30.0,
+          "nova": 30.0,
+          "shimmer": 30.0
+        }
+      },
       "metadata": {
         "context_window": 4096, "max_output_tokens": 0,
         "supports_vision": false, "supports_function_calling": false,
@@ -486,6 +506,9 @@
     "whisper-1": {
       "pricing": {
         "USD": { "input_price": 0.006, "output_price": 0.0, "source": "openai" }
+      },
+      "asr_pricing": {
+        "USD": { "per_minute": 0.036 }
       },
       "metadata": {
         "context_window": 0, "max_output_tokens": 0,
@@ -979,6 +1002,12 @@
       "pricing": {
         "CNY": { "input_price": 40.0, "output_price": 120.0, "source": "alicloud" },
         "USD": { "input_price": 5.5, "output_price": 16.5, "source": "alicloud" }
+      },
+      "tiered_pricing": {
+        "CNY": [
+          { "tier_start": 0, "tier_end": 32000, "input_price": 20.0, "output_price": 60.0 },
+          { "tier_start": 32000, "tier_end": 128000, "input_price": 40.0, "output_price": 120.0 }
+        ]
       },
       "metadata": {
         "context_window": 32768, "max_output_tokens": 8192,

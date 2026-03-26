@@ -349,6 +349,11 @@ impl PriceSyncService {
                 max_output_tokens: price_data.max_output_tokens.map(|t| t as i64),
                 supports_vision: price_data.supports_vision,
                 supports_function_calling: price_data.supports_function_calling,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
+                model_type: None,
             };
 
             // Upsert to database
@@ -763,14 +768,98 @@ impl PriceSyncServiceV2 {
         };
 
         for (model_name, model_pricing) in &config.models {
+            // Extract model_type from metadata
+            let model_type = model_pricing.metadata.as_ref().and_then(|_m| {
+                // Infer model_type from model capabilities or explicit setting
+                // For now, we use None as model_type is not stored in ModelMetadata
+                None::<String>
+            });
+
+            // Convert extended pricing configs to JSON strings
+            let voices_pricing_json = model_pricing.voices_pricing.as_ref().and_then(|vp| {
+                vp.get("USD").and_then(|config| {
+                    serde_json::to_string(&config.voices).ok()
+                })
+            });
+
+            let video_pricing_json = model_pricing.video_pricing.as_ref().and_then(|vp| {
+                vp.get("USD").and_then(|config| {
+                    serde_json::to_string(&config.resolutions).ok()
+                })
+            });
+
+            let asr_pricing_json = model_pricing.asr_pricing.as_ref().and_then(|ap| {
+                ap.get("USD").and_then(|config| {
+                    serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok()
+                })
+            });
+
+            let realtime_pricing_json = model_pricing.realtime_pricing.as_ref().and_then(|rp| {
+                rp.get("USD").and_then(|config| {
+                    let mut map = serde_json::Map::new();
+                    if let Some(v) = config.audio_input {
+                        map.insert("audio_input".to_string(), serde_json::json!(v));
+                    }
+                    if let Some(v) = config.audio_output {
+                        map.insert("audio_output".to_string(), serde_json::json!(v));
+                    }
+                    if let Some(v) = config.image_input {
+                        map.insert("image_input".to_string(), serde_json::json!(v));
+                    }
+                    if map.is_empty() {
+                        None
+                    } else {
+                        serde_json::to_string(&map).ok()
+                    }
+                })
+            });
+
             // Apply standard pricing for each currency
             for (currency, currency_pricing) in &model_pricing.pricing {
+                // Get currency-specific extended pricing if available
+                let currency_voices = model_pricing.voices_pricing.as_ref()
+                    .and_then(|vp| vp.get(currency))
+                    .and_then(|config| serde_json::to_string(&config.voices).ok())
+                    .or_else(|| voices_pricing_json.clone());
+
+                let currency_video = model_pricing.video_pricing.as_ref()
+                    .and_then(|vp| vp.get(currency))
+                    .and_then(|config| serde_json::to_string(&config.resolutions).ok())
+                    .or_else(|| video_pricing_json.clone());
+
+                let currency_asr = model_pricing.asr_pricing.as_ref()
+                    .and_then(|ap| ap.get(currency))
+                    .and_then(|config| serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok())
+                    .or_else(|| asr_pricing_json.clone());
+
+                let currency_realtime = model_pricing.realtime_pricing.as_ref()
+                    .and_then(|rp| rp.get(currency))
+                    .and_then(|config| {
+                        let mut map = serde_json::Map::new();
+                        if let Some(v) = config.audio_input {
+                            map.insert("audio_input".to_string(), serde_json::json!(v));
+                        }
+                        if let Some(v) = config.audio_output {
+                            map.insert("audio_output".to_string(), serde_json::json!(v));
+                        }
+                        if let Some(v) = config.image_input {
+                            map.insert("image_input".to_string(), serde_json::json!(v));
+                        }
+                        if map.is_empty() { None } else { serde_json::to_string(&map).ok() }
+                    })
+                    .or_else(|| realtime_pricing_json.clone());
+
                 let price_input = PriceInput {
                     model: model_name.clone(),
                     currency: currency.clone(),
                     input_price: currency_pricing.input_price,
                     output_price: currency_pricing.output_price,
                     source: currency_pricing.source.clone().or(Some(source.to_string())),
+                    voices_pricing: currency_voices,
+                    video_pricing: currency_video,
+                    asr_pricing: currency_asr,
+                    realtime_pricing: currency_realtime,
+                    model_type: model_type.clone(),
                     ..Default::default()
                 };
 
@@ -823,6 +912,11 @@ impl PriceSyncServiceV2 {
                             max_output_tokens: existing.max_output_tokens,
                             supports_vision: existing.supports_vision_bool(),
                             supports_function_calling: existing.supports_function_calling_bool(),
+                            voices_pricing: existing.voices_pricing.clone(),
+                            video_pricing: existing.video_pricing.clone(),
+                            asr_pricing: existing.asr_pricing.clone(),
+                            realtime_pricing: existing.realtime_pricing.clone(),
+                            model_type: existing.model_type.clone(),
                         };
 
                         if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
@@ -839,6 +933,8 @@ impl PriceSyncServiceV2 {
                         let tier_input = TieredPriceInput {
                             model: model_name.clone(),
                             region: Some(currency.clone()), // Use currency as region identifier
+                            currency: Some(currency.clone()),
+                            tier_type: Some("context_length".to_string()),
                             tier_start: tier.tier_start,
                             tier_end: tier.tier_end,
                             input_price: tier.input_price,
@@ -946,6 +1042,11 @@ impl PriceSyncServiceV2 {
                 max_output_tokens: price_data.max_output_tokens.map(|t| t as i64),
                 supports_vision: price_data.supports_vision,
                 supports_function_calling: price_data.supports_function_calling,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
+                model_type: None,
             });
         }
 

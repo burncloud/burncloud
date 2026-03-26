@@ -46,6 +46,11 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &input).await?;
 
@@ -131,6 +136,11 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &input).await?;
 
@@ -169,6 +179,11 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &input2).await?;
 
@@ -212,6 +227,11 @@ async fn test_upsert_idempotency() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
 
     // Insert first time

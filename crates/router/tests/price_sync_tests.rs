@@ -73,6 +73,11 @@ async fn test_litellm_advanced_pricing_sync() -> anyhow::Result<()> {
         max_output_tokens: litellm_price.max_output_tokens.map(|t| t as i64),
         supports_vision: litellm_price.supports_vision,
         supports_function_calling: litellm_price.supports_function_calling,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
 
     // Upsert to database
@@ -151,6 +156,11 @@ async fn test_litellm_basic_pricing_sync() -> anyhow::Result<()> {
         max_output_tokens: litellm_price.max_output_tokens.map(|t| t as i64),
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
 
     // Upsert to database
@@ -205,6 +215,11 @@ async fn test_litellm_pricing_update() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &price_input).await?;
 
@@ -238,6 +253,11 @@ async fn test_litellm_pricing_update() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &updated_input).await?;
 
@@ -286,6 +306,11 @@ async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
         max_output_tokens: Some(4096),
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &usd_price).await?;
 
@@ -313,6 +338,11 @@ async fn test_multi_currency_price_storage() -> anyhow::Result<()> {
         max_output_tokens: Some(4096),
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &cny_price).await?;
 
@@ -355,6 +385,8 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
         TieredPriceInput {
             model: model.to_string(),
             region: Some("international".to_string()),
+            currency: Some("USD".to_string()),
+            tier_type: Some("context_length".to_string()),
             tier_start: 0,
             tier_end: Some(32000),
             input_price: to_nano(1.2),
@@ -363,6 +395,8 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
         TieredPriceInput {
             model: model.to_string(),
             region: Some("international".to_string()),
+            currency: Some("USD".to_string()),
+            tier_type: Some("context_length".to_string()),
             tier_start: 32000,
             tier_end: Some(128000),
             input_price: to_nano(2.4),
@@ -371,6 +405,8 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
         TieredPriceInput {
             model: model.to_string(),
             region: Some("international".to_string()),
+            currency: Some("USD".to_string()),
+            tier_type: Some("context_length".to_string()),
             tier_start: 128000,
             tier_end: None, // No upper limit
             input_price: to_nano(3.0),
@@ -380,6 +416,8 @@ async fn test_tiered_pricing_sync() -> anyhow::Result<()> {
         TieredPriceInput {
             model: model.to_string(),
             region: Some("cn".to_string()),
+            currency: Some("CNY".to_string()),
+            tier_type: Some("context_length".to_string()),
             tier_start: 0,
             tier_end: Some(32000),
             input_price: to_nano(0.359),
@@ -461,6 +499,11 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &litellm_price).await?;
 
@@ -495,6 +538,11 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &community_price).await?;
 
@@ -534,6 +582,11 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &override_price).await?;
 
@@ -578,6 +631,11 @@ async fn test_sync_failure_preserves_old_data() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &initial_price).await?;
 
@@ -660,6 +718,10 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
             tiered_pricing: Some(tiered_map),
             cache_pricing: Some(cache_map),
             batch_pricing: None,
+            voices_pricing: None,
+            video_pricing: None,
+            asr_pricing: None,
+            realtime_pricing: None,
             metadata: Some(ModelMetadata {
                 context_window: Some(128000),
                 max_output_tokens: Some(4096),
@@ -722,6 +784,11 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
                     .and_then(|m| m.max_output_tokens),
                 supports_vision: None, // SQLite doesn't support boolean type
                 supports_function_calling: None,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
+                model_type: None,
             };
             PriceModel::upsert(&_db, &input).await?;
         }
@@ -738,6 +805,8 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
                     let tier_input = TieredPriceInput {
                         model: model_name.clone(),
                         region: region.clone(),
+                        currency: Some(currency.clone()),
+                        tier_type: Some("context_length".to_string()),
                         tier_start: tier.tier_start,
                         tier_end: tier.tier_end,
                         input_price: tier.input_price,
@@ -807,6 +876,11 @@ async fn test_cache_refresh_after_sync() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &input).await?;
 
@@ -867,6 +941,11 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &input).await?;
 

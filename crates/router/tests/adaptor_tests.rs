@@ -276,6 +276,11 @@ async fn setup_gemini_25_pro_with_port(
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 
@@ -584,6 +589,11 @@ async fn setup_gemini_25_flash_with_port(
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 
@@ -859,6 +869,11 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 
@@ -952,6 +967,11 @@ async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 
@@ -1084,6 +1104,11 @@ async fn setup_gemini_multimodal_with_port(
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 
@@ -1426,6 +1451,11 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 
@@ -1675,6 +1705,11 @@ async fn setup_gemini_25_flash_image_with_port(
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 
@@ -2163,6 +2198,11 @@ async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: Some(true),
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&db, &price_input).await?;
 

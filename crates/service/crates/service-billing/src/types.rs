@@ -57,6 +57,7 @@ pub struct CostBreakdown {
     pub output_cost: i64,
     pub cache_cost: i64,
     pub audio_cost: i64,
+    pub voice_cost: i64,
     pub image_cost: i64,
     pub video_cost: i64,
     pub reasoning_cost: i64,
@@ -70,6 +71,7 @@ impl CostBreakdown {
             + self.output_cost as i128
             + self.cache_cost as i128
             + self.audio_cost as i128
+            + self.voice_cost as i128
             + self.image_cost as i128
             + self.video_cost as i128
             + self.reasoning_cost as i128

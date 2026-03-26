@@ -2,6 +2,7 @@ use crate::cache::PriceCache;
 use crate::error::BillingError;
 use crate::types::{CostBreakdown, CostResult, UnifiedUsage};
 use burncloud_common::types::Price;
+use std::collections::HashMap;
 
 /// Calculates request costs using the in-memory [`PriceCache`].
 ///
@@ -46,15 +47,43 @@ impl CostCalculator {
         is_batch: bool,
         is_priority: bool,
     ) -> Result<CostResult, BillingError> {
+        self.calculate_with_voice(model, usage, request_id, is_batch, is_priority, None).await
+    }
+
+    /// Calculate cost for a completed request with optional voice-specific pricing.
+    ///
+    /// `voice_id` is used for TTS models that have per-voice pricing.
+    /// If the voice ID is not found in the model's voices_pricing, falls back to audio_output_price.
+    pub async fn calculate_with_voice(
+        &self,
+        model: &str,
+        usage: &UnifiedUsage,
+        request_id: &str,
+        is_batch: bool,
+        is_priority: bool,
+        voice_id: Option<&str>,
+    ) -> Result<CostResult, BillingError> {
         let price = self
             .cache
             .get(model)
             .await
             .ok_or_else(|| BillingError::PriceNotFound(model.to_string()))?;
 
-        let breakdown = compute_breakdown(usage, &price, request_id, is_batch, is_priority);
+        let breakdown = compute_breakdown(usage, &price, request_id, is_batch, is_priority, voice_id);
         Ok(CostResult::from_breakdown(breakdown))
     }
+}
+
+/// Look up voice-specific price from the voices_pricing JSON string.
+///
+/// Returns the price per 1M tokens/chars in nanodollars, or None if:
+/// - The voices_pricing field is empty
+/// - The voice_id is not found
+/// - JSON parsing fails
+pub fn lookup_voice_price(voices_json: &Option<String>, voice_id: &str) -> Option<i64> {
+    let json = voices_json.as_ref()?;
+    let voices: HashMap<String, i64> = serde_json::from_str(json).ok()?;
+    voices.get(voice_id).copied()
 }
 
 /// Compute a [`CostBreakdown`] from usage and a [`Price`] entry.
@@ -67,6 +96,7 @@ fn compute_breakdown(
     request_id: &str,
     is_batch: bool,
     is_priority: bool,
+    voice_id: Option<&str>,
 ) -> CostBreakdown {
     // --- Embedding ---
     let embedding_cost = if usage.embedding_tokens > 0 {
@@ -130,6 +160,24 @@ fn compute_breakdown(
     let audio_cost = nano(usage.audio_input_tokens, audio_input_price, request_id, "audio_input")
         .saturating_add(nano(usage.audio_output_tokens, audio_output_price, request_id, "audio_output"));
 
+    // --- Voice-specific cost (TTS) ---
+    // If voice_id is provided and found in voices_pricing, use that rate
+    // Otherwise fall back to audio_output_price for audio_output_tokens
+    let voice_cost = if let Some(vid) = voice_id {
+        if usage.audio_output_tokens > 0 {
+            if let Some(voice_price) = lookup_voice_price(&price.voices_pricing, vid) {
+                nano(usage.audio_output_tokens, voice_price, request_id, "voice")
+            } else {
+                // Voice not found in pricing, use default audio_output_price
+                0 // Don't double-count; audio_cost already includes this
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
     // --- Image / video tokens ---
     let image_cost = if usage.image_tokens > 0 {
         let image_price = price.image_price.unwrap_or(price.input_price);
@@ -149,6 +197,7 @@ fn compute_breakdown(
         output_cost,
         cache_cost,
         audio_cost,
+        voice_cost,
         image_cost,
         video_cost,
         reasoning_cost,
@@ -214,6 +263,11 @@ mod tests {
             synced_at: None,
             created_at: None,
             updated_at: None,
+            voices_pricing: None,
+            video_pricing: None,
+            asr_pricing: None,
+            realtime_pricing: None,
+            model_type: None,
         }
     }
 
@@ -222,11 +276,11 @@ mod tests {
         // input_price = 5000 nano/1M  →  100 tokens = 0.5 nano
         let price = make_price(5_000, 15_000);
         let usage = UnifiedUsage { input_tokens: 100, output_tokens: 50, ..Default::default() };
-        let bd = compute_breakdown(&usage, &price, "req-1", false, false);
+        let bd = compute_breakdown(&usage, &price, "req-1", false, false, None);
         // 100 * 5000 / 1_000_000 = 0 (integer), 50 * 15000 / 1_000_000 = 0
         // Need bigger numbers to get non-zero
         let usage2 = UnifiedUsage { input_tokens: 1_000_000, output_tokens: 1_000_000, ..Default::default() };
-        let bd2 = compute_breakdown(&usage2, &price, "req-1", false, false);
+        let bd2 = compute_breakdown(&usage2, &price, "req-1", false, false, None);
         assert_eq!(bd2.input_cost, 5_000);
         assert_eq!(bd2.output_cost, 15_000);
         assert_eq!(bd2.total(), 20_000);
@@ -237,7 +291,7 @@ mod tests {
     fn test_batch_discount() {
         let price = make_price(10_000, 30_000);
         let usage = UnifiedUsage { input_tokens: 1_000_000, output_tokens: 1_000_000, ..Default::default() };
-        let bd = compute_breakdown(&usage, &price, "req-1", true, false);
+        let bd = compute_breakdown(&usage, &price, "req-1", true, false, None);
         // batch: 50% → input=5000, output=15000
         assert_eq!(bd.input_cost, 5_000);
         assert_eq!(bd.output_cost, 15_000);
@@ -247,7 +301,7 @@ mod tests {
     fn test_priority_surcharge() {
         let price = make_price(10_000, 30_000);
         let usage = UnifiedUsage { input_tokens: 1_000_000, output_tokens: 1_000_000, ..Default::default() };
-        let bd = compute_breakdown(&usage, &price, "req-1", false, true);
+        let bd = compute_breakdown(&usage, &price, "req-1", false, true, None);
         // priority: 170% → input=17000, output=51000
         assert_eq!(bd.input_cost, 17_000);
         assert_eq!(bd.output_cost, 51_000);
@@ -263,7 +317,7 @@ mod tests {
             cache_write_tokens: 1_000_000,
             ..Default::default()
         };
-        let bd = compute_breakdown(&usage, &price, "req-1", false, false);
+        let bd = compute_breakdown(&usage, &price, "req-1", false, false, None);
         // cache_read = 1M * 1000 / 1M = 1000; cache_write = 1M * 12500 / 1M = 12500
         assert_eq!(bd.cache_cost, 1_000 + 12_500);
     }
@@ -272,7 +326,7 @@ mod tests {
     fn test_embedding_cost() {
         let price = make_price(5_000, 0);
         let usage = UnifiedUsage { embedding_tokens: 1_000_000, ..Default::default() };
-        let bd = compute_breakdown(&usage, &price, "req-1", false, false);
+        let bd = compute_breakdown(&usage, &price, "req-1", false, false, None);
         assert_eq!(bd.embedding_cost, 5_000);
         assert_eq!(bd.input_cost, 0); // no double-count
     }
