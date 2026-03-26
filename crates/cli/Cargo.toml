@@ -1,6 +1,6 @@
 [package]
 name = "burncloud-cli"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "Command-line interface for the BurnCloud platform"
 license = "MIT"
