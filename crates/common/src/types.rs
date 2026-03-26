@@ -465,6 +465,12 @@ pub struct TieredPrice {
     pub model: String,
     /// Region for pricing (e.g., "cn", "international", NULL for universal)
     pub region: Option<String>,
+    /// Currency for this tier (e.g., "USD", "CNY")
+    #[sqlx(default)]
+    pub currency: Option<String>,
+    /// Tier type (e.g., "context_length", "usage_volume")
+    #[sqlx(default)]
+    pub tier_type: Option<String>,
     /// Starting token count for this tier
     pub tier_start: i64,
     /// Ending token count for this tier (NULL means no upper limit)
@@ -480,6 +486,10 @@ pub struct TieredPrice {
 pub struct TieredPriceInput {
     pub model: String,
     pub region: Option<String>,
+    /// Currency for this tier (e.g., "USD", "CNY")
+    pub currency: Option<String>,
+    /// Tier type (e.g., "context_length", "usage_volume")
+    pub tier_type: Option<String>,
     pub tier_start: i64,
     pub tier_end: Option<i64>,
     /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
@@ -557,6 +567,21 @@ pub struct Price {
     pub created_at: Option<i64>,
     /// Update timestamp
     pub updated_at: Option<i64>,
+    /// TTS voices pricing: JSON {"alloy": 15000000000, "echo": 15000000000} (nanodollars/1M chars)
+    #[sqlx(default)]
+    pub voices_pricing: Option<String>,
+    /// Video pricing: JSON {"720p": 50000000, "1080p": 100000000} (nanodollars/second)
+    #[sqlx(default)]
+    pub video_pricing: Option<String>,
+    /// ASR pricing: JSON {"per_minute": 360000000} (nanodollars/minute)
+    #[sqlx(default)]
+    pub asr_pricing: Option<String>,
+    /// Realtime API pricing: JSON {"audio_input": 32000000000, "audio_output": 64000000000} (nanodollars/1M tokens)
+    #[sqlx(default)]
+    pub realtime_pricing: Option<String>,
+    /// Model type: chat, realtime, video, image, tts, asr
+    #[sqlx(default)]
+    pub model_type: Option<String>,
 }
 
 /// Input for creating/updating a Price entry
@@ -599,6 +624,16 @@ pub struct PriceInput {
     pub max_output_tokens: Option<i64>,
     pub supports_vision: Option<bool>,
     pub supports_function_calling: Option<bool>,
+    /// TTS voices pricing: JSON string with nanodollar prices per voice
+    pub voices_pricing: Option<String>,
+    /// Video pricing: JSON string with nanodollar prices per resolution
+    pub video_pricing: Option<String>,
+    /// ASR pricing: JSON string with nanodollar prices
+    pub asr_pricing: Option<String>,
+    /// Realtime API pricing: JSON string with nanodollar prices
+    pub realtime_pricing: Option<String>,
+    /// Model type: chat, realtime, video, image, tts, asr
+    pub model_type: Option<String>,
 }
 
 impl Default for PriceInput {
@@ -626,6 +661,11 @@ impl Default for PriceInput {
             max_output_tokens: None,
             supports_vision: None,
             supports_function_calling: None,
+            voices_pricing: None,
+            video_pricing: None,
+            asr_pricing: None,
+            realtime_pricing: None,
+            model_type: None,
         }
     }
 }

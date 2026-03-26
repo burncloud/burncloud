@@ -46,6 +46,11 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &input).await?;
 
@@ -131,6 +136,11 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &input).await?;
 
@@ -169,6 +179,11 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         max_output_tokens: None,
         supports_vision: None,
         supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
     };
     PriceModel::upsert(&_db, &input2).await?;
 
@@ -178,6 +193,72 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
     let price = price.unwrap();
     assert_eq!(price.input_price, to_nano(50.0));
     assert_eq!(price.output_price, to_nano(100.0));
+
+    Ok(())
+}
+
+/// Regression test: upsert idempotency
+/// Inserting the same model twice must not create duplicate rows.
+/// The second upsert should overwrite the first.
+#[tokio::test]
+async fn test_upsert_idempotency() -> anyhow::Result<()> {
+    let (db, _pool) = setup_db().await?;
+
+    let input = PriceInput {
+        model: "idempotency-test-model".to_string(),
+        currency: "USD".to_string(),
+        input_price: to_nano(5.0),
+        output_price: to_nano(15.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        audio_output_price: None,
+        reasoning_price: None,
+        embedding_price: None,
+        image_price: None,
+        video_price: None,
+        source: Some("test".to_string()),
+        region: None,
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
+    };
+
+    // Insert first time
+    PriceModel::upsert(&db, &input).await?;
+
+    // Insert second time with updated prices
+    let input2 = PriceInput {
+        input_price: to_nano(6.0),
+        output_price: to_nano(18.0),
+        ..input
+    };
+    PriceModel::upsert(&db, &input2).await?;
+
+    // Exactly one row should exist
+    let all = PriceModel::list(&db, i32::MAX, 0, None, None).await?;
+    let matching: Vec<_> = all
+        .iter()
+        .filter(|p| p.model == "idempotency-test-model")
+        .collect();
+    assert_eq!(matching.len(), 1, "Expected exactly 1 row, got {}", matching.len());
+
+    // Price should reflect the second upsert
+    let price = PriceModel::get(&db, "idempotency-test-model", "USD", None).await?;
+    assert!(price.is_some());
+    let price = price.unwrap();
+    assert_eq!(price.input_price, to_nano(6.0), "input_price should be from second upsert");
+    assert_eq!(price.output_price, to_nano(18.0), "output_price should be from second upsert");
 
     Ok(())
 }

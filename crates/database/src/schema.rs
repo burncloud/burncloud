@@ -325,6 +325,11 @@ impl Schema {
                     synced_at INTEGER,
                     created_at INTEGER,
                     updated_at INTEGER,
+                    voices_pricing TEXT,
+                    video_pricing TEXT,
+                    asr_pricing TEXT,
+                    realtime_pricing TEXT,
+                    model_type TEXT,
                     UNIQUE(model, region)
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
@@ -361,6 +366,11 @@ impl Schema {
                     synced_at BIGINT,
                     created_at BIGINT,
                     updated_at BIGINT,
+                    voices_pricing TEXT,
+                    video_pricing TEXT,
+                    asr_pricing TEXT,
+                    realtime_pricing TEXT,
+                    model_type VARCHAR(32),
                     UNIQUE(model, region)
                 );
                 CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model);
@@ -1262,6 +1272,54 @@ impl Schema {
             let _ = sqlx::query("ALTER TABLE tiered_pricing ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'")
                 .execute(pool)
                 .await;
+        }
+
+        // Migration: Add tier_type column to tiered_pricing table
+        if kind == "sqlite" {
+            let _ = sqlx::query(
+                "ALTER TABLE tiered_pricing ADD COLUMN tier_type VARCHAR(32) DEFAULT 'context_length'",
+            )
+            .execute(pool)
+            .await;
+        } else if kind == "postgres" {
+            let _ = sqlx::query("ALTER TABLE tiered_pricing ADD COLUMN IF NOT EXISTS tier_type VARCHAR(32) DEFAULT 'context_length'")
+                .execute(pool)
+                .await;
+        }
+
+        // Migration: Add extended pricing columns to prices table (v0.2.0+)
+        // These columns store JSON pricing for voices, video, ASR, and realtime APIs
+        // All prices in JSON are stored as nanodollars (i64, 9 decimal precision)
+        let extended_pricing_cols = [
+            ("voices_pricing", "TEXT"),      // JSON: {"alloy": 15000000000, "echo": 15000000000, ...}
+            ("video_pricing", "TEXT"),       // JSON: {"720p": 50000000, "1080p": 100000000, ...}
+            ("asr_pricing", "TEXT"),         // JSON: {"per_minute": 360000000}
+            ("realtime_pricing", "TEXT"),    // JSON: {"audio_input": 32000000000, ...}
+            ("model_type", "VARCHAR(32)"),   // chat, realtime, video, image, tts, asr
+        ];
+        for (col, col_type) in extended_pricing_cols {
+            if kind == "sqlite" {
+                let exists: i64 = sqlx::query_scalar(&format!(
+                    "SELECT COUNT(*) FROM pragma_table_info('prices') WHERE name='{col}'"
+                ))
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+                if exists == 0 {
+                    let _ = sqlx::query(&format!(
+                        "ALTER TABLE prices ADD COLUMN {col} {col_type}"
+                    ))
+                    .execute(pool)
+                    .await;
+                }
+            } else {
+                // PostgreSQL: ADD COLUMN IF NOT EXISTS
+                let _ = sqlx::query(&format!(
+                    "ALTER TABLE prices ADD COLUMN IF NOT EXISTS {col} {col_type}"
+                ))
+                .execute(pool)
+                .await;
+            }
         }
 
         // Init Root User if not exists
