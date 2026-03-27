@@ -5,8 +5,10 @@ use burncloud_common::pricing_config::{
     CachePricingConfig, CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
     TieredPriceConfig,
 };
+use burncloud_database::create_database_with_url;
 use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
 use burncloud_router::price_sync::{PriceSyncConfig, PriceSyncService};
+use burncloud_database_router::RouterDatabase;
 use common::setup_db;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -331,7 +333,7 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Test that sync failure preserves old prices
+/// Test that sync failure with existing DB prices returns Ok (graceful degradation)
 #[tokio::test]
 async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
     let (db, _pool) = setup_db().await?;
@@ -358,8 +360,10 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
     };
     let mut service = PriceSyncService::with_config(db.clone(), config);
 
-    // sync_all may return an error — that's expected
-    let _ = service.sync_all().await;
+    // With DB prices present, forced sync failure must return Ok (graceful degradation)
+    let result = service.sync_all(true).await;
+    assert!(result.is_ok(), "Forced sync failure with existing DB prices must return Ok, got: {:?}", result.err());
+    assert_eq!(result.unwrap().source, "db_fallback");
 
     // The pre-existing price must still be in the DB
     let price = PriceModel::get(&db, "sync-failure-test-model", "USD", None).await?;
@@ -369,6 +373,142 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
     );
     let price = price.unwrap();
     assert_eq!(price.input_price, to_nano(5.0));
+
+    Ok(())
+}
+
+/// Test that cold start fails when DB is empty and remote is unreachable.
+/// Uses an isolated in-memory DB to guarantee a truly empty starting state.
+#[tokio::test]
+async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
+    // Use a unique temp file so this test is isolated from the shared test DB
+    let tmp_path = "/tmp/burncloud_cold_start_test.db".to_string();
+    let _ = std::fs::remove_file(&tmp_path); // clean up from any previous run
+    let url = format!("sqlite://{}?mode=rwc", tmp_path);
+    let db = create_database_with_url(&url).await?;
+    RouterDatabase::init(&db).await?;
+    let db = Arc::new(db);
+
+    // Schema::init seeds default prices, so we must clear them to simulate a truly empty DB
+    db.execute_query("DELETE FROM prices").await?;
+
+    let config = PriceSyncConfig {
+        remote_url: "http://127.0.0.1:19999/nonexistent".to_string(),
+        remote_url_fallback: None,
+        remote_sync_enabled: true,
+        ..PriceSyncConfig::default()
+    };
+    let mut service = PriceSyncService::with_config(db.clone(), config);
+
+    // DB is empty, remote unreachable → must return Err (fatal)
+    let result = service.sync_all(false).await;
+    let _ = std::fs::remove_file(&tmp_path); // cleanup
+    assert!(result.is_err(), "Cold start with empty DB and unreachable remote must return Err");
+
+    Ok(())
+}
+
+/// Test that startup fast path (forced=false) uses DB when prices exist.
+/// Uses an isolated temp DB to guarantee controlled starting state.
+#[tokio::test]
+async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
+    // Use a unique temp file so this test is isolated from the shared test DB
+    let tmp_path = "/tmp/burncloud_fast_path_test.db".to_string();
+    let _ = std::fs::remove_file(&tmp_path);
+    let url = format!("sqlite://{}?mode=rwc", tmp_path);
+    let db = create_database_with_url(&url).await?;
+    RouterDatabase::init(&db).await?;
+    let db = Arc::new(db);
+
+    // Pre-populate prices
+    let input = PriceInput {
+        model: "fast-path-model".to_string(),
+        currency: "USD".to_string(),
+        input_price: to_nano(1.0),
+        output_price: to_nano(2.0),
+        source: Some("db".to_string()),
+        region: None,
+        ..Default::default()
+    };
+    PriceModel::upsert(&db, &input).await?;
+
+    // Use a broken URL — with forced=false and DB prices present, should skip remote entirely
+    let config = PriceSyncConfig {
+        remote_url: "http://127.0.0.1:19999/nonexistent".to_string(),
+        remote_url_fallback: None,
+        remote_sync_enabled: true,
+        ..PriceSyncConfig::default()
+    };
+    let mut service = PriceSyncService::with_config(db.clone(), config);
+
+    let result = service.sync_all(false).await;
+    let _ = std::fs::remove_file(&tmp_path); // cleanup
+    let result = result?;
+    assert_eq!(result.source, "db_cache", "Should use DB fast path when prices exist");
+
+    Ok(())
+}
+
+/// Test model count drop protection: sync still succeeds with a warning when >50% of models drop
+#[tokio::test]
+async fn test_model_count_drop_protection() -> anyhow::Result<()> {
+    use burncloud_common::pricing_config::{CurrencyPricing, ModelPricing};
+    use std::collections::HashMap;
+
+    let (db, _pool) = setup_db().await?;
+    let db = Arc::new(db);
+
+    // Pre-populate 10 models in DB
+    for i in 0..10 {
+        let input = PriceInput {
+            model: format!("drop-test-model-{}", i),
+            currency: "USD".to_string(),
+            input_price: to_nano(1.0),
+            output_price: to_nano(2.0),
+            source: Some("test".to_string()),
+            region: None,
+            ..Default::default()
+        };
+        PriceModel::upsert(&db, &input).await?;
+    }
+
+    let service = PriceSyncService::new(db.clone());
+
+    // Build a PricingConfig with only 1 model (>50% drop from 10)
+    let mut models = HashMap::new();
+    let mut pricing_map = HashMap::new();
+    pricing_map.insert(
+        "USD".to_string(),
+        CurrencyPricing {
+            input_price: to_nano(1.0),
+            output_price: to_nano(2.0),
+            source: None,
+        },
+    );
+    models.insert(
+        "drop-survivor-model".to_string(),
+        ModelPricing {
+            pricing: pricing_map,
+            metadata: None,
+            cache_pricing: None,
+            batch_pricing: None,
+            tiered_pricing: None,
+            voices_pricing: None,
+            video_pricing: None,
+            asr_pricing: None,
+            realtime_pricing: None,
+        },
+    );
+    let config = burncloud_common::pricing_config::PricingConfig {
+        version: "1.0".to_string(),
+        updated_at: chrono::Utc::now(),
+        source: "test".to_string(),
+        models,
+    };
+
+    // Sync completes OK even with >50% model count drop (logs a warning but doesn't fail)
+    let result = service.apply_prices(&config, "remote").await?;
+    assert_eq!(result.models_synced, 1);
 
     Ok(())
 }

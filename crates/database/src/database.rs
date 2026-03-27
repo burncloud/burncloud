@@ -226,6 +226,16 @@ pub async fn create_default_database() -> Result<Database> {
     Database::new().await
 }
 
+/// Create a database at the given URL (e.g. `"sqlite::memory:"` for testing).
+pub async fn create_database_with_url(url: &str) -> Result<Database> {
+    let mut db = Database {
+        connection: None,
+        database_url: url.to_string(),
+    };
+    db.initialize().await?;
+    Ok(db)
+}
+
 // Platform detection and default path resolution functions
 pub fn is_windows() -> bool {
     cfg!(target_os = "windows")

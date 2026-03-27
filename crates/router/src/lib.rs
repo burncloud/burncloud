@@ -154,9 +154,15 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
     let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
 
     // Start background price sync task (every 24 hours)
-    // Priority: local conf/pricing.json → burncloud repo (GitHub/Gitee fallback)
-    // Price cache is passed so it gets refreshed after each successful sync.
-    price_sync::start_price_sync_task(db.clone(), 86400, None, price_cache.clone());
+    // Prices pulled from pricing_data repo (GitHub/Gitee fallback).
+    // Price cache is refreshed after each successful sync.
+    let interval_secs = std::env::var("PRICE_SYNC_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(86400);
+    let (force_sync_tx, force_sync_rx) =
+        tokio::sync::mpsc::channel::<tokio::sync::oneshot::Sender<price_sync::SyncResult>>(4);
+    price_sync::start_price_sync_task(db.clone(), interval_secs, None, price_cache.clone(), force_sync_rx);
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -189,6 +195,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         api_version_detector,
         price_cache,
         cost_calculator,
+        force_sync_tx,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -197,10 +204,12 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
 
     let reload_path = format!("{}/reload", INTERNAL_PREFIX);
     let health_path = format!("{}/health", INTERNAL_PREFIX);
+    let prices_sync_path = format!("{}/prices/sync", INTERNAL_PREFIX);
 
     let app = Router::new()
         .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
+        .route(&prices_sync_path, post(price_sync_handler))
         .route("/v1/models", axum::routing::get(models_handler))
         .route("/api/v1/usage", axum::routing::get(usage_handler))
         .route("/api/v1/usage/models", axum::routing::get(usage_models_handler))
@@ -223,6 +232,41 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
         Err(e) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             Body::from(format!("Reload Failed: {}", e)),
+        ),
+    }
+}
+
+/// POST /console/internal/prices/sync
+///
+/// Triggers an immediate forced price sync. Waits up to 60 seconds for completion.
+/// Internal-only; no auth required (server is assumed behind firewall).
+async fn price_sync_handler(State(state): State<AppState>) -> Response {
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    if state.force_sync_tx.send(reply_tx).await.is_err() {
+        return build_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            Body::from("Price sync task is not running"),
+        );
+    }
+    match tokio::time::timeout(std::time::Duration::from_secs(60), reply_rx).await {
+        Ok(Ok(result)) => {
+            let body = format!(
+                r#"{{"models_synced":{},"currencies_synced":{},"tiers_synced":{},"errors":{},"source":"{}"}}"#,
+                result.models_synced,
+                result.currencies_synced,
+                result.tiered_pricing_synced,
+                result.errors,
+                result.source,
+            );
+            build_response_with_header(StatusCode::OK, "content-type", "application/json", Body::from(body))
+        }
+        Ok(Err(_)) => build_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Body::from("Price sync task dropped the reply channel"),
+        ),
+        Err(_) => build_response(
+            StatusCode::GATEWAY_TIMEOUT,
+            Body::from("Price sync timed out after 60 seconds"),
         ),
     }
 }
