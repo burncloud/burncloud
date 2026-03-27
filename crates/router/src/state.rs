@@ -7,12 +7,13 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::config::RouterConfig;
 use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
+use crate::price_sync::SyncResult;
 use burncloud_database::Database;
 use burncloud_database_router::DbRouterLog;
 use burncloud_service_billing::{CostCalculator, PriceCache};
 use reqwest::Client;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -29,4 +30,7 @@ pub struct AppState {
     pub api_version_detector: Arc<adaptor::detector::ApiVersionDetector>,
     pub price_cache: PriceCache,
     pub cost_calculator: CostCalculator,
+    /// Sends force-sync requests to the background price sync task.
+    /// The task responds via the enclosed oneshot sender.
+    pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
 }
