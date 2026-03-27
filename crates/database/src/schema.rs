@@ -258,10 +258,16 @@ impl Schema {
                     prompt_tokens INTEGER DEFAULT 0,
                     completion_tokens INTEGER DEFAULT 0,
                     cost INTEGER DEFAULT 0,
+                    model TEXT,
+                    cache_read_tokens INTEGER DEFAULT 0,
+                    reasoning_tokens INTEGER DEFAULT 0,
+                    pricing_region TEXT DEFAULT 'international',
+                    video_tokens INTEGER DEFAULT 0,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id);
                 CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at);
+                CREATE INDEX IF NOT EXISTS idx_router_logs_model ON router_logs(model);
             "#
             }
             "postgres" => {
@@ -277,10 +283,16 @@ impl Schema {
                     prompt_tokens INTEGER DEFAULT 0,
                     completion_tokens INTEGER DEFAULT 0,
                     cost BIGINT DEFAULT 0,
+                    model TEXT,
+                    cache_read_tokens INTEGER DEFAULT 0,
+                    reasoning_tokens INTEGER DEFAULT 0,
+                    pricing_region TEXT DEFAULT 'international',
+                    video_tokens INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id);
                 CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at);
+                CREATE INDEX IF NOT EXISTS idx_router_logs_model ON router_logs(model);
             "#
             }
             _ => "",
@@ -684,6 +696,38 @@ impl Schema {
 
                 eprintln!("[Migration] router_logs table migration completed successfully");
             }
+        }
+
+        // Migration: Add model + multimodal token columns to router_logs
+        {
+            let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN model TEXT")
+                .execute(pool)
+                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE router_logs ADD COLUMN cache_read_tokens INTEGER DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE router_logs ADD COLUMN reasoning_tokens INTEGER DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE router_logs ADD COLUMN pricing_region TEXT DEFAULT 'international'",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_router_logs_model ON router_logs(model)",
+            )
+            .execute(pool)
+            .await;
+            let _ = sqlx::query(
+                "ALTER TABLE router_logs ADD COLUMN video_tokens INTEGER DEFAULT 0",
+            )
+            .execute(pool)
+            .await;
         }
 
         // Migration: Migrate prices_v2 to prices and cleanup deprecated tables
