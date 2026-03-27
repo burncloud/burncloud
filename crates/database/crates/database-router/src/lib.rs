@@ -21,7 +21,10 @@ pub use burncloud_database_upstream as upstream;
 
 // Re-export common types for backward compatibility
 pub use burncloud_database_group::{DbGroup, DbGroupMember, GroupMemberModel, GroupModel};
-pub use burncloud_database_router_log::{BalanceModel, DbRouterLog, RouterLogModel};
+pub use burncloud_database_router_log::{
+    BalanceModel, BillingModelSummary, BillingSummary, DbRouterLog, RouterLogModel,
+    get_billing_summary,
+};
 pub use burncloud_database_token::{DbToken, TokenModel, TokenValidationResult};
 pub use burncloud_database_upstream::{DbUpstream, UpstreamModel};
 
@@ -579,6 +582,8 @@ pub struct ModelUsageStats {
     pub requests: i64,
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub reasoning_tokens: i64,
     /// Cost in nanodollars
     pub cost_nano: i64,
 }
@@ -674,34 +679,20 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
 pub async fn get_usage_stats_by_model(
     db: &Database,
     user_id: &str,
-    period: &str,
+    _period: &str,
 ) -> Result<Vec<ModelUsageStats>> {
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    // Calculate time threshold based on period
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| DatabaseError::Query(format!("Time error: {}", e)))?
-        .as_secs() as i64;
-
-    let _threshold = match period {
-        "day" => now - 24 * 60 * 60,
-        "week" => now - 7 * 24 * 60 * 60,
-        "month" | _ => now - 30 * 24 * 60 * 60,
-    };
-
-    // Extract model from path and group by it
-    // Model is typically embedded in the request body, but we can try to extract from path
-    // Note: Full model-based grouping requires parsing request body, which is not stored
-    #[allow(unused_variables)]
     let sql = if is_postgres {
         r#"
         SELECT
-            COALESCE(NULLIF(SUBSTR(path FROM POSITION('/v1/models/' IN path) + 12), ''), 'N/A') as model,
+            COALESCE(model, 'Unknown') as model,
             COUNT(*) as requests,
             COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
             COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
             COALESCE(SUM(cost), 0) as cost
         FROM router_logs
         WHERE user_id = $1
@@ -709,55 +700,23 @@ pub async fn get_usage_stats_by_model(
         ORDER BY cost DESC
         "#
     } else {
-        // SQLite: simpler approach, just use "N/A" for model since it's hard to extract
         r#"
         SELECT
-            'N/A' as model,
+            COALESCE(model, 'Unknown') as model,
             COUNT(*) as requests,
             COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
             COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
             COALESCE(SUM(cost), 0) as cost
         FROM router_logs
         WHERE user_id = ?
-        UNION ALL
-        SELECT
-            'Total' as model,
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-            COALESCE(SUM(cost), 0) as cost
-        FROM router_logs
-        WHERE user_id = ?
-        ORDER BY model
+        GROUP BY model
+        ORDER BY cost DESC
         "#
     };
 
-    // For now, just return overall stats grouped by "N/A" since model extraction from path is unreliable
-    let sql_simple = if is_postgres {
-        r#"
-        SELECT
-            'All Models' as model,
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-            COALESCE(SUM(cost), 0) as cost
-        FROM router_logs
-        WHERE user_id = $1
-        "#
-    } else {
-        r#"
-        SELECT
-            'All Models' as model,
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-            COALESCE(SUM(cost), 0) as cost
-        FROM router_logs
-        WHERE user_id = ?
-        "#
-    };
-
-    let rows: Vec<(String, i64, i64, i64, i64)> = sqlx::query_as(sql_simple)
+    let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(sql)
         .bind(user_id)
         .fetch_all(conn.pool())
         .await?;
@@ -765,11 +724,13 @@ pub async fn get_usage_stats_by_model(
     Ok(rows
         .into_iter()
         .map(
-            |(model, requests, prompt_tokens, completion_tokens, cost_nano)| ModelUsageStats {
+            |(model, requests, prompt_tokens, completion_tokens, cache_read_tokens, reasoning_tokens, cost_nano)| ModelUsageStats {
                 model,
                 requests,
                 prompt_tokens,
                 completion_tokens,
+                cache_read_tokens,
+                reasoning_tokens,
                 cost_nano,
             },
         )

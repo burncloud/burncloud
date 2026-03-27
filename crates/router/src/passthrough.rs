@@ -181,6 +181,11 @@ pub fn parse_gemini_usage(response: &Value) -> (u32, u32) {
             .and_then(|t| t.as_u64())
             .unwrap_or(0) as u32;
 
+        let cached_tokens = usage
+            .get("cachedContentTokenCount")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(0) as u32;
+
         let candidates_tokens = usage
             .get("candidatesTokenCount")
             .and_then(|t| t.as_u64())
@@ -194,7 +199,10 @@ pub fn parse_gemini_usage(response: &Value) -> (u32, u32) {
 
         let completion_tokens = candidates_tokens + thoughts_tokens;
 
-        (prompt_tokens, completion_tokens)
+        // Subtract cached portion: cached tokens are billed separately at discount rate
+        let non_cached_prompt = prompt_tokens.saturating_sub(cached_tokens);
+
+        (non_cached_prompt, completion_tokens)
     } else {
         (0, 0)
     }
@@ -437,6 +445,23 @@ mod tests {
         assert_eq!(prompt, 10);
         // completion = candidatesTokenCount + thoughtsTokenCount = 25 + 15 = 40
         assert_eq!(completion, 40);
+    }
+
+    #[test]
+    fn test_parse_gemini_usage_with_cache() {
+        // Cached tokens subtracted from prompt to avoid double-billing
+        let response = json!({
+            "candidates": [],
+            "usageMetadata": {
+                "promptTokenCount": 100,
+                "candidatesTokenCount": 50,
+                "cachedContentTokenCount": 40
+            }
+        });
+
+        let (prompt, completion) = parse_gemini_usage(&response);
+        assert_eq!(prompt, 60); // 100 - 40
+        assert_eq!(completion, 50);
     }
 
     #[test]

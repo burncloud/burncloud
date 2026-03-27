@@ -21,6 +21,10 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
         prompt_tokens: 10,
         completion_tokens: 20,
         cost: 1_000_000, // 0.001 in nanodollars
+        model: None,
+        cache_read_tokens: 0,
+        reasoning_tokens: 0,
+        pricing_region: None,
         created_at: None,
     };
 
