@@ -586,7 +586,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             println!();
             println!("Tiered pricing entries: {}", tiered_prices.len());
             println!();
-            println!("Note: Prices are synced hourly from LiteLLM by default.");
+            println!("Note: Prices are synced every 24h from the pricing_data repository.");
             println!("Use 'burncloud price import <file>' to import pricing configuration.");
         }
         Some(("import", sub_m)) => {
@@ -1047,7 +1047,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         }
         Some(("sync", sub_m)) => {
             const DEFAULT_CATALOG_URL: &str =
-                "https://raw.githubusercontent.com/burncloud/pricing-data/main/pricing/latest.json";
+                "https://raw.githubusercontent.com/burncloud/pricing_data/main/pricing.json";
             let url = sub_m
                 .get_one::<String>("url")
                 .cloned()
@@ -1134,6 +1134,26 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
 
             println!("✅ Sync complete: {} upserted, {} errors", ok, err);
+
+            // Notify running server to refresh its in-memory price cache.
+            // If the server is not running this is a no-op (warning only).
+            let server_url = std::env::var("BURNCLOUD_SERVER_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+            let sync_endpoint = format!("{}/console/internal/prices/sync", server_url.trim_end_matches('/'));
+            let notify_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(60))
+                .build()?;
+            match notify_client.post(&sync_endpoint).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    println!("✅ Server price cache refreshed.");
+                }
+                Ok(resp) => {
+                    eprintln!("⚠ Server returned {} when refreshing cache (prices are in DB).", resp.status());
+                }
+                Err(_) => {
+                    println!("ℹ Server not reachable — prices written to DB, cache refreshes on next startup.");
+                }
+            }
         }
         _ => {
             println!(

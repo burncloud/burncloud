@@ -8,8 +8,9 @@
 //! The service supports multi-source, multi-currency price synchronization with
 //! the following priority order (highest to lowest):
 //! 1. Local override configuration (pricing.override.json)
-//! 2. Local main configuration (pricing.json)
-//! 3. Remote burncloud repository (with Gitee fallback)
+//! 2. Remote pricing_data repository (GitHub, with Gitee fallback)
+//!    - Startup fast path: if DB already has prices, skip remote fetch
+//!    - Periodic sync (forced=true): always fetches remote
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,11 +24,11 @@ use reqwest::Client;
 
 /// URL for burncloud official pricing (GitHub)
 pub const BURNSCLOUD_PRICES_URL: &str =
-    "https://raw.githubusercontent.com/burncloud/burncloud/main/conf/pricing.json";
+    "https://raw.githubusercontent.com/burncloud/pricing_data/main/pricing.json";
 
 /// Gitee mirror for burncloud prices — used as fallback when GitHub times out in CN environments
 pub const BURNSCLOUD_PRICES_URL_GITEE: &str =
-    "https://gitee.com/burncloud/burncloud/raw/main/conf/pricing.json";
+    "https://gitee.com/burncloud/pricing_data/raw/main/pricing.json";
 
 /// Result of a sync operation
 #[derive(Debug, Clone, Default)]
@@ -49,8 +50,6 @@ pub struct SyncResult {
 pub struct PriceSyncConfig {
     /// Path to local override configuration file
     pub override_config_path: PathBuf,
-    /// Path to local main configuration file
-    pub local_config_path: PathBuf,
     /// URL for remote price repository (primary, typically GitHub)
     pub remote_url: String,
     /// Fallback URL when primary times out (e.g. Gitee mirror for CN)
@@ -65,7 +64,6 @@ impl Default for PriceSyncConfig {
     fn default() -> Self {
         Self {
             override_config_path: PathBuf::from("conf/pricing.override.json"),
-            local_config_path: PathBuf::from("conf/pricing.json"),
             remote_url: BURNSCLOUD_PRICES_URL.to_string(),
             remote_url_fallback: Some(BURNSCLOUD_PRICES_URL_GITEE.to_string()),
             remote_sync_enabled: true,
@@ -78,8 +76,7 @@ impl Default for PriceSyncConfig {
 ///
 /// This service supports the following data sources in priority order:
 /// 1. Local override configuration (highest priority)
-/// 2. Local main configuration
-/// 3. Remote burncloud repository (with Gitee fallback)
+/// 2. Remote pricing_data repository (GitHub, with Gitee fallback)
 pub struct PriceSyncService {
     db: Arc<Database>,
     http_client: Client,
@@ -115,69 +112,90 @@ impl PriceSyncService {
         }
     }
 
-    /// Sync prices from all sources with priority ordering
+    /// Sync prices from all sources with priority ordering.
     ///
-    /// Priority order (highest to lowest):
-    /// 1. Local override configuration
-    /// 2. Local main configuration
-    /// 3. Remote burncloud repository (if enabled and due)
-    pub async fn sync_all(&mut self) -> anyhow::Result<SyncResult> {
-        let mut total_result = SyncResult::default();
-
-        // 1. Load local override configuration (highest priority)
+    /// When `forced` is false (startup): if DB already has prices, skip remote fetch.
+    /// When `forced` is true (periodic/force-sync): always pull from remote.
+    ///
+    /// On remote failure:
+    /// - If DB has prices → warn and return Ok (graceful degradation)
+    /// - If DB is empty → retry up to 3 times (5s, 15s, 30s), then return Err (fatal)
+    pub async fn sync_all(&mut self, forced: bool) -> anyhow::Result<SyncResult> {
+        // 1. Local override (highest priority, always checked)
         if let Some(config) = self.load_local_override()? {
             tracing::info!("Applying local override pricing configuration...");
-            let result = self.apply_prices(&config, "local_override").await?;
-            total_result.models_synced += result.models_synced;
-            total_result.currencies_synced += result.currencies_synced;
-            total_result.tiered_pricing_synced += result.tiered_pricing_synced;
-            total_result.errors += result.errors;
-            // Return early - override has highest priority
-            return Ok(total_result);
+            return self.apply_prices(&config, "local_override").await;
         }
 
-        // 2. Load local main configuration
-        if let Some(config) = self.load_local_config()? {
-            tracing::info!("Applying local pricing configuration...");
-            let result = self.apply_prices(&config, "local").await?;
-            total_result.models_synced += result.models_synced;
-            total_result.currencies_synced += result.currencies_synced;
-            total_result.tiered_pricing_synced += result.tiered_pricing_synced;
-            total_result.errors += result.errors;
-            // Return early - local config has high priority
-            return Ok(total_result);
+        // 2. Startup fast path: DB has prices and sync not forced → skip remote
+        if !forced {
+            let db_count = self.count_db_models().await.unwrap_or(0);
+            if db_count > 0 {
+                tracing::info!(
+                    models = db_count,
+                    "DB already has prices, skipping remote sync (startup fast path)"
+                );
+                return Ok(SyncResult {
+                    source: "db_cache".to_string(),
+                    ..Default::default()
+                });
+            }
         }
 
-        // 3. Sync from remote repository (if enabled and due)
-        if self.config.remote_sync_enabled && self.should_sync_remote() {
-            tracing::info!("Syncing from remote price repository...");
+        // 3. Pull from remote with retry on cold start
+        const RETRY_DELAYS_SECS: &[u64] = &[5, 15, 30];
+        let mut last_err: Option<anyhow::Error> = None;
+        for (attempt, &delay) in RETRY_DELAYS_SECS.iter().enumerate() {
             match self.sync_remote_prices().await {
                 Ok(result) => {
-                    total_result.models_synced += result.models_synced;
-                    total_result.currencies_synced += result.currencies_synced;
-                    total_result.tiered_pricing_synced += result.tiered_pricing_synced;
-                    total_result.errors += result.errors;
                     self.last_remote_sync = Some(Utc::now());
+                    return Ok(result);
                 }
                 Err(e) => {
-                    tracing::error!("Remote price sync failed: {}", e);
-                    return Err(e);
+                    if attempt < RETRY_DELAYS_SECS.len() - 1 {
+                        tracing::warn!(
+                            attempt = attempt + 1,
+                            delay_secs = delay,
+                            error = %e,
+                            "Remote price sync failed, retrying..."
+                        );
+                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                    }
+                    last_err = Some(e);
                 }
             }
         }
 
-        Ok(total_result)
+        // All retries exhausted
+        let err = last_err.unwrap();
+        let db_count = self.count_db_models().await.unwrap_or(0);
+        if db_count > 0 {
+            tracing::warn!(
+                error = %err,
+                models = db_count,
+                "Remote sync failed after all retries, using existing DB prices"
+            );
+            return Ok(SyncResult {
+                source: "db_fallback".to_string(),
+                ..Default::default()
+            });
+        }
+
+        tracing::error!(
+            error = %err,
+            "FATAL: pricing_data unreachable and DB has no prices. \
+             Check network connectivity or pre-seed DB."
+        );
+        Err(err)
     }
 
-    /// Check if remote sync is due
-    fn should_sync_remote(&self) -> bool {
-        match self.last_remote_sync {
-            None => true,
-            Some(last) => {
-                let elapsed = Utc::now() - last;
-                elapsed.num_seconds() >= self.config.remote_sync_interval_secs as i64
-            }
-        }
+    /// Count distinct model names in the prices table.
+    async fn count_db_models(&self) -> anyhow::Result<usize> {
+        let conn = self.db.get_connection()?;
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(DISTINCT model) FROM prices")
+            .fetch_one(conn.pool())
+            .await?;
+        Ok(row.0 as usize)
     }
 
     /// Load local override configuration file
@@ -192,20 +210,8 @@ impl PriceSyncService {
         Ok(Some(config))
     }
 
-    /// Load local main configuration file
-    fn load_local_config(&self) -> anyhow::Result<Option<PricingConfig>> {
-        let path = &self.config.local_config_path;
-        if !path.exists() {
-            return Ok(None);
-        }
-
-        let content = std::fs::read_to_string(path)?;
-        let config: PricingConfig = serde_json::from_str(&content)?;
-        Ok(Some(config))
-    }
-
     /// Apply pricing configuration to database
-    async fn apply_prices(
+    pub async fn apply_prices(
         &self,
         config: &PricingConfig,
         source: &str,
@@ -311,10 +317,34 @@ impl PriceSyncService {
                     ..Default::default()
                 };
 
+                // Audit: read existing price before upsert so we can log changes
+                let old_price = if source == "remote" {
+                    PriceModel::get(&self.db, model_name, currency, None).await.ok().flatten()
+                } else {
+                    None
+                };
+
                 match PriceModel::upsert(&self.db, &price_input).await {
                     Ok(_) => {
                         result.models_synced += 1;
                         result.currencies_synced += 1;
+                        // Emit structured audit log when price changes on remote sync
+                        if let Some(old) = old_price {
+                            let new_in = currency_pricing.input_price;
+                            let new_out = currency_pricing.output_price;
+                            if old.input_price != new_in || old.output_price != new_out {
+                                tracing::info!(
+                                    model = model_name,
+                                    currency = currency,
+                                    old_input_price = old.input_price,
+                                    new_input_price = new_in,
+                                    old_output_price = old.output_price,
+                                    new_output_price = new_out,
+                                    changed_at = %Utc::now(),
+                                    "price_changed"
+                                );
+                            }
+                        }
                     }
                     Err(e) => {
                         tracing::error!(
@@ -460,10 +490,23 @@ impl PriceSyncService {
         Ok(result)
     }
 
-    /// Sync prices from remote repository (with Gitee fallback)
+    /// Sync prices from remote repository (with Gitee fallback).
+    /// Includes model count drop protection and price change audit logging.
     async fn sync_remote_prices(&self) -> anyhow::Result<SyncResult> {
         let response = self.fetch_remote_config().await?;
         let config: PricingConfig = serde_json::from_str(&response)?;
+
+        // Model count drop protection: warn if new data has >50% fewer models
+        let prev_count = self.count_db_models().await.unwrap_or(0);
+        let new_count = config.models.len();
+        if prev_count > 0 && new_count * 2 < prev_count {
+            tracing::warn!(
+                prev_models = prev_count,
+                new_models = new_count,
+                "Remote pricing data has >50% fewer models than current DB — possible data issue"
+            );
+        }
+
         self.apply_prices(&config, "remote").await
     }
 
@@ -642,14 +685,16 @@ impl PriceSyncService {
     }
 }
 
-/// Start a background price sync task
+/// Start a background price sync task.
 ///
-/// This spawns a tokio task that syncs prices periodically from multiple sources
+/// `force_sync_rx`: receives one-shot reply channels from the HTTP force-sync endpoint.
+/// Each message triggers an immediate forced sync; the result is sent back via the oneshot.
 pub fn start_price_sync_task(
     db: Arc<Database>,
     interval_secs: u64,
     config: Option<PriceSyncConfig>,
     price_cache: PriceCache,
+    mut force_sync_rx: tokio::sync::mpsc::Receiver<tokio::sync::oneshot::Sender<SyncResult>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut service = match config {
@@ -657,41 +702,71 @@ pub fn start_price_sync_task(
             None => PriceSyncService::new(db.clone()),
         };
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+        // Don't fire a tick immediately on first poll (we do the initial sync manually below)
+        interval.reset();
 
-        // Initial sync
-        tracing::info!("Starting initial multi-source price sync...");
-        match service.sync_all().await {
+        // Initial sync (not forced — use DB fast path if available)
+        tracing::info!("Starting initial price sync...");
+        match service.sync_all(false).await {
             Ok(result) => {
                 tracing::info!(
                     models = result.models_synced,
-                    currencies = result.currencies_synced,
-                    tiers = result.tiered_pricing_synced,
+                    source = result.source,
                     "Initial price sync complete"
                 );
                 if let Err(e) = price_cache.refresh(&db).await {
                     tracing::error!("Failed to refresh price cache after initial sync: {e}");
                 }
             }
-            Err(e) => tracing::error!("Initial price sync failed: {e}"),
+            Err(e) => {
+                tracing::error!("Initial price sync failed: {e}");
+                // Fatal: no prices in DB and remote unreachable
+                return;
+            }
         }
 
-        // Periodic sync
+        // Event loop: respond to periodic ticks and force-sync requests
         loop {
-            interval.tick().await;
-            tracing::info!("Starting periodic multi-source price sync...");
-            match service.sync_all().await {
-                Ok(result) => {
-                    tracing::info!(
-                        models = result.models_synced,
-                        currencies = result.currencies_synced,
-                        tiers = result.tiered_pricing_synced,
-                        "Periodic price sync complete"
-                    );
-                    if let Err(e) = price_cache.refresh(&db).await {
-                        tracing::error!("Failed to refresh price cache after periodic sync: {e}");
+            tokio::select! {
+                _ = interval.tick() => {
+                    tracing::info!("Starting periodic price sync...");
+                    match service.sync_all(true).await {
+                        Ok(result) => {
+                            tracing::info!(
+                                models = result.models_synced,
+                                source = result.source,
+                                "Periodic price sync complete"
+                            );
+                            if let Err(e) = price_cache.refresh(&db).await {
+                                tracing::error!("Failed to refresh price cache after periodic sync: {e}");
+                            }
+                        }
+                        Err(e) => tracing::error!("Periodic price sync failed: {e}"),
                     }
                 }
-                Err(e) => tracing::error!("Periodic price sync failed: {e}"),
+                Some(reply_tx) = force_sync_rx.recv() => {
+                    tracing::info!("Force price sync requested via HTTP endpoint...");
+                    match service.sync_all(true).await {
+                        Ok(result) => {
+                            tracing::info!(
+                                models = result.models_synced,
+                                source = result.source,
+                                "Force price sync complete"
+                            );
+                            if let Err(e) = price_cache.refresh(&db).await {
+                                tracing::error!("Failed to refresh price cache after force sync: {e}");
+                            }
+                            let _ = reply_tx.send(result);
+                        }
+                        Err(e) => {
+                            tracing::error!("Force price sync failed: {e}");
+                            let _ = reply_tx.send(SyncResult {
+                                source: format!("error: {e}"),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
             }
         }
     })
