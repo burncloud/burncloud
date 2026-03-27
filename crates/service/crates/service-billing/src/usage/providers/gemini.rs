@@ -41,8 +41,9 @@ fn parse_usage_metadata(metadata: &Value) -> UnifiedUsage {
         .unwrap_or(0);
 
     UnifiedUsage {
-        input_tokens: prompt,
-        output_tokens: candidates + thoughts,
+        input_tokens: prompt - cached,
+        output_tokens: candidates,
+        reasoning_tokens: thoughts,
         cache_read_tokens: cached,
         ..Default::default()
     }
@@ -103,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_parse_response_thoughts_token_count() {
-        // Gemini 2.5: thoughtsTokenCount added to output
+        // Gemini 2.5: thoughtsTokenCount stored separately as reasoning_tokens
         let parser = GeminiParser;
         let resp = json!({
             "usageMetadata": {
@@ -114,7 +115,8 @@ mod tests {
         });
         let u = parser.parse_response(&resp).unwrap();
         assert_eq!(u.input_tokens, 10);
-        assert_eq!(u.output_tokens, 40); // 25 + 15
+        assert_eq!(u.output_tokens, 25);
+        assert_eq!(u.reasoning_tokens, 15);
     }
 
     #[test]
@@ -128,9 +130,45 @@ mod tests {
             }
         });
         let u = parser.parse_response(&resp).unwrap();
-        assert_eq!(u.input_tokens, 100);
+        // input_tokens = promptTokenCount - cachedContentTokenCount (avoid double-billing)
+        assert_eq!(u.input_tokens, 60);
         assert_eq!(u.output_tokens, 50);
         assert_eq!(u.cache_read_tokens, 40);
+    }
+
+    #[test]
+    fn test_parse_response_full_cache() {
+        // Edge case: entire prompt is cached — input_tokens should be 0
+        let parser = GeminiParser;
+        let resp = json!({
+            "usageMetadata": {
+                "promptTokenCount": 100,
+                "candidatesTokenCount": 50,
+                "cachedContentTokenCount": 100
+            }
+        });
+        let u = parser.parse_response(&resp).unwrap();
+        assert_eq!(u.input_tokens, 0);
+        assert_eq!(u.cache_read_tokens, 100);
+        assert_eq!(u.output_tokens, 50);
+    }
+
+    #[test]
+    fn test_parse_response_thinking_split() {
+        // Verify reasoning_tokens is separate from output_tokens
+        let parser = GeminiParser;
+        let resp = json!({
+            "usageMetadata": {
+                "promptTokenCount": 20,
+                "candidatesTokenCount": 30,
+                "thoughtsTokenCount": 50
+            }
+        });
+        let u = parser.parse_response(&resp).unwrap();
+        assert_eq!(u.input_tokens, 20);
+        assert_eq!(u.output_tokens, 30);       // candidates only
+        assert_eq!(u.reasoning_tokens, 50);    // thoughts separate
+        assert_eq!(u.cache_read_tokens, 0);
     }
 
     #[test]
@@ -157,7 +195,18 @@ mod tests {
         let chunk = r#"{"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":10,"thoughtsTokenCount":8}}"#;
         let u = parser.parse_streaming_chunk(chunk).unwrap().unwrap();
         assert_eq!(u.input_tokens, 5);
-        assert_eq!(u.output_tokens, 18); // 10 + 8
+        assert_eq!(u.output_tokens, 10);
+        assert_eq!(u.reasoning_tokens, 8);
+    }
+
+    #[test]
+    fn test_parse_streaming_chunk_with_cache() {
+        let parser = GeminiParser;
+        let chunk = r#"{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50,"cachedContentTokenCount":40}}"#;
+        let u = parser.parse_streaming_chunk(chunk).unwrap().unwrap();
+        assert_eq!(u.input_tokens, 60); // 100 - 40
+        assert_eq!(u.cache_read_tokens, 40);
+        assert_eq!(u.output_tokens, 50);
     }
 
     #[test]

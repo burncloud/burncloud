@@ -22,6 +22,16 @@ pub struct DbRouterLog {
     #[sqlx(default)]
     /// Cost in nanodollars (9 decimal precision)
     pub cost: i64,
+    #[sqlx(default)]
+    pub model: Option<String>,
+    #[sqlx(default)]
+    pub cache_read_tokens: i32,
+    #[sqlx(default)]
+    pub reasoning_tokens: i32,
+    #[sqlx(default)]
+    pub pricing_region: Option<String>,
+    #[sqlx(default)]
+    pub video_tokens: i32,
     pub created_at: Option<String>,
 }
 
@@ -42,6 +52,8 @@ pub struct ModelUsageStats {
     pub requests: i64,
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub reasoning_tokens: i64,
     /// Cost in nanodollars
     pub cost_nano: i64,
 }
@@ -55,14 +67,16 @@ impl RouterLogModel {
         let is_postgres = db.kind() == "postgres";
 
         let placeholders = if is_postgres {
-            "$1, $2, $3, $4, $5, $6, $7, $8, $9"
+            "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14"
         } else {
-            "?, ?, ?, ?, ?, ?, ?, ?, ?"
+            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
         };
         let sql = format!(
             r#"
             INSERT INTO router_logs
-            (request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost)
+            (request_id, user_id, path, upstream_id, status_code, latency_ms,
+             prompt_tokens, completion_tokens, cost,
+             model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens)
             VALUES ({})
             "#,
             placeholders
@@ -78,6 +92,11 @@ impl RouterLogModel {
             .bind(log.prompt_tokens)
             .bind(log.completion_tokens)
             .bind(log.cost)
+            .bind(&log.model)
+            .bind(log.cache_read_tokens)
+            .bind(log.reasoning_tokens)
+            .bind(&log.pricing_region)
+            .bind(log.video_tokens)
             .execute(conn.pool())
             .await?;
 
@@ -112,7 +131,7 @@ impl RouterLogModel {
             "LIMIT ? OFFSET ?"
         };
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, created_at FROM router_logs ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, created_at FROM router_logs ORDER BY created_at DESC {}",
             limit_offset
         );
         let logs = sqlx::query_as::<_, DbRouterLog>(&sql)
@@ -148,7 +167,7 @@ impl RouterLogModel {
             param_index += 1;
         }
         if model.is_some() {
-            conditions.push(format!("path LIKE {}{}", placeholder, param_index));
+            conditions.push(format!("model = {}{}", placeholder, param_index));
             param_index += 1;
         }
 
@@ -164,7 +183,7 @@ impl RouterLogModel {
             "LIMIT ? OFFSET ?".to_string()
         };
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, created_at FROM router_logs {} ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, created_at FROM router_logs {} ORDER BY created_at DESC {}",
             where_clause, limit_offset
         );
 
@@ -177,7 +196,7 @@ impl RouterLogModel {
             query = query.bind(upstream);
         }
         if let Some(m) = model {
-            query = query.bind(format!("%{}%", m));
+            query = query.bind(m);
         }
 
         let logs = query
@@ -268,32 +287,39 @@ pub async fn get_usage_stats_by_model(
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    // For now, just return overall stats grouped by "All Models" since model extraction from path is unreliable
     let sql = if is_postgres {
         r#"
         SELECT
-            'All Models' as model,
+            COALESCE(model, 'Unknown') as model,
             COUNT(*) as requests,
             COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
             COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
             COALESCE(SUM(cost), 0) as cost
         FROM router_logs
         WHERE user_id = $1
+        GROUP BY model
+        ORDER BY cost DESC
         "#
     } else {
         r#"
         SELECT
-            'All Models' as model,
+            COALESCE(model, 'Unknown') as model,
             COUNT(*) as requests,
             COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
             COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
             COALESCE(SUM(cost), 0) as cost
         FROM router_logs
         WHERE user_id = ?
+        GROUP BY model
+        ORDER BY cost DESC
         "#
     };
 
-    let rows: Vec<(String, i64, i64, i64, i64)> = sqlx::query_as(sql)
+    let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(sql)
         .bind(user_id)
         .fetch_all(conn.pool())
         .await?;
@@ -301,15 +327,161 @@ pub async fn get_usage_stats_by_model(
     Ok(rows
         .into_iter()
         .map(
-            |(model, requests, prompt_tokens, completion_tokens, cost_nano)| ModelUsageStats {
+            |(model, requests, prompt_tokens, completion_tokens, cache_read_tokens, reasoning_tokens, cost_nano)| ModelUsageStats {
                 model,
                 requests,
                 prompt_tokens,
                 completion_tokens,
+                cache_read_tokens,
+                reasoning_tokens,
                 cost_nano,
             },
         )
         .collect())
+}
+
+/// Billing summary per model for reconciliation with upstream providers (e.g. Google).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillingModelSummary {
+    pub model: String,
+    pub requests: i64,
+    pub prompt_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub completion_tokens: i64,
+    pub reasoning_tokens: i64,
+    /// Cost in USD (converted from nanodollars)
+    pub cost_usd: f64,
+}
+
+/// Aggregate billing summary for a time period.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillingSummary {
+    pub period_start: Option<String>,
+    pub period_end: Option<String>,
+    /// Number of requests with NULL model (pre-migration data).
+    pub pre_migration_requests: i64,
+    pub models: Vec<BillingModelSummary>,
+    pub total_cost_usd: f64,
+}
+
+/// Get aggregate billing summary grouped by model for internal reconciliation.
+///
+/// start/end are optional YYYY-MM-DD date strings.
+/// Pre-migration rows (model IS NULL) are counted separately.
+pub async fn get_billing_summary(
+    db: &Database,
+    start: Option<&str>,
+    end: Option<&str>,
+) -> Result<BillingSummary> {
+    let conn = db.get_connection()?;
+    let is_postgres = db.kind() == "postgres";
+
+    // Build date filter clause
+    // SQLite: created_at is TEXT (CURRENT_TIMESTAMP → "YYYY-MM-DD HH:MM:SS")
+    //         use strftime to extract date portion for correct comparison
+    // PostgreSQL: created_at is TIMESTAMP, cast to date
+    let (date_filter, date_cast_start, date_cast_end) = match (start, end) {
+        (Some(_), Some(_)) if is_postgres => (
+            "AND created_at::date >= $1::date AND created_at::date <= $2::date",
+            true,
+            true,
+        ),
+        (Some(_), None) if is_postgres => (
+            "AND created_at::date >= $1::date",
+            true,
+            false,
+        ),
+        (None, Some(_)) if is_postgres => (
+            "AND created_at::date <= $1::date",
+            false,
+            true,
+        ),
+        (Some(_), Some(_)) => (
+            "AND strftime('%Y-%m-%d', created_at) >= ? AND strftime('%Y-%m-%d', created_at) <= ?",
+            true,
+            true,
+        ),
+        (Some(_), None) => (
+            "AND strftime('%Y-%m-%d', created_at) >= ?",
+            true,
+            false,
+        ),
+        (None, Some(_)) => (
+            "AND strftime('%Y-%m-%d', created_at) <= ?",
+            false,
+            true,
+        ),
+        (None, None) => ("", false, false),
+    };
+
+    // Count pre-migration (NULL model) rows
+    let null_model_sql = format!(
+        "SELECT COUNT(*) FROM router_logs WHERE model IS NULL {}",
+        date_filter
+    );
+    let mut null_query = sqlx::query_scalar::<_, i64>(&null_model_sql);
+    if date_cast_start {
+        null_query = null_query.bind(start.unwrap_or(""));
+    }
+    if date_cast_end {
+        null_query = null_query.bind(end.unwrap_or(""));
+    }
+    let pre_migration_requests: i64 = null_query.fetch_one(conn.pool()).await.unwrap_or(0);
+
+    // Main query: GROUP BY model (exclude NULL model rows from model breakdown)
+    let main_sql = format!(
+        r#"
+        SELECT
+            model,
+            COUNT(*) as requests,
+            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
+            COALESCE(SUM(cost), 0) as cost_nano
+        FROM router_logs
+        WHERE model IS NOT NULL {}
+        GROUP BY model
+        ORDER BY cost_nano DESC
+        "#,
+        date_filter
+    );
+
+    let mut main_query = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(&main_sql);
+    if date_cast_start {
+        main_query = main_query.bind(start.unwrap_or(""));
+    }
+    if date_cast_end {
+        main_query = main_query.bind(end.unwrap_or(""));
+    }
+    let rows = main_query.fetch_all(conn.pool()).await?;
+
+    let mut total_cost_nano: i64 = 0;
+    let models: Vec<BillingModelSummary> = rows
+        .into_iter()
+        .map(
+            |(model, requests, prompt_tokens, cache_read_tokens, completion_tokens, reasoning_tokens, cost_nano)| {
+                total_cost_nano = total_cost_nano.saturating_add(cost_nano);
+                BillingModelSummary {
+                    model,
+                    requests,
+                    prompt_tokens,
+                    cache_read_tokens,
+                    completion_tokens,
+                    reasoning_tokens,
+                    cost_usd: cost_nano as f64 / 1_000_000_000.0,
+                }
+            },
+        )
+        .collect();
+
+    Ok(BillingSummary {
+        period_start: start.map(|s| s.to_string()),
+        period_end: end.map(|s| s.to_string()),
+        pre_migration_requests,
+        total_cost_usd: total_cost_nano as f64 / 1_000_000_000.0,
+        models,
+    })
 }
 
 /// Balance operations for dual-currency deduction
