@@ -263,6 +263,20 @@ impl Schema {
                     reasoning_tokens INTEGER DEFAULT 0,
                     pricing_region TEXT DEFAULT 'international',
                     video_tokens INTEGER DEFAULT 0,
+                    cache_write_tokens INTEGER DEFAULT 0,
+                    audio_input_tokens INTEGER DEFAULT 0,
+                    audio_output_tokens INTEGER DEFAULT 0,
+                    image_tokens INTEGER DEFAULT 0,
+                    embedding_tokens INTEGER DEFAULT 0,
+                    input_cost INTEGER DEFAULT 0,
+                    output_cost INTEGER DEFAULT 0,
+                    cache_read_cost INTEGER DEFAULT 0,
+                    cache_write_cost INTEGER DEFAULT 0,
+                    audio_cost INTEGER DEFAULT 0,
+                    image_cost INTEGER DEFAULT 0,
+                    video_cost INTEGER DEFAULT 0,
+                    reasoning_cost INTEGER DEFAULT 0,
+                    embedding_cost INTEGER DEFAULT 0,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id);
@@ -288,6 +302,20 @@ impl Schema {
                     reasoning_tokens INTEGER DEFAULT 0,
                     pricing_region TEXT DEFAULT 'international',
                     video_tokens INTEGER DEFAULT 0,
+                    cache_write_tokens INTEGER DEFAULT 0,
+                    audio_input_tokens INTEGER DEFAULT 0,
+                    audio_output_tokens INTEGER DEFAULT 0,
+                    image_tokens INTEGER DEFAULT 0,
+                    embedding_tokens INTEGER DEFAULT 0,
+                    input_cost BIGINT DEFAULT 0,
+                    output_cost BIGINT DEFAULT 0,
+                    cache_read_cost BIGINT DEFAULT 0,
+                    cache_write_cost BIGINT DEFAULT 0,
+                    audio_cost BIGINT DEFAULT 0,
+                    image_cost BIGINT DEFAULT 0,
+                    video_cost BIGINT DEFAULT 0,
+                    reasoning_cost BIGINT DEFAULT 0,
+                    embedding_cost BIGINT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id);
@@ -728,6 +756,31 @@ impl Schema {
             )
             .execute(pool)
             .await;
+        }
+
+        // Migration: Add per-type token counts and cost breakdown columns to router_logs
+        {
+            let token_columns = [
+                "ALTER TABLE router_logs ADD COLUMN cache_write_tokens INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN audio_input_tokens INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN audio_output_tokens INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN image_tokens INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN embedding_tokens INTEGER DEFAULT 0",
+            ];
+            let cost_columns = [
+                "ALTER TABLE router_logs ADD COLUMN input_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN output_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN cache_read_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN cache_write_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN audio_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN image_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN video_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN reasoning_cost INTEGER DEFAULT 0",
+                "ALTER TABLE router_logs ADD COLUMN embedding_cost INTEGER DEFAULT 0",
+            ];
+            for sql in token_columns.iter().chain(cost_columns.iter()) {
+                let _ = sqlx::query(sql).execute(pool).await;
+            }
         }
 
         // Migration: Migrate prices_v2 to prices and cleanup deprecated tables
