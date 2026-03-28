@@ -39,11 +39,11 @@ impl CostCalculator {
         Self { cache }
     }
 
-    /// Check whether a price is configured for `model`.
+    /// Check whether a price is configured for `model` (optionally in a specific `region`).
     /// Returns `Err(BillingError::PriceNotFound)` when the model is unknown.
     /// Call this before sending the upstream request.
-    pub async fn preflight(&self, model: &str) -> Result<(), BillingError> {
-        if self.cache.get(model).await.is_some() {
+    pub async fn preflight(&self, model: &str, region: Option<&str>) -> Result<(), BillingError> {
+        if self.cache.get(model, region).await.is_some() {
             Ok(())
         } else {
             Err(BillingError::PriceNotFound(model.to_string()))
@@ -51,6 +51,9 @@ impl CostCalculator {
     }
 
     /// Calculate cost for a completed request.
+    ///
+    /// `region` selects the region-specific price (e.g. `"international"`, `"cn"`).
+    /// Pass `None` to use the universal price.
     ///
     /// Returns `Err(BillingError::PriceNotFound)` when the model has no price entry.
     /// i64 overflow is truncated to `i64::MAX` with a `tracing::warn!`.
@@ -61,12 +64,14 @@ impl CostCalculator {
         request_id: &str,
         is_batch: bool,
         is_priority: bool,
+        region: Option<&str>,
     ) -> Result<CostResult, BillingError> {
-        self.calculate_with_voice(model, usage, request_id, is_batch, is_priority, None).await
+        self.calculate_with_voice(model, usage, request_id, is_batch, is_priority, region, None).await
     }
 
     /// Calculate cost for a completed request with optional voice-specific pricing.
     ///
+    /// `region` selects the region-specific price (e.g. `"international"`, `"cn"`).
     /// `voice_id` is used for TTS models that have per-voice pricing.
     /// If the voice ID is not found in the model's voices_pricing, falls back to audio_output_price.
     pub async fn calculate_with_voice(
@@ -76,11 +81,12 @@ impl CostCalculator {
         request_id: &str,
         is_batch: bool,
         is_priority: bool,
+        region: Option<&str>,
         voice_id: Option<&str>,
     ) -> Result<CostResult, BillingError> {
         let price = self
             .cache
-            .get(model)
+            .get(model, region)
             .await
             .ok_or_else(|| BillingError::PriceNotFound(model.to_string()))?;
 
@@ -362,7 +368,7 @@ mod tests {
     async fn test_preflight_not_found() {
         let cache = PriceCache::empty();
         let calc = CostCalculator::new(cache);
-        let err = calc.preflight("nonexistent-model").await.unwrap_err();
+        let err = calc.preflight("nonexistent-model", None).await.unwrap_err();
         assert!(matches!(err, BillingError::PriceNotFound(m) if m == "nonexistent-model"));
     }
 
@@ -373,10 +379,10 @@ mod tests {
         let price = make_price(5_000, 15_000);
         {
             let mut guard = cache.inner.write().await;
-            guard.insert("gpt-4o".to_string(), price);
+            guard.insert(("gpt-4o".to_string(), String::new()), price);
         }
         let calc = CostCalculator::new(cache);
-        assert!(calc.preflight("gpt-4o").await.is_ok());
-        assert!(calc.preflight("GPT-4O").await.is_ok()); // case-insensitive
+        assert!(calc.preflight("gpt-4o", None).await.is_ok());
+        assert!(calc.preflight("GPT-4O", None).await.is_ok()); // case-insensitive
     }
 }

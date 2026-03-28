@@ -10,12 +10,12 @@ use tokio::sync::RwLock;
 /// Loaded at server startup and refreshed atomically whenever `POST /api/v1/prices`
 /// is called — no background polling needed.
 ///
-/// Cache key: lowercase model name.
-/// When a model appears with multiple regions/currencies, the first loaded entry wins.
-/// Consumers that need region-specific pricing should call `PriceModel::get()` directly.
+/// Cache key: `(lowercase_model, region)` where region is `""` for the universal price.
+/// Lookup via `get(model, region)` tries the region-specific entry first, then falls
+/// back to the universal entry (region = `""`).
 #[derive(Clone)]
 pub struct PriceCache {
-    pub(crate) inner: Arc<RwLock<HashMap<String, Price>>>,
+    pub(crate) inner: Arc<RwLock<HashMap<(String, String), Price>>>,
 }
 
 impl PriceCache {
@@ -24,6 +24,11 @@ impl PriceCache {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Cache key: `(lowercase_model, region)`.
+    fn make_key(model: &str, region: &str) -> (String, String) {
+        (model.to_lowercase(), region.to_string())
     }
 
     /// Load all prices from the database.
@@ -40,8 +45,9 @@ impl PriceCache {
 
         let mut map = HashMap::with_capacity(prices.len());
         for price in prices {
-            // Normalise key to lowercase for case-insensitive lookup
-            map.entry(price.model.to_lowercase())
+            // Key: (lowercase_model, region). region stored as "" for universal entries.
+            let region = price.region.clone().unwrap_or_default();
+            map.entry(Self::make_key(&price.model, &region))
                 .or_insert(price);
         }
 
@@ -51,29 +57,46 @@ impl PriceCache {
         Ok(())
     }
 
-    /// Look up a price by model name (case-insensitive).
+    /// Look up a price by model name and optional region (case-insensitive).
     ///
-    /// Lookup order:
+    /// Lookup order (for each candidate model name):
+    /// 1. Region-specific entry: `(model, region)`
+    /// 2. Universal entry fallback: `(model, "")`
+    ///
+    /// Model name matching:
     /// 1. Exact match (e.g. `gpt-4o-2024-11-20`)
     /// 2. Prefix match: strip the last `-<segment>` until a match is found
     ///    (e.g. `gpt-4o-2024-11-20` → `gpt-4o-2024-11` → `gpt-4o`)
     ///
-    /// Returns `None` when neither exact nor prefix match succeeds.
-    pub async fn get(&self, model: &str) -> Option<Price> {
+    /// Returns `None` when no match is found.
+    pub async fn get(&self, model: &str, region: Option<&str>) -> Option<Price> {
         let key = model.to_lowercase();
+        let region = region.unwrap_or("");
         let guard = self.inner.read().await;
 
+        // Helper: try region-specific then universal for a given model key
+        let lookup = |m: &str| -> Option<Price> {
+            // Region-specific first
+            if !region.is_empty() {
+                if let Some(p) = guard.get(&(m.to_string(), region.to_string())) {
+                    return Some(p.clone());
+                }
+            }
+            // Universal fallback
+            guard.get(&(m.to_string(), String::new())).cloned()
+        };
+
         // 1. Exact match
-        if let Some(price) = guard.get(&key) {
-            return Some(price.clone());
+        if let Some(price) = lookup(&key) {
+            return Some(price);
         }
 
         // 2. Prefix match: iteratively strip last `-segment`
         let mut prefix = key.as_str();
         while let Some(idx) = prefix.rfind('-') {
             prefix = &prefix[..idx];
-            if let Some(price) = guard.get(prefix) {
-                return Some(price.clone());
+            if let Some(price) = lookup(prefix) {
+                return Some(price);
             }
         }
 
@@ -97,7 +120,7 @@ mod tests {
     #[tokio::test]
     async fn test_empty_cache_returns_none() {
         let cache = PriceCache::empty();
-        assert!(cache.get("gpt-4o").await.is_none());
+        assert!(cache.get("gpt-4o", None).await.is_none());
     }
 
     #[tokio::test]
@@ -141,11 +164,11 @@ mod tests {
 
         {
             let mut guard = cache.inner.write().await;
-            guard.insert(price.model.to_lowercase(), price);
+            guard.insert((price.model.to_lowercase(), String::new()), price);
         }
 
-        assert!(cache.get("gpt-4o").await.is_some());
-        assert!(cache.get("GPT-4O").await.is_some());
-        assert!(cache.get("Gpt-4o").await.is_some());
+        assert!(cache.get("gpt-4o", None).await.is_some());
+        assert!(cache.get("GPT-4O", None).await.is_some());
+        assert!(cache.get("Gpt-4o", None).await.is_some());
     }
 }
