@@ -759,6 +759,8 @@ impl Schema {
         }
 
         // Migration: Add per-type token counts and cost breakdown columns to router_logs
+        // SQLite: INTEGER is 8-byte and safe for nanodollars
+        // Postgres: cost columns must be BIGINT (int8); INTEGER (int4) overflows at ~$2.10/request
         {
             let token_columns = [
                 "ALTER TABLE router_logs ADD COLUMN cache_write_tokens INTEGER DEFAULT 0",
@@ -767,18 +769,22 @@ impl Schema {
                 "ALTER TABLE router_logs ADD COLUMN image_tokens INTEGER DEFAULT 0",
                 "ALTER TABLE router_logs ADD COLUMN embedding_tokens INTEGER DEFAULT 0",
             ];
+            let cost_type = if kind == "postgres" { "BIGINT" } else { "INTEGER" };
             let cost_columns = [
-                "ALTER TABLE router_logs ADD COLUMN input_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN output_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN cache_read_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN cache_write_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN audio_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN image_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN video_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN reasoning_cost INTEGER DEFAULT 0",
-                "ALTER TABLE router_logs ADD COLUMN embedding_cost INTEGER DEFAULT 0",
+                format!("ALTER TABLE router_logs ADD COLUMN input_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN output_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN cache_read_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN cache_write_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN audio_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN image_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN video_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN reasoning_cost {cost_type} DEFAULT 0"),
+                format!("ALTER TABLE router_logs ADD COLUMN embedding_cost {cost_type} DEFAULT 0"),
             ];
-            for sql in token_columns.iter().chain(cost_columns.iter()) {
+            for sql in token_columns.iter() {
+                let _ = sqlx::query(sql).execute(pool).await;
+            }
+            for sql in cost_columns.iter() {
                 let _ = sqlx::query(sql).execute(pool).await;
             }
         }
