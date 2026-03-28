@@ -179,12 +179,24 @@ impl GeminiAdaptor {
             None => None,
         };
 
-        if text.is_none() && openai_finish_reason.is_none() {
+        // Extract usageMetadata from Gemini response (sent in final chunk)
+        let usage_metadata = root.get("usageMetadata");
+        let usage = usage_metadata.map(|m| {
+            json!({
+                "prompt_tokens": m.get("promptTokenCount").and_then(|v| v.as_u64()).unwrap_or(0),
+                "completion_tokens": m.get("candidatesTokenCount").and_then(|v| v.as_u64()).unwrap_or(0),
+                "total_tokens": m.get("totalTokenCount").and_then(|v| v.as_u64()).unwrap_or(0)
+            })
+        });
+
+        // Skip if no content and no usage (truly empty chunk)
+        if text.is_none() && openai_finish_reason.is_none() && usage.is_none() {
             return None;
         }
 
-        let chunk_json = json!({
-            "id": "chatcmpl-stream", // Static ID for now as we don't have state
+        // Build response - include usage in final chunk (when finish_reason is present)
+        let mut chunk_json = json!({
+            "id": "chatcmpl-stream",
             "object": "chat.completion.chunk",
             "created": current_unix_timestamp(),
             "model": "gemini-model",
@@ -198,6 +210,11 @@ impl GeminiAdaptor {
                 }
             ]
         });
+
+        // Include usage stats in the final chunk (OpenAI spec: usage in final chunk before [DONE])
+        if let Some(usage_value) = usage {
+            chunk_json["usage"] = usage_value;
+        }
 
         Some(format!("data: {}\n\n", chunk_json))
     }
@@ -291,5 +308,20 @@ mod tests {
         // Test invalid/empty
         assert!(GeminiAdaptor::convert_stream_response("").is_none());
         assert!(GeminiAdaptor::convert_stream_response("[]").is_none());
+
+        // Test usageMetadata extraction (sent in final chunk)
+        let usage_chunk = r#"{"candidates": [{"finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 25, "totalTokenCount": 35}}"#;
+        let sse3 = GeminiAdaptor::convert_stream_response(usage_chunk).unwrap();
+        assert!(sse3.contains(r#""prompt_tokens":10"#));
+        assert!(sse3.contains(r#""completion_tokens":25"#));
+        assert!(sse3.contains(r#""total_tokens":35"#));
+        assert!(sse3.contains(r#""finish_reason":"stop""#));
+
+        // Test chunk with content and usageMetadata together
+        let full_chunk = r#"{"candidates": [{"content": {"parts": [{"text": "Hello"}]}, "finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 10, "totalTokenCount": 15}}"#;
+        let sse4 = GeminiAdaptor::convert_stream_response(full_chunk).unwrap();
+        assert!(sse4.contains("Hello"));
+        assert!(sse4.contains(r#""prompt_tokens":5"#));
+        assert!(sse4.contains(r#""completion_tokens":10"#));
     }
 }
