@@ -1,4 +1,4 @@
-<!-- /autoplan restore point: /home/core/.gstack/projects/burncloud-burncloud/main-autoplan-restore-20260328-055806.md -->
+<!-- /autoplan restore point: /home/core/.gstack/projects/burncloud-burncloud/main-autoplan-restore-20260328-062023.md -->
 # 统一 Usage 解析模块设计方案
 
 > **目标**: 设计一个统一的 LLM Usage 解析模块，支持 OpenAI、Anthropic、Gemini 等多提供商，精确计算所有类型 token 的费用。
@@ -1015,17 +1015,19 @@ TODO(eng): CLI 显示格式 (plan Section 7)
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/autoplan` (2026-03-28) | 方案范围、优先级、实现偏差 | 1 | issues_open | 5 premises verified: P2 path mismatch, P3 DB migration missing, P4/P5 struct gaps |
-| Eng Review | `/autoplan` (2026-03-28) | 架构、测试覆盖、失败模式 | 1 | issues_open | 7 failure modes registered; 3 P0/P1/P2 TODO buckets; 56 unit tests passing |
+| CEO Review | `/autoplan` (runs 1-3) | 方案范围、优先级、实现偏差 | 3 | issues_open | Run3: 7 new findings incl. prices bootstrap gap (FM-15), Anthropic cache tiers (FM-14), query layer orphan risk |
+| Eng Review | `/autoplan` (runs 1-3) | 架构、测试覆盖、失败模式 | 3 | issues_open | Run3: Postgres BIGINT test gap (critical), tracing syntax OK; 15 failure modes registered total |
 | Codex Review | — | 独立第二意见 | 0 | — | CODEX_NOT_AVAILABLE in this environment |
 | Design Review | — | UI/UX 展示格式 | 0 | — | CLI display (Section 7) deferred to P1 TODO |
 
-**VERDICT: ISSUES_OPEN** — 核心实现扎实 (56 tests, all pass, build clean)。最高优先级缺口:
-1. `router_logs` 缺少 per-type 费用列 → `CostBreakdown` 数据被丢弃 (P0)
-2. `CostBreakdown` 未写入 DB，只写 `total_cost` (P0)
-3. plan.md Section 1 模块路径、Section 8 checkboxes 与实现不符 (低成本修复)
+**VERDICT: PROGRESSING** — P0 DB 迁移已完成并提交 (19e7c34)。2个修复待提交 (BIGINT overflow + log_tx)。
 
-下一步: 执行 Section 11.4 P0 TODOs，然后更新 plan.md Section 1 + 8。
+新增高优先级 backlogs:
+1. **prices bootstrap** (FM-15) — fresh install 全部 cost=0，系统无价值
+2. **query layer** (FM-13) — per-type cost 14列只写不读，必须与 DB schema 同步发布
+3. **Postgres BIGINT integration test** — 防止迁移回归
+
+下一步: 提交2个 run2 修复，然后优先实现 FM-13 (usage API cost breakdown)。
 
 ---
 
@@ -1044,4 +1046,227 @@ TODO(eng): CLI 显示格式 (plan Section 7)
 | 8 | Phase 3 Eng | accepted/rejected_prediction_tokens → defer to P1, not P0 | P3 (pragmatic) | o1 users are edge case today; core billing path works without it. P1 because fee underestimate matters | Add immediately to UnifiedUsage |
 | 9 | Phase 3 Eng | Integration tests for parser→calculator→DB chain → classify as P1 gap | P1 (completeness) | Unit tests pass but end-to-end chain is untested. CostBreakdown write path unverified | Mark as P2/optional |
 | 10 | Phase 3 Eng | FM-04 (Gemini thoughts token semantic difference between adaptor and billing) → document only, no code change | P5 (explicit) | Two layers serve different contracts (OpenAI compat vs billing). Documenting is explicit and sufficient; changing one would break the other | Unify the two definitions |
+
+
+---
+
+## 12. CEO + Eng Review — Run 2 (autoplan — 2026-03-28, post P0 commit)
+
+> 自动生成 · commit: 19e7c34 → after billing fix commit (see below)
+
+### 12.1 前提核对 (2nd run delta)
+
+| 前提 | 状态 | 说明 |
+|------|------|------|
+| P0 DB 迁移已完成 | ✅ 结构上完成 | 14 新列已加入 router_logs；但 write path 有 3 处数据丢失 |
+| CostBreakdown 已持久化到 DB | ⚠️ 部分 | `voice_cost` 永久丢失；`cache_write_cost` 硬编码为 0；Postgres 迁移溢出风险 |
+| 测试可验证持久化正确性 | ❌ 未完成 | 无 round-trip 测试；all-zero cost 的测试不能发现绑定错误 |
+
+---
+
+### 12.2 CEO 新发现 (7 items)
+
+**§1 产品故事未讲清楚**
+当前计划框架为"billing plumbing"。实际价值是"per-request, multi-dimensional cost attribution with provider-neutral data"——这是 self-hosted LLM router 稀缺的能力。Section 7 (CLI display) 被定为 P1 然后推迟；query/reporting layer 完全没有计划。建议在 P1 加入 `/console/api/usage/{user_id}` 的 per-type cost 聚合返回。
+
+**§2 `cache_write_cost` 硬编码为 0 (high)**
+`CostBreakdown.cache_cost` = read + write 合并值，但 router 把它存入 `cache_read_cost` 并将 `cache_write_cost = 0`。Anthropic cache_creation（1.25x 价格）的费用永远无法从 DB 中区分。数据在计算层存在，在持久化层丢失。
+
+**§3 `voice_cost` phantom field (high)**
+`CostBreakdown.voice_cost` 由 calculator 计算，但 router 从未写入任何 DB 列，也没有对应 DB schema。TTS 请求的 voice 成本包含在 `cost`（总计）中但在 per-type 列中消失。目前 router 调用 `calculate()` 而非 `calculate_with_voice()`，voice_cost 始终为 0，掩盖了这个 gap。
+
+**§4 P1 backlog 排序错误 (medium)**
+正确排序应为: (1) 集成测试 → 发现绑定错误 (2) cache split → 需要测试验证 (3) prediction tokens → 真正影响 o1 计费。
+
+**§5 "P0 完成"前提未验证 (critical)**
+"CostBreakdown 已持久化到 DB" 在结构上是真的，但功能上未经测试。`cache_write_cost = 0` 和 `voice_cost` 丢失都是 silent failure，只有集成测试才能发现。
+
+**§6 `audio_cost` 合并 input + output (medium)**
+audio_input (7× surcharge) 和 audio_output 合并为单个 `audio_cost` 列。无法区分 transcription spend 和 TTS spend。Section 7.2 的 CLI 展示要求分开显示，但 DB 不支持。
+
+**§7 per-type cost 数据是 write-only (high, 6-month regret)**
+`ModelUsageStats`、`BillingModelSummary`、`UsageStats` 的聚合查询全部只 SUM `cost`，不返回 per-type 分解。所有 per-type 费用数据写入后无法通过任何 API 读回（只能 raw SQL）。
+
+---
+
+### 12.3 Eng 新发现 (8 items)
+
+**E1: Postgres 迁移溢出 (HIGH — immediate fix)**
+schema.rs 761-779 的迁移块对 SQLite 和 Postgres 使用相同的 `INTEGER DEFAULT 0`。Postgres `INTEGER` = int4（4字节），最大 ~$2.14/请求。`CREATE TABLE` DDL 正确使用了 `BIGINT`，但 ALTER TABLE 迁移路径不一致。
+→ **已修复**：迁移现在对 Postgres 使用 `BIGINT`，SQLite 使用 `INTEGER`（SQLite INTEGER 已是 8 字节）
+
+**E2: `cache_write_cost = 0` 语义误导 (high)**
+router/src/lib.rs:811 把 `cost_breakdown.cache_cost`（read+write 合并）存入 `cache_read_cost`。注释说"split in future"，但 calculator 内部已有分拆——只需将中间变量暴露为 `CostBreakdown` 独立字段。
+→ **已修复注释**：清楚标注 TODO 位置（calculator.rs 的 compute_breakdown 函数）
+
+**E3: `voice_cost` 永久丢失 (medium)**
+types.rs:60 的 `voice_cost`、total() 函数里包含它，但无 DB 列，router write path 不绑定它。
+→ 待修复（P1）
+
+**E4: `audio_cost` 合并 input/output (medium)**
+calculator.rs:182-187 合并两个不同价格的 audio 类型。DB 无法区分。
+
+**E5: `log_tx.send()` 结果被丢弃 (medium)**
+router/src/lib.rs:821 之前用 `let _ = ...`，billing 数据静默丢失无日志。
+→ **已修复**：channel send 失败时记录 `tracing::error!`
+
+**E6: 注释误导 (low)**
+已通过更新 cache_write_cost 注释修复。
+
+**E7: 测试只验证 HTTP 200，不验证 cost 字段值 (medium)**
+log_api_tests.rs:13 插入全零 cost 字段，不做 round-trip 值验证。绑定顺序错误会静默通过。
+
+**E8: `prompt_tokens as i32` 无溢出警告 (low)**
+router/src/lib.rs:797-798，超大请求会静默截断，而 `nano()` 函数有警告。
+
+---
+
+### 12.4 架构图 (更新后)
+
+```
+HTTP Request
+    → router/src/lib.rs (handler)
+        → proxy_logic (upstream call)
+        → UnifiedTokenCounter::get_usage() → UnifiedUsage
+        → CostCalculator::calculate() → CostResult
+            └─ breakdown: CostBreakdown {
+                 input_cost, output_cost,
+                 cache_cost (read+write MERGED ⚠️),
+                 audio_cost (input+output MERGED ⚠️),
+                 voice_cost (PHANTOM — no DB column ⚠️),
+                 image_cost, video_cost,
+                 reasoning_cost, embedding_cost
+               }
+        → DbRouterLog {
+             input_cost ✅, output_cost ✅,
+             cache_read_cost = cache_cost (MISLABELLED ⚠️),
+             cache_write_cost = 0 (WRONG ⚠️),
+             audio_cost = audio_input+output merged ✅/⚠️,
+             image_cost ✅, video_cost ✅,
+             reasoning_cost ✅, embedding_cost ✅,
+             voice_cost → DROPPED ⚠️
+           }
+        → log_tx.send(log) → RouterLogModel::insert → DB
+            ⚠️ channel failure now logged (fixed)
+
+DB Query Layer:
+    ModelUsageStats.cost_nano = SUM(cost) only ⚠️ NO per-type
+    BillingModelSummary.cost_usd = SUM(cost) only ⚠️ NO per-type
+```
+
+---
+
+### 12.5 P0/P1/P2 更新后的 TODO 列表
+
+#### P0 (必须做，解锁数据质量)
+```
+TODO: 集成测试 — DbRouterLog per-type cost round-trip
+文件: crates/database/crates/database-router-log/tests/
+内容: insert 非零 per-type cost → read back → assert field-by-field
+测试计划: ~/.gstack/projects/burncloud-burncloud/main-billing-test-plan-*.md
+```
+
+#### P1 (高价值，收益明确)
+```
+TODO: 拆分 CostBreakdown.cache_cost → cache_read_cost + cache_write_cost
+文件: types.rs + calculator.rs (暴露内部 cache_read_nano/cache_write_nano) + router/src/lib.rs
+
+TODO: 修复 voice_cost — 添加 DB 列或合并进 audio_cost
+文件: schema.rs + DbRouterLog + router/src/lib.rs
+建议: 合并进 audio_cost (voice = audio output 的特殊 pricing，非单独类型)
+
+TODO: 扩展 ModelUsageStats + BillingModelSummary 返回 per-type cost
+文件: database-router-log/src/lib.rs (SUM 查询 + 结构体字段)
+价值: 让 per-type cost 数据从 write-only 变成可查询
+```
+
+#### P2 (重要但可推迟)
+```
+TODO: 拆分 audio_cost → audio_input_cost + audio_output_cost
+文件: types.rs + calculator.rs + DB schema
+
+TODO: 补充 accepted/rejected_prediction_tokens (o1)
+文件: types.rs + openai parser + calculator
+
+TODO: CLI 展示格式 (plan Section 7)
+```
+
+---
+
+### 12.6 失败模式注册表 (更新)
+
+| ID | 场景 | 当前行为 | 严重度 | 状态 |
+|----|------|---------|-------|------|
+| FM-01 | Gemini streaming usageMetadata 不在最后一块 | 取最后非None值 | 中 | 未修复 |
+| FM-02 | DB 迁移中途失败 | 部分列存在 | 高 | 未修复 |
+| FM-03 | prices 表无此 model | cost=0，无 warn | 中 | 未修复 |
+| FM-04 | Gemini thinks tokens 语义层差异 | 有文档说明 | 低 | 已记录 |
+| FM-05 | price_sync_handler dead_code | 警告，无影响 | 低 | 未修复 |
+| FM-06 | streaming token overflow | 截断到 i64::MAX | 极低 | 未修复 |
+| FM-07 | accepted/rejected_prediction_tokens 未提取 | o1 费用低估 | 中 | P2 backlog |
+| FM-08 | Postgres 迁移 INTEGER 溢出 | cost > $2.14 时截断 | 高 | ✅ 已修复 |
+| FM-09 | voice_cost 丢失 | TTS per-type cost 不记录 | 中 | P1 backlog |
+| FM-10 | cache_write_cost = 0 | Anthropic cache creation 无法对账 | 高 | P1 backlog |
+| FM-11 | audio_cost 合并 input+output | 无法区分 transcription vs TTS | 中 | P2 backlog |
+| FM-12 | log_tx 满时 billing 数据丢失 | 静默丢失 | 中 | ✅ 已修复(有日志) |
+| FM-13 | per-type cost 无聚合查询 | 数据 write-only | 高 | P1 backlog |
+
+---
+
+<!-- AUTONOMOUS DECISION LOG (run 2) -->
+### 12.7 Decision Audit Trail (Run 2)
+
+| # | Phase | Decision | Principle | Rationale | Rejected |
+|---|-------|----------|-----------|-----------|----------|
+| R2-1 | Phase 0 | Design 跳过 (无 UI scope) | P3 | 同第1轮，plan 无 component/form/modal 词汇 | Run design |
+| R2-2 | Eng Fix | Postgres 迁移立即修复 (schema.rs) | P1+P6 | $2.10 overflow 是真实 bug，已提交代码不应带已知溢出上线 | Defer to P1 |
+| R2-3 | Eng Fix | log_tx 错误立即修复 | P1 | Billing data loss with no visibility = non-negotiable | Defer to P2 |
+| R2-4 | CEO | voice_cost → P1 backlog (not immediate fix) | P3 | Router 当前调用 calculate() 非 calculate_with_voice()，voice_cost=0 常态，无立即 data loss | Fix now |
+| R2-5 | CEO | per-type query layer → P1 backlog | P2 | 影响产品价值但不影响数据准确性；P0 已解决写入问题 | Fix now |
+| R2-6 | CEO | audio split → P2 backlog | P3 | 合并 audio cost 是可接受折中，数据不丢失，只是无法分拆 | Fix now |
+
+---
+
+## 13. Autoplan Run 3 — 增量审查 (2026-03-28)
+
+> 当前状态: 2个未提交修复 (schema.rs BIGINT + lib.rs log_tx)，build 通过，run 2 分析已全覆盖。
+
+### 13.1 CEO 新增发现 [subagent-only]
+
+| # | 发现 | 严重度 | 行动 |
+|---|------|-------|------|
+| C1 | Billing data 是 table stakes (LiteLLM/OpenRouter 都有)，真正稀缺的是 per-user/channel spend limits + alerting — 当前只有 data layer 无 product layer | High | 在 P1 之前定义一个客户可见能力 (e.g. 月度预算执行器) |
+| C2 | prices 表填充路径未定义 — 无 seed SQL，无 auto-sync，fresh install 全部 cost=0 | High | 新增 TODO: prices bootstrap (seed SQL 或 LiteLLM 价格 JSON sync) |
+| C3 | FM-13 (per-type query layer) 延迟 = 14列 schema 6个月后是孤儿数据 | Critical | 最低可行路径: `/console/api/usage/{user_id}` 返回 cost_breakdown 对象，与 DB 迁移同步发布 |
+| C4 | Batch/Priority request_mode 无检测 — /v1/batches 可能已在代理，以标准价格计费 | Medium | 一次性审计: router_logs 是否有 batch endpoint 请求 |
+| C5 | Anthropic 扩展缓存层 (ephemeral_5m vs 1h) 价格不同 — 当前 cache_write_price 统一处理，Claude 4 主导后系统性低估 | Medium | 新增 FM-14 |
+| C6 | 未评估替代方案: provider billing API 事后拉取 vs 实时解析 | Medium | 设计文档添加 reconciliation 策略说明 |
+| C7 | router_logs 无分区策略/TTL/保留期 — 25列大表无索引规划 | Medium | P2: 定义数据保留策略 + created_at 范围索引 |
+
+### 13.2 Eng 新增发现
+
+| # | 文件:行 | 发现 | 严重度 |
+|---|---------|------|-------|
+| E1 | `router/src/lib.rs:824` | `tracing::error!(cost, ...)` 语法 — 经 build 验证，shorthand 有效，非 bug | N/A (false positive) |
+| E2 | `router/src/lib.rs:824` | request_id 在 line 790 已 move 入 DbRouterLog — error log 无请求关联 | Medium |
+| E3 | `router/src/lib.rs:170,824` | channel 满时 billing record 永久丢失，error 消息未说明不可恢复 | Medium |
+| E4 | (缺测试) | 无 Postgres BIGINT 迁移 round-trip 测试 (cost > 2,147,483,647) | Critical (test gap) |
+
+### 13.3 新增失败模式
+
+| ID | 场景 | 当前行为 | 严重度 | 状态 |
+|----|------|---------|-------|------|
+| FM-14 | Anthropic ephemeral_5m vs ephemeral_1h cache 层 | 统一 cache_write_price，Claude 4 后系统性误差 | 中 | P1 backlog |
+| FM-15 | fresh install prices 表为空 | 全部 cost=0，无告警 | 高 | P1 backlog (prices bootstrap) |
+
+### 13.4 Decision Audit Trail (Run 3)
+
+| # | Phase | Decision | Principle | Rationale | Rejected |
+|---|-------|----------|-----------|-----------|----------|
+| R3-1 | Phase 0 | Design 跳过 (无 UI scope) | P3 | 无 component/form/modal 词汇 | Run design |
+| R3-2 | Eng | tracing::error!(cost, ...) 无需改 | P5 | Build 验证通过，shorthand 合法 | Change syntax |
+| R3-3 | CEO | FM-14 Anthropic cache tiers → P1 backlog | P2 | Claude 4 已开始推广，non-trivial 计费误差 | Defer to P2 |
+| R3-4 | CEO | FM-15 prices bootstrap → P1 backlog | P1 | Fresh install $0 billing = 完全无价值的系统 | Defer to P2 |
+| R3-5 | CEO | query layer (FM-13) minimum viable = breakdown field in usage API | P1+P6 | Schema migration 发布同时必须有读路径，否则 write-only orphan | Defer all query work |
+| R3-6 | Eng | 提交2个 run2 修复 as-is | P3+P6 | Build pass + overflow bug + billing data loss = 必须提交 | Hold for more changes |
 
