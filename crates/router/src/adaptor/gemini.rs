@@ -182,9 +182,11 @@ impl GeminiAdaptor {
         // Extract usageMetadata from Gemini response (sent in final chunk)
         let usage_metadata = root.get("usageMetadata");
         let usage = usage_metadata.map(|m| {
+            let candidates = m.get("candidatesTokenCount").and_then(|v| v.as_u64()).unwrap_or(0);
+            let thoughts = m.get("thoughtsTokenCount").and_then(|v| v.as_u64()).unwrap_or(0);
             json!({
                 "prompt_tokens": m.get("promptTokenCount").and_then(|v| v.as_u64()).unwrap_or(0),
-                "completion_tokens": m.get("candidatesTokenCount").and_then(|v| v.as_u64()).unwrap_or(0),
+                "completion_tokens": candidates + thoughts,
                 "total_tokens": m.get("totalTokenCount").and_then(|v| v.as_u64()).unwrap_or(0)
             })
         });

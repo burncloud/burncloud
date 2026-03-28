@@ -11,11 +11,12 @@ use serde_json::Value;
 /// Context caching: `usageMetadata["cachedContentTokenCount"]`
 pub struct GeminiParser;
 
-/// Strip leading/trailing array brackets and commas that appear in some Gemini stream outputs.
+/// Strip SSE `data: ` prefix and array brackets/commas from Gemini stream chunks.
 fn clean_gemini_chunk(chunk: &str) -> &str {
-    chunk
-        .trim()
-        .trim_start_matches('[')
+    let s = chunk.trim();
+    // Strip SSE "data: " prefix used by Gemini's streamGenerateContent endpoint
+    let s = s.strip_prefix("data: ").unwrap_or(s).trim();
+    s.trim_start_matches('[')
         .trim_start_matches(',')
         .trim_end_matches(',')
         .trim_end_matches(']')
@@ -221,5 +222,15 @@ mod tests {
         let parser = GeminiParser;
         assert!(parser.parse_streaming_chunk("").unwrap().is_none());
         assert!(parser.parse_streaming_chunk("  ").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_parse_streaming_chunk_sse_prefix() {
+        // Real Gemini SSE chunks arrive as "data: {...}"
+        let parser = GeminiParser;
+        let chunk = r#"data: {"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":20}}"#;
+        let u = parser.parse_streaming_chunk(chunk).unwrap().unwrap();
+        assert_eq!(u.input_tokens, 10);
+        assert_eq!(u.output_tokens, 20);
     }
 }

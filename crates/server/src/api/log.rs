@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use burncloud_database_router::RouterDatabase;
@@ -29,6 +29,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/console/internal/billing/summary",
             get(billing_summary_handler),
+        )
+        .route(
+            "/console/internal/prices/sync",
+            post(price_sync_handler),
         )
 }
 
@@ -76,6 +80,40 @@ async fn billing_summary_handler(
         std::env::var("BURNCLOUD_INTERNAL_SECRET").ok().as_deref(),
     )
     .await
+}
+
+/// POST /console/internal/prices/sync
+///
+/// Triggers an immediate forced price sync. Waits up to 60 seconds for completion.
+async fn price_sync_handler(State(state): State<AppState>) -> Response {
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    if state.force_sync_tx.send(reply_tx).await.is_err() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Price sync task is not running" })),
+        )
+            .into_response();
+    }
+    match tokio::time::timeout(std::time::Duration::from_secs(60), reply_rx).await {
+        Ok(Ok(result)) => Json(json!({
+            "models_synced": result.models_synced,
+            "currencies_synced": result.currencies_synced,
+            "tiers_synced": result.tiered_pricing_synced,
+            "errors": result.errors,
+            "source": result.source,
+        }))
+        .into_response(),
+        Ok(Err(_)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Sync task dropped the reply channel" })),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(json!({ "error": "Price sync timed out after 60s" })),
+        )
+            .into_response(),
+    }
 }
 
 async fn billing_summary_inner(
