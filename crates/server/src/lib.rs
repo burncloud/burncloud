@@ -6,15 +6,18 @@ use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
 use burncloud_router::create_router_app;
+use burncloud_router::price_sync::SyncResult;
 use burncloud_service_monitor::SystemMonitorService;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
     pub monitor: Arc<SystemMonitorService>,
+    pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
 }
 
 pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Result<Router> {
@@ -22,16 +25,17 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     // Start auto collection in background
     let _ = monitor.start_auto_update().await;
 
+    // 3. Data Plane Router (Fallback) — must be created first to get force_sync_tx
+    let (router_app, force_sync_tx) = create_router_app(db.clone()).await?;
+
     let state = AppState {
         db: db.clone(),
         monitor,
+        force_sync_tx,
     };
 
     // 1. Management API Router
     let api_router = api::routes(state.clone());
-
-    // 3. Data Plane Router (Fallback)
-    let router_app = create_router_app(db.clone()).await?;
 
     let mut app = Router::new().merge(api_router);
 

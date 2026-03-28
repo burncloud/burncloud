@@ -19,7 +19,7 @@ pub async fn start_test_server(port: u16) {
     let db = create_default_database().await.expect("Failed to open DB");
     let db_arc = Arc::new(db);
 
-    let app = burncloud_router::create_router_app(db_arc)
+    let (app, _force_sync_tx) = burncloud_router::create_router_app(db_arc)
         .await
         .expect("Failed to create app");
 

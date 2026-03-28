@@ -129,7 +129,9 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
     Ok(RouterConfig { upstreams, groups })
 }
 
-pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
+pub async fn create_router_app(
+    db: Arc<Database>,
+) -> anyhow::Result<(Router, mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>)> {
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
@@ -195,7 +197,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         api_version_detector,
         price_cache,
         cost_calculator,
-        force_sync_tx,
+        force_sync_tx: force_sync_tx.clone(),
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -204,11 +206,9 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
 
     let reload_path = format!("{}/reload", INTERNAL_PREFIX);
     let health_path = format!("{}/health", INTERNAL_PREFIX);
-    let prices_sync_path = format!("{}/prices/sync", INTERNAL_PREFIX);
     let app = Router::new()
         .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
-        .route(&prices_sync_path, post(price_sync_handler))
         .route("/v1/models", axum::routing::get(models_handler))
         .route("/api/v1/usage", axum::routing::get(usage_handler))
         .route("/api/v1/usage/models", axum::routing::get(usage_models_handler))
@@ -216,7 +216,7 @@ pub async fn create_router_app(db: Arc<Database>) -> anyhow::Result<Router> {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    Ok(app)
+    Ok((app, force_sync_tx))
 }
 
 // ...
