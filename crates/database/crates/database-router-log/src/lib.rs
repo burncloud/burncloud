@@ -20,7 +20,7 @@ pub struct DbRouterLog {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
     #[sqlx(default)]
-    /// Cost in nanodollars (9 decimal precision)
+    /// Total cost in nanodollars (9 decimal precision)
     pub cost: i64,
     #[sqlx(default)]
     pub model: Option<String>,
@@ -32,6 +32,36 @@ pub struct DbRouterLog {
     pub pricing_region: Option<String>,
     #[sqlx(default)]
     pub video_tokens: i32,
+    // Per-type token counts (added in billing expansion)
+    #[sqlx(default)]
+    pub cache_write_tokens: i32,
+    #[sqlx(default)]
+    pub audio_input_tokens: i32,
+    #[sqlx(default)]
+    pub audio_output_tokens: i32,
+    #[sqlx(default)]
+    pub image_tokens: i32,
+    #[sqlx(default)]
+    pub embedding_tokens: i32,
+    // Per-type cost breakdown in nanodollars
+    #[sqlx(default)]
+    pub input_cost: i64,
+    #[sqlx(default)]
+    pub output_cost: i64,
+    #[sqlx(default)]
+    pub cache_read_cost: i64,
+    #[sqlx(default)]
+    pub cache_write_cost: i64,
+    #[sqlx(default)]
+    pub audio_cost: i64,
+    #[sqlx(default)]
+    pub image_cost: i64,
+    #[sqlx(default)]
+    pub video_cost: i64,
+    #[sqlx(default)]
+    pub reasoning_cost: i64,
+    #[sqlx(default)]
+    pub embedding_cost: i64,
     pub created_at: Option<String>,
 }
 
@@ -67,16 +97,19 @@ impl RouterLogModel {
         let is_postgres = db.kind() == "postgres";
 
         let placeholders = if is_postgres {
-            "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14"
+            "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28"
         } else {
-            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+            "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?"
         };
         let sql = format!(
             r#"
             INSERT INTO router_logs
             (request_id, user_id, path, upstream_id, status_code, latency_ms,
              prompt_tokens, completion_tokens, cost,
-             model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens)
+             model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens,
+             cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens,
+             input_cost, output_cost, cache_read_cost, cache_write_cost,
+             audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost)
             VALUES ({})
             "#,
             placeholders
@@ -97,6 +130,20 @@ impl RouterLogModel {
             .bind(log.reasoning_tokens)
             .bind(&log.pricing_region)
             .bind(log.video_tokens)
+            .bind(log.cache_write_tokens)
+            .bind(log.audio_input_tokens)
+            .bind(log.audio_output_tokens)
+            .bind(log.image_tokens)
+            .bind(log.embedding_tokens)
+            .bind(log.input_cost)
+            .bind(log.output_cost)
+            .bind(log.cache_read_cost)
+            .bind(log.cache_write_cost)
+            .bind(log.audio_cost)
+            .bind(log.image_cost)
+            .bind(log.video_cost)
+            .bind(log.reasoning_cost)
+            .bind(log.embedding_cost)
             .execute(conn.pool())
             .await?;
 
@@ -131,7 +178,7 @@ impl RouterLogModel {
             "LIMIT ? OFFSET ?"
         };
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, created_at FROM router_logs ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, created_at FROM router_logs ORDER BY created_at DESC {}",
             limit_offset
         );
         let logs = sqlx::query_as::<_, DbRouterLog>(&sql)
@@ -183,7 +230,7 @@ impl RouterLogModel {
             "LIMIT ? OFFSET ?".to_string()
         };
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, created_at FROM router_logs {} ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, created_at FROM router_logs {} ORDER BY created_at DESC {}",
             where_clause, limit_offset
         );
 
