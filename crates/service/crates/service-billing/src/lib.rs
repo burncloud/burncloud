@@ -9,9 +9,9 @@
 //!
 //! # Usage
 //! 1. `PriceCache::load(&db).await?` — load at startup
-//! 2. `calculator.preflight(&model)` — check before forwarding (503 if missing)
+//! 2. `calculator.preflight(&model, region)` — check before forwarding (503 if missing)
 //! 3. `get_parser(channel_type).parse_response(&json)` — extract usage
-//! 4. `calculator.calculate(&model, &usage, &req_id, is_batch, is_priority)` — compute cost
+//! 4. `calculator.calculate(&model, &usage, &req_id, is_batch, is_priority, region)` — compute cost
 
 pub mod cache;
 pub mod calculator;

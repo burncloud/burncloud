@@ -756,7 +756,7 @@ async fn proxy_handler(
         if let Some(model) = &model_name {
             match state
                 .cost_calculator
-                .calculate(model, &usage, &request_id, is_batch_request, is_priority_request)
+                .calculate(model, &usage, &request_id, is_batch_request, is_priority_request, pricing_region.as_deref())
                 .await
             {
                 Ok(result) => result.usd_amount_nano,
@@ -998,7 +998,7 @@ async fn proxy_logic(
     // Preflight billing check: reject requests for models with no price configured.
     // Returns 400 to prevent unbilled usage on unknown models.
     if let Some(model) = model_name {
-        if let Err(e) = state.cost_calculator.preflight(model).await {
+        if let Err(e) = state.cost_calculator.preflight(model, None).await {
             tracing::warn!(model = %model, "Preflight billing check failed — rejecting request: {e}");
             return (
                 build_response_with_header(
