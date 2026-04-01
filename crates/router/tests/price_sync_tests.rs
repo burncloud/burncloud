@@ -272,6 +272,7 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
                                 input_price: to_nano(5.0),
                                 output_price: to_nano(15.0),
                                 source: Some("test".to_string()),
+                                ..Default::default()
                             },
                         );
                         pricing
@@ -483,6 +484,7 @@ async fn test_model_count_drop_protection() -> anyhow::Result<()> {
             input_price: to_nano(1.0),
             output_price: to_nano(2.0),
             source: None,
+            ..Default::default()
         },
     );
     models.insert(

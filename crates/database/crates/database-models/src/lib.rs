@@ -10,6 +10,7 @@ mod price;
 mod protocol_config;
 mod tiered_price;
 mod token;
+mod video_task;
 
 // Re-export common utility
 pub use common::current_timestamp;
@@ -37,6 +38,9 @@ pub use price::PriceModel;
 
 // Re-export Price and TieredPrice types from common for convenience
 pub use burncloud_common::types::{Price, PriceInput, TieredPrice, TieredPriceInput};
+
+// Re-export video task model
+pub use video_task::{VideoTask, VideoTaskModel};
 
 // Re-export database error
 pub use burncloud_database::DatabaseError;

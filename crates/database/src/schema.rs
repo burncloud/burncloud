@@ -355,6 +355,7 @@ impl Schema {
                     embedding_price BIGINT,
                     image_price BIGINT,
                     video_price BIGINT,
+                    music_price BIGINT,
                     alias_for TEXT,
                     source TEXT,
                     region TEXT NOT NULL DEFAULT '',
@@ -396,6 +397,7 @@ impl Schema {
                     embedding_price BIGINT,
                     image_price BIGINT,
                     video_price BIGINT,
+                    music_price BIGINT,
                     alias_for VARCHAR(255),
                     source VARCHAR(64),
                     region VARCHAR(32) NOT NULL DEFAULT '',
@@ -577,6 +579,40 @@ impl Schema {
         // No new table creation - the prices table above is now the primary table
         // Note: prices_v2_sql removed - deprecated table, no longer needed
 
+        // 11. Video Tasks Table (async video generation task_id → channel_id mapping)
+        // Required for routing GET /v1/videos/{task_id} polling requests to correct upstream
+        let video_tasks_sql = match kind.as_str() {
+            "sqlite" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS video_tasks (
+                    task_id TEXT PRIMARY KEY,
+                    channel_id INTEGER NOT NULL,
+                    user_id TEXT,
+                    model TEXT,
+                    duration INTEGER DEFAULT 5,
+                    resolution TEXT DEFAULT '720p',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_video_tasks_created_at ON video_tasks(created_at);
+            "#
+            }
+            "postgres" => {
+                r#"
+                CREATE TABLE IF NOT EXISTS video_tasks (
+                    task_id TEXT PRIMARY KEY,
+                    channel_id INTEGER NOT NULL,
+                    user_id TEXT,
+                    model TEXT,
+                    duration INTEGER DEFAULT 5,
+                    resolution TEXT DEFAULT '720p',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_video_tasks_created_at ON video_tasks(created_at);
+            "#
+            }
+            _ => "",
+        };
+
         // Execute all
         if !users_sql.is_empty() {
             pool.execute(users_sql).await?;
@@ -607,6 +643,9 @@ impl Schema {
         }
         if !exchange_rates_sql.is_empty() {
             pool.execute(exchange_rates_sql).await?;
+        }
+        if !video_tasks_sql.is_empty() {
+            pool.execute(video_tasks_sql).await?;
         }
 
         // Migration: Add api_version column to channels if it doesn't exist
@@ -992,6 +1031,7 @@ impl Schema {
             "embedding_price",
             "image_price",
             "video_price",
+            "music_price",
         ];
         for col in multimodal_cols {
             if kind == "sqlite" {

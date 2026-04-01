@@ -146,6 +146,7 @@ mod tests {
             embedding_price: None,
             image_price: None,
             video_price: None,
+            music_price: None,
             source: None,
             region: None,
             context_window: None,

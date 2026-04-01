@@ -28,6 +28,7 @@ use axum::{
 use balancer::RoundRobinBalancer;
 use burncloud_common::types::OpenAIChatRequest;
 use burncloud_database::Database;
+use burncloud_database_models::{ChannelModel, VideoTask, VideoTaskModel};
 use burncloud_database_router::{DbRouterLog, RouterDatabase, TokenValidationResult};
 use channel_state::ChannelStateTracker;
 use circuit_breaker::CircuitBreaker;
@@ -441,30 +442,25 @@ async fn usage_models_handler(
     }
 }
 
-/// Inject video_tokens into usage for Veo requests.
+/// Inject video_tokens into usage for video models whose responses contain no usage field.
 ///
-/// Veo's `predictLongRunning` response contains no `usageMetadata`, so `GeminiParser`
-/// returns all-zero usage. When the request was successful and the model is a Veo model,
-/// compute video_tokens from the request-side fields `durationSeconds * sampleCount`.
+/// Used for request-side billing when the upstream response has no token/usage data.
+/// Injects `video_tokens` into usage only when the request succeeded and usage is currently empty.
+/// `source` is used for tracing (e.g. "veo", "seedance").
 ///
 /// Exposed as `pub(crate)` so unit tests can call it without a running server.
-pub(crate) fn inject_veo_video_tokens(
-    model: Option<&str>,
+pub(crate) fn inject_video_tokens_if_empty(
     status: axum::http::StatusCode,
     mut usage: burncloud_service_billing::UnifiedUsage,
-    duration_secs: i64,
-    sample_count: i64,
+    video_tokens: i64,
+    source: &str,
 ) -> burncloud_service_billing::UnifiedUsage {
-    if status.is_success()
-        && usage.is_empty()
-        && model.map_or(false, |m| m.to_lowercase().contains("veo"))
-    {
-        usage.video_tokens = duration_secs * sample_count;
+    if status.is_success() && usage.is_empty() && video_tokens > 0 {
+        usage.video_tokens = video_tokens;
         tracing::info!(
-            duration_secs,
-            sample_count,
-            video_tokens = usage.video_tokens,
-            "Veo request-side billing: injected video_tokens"
+            video_tokens,
+            source,
+            "Request-side billing: injected video_tokens"
         );
     }
     usage
@@ -692,6 +688,25 @@ async fn proxy_handler(
         (dur, count)
     };
 
+    // Extract Seedance / NewApi video generation fields for request-side billing.
+    // Seedance's response has no usage field; duration and resolution are in the request body.
+    let (seedance_duration_secs, seedance_resolution) = if path == "/v1/video/generations" {
+        let v = serde_json::from_slice::<serde_json::Value>(&body_bytes).ok();
+        let dur = v
+            .as_ref()
+            .and_then(|v| v.get("duration").and_then(|d| d.as_i64()))
+            .filter(|&d| d > 0) // duration=-1 means model-decided; fall back to default
+            .unwrap_or(5);
+        let res = v
+            .as_ref()
+            .and_then(|v| v.get("resolution").and_then(|r| r.as_str()))
+            .unwrap_or("720p")
+            .to_string();
+        (dur, res)
+    } else {
+        (5i64, "720p".to_string())
+    };
+
     // Detect request type for advanced billing
     // 1. Batch API: detected via headers or metadata.batch_id
     // 2. Priority: detected via metadata.priority or x-priority header
@@ -721,11 +736,87 @@ async fn proxy_handler(
         (batch, priority)
     };
 
+    // Video task polling: GET /v1/videos/{task_id}
+    // Must be handled before proxy_logic because GET requests have no model field for routing.
+    // Look up the task_id → channel_id mapping saved during the original POST.
+    if method == Method::GET && path.starts_with("/v1/videos/") {
+        let task_id = path.trim_start_matches("/v1/videos/");
+
+        let task = match VideoTaskModel::get_by_task_id(&state.db, task_id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                return build_response_with_header(
+                    StatusCode::NOT_FOUND,
+                    "content-type",
+                    "application/json",
+                    Body::from(format!(
+                        r#"{{"error":{{"message":"Task {} not found","code":"task_not_found"}}}}"#,
+                        task_id
+                    )),
+                );
+            }
+            Err(e) => {
+                tracing::error!(error = ?e, task_id, "DB error looking up video task");
+                return build_response_with_header(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "content-type",
+                    "application/json",
+                    Body::from(r#"{"error":{"message":"Database error","code":"internal_error"}}"#),
+                );
+            }
+        };
+
+        let channel = match ChannelModel::get_by_id(&state.db, task.channel_id).await {
+            Ok(Some(c)) => c,
+            Ok(None) | Err(_) => {
+                return build_response_with_header(
+                    StatusCode::BAD_GATEWAY,
+                    "content-type",
+                    "application/json",
+                    Body::from(r#"{"error":{"message":"Upstream channel not available","code":"channel_unavailable"}}"#),
+                );
+            }
+        };
+
+        let base_url = channel.base_url.unwrap_or_default();
+        let upstream_url = format!("{}/v1/videos/{}", base_url.trim_end_matches('/'), task_id);
+
+        let upstream_resp = state
+            .client
+            .get(&upstream_url)
+            .header("Authorization", format!("Bearer {}", channel.key))
+            .timeout(std::time::Duration::from_secs(600))
+            .send()
+            .await;
+
+        return match upstream_resp {
+            Ok(resp) => {
+                let status = resp.status();
+                let resp_bytes = resp.bytes().await.unwrap_or_default();
+                build_response_with_header(
+                    status,
+                    "content-type",
+                    "application/json",
+                    Body::from(resp_bytes),
+                )
+            }
+            Err(e) => {
+                tracing::error!(error = ?e, upstream_url, "GET video task upstream error");
+                build_response_with_header(
+                    StatusCode::BAD_GATEWAY,
+                    "content-type",
+                    "application/json",
+                    Body::from(r#"{"error":{"message":"Upstream request failed","code":"bad_gateway"}}"#),
+                )
+            }
+        };
+    }
+
     // Create unified token counter for streaming response parsing
     let token_counter = Arc::new(UnifiedTokenCounter::new());
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status, pricing_region) = proxy_logic(
+    let (response, upstream_id, final_status, pricing_region, video_task_id) = proxy_logic(
         &state,
         method,
         uri,
@@ -739,17 +830,41 @@ async fn proxy_handler(
     )
     .await;
 
+    // Save video task mapping asynchronously (fire-and-forget)
+    if let Some(task_id) = video_task_id {
+        if let Some(ch_id) = upstream_id.as_ref().and_then(|s| s.parse::<i32>().ok()) {
+            let db = state.db.clone();
+            let task = VideoTask {
+                task_id,
+                channel_id: ch_id,
+                user_id: Some(user_id.clone()),
+                model: model_name.clone(),
+                duration: seedance_duration_secs,
+                resolution: seedance_resolution.clone(),
+            };
+            tokio::spawn(async move {
+                if let Err(e) = VideoTaskModel::save(&db, &task).await {
+                    tracing::warn!(error = ?e, "Failed to save video task mapping");
+                }
+            });
+        }
+    }
+
     // Get final unified token usage
     let usage = token_counter.get_usage();
 
     // Veo request-side billing: inject video_tokens when response has no usageMetadata
-    let usage = inject_veo_video_tokens(
-        model_name.as_deref(),
-        final_status,
-        usage,
-        video_duration_secs,
-        video_sample_count,
-    );
+    let veo_tokens = if model_name.as_deref().map_or(false, |m| m.to_lowercase().contains("veo")) {
+        video_duration_secs * video_sample_count
+    } else {
+        0
+    };
+    let usage = inject_video_tokens_if_empty(final_status, usage, veo_tokens, "veo");
+
+    // Seedance request-side billing: inject video_tokens from duration × resolution_weight
+    let resolution_weight: i64 = if seedance_resolution == "720p" { 2 } else { 1 };
+    let seedance_tokens = seedance_duration_secs * resolution_weight;
+    let usage = inject_video_tokens_if_empty(final_status, usage, seedance_tokens, "seedance");
 
     // Calculate cost using CostCalculator (nanodollars)
     let (cost, cost_breakdown) = if !usage.is_empty() {
@@ -859,7 +974,7 @@ async fn proxy_logic(
     token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
-) -> (Response, Option<String>, StatusCode, Option<String>) {
+) -> (Response, Option<String>, StatusCode, Option<String>, Option<String>) {
     let config = state.config.read().await;
 
     // 1. Model Routing (Priority)
@@ -946,6 +1061,7 @@ async fn proxy_logic(
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
                         None,
+                        None,
                     );
                 }
             }
@@ -973,6 +1089,7 @@ async fn proxy_logic(
                     None,
                     StatusCode::NOT_FOUND,
                     None,
+                    None,
                 );
             }
         };
@@ -988,6 +1105,7 @@ async fn proxy_logic(
                         ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
+                        None,
                         None,
                     );
                 }
@@ -1013,6 +1131,7 @@ async fn proxy_logic(
             None,
             StatusCode::INTERNAL_SERVER_ERROR,
             None,
+            None,
         );
     }
 
@@ -1033,6 +1152,7 @@ async fn proxy_logic(
                 ),
                 None,
                 StatusCode::BAD_REQUEST,
+                None,
                 None,
             );
         }
@@ -1223,7 +1343,8 @@ async fn proxy_logic(
                                 last_upstream_id,
                                 status,
                                 selected_pricing_region.clone(),
-                            );
+                                None,
+                                );
                         } else {
                             // Non-streaming passthrough
                             let resp_bytes = match resp.bytes().await {
@@ -1256,7 +1377,8 @@ async fn proxy_logic(
                                 last_upstream_id,
                                 status,
                                 selected_pricing_region.clone(),
-                            );
+                                None,
+                                );
                         }
                     } else {
                         // Non-success status (4xx)
@@ -1269,7 +1391,8 @@ async fn proxy_logic(
                                     last_upstream_id,
                                     status,
                                     selected_pricing_region.clone(),
-                                );
+                                    None,
+                                    );
                             }
                         };
 
@@ -1304,7 +1427,8 @@ async fn proxy_logic(
                             last_upstream_id,
                             status,
                             selected_pricing_region.clone(),
-                        );
+                            None,
+                            );
                     }
                 }
                 Err(e) => {
@@ -1484,11 +1608,51 @@ async fn proxy_logic(
                     // Optimization: If protocol is OpenAI, we can stream directly without parsing/buffering
                     // This satisfies the "Passthrough Principle" and enables streaming.
                     if upstream.protocol == "openai" {
+                        // For Seedance video generation, buffer response to extract task_id.
+                        // The response is small JSON (not a stream), so buffering is safe.
+                        if path == "/v1/video/generations" {
+                            let resp_bytes = match resp.bytes().await {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    last_error = format!("Failed to read video gen response: {}", e);
+                                    continue;
+                                }
+                            };
+                            let task_id = serde_json::from_slice::<serde_json::Value>(&resp_bytes)
+                                .ok()
+                                .and_then(|v| {
+                                    v.get("id").and_then(|id| id.as_str()).map(|s| s.to_string())
+                                });
+                            // Parse usage if present (Seedance has none, but be safe)
+                            if let Ok(resp_json) =
+                                serde_json::from_slice::<serde_json::Value>(&resp_bytes)
+                            {
+                                let resp_usage = parse_response_or_default(
+                                    get_parser(channel_type).as_ref(),
+                                    &resp_json,
+                                    "video-gen",
+                                );
+                                token_counter.set_from_usage(&resp_usage);
+                            }
+                            return (
+                                build_response_with_header(
+                                    status,
+                                    "content-type",
+                                    "application/json",
+                                    Body::from(resp_bytes),
+                                ),
+                                last_upstream_id,
+                                status,
+                                selected_pricing_region.clone(),
+                                task_id,
+                            );
+                        }
                         return (
                             handle_response_with_token_parsing(resp, &token_counter, channel_type),
                             last_upstream_id,
                             status,
                             selected_pricing_region.clone(),
+                            None,
                         );
                     }
 
@@ -1544,7 +1708,8 @@ async fn proxy_logic(
                             last_upstream_id,
                             status,
                             selected_pricing_region.clone(),
-                        );
+                            None,
+                            );
                     }
 
                     // 6. Handle Response Conversion
@@ -1587,7 +1752,8 @@ async fn proxy_logic(
                         last_upstream_id,
                         status,
                         selected_pricing_region.clone(),
-                    );
+                        None,
+                        );
                 } else {
                     // Handle non-success responses (4xx errors)
                     let status_code = status.as_u16();
@@ -1601,7 +1767,8 @@ async fn proxy_logic(
                                 last_upstream_id,
                                 status,
                                 selected_pricing_region.clone(),
-                            );
+                                None,
+                                );
                         }
                     };
                     let body_str = String::from_utf8_lossy(&body_bytes);
@@ -1727,7 +1894,8 @@ async fn proxy_logic(
                         last_upstream_id,
                         status,
                         selected_pricing_region.clone(),
-                    );
+                        None,
+                        );
                 }
             }
             Err(e) => {
@@ -1758,6 +1926,7 @@ async fn proxy_logic(
         ),
         None,
         StatusCode::BAD_GATEWAY,
+        None,
         None,
     )
 }
@@ -1804,68 +1973,44 @@ fn handle_response_with_token_parsing(
 
 #[cfg(test)]
 mod tests {
-    use super::inject_veo_video_tokens;
+    use super::inject_video_tokens_if_empty;
     use axum::http::StatusCode;
     use burncloud_service_billing::UnifiedUsage;
 
     #[test]
     fn test_veo_billing_extracts_duration() {
-        let usage = inject_veo_video_tokens(
-            Some("gemini-2.0-flash-preview-image-generation-veo"),
-            StatusCode::OK,
-            UnifiedUsage::default(),
-            8,
-            1,
-        );
+        // Veo: video_tokens = duration_secs * sample_count = 8 * 1 = 8
+        let usage = inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), 8, "veo");
         assert_eq!(usage.video_tokens, 8);
     }
 
     #[test]
     fn test_veo_billing_extracts_duration_and_sample_count() {
-        let usage = inject_veo_video_tokens(
-            Some("gemini-2.0-flash-preview-image-generation-veo"),
-            StatusCode::OK,
-            UnifiedUsage::default(),
-            8,
-            2,
-        );
+        // Veo: video_tokens = 8 * 2 = 16
+        let usage =
+            inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), 16, "veo");
         assert_eq!(usage.video_tokens, 16);
     }
 
     #[test]
     fn test_veo_billing_defaults_to_8s_when_unspecified() {
         // Caller passes unwrap_or(8) default — verify 8 * 1 = 8
-        let usage = inject_veo_video_tokens(
-            Some("veo-3.1"),
-            StatusCode::OK,
-            UnifiedUsage::default(),
-            8,
-            1,
-        );
+        let usage = inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), 8, "veo");
         assert_eq!(usage.video_tokens, 8);
     }
 
     #[test]
     fn test_veo_billing_no_tokens_on_failure() {
-        let usage = inject_veo_video_tokens(
-            Some("veo-3.1"),
-            StatusCode::BAD_REQUEST,
-            UnifiedUsage::default(),
-            8,
-            1,
-        );
+        let usage =
+            inject_video_tokens_if_empty(StatusCode::BAD_REQUEST, UnifiedUsage::default(), 8, "veo");
         assert_eq!(usage.video_tokens, 0);
     }
 
     #[test]
-    fn test_veo_billing_no_tokens_on_non_veo_model() {
-        let usage = inject_veo_video_tokens(
-            Some("gemini-2.5-flash"),
-            StatusCode::OK,
-            UnifiedUsage::default(),
-            8,
-            1,
-        );
+    fn test_veo_billing_no_tokens_when_zero() {
+        // Non-Veo model: caller computes 0 tokens, inject should skip
+        let usage =
+            inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), 0, "veo");
         assert_eq!(usage.video_tokens, 0);
     }
 
@@ -1875,13 +2020,33 @@ mod tests {
             input_tokens: 100,
             ..Default::default()
         };
-        let result = inject_veo_video_tokens(
-            Some("veo-3.1"),
-            StatusCode::OK,
-            existing.clone(),
-            8,
-            1,
-        );
+        let result = inject_video_tokens_if_empty(StatusCode::OK, existing.clone(), 8, "veo");
         assert_eq!(result, existing);
+    }
+
+    #[test]
+    fn test_seedance_billing_720p() {
+        // Seedance 720p 5s: duration=5, resolution_weight=2 → video_tokens=10
+        let tokens = 5i64 * 2;
+        let usage =
+            inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), tokens, "seedance");
+        assert_eq!(usage.video_tokens, 10);
+    }
+
+    #[test]
+    fn test_seedance_billing_480p() {
+        // Seedance 480p 5s: duration=5, resolution_weight=1 → video_tokens=5
+        let tokens = 5i64 * 1;
+        let usage =
+            inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), tokens, "seedance");
+        assert_eq!(usage.video_tokens, 5);
+    }
+
+    #[test]
+    fn test_seedance_billing_no_tokens_on_failure() {
+        let tokens = 5i64 * 2;
+        let usage =
+            inject_video_tokens_if_empty(StatusCode::BAD_REQUEST, UnifiedUsage::default(), tokens, "seedance");
+        assert_eq!(usage.video_tokens, 0);
     }
 }
