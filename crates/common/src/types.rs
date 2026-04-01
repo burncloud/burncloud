@@ -218,6 +218,7 @@ pub enum ChannelType {
     Sora = 55,
     Replicate = 56,
     Zai = 57,
+    NewApi = 58,
     Dummy,
 }
 
@@ -277,6 +278,7 @@ impl From<i32> for ChannelType {
             55 => ChannelType::Sora,
             56 => ChannelType::Replicate,
             57 => ChannelType::Zai,
+            58 => ChannelType::NewApi,
             _ => ChannelType::Unknown,
         }
     }
@@ -547,6 +549,9 @@ pub struct Price {
     pub image_price: Option<i64>,
     /// Video generation/input price per 1M tokens in nanodollars
     pub video_price: Option<i64>,
+    /// Music generation price per request in nanodollars.
+    /// NOTE: unit is nanodollars/request, NOT nanodollars/MTok like other price fields.
+    pub music_price: Option<i64>,
     /// Source of pricing data (litellm, manual, community, etc.)
     pub source: Option<String>,
     /// Region for pricing (cn, international, NULL for universal)
@@ -618,6 +623,9 @@ pub struct PriceInput {
     pub image_price: Option<i64>,
     /// Video generation/input price per 1M tokens in nanodollars
     pub video_price: Option<i64>,
+    /// Music generation price per request in nanodollars.
+    /// NOTE: unit is nanodollars/request, NOT nanodollars/MTok like other price fields.
+    pub music_price: Option<i64>,
     pub source: Option<String>,
     pub region: Option<String>,
     pub context_window: Option<i64>,
@@ -655,6 +663,7 @@ impl Default for PriceInput {
             embedding_price: None,
             image_price: None,
             video_price: None,
+            music_price: None,
             source: None,
             region: None,
             context_window: None,
