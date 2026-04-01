@@ -218,6 +218,10 @@ fn compute_breakdown(
         0
     };
 
+    // Music: flat fee per request (music_price is nanodollars/request, not nanodollars/MTok)
+    // Do NOT use nano() here — the price is already the full cost, no token division needed.
+    let music_cost = price.music_price.unwrap_or(0);
+
     CostBreakdown {
         input_cost,
         output_cost,
@@ -226,6 +230,7 @@ fn compute_breakdown(
         voice_cost,
         image_cost,
         video_cost,
+        music_cost,
         reasoning_cost,
         embedding_cost,
     }
@@ -280,6 +285,7 @@ mod tests {
             embedding_price: None,
             image_price: None,
             video_price: None,
+            music_price: None,
             source: None,
             region: None,
             context_window: None,
@@ -362,6 +368,26 @@ mod tests {
         // Pathological: i64::MAX tokens * very large price
         let result = nano(i64::MAX, i64::MAX, "req-test", "input");
         assert_eq!(result, i64::MAX);
+    }
+
+    #[test]
+    fn test_music_cost_flat_fee() {
+        // music_price = 80_000_000 nano (= $0.08/request)
+        // music_cost must be exactly 80_000_000 — no token division
+        let mut price = make_price(5_000, 15_000);
+        price.music_price = Some(80_000_000);
+        let usage = UnifiedUsage { ..Default::default() };
+        let bd = compute_breakdown(&usage, &price, "req-music", false, false, None);
+        assert_eq!(bd.music_cost, 80_000_000, "music is flat fee, not divided by 1M tokens");
+    }
+
+    #[test]
+    fn test_music_cost_none() {
+        // music_price = None → music_cost must be 0, no panic
+        let price = make_price(5_000, 15_000);
+        let usage = UnifiedUsage { ..Default::default() };
+        let bd = compute_breakdown(&usage, &price, "req-no-music", false, false, None);
+        assert_eq!(bd.music_cost, 0);
     }
 
     #[tokio::test]

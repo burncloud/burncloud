@@ -28,7 +28,7 @@ impl PriceModel {
                       priority_input_price, priority_output_price,
                       audio_input_price, audio_output_price,
                       reasoning_price, embedding_price,
-                      image_price, video_price,
+                      image_price, video_price, music_price,
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
@@ -42,7 +42,7 @@ impl PriceModel {
                       priority_input_price, priority_output_price,
                       audio_input_price, audio_output_price,
                       reasoning_price, embedding_price,
-                      image_price, video_price,
+                      image_price, video_price, music_price,
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
@@ -71,7 +71,7 @@ impl PriceModel {
                           priority_input_price, priority_output_price,
                           audio_input_price, audio_output_price,
                           reasoning_price, embedding_price,
-                          image_price, video_price,
+                          image_price, video_price, music_price,
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
@@ -85,7 +85,7 @@ impl PriceModel {
                           priority_input_price, priority_output_price,
                           audio_input_price, audio_output_price,
                           reasoning_price, embedding_price,
-                          image_price, video_price,
+                          image_price, video_price, music_price,
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
@@ -129,7 +129,7 @@ impl PriceModel {
                       priority_input_price, priority_output_price,
                       audio_input_price, audio_output_price,
                       reasoning_price, embedding_price,
-                      image_price, video_price,
+                      image_price, video_price, music_price,
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
@@ -143,7 +143,7 @@ impl PriceModel {
                       priority_input_price, priority_output_price,
                       audio_input_price, audio_output_price,
                       reasoning_price, embedding_price,
-                      image_price, video_price,
+                      image_price, video_price, music_price,
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
@@ -171,7 +171,7 @@ impl PriceModel {
                           priority_input_price, priority_output_price,
                           audio_input_price, audio_output_price,
                           reasoning_price, embedding_price,
-                          image_price, video_price,
+                          image_price, video_price, music_price,
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
@@ -185,7 +185,7 @@ impl PriceModel {
                           priority_input_price, priority_output_price,
                           audio_input_price, audio_output_price,
                           reasoning_price, embedding_price,
-                          image_price, video_price,
+                          image_price, video_price, music_price,
                           source, region,
                           context_window, max_output_tokens,
                           supports_vision, supports_function_calling,
@@ -221,7 +221,7 @@ impl PriceModel {
                       priority_input_price, priority_output_price,
                       audio_input_price, audio_output_price,
                       reasoning_price, embedding_price,
-                      image_price, video_price,
+                      image_price, video_price, music_price,
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
@@ -236,7 +236,7 @@ impl PriceModel {
                       priority_input_price, priority_output_price,
                       audio_input_price, audio_output_price,
                       reasoning_price, embedding_price,
-                      image_price, video_price,
+                      image_price, video_price, music_price,
                       source, region,
                       context_window, max_output_tokens,
                       supports_vision, supports_function_calling,
@@ -280,7 +280,7 @@ impl PriceModel {
                               batch_input_price, batch_output_price,
                               priority_input_price, priority_output_price,
                               audio_input_price, audio_output_price,
-                              reasoning_price, embedding_price, image_price, video_price,
+                              reasoning_price, embedding_price, image_price, video_price, music_price,
                               source, region,
                               context_window, max_output_tokens,
                               supports_vision, supports_function_calling,
@@ -391,13 +391,13 @@ impl PriceModel {
                 priority_input_price, priority_output_price,
                 audio_input_price, audio_output_price,
                 reasoning_price, embedding_price,
-                image_price, video_price,
+                image_price, video_price, music_price,
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
                 voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
@@ -414,6 +414,7 @@ impl PriceModel {
                 embedding_price = EXCLUDED.embedding_price,
                 image_price = EXCLUDED.image_price,
                 video_price = EXCLUDED.video_price,
+                music_price = EXCLUDED.music_price,
                 source = EXCLUDED.source,
                 context_window = EXCLUDED.context_window,
                 max_output_tokens = EXCLUDED.max_output_tokens,
@@ -436,13 +437,13 @@ impl PriceModel {
                 priority_input_price, priority_output_price,
                 audio_input_price, audio_output_price,
                 reasoning_price, embedding_price,
-                image_price, video_price,
+                image_price, video_price, music_price,
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
                 voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = excluded.currency,
                 input_price = excluded.input_price,
@@ -459,6 +460,7 @@ impl PriceModel {
                 embedding_price = excluded.embedding_price,
                 image_price = excluded.image_price,
                 video_price = excluded.video_price,
+                music_price = excluded.music_price,
                 source = excluded.source,
                 context_window = excluded.context_window,
                 max_output_tokens = excluded.max_output_tokens,
@@ -495,6 +497,7 @@ impl PriceModel {
             .bind(input.embedding_price)
             .bind(input.image_price)
             .bind(input.video_price)
+            .bind(input.music_price)
             .bind(&input.source)
             .bind(&region)
             .bind(input.context_window)
@@ -541,13 +544,13 @@ impl PriceModel {
                 priority_input_price, priority_output_price,
                 audio_input_price, audio_output_price,
                 reasoning_price, embedding_price,
-                image_price, video_price,
+                image_price, video_price, music_price,
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
                 voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
@@ -564,6 +567,7 @@ impl PriceModel {
                 embedding_price = EXCLUDED.embedding_price,
                 image_price = EXCLUDED.image_price,
                 video_price = EXCLUDED.video_price,
+                music_price = EXCLUDED.music_price,
                 source = EXCLUDED.source,
                 context_window = EXCLUDED.context_window,
                 max_output_tokens = EXCLUDED.max_output_tokens,
@@ -586,13 +590,13 @@ impl PriceModel {
                 priority_input_price, priority_output_price,
                 audio_input_price, audio_output_price,
                 reasoning_price, embedding_price,
-                image_price, video_price,
+                image_price, video_price, music_price,
                 source, region,
                 context_window, max_output_tokens,
                 supports_vision, supports_function_calling,
                 voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = excluded.currency,
                 input_price = excluded.input_price,
@@ -609,6 +613,7 @@ impl PriceModel {
                 embedding_price = excluded.embedding_price,
                 image_price = excluded.image_price,
                 video_price = excluded.video_price,
+                music_price = excluded.music_price,
                 source = excluded.source,
                 context_window = excluded.context_window,
                 max_output_tokens = excluded.max_output_tokens,
@@ -648,6 +653,7 @@ impl PriceModel {
                 .bind(input.embedding_price)
                 .bind(input.image_price)
                 .bind(input.video_price)
+                .bind(input.music_price)
                 .bind(&input.source)
                 .bind(&region)
                 .bind(input.context_window)

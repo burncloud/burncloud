@@ -89,8 +89,8 @@ impl PricingLoader {
             source: e,
         })?;
 
-        let config: PricingConfig =
-            serde_json::from_str(&content).map_err(|e| PricingLoaderError::JsonParseError {
+        let config =
+            PricingConfig::from_json(&content).map_err(|e| PricingLoaderError::JsonParseError {
                 path: path.to_path_buf(),
                 source: e,
             })?;

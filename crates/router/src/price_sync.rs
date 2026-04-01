@@ -206,7 +206,7 @@ impl PriceSyncService {
         }
 
         let content = std::fs::read_to_string(path)?;
-        let config: PricingConfig = serde_json::from_str(&content)?;
+        let config = PricingConfig::from_json(&content)?;
         Ok(Some(config))
     }
 
@@ -308,6 +308,9 @@ impl PriceSyncService {
                     currency: currency.clone(),
                     input_price: currency_pricing.input_price,
                     output_price: currency_pricing.output_price,
+                    image_price: currency_pricing.image_output_price,
+                    audio_output_price: currency_pricing.audio_output_price,
+                    music_price: currency_pricing.music_price,
                     source: currency_pricing.source.clone().or(Some(source.to_string())),
                     voices_pricing: currency_voices,
                     video_pricing: currency_video,
@@ -384,6 +387,7 @@ impl PriceSyncService {
                             embedding_price: existing.embedding_price,
                             image_price: existing.image_price,
                             video_price: existing.video_price,
+                            music_price: existing.music_price,
                             source: existing.source.clone(),
                             region: existing.region.clone(),
                             context_window: existing.context_window,
@@ -430,6 +434,7 @@ impl PriceSyncService {
                             embedding_price: existing.embedding_price,
                             image_price: existing.image_price,
                             video_price: existing.video_price,
+                            music_price: existing.music_price,
                             source: existing.source.clone(),
                             region: existing.region.clone(),
                             context_window: existing.context_window,
@@ -494,7 +499,7 @@ impl PriceSyncService {
     /// Includes model count drop protection and price change audit logging.
     async fn sync_remote_prices(&self) -> anyhow::Result<SyncResult> {
         let response = self.fetch_remote_config().await?;
-        let config: PricingConfig = serde_json::from_str(&response)?;
+        let config = PricingConfig::from_json(&response)?;
 
         // Model count drop protection: warn if new data has >50% fewer models
         let prev_count = self.count_db_models().await.unwrap_or(0);
@@ -601,7 +606,7 @@ impl PriceSyncService {
     /// Returns the number of capabilities updated/inserted
     pub async fn sync_capabilities(&self) -> anyhow::Result<usize> {
         let text = self.fetch_remote_config().await?;
-        let config: PricingConfig = serde_json::from_str(&text)?;
+        let config = PricingConfig::from_json(&text)?;
         let mut updated_count = 0;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

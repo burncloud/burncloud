@@ -1,0 +1,28 @@
+{
+  "models": {
+    "doubao-seedance-2-0-260128": {
+      "pricing": {
+        "USD": {
+          "input_price": 0,
+          "output_price": 0,
+          "video_price": 0
+        }
+      },
+      "metadata": {
+        "model_type": "video"
+      }
+    },
+    "doubao-seedance-2-0-fast-260128": {
+      "pricing": {
+        "USD": {
+          "input_price": 0,
+          "output_price": 0,
+          "video_price": 0
+        }
+      },
+      "metadata": {
+        "model_type": "video"
+      }
+    }
+  }
+}
