@@ -104,6 +104,7 @@ md5 = "0.7"
 hmac = "0.12"
 jsonwebtoken = "9.3"
 bcrypt = "0.17.1"
+aes-gcm = "0.10"
 
 # Archive
 zip = "0.6"

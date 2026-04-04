@@ -281,6 +281,18 @@ impl PriceSyncService {
                     .and_then(|config| serde_json::to_string(&config.resolutions).ok())
                     .or_else(|| video_pricing_json.clone());
 
+                // Derive video_price from video_pricing["720p"] so the billing formula
+                // cost = video_tokens × video_price / 1_000_000 gives the correct per-second cost.
+                // video_tokens = duration × resolution_weight (720p=2, 480p=1), so:
+                //   video_price (nanodollars/MTok) = price_720p_per_sec (nanodollars) × 500_000
+                // This means 480p requests naturally cost half of 720p via resolution_weight.
+                let video_price_derived: Option<i64> = model_pricing.video_pricing.as_ref()
+                    .and_then(|vp| vp.get(currency))
+                    .and_then(|config| config.resolutions.get("720p").copied())
+                    .map(|price_per_sec_nanos: i64| {
+                        (price_per_sec_nanos as i128 * 1_000_000 / 2) as i64
+                    });
+
                 let currency_asr = model_pricing.asr_pricing.as_ref()
                     .and_then(|ap| ap.get(currency))
                     .and_then(|config| serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok())
@@ -311,6 +323,7 @@ impl PriceSyncService {
                     image_price: currency_pricing.image_output_price,
                     audio_output_price: currency_pricing.audio_output_price,
                     music_price: currency_pricing.music_price,
+                    video_price: video_price_derived,
                     source: currency_pricing.source.clone().or(Some(source.to_string())),
                     voices_pricing: currency_voices,
                     video_pricing: currency_video,

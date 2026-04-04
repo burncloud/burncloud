@@ -2,10 +2,23 @@
 //!
 //! This crate handles all database operations related to upstream services
 //! (also known as channels in the API layer).
+//!
+//! API keys are encrypted at rest using AES-256-GCM. The master key is read
+//! from the `MASTER_KEY` environment variable (64 hex chars = 32 bytes).
+//! Encrypted values are stored with the prefix `aes256gcm:` followed by
+//! hex-encoded nonce (12 bytes) + ciphertext. Plaintext values (legacy or
+//! `sk-demo` placeholders) are returned as-is for backward compatibility.
 
-use burncloud_database::{Database, Result};
+use aes_gcm::{
+    aead::{Aead, AeadCore, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use burncloud_database::{Database, DatabaseError, Result};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+
+const ENCRYPTED_PREFIX: &str = "aes256gcm:";
 
 /// Upstream service configuration
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -26,22 +39,94 @@ pub struct DbUpstream {
     pub api_version: Option<String>,
 }
 
+/// Read and validate the master key from the `MASTER_KEY` environment variable.
+/// Returns a clean error (not a panic) if the variable is missing or malformed.
+pub fn get_master_key() -> Result<[u8; 32]> {
+    let hex_key = std::env::var("MASTER_KEY").map_err(|_| {
+        DatabaseError::Query(
+            "MASTER_KEY environment variable is not set. \
+             Set it to a 64-character hex string (32 bytes) before starting the server."
+                .to_string(),
+        )
+    })?;
+    let bytes = hex::decode(hex_key.trim()).map_err(|e| {
+        DatabaseError::Query(format!("MASTER_KEY is not valid hex: {}", e))
+    })?;
+    bytes.try_into().map_err(|_| {
+        DatabaseError::Query(
+            "MASTER_KEY must be exactly 32 bytes (64 hex characters)".to_string(),
+        )
+    })
+}
+
+fn encrypt_api_key(plaintext: &str, key: &[u8; 32]) -> Result<String> {
+    let cipher = Aes256Gcm::new_from_slice(key)
+        .map_err(|e| DatabaseError::Query(format!("Failed to initialize cipher: {}", e)))?;
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let ciphertext = cipher
+        .encrypt(&nonce, plaintext.as_bytes())
+        .map_err(|e| DatabaseError::Query(format!("API key encryption failed: {}", e)))?;
+
+    // nonce (12 bytes) || ciphertext, stored as hex with recognizable prefix
+    let mut combined = nonce.to_vec();
+    combined.extend_from_slice(&ciphertext);
+    Ok(format!("{}{}", ENCRYPTED_PREFIX, hex::encode(&combined)))
+}
+
+fn decrypt_api_key(stored: &str, key: &[u8; 32]) -> Result<String> {
+    // Backward compat: values without the prefix are plaintext (legacy or demo)
+    if !stored.starts_with(ENCRYPTED_PREFIX) {
+        return Ok(stored.to_string());
+    }
+
+    let hex_data = &stored[ENCRYPTED_PREFIX.len()..];
+    let combined = hex::decode(hex_data).map_err(|e| {
+        DatabaseError::Query(format!("Malformed encrypted API key: {}", e))
+    })?;
+
+    if combined.len() < 12 {
+        return Err(DatabaseError::Query(
+            "Encrypted API key is too short (corrupted?)".to_string(),
+        ));
+    }
+
+    let (nonce_bytes, ciphertext) = combined.split_at(12);
+    let cipher = Aes256Gcm::new_from_slice(key)
+        .map_err(|e| DatabaseError::Query(format!("Failed to initialize cipher: {}", e)))?;
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| DatabaseError::Query("API key decryption failed (wrong key or corrupted data)".to_string()))?;
+
+    String::from_utf8(plaintext)
+        .map_err(|e| DatabaseError::Query(format!("Decrypted API key is not valid UTF-8: {}", e)))
+}
+
 pub struct UpstreamModel;
 
 impl UpstreamModel {
-    /// Get all upstreams
+    /// Get all upstreams (api_key is decrypted before returning)
     pub async fn get_all(db: &Database) -> Result<Vec<DbUpstream>> {
+        let key = get_master_key()?;
         let conn = db.get_connection()?;
         let rows = sqlx::query_as::<_, DbUpstream>(
             "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override, api_version FROM router_upstreams"
         )
         .fetch_all(conn.pool())
         .await?;
-        Ok(rows)
+
+        rows.into_iter()
+            .map(|mut u| {
+                u.api_key = decrypt_api_key(&u.api_key, &key)?;
+                Ok(u)
+            })
+            .collect()
     }
 
-    /// Get a single upstream by ID
+    /// Get a single upstream by ID (api_key is decrypted before returning)
     pub async fn get(db: &Database, id: &str) -> Result<Option<DbUpstream>> {
+        let key = get_master_key()?;
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
             "SELECT id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override, api_version FROM router_upstreams WHERE id = $1"
@@ -52,11 +137,20 @@ impl UpstreamModel {
             .bind(id)
             .fetch_optional(conn.pool())
             .await?;
-        Ok(upstream)
+
+        upstream
+            .map(|mut u| {
+                u.api_key = decrypt_api_key(&u.api_key, &key)?;
+                Ok(u)
+            })
+            .transpose()
     }
 
-    /// Create a new upstream
+    /// Create a new upstream (api_key is encrypted before writing)
     pub async fn create(db: &Database, u: &DbUpstream) -> Result<()> {
+        let key = get_master_key()?;
+        let encrypted_key = encrypt_api_key(&u.api_key, &key)?;
+
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
         let placeholders = if is_postgres {
@@ -72,7 +166,7 @@ impl UpstreamModel {
             .bind(&u.id)
             .bind(&u.name)
             .bind(&u.base_url)
-            .bind(&u.api_key)
+            .bind(&encrypted_key)
             .bind(&u.match_path)
             .bind(&u.auth_type)
             .bind(u.priority)
@@ -85,8 +179,11 @@ impl UpstreamModel {
         Ok(())
     }
 
-    /// Update an existing upstream
+    /// Update an existing upstream (api_key is encrypted before writing)
     pub async fn update(db: &Database, u: &DbUpstream) -> Result<()> {
+        let key = get_master_key()?;
+        let encrypted_key = encrypt_api_key(&u.api_key, &key)?;
+
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
             "UPDATE router_upstreams SET name=$1, base_url=$2, api_key=$3, match_path=$4, auth_type=$5, priority=$6, protocol=$7, param_override=$8, header_override=$9, api_version=$10 WHERE id=$11"
@@ -96,7 +193,7 @@ impl UpstreamModel {
         sqlx::query(sql)
             .bind(&u.name)
             .bind(&u.base_url)
-            .bind(&u.api_key)
+            .bind(&encrypted_key)
             .bind(&u.match_path)
             .bind(&u.auth_type)
             .bind(u.priority)
