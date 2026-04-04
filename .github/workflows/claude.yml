@@ -126,6 +126,9 @@ jobs:
             git commit -m "feat: implement issue #${ISSUE_NUMBER} - ${ISSUE_TITLE}"
             git push origin $BRANCH
 
+            # 确保 label 存在
+            gh label create "ai-generated" --color "d4c5f9" --description "由 AI 自动生成" 2>/dev/null || true
+
             # 创建 PR
             PR_URL=$(gh pr create \
               --title "feat: ${ISSUE_TITLE}" \
