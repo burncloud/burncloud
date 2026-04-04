@@ -185,34 +185,15 @@ impl TokenModel {
 
     /// Check if quota is sufficient without deducting.
     /// Cost parameter uses i64 nanodollars for precision.
+    /// quota_limit = -1 means unlimited.
     pub async fn check_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
         let conn = db.get_connection()?;
-        let cost_i64 = cost;
-        let is_postgres = db.kind() == "postgres";
 
-        if cost_i64 <= 0 {
+        if cost <= 0 {
             return Ok(true);
         }
 
-        // Check if token has unlimited quota
-        let unlimited_sql = if is_postgres {
-            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = $1"
-        } else {
-            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?"
-        };
-        let unlimited: bool = sqlx::query_scalar(unlimited_sql)
-            .bind(token)
-            .fetch_one(conn.pool())
-            .await
-            .unwrap_or(0)
-            != 0;
-
-        if unlimited {
-            return Ok(true);
-        }
-
-        // Check token quota
-        let quota_sql = if is_postgres {
+        let quota_sql = if db.kind() == "postgres" {
             "SELECT quota_limit, used_quota FROM router_tokens WHERE token = $1"
         } else {
             "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?"
@@ -224,7 +205,7 @@ impl TokenModel {
 
         if let Some((quota_limit, used_quota)) = token_quota {
             // quota_limit = -1 means unlimited
-            if quota_limit >= 0 && used_quota + cost_i64 > quota_limit {
+            if quota_limit >= 0 && used_quota + cost > quota_limit {
                 return Ok(false);
             }
         }
@@ -233,51 +214,20 @@ impl TokenModel {
     }
 
     /// Deduct quota from token atomically.
-    /// Cost is in quota units (typically 1 quota = 1 token, or can be scaled).
     /// Returns Ok(true) if deduction successful, Ok(false) if insufficient quota.
     /// Cost parameter uses i64 nanodollars for precision.
+    /// quota_limit = -1 means unlimited.
     pub async fn deduct_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
         let conn = db.get_connection()?;
-        let cost_i64 = cost;
         let is_postgres = db.kind() == "postgres";
 
-        if cost_i64 <= 0 {
+        if cost <= 0 {
             return Ok(true);
         }
 
-        // Start transaction
         let mut tx = conn.pool().begin().await?;
 
-        // Check if token has unlimited quota
-        let unlimited_sql = if is_postgres {
-            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = $1"
-        } else {
-            "SELECT COALESCE(unlimited_quota, 0) FROM router_tokens WHERE token = ?"
-        };
-        let unlimited: bool = sqlx::query_scalar(unlimited_sql)
-            .bind(token)
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap_or(0)
-            != 0;
-
-        if unlimited {
-            // Unlimited quota - just update used_quota for tracking
-            let update_sql = if is_postgres {
-                "UPDATE router_tokens SET used_quota = used_quota + $1 WHERE token = $2"
-            } else {
-                "UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?"
-            };
-            sqlx::query(update_sql)
-                .bind(cost_i64)
-                .bind(token)
-                .execute(&mut *tx)
-                .await?;
-            tx.commit().await?;
-            return Ok(true);
-        }
-
-        // Check token quota
+        // Read quota_limit and used_quota in one query. Any DB failure propagates as an error.
         let quota_sql = if is_postgres {
             "SELECT quota_limit, used_quota FROM router_tokens WHERE token = $1"
         } else {
@@ -289,21 +239,20 @@ impl TokenModel {
             .await?;
 
         if let Some((quota_limit, used_quota)) = token_quota {
-            // quota_limit = -1 means unlimited for token
-            if quota_limit >= 0 && used_quota + cost_i64 > quota_limit {
+            // quota_limit = -1 means unlimited
+            if quota_limit >= 0 && used_quota + cost > quota_limit {
                 tx.rollback().await?;
                 return Ok(false);
             }
         }
 
-        // Deduct from token
         let deduct_sql = if is_postgres {
             "UPDATE router_tokens SET used_quota = used_quota + $1 WHERE token = $2"
         } else {
             "UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?"
         };
         sqlx::query(deduct_sql)
-            .bind(cost_i64)
+            .bind(cost)
             .bind(token)
             .execute(&mut *tx)
             .await?;

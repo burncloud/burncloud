@@ -223,36 +223,6 @@ impl UserDatabase {
                 .await?;
         }
 
-        // Ensure demo user exists
-        let user_count: i64 =
-            sqlx::query("SELECT COUNT(*) FROM users WHERE username = 'demo-user'")
-                .fetch_one(conn.pool())
-                .await?
-                .get(0);
-
-        if user_count == 0 {
-            println!("UserDatabase: inserting demo user...");
-            // Password: "123456"
-            let dummy_hash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
-            // Give demo user 100 USD in nanodollars (100 * 10^9 = 100_000_000_000)
-            let demo_sql = if kind == "postgres" {
-                "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ('demo-user', 'demo-user', NULL, $1, NULL, 1, 100000000000, 0, 'USD')"
-            } else {
-                "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ('demo-user', 'demo-user', NULL, ?, NULL, 1, 100000000000, 0, 'USD')"
-            };
-            sqlx::query(demo_sql)
-                .bind(dummy_hash)
-                .execute(conn.pool())
-                .await?;
-            // Assign admin role
-            println!("UserDatabase: assigning admin role...");
-            sqlx::query(
-                "INSERT INTO user_roles (user_id, role_id) VALUES ('demo-user', 'role-admin')",
-            )
-            .execute(conn.pool())
-            .await?;
-        }
-
         println!("UserDatabase: init complete.");
         Ok(())
     }

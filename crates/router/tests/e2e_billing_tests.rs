@@ -55,6 +55,7 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
         embedding_price: None,
         image_price: None,
         video_price: None,
+        music_price: None,
         source: None,
         region: None,
         context_window: None,

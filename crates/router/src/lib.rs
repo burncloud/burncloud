@@ -520,8 +520,6 @@ async fn proxy_handler(
     let request_id = Uuid::new_v4().to_string();
     let path = uri.path().to_string();
 
-    println!("Proxy Handler: {} {}, Headers: {:?}", method, path, headers);
-
     // 0. Authenticate User
     // Support both "Authorization: Bearer sk-xxx" and "x-goog-api-key: sk-xxx" (Gemini native)
     let user_auth = headers
@@ -940,16 +938,15 @@ async fn proxy_handler(
     }
 
     // Deduct quota (non-blocking)
-    let total_tokens = usage.input_tokens + usage.output_tokens;
-    if total_tokens > 0 {
+    // Use cost > 0 (not total_tokens > 0) so video/audio/music requests are also deducted.
+    // total_tokens only counts text tokens; multi-modal costs flow through cost (nanodollars).
+    if cost > 0 {
         let db = state.db.clone();
         let token_for_quota = user_token.to_string();
         let user_id_for_quota = user_id.clone();
         tokio::spawn(async move {
-            // Deduct quota in nanodollars (i64)
-            let quota_cost = cost; // cost is already in nanodollars
             let _ =
-                RouterDatabase::deduct_quota(&db, &user_id_for_quota, &token_for_quota, quota_cost)
+                RouterDatabase::deduct_quota(&db, &user_id_for_quota, &token_for_quota, cost)
                     .await;
         });
     }
@@ -2048,5 +2045,45 @@ mod tests {
         let usage =
             inject_video_tokens_if_empty(StatusCode::BAD_REQUEST, UnifiedUsage::default(), tokens, "seedance");
         assert_eq!(usage.video_tokens, 0);
+    }
+
+    #[test]
+    fn test_video_price_derivation_from_per_second() {
+        // Verify the price_sync formula: video_price = price_per_sec_nanos × 1_000_000 / 2
+        // For $0.14/s at 720p: price_per_sec = 140_000_000 nanodollars
+        // video_price = 140_000_000 × 1_000_000 / 2 = 70_000_000_000_000 nanodollars/MTok
+        let price_per_sec_nanos: i64 = 140_000_000; // $0.14/s
+        let video_price = (price_per_sec_nanos as i128 * 1_000_000 / 2) as i64;
+
+        // 5s 720p: video_tokens = 10, cost should be $0.70
+        let video_tokens_720p = 5i64 * 2;
+        let cost_nanos = video_tokens_720p * video_price / 1_000_000;
+        let expected_nanos = 700_000_000i64; // $0.70
+        assert_eq!(cost_nanos, expected_nanos,
+            "5s 720p @ $0.14/s should cost $0.70 = 700_000_000 nanodollars");
+
+        // 5s 480p: video_tokens = 5, cost should be $0.35 (same video_price, half cost)
+        let video_tokens_480p = 5i64 * 1;
+        let cost_nanos_480p = video_tokens_480p * video_price / 1_000_000;
+        let expected_nanos_480p = 350_000_000i64; // $0.35
+        assert_eq!(cost_nanos_480p, expected_nanos_480p,
+            "5s 480p @ $0.07/s should cost $0.35 = 350_000_000 nanodollars");
+
+        // duration=-1 falls back to 5s default: same as 720p 5s
+        let video_tokens_default = 5i64 * 2;
+        let cost_nanos_default = video_tokens_default * video_price / 1_000_000;
+        assert_eq!(cost_nanos_default, expected_nanos);
+    }
+
+    #[test]
+    fn test_video_price_derivation_seedance_fast() {
+        // doubao-seedance-2-0-fast-260128: $0.07/s at 720p
+        let price_per_sec_nanos: i64 = 70_000_000; // $0.07/s
+        let video_price = (price_per_sec_nanos as i128 * 1_000_000 / 2) as i64;
+
+        // 5s 720p fast: video_tokens = 10, cost = $0.35
+        let cost_nanos = 10i64 * video_price / 1_000_000;
+        assert_eq!(cost_nanos, 350_000_000i64,
+            "5s 720p fast @ $0.07/s should cost $0.35 = 350_000_000 nanodollars");
     }
 }
