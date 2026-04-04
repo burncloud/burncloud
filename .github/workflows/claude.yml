@@ -158,6 +158,82 @@ jobs:
             exit 0
           fi
 
+          # ─── 特殊命令：fix → 在 PR 分支上继续修改 ───
+          if echo "$COMMENT" | grep -q "@claude-fix"; then
+
+            # 验证是 PR 评论（不是 issue）
+            if [ -z "${{ github.event.issue.pull_request }}" ]; then
+              gh issue comment $ISSUE_NUMBER \
+                --body "❌ \`@claude-fix\` 只能在 PR 的评论中使用，不能在 Issue 中使用。"
+              exit 1
+            fi
+
+            PR_NUMBER="$ISSUE_NUMBER"
+
+            # 获取 PR head branch 并 checkout
+            PR_BRANCH=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
+            git fetch origin "$PR_BRANCH"
+            git checkout "$PR_BRANCH"
+
+            # 配置 git
+            git config user.email "claude-bot@github.com"
+            git config user.name "Claude Bot"
+
+            # 提取用户指示（去掉 @claude-fix 前缀）
+            FIX_INSTRUCTIONS=$(echo "$COMMENT" | sed 's/@claude-fix//')
+
+            # 获取 PR diff 作为上下文
+            PR_DIFF=$(gh pr diff $PR_NUMBER)
+
+            # 执行修复
+            claude -p "你是一个高级工程师。根据以下指示修复这个 PR 中的问题。
+
+            用户指示：
+            ${FIX_INSTRUCTIONS}
+
+            当前 PR diff：
+            ${PR_DIFF}
+
+            要求：
+            1. 仔细阅读用户的修复指示
+            2. 理解当前 PR 的改动内容
+            3. 按照指示进行修复
+            4. 不要做超出指示范围的修改" \
+              --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
+              --dangerously-skip-permissions
+
+            # 检测是否有变更
+            git add -A
+            if git diff --cached --quiet; then
+              gh pr comment $PR_NUMBER \
+                --body "## 🤖 @claude-fix 结果
+
+            检查完成，没有需要修改的内容。"
+              exit 0
+            fi
+
+            # 提交并推送
+            git commit -m "fix: apply @claude-fix on PR #${PR_NUMBER}"
+            git push origin "$PR_BRANCH"
+
+            # 回复 PR
+            CHANGED_FILES=$(git diff --name-only HEAD~1)
+            gh pr comment $PR_NUMBER \
+              --body "## 🤖 @claude-fix 修复完成
+
+            已推送修复到分支 \`${PR_BRANCH}\`。
+
+            ### 修改的文件
+            \`\`\`
+            ${CHANGED_FILES}
+            \`\`\`
+
+            ---
+            > 继续修复：\`@claude-fix <指示>\` · 代码审查：\`@claude-review\`"
+
+            exit 0
+          fi
+
           # ─── 没匹配到命令，跳过 ───────────────────────
           if [ -z "$SKILL_DIR" ]; then
             echo "没有匹配到任何 gstack 命令，跳过"
