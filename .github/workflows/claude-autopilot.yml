@@ -1,8 +1,10 @@
-name: Claude AI Autopilot
+name: Claude CEO Review
 
 on:
+  issue_comment:
+    types: [created]
   issues:
-    types: [labeled]
+    types: [opened]
 
 permissions:
   contents: write
@@ -12,28 +14,26 @@ permissions:
 jobs:
   ceo-review:
     runs-on: ubuntu-latest
-    # 打上 'ai-task' label 才触发
     if: |
-      contains(github.event.label.name, 'ai-task') &&
       github.actor != 'claude[bot]' &&
-      github.actor != 'github-actions[bot]'
+      github.actor != 'github-actions[bot]' &&
+      (
+        github.event_name == 'issues' ||
+        contains(github.event.comment.body, '@claude-ceo')
+      )
 
     steps:
-      # 1. Checkout 你的代码
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 安装 Node.js
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 3. 安装 Claude Code CLI
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      # 4. 实时 clone 最新 gstack（方式B）
       - name: Install gstack (latest)
         run: |
           mkdir -p .claude/skills
@@ -41,22 +41,28 @@ jobs:
             https://github.com/garrytan/gstack.git \
             .claude/skills/gstack
 
-      # 5. CEO Review
       - name: CEO Review
         id: ceo_review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SKILL_CONTENT=$(cat .claude/skills/gstack/plan-ceo-review/SKILL.md)
-          ISSUE_BODY="${{ github.event.issue.body }}"
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
+
+          # issue_comment 触发时用评论内容，issues 触发时用 issue body
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            ISSUE_BODY="${{ github.event.comment.body }}"
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+          else
+            ISSUE_BODY="${{ github.event.issue.body }}"
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+          fi
 
           RESULT=$(claude -p "对这个需求执行 CEO Review：${ISSUE_BODY}" \
             --allowedTools "Read,Glob,Grep" \
             --append-system-prompt "${SKILL_CONTENT}" \
             --output-format json)
 
-          # 把结果写入 Issue 评论
           gh issue comment $ISSUE_NUMBER \
             --body "## 🤖 CEO Review 结果
 
@@ -64,6 +70,3 @@ jobs:
 
           ---
           > 如需继续执行，请评论 \`@claude implement\`"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
