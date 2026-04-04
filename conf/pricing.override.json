@@ -1,11 +1,19 @@
 {
+  "version": "1.0",
+  "updated_at": "2026-04-04T00:00:00Z",
+  "source": "opengw_aligned",
   "models": {
     "doubao-seedance-2-0-260128": {
       "pricing": {
         "USD": {
           "input_price": 0,
-          "output_price": 0,
-          "video_price": 0
+          "output_price": 0
+        }
+      },
+      "video_pricing": {
+        "USD": {
+          "720p": 0.230432,
+          "480p": 0.115216
         }
       },
       "metadata": {
@@ -16,8 +24,13 @@
       "pricing": {
         "USD": {
           "input_price": 0,
-          "output_price": 0,
-          "video_price": 0
+          "output_price": 0
+        }
+      },
+      "video_pricing": {
+        "USD": {
+          "720p": 0.115216,
+          "480p": 0.057608
         }
       },
       "metadata": {

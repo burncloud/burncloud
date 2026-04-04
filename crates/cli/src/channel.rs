@@ -26,8 +26,11 @@ pub fn parse_channel_type(s: &str) -> Result<ChannelType> {
         "aws" => Ok(ChannelType::Aws),
         "vertexai" | "vertex" => Ok(ChannelType::VertexAi),
         "deepseek" => Ok(ChannelType::DeepSeek),
+        "newapi" | "new-api" => Ok(ChannelType::NewApi),
+        "volcengine" | "volc" => Ok(ChannelType::VolcEngine),
+        "doubaovideo" | "doubao-video" | "seedance" => Ok(ChannelType::DoubaoVideo),
         _ => Err(anyhow!(
-            "Unsupported channel type: '{}'. Supported types: openai, azure, anthropic, gemini, aws, vertexai, deepseek",
+            "Unsupported channel type: '{}'. Supported types: openai, azure, anthropic, gemini, aws, vertexai, deepseek, newapi, volcengine, seedance",
             s
         )),
     }
@@ -43,6 +46,9 @@ pub fn get_default_models(channel_type: ChannelType) -> Vec<&'static str> {
         ChannelType::Aws => vec!["claude-3-sonnet", "claude-3-haiku"],
         ChannelType::VertexAi => vec!["gemini-1.5-pro"],
         ChannelType::DeepSeek => vec!["deepseek-chat", "deepseek-coder"],
+        ChannelType::NewApi => vec![],
+        ChannelType::VolcEngine => vec![],
+        ChannelType::DoubaoVideo => vec!["doubao-seedance-2-0-260128", "doubao-seedance-2-0-fast-260128"],
         _ => vec![],
     }
 }
@@ -56,8 +62,11 @@ pub fn get_default_base_url(channel_type: ChannelType) -> Option<&'static str> {
         ChannelType::Anthropic => Some("https://api.anthropic.com/v1"),
         ChannelType::Gemini => Some("https://generativelanguage.googleapis.com/v1beta"),
         ChannelType::DeepSeek => Some("https://api.deepseek.com/v1"),
-        // Azure, AWS, VertexAI require user-specified URLs
+        // Azure, AWS, VertexAI, NewApi require user-specified URLs
         ChannelType::Azure | ChannelType::Aws | ChannelType::VertexAi => None,
+        ChannelType::NewApi => None,
+        ChannelType::VolcEngine => Some("https://ark.cn-beijing.volces.com/api/v3"),
+        ChannelType::DoubaoVideo => Some("https://ark.cn-beijing.volces.com/api/v3"),
         _ => None,
     }
 }
@@ -72,6 +81,9 @@ pub fn get_channel_type_name(channel_type: ChannelType) -> &'static str {
         ChannelType::Aws => "AWS",
         ChannelType::VertexAi => "VertexAI",
         ChannelType::DeepSeek => "DeepSeek",
+        ChannelType::NewApi => "NewApi",
+        ChannelType::VolcEngine => "VolcEngine",
+        ChannelType::DoubaoVideo => "DoubaoVideo",
         _ => "Unknown",
     }
 }
