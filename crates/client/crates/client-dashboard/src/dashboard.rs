@@ -22,107 +22,128 @@ pub fn Dashboard() -> Element {
     let _monitor_data = monitor.read().clone();
 
     rsx! {
-        div { class: "h-full flex flex-col max-w-6xl mx-auto animate-fade-in select-none",
+        div { class: "h-full flex flex-col max-w-6xl mx-auto animate-in select-none",
 
             // 1. Enterprise Header
-            div { class: "flex items-end justify-between mb-12",
+            div { class: "flex items-end justify-between mb-xxxl",
                 div {
-                    h1 { class: "text-4xl font-bold tracking-tight text-base-content/90",
+                    h1 { class: "text-4xl font-bold tracking-tight text-primary",
                         "企业控制台"
                     }
-                    div { class: "flex items-center gap-2 mt-3 pl-1",
-                        div { class: "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" }
-                        span { class: "text-xs font-medium tracking-wide opacity-50 uppercase", "实时交易流" }
+                    div { class: "flex items-center gap-sm mt-md pl-xs",
+                        div { class: "w-2 h-2 rounded-full animate-pulse-soft",
+                            style: "background: var(--bc-success); box-shadow: 0 0 8px rgba(52, 199, 89, 0.6);"
+                        }
+                        span { class: "text-caption font-medium tracking-wide text-tertiary uppercase", "实时交易流" }
                     }
                 }
             }
 
             // 2. Main Content Grid
-            div { class: "grid grid-cols-1 lg:grid-cols-3 gap-12 h-full",
+            div { class: "grid grid-cols-1 lg:grid-cols-3 gap-xxxl h-full",
 
                 // Left Column: Financials & Infrastructure (Spans 2 columns)
-                div { class: "lg:col-span-2 flex flex-col gap-10",
+                div { class: "lg:col-span-2 flex flex-col gap-xxxl",
 
                     // Financial Hero Section - The "Money"
-                    div { class: "grid grid-cols-2 gap-12 pb-8 border-b border-base-200/50",
+                    div { class: "grid grid-cols-2 gap-xxxl pb-xxl border-b",
                         div {
-                            div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-40 mb-2", "今日流水 (USD)" }
-                            div { class: "text-5xl font-bold tabular-nums tracking-tighter text-base-content/90", "$128,432.00" }
-                            div { class: "text-xs font-medium text-success mt-2 flex items-center gap-1",
+                            div { class: "text-xxs uppercase tracking-[0.2em] font-bold text-tertiary mb-sm", "今日流水 (USD)" }
+                            div { class: "text-5xl font-bold tabular-nums tracking-tighter text-primary", "$128,432.00" }
+                            div { class: "text-caption font-medium mt-sm flex items-center gap-xs",
+                                style: "color: var(--bc-success);",
                                 span { "▲ 12.4%" }
-                                span { class: "opacity-50", "vs yesterday" }
+                                span { class: "text-tertiary", "vs yesterday" }
                             }
                         }
                         div {
-                            div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-40 mb-2", "预计营收 (USD)" }
-                            div { class: "text-5xl font-bold tracking-tighter text-success/90", "$160,540.00" }
-                            div { class: "text-xs font-medium text-base-content/40 mt-2", "净利率: 20.0%" }
+                            div { class: "text-xxs uppercase tracking-[0.2em] font-bold text-tertiary mb-sm", "预计营收 (USD)" }
+                            div { class: "text-5xl font-bold tracking-tighter", style: "color: var(--bc-success);", "$160,540.00" }
+                            div { class: "text-caption font-medium text-tertiary mt-sm", "净利率: 20.0%" }
                         }
                     }
 
                     // Cloud Provider Health - The "Assets"
-                    div { class: "flex flex-col gap-4",
-                        div { class: "text-[10px] uppercase tracking-[0.2em] font-bold opacity-40 mb-2", "供应商健康度" }
+                    div { class: "flex flex-col gap-md",
+                        div { class: "text-xxs uppercase tracking-[0.2em] font-bold text-tertiary mb-sm", "供应商健康度" }
 
-                        div { class: "grid grid-cols-3 gap-4",
+                        div { class: "grid grid-cols-3 gap-md",
                             // AWS Card
-                            div { class: "p-4 bg-base-200/30 rounded-xl border border-base-200 hover:border-orange-500/30 transition-colors group cursor-pointer",
-                                div { class: "flex justify-between items-start mb-4",
-                                    span { class: "font-bold text-lg", "AWS" }
-                                    div { class: "w-2 h-2 rounded-full bg-success" }
+                            div { class: "bc-card-solid p-lg cursor-pointer",
+                                style: "transition: border-color var(--bc-transition-fast);",
+                                div { class: "flex justify-between items-start mb-lg",
+                                    span { class: "font-bold text-lg text-primary", "AWS" }
+                                    div { class: "status-dot",
+                                        style: "background: var(--bc-success); animation: pulse 2s infinite;"
+                                    }
                                 }
-                                div { class: "text-2xl font-bold tabular-nums", "1,204" }
-                                div { class: "text-[10px] opacity-40 uppercase tracking-wider mt-1", "Active Accounts" }
+                                div { class: "text-2xl font-bold tabular-nums text-primary", "1,204" }
+                                div { class: "text-xxs text-tertiary uppercase tracking-wider mt-xs", "Active Accounts" }
                             }
 
                             // Google Cloud Card
-                            div { class: "p-4 bg-base-200/30 rounded-xl border border-base-200 hover:border-blue-500/30 transition-colors group cursor-pointer",
-                                div { class: "flex justify-between items-start mb-4",
-                                    span { class: "font-bold text-lg", "Google" }
-                                    div { class: "w-2 h-2 rounded-full bg-success" }
+                            div { class: "bc-card-solid p-lg cursor-pointer",
+                                style: "transition: border-color var(--bc-transition-fast);",
+                                div { class: "flex justify-between items-start mb-lg",
+                                    span { class: "font-bold text-lg text-primary", "Google" }
+                                    div { class: "status-dot",
+                                        style: "background: var(--bc-success); animation: pulse 2s infinite;"
+                                    }
                                 }
-                                div { class: "text-2xl font-bold tabular-nums", "892" }
-                                div { class: "text-[10px] opacity-40 uppercase tracking-wider mt-1", "Active Accounts" }
+                                div { class: "text-2xl font-bold tabular-nums text-primary", "892" }
+                                div { class: "text-xxs text-tertiary uppercase tracking-wider mt-xs", "Active Accounts" }
                             }
 
                             // Azure Card
-                            div { class: "p-4 bg-base-200/30 rounded-xl border border-base-200 hover:border-sky-500/30 transition-colors group cursor-pointer",
-                                div { class: "flex justify-between items-start mb-4",
-                                    span { class: "font-bold text-lg", "Azure" }
-                                    div { class: "w-2 h-2 rounded-full bg-warning animate-pulse" } // Warning state demo
+                            div { class: "bc-card-solid p-lg cursor-pointer",
+                                style: "transition: border-color var(--bc-transition-fast);",
+                                div { class: "flex justify-between items-start mb-lg",
+                                    span { class: "font-bold text-lg text-primary", "Azure" }
+                                    div { class: "status-dot animate-pulse",
+                                        style: "background: var(--bc-warning);"
+                                    }
                                 }
-                                div { class: "text-2xl font-bold tabular-nums", "450" }
-                                div { class: "text-[10px] opacity-40 uppercase tracking-wider mt-1", "3 Flags Detected" }
+                                div { class: "text-2xl font-bold tabular-nums text-primary", "450" }
+                                div { class: "text-xxs text-tertiary uppercase tracking-wider mt-xs", "3 Flags Detected" }
                             }
                         }
                     }
                 }
 
                 // Right Column: Risk Radar (Activity)
-                div { class: "flex flex-col pl-8",
-                    h3 { class: "text-[10px] font-bold opacity-30 uppercase tracking-[0.2em] mb-8 text-error", "风控预警 (RISK ALERTS)" }
+                div { class: "flex flex-col pl-xxl",
+                    h3 { class: "text-xxs font-bold uppercase tracking-[0.2em] mb-xxxl",
+                        style: "color: var(--bc-danger);",
+                        "风控预警 (RISK ALERTS)"
+                    }
 
-                    div { class: "flex-1 flex flex-col gap-4",
+                    div { class: "flex-1 flex flex-col gap-md",
                         // Mock Alerts for Enterprise Demo
-                        div { class: "relative pl-4 border-l-2 border-warning py-1",
-                            div { class: "text-xs font-bold text-base-content/80", "Azure Account #8821" }
-                            div { class: "text-[10px] opacity-60 mt-0.5", "Quota Usage > 90%" }
+                        div { class: "relative pl-md py-xs",
+                            style: "border-left: 2px solid var(--bc-warning);",
+                            div { class: "text-caption font-bold text-primary", "Azure Account #8821" }
+                            div { class: "text-xxs text-secondary mt-xs", "Quota Usage > 90%" }
                         }
-                        div { class: "relative pl-4 border-l-2 border-error py-1",
-                            div { class: "text-xs font-bold text-base-content/80", "GCP-US-EAST-1" }
-                            div { class: "text-[10px] opacity-60 mt-0.5", "API Response Timeout (500ms)" }
+                        div { class: "relative pl-md py-xs",
+                            style: "border-left: 2px solid var(--bc-danger);",
+                            div { class: "text-caption font-bold text-primary", "GCP-US-EAST-1" }
+                            div { class: "text-xxs text-secondary mt-xs", "API Response Timeout (500ms)" }
                         }
-                         div { class: "relative pl-4 border-l-2 border-base-200 py-1 opacity-50",
-                            div { class: "text-xs font-bold text-base-content/80", "AWS IAM Policy Update" }
-                            div { class: "text-[10px] opacity-60 mt-0.5", "Routine Security Check" }
+                         div { class: "relative pl-md py-xs text-tertiary",
+                            style: "border-left: 2px solid var(--bc-border);",
+                            div { class: "text-caption font-bold text-primary", "AWS IAM Policy Update" }
+                            div { class: "text-xxs text-secondary mt-xs", "Routine Security Check" }
                         }
                     }
 
-                    div { class: "mt-auto pt-4 p-4 bg-base-200/30 rounded-xl",
-                        div { class: "text-[10px] font-bold opacity-40 uppercase mb-2", "System Status" }
-                        div { class: "flex items-center gap-2",
-                            div { class: "badge badge-success badge-xs" }
-                            span { class: "text-xs font-medium", "All Gateways Operational" }
+                    div { class: "mt-auto pt-lg p-lg bc-card-solid",
+                        style: "border-radius: var(--bc-radius-md);",
+                        div { class: "text-xxs font-bold text-tertiary uppercase mb-sm", "System Status" }
+                        div { class: "flex items-center gap-sm",
+                            div { class: "status-dot",
+                                style: "background: var(--bc-success);"
+                            }
+                            span { class: "text-caption font-medium text-primary", "All Gateways Operational" }
                         }
                     }
                 }

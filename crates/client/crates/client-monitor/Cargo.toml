@@ -9,3 +9,4 @@ authors = ["burncloud contributors"]
 
 [dependencies]
 dioxus.workspace = true
+burncloud-client-shared = { path = "../client-shared" }

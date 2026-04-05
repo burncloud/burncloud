@@ -40,7 +40,7 @@ pub fn RegisterPage() -> Element {
     // Calculate password strength
     let password_strength = calculate_password_strength(&password());
     let password_glow_class = if password().is_empty() {
-        "focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)]"
+        "focus-within:shadow-[0_0_0_2px_var(--bc-border-focus)]"
     } else {
         match password_strength {
             PasswordStrength::Weak => "focus-within:shadow-[0_0_0_2px_rgba(255,59,48,0.4)]",
@@ -254,7 +254,7 @@ pub fn RegisterPage() -> Element {
 
     rsx! {
         // Container: Aurora Canvas
-        div { class: "h-full w-full min-h-screen overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans flex items-center justify-center py-12",
+        div { class: "h-full w-full min-h-screen overflow-hidden bg-[var(--bc-bg-canvas)] text-primary relative selection:bg-[var(--bc-primary)] selection:text-white font-sans flex items-center justify-center p-xxxl",
 
             // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
@@ -262,13 +262,13 @@ pub fn RegisterPage() -> Element {
                 div { class: "absolute top-0 left-0 w-full h-16 z-50 cursor-default", style: "-webkit-app-region: drag;" }
 
                 // Layer 1: Primary Aurora Blob - slower
-                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[#5856D6]/15 via-[#AF52DE]/12 to-[#007AFF]/10 rounded-full blur-[100px] animate-aurora animate-morph [animation-duration:30s]" }
+                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[var(--bc-primary-dark)]/15 via-[#AF52DE]/12 to-[var(--bc-primary)]/10 rounded-full blur-[100px] animate-aurora animate-morph [animation-duration:30s]" }
 
                 // Layer 2: Secondary Flow - slower
-                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[#34C759]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:5s] [animation-duration:40s]" }
+                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[var(--bc-success)]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:5s] [animation-duration:40s]" }
 
                 // Layer 3: Accent Orb - slower
-                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[#FF9500]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s] [animation-duration:20s]" }
+                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[var(--bc-warning)]/10 to-[#FF2D55]/8 rounded-full blur-[60px] animate-float [animation-delay:3s] [animation-duration:20s]" }
 
                 // Noise Texture
                 div {
@@ -284,25 +284,25 @@ pub fn RegisterPage() -> Element {
                 div { class: "p-8 relative",
 
                     // Logo & Header
-                    div { class: "text-center mb-8 relative z-10",
+                    div { class: "text-center mb-lg relative z-10",
                         // Logo (Force Field / Soap Bubble)
                         div { class: "relative inline-flex items-center justify-center w-24 h-24 {logo_margin}",
                             div {
                                 class: "w-full h-full rounded-full bg-white/20 border border-white/30 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(88,86,214,0.12)] flex items-center justify-center",
-                                Logo { class: "w-10 h-10 text-[#5856D6] fill-current translate-y-0.5" }
+                                Logo { class: "w-10 h-10 text-[var(--bc-primary-dark)] fill-current translate-y-0.5" }
                             }
                         }
 
                         // Header Slogan
-                        div { class: "flex flex-col items-center justify-center space-y-2 mb-6",
-                            h1 { class: "text-2xl font-semibold tracking-tight text-[#1D1D1F]",
+                        div { class: "flex flex-col items-center justify-center space-y-2 mb-lg",
+                            h1 { class: "text-large-title font-semibold tracking-tight text-primary",
                                 "Unleash Intelligence."
                             }
-                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#5856D6] to-[#AF52DE]",
+                            h1 { class: "text-large-title font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[var(--bc-primary-dark)] to-[#AF52DE]",
                                 "Your Second Brain."
                             }
                         }
-                        p { class: "text-[15px] text-[#6E6E73] font-semibold tracking-wide",
+                        p { class: "text-subtitle text-tertiary font-semibold tracking-wide",
                             "开启本地优先的 AI 体验"
                         }
                     }
@@ -310,30 +310,30 @@ pub fn RegisterPage() -> Element {
                     // Form with shake animation
                     div {
                         class: if shake_form() {
-                            "space-y-4 relative z-10 animate-shake"
+                            "gap-lg flex flex-col relative z-10 animate-shake"
                         } else {
-                            "space-y-4 relative z-10"
+                            "gap-lg flex flex-col relative z-10"
                         },
                         onkeydown: handle_keydown,
 
                         // Username Input with availability check
                         div { class: "group relative",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
+                            label { class: "block text-caption font-medium text-secondary mb-sm uppercase tracking-wider ml-1",
                                 "用户名"
                             }
                             div {
                                 class: if username_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-[var(--bc-bg-card-solid)]"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white"
+                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_var(--bc-border-focus)] focus-within:bg-[var(--bc-bg-card-solid)] hover:bg-[var(--bc-bg-card-solid)]"
                                 },
-                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
+                                div { class: "pl-4 pr-1 text-secondary group-focus-within:text-[var(--bc-primary)] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[var(--bc-primary)] px-2 text-body text-primary placeholder-text-secondary",
                                     r#type: "text",
                                     value: "{username}",
                                     placeholder: "设置您的唯一标识",
@@ -344,13 +344,13 @@ pub fn RegisterPage() -> Element {
                                 // Availability indicator
                                 if username_checking() {
                                     div { class: "pr-4 flex-shrink-0",
-                                        svg { class: "w-5 h-5 animate-spin text-[#007AFF]", fill: "none", view_box: "0 0 24 24",
+                                        svg { class: "w-5 h-5 animate-spin text-[var(--bc-primary)]", fill: "none", view_box: "0 0 24 24",
                                             circle { class: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", stroke_width: "4" }
                                             path { class: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" }
                                         }
                                     }
                                 } else if username_available() == Some(true) && username_error().is_none() {
-                                    div { class: "pr-4 text-green-500 flex-shrink-0",
+                                    div { class: "pr-4 text-[var(--bc-success)] flex-shrink-0",
                                         svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                             path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
                                         }
@@ -363,8 +363,8 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
-                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[var(--bc-danger)] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
+                                span { class: "text-caption font-medium text-[var(--bc-danger)] opacity-90",
                                     "{username_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
@@ -372,22 +372,22 @@ pub fn RegisterPage() -> Element {
 
                         // Email Input with validation
                         div { class: "group relative",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
+                            label { class: "block text-caption font-medium text-secondary mb-sm uppercase tracking-wider ml-1",
                                 "邮箱"
                             }
                             div {
                                 class: if email_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-[var(--bc-bg-card-solid)]"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white"
+                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_var(--bc-border-focus)] focus-within:bg-[var(--bc-bg-card-solid)] hover:bg-[var(--bc-bg-card-solid)]"
                                 },
-                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
+                                div { class: "pl-4 pr-1 text-secondary group-focus-within:text-[var(--bc-primary)] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[var(--bc-primary)] px-2 text-body text-primary placeholder-text-secondary",
                                     r#type: "email",
                                     value: "{email}",
                                     placeholder: "用于接收通知 (可选)",
@@ -401,8 +401,8 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
-                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[var(--bc-danger)] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
+                                span { class: "text-caption font-medium text-[var(--bc-danger)] opacity-90",
                                     "{email_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
@@ -410,22 +410,22 @@ pub fn RegisterPage() -> Element {
 
                         // Password Input with strength meter and visibility toggle
                         div { class: "group relative",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
+                            label { class: "block text-caption font-medium text-secondary mb-sm uppercase tracking-wider ml-1",
                                 "密码"
                             }
                             div {
                                 class: if password_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-[var(--bc-bg-card-solid)]"
                                 } else {
-                                    "{password_glow_class} relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:bg-white hover:bg-white"
+                                    "{password_glow_class} relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 focus-within:bg-[var(--bc-bg-card-solid)] hover:bg-[var(--bc-bg-card-solid)]"
                                 },
-                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
+                                div { class: "pl-4 pr-1 text-secondary group-focus-within:text-[var(--bc-primary)] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[var(--bc-primary)] px-2 text-body text-primary placeholder-text-secondary",
                                     r#type: if show_password() { "text" } else { "password" },
                                     value: "{password}",
                                     placeholder: "设置强密码",
@@ -434,7 +434,7 @@ pub fn RegisterPage() -> Element {
                                 }
                                 // Visibility toggle
                                 button {
-                                    class: "pr-4 text-[#86868B] hover:text-[#007AFF] transition-colors flex-shrink-0",
+                                    class: "pr-4 text-secondary hover:text-[var(--bc-primary)] transition-colors flex-shrink-0",
                                     r#type: "button",
                                     tabindex: "-1",
                                     onclick: move |_| show_password.set(!show_password()),
@@ -456,8 +456,8 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
-                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[var(--bc-danger)] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
+                                span { class: "text-caption font-medium text-[var(--bc-danger)] opacity-90",
                                     "{password_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
@@ -465,22 +465,22 @@ pub fn RegisterPage() -> Element {
 
                         // Confirm Password Input with match indicator
                         div { class: "group relative",
-                            label { class: "block text-[13px] font-medium text-[#86868B] mb-2 uppercase tracking-wider ml-1",
+                            label { class: "block text-caption font-medium text-secondary mb-sm uppercase tracking-wider ml-1",
                                 "确认密码"
                             }
                             div {
                                 class: if confirm_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-white"
+                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-[var(--bc-bg-card-solid)]"
                                 } else {
-                                    "relative flex items-center w-full h-12 bg-white/90 shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-white hover:bg-white"
+                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-sm rounded-xl transition-all duration-200 focus-within:shadow-[0_0_0_2px_var(--bc-border-focus)] focus-within:bg-[var(--bc-bg-card-solid)] hover:bg-[var(--bc-bg-card-solid)]"
                                 },
-                                div { class: "pl-4 pr-1 text-[#86868B] group-focus-within:text-[#007AFF] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
+                                div { class: "pl-4 pr-1 text-secondary group-focus-within:text-[var(--bc-primary)] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
                                     svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" }
                                     }
                                 }
                                 input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[#007AFF] px-2 text-[15px] text-[#1D1D1F] placeholder-[#86868B]",
+                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[var(--bc-primary)] px-2 text-body text-primary placeholder-text-secondary",
                                     r#type: if show_confirm_password() { "text" } else { "password" },
                                     value: "{confirm_password}",
                                     placeholder: "再次输入密码",
@@ -489,7 +489,7 @@ pub fn RegisterPage() -> Element {
                                 }
                                 // Match indicator
                                 if passwords_match {
-                                    div { class: "pr-4 text-green-500 flex-shrink-0",
+                                    div { class: "pr-4 text-[var(--bc-success)] flex-shrink-0",
                                         svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                             path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
                                         }
@@ -497,7 +497,7 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     // Visibility toggle when no match/empty
                                     button {
-                                        class: "pr-4 text-[#86868B] hover:text-[#007AFF] transition-colors flex-shrink-0",
+                                        class: "pr-4 text-secondary hover:text-[var(--bc-primary)] transition-colors flex-shrink-0",
                                         r#type: "button",
                                         tabindex: "-1",
                                         onclick: move |_| show_confirm_password.set(!show_confirm_password()),
@@ -520,22 +520,22 @@ pub fn RegisterPage() -> Element {
                                 } else {
                                     "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
                                 },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[#FF3B30] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
-                                span { class: "text-[12px] text-[#FF3B30] font-medium opacity-90",
+                                div { class: "w-1.5 h-1.5 rounded-full bg-[var(--bc-danger)] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
+                                span { class: "text-caption font-medium text-[var(--bc-danger)] opacity-90",
                                     "{confirm_error().unwrap_or_else(|| \" \".to_string())}"
                                 }
                             }
                         }
 
 
-                        // Register Button - Primary Action with high visual weight
+                        // Register Button - Primary Action using design system gradient
                         button {
-                            class: "group relative w-full h-12 mt-6 text-[16px] font-medium text-white transition-all duration-300 bg-gradient-to-r from-[#007AFF] to-[#5856D6] rounded-2xl shadow-[0_10px_30px_-10px_rgba(0,122,255,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(0,122,255,0.6)] hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.985] active:brightness-90 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 overflow-hidden",
+                            class: "bc-btn-gradient group relative mt-lg",
                             disabled: loading(),
                             tabindex: "5",
                             onclick: handle_register,
 
-                            span { class: "relative z-10 flex items-center justify-center gap-2",
+                            span { class: "relative z-10 flex items-center justify-center gap-sm",
                                 if loading() {
                                     // Loading spinner
                                     svg { class: "w-5 h-5 animate-spin", fill: "none", view_box: "0 0 24 24",
@@ -554,10 +554,10 @@ pub fn RegisterPage() -> Element {
                     }
 
                     // Footer Link
-                    div { class: "text-center mt-8 relative z-10",
+                    div { class: "text-center mt-xxl relative z-10",
                         Link {
                             to: "/login",
-                            class: "text-[15px] font-medium text-[#86868B] hover:text-[#1D1D1F] transition-colors",
+                            class: "text-subtitle font-medium text-secondary hover:text-primary transition-colors",
                             "已有账号？返回登录"
                         }
                     }

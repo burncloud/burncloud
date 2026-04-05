@@ -107,3 +107,4 @@ node_modules/
 
 # Black-box test evidence artifacts (real API responses, not for version control)
 evidence/
+.gstack/

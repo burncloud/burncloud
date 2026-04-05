@@ -21,27 +21,30 @@ pub fn SystemSettings() -> Element {
 
         div { class: "page-content",
             // Tab Navigation
-            div { class: "flex gap-md mb-lg border-b border-border",
+            div { class: "flex gap-md mb-lg border-b",
                 button {
-                    class: if active_tab() == "general" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
+                    class: if active_tab() == "general" { "btn btn-subtle font-bold border-b-2 rounded-none p-md p-sm" } else { "btn btn-subtle p-md p-sm" },
+                    style: if active_tab() == "general" { "border-bottom-color: var(--bc-primary); color: var(--bc-primary);" } else { "" },
                     onclick: move |_| active_tab.set("general"),
                     "General"
                 }
 
                 button {
-                    class: if active_tab() == "groups" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
+                    class: if active_tab() == "groups" { "btn btn-subtle font-bold border-b-2 rounded-none p-md p-sm" } else { "btn btn-subtle p-md p-sm" },
+                    style: if active_tab() == "groups" { "border-bottom-color: var(--bc-primary); color: var(--bc-primary);" } else { "" },
                     onclick: move |_| active_tab.set("groups"),
                     "Groups"
                 }
                 button {
-                    class: if active_tab() == "tokens" { "btn btn-text text-primary font-bold border-b-2 border-primary rounded-none px-md py-sm" } else { "btn btn-text text-secondary px-md py-sm" },
+                    class: if active_tab() == "tokens" { "btn btn-subtle font-bold border-b-2 rounded-none p-md p-sm" } else { "btn btn-subtle p-md p-sm" },
+                    style: if active_tab() == "tokens" { "border-bottom-color: var(--bc-primary); color: var(--bc-primary);" } else { "" },
                     onclick: move |_| active_tab.set("tokens"),
                     "Tokens"
                 }
             }
 
             if active_tab() == "general" {
-                div { class: "card",
+                div { class: "bc-card-solid",
                     div { class: "p-lg",
                         h3 { class: "text-subtitle font-semibold mb-md", "General Settings" }
                         div { class: "flex flex-col gap-md",
@@ -52,7 +55,8 @@ pub fn SystemSettings() -> Element {
                                     div { class: "text-caption text-secondary", "Display language" }
                                 }
                                 select {
-                                    class: "input input-sm w-32",
+                                    class: "input",
+                                    style: "width: 128px; padding: var(--bc-space-1) var(--bc-space-2); font-size: var(--bc-font-sm);",
                                     value: match *lang { Language::Zh => "zh", Language::En => "en" },
                                     onchange: move |evt| {
                                         let mut l = i18n.language.write();

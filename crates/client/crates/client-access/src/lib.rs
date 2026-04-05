@@ -116,10 +116,8 @@ pub fn AccessCredentialsPage() -> Element {
                 if let Err(e) = clipboard.set_text(text) {
                     toast.error(&format!("复制失败: {}", e));
                 } else {
-                    // toast.success("已复制到剪贴板"); // Removed according to Jobs: redundant if UI reacts
                     is_copied.set(true);
 
-                    // Reset after 2 seconds
                     spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                         is_copied.set(false);
@@ -171,15 +169,14 @@ pub fn AccessCredentialsPage() -> Element {
     };
 
     rsx! {
-        div { class: "flex flex-col h-full gap-8",
+        div { class: "flex flex-col h-full gap-xl",
             // Header
             div { class: "flex justify-between items-end",
                 div {
-                    h1 { class: "text-2xl font-bold text-base-content mb-1 tracking-tight", "访问凭证" }
-                    // Removed verbose description
+                    h1 { class: "text-title font-bold text-primary mb-xs tracking-tight", "访问凭证" }
                 }
                 BCButton {
-                    class: "btn-neutral btn-sm px-6 text-white shadow-sm",
+                    class: "btn-neutral btn-sm px-lg text-white shadow-sm",
                     onclick: handle_create_click,
                     "创建新凭证"
                 }
@@ -188,14 +185,14 @@ pub fn AccessCredentialsPage() -> Element {
             // Key List
             div { class: "flex-1 overflow-y-auto min-h-0",
                 if keys.read().is_empty() {
-                    div { class: "flex flex-col items-center justify-center h-full text-center pb-20",
-                        div { class: "p-6 rounded-full bg-base-200/50 mb-6",
-                            svg { class: "w-12 h-12 text-base-content/20", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
+                    div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
+                        div { class: "p-lg rounded-full", style: "background: var(--bc-bg-hover);",
+                            svg { class: "w-12 h-12", style: "color: var(--bc-text-disabled);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                 path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
                             }
                         }
-                        h3 { class: "text-xl font-bold text-base-content mb-2", "没有活跃的访问凭证" }
-                        p { class: "text-base text-base-content/60 max-w-sm mb-6", "创建您的第一个 API Key 以开始集成 BurnCloud 服务。" }
+                        h3 { class: "text-title font-bold text-primary mb-sm", "没有活跃的访问凭证" }
+                        p { class: "text-body text-secondary max-w-sm mb-lg", "创建您的第一个 API Key 以开始集成 BurnCloud 服务。" }
                         BCButton {
                             variant: ButtonVariant::Primary,
                             onclick: handle_create_click,
@@ -203,34 +200,35 @@ pub fn AccessCredentialsPage() -> Element {
                         }
                     }
                 } else {
-                    div { class: "grid gap-4",
+                    div { class: "grid gap-md",
                         {
                             keys().into_iter().map(|key| {
-                                // Clone IDs for closures to avoid move errors
                                 let status_id = key.id.clone();
                                 let delete_id = key.id.clone();
                                 let current_status = key.status;
 
                                 rsx! {
-                                    div { class: "group relative flex items-center justify-between p-5 bg-base-100 rounded-xl border border-base-200 hover:border-base-300 transition-all duration-200",
+                                    div { class: "bc-card-solid group relative flex items-center justify-between p-lg transition-all duration-200",
+                                        style: "cursor: default;",
                                         // Left: Key Info
-                                        div { class: "flex items-start gap-4",
-                                            div { class: "p-3 rounded-lg bg-base-200/50 text-base-content/70",
+                                        div { class: "flex items-start gap-md",
+                                            div { class: "p-md rounded-lg text-secondary",
+                                                style: "background: var(--bc-bg-hover);",
                                                 svg { class: "w-6 h-6", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
                                                     path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
                                                 }
                                             }
-                                            div { class: "flex flex-col gap-1",
-                                                div { class: "flex items-center gap-2",
-                                                    span { class: "font-bold text-base-content text-lg", "{key.name}" }
+                                            div { class: "flex flex-col gap-xs",
+                                                div { class: "flex items-center gap-sm",
+                                                    span { class: "font-bold text-primary text-lg", "{key.name}" }
                                                     if key.status == "Active" {
                                                         BCBadge { variant: BadgeVariant::Success, dot: true, "使用中" }
                                                     } else {
                                                         BCBadge { variant: BadgeVariant::Neutral, dot: true, "已吊销" }
                                                     }
                                                 }
-                                                div { class: "flex items-center gap-4 text-xs font-mono text-base-content/40 mt-1",
-                                                    span { class: "bg-base-200/50 px-1.5 py-0.5 rounded text-base-content/70", "{key.masked_key}" }
+                                                div { class: "flex items-center gap-md text-xs font-mono text-tertiary mt-xs",
+                                                    span { class: "px-sm py-0.5 rounded text-secondary", style: "background: var(--bc-bg-hover);", "{key.masked_key}" }
                                                     span { "{key.created_at}" }
                                                     if key.expires_at != "Never" {
                                                         span { "Exp: {key.expires_at}" }
@@ -240,15 +238,15 @@ pub fn AccessCredentialsPage() -> Element {
                                         }
 
                                         // Right: Actions & Scopes
-                                        div { class: "flex items-center gap-6",
+                                        div { class: "flex items-center gap-lg",
 
-                                            // Quota display - Minimalist
+                                            // Quota display
                                             if let Some(quota) = &key.quota_limit {
                                                  div { class: "badge badge-ghost font-mono text-xs", "{quota}" }
                                             }
 
                                             // Action Buttons
-                                            div { class: "flex gap-2",
+                                            div { class: "flex gap-sm",
                                                 // Status Toggle Button
                                                 button {
                                                     class: format!("btn btn-sm btn-ghost btn-square transition-colors {}",
@@ -256,7 +254,6 @@ pub fn AccessCredentialsPage() -> Element {
                                                     ),
                                                     title: if key.status == "Active" { "禁用凭证" } else { "启用凭证" },
                                                     onclick: move |_| {
-                                                        // Capture the cloned values
                                                         let id = status_id.clone();
                                                         let status_val = current_status;
 
@@ -278,7 +275,7 @@ pub fn AccessCredentialsPage() -> Element {
                                                 }
 
                                                 button {
-                                                    class: "btn btn-sm btn-ghost btn-square text-base-content/40 hover:text-error hover:bg-error/10 transition-colors",
+                                                    class: "btn btn-sm btn-ghost btn-square text-tertiary hover:text-error hover:bg-error/10 transition-colors",
                                                     onclick: move |_| open_delete_modal(delete_id.clone()),
                                                     svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                                         path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
@@ -299,32 +296,34 @@ pub fn AccessCredentialsPage() -> Element {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
                     // Backdrop
                     div {
-                        class: "absolute inset-0 bg-black/30 transition-opacity",
-                        style: "backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
+                        class: "absolute inset-0 transition-opacity",
+                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| show_create_modal.set(false)
                     }
 
                     // Modal Content
                     div {
-                        // Exact styles from models.rs for consistency
-                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg bg-base-100 sm:rounded-2xl shadow-2xl border-0 sm:border border-base-200 flex flex-col overflow-hidden animate-[scale-in_0.2s_ease-out] pointer-events-auto overscroll-contain",
+                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
+                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
                         onclick: |e| e.stop_propagation(),
 
                         // Header
-                        div { class: "flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4 border-b border-base-200 shrink-0 bg-base-100",
+                        div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
+                            style: "background: var(--bc-bg-card-solid);",
                             div {
-                                h3 { class: "text-lg font-bold text-base-content tracking-tight", "创建访问凭证" }
-                                p { class: "text-xs text-base-content/60 font-medium hidden sm:block", "配置新的 API Key 以授权应用访问" }
+                                h3 { class: "text-subtitle font-bold text-primary tracking-tight", "创建访问凭证" }
+                                p { class: "text-caption text-secondary font-medium hidden sm:block", "配置新的 API Key 以授权应用访问" }
                             }
                             button {
-                                class: "btn btn-sm btn-circle btn-ghost text-base-content/50 hover:bg-base-200",
+                                class: "btn btn-sm btn-circle btn-ghost text-secondary",
+                                style: "background: transparent;",
                                 onclick: move |_| show_create_modal.set(false),
                                 "✕"
                             }
                         }
 
                         // Body
-                        div { class: "flex-1 overflow-y-auto p-4 sm:p-6 min-h-0 overscroll-y-contain flex flex-col gap-4",
+                        div { class: "flex-1 overflow-y-auto p-md sm:p-lg min-h-0 overscroll-y-contain flex flex-col gap-md",
                             BCInput {
                                 label: Some("凭证名称 (Description)".to_string()),
                                 value: "{form_name}",
@@ -332,12 +331,11 @@ pub fn AccessCredentialsPage() -> Element {
                                 oninput: move |e: FormEvent| form_name.set(e.value())
                             }
 
-
-
-                            div { class: "grid grid-cols-2 gap-4",
-                                div { class: "flex flex-col gap-1.5",
-                                    label { class: "text-sm font-medium text-base-content/80", "过期时间" }
-                                    select { class: "select select-bordered w-full select-sm bg-base-100",
+                            div { class: "grid grid-cols-2 gap-md",
+                                div { class: "flex flex-col gap-xs",
+                                    label { class: "text-body font-medium text-secondary", "过期时间" }
+                                    select { class: "select select-bordered w-full select-sm",
+                                        style: "background: var(--bc-bg-card-solid);",
                                         value: "{form_expiry}",
                                         onchange: move |e: FormEvent| form_expiry.set(e.value()),
                                         option { value: "Never", "永不过期" }
@@ -354,14 +352,16 @@ pub fn AccessCredentialsPage() -> Element {
                                 }
                             }
 
-                            div { class: "alert alert-warning text-xs mt-2 py-2 bg-warning/10 border-warning/20 text-warning-content",
-                                svg { class: "w-4 h-4 text-warning", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }}
+                            div { class: "alert alert-warning text-xs mt-sm py-sm",
+                                style: "background: var(--bc-warning-light); border: 1px solid var(--bc-warning); color: var(--bc-warning);",
+                                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }}
                                 span { "创建后，完整的 API Key 仅会显示一次，请务必立即妥善保存。" }
                             }
                         }
 
                         // Footer
-                        div { class: "flex justify-end gap-3 px-6 py-4 border-t border-base-200 bg-base-50/50 shrink-0",
+                        div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0",
+                            style: "background: var(--bc-bg-hover);",
                             BCButton {
                                 variant: ButtonVariant::Ghost,
                                 onclick: move |_| show_create_modal.set(false),
@@ -379,26 +379,31 @@ pub fn AccessCredentialsPage() -> Element {
 
             // Key Result Modal (Show full key)
             if show_key_result_modal() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
+                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
                     div {
-                        class: "absolute inset-0 bg-black/60 transition-opacity backdrop-blur-sm",
+                        class: "absolute inset-0 transition-opacity",
+                        style: "background: rgba(0,0,0,0.60); backdrop-filter: blur(8px);",
                         onclick: move |_| show_key_result_modal.set(false)
                     }
-                    div { class: "relative w-full max-w-lg bg-base-100 rounded-2xl shadow-2xl p-6 animate-[scale-in_0.2s_ease-out]",
-                        div { class: "flex flex-col items-center gap-4 text-center",
-                            div { class: "w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mb-2",
-                                svg { class: "w-8 h-8 text-success", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                    div { class: "relative w-full max-w-lg p-lg animate-scale-in",
+                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl);",
+                        div { class: "flex flex-col items-center gap-md text-center",
+                            div { class: "w-16 h-16 rounded-full flex items-center justify-center mb-sm",
+                                style: "background: var(--bc-success-light);",
+                                svg { class: "w-8 h-8", style: "color: var(--bc-success);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                     path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
                                 }
                             }
-                            h3 { class: "text-2xl font-bold", "凭证已创建" }
-                            p { class: "text-base-content/60", "请复制并保存您的 Secret Key，出于安全考虑，它将不会再次显示。" }
+                            h3 { class: "text-2xl font-bold text-primary", "凭证已创建" }
+                            p { class: "text-secondary", "请复制并保存您的 Secret Key，出于安全考虑，它将不会再次显示。" }
 
-                            div { class: "w-full p-4 bg-base-200 rounded-lg flex items-center justify-between gap-3 mt-4 font-mono text-sm break-all",
-                                span { class: "text-base-content select-all", "{new_full_key}" }
+                            div { class: "w-full p-md rounded-lg flex items-center justify-between gap-md mt-md font-mono text-sm break-all",
+                                style: "background: var(--bc-bg-hover);",
+                                span { class: "text-primary select-all", "{new_full_key}" }
                                 button {
                                     class: "btn btn-square btn-sm btn-ghost transition-all duration-200",
-                                    class: if is_copied() { "text-success bg-success/10 scale-110" } else { "" },
+                                    class: if is_copied() { "text-success" } else { "" },
+                                    style: if is_copied() { "background: var(--bc-success-light); transform: scale(1.1);" } else { "" },
                                     onclick: copy_key,
                                     if is_copied() {
                                         svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2.5", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" } }
@@ -409,7 +414,7 @@ pub fn AccessCredentialsPage() -> Element {
                             }
 
                             BCButton {
-                                class: "btn-neutral w-full mt-4",
+                                class: "btn-neutral w-full mt-md",
                                 onclick: move |_| show_key_result_modal.set(false),
                                 "我已保存"
                             }
@@ -420,45 +425,49 @@ pub fn AccessCredentialsPage() -> Element {
 
             // Delete Confirmation Modal
             if is_delete_modal_open() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
+                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
                     // Backdrop
                     div {
-                        class: "absolute inset-0 bg-black/30 transition-opacity",
-                        style: "backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
+                        class: "absolute inset-0 transition-opacity",
+                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| is_delete_modal_open.set(false)
                     }
 
                     // Modal Content
                     div {
-                        class: "relative w-full max-w-md bg-base-100 rounded-2xl shadow-2xl border border-base-200 overflow-hidden animate-[scale-in_0.2s_ease-out]",
+                        class: "relative w-full max-w-md overflow-hidden animate-scale-in",
+                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
                         onclick: |e| e.stop_propagation(),
 
                         // Header with Warning Icon
-                        div { class: "flex items-center gap-4 px-6 py-5 bg-error/5 border-b border-error/10",
-                            div { class: "w-12 h-12 rounded-full bg-error/10 flex items-center justify-center",
-                                svg { class: "w-6 h-6 text-error", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                        div { class: "flex items-center gap-md px-lg py-lg border-b",
+                            style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
+                            div { class: "w-12 h-12 rounded-full flex items-center justify-center",
+                                style: "background: var(--bc-danger-light);",
+                                svg { class: "w-6 h-6", style: "color: var(--bc-danger);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                     path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
                                 }
                             }
                             div { class: "flex-1",
-                                h3 { class: "text-lg font-bold text-base-content", "确认吊销" }
-                                p { class: "text-sm text-base-content/60 mt-1", "此操作无法撤销" }
+                                h3 { class: "text-subtitle font-bold text-primary", "确认吊销" }
+                                p { class: "text-body text-secondary mt-xs", "此操作无法撤销" }
                             }
                         }
 
                         // Message
-                        div { class: "px-6 py-4",
-                            p { class: "text-base-content/80",
+                        div { class: "px-lg py-md",
+                            p { class: "text-secondary",
                                 "确定要吊销此访问凭证吗？"
                                 br {}
                                 "所有使用此凭证的应用将"
-                                span { class: "font-bold text-error", "立即失去访问权限" }
+                                span { class: "font-bold", style: "color: var(--bc-danger);", "立即失去访问权限" }
                                 "。"
                             }
                         }
 
                         // Footer
-                        div { class: "flex justify-end gap-3 px-6 py-4 bg-base-50/50 border-t border-base-200",
+                        div { class: "flex justify-end gap-md px-lg py-md border-t",
+                            style: "background: var(--bc-bg-hover);",
                             BCButton {
                                 variant: ButtonVariant::Ghost,
                                 onclick: move |_| is_delete_modal_open.set(false),

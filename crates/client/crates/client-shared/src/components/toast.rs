@@ -113,15 +113,21 @@ pub fn ToastContainer() -> Element {
     let current_toasts = toasts.read();
 
     rsx! {
-        div { class: "toast-container",
+        div { class: "fixed top-md right-md z-[9999] flex flex-col gap-sm pointer-events-none",
             {current_toasts.iter().map(|toast| {
                 let id = toast.id.clone();
+                let toast_class = match toast.type_ {
+                    ToastType::Success => "bc-badge-success",
+                    ToastType::Error => "bc-badge-danger",
+                    ToastType::Warning => "bc-badge-warning",
+                    ToastType::Info => "bc-badge-info",
+                };
                 rsx! {
                     div {
                         key: "{toast.id}",
-                        class: "toast toast-{toast.type_.to_string().to_lowercase()}",
+                        class: "pointer-events-auto flex items-center gap-sm px-lg py-md rounded-md shadow-md animate-slide-up cursor-pointer {toast_class}",
                         onclick: move |_| toast_manager.remove(&id),
-                        div { class: "toast-icon",
+                        span { class: "font-semibold",
                             match toast.type_ {
                                 ToastType::Success => "✓",
                                 ToastType::Error => "✕",
@@ -129,7 +135,7 @@ pub fn ToastContainer() -> Element {
                                 ToastType::Info => "ℹ",
                             }
                         }
-                        div { class: "toast-message", "{toast.message}" }
+                        span { class: "text-body font-medium", "{toast.message}" }
                     }
                 }
             })}

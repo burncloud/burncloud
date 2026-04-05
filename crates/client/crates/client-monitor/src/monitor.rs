@@ -1,3 +1,4 @@
+use burncloud_client_shared::components::{BCBadge, BCButton, BCCard, BadgeVariant, ButtonVariant};
 use dioxus::prelude::*;
 
 #[component]
@@ -27,16 +28,23 @@ pub fn ServiceMonitor() -> Element {
     ];
 
     rsx! {
-        div { class: "flex flex-col h-full gap-8",
+        div { class: "flex flex-col h-full gap-xl",
             // Header
-            div { class: "flex justify-between items-end",
+            div { class: "flex justify-between items-center",
                 div {
-                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "风控雷达" }
-                    p { class: "text-sm text-base-content/60 font-medium", "实时威胁检测与内容安全防御" }
+                    h1 { class: "text-large-title font-semibold text-primary mb-xs tracking-tight", "风控雷达" }
+                    p { class: "text-caption text-secondary font-medium", "实时威胁检测与内容安全防御" }
                 }
-                div { class: "flex gap-3",
-                    button { class: "btn btn-ghost btn-sm text-base-content/70", "黑名单管理" }
-                    button { class: "btn btn-error btn-sm px-6 text-white shadow-sm",
+                div { class: "flex gap-sm",
+                    BCButton {
+                        variant: ButtonVariant::Ghost,
+                        size: burncloud_client_shared::components::ButtonSize::Small,
+                        "黑名单管理"
+                    }
+                    BCButton {
+                        variant: ButtonVariant::Danger,
+                        size: burncloud_client_shared::components::ButtonSize::Small,
+                        class: "px-xl",
                         span { class: "loading loading-spinner loading-xs hidden" }
                         "紧急熔断"
                     }
@@ -44,68 +52,99 @@ pub fn ServiceMonitor() -> Element {
             }
 
             // Security HUD
-            div { class: "grid grid-cols-4 gap-6",
+            div { class: "grid grid-cols-4 gap-md",
                 // Security Score
-                div { class: "col-span-2 p-6 bg-base-100 rounded-xl border border-base-200 shadow-sm flex items-center justify-between relative overflow-hidden",
-                    div { class: "flex flex-col gap-1 z-10",
-                        span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "当前安全评分" }
-                        div { class: "flex items-baseline gap-3",
-                            span { class: "text-5xl font-bold text-emerald-600 tracking-tighter", "{security_score}" }
-                            span { class: "text-sm font-medium text-emerald-600/80", "安全状况良好" }
+                BCCard {
+                    class: "col-span-2 p-lg flex items-center justify-between relative overflow-hidden",
+                    div { class: "flex flex-col gap-xs z-10",
+                        span { class: "text-xxs font-semibold text-tertiary uppercase tracking-wider", "当前安全评分" }
+                        div { class: "flex items-baseline gap-md",
+                            span { class: "text-display font-bold tracking-tighter",
+                                style: "color: var(--bc-success)",
+                                "{security_score}"
+                            }
+                            span { class: "text-caption font-medium",
+                                style: "color: var(--bc-success)",
+                                "安全状况良好"
+                            }
                         }
                     }
                     // Visual Decoration
-                    div { class: "absolute right-0 top-0 h-full w-32 bg-gradient-to-l from-emerald-50 to-transparent opacity-50" }
-                    div { class: "w-16 h-16 rounded-full border-4 border-emerald-100 flex items-center justify-center text-emerald-500",
-                        svg { class: "w-8 h-8", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                    div {
+                        class: "absolute right-0 top-0 h-full",
+                        style: "width: 128px; background: linear-gradient(to left, var(--bc-success-light), transparent); opacity: 0.5;",
+                    }
+                    div {
+                        class: "flex items-center justify-center",
+                        style: "width: 64px; height: 64px; border-radius: 9999px; border: 4px solid var(--bc-success-light); color: var(--bc-success);",
+                        svg { class: "", style: "width: 32px; height: 32px;", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                             path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" }
                         }
                     }
                 }
 
                 // Blocked Attacks
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "已拦截攻击" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{blocked_attacks}" }
-                        span { class: "text-xs font-medium text-red-500 bg-red-50 px-1.5 py-0.5 rounded", "+12 Today" }
+                BCCard {
+                    class: "flex flex-col gap-xs",
+                    span { class: "text-xxs font-semibold text-tertiary uppercase tracking-wider", "已拦截攻击" }
+                    div { class: "flex items-baseline gap-sm",
+                        span { class: "text-title font-bold text-primary tracking-tight", "{blocked_attacks}" }
+                        span {
+                            class: "text-xxs font-medium px-xs rounded",
+                            style: "color: var(--bc-danger); background: var(--bc-danger-light); padding-top: 2px; padding-bottom: 2px;",
+                            "+12 Today"
+                        }
                     }
                 }
 
                 // Active Threats
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "活跃威胁源" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{active_threats}" }
-                        span { class: "text-xs font-medium text-base-content/40", "All Clear" }
+                BCCard {
+                    class: "flex flex-col gap-xs",
+                    span { class: "text-xxs font-semibold text-tertiary uppercase tracking-wider", "活跃威胁源" }
+                    div { class: "flex items-baseline gap-sm",
+                        span { class: "text-title font-bold text-primary tracking-tight", "{active_threats}" }
+                        span { class: "text-xxs font-medium text-tertiary", "All Clear" }
                     }
                 }
             }
 
             // Main Content Grid
-            div { class: "grid grid-cols-3 gap-8",
+            div { class: "grid grid-cols-3 gap-xl",
 
                 // Left: Live Threat Feed
-                div { class: "col-span-2 flex flex-col gap-4",
-                    h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "实时威胁感知 (Live Threat Feed)" }
+                div { class: "col-span-2 flex flex-col gap-md",
+                    h3 {
+                        class: "text-caption font-medium text-secondary pb-sm border-b",
+                        "实时威胁感知 (Live Threat Feed)"
+                    }
 
-                    div { class: "flex flex-col gap-2",
+                    div { class: "flex flex-col gap-sm",
                         for threat in threats {
-                            div { class: "flex items-center justify-between p-3 bg-base-50/50 rounded-lg border border-base-200/50 hover:bg-white hover:shadow-sm transition-all group",
-                                div { class: "flex items-center gap-4",
-                                    span { class: "font-mono text-xs text-base-content/40", "{threat.0}" }
+                            BCCard {
+                                variant: burncloud_client_shared::components::CardVariant::Outlined,
+                                class: "flex items-center justify-between p-md hover:shadow-sm transition-all group",
+                                div { class: "flex items-center gap-md",
+                                    span { class: "text-xxs text-tertiary", style: "font-family: monospace;", "{threat.0}" }
                                     div { class: "flex flex-col",
-                                        span { class: "text-sm font-semibold text-base-content group-hover:text-red-600 transition-colors", "{threat.1}" }
-                                        span { class: "text-xs text-base-content/50 font-mono", "Source: {threat.2}" }
+                                        span { class: "text-caption font-semibold text-primary group-hover:text-primary transition-colors",
+                                            "{threat.1}"
+                                        }
+                                        span { class: "text-xxs text-tertiary", style: "font-family: monospace;", "Source: {threat.2}" }
                                     }
                                 }
-                                span {
-                                    class: match threat.3 {
-                                        "High" => "px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700 uppercase tracking-wide",
-                                        "Medium" => "px-2 py-1 rounded text-xs font-bold bg-orange-100 text-orange-700 uppercase tracking-wide",
-                                        _ => "px-2 py-1 rounded text-xs font-bold bg-base-200 text-base-content/60 uppercase tracking-wide",
-                                    },
-                                    "{threat.3}"
+                                {
+                                    let badge_variant = match threat.3 {
+                                        "High" => BadgeVariant::Danger,
+                                        "Medium" => BadgeVariant::Warning,
+                                        _ => BadgeVariant::Neutral,
+                                    };
+                                    rsx! {
+                                        BCBadge {
+                                            variant: badge_variant,
+                                            class: "uppercase tracking-wide",
+                                            "{threat.3}"
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -113,45 +152,58 @@ pub fn ServiceMonitor() -> Element {
                 }
 
                 // Right: Content Safety Filters
-                div { class: "col-span-1 flex flex-col gap-4",
-                    h3 { class: "text-sm font-medium text-base-content/80 border-b border-base-content/10 pb-2", "内容风控策略" }
+                div { class: "col-span-1 flex flex-col gap-md",
+                    h3 {
+                        class: "text-caption font-medium text-secondary pb-sm border-b",
+                        "内容风控策略"
+                    }
 
-                    div { class: "flex flex-col gap-3",
+                    div { class: "flex flex-col gap-md",
                         // Filter 1
-                        div { class: "p-4 border border-base-200 rounded-lg flex items-center justify-between",
-                            div { class: "flex items-center gap-3",
-                                div { class: "w-2 h-2 rounded-full bg-emerald-500" }
-                                span { class: "text-sm font-medium", "敏感词过滤" }
+                        BCCard {
+                            variant: burncloud_client_shared::components::CardVariant::Outlined,
+                            class: "flex items-center justify-between",
+                            div { class: "flex items-center gap-md",
+                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-success);" }
+                                span { class: "text-caption font-medium", "敏感词过滤" }
                             }
                             input { type: "checkbox", class: "toggle toggle-success toggle-sm", checked: "true" }
                         }
                         // Filter 2
-                        div { class: "p-4 border border-base-200 rounded-lg flex items-center justify-between",
-                            div { class: "flex items-center gap-3",
-                                div { class: "w-2 h-2 rounded-full bg-emerald-500" }
-                                span { class: "text-sm font-medium", "政治敏感识别" }
+                        BCCard {
+                            variant: burncloud_client_shared::components::CardVariant::Outlined,
+                            class: "flex items-center justify-between",
+                            div { class: "flex items-center gap-md",
+                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-success);" }
+                                span { class: "text-caption font-medium", "政治敏感识别" }
                             }
                             input { type: "checkbox", class: "toggle toggle-success toggle-sm", checked: "true" }
                         }
                         // Filter 3
-                        div { class: "p-4 border border-base-200 rounded-lg flex items-center justify-between",
-                            div { class: "flex items-center gap-3",
-                                div { class: "w-2 h-2 rounded-full bg-emerald-500" }
-                                span { class: "text-sm font-medium", "PII 隐私保护" }
+                        BCCard {
+                            variant: burncloud_client_shared::components::CardVariant::Outlined,
+                            class: "flex items-center justify-between",
+                            div { class: "flex items-center gap-md",
+                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-success);" }
+                                span { class: "text-caption font-medium", "PII 隐私保护" }
                             }
                             input { type: "checkbox", class: "toggle toggle-success toggle-sm", checked: "true" }
                         }
                         // Filter 4 (Disabled)
-                        div { class: "p-4 border border-base-200 rounded-lg flex items-center justify-between opacity-60",
-                            div { class: "flex items-center gap-3",
-                                div { class: "w-2 h-2 rounded-full bg-base-300" }
-                                span { class: "text-sm font-medium", "越狱攻击防护" }
+                        BCCard {
+                            variant: burncloud_client_shared::components::CardVariant::Outlined,
+                            class: "flex items-center justify-between opacity-60",
+                            div { class: "flex items-center gap-md",
+                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-border-hover);" }
+                                span { class: "text-caption font-medium", "越狱攻击防护" }
                             }
                             input { type: "checkbox", class: "toggle toggle-sm" }
                         }
                     }
 
-                    div { class: "mt-4 p-4 bg-blue-50 text-blue-800 rounded-lg text-xs leading-relaxed",
+                    div {
+                        class: "mt-md p-lg text-caption leading-relaxed",
+                        style: "background: var(--bc-info-light); color: var(--bc-info); border-radius: var(--bc-radius-md);",
                         "💡 提示：开启隐私保护可能会略微增加请求延迟 (约 +50ms)。"
                     }
                 }

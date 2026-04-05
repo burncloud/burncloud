@@ -58,8 +58,14 @@ pub async fn spawn_app() -> String {
             .arg("server")
             .arg("start")
             .env("PORT", port.to_string())
-            .env("RUST_LOG", "burncloud=info") // Enable info logs for debugging
+            .env("RUST_LOG", "burncloud=warn") // Reduce log noise
             .env("NO_PROXY", "*") // Prevent proxy issues
+            .env(
+                "MASTER_KEY",
+                "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
+            ) // 64 hex chars for test
+            .env("PRICE_SYNC_INTERVAL_SECS", "999999") // Disable price sync for faster startup
+            .env("SKIP_INITIAL_PRICE_SYNC", "1") // Skip initial price sync in tests
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
@@ -91,8 +97,8 @@ fn get_free_port() -> u16 {
 
 async fn wait_for_server(url: &str) {
     let client = Client::new();
-    for _ in 0..50 {
-        // 5s timeout
+    for _ in 0..120 {
+        // 60s timeout (price sync can take ~30s on first run)
         if client
             .get(format!("{}/api/status", url))
             .send()
@@ -101,7 +107,7 @@ async fn wait_for_server(url: &str) {
         {
             return;
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
     panic!("Server failed to start at {}", url);
 }

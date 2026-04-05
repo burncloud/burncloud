@@ -60,7 +60,6 @@ fn send_msg(
         }
 
         let client = Client::new();
-        // In a real app, use a configured base URL
         let res = client
             .post("http://127.0.0.1:3000/v1/chat/completions")
             .json(&ChatRequest {
@@ -77,7 +76,6 @@ fn send_msg(
                 }
             }
         } else {
-            // Handle error or just ignore for prototype
             println!("Failed to send message");
         }
         loading.set(false);
@@ -96,11 +94,12 @@ pub fn PlaygroundPage() -> Element {
     let mut selected_model = use_signal(|| "gpt2".to_string());
 
     rsx! {
-        div { class: "flex flex-col h-full p-6 gap-4",
-            div { class: "flex items-center gap-4 border-b pb-4",
-                h1 { class: "text-2xl font-bold", "Playground" }
+        div { class: "flex flex-col h-full p-lg gap-md",
+            div { class: "flex items-center gap-md border-b pb-md",
+                h1 { class: "text-title font-bold text-primary", "Playground" }
                 select {
-                    class: "border rounded p-2",
+                    class: "rounded p-sm",
+                    style: "border: 1px solid var(--bc-border); background: var(--bc-bg-card-solid); color: var(--bc-text-primary);",
                     value: "{selected_model}",
                     onchange: move |evt| selected_model.set(evt.value()),
                     option { value: "gpt2", "gpt2" }
@@ -108,19 +107,29 @@ pub fn PlaygroundPage() -> Element {
                 }
             }
 
-            div { class: "flex-1 overflow-y-auto border rounded p-4 space-y-4 bg-gray-50",
+            div { class: "flex-1 overflow-y-auto rounded p-md space-y-md",
+                style: "border: 1px solid var(--bc-border); background: var(--bc-bg-hover);",
                 for msg in messages() {
                     div { class: format!("flex w-full {}", if msg.role == "user" { "justify-end" } else { "justify-start" }),
-                        div { class: format!("max-w-[80%] p-3 rounded-lg shadow-sm {}", if msg.role == "user" { "bg-blue-500 text-white" } else { "bg-white text-gray-800" }),
+                        div { class: format!("max-w-[80%] p-md rounded-lg shadow-sm {}", if msg.role == "user" {
+                                "text-white".to_string()
+                            } else {
+                                String::new()
+                            }),
+                            style: if msg.role == "user" {
+                                "background: var(--bc-primary); color: var(--bc-text-on-accent);"
+                            } else {
+                                "background: var(--bc-bg-card-solid); color: var(--bc-text-primary);"
+                            },
                             "{msg.content}"
                         }
                     }
                 }
             }
 
-            div { class: "flex gap-2 pt-2",
+            div { class: "flex gap-sm pt-sm",
                 input {
-                    class: "flex-1 border rounded p-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500",
+                    class: "flex-1 rounded p-md shadow-sm bc-input",
                     placeholder: "Type a message...",
                     value: "{input_text}",
                     oninput: move |evt| input_text.set(evt.value()),
@@ -131,7 +140,8 @@ pub fn PlaygroundPage() -> Element {
                     }
                 }
                 button {
-                    class: "bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed",
+                    class: "btn-primary font-bold px-xl py-sm rounded transition",
+                    style: "color: var(--bc-text-on-accent);",
                     disabled: "{loading}",
                     onclick: move |_| send_msg(messages, input_text, loading, selected_model),
                     "Send"
