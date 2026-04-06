@@ -7,8 +7,8 @@ use burncloud_common::pricing_config::{
 };
 use burncloud_database::create_database_with_url;
 use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
-use burncloud_router::price_sync::{PriceSyncConfig, PriceSyncService};
 use burncloud_database_router::RouterDatabase;
+use burncloud_router::price_sync::{PriceSyncConfig, PriceSyncService};
 use common::setup_db;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -317,10 +317,19 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
                 output_price: currency_pricing.output_price,
                 source: currency_pricing.source.clone(),
                 region: None,
-                context_window: model_pricing.metadata.as_ref().and_then(|m| m.context_window),
-                max_output_tokens: model_pricing.metadata.as_ref().and_then(|m| m.max_output_tokens),
+                context_window: model_pricing
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.context_window),
+                max_output_tokens: model_pricing
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.max_output_tokens),
                 supports_vision: model_pricing.metadata.as_ref().map(|m| m.supports_vision),
-                supports_function_calling: model_pricing.metadata.as_ref().map(|m| m.supports_function_calling),
+                supports_function_calling: model_pricing
+                    .metadata
+                    .as_ref()
+                    .map(|m| m.supports_function_calling),
                 ..Default::default()
             };
             PriceModel::upsert(&db, &price_input).await?;
@@ -367,7 +376,11 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
 
     // With DB prices present, forced sync failure must return Ok (graceful degradation)
     let result = service.sync_all(true).await;
-    assert!(result.is_ok(), "Forced sync failure with existing DB prices must return Ok, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Forced sync failure with existing DB prices must return Ok, got: {:?}",
+        result.err()
+    );
     assert_eq!(result.unwrap().source, "db_fallback");
 
     // The pre-existing price must still be in the DB
@@ -408,7 +421,10 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
     // DB is empty, remote unreachable → must return Err (fatal)
     let result = service.sync_all(false).await;
     let _ = std::fs::remove_file(&tmp_path); // cleanup
-    assert!(result.is_err(), "Cold start with empty DB and unreachable remote must return Err");
+    assert!(
+        result.is_err(),
+        "Cold start with empty DB and unreachable remote must return Err"
+    );
 
     Ok(())
 }
@@ -449,7 +465,10 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
     let result = service.sync_all(false).await;
     let _ = std::fs::remove_file(&tmp_path); // cleanup
     let result = result?;
-    assert_eq!(result.source, "db_cache", "Should use DB fast path when prices exist");
+    assert_eq!(
+        result.source, "db_cache",
+        "Should use DB fast path when prices exist"
+    );
 
     Ok(())
 }

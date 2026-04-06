@@ -418,7 +418,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 println!("\nTTS Voices Pricing ($/1M chars):");
                 for price in &prices {
                     if let Some(ref voices_json) = price.voices_pricing {
-                        if let Ok(voices) = serde_json::from_str::<std::collections::HashMap<String, i64>>(voices_json) {
+                        if let Ok(voices) = serde_json::from_str::<
+                            std::collections::HashMap<String, i64>,
+                        >(voices_json)
+                        {
                             println!("  {}:", price.currency);
                             let mut voice_list: Vec<_> = voices.iter().collect();
                             voice_list.sort_by_key(|(k, _)| *k);
@@ -436,7 +439,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 println!("\nVideo Pricing ($/second):");
                 for price in &prices {
                     if let Some(ref video_json) = price.video_pricing {
-                        if let Ok(resolutions) = serde_json::from_str::<std::collections::HashMap<String, i64>>(video_json) {
+                        if let Ok(resolutions) = serde_json::from_str::<
+                            std::collections::HashMap<String, i64>,
+                        >(video_json)
+                        {
                             println!("  {}:", price.currency);
                             let mut res_list: Vec<_> = resolutions.iter().collect();
                             res_list.sort_by_key(|(k, _)| *k);
@@ -455,8 +461,13 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 for price in &prices {
                     if let Some(ref asr_json) = price.asr_pricing {
                         if let Ok(asr) = serde_json::from_str::<serde_json::Value>(asr_json) {
-                            if let Some(per_minute) = asr.get("per_minute").and_then(|v| v.as_i64()) {
-                                println!("  {:<10} {:>10.4}", price.currency, from_nano(per_minute));
+                            if let Some(per_minute) = asr.get("per_minute").and_then(|v| v.as_i64())
+                            {
+                                println!(
+                                    "  {:<10} {:>10.4}",
+                                    price.currency,
+                                    from_nano(per_minute)
+                                );
                             }
                         }
                     }
@@ -474,8 +485,13 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                             if let Some(audio_in) = rt.get("audio_input").and_then(|v| v.as_i64()) {
                                 println!("    {:<20} {:>10.4}", "Audio Input", from_nano(audio_in));
                             }
-                            if let Some(audio_out) = rt.get("audio_output").and_then(|v| v.as_i64()) {
-                                println!("    {:<20} {:>10.4}", "Audio Output", from_nano(audio_out));
+                            if let Some(audio_out) = rt.get("audio_output").and_then(|v| v.as_i64())
+                            {
+                                println!(
+                                    "    {:<20} {:>10.4}",
+                                    "Audio Output",
+                                    from_nano(audio_out)
+                                );
                             }
                             if let Some(img_in) = rt.get("image_input").and_then(|v| v.as_i64()) {
                                 println!("    {:<20} {:>10.4}", "Image Input", from_nano(img_in));
@@ -1087,17 +1103,28 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             };
 
-            println!("Catalog version: {}  models: {}", config.version, config.models.len());
-            println!("Updated at: {}", config.updated_at.format("%Y-%m-%d %H:%M UTC"));
+            println!(
+                "Catalog version: {}  models: {}",
+                config.version,
+                config.models.len()
+            );
+            println!(
+                "Updated at: {}",
+                config.updated_at.format("%Y-%m-%d %H:%M UTC")
+            );
             println!();
 
             let (mut ok, mut err) = (0usize, 0usize);
             for (model_name, model_pricing) in &config.models {
                 for (currency, cp) in &model_pricing.pricing {
                     let meta = model_pricing.metadata.as_ref();
-                    let cache = model_pricing.cache_pricing.as_ref()
+                    let cache = model_pricing
+                        .cache_pricing
+                        .as_ref()
                         .and_then(|m| m.get(currency));
-                    let batch = model_pricing.batch_pricing.as_ref()
+                    let batch = model_pricing
+                        .batch_pricing
+                        .as_ref()
                         .and_then(|m| m.get(currency));
 
                     let input = PriceInput {
@@ -1106,7 +1133,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         input_price: cp.input_price,
                         output_price: cp.output_price,
                         cache_read_input_price: cache.map(|c| c.cache_read_input_price),
-                        cache_creation_input_price: cache.and_then(|c| c.cache_creation_input_price),
+                        cache_creation_input_price: cache
+                            .and_then(|c| c.cache_creation_input_price),
                         batch_input_price: batch.map(|b| b.batch_input_price),
                         batch_output_price: batch.map(|b| b.batch_output_price),
                         priority_input_price: None,
@@ -1147,7 +1175,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             // If the server is not running this is a no-op (warning only).
             let server_url = std::env::var("BURNCLOUD_SERVER_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
-            let sync_endpoint = format!("{}/console/internal/prices/sync", server_url.trim_end_matches('/'));
+            let sync_endpoint = format!(
+                "{}/console/internal/prices/sync",
+                server_url.trim_end_matches('/')
+            );
             let notify_client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(60))
                 .build()?;
@@ -1156,7 +1187,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     println!("✅ Server price cache refreshed.");
                 }
                 Ok(resp) => {
-                    eprintln!("⚠ Server returned {} when refreshing cache (prices are in DB).", resp.status());
+                    eprintln!(
+                        "⚠ Server returned {} when refreshing cache (prices are in DB).",
+                        resp.status()
+                    );
                 }
                 Err(_) => {
                     println!("ℹ Server not reachable — prices written to DB, cache refreshes on next startup.");

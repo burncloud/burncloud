@@ -66,7 +66,16 @@ impl CostCalculator {
         is_priority: bool,
         region: Option<&str>,
     ) -> Result<CostResult, BillingError> {
-        self.calculate_with_voice(model, usage, request_id, is_batch, is_priority, region, None).await
+        self.calculate_with_voice(
+            model,
+            usage,
+            request_id,
+            is_batch,
+            is_priority,
+            region,
+            None,
+        )
+        .await
     }
 
     /// Calculate cost for a completed request with optional voice-specific pricing.
@@ -90,7 +99,8 @@ impl CostCalculator {
             .await
             .ok_or_else(|| BillingError::PriceNotFound(model.to_string()))?;
 
-        let breakdown = compute_breakdown(usage, &price, request_id, is_batch, is_priority, voice_id);
+        let breakdown =
+            compute_breakdown(usage, &price, request_id, is_batch, is_priority, voice_id);
         Ok(CostResult::from_breakdown(breakdown))
     }
 }
@@ -133,7 +143,12 @@ fn compute_breakdown(
     let embedding_cost = if usage.embedding_tokens > 0 {
         // Embedding requests: use embedding_price if set, else input_price
         let embedding_rate = price.embedding_price.unwrap_or(price.input_price);
-        nano(usage.embedding_tokens, embedding_rate, request_id, "embedding")
+        nano(
+            usage.embedding_tokens,
+            embedding_rate,
+            request_id,
+            "embedding",
+        )
     } else {
         0
     };
@@ -141,50 +156,98 @@ fn compute_breakdown(
     // --- Standard input / output ---
     let (effective_input_price, effective_output_price) = if is_priority {
         (
-            price.priority_input_price.unwrap_or(
-                saturating_mul_percent(price.input_price, PRIORITY_SURCHARGE_PERCENT),
-            ),
-            price.priority_output_price.unwrap_or(
-                saturating_mul_percent(price.output_price, PRIORITY_SURCHARGE_PERCENT),
-            ),
+            price.priority_input_price.unwrap_or(saturating_mul_percent(
+                price.input_price,
+                PRIORITY_SURCHARGE_PERCENT,
+            )),
+            price
+                .priority_output_price
+                .unwrap_or(saturating_mul_percent(
+                    price.output_price,
+                    PRIORITY_SURCHARGE_PERCENT,
+                )),
         )
     } else if is_batch {
         (
-            price.batch_input_price.unwrap_or(
-                saturating_mul_percent(price.input_price, BATCH_DISCOUNT_PERCENT),
-            ),
-            price.batch_output_price.unwrap_or(
-                saturating_mul_percent(price.output_price, BATCH_DISCOUNT_PERCENT),
-            ),
+            price.batch_input_price.unwrap_or(saturating_mul_percent(
+                price.input_price,
+                BATCH_DISCOUNT_PERCENT,
+            )),
+            price.batch_output_price.unwrap_or(saturating_mul_percent(
+                price.output_price,
+                BATCH_DISCOUNT_PERCENT,
+            )),
         )
     } else {
         (price.input_price, price.output_price)
     };
 
-    let input_cost = nano(usage.input_tokens, effective_input_price, request_id, "input");
-    let output_cost = nano(usage.output_tokens, effective_output_price, request_id, "output");
+    let input_cost = nano(
+        usage.input_tokens,
+        effective_input_price,
+        request_id,
+        "input",
+    );
+    let output_cost = nano(
+        usage.output_tokens,
+        effective_output_price,
+        request_id,
+        "output",
+    );
 
     // --- Reasoning tokens (billed at reasoning_price, or output rate as fallback) ---
     let reasoning_rate = price.reasoning_price.unwrap_or(effective_output_price);
-    let reasoning_cost = nano(usage.reasoning_tokens, reasoning_rate, request_id, "reasoning");
+    let reasoning_cost = nano(
+        usage.reasoning_tokens,
+        reasoning_rate,
+        request_id,
+        "reasoning",
+    );
 
     // --- Cache tokens ---
-    let cache_read_price = price.cache_read_input_price.unwrap_or(
-        saturating_mul_percent(price.input_price, CACHE_READ_DISCOUNT_PERCENT),
-    );
-    let cache_write_price = price.cache_creation_input_price.unwrap_or(
-        saturating_mul_percent(price.input_price, CACHE_WRITE_SURCHARGE_PERCENT),
-    );
-    let cache_cost = nano(usage.cache_read_tokens, cache_read_price, request_id, "cache_read")
-        .saturating_add(nano(usage.cache_write_tokens, cache_write_price, request_id, "cache_write"));
+    let cache_read_price = price
+        .cache_read_input_price
+        .unwrap_or(saturating_mul_percent(
+            price.input_price,
+            CACHE_READ_DISCOUNT_PERCENT,
+        ));
+    let cache_write_price = price
+        .cache_creation_input_price
+        .unwrap_or(saturating_mul_percent(
+            price.input_price,
+            CACHE_WRITE_SURCHARGE_PERCENT,
+        ));
+    let cache_cost = nano(
+        usage.cache_read_tokens,
+        cache_read_price,
+        request_id,
+        "cache_read",
+    )
+    .saturating_add(nano(
+        usage.cache_write_tokens,
+        cache_write_price,
+        request_id,
+        "cache_write",
+    ));
 
     // --- Audio tokens ---
-    let audio_input_price = price.audio_input_price.unwrap_or(
-        saturating_mul_percent(price.input_price, AUDIO_INPUT_SURCHARGE_PERCENT),
-    );
+    let audio_input_price = price.audio_input_price.unwrap_or(saturating_mul_percent(
+        price.input_price,
+        AUDIO_INPUT_SURCHARGE_PERCENT,
+    ));
     let audio_output_price = price.audio_output_price.unwrap_or(effective_output_price);
-    let audio_cost = nano(usage.audio_input_tokens, audio_input_price, request_id, "audio_input")
-        .saturating_add(nano(usage.audio_output_tokens, audio_output_price, request_id, "audio_output"));
+    let audio_cost = nano(
+        usage.audio_input_tokens,
+        audio_input_price,
+        request_id,
+        "audio_input",
+    )
+    .saturating_add(nano(
+        usage.audio_output_tokens,
+        audio_output_price,
+        request_id,
+        "audio_output",
+    ));
 
     // --- Voice-specific cost (TTS) ---
     // If voice_id is provided and found in voices_pricing, use that rate
@@ -307,11 +370,19 @@ mod tests {
     fn test_standard_cost() {
         // input_price = 5000 nano/1M  →  100 tokens = 0.5 nano
         let price = make_price(5_000, 15_000);
-        let usage = UnifiedUsage { input_tokens: 100, output_tokens: 50, ..Default::default() };
+        let usage = UnifiedUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+            ..Default::default()
+        };
         let bd = compute_breakdown(&usage, &price, "req-1", false, false, None);
         // 100 * 5000 / 1_000_000 = 0 (integer), 50 * 15000 / 1_000_000 = 0
         // Need bigger numbers to get non-zero
-        let usage2 = UnifiedUsage { input_tokens: 1_000_000, output_tokens: 1_000_000, ..Default::default() };
+        let usage2 = UnifiedUsage {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+            ..Default::default()
+        };
         let bd2 = compute_breakdown(&usage2, &price, "req-1", false, false, None);
         assert_eq!(bd2.input_cost, 5_000);
         assert_eq!(bd2.output_cost, 15_000);
@@ -322,7 +393,11 @@ mod tests {
     #[test]
     fn test_batch_discount() {
         let price = make_price(10_000, 30_000);
-        let usage = UnifiedUsage { input_tokens: 1_000_000, output_tokens: 1_000_000, ..Default::default() };
+        let usage = UnifiedUsage {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+            ..Default::default()
+        };
         let bd = compute_breakdown(&usage, &price, "req-1", true, false, None);
         // batch: 50% → input=5000, output=15000
         assert_eq!(bd.input_cost, 5_000);
@@ -332,7 +407,11 @@ mod tests {
     #[test]
     fn test_priority_surcharge() {
         let price = make_price(10_000, 30_000);
-        let usage = UnifiedUsage { input_tokens: 1_000_000, output_tokens: 1_000_000, ..Default::default() };
+        let usage = UnifiedUsage {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+            ..Default::default()
+        };
         let bd = compute_breakdown(&usage, &price, "req-1", false, true, None);
         // priority: 170% → input=17000, output=51000
         assert_eq!(bd.input_cost, 17_000);
@@ -357,7 +436,10 @@ mod tests {
     #[test]
     fn test_embedding_cost() {
         let price = make_price(5_000, 0);
-        let usage = UnifiedUsage { embedding_tokens: 1_000_000, ..Default::default() };
+        let usage = UnifiedUsage {
+            embedding_tokens: 1_000_000,
+            ..Default::default()
+        };
         let bd = compute_breakdown(&usage, &price, "req-1", false, false, None);
         assert_eq!(bd.embedding_cost, 5_000);
         assert_eq!(bd.input_cost, 0); // no double-count
@@ -376,16 +458,23 @@ mod tests {
         // music_cost must be exactly 80_000_000 — no token division
         let mut price = make_price(5_000, 15_000);
         price.music_price = Some(80_000_000);
-        let usage = UnifiedUsage { ..Default::default() };
+        let usage = UnifiedUsage {
+            ..Default::default()
+        };
         let bd = compute_breakdown(&usage, &price, "req-music", false, false, None);
-        assert_eq!(bd.music_cost, 80_000_000, "music is flat fee, not divided by 1M tokens");
+        assert_eq!(
+            bd.music_cost, 80_000_000,
+            "music is flat fee, not divided by 1M tokens"
+        );
     }
 
     #[test]
     fn test_music_cost_none() {
         // music_price = None → music_cost must be 0, no panic
         let price = make_price(5_000, 15_000);
-        let usage = UnifiedUsage { ..Default::default() };
+        let usage = UnifiedUsage {
+            ..Default::default()
+        };
         let bd = compute_breakdown(&usage, &price, "req-no-music", false, false, None);
         assert_eq!(bd.music_cost, 0);
     }

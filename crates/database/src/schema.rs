@@ -790,11 +790,10 @@ impl Schema {
             )
             .execute(pool)
             .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_logs ADD COLUMN video_tokens INTEGER DEFAULT 0",
-            )
-            .execute(pool)
-            .await;
+            let _ =
+                sqlx::query("ALTER TABLE router_logs ADD COLUMN video_tokens INTEGER DEFAULT 0")
+                    .execute(pool)
+                    .await;
         }
 
         // Migration: Add per-type token counts and cost breakdown columns to router_logs
@@ -808,12 +807,18 @@ impl Schema {
                 "ALTER TABLE router_logs ADD COLUMN image_tokens INTEGER DEFAULT 0",
                 "ALTER TABLE router_logs ADD COLUMN embedding_tokens INTEGER DEFAULT 0",
             ];
-            let cost_type = if kind == "postgres" { "BIGINT" } else { "INTEGER" };
+            let cost_type = if kind == "postgres" {
+                "BIGINT"
+            } else {
+                "INTEGER"
+            };
             let cost_columns = [
                 format!("ALTER TABLE router_logs ADD COLUMN input_cost {cost_type} DEFAULT 0"),
                 format!("ALTER TABLE router_logs ADD COLUMN output_cost {cost_type} DEFAULT 0"),
                 format!("ALTER TABLE router_logs ADD COLUMN cache_read_cost {cost_type} DEFAULT 0"),
-                format!("ALTER TABLE router_logs ADD COLUMN cache_write_cost {cost_type} DEFAULT 0"),
+                format!(
+                    "ALTER TABLE router_logs ADD COLUMN cache_write_cost {cost_type} DEFAULT 0"
+                ),
                 format!("ALTER TABLE router_logs ADD COLUMN audio_cost {cost_type} DEFAULT 0"),
                 format!("ALTER TABLE router_logs ADD COLUMN image_cost {cost_type} DEFAULT 0"),
                 format!("ALTER TABLE router_logs ADD COLUMN video_cost {cost_type} DEFAULT 0"),
@@ -1042,11 +1047,9 @@ impl Schema {
                 .await
                 .unwrap_or(0);
                 if exists == 0 {
-                    let _ = sqlx::query(&format!(
-                        "ALTER TABLE prices ADD COLUMN {col} BIGINT"
-                    ))
-                    .execute(pool)
-                    .await;
+                    let _ = sqlx::query(&format!("ALTER TABLE prices ADD COLUMN {col} BIGINT"))
+                        .execute(pool)
+                        .await;
                 }
             } else {
                 // PostgreSQL: ADD COLUMN IF NOT EXISTS
@@ -1434,11 +1437,11 @@ impl Schema {
         // These columns store JSON pricing for voices, video, ASR, and realtime APIs
         // All prices in JSON are stored as nanodollars (i64, 9 decimal precision)
         let extended_pricing_cols = [
-            ("voices_pricing", "TEXT"),      // JSON: {"alloy": 15000000000, "echo": 15000000000, ...}
-            ("video_pricing", "TEXT"),       // JSON: {"720p": 50000000, "1080p": 100000000, ...}
-            ("asr_pricing", "TEXT"),         // JSON: {"per_minute": 360000000}
-            ("realtime_pricing", "TEXT"),    // JSON: {"audio_input": 32000000000, ...}
-            ("model_type", "VARCHAR(32)"),   // chat, realtime, video, image, tts, asr
+            ("voices_pricing", "TEXT"), // JSON: {"alloy": 15000000000, "echo": 15000000000, ...}
+            ("video_pricing", "TEXT"),  // JSON: {"720p": 50000000, "1080p": 100000000, ...}
+            ("asr_pricing", "TEXT"),    // JSON: {"per_minute": 360000000}
+            ("realtime_pricing", "TEXT"), // JSON: {"audio_input": 32000000000, ...}
+            ("model_type", "VARCHAR(32)"), // chat, realtime, video, image, tts, asr
         ];
         for (col, col_type) in extended_pricing_cols {
             if kind == "sqlite" {
@@ -1449,11 +1452,9 @@ impl Schema {
                 .await
                 .unwrap_or(0);
                 if exists == 0 {
-                    let _ = sqlx::query(&format!(
-                        "ALTER TABLE prices ADD COLUMN {col} {col_type}"
-                    ))
-                    .execute(pool)
-                    .await;
+                    let _ = sqlx::query(&format!("ALTER TABLE prices ADD COLUMN {col} {col_type}"))
+                        .execute(pool)
+                        .await;
                 }
             } else {
                 // PostgreSQL: ADD COLUMN IF NOT EXISTS

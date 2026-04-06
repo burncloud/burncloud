@@ -60,9 +60,7 @@ impl UsageParser for AnthropicParser {
 
         match event_type {
             "message_start" => {
-                let usage = json
-                    .get("message")
-                    .and_then(|m| m.get("usage"));
+                let usage = json.get("message").and_then(|m| m.get("usage"));
                 let Some(usage) = usage else {
                     return Ok(None);
                 };
@@ -171,7 +169,8 @@ mod tests {
     #[test]
     fn test_parse_streaming_content_block_ignored() {
         let parser = AnthropicParser;
-        let line = r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}"#;
+        let line =
+            r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}"#;
         assert!(parser.parse_streaming_chunk(line).unwrap().is_none());
     }
 

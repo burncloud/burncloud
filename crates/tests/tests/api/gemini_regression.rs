@@ -94,9 +94,7 @@ async fn latest_log(admin_client: &TestClient) -> Option<Value> {
         .get("/console/api/logs?page=1&page_size=1")
         .await
         .expect("logs failed");
-    res["data"]
-        .as_array()
-        .and_then(|arr| arr.first().cloned())
+    res["data"].as_array().and_then(|arr| arr.first().cloned())
 }
 
 /// 遇到 429 时最多等待重试 MAX_RETRIES 次，每次等 RETRY_WAIT_SECS 秒。
@@ -169,7 +167,12 @@ async fn test_basic_billing_evidence() {
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
 
     let balance_before = get_balance(&admin).await;
-    if chat_with_retry(&user, "gemini-2.0-flash", "Reply with one word: yes").await.is_none() { return; }
+    if chat_with_retry(&user, "gemini-2.0-flash", "Reply with one word: yes")
+        .await
+        .is_none()
+    {
+        return;
+    }
     let balance_after = wait_for_balance_drop(&admin, balance_before).await;
 
     let log = latest_log(&admin).await.expect("no log entry");
@@ -192,7 +195,12 @@ async fn test_basic_billing_evidence() {
     });
 
     add_assertion(&mut ev, "cost > 0", 1, i64::from(cost > 0));
-    add_assertion(&mut ev, "prompt_tokens > 0", 1, i64::from(prompt_tokens > 0));
+    add_assertion(
+        &mut ev,
+        "prompt_tokens > 0",
+        1,
+        i64::from(prompt_tokens > 0),
+    );
     add_assertion(&mut ev, "balance deducted == cost", cost, deducted);
 
     finalize_verdict(&mut ev);
@@ -226,7 +234,16 @@ async fn test_cost_breakdown_input_output() {
     let _ch = create_gemini_channel(&admin, "gemini-2.0-flash").await;
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
 
-    if chat_with_retry(&user, "gemini-2.0-flash", "What is the capital of France? Answer in one word.").await.is_none() { return; }
+    if chat_with_retry(
+        &user,
+        "gemini-2.0-flash",
+        "What is the capital of France? Answer in one word.",
+    )
+    .await
+    .is_none()
+    {
+        return;
+    }
     sleep(Duration::from_millis(300)).await;
 
     let log = latest_log(&admin).await.expect("no log entry");
@@ -274,9 +291,7 @@ async fn test_cost_breakdown_input_output() {
     finalize_verdict(&mut ev);
     write_evidence("test_cost_breakdown_input_output", &ev);
 
-    println!(
-        "[T2] cost={cost}, input={input_cost}, output={output_cost}, sum={breakdown_sum}"
-    );
+    println!("[T2] cost={cost}, input={input_cost}, output={output_cost}, sum={breakdown_sum}");
     assert!(input_cost > 0, "input_cost must be > 0");
     assert!(output_cost > 0, "output_cost must be > 0");
     assert!(
@@ -304,7 +319,12 @@ async fn test_balance_deduction_precision() {
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
 
     let balance_before = get_balance(&admin).await;
-    if chat_with_retry(&user, "gemini-2.0-flash", "Count to three.").await.is_none() { return; }
+    if chat_with_retry(&user, "gemini-2.0-flash", "Count to three.")
+        .await
+        .is_none()
+    {
+        return;
+    }
     let balance_after = wait_for_balance_drop(&admin, balance_before).await;
 
     let log = latest_log(&admin).await.expect("no log entry");
@@ -323,7 +343,9 @@ async fn test_balance_deduction_precision() {
     finalize_verdict(&mut ev);
     write_evidence("test_balance_deduction_precision", &ev);
 
-    println!("[T3] before={balance_before}, after={balance_after}, deducted={deducted}, cost={cost}");
+    println!(
+        "[T3] before={balance_before}, after={balance_after}, deducted={deducted}, cost={cost}"
+    );
     assert!(
         (deducted - cost).abs() <= 1,
         "balance deducted ({deducted}) must match log cost ({cost}) within ±1 nano"
@@ -352,10 +374,11 @@ async fn test_native_path_billing() {
 
     // OpenAI-format request to verify billing for a second independent request
     // (native /v1beta/ path requires router_upstream config; channel routing uses /v1/chat/completions)
-    let resp = match chat_with_retry(&user, "gemini-2.0-flash", "Say hello in exactly two words.").await {
-        Some(v) => v,
-        None => return,
-    };
+    let resp =
+        match chat_with_retry(&user, "gemini-2.0-flash", "Say hello in exactly two words.").await {
+            Some(v) => v,
+            None => return,
+        };
 
     let balance_after = wait_for_balance_drop(&admin, balance_before).await;
     let log = latest_log(&admin).await.expect("no log entry");
@@ -431,8 +454,10 @@ async fn test_streaming_token_count() {
         }),
     )
     .await; // streaming response may not parse as JSON — we just need the log
-    // If all retries exhausted (None), skip
-    if _resp.is_none() { return; }
+            // If all retries exhausted (None), skip
+    if _resp.is_none() {
+        return;
+    }
 
     let balance_after = wait_for_balance_drop(&admin, balance_before).await;
     let log = latest_log(&admin).await.expect("no log entry");
@@ -451,7 +476,12 @@ async fn test_streaming_token_count() {
     ev["balance_deducted"] = json!(balance_before - balance_after);
 
     add_assertion(&mut ev, "cost > 0", 1, i64::from(cost > 0));
-    add_assertion(&mut ev, "prompt_tokens > 0", 1, i64::from(prompt_tokens > 0));
+    add_assertion(
+        &mut ev,
+        "prompt_tokens > 0",
+        1,
+        i64::from(prompt_tokens > 0),
+    );
 
     finalize_verdict(&mut ev);
     write_evidence("test_streaming_token_count", &ev);
@@ -518,7 +548,12 @@ async fn test_openai_format_cost_breakdown() {
         "output_cost": output_cost,
     });
 
-    add_assertion(&mut ev, "has_choices (OpenAI format)", 1, i64::from(has_choices));
+    add_assertion(
+        &mut ev,
+        "has_choices (OpenAI format)",
+        1,
+        i64::from(has_choices),
+    );
     add_assertion(&mut ev, "input_cost > 0", 1, i64::from(input_cost > 0));
     add_assertion(&mut ev, "output_cost > 0", 1, i64::from(output_cost > 0));
     add_assertion(
@@ -531,9 +566,14 @@ async fn test_openai_format_cost_breakdown() {
     finalize_verdict(&mut ev);
     write_evidence("test_openai_format_cost_breakdown", &ev);
 
-    println!("[T6] format={response_format}, cost={cost}, input={input_cost}, output={output_cost}");
+    println!(
+        "[T6] format={response_format}, cost={cost}, input={input_cost}, output={output_cost}"
+    );
     assert!(has_choices, "OpenAI format response must have choices");
-    assert!(input_cost > 0, "input_cost must be > 0 after format conversion");
+    assert!(
+        input_cost > 0,
+        "input_cost must be > 0 after format conversion"
+    );
     assert!(
         (input_cost + output_cost - cost).abs() <= 1,
         "input + output ({}) must equal cost ({cost}) within ±1",
@@ -570,11 +610,18 @@ async fn test_price_sync_e2e() {
     let source = sync_res["source"].as_str().unwrap_or("unknown").to_string();
     let sync_errors = sync_res["errors"].as_i64().unwrap_or(0);
 
-    println!("[T7] price_sync: models_synced={models_synced}, source={source}, errors={sync_errors}");
+    println!(
+        "[T7] price_sync: models_synced={models_synced}, source={source}, errors={sync_errors}"
+    );
 
     // 2. Send a request — if sync succeeded, calculator should find the price
     let balance_before = get_balance(&admin).await;
-    if chat_with_retry(&user, "gemini-2.0-flash", "Say OK.").await.is_none() { return; }
+    if chat_with_retry(&user, "gemini-2.0-flash", "Say OK.")
+        .await
+        .is_none()
+    {
+        return;
+    }
     let balance_after = wait_for_balance_drop(&admin, balance_before).await;
 
     let log = latest_log(&admin).await.expect("no log entry");
@@ -658,7 +705,12 @@ async fn test_region_pricing_cost_breakdown() {
     assert_eq!(res["success"], true);
 
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
-    if chat_with_retry(&user, "gemini-2.0-flash", "Hello.").await.is_none() { return; }
+    if chat_with_retry(&user, "gemini-2.0-flash", "Hello.")
+        .await
+        .is_none()
+    {
+        return;
+    }
     sleep(Duration::from_millis(500)).await;
 
     let log = latest_log(&admin).await.expect("no log entry");
@@ -711,11 +763,8 @@ async fn test_thinking_token_billing() {
 
     let base_url = common_mod::spawn_app().await;
     let admin = TestClient::new(&base_url);
-    let _ch = create_gemini_channel(
-        &admin,
-        "gemini-2.5-flash-preview-04-17,gemini-2.0-flash",
-    )
-    .await;
+    let _ch =
+        create_gemini_channel(&admin, "gemini-2.5-flash-preview-04-17,gemini-2.0-flash").await;
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
 
     let balance_before = get_balance(&admin).await;
@@ -731,15 +780,22 @@ async fn test_thinking_token_billing() {
         let mut result = None;
         for attempt in 0..=MAX_RETRIES {
             match user.post("/v1/chat/completions", &body).await {
-                Ok(v) => { result = Some(v); break; }
+                Ok(v) => {
+                    result = Some(v);
+                    break;
+                }
                 Err(e) => {
                     let msg = e.to_string();
                     if msg.contains("404") {
                         println!("SKIP: thinking 模型不可用 (404)，跳过 T9。");
                         return;
                     } else if is_rate_limit_error(&msg) && attempt < MAX_RETRIES {
-                        println!("[retry {}/{}] Gemini 429, waiting {}s...",
-                            attempt + 1, MAX_RETRIES, RETRY_WAIT_SECS);
+                        println!(
+                            "[retry {}/{}] Gemini 429, waiting {}s...",
+                            attempt + 1,
+                            MAX_RETRIES,
+                            RETRY_WAIT_SECS
+                        );
                         sleep(Duration::from_secs(RETRY_WAIT_SECS)).await;
                     } else if is_rate_limit_error(&msg) {
                         println!("SKIP: Gemini 429 持续，已重试 {} 次。", MAX_RETRIES);
@@ -793,7 +849,12 @@ async fn test_thinking_token_billing() {
     });
 
     add_assertion(&mut ev, "cost > 0", 1, i64::from(cost > 0));
-    add_assertion(&mut ev, "has content in response", 1, i64::from(has_content));
+    add_assertion(
+        &mut ev,
+        "has content in response",
+        1,
+        i64::from(has_content),
+    );
 
     finalize_verdict(&mut ev);
     write_evidence("test_thinking_token_billing", &ev);
@@ -828,7 +889,16 @@ async fn test_cache_read_cost_discount() {
     let _ch = create_gemini_channel(&admin, "gemini-2.0-flash").await;
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
 
-    if chat_with_retry(&user, "gemini-2.0-flash", "This is a test without cached content.").await.is_none() { return; }
+    if chat_with_retry(
+        &user,
+        "gemini-2.0-flash",
+        "This is a test without cached content.",
+    )
+    .await
+    .is_none()
+    {
+        return;
+    }
     sleep(Duration::from_millis(300)).await;
 
     let log = latest_log(&admin).await.expect("no log entry");
@@ -854,10 +924,20 @@ async fn test_cache_read_cost_discount() {
          (2) when no cache, cache_read_cost == 0."
     );
 
-    add_assertion(&mut ev, "cache_read_cost field exists", 1, i64::from(cache_field_exists));
+    add_assertion(
+        &mut ev,
+        "cache_read_cost field exists",
+        1,
+        i64::from(cache_field_exists),
+    );
     // When no cache tokens, cache_read_cost must be 0
     if cache_read_tokens == 0 {
-        add_assertion(&mut ev, "cache_read_cost == 0 (no cache)", 0, cache_read_cost.max(0));
+        add_assertion(
+            &mut ev,
+            "cache_read_cost == 0 (no cache)",
+            0,
+            cache_read_cost.max(0),
+        );
     }
     add_assertion(&mut ev, "cost > 0", 1, i64::from(cost > 0));
 
@@ -883,7 +963,10 @@ async fn test_cache_read_cost_discount() {
     finalize_verdict(&mut ev);
     write_evidence("test_cache_read_cost_discount", &ev);
 
-    assert!(cache_field_exists, "cache_read_cost field must exist in router_log");
+    assert!(
+        cache_field_exists,
+        "cache_read_cost field must exist in router_log"
+    );
     assert!(cost > 0, "cost must be > 0");
     if cache_read_tokens == 0 {
         assert_eq!(

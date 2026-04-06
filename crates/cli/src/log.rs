@@ -2,7 +2,9 @@ use anyhow::Result;
 use burncloud_common::scaled_to_rate;
 use burncloud_database::sqlx;
 use burncloud_database::Database;
-use burncloud_database_router::{get_usage_stats, get_usage_stats_by_token, DbRouterLog, RouterDatabase};
+use burncloud_database_router::{
+    get_usage_stats, get_usage_stats_by_token, DbRouterLog, RouterDatabase,
+};
 use clap::ArgMatches;
 use serde::Serialize;
 

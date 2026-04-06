@@ -22,8 +22,8 @@ pub use burncloud_database_upstream as upstream;
 // Re-export common types for backward compatibility
 pub use burncloud_database_group::{DbGroup, DbGroupMember, GroupMemberModel, GroupModel};
 pub use burncloud_database_router_log::{
-    BalanceModel, BillingModelSummary, BillingSummary, DbRouterLog, RouterLogModel,
-    get_billing_summary,
+    get_billing_summary, BalanceModel, BillingModelSummary, BillingSummary, DbRouterLog,
+    RouterLogModel,
 };
 pub use burncloud_database_token::{DbToken, TokenModel, TokenValidationResult};
 pub use burncloud_database_upstream::{DbUpstream, UpstreamModel};
@@ -724,7 +724,15 @@ pub async fn get_usage_stats_by_model(
     Ok(rows
         .into_iter()
         .map(
-            |(model, requests, prompt_tokens, completion_tokens, cache_read_tokens, reasoning_tokens, cost_nano)| ModelUsageStats {
+            |(
+                model,
+                requests,
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                reasoning_tokens,
+                cost_nano,
+            )| ModelUsageStats {
                 model,
                 requests,
                 prompt_tokens,

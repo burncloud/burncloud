@@ -19,8 +19,8 @@ fn main() -> Result<()> {
                 std::thread::spawn(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
-                        let host = std::env::var("HOST")
-                            .unwrap_or_else(|_| "127.0.0.1".to_string());
+                        let host =
+                            std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
                         let port = std::env::var("PORT")
                             .unwrap_or_else(|_| {
                                 burncloud_common::constants::DEFAULT_PORT.to_string()
@@ -77,8 +77,7 @@ fn main() -> Result<()> {
 
 #[tokio::main]
 async fn run_async_server() -> Result<()> {
-    let host = std::env::var("HOST")
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
+    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| burncloud_common::constants::DEFAULT_PORT.to_string())
         .parse()

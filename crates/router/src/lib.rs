@@ -30,6 +30,9 @@ use burncloud_common::types::OpenAIChatRequest;
 use burncloud_database::Database;
 use burncloud_database_models::{ChannelModel, VideoTask, VideoTaskModel};
 use burncloud_database_router::{DbRouterLog, RouterDatabase, TokenValidationResult};
+use burncloud_service_billing::{
+    get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
+};
 use channel_state::ChannelStateTracker;
 use circuit_breaker::CircuitBreaker;
 use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
@@ -40,7 +43,6 @@ use model_router::ModelRouter;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Instant;
-use burncloud_service_billing::{get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter};
 use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
@@ -132,7 +134,10 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
 
 pub async fn create_router_app(
     db: Arc<Database>,
-) -> anyhow::Result<(Router, mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>)> {
+) -> anyhow::Result<(
+    Router,
+    mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
+)> {
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
@@ -165,7 +170,13 @@ pub async fn create_router_app(
         .unwrap_or(86400);
     let (force_sync_tx, force_sync_rx) =
         tokio::sync::mpsc::channel::<tokio::sync::oneshot::Sender<price_sync::SyncResult>>(4);
-    price_sync::start_price_sync_task(db.clone(), interval_secs, None, price_cache.clone(), force_sync_rx);
+    price_sync::start_price_sync_task(
+        db.clone(),
+        interval_secs,
+        None,
+        price_cache.clone(),
+        force_sync_rx,
+    );
 
     // Setup Async Logging Channel
     let (log_tx, mut log_rx) = mpsc::channel::<DbRouterLog>(1000);
@@ -212,7 +223,10 @@ pub async fn create_router_app(
         .route(&health_path, axum::routing::get(health_status_handler))
         .route("/v1/models", axum::routing::get(models_handler))
         .route("/api/v1/usage", axum::routing::get(usage_handler))
-        .route("/api/v1/usage/models", axum::routing::get(usage_models_handler))
+        .route(
+            "/api/v1/usage/models",
+            axum::routing::get(usage_models_handler),
+        )
         .fallback(proxy_handler)
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -258,7 +272,12 @@ async fn price_sync_handler(State(state): State<AppState>) -> Response {
                 result.errors,
                 result.source,
             );
-            build_response_with_header(StatusCode::OK, "content-type", "application/json", Body::from(body))
+            build_response_with_header(
+                StatusCode::OK,
+                "content-type",
+                "application/json",
+                Body::from(body),
+            )
         }
         Ok(Err(_)) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -348,9 +367,7 @@ async fn extract_token_user(
         Ok(None) => {
             // Fall back to legacy token table
             match RouterDatabase::validate_token_detailed(&state.db, &token).await {
-                Ok(TokenValidationResult::Valid(t)) => {
-                    Ok(t.user_id)
-                }
+                Ok(TokenValidationResult::Valid(t)) => Ok(t.user_id),
                 _ => Err(build_response(
                     StatusCode::UNAUTHORIZED,
                     Body::from(r#"{"error":"Invalid token"}"#),
@@ -368,10 +385,7 @@ async fn extract_token_user(
 }
 
 /// GET /api/v1/usage — overall usage for the authenticated token holder.
-async fn usage_handler(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-) -> Response {
+async fn usage_handler(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
     let user_id = match extract_token_user(&state, &headers).await {
         Ok(id) => id,
         Err(resp) => return resp,
@@ -526,11 +540,7 @@ async fn proxy_handler(
         .get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
-        .or_else(|| {
-            headers
-                .get("x-goog-api-key")
-                .and_then(|h| h.to_str().ok())
-        });
+        .or_else(|| headers.get("x-goog-api-key").and_then(|h| h.to_str().ok()));
 
     let user_token = match user_auth {
         Some(token) => token.to_string(),
@@ -771,7 +781,9 @@ async fn proxy_handler(
                     StatusCode::BAD_GATEWAY,
                     "content-type",
                     "application/json",
-                    Body::from(r#"{"error":{"message":"Upstream channel not available","code":"channel_unavailable"}}"#),
+                    Body::from(
+                        r#"{"error":{"message":"Upstream channel not available","code":"channel_unavailable"}}"#,
+                    ),
                 );
             }
         };
@@ -804,7 +816,9 @@ async fn proxy_handler(
                     StatusCode::BAD_GATEWAY,
                     "content-type",
                     "application/json",
-                    Body::from(r#"{"error":{"message":"Upstream request failed","code":"bad_gateway"}}"#),
+                    Body::from(
+                        r#"{"error":{"message":"Upstream request failed","code":"bad_gateway"}}"#,
+                    ),
                 )
             }
         };
@@ -852,7 +866,10 @@ async fn proxy_handler(
     let usage = token_counter.get_usage();
 
     // Veo request-side billing: inject video_tokens when response has no usageMetadata
-    let veo_tokens = if model_name.as_deref().map_or(false, |m| m.to_lowercase().contains("veo")) {
+    let veo_tokens = if model_name
+        .as_deref()
+        .map_or(false, |m| m.to_lowercase().contains("veo"))
+    {
         video_duration_secs * video_sample_count
     } else {
         0
@@ -869,7 +886,14 @@ async fn proxy_handler(
         if let Some(model) = &model_name {
             match state
                 .cost_calculator
-                .calculate(model, &usage, &request_id, is_batch_request, is_priority_request, pricing_region.as_deref())
+                .calculate(
+                    model,
+                    &usage,
+                    &request_id,
+                    is_batch_request,
+                    is_priority_request,
+                    pricing_region.as_deref(),
+                )
                 .await
             {
                 Ok(result) => {
@@ -934,7 +958,10 @@ async fn proxy_handler(
     };
 
     if state.log_tx.send(log).await.is_err() {
-        tracing::error!(cost, "billing log channel full or closed — request cost NOT recorded");
+        tracing::error!(
+            cost,
+            "billing log channel full or closed — request cost NOT recorded"
+        );
     }
 
     // Deduct quota (non-blocking)
@@ -946,8 +973,7 @@ async fn proxy_handler(
         let user_id_for_quota = user_id.clone();
         tokio::spawn(async move {
             let _ =
-                RouterDatabase::deduct_quota(&db, &user_id_for_quota, &token_for_quota, cost)
-                    .await;
+                RouterDatabase::deduct_quota(&db, &user_id_for_quota, &token_for_quota, cost).await;
         });
     }
 
@@ -971,7 +997,13 @@ async fn proxy_logic(
     token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
-) -> (Response, Option<String>, StatusCode, Option<String>, Option<String>) {
+) -> (
+    Response,
+    Option<String>,
+    StatusCode,
+    Option<String>,
+    Option<String>,
+) {
     let config = state.config.read().await;
 
     // 1. Model Routing (Priority)
@@ -1314,7 +1346,11 @@ async fn proxy_logic(
                                     let text = String::from_utf8_lossy(&bytes);
 
                                     // Parse token usage from Gemini streaming response
-                                    if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "passthrough") {
+                                    if let Some(u) = parse_chunk_or_default(
+                                        parser.as_ref(),
+                                        &text,
+                                        "passthrough",
+                                    ) {
                                         counter_clone.set_from_usage(&u);
                                     }
 
@@ -1341,7 +1377,7 @@ async fn proxy_logic(
                                 status,
                                 selected_pricing_region.clone(),
                                 None,
-                                );
+                            );
                         } else {
                             // Non-streaming passthrough
                             let resp_bytes = match resp.bytes().await {
@@ -1375,7 +1411,7 @@ async fn proxy_logic(
                                 status,
                                 selected_pricing_region.clone(),
                                 None,
-                                );
+                            );
                         }
                     } else {
                         // Non-success status (4xx)
@@ -1389,7 +1425,7 @@ async fn proxy_logic(
                                     status,
                                     selected_pricing_region.clone(),
                                     None,
-                                    );
+                                );
                             }
                         };
 
@@ -1425,7 +1461,7 @@ async fn proxy_logic(
                             status,
                             selected_pricing_region.clone(),
                             None,
-                            );
+                        );
                     }
                 }
                 Err(e) => {
@@ -1459,7 +1495,10 @@ async fn proxy_logic(
             .unwrap_or(false);
 
         // Extract model name from original request before conversion
-        let original_model = body_json.get("model").and_then(|m| m.as_str()).map(|s| s.to_string());
+        let original_model = body_json
+            .get("model")
+            .and_then(|m| m.as_str())
+            .map(|s| s.to_string());
 
         let request_body_json: Option<serde_json::Value> =
             if let Ok(req) = serde_json::from_slice::<OpenAIChatRequest>(&body_bytes) {
@@ -1475,7 +1514,10 @@ async fn proxy_logic(
                         }
                         // Preserve model name for adaptors that need it (e.g., Gemini)
                         if let Some(ref model) = original_model {
-                            map.insert("model".to_string(), serde_json::Value::String(model.clone()));
+                            map.insert(
+                                "model".to_string(),
+                                serde_json::Value::String(model.clone()),
+                            );
                         }
                     }
                 }
@@ -1611,14 +1653,17 @@ async fn proxy_logic(
                             let resp_bytes = match resp.bytes().await {
                                 Ok(b) => b,
                                 Err(e) => {
-                                    last_error = format!("Failed to read video gen response: {}", e);
+                                    last_error =
+                                        format!("Failed to read video gen response: {}", e);
                                     continue;
                                 }
                             };
                             let task_id = serde_json::from_slice::<serde_json::Value>(&resp_bytes)
                                 .ok()
                                 .and_then(|v| {
-                                    v.get("id").and_then(|id| id.as_str()).map(|s| s.to_string())
+                                    v.get("id")
+                                        .and_then(|id| id.as_str())
+                                        .map(|s| s.to_string())
                                 });
                             // Parse usage if present (Seedance has none, but be safe)
                             if let Ok(resp_json) =
@@ -1666,7 +1711,9 @@ async fn proxy_logic(
 
                                 // Parse token usage from streaming response
                                 // Anthropic sends incremental events; others send cumulative totals
-                                if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "stream") {
+                                if let Some(u) =
+                                    parse_chunk_or_default(parser.as_ref(), &text, "stream")
+                                {
                                     match parser.provider_name() {
                                         "anthropic" => counter_clone.accumulate(&u),
                                         _ => counter_clone.set_from_usage(&u),
@@ -1706,7 +1753,7 @@ async fn proxy_logic(
                             status,
                             selected_pricing_region.clone(),
                             None,
-                            );
+                        );
                     }
 
                     // 6. Handle Response Conversion
@@ -1716,8 +1763,11 @@ async fn proxy_logic(
 
                     // Extract token usage from non-streaming response for billing
                     {
-                        let resp_usage =
-                            parse_response_or_default(get_parser(channel_type).as_ref(), &resp_json, "non-stream");
+                        let resp_usage = parse_response_or_default(
+                            get_parser(channel_type).as_ref(),
+                            &resp_json,
+                            "non-stream",
+                        );
                         token_counter.set_from_usage(&resp_usage);
                     }
 
@@ -1750,7 +1800,7 @@ async fn proxy_logic(
                         status,
                         selected_pricing_region.clone(),
                         None,
-                        );
+                    );
                 } else {
                     // Handle non-success responses (4xx errors)
                     let status_code = status.as_u16();
@@ -1765,7 +1815,7 @@ async fn proxy_logic(
                                 status,
                                 selected_pricing_region.clone(),
                                 None,
-                                );
+                            );
                         }
                     };
                     let body_str = String::from_utf8_lossy(&body_bytes);
@@ -1892,7 +1942,7 @@ async fn proxy_logic(
                         status,
                         selected_pricing_region.clone(),
                         None,
-                        );
+                    );
                 }
             }
             Err(e) => {
@@ -1998,16 +2048,19 @@ mod tests {
 
     #[test]
     fn test_veo_billing_no_tokens_on_failure() {
-        let usage =
-            inject_video_tokens_if_empty(StatusCode::BAD_REQUEST, UnifiedUsage::default(), 8, "veo");
+        let usage = inject_video_tokens_if_empty(
+            StatusCode::BAD_REQUEST,
+            UnifiedUsage::default(),
+            8,
+            "veo",
+        );
         assert_eq!(usage.video_tokens, 0);
     }
 
     #[test]
     fn test_veo_billing_no_tokens_when_zero() {
         // Non-Veo model: caller computes 0 tokens, inject should skip
-        let usage =
-            inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), 0, "veo");
+        let usage = inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), 0, "veo");
         assert_eq!(usage.video_tokens, 0);
     }
 
@@ -2025,8 +2078,12 @@ mod tests {
     fn test_seedance_billing_720p() {
         // Seedance 720p 5s: duration=5, resolution_weight=2 → video_tokens=10
         let tokens = 5i64 * 2;
-        let usage =
-            inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), tokens, "seedance");
+        let usage = inject_video_tokens_if_empty(
+            StatusCode::OK,
+            UnifiedUsage::default(),
+            tokens,
+            "seedance",
+        );
         assert_eq!(usage.video_tokens, 10);
     }
 
@@ -2034,16 +2091,24 @@ mod tests {
     fn test_seedance_billing_480p() {
         // Seedance 480p 5s: duration=5, resolution_weight=1 → video_tokens=5
         let tokens = 5i64 * 1;
-        let usage =
-            inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), tokens, "seedance");
+        let usage = inject_video_tokens_if_empty(
+            StatusCode::OK,
+            UnifiedUsage::default(),
+            tokens,
+            "seedance",
+        );
         assert_eq!(usage.video_tokens, 5);
     }
 
     #[test]
     fn test_seedance_billing_no_tokens_on_failure() {
         let tokens = 5i64 * 2;
-        let usage =
-            inject_video_tokens_if_empty(StatusCode::BAD_REQUEST, UnifiedUsage::default(), tokens, "seedance");
+        let usage = inject_video_tokens_if_empty(
+            StatusCode::BAD_REQUEST,
+            UnifiedUsage::default(),
+            tokens,
+            "seedance",
+        );
         assert_eq!(usage.video_tokens, 0);
     }
 
@@ -2059,15 +2124,19 @@ mod tests {
         let video_tokens_720p = 5i64 * 2;
         let cost_nanos = video_tokens_720p * video_price / 1_000_000;
         let expected_nanos = 700_000_000i64; // $0.70
-        assert_eq!(cost_nanos, expected_nanos,
-            "5s 720p @ $0.14/s should cost $0.70 = 700_000_000 nanodollars");
+        assert_eq!(
+            cost_nanos, expected_nanos,
+            "5s 720p @ $0.14/s should cost $0.70 = 700_000_000 nanodollars"
+        );
 
         // 5s 480p: video_tokens = 5, cost should be $0.35 (same video_price, half cost)
         let video_tokens_480p = 5i64 * 1;
         let cost_nanos_480p = video_tokens_480p * video_price / 1_000_000;
         let expected_nanos_480p = 350_000_000i64; // $0.35
-        assert_eq!(cost_nanos_480p, expected_nanos_480p,
-            "5s 480p @ $0.07/s should cost $0.35 = 350_000_000 nanodollars");
+        assert_eq!(
+            cost_nanos_480p, expected_nanos_480p,
+            "5s 480p @ $0.07/s should cost $0.35 = 350_000_000 nanodollars"
+        );
 
         // duration=-1 falls back to 5s default: same as 720p 5s
         let video_tokens_default = 5i64 * 2;
@@ -2083,7 +2152,9 @@ mod tests {
 
         // 5s 720p fast: video_tokens = 10, cost = $0.35
         let cost_nanos = 10i64 * video_price / 1_000_000;
-        assert_eq!(cost_nanos, 350_000_000i64,
-            "5s 720p fast @ $0.07/s should cost $0.35 = 350_000_000 nanodollars");
+        assert_eq!(
+            cost_nanos, 350_000_000i64,
+            "5s 720p fast @ $0.07/s should cost $0.35 = 350_000_000 nanodollars"
+        );
     }
 }

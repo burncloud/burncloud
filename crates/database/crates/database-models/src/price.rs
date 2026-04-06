@@ -291,11 +291,17 @@ impl PriceModel {
             (Some(curr), Some(reg)) => {
                 // Filter by both currency and region
                 let sql = if is_postgres {
-                    &format!(r#"{} FROM prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
-                       ORDER BY model LIMIT $3 OFFSET $4"#, base_select)
+                    &format!(
+                        r#"{} FROM prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
+                       ORDER BY model LIMIT $3 OFFSET $4"#,
+                        base_select
+                    )
                 } else {
-                    &format!(r#"{} FROM prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
-                       ORDER BY model LIMIT ? OFFSET ?"#, base_select)
+                    &format!(
+                        r#"{} FROM prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+                       ORDER BY model LIMIT ? OFFSET ?"#,
+                        base_select
+                    )
                 };
                 if is_postgres {
                     sqlx::query_as(sql)
@@ -319,11 +325,17 @@ impl PriceModel {
             (Some(curr), None) => {
                 // Filter by currency only
                 let sql = if is_postgres {
-                    &format!(r#"{} FROM prices WHERE currency = $1
-                       ORDER BY model LIMIT $2 OFFSET $3"#, base_select)
+                    &format!(
+                        r#"{} FROM prices WHERE currency = $1
+                       ORDER BY model LIMIT $2 OFFSET $3"#,
+                        base_select
+                    )
                 } else {
-                    &format!(r#"{} FROM prices WHERE currency = ?
-                       ORDER BY model LIMIT ? OFFSET ?"#, base_select)
+                    &format!(
+                        r#"{} FROM prices WHERE currency = ?
+                       ORDER BY model LIMIT ? OFFSET ?"#,
+                        base_select
+                    )
                 };
                 sqlx::query_as(sql)
                     .bind(curr)
@@ -335,11 +347,17 @@ impl PriceModel {
             (None, Some(reg)) => {
                 // Filter by region only
                 let sql = if is_postgres {
-                    &format!(r#"{} FROM prices WHERE region IS NOT DISTINCT FROM $1
-                       ORDER BY model, currency LIMIT $2 OFFSET $3"#, base_select)
+                    &format!(
+                        r#"{} FROM prices WHERE region IS NOT DISTINCT FROM $1
+                       ORDER BY model, currency LIMIT $2 OFFSET $3"#,
+                        base_select
+                    )
                 } else {
-                    &format!(r#"{} FROM prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
-                       ORDER BY model, currency LIMIT ? OFFSET ?"#, base_select)
+                    &format!(
+                        r#"{} FROM prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
+                       ORDER BY model, currency LIMIT ? OFFSET ?"#,
+                        base_select
+                    )
                 };
                 if is_postgres {
                     sqlx::query_as(sql)
@@ -361,9 +379,15 @@ impl PriceModel {
             (None, None) => {
                 // No filters
                 let sql = if is_postgres {
-                    &format!(r#"{} FROM prices ORDER BY model, currency LIMIT $1 OFFSET $2"#, base_select)
+                    &format!(
+                        r#"{} FROM prices ORDER BY model, currency LIMIT $1 OFFSET $2"#,
+                        base_select
+                    )
                 } else {
-                    &format!(r#"{} FROM prices ORDER BY model, currency LIMIT ? OFFSET ?"#, base_select)
+                    &format!(
+                        r#"{} FROM prices ORDER BY model, currency LIMIT ? OFFSET ?"#,
+                        base_select
+                    )
                 };
                 sqlx::query_as(sql)
                     .bind(limit)

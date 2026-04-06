@@ -37,11 +37,18 @@ impl UnifiedUsage {
     pub fn saturating_add(&mut self, other: &UnifiedUsage) {
         self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
         self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
-        self.cache_read_tokens = self.cache_read_tokens.saturating_add(other.cache_read_tokens);
-        self.cache_write_tokens = self.cache_write_tokens.saturating_add(other.cache_write_tokens);
-        self.audio_input_tokens = self.audio_input_tokens.saturating_add(other.audio_input_tokens);
-        self.audio_output_tokens =
-            self.audio_output_tokens.saturating_add(other.audio_output_tokens);
+        self.cache_read_tokens = self
+            .cache_read_tokens
+            .saturating_add(other.cache_read_tokens);
+        self.cache_write_tokens = self
+            .cache_write_tokens
+            .saturating_add(other.cache_write_tokens);
+        self.audio_input_tokens = self
+            .audio_input_tokens
+            .saturating_add(other.audio_input_tokens);
+        self.audio_output_tokens = self
+            .audio_output_tokens
+            .saturating_add(other.audio_output_tokens);
         self.image_tokens = self.image_tokens.saturating_add(other.image_tokens);
         self.video_tokens = self.video_tokens.saturating_add(other.video_tokens);
         self.reasoning_tokens = self.reasoning_tokens.saturating_add(other.reasoning_tokens);
@@ -112,7 +119,11 @@ impl CostResult {
     pub fn with_local_currency(mut self, currency: &str, local_nano: i64) -> Self {
         self.local_currency = currency.to_string();
         self.local_amount_nano = Some(local_nano);
-        self.display = format!("{}{:.6}", currency_symbol(currency), local_nano as f64 / 1_000_000_000.0);
+        self.display = format!(
+            "{}{:.6}",
+            currency_symbol(currency),
+            local_nano as f64 / 1_000_000_000.0
+        );
         self
     }
 }
