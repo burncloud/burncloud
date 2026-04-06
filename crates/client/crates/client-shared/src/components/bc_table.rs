@@ -8,13 +8,15 @@ pub fn BCTable(
 ) -> Element {
     rsx! {
         div {
-            class: "table-container {class}",
-            table {
-                class: "table",
-                {children}
+            class: "bc-card-solid overflow-hidden {class}",
+            div { class: "overflow-x-auto",
+                table {
+                    class: "w-full",
+                    {children}
+                }
             }
             if let Some(pag) = pagination {
-                div { class: "table-pagination p-md border-t border-subtle flex justify-end items-center gap-sm",
+                div { class: "p-md border-t border-[var(--bc-border)] flex justify-end items-center gap-sm",
                     {pag}
                 }
             }
@@ -27,14 +29,14 @@ pub fn BCPagination(page: usize, total_pages: usize, on_change: EventHandler<usi
     rsx! {
         div { class: "flex items-center gap-sm",
             button {
-                class: "btn btn-sm btn-secondary",
+                class: "btn btn-secondary",
                 disabled: page <= 1,
                 onclick: move |_| on_change.call(page - 1),
                 "Prev"
             }
             span { class: "text-caption text-secondary", "Page {page} of {total_pages}" }
             button {
-                class: "btn btn-sm btn-secondary",
+                class: "btn btn-secondary",
                 disabled: page >= total_pages,
                 onclick: move |_| on_change.call(page + 1),
                 "Next"

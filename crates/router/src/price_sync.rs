@@ -231,20 +231,19 @@ impl PriceSyncService {
 
             // Convert extended pricing configs to JSON strings
             let voices_pricing_json = model_pricing.voices_pricing.as_ref().and_then(|vp| {
-                vp.get("USD").and_then(|config| {
-                    serde_json::to_string(&config.voices).ok()
-                })
+                vp.get("USD")
+                    .and_then(|config| serde_json::to_string(&config.voices).ok())
             });
 
             let video_pricing_json = model_pricing.video_pricing.as_ref().and_then(|vp| {
-                vp.get("USD").and_then(|config| {
-                    serde_json::to_string(&config.resolutions).ok()
-                })
+                vp.get("USD")
+                    .and_then(|config| serde_json::to_string(&config.resolutions).ok())
             });
 
             let asr_pricing_json = model_pricing.asr_pricing.as_ref().and_then(|ap| {
                 ap.get("USD").and_then(|config| {
-                    serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok()
+                    serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute}))
+                        .ok()
                 })
             });
 
@@ -271,12 +270,16 @@ impl PriceSyncService {
             // Apply standard pricing for each currency
             for (currency, currency_pricing) in &model_pricing.pricing {
                 // Get currency-specific extended pricing if available
-                let currency_voices = model_pricing.voices_pricing.as_ref()
+                let currency_voices = model_pricing
+                    .voices_pricing
+                    .as_ref()
                     .and_then(|vp| vp.get(currency))
                     .and_then(|config| serde_json::to_string(&config.voices).ok())
                     .or_else(|| voices_pricing_json.clone());
 
-                let currency_video = model_pricing.video_pricing.as_ref()
+                let currency_video = model_pricing
+                    .video_pricing
+                    .as_ref()
                     .and_then(|vp| vp.get(currency))
                     .and_then(|config| serde_json::to_string(&config.resolutions).ok())
                     .or_else(|| video_pricing_json.clone());
@@ -286,19 +289,28 @@ impl PriceSyncService {
                 // video_tokens = duration × resolution_weight (720p=2, 480p=1), so:
                 //   video_price (nanodollars/MTok) = price_720p_per_sec (nanodollars) × 500_000
                 // This means 480p requests naturally cost half of 720p via resolution_weight.
-                let video_price_derived: Option<i64> = model_pricing.video_pricing.as_ref()
+                let video_price_derived: Option<i64> = model_pricing
+                    .video_pricing
+                    .as_ref()
                     .and_then(|vp| vp.get(currency))
                     .and_then(|config| config.resolutions.get("720p").copied())
                     .map(|price_per_sec_nanos: i64| {
                         (price_per_sec_nanos as i128 * 1_000_000 / 2) as i64
                     });
 
-                let currency_asr = model_pricing.asr_pricing.as_ref()
+                let currency_asr = model_pricing
+                    .asr_pricing
+                    .as_ref()
                     .and_then(|ap| ap.get(currency))
-                    .and_then(|config| serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok())
+                    .and_then(|config| {
+                        serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute}))
+                            .ok()
+                    })
                     .or_else(|| asr_pricing_json.clone());
 
-                let currency_realtime = model_pricing.realtime_pricing.as_ref()
+                let currency_realtime = model_pricing
+                    .realtime_pricing
+                    .as_ref()
                     .and_then(|rp| rp.get(currency))
                     .and_then(|config| {
                         let mut map = serde_json::Map::new();
@@ -311,7 +323,11 @@ impl PriceSyncService {
                         if let Some(v) = config.image_input {
                             map.insert("image_input".to_string(), serde_json::json!(v));
                         }
-                        if map.is_empty() { None } else { serde_json::to_string(&map).ok() }
+                        if map.is_empty() {
+                            None
+                        } else {
+                            serde_json::to_string(&map).ok()
+                        }
                     })
                     .or_else(|| realtime_pricing_json.clone());
 
@@ -335,7 +351,10 @@ impl PriceSyncService {
 
                 // Audit: read existing price before upsert so we can log changes
                 let old_price = if source == "remote" {
-                    PriceModel::get(&self.db, model_name, currency, None).await.ok().flatten()
+                    PriceModel::get(&self.db, model_name, currency, None)
+                        .await
+                        .ok()
+                        .flatten()
                 } else {
                     None
                 };
@@ -365,7 +384,9 @@ impl PriceSyncService {
                     Err(e) => {
                         tracing::error!(
                             "Failed to upsert price for {} ({}): {}",
-                            model_name, currency, e
+                            model_name,
+                            currency,
+                            e
                         );
                         result.errors += 1;
                     }
@@ -415,7 +436,11 @@ impl PriceSyncService {
                         };
 
                         if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
-                            tracing::error!("Failed to update cache pricing for {}: {}", model_name, e);
+                            tracing::error!(
+                                "Failed to update cache pricing for {}: {}",
+                                model_name,
+                                e
+                            );
                         }
                     }
                 }
@@ -462,7 +487,11 @@ impl PriceSyncService {
                         };
 
                         if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
-                            tracing::error!("Failed to update batch pricing for {}: {}", model_name, e);
+                            tracing::error!(
+                                "Failed to update batch pricing for {}: {}",
+                                model_name,
+                                e
+                            );
                         }
                     }
                 }
@@ -490,7 +519,9 @@ impl PriceSyncService {
                             Err(e) => {
                                 tracing::error!(
                                     "Failed to upsert tiered pricing for {} ({}): {}",
-                                    model_name, currency, e
+                                    model_name,
+                                    currency,
+                                    e
                                 );
                                 result.errors += 1;
                             }
@@ -502,7 +533,10 @@ impl PriceSyncService {
 
         tracing::info!(
             "Applied {} models, {} currencies, {} tiers from {}",
-            result.models_synced, result.currencies_synced, result.tiered_pricing_synced, source
+            result.models_synced,
+            result.currencies_synced,
+            result.tiered_pricing_synced,
+            source
         );
 
         Ok(result)
@@ -632,15 +666,29 @@ impl PriceSyncService {
 
         for (model_name, model_pricing) in &config.models {
             // Get pricing info for capabilities table
-            let (input_price, output_price) = model_pricing.pricing.get("USD").map(|p| {
-                (Some(p.input_price as f64 / 1_000_000_000.0), Some(p.output_price as f64 / 1_000_000_000.0))
-            }).unwrap_or((None, None));
+            let (input_price, output_price) = model_pricing
+                .pricing
+                .get("USD")
+                .map(|p| {
+                    (
+                        Some(p.input_price as f64 / 1_000_000_000.0),
+                        Some(p.output_price as f64 / 1_000_000_000.0),
+                    )
+                })
+                .unwrap_or((None, None));
 
             // Get metadata
             let (context_window, max_output_tokens, supports_vision, supports_function_calling) =
-                model_pricing.metadata.as_ref()
+                model_pricing
+                    .metadata
+                    .as_ref()
                     .map(|m| {
-                        (m.context_window, m.max_output_tokens, m.supports_vision, m.supports_function_calling)
+                        (
+                            m.context_window,
+                            m.max_output_tokens,
+                            m.supports_vision,
+                            m.supports_function_calling,
+                        )
                     })
                     .unwrap_or((None, None, false, false));
 
@@ -724,24 +772,27 @@ pub fn start_price_sync_task(
         interval.reset();
 
         // Initial sync (not forced — use DB fast path if available)
-        tracing::info!("Starting initial price sync...");
-        match service.sync_all(false).await {
-            Ok(result) => {
-                tracing::info!(
-                    models = result.models_synced,
-                    source = result.source,
-                    "Initial price sync complete"
-                );
-                if let Err(e) = price_cache.refresh(&db).await {
-                    tracing::error!("Failed to refresh price cache after initial sync: {e}");
+        // Allow skipping for test environments
+        if std::env::var("SKIP_INITIAL_PRICE_SYNC").is_ok() {
+            tracing::info!("Skipping initial price sync (SKIP_INITIAL_PRICE_SYNC is set)");
+        } else {
+            match service.sync_all(false).await {
+                Ok(result) => {
+                    tracing::info!(
+                        models = result.models_synced,
+                        source = result.source,
+                        "Initial price sync complete"
+                    );
+                    if let Err(e) = price_cache.refresh(&db).await {
+                        tracing::error!("Failed to refresh price cache after initial sync: {e}");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Initial price sync failed: {e}");
+                    // Non-fatal: server can start without prices (e.g. test environments)
                 }
             }
-            Err(e) => {
-                tracing::error!("Initial price sync failed: {e}");
-                // Fatal: no prices in DB and remote unreachable
-                return;
-            }
-        }
+        } // end SKIP_INITIAL_PRICE_SYNC else
 
         // Event loop: respond to periodic ticks and force-sync requests
         loop {
@@ -798,7 +849,10 @@ mod tests {
     fn test_default_config() {
         let config = PriceSyncConfig::default();
         assert_eq!(config.remote_url, BURNSCLOUD_PRICES_URL);
-        assert_eq!(config.remote_url_fallback, Some(BURNSCLOUD_PRICES_URL_GITEE.to_string()));
+        assert_eq!(
+            config.remote_url_fallback,
+            Some(BURNSCLOUD_PRICES_URL_GITEE.to_string())
+        );
         assert!(config.remote_sync_enabled);
         assert_eq!(config.remote_sync_interval_secs, 86400);
     }

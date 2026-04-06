@@ -62,11 +62,12 @@ pub fn LogPage() -> Element {
     });
 
     rsx! {
-        div { class: "flex flex-col h-full gap-4 p-6",
+        div { class: "flex flex-col h-full gap-md p-lg",
             div { class: "flex justify-between items-center",
-                h1 { class: "text-2xl font-bold text-gray-800", "Logs" }
+                h1 { class: "text-title font-bold text-primary", "Logs" }
                 input {
-                    class: "border border-gray-300 p-2 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500",
+                    class: "bc-input p-md rounded-lg w-64",
+                    style: "max-width: 16rem;",
                     placeholder: "Search logs...",
                     value: "{search_query}",
                     oninput: move |evt| search_query.set(evt.value())
@@ -74,43 +75,44 @@ pub fn LogPage() -> Element {
             }
 
             div {
-                class: "flex-1 overflow-auto border border-gray-200 rounded-xl bg-white shadow-sm",
+                class: "flex-1 overflow-auto bc-card-solid rounded-xl",
                 id: "log-container",
                 if let Some(logs) = logs_resource.read().as_ref() {
                     if logs.is_empty() {
-                         div { class: "p-4 text-center text-gray-500", "No logs found" }
+                         div { class: "p-lg text-center text-secondary", "No logs found" }
                     } else {
-                        table { class: "w-full text-left text-sm",
-                            thead { class: "bg-gray-50 sticky top-0",
+                        table { class: "w-full text-left text-caption",
+                            thead {
+                                style: "background: var(--bc-bg-hover); position: sticky; top: 0;",
                                 tr {
-                                    th { class: "p-3 font-medium text-gray-500", "Time" }
-                                    th { class: "p-3 font-medium text-gray-500", "Level" }
-                                    th { class: "p-3 font-medium text-gray-500", "Message" }
+                                    th { class: "p-md font-medium text-secondary", "Time" }
+                                    th { class: "p-md font-medium text-secondary", "Level" }
+                                    th { class: "p-md font-medium text-secondary", "Message" }
                                 }
                             }
                             tbody {
                                 for log in filtered_logs.read().iter() {
-                                    tr {
-                                        class: "border-b border-gray-100 hover:bg-gray-50 log-entry",
-                                        td { class: "p-3 text-gray-600 font-mono whitespace-nowrap", "{log.timestamp}" }
-                                        td { class: "p-3",
+                                    tr { class: "border-b transition-colors",
+                                        style: "border-color: var(--bc-border);",
+                                        td { class: "p-md text-secondary font-mono whitespace-nowrap", "{log.timestamp}" }
+                                        td { class: "p-md",
                                             span {
                                                 class: match log.level.as_str() {
-                                                    "ERROR" => "px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-bold",
-                                                    "WARN" => "px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-xs font-bold",
-                                                    _ => "px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-bold"
+                                                    "ERROR" => "bc-badge-danger px-sm py-xs rounded text-xxs font-bold",
+                                                    "WARN" => "bc-badge-warning px-sm py-xs rounded text-xxs font-bold",
+                                                    _ => "bc-badge-info px-sm py-xs rounded text-xxs font-bold"
                                                 },
                                                 "{log.level}"
                                             }
                                         }
-                                        td { class: "p-3 text-gray-800 break-all font-mono", "{log.message}" }
+                                        td { class: "p-md text-primary break-all font-mono", "{log.message}" }
                                     }
                                 }
                             }
                         }
                     }
                 } else {
-                    div { class: "p-4 text-center text-gray-500", "Loading logs..." }
+                    div { class: "p-lg text-center text-secondary", "Loading logs..." }
                 }
             }
         }

@@ -78,7 +78,7 @@ pub fn ConnectPage() -> Element {
     };
 
     rsx! {
-        div { class: "page-container p-xl flex flex-col gap-xl",
+        div { class: "p-xl flex flex-col gap-xl",
             // Header
             div { class: "flex justify-between items-end",
                 div {
@@ -97,50 +97,51 @@ pub fn ConnectPage() -> Element {
                 BCCard {
                     div { class: "p-lg",
                         div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Active Nodes" }
-                        div { class: "text-3xl font-bold", "{channels.read().iter().filter(|c| c.type_ == 33).count()}" }
+                        div { class: "text-3xl font-bold text-primary", "{channels.read().iter().filter(|c| c.type_ == 33).count()}" }
                     }
                 }
                 BCCard {
                     div { class: "p-lg",
                         div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Network Capacity" }
-                        div { class: "text-3xl font-bold text-primary", "1.2 PFlops" }
+                        div { class: "text-3xl font-bold", style: "color: var(--bc-primary);", "1.2 PFlops" }
                     }
                 }
                 BCCard {
                     div { class: "p-lg",
                         div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Pool Balance" }
-                        div { class: "text-3xl font-bold", "$ 42.50" }
+                        div { class: "text-3xl font-bold text-primary", "$ 42.50" }
                     }
                 }
                 BCCard {
                     div { class: "p-lg",
                         div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Efficiency Gain" }
-                        div { class: "text-3xl font-bold text-success", "34.2%" }
+                        div { class: "text-3xl font-bold", style: "color: var(--bc-success);", "34.2%" }
                     }
                 }
             }
 
             // Tabs
             div { class: "flex flex-col gap-lg",
-                div { class: "flex gap-xl border-b border-base-200 pb-sm",
-                    span { class: "font-bold border-b-2 border-primary pb-sm cursor-pointer", "本地算力" }
-                    span { class: "text-secondary hover:text-base-content cursor-pointer pb-sm", "网络互联" }
-                    span { class: "text-secondary hover:text-base-content cursor-pointer pb-sm", "结算账单" }
+                div { class: "flex gap-xl border-b pb-sm",
+                    span { class: "font-bold border-b-2 pb-sm cursor-pointer", style: "border-color: var(--bc-primary);", "本地算力" }
+                    span { class: "text-secondary cursor-pointer pb-sm", "网络互联" }
+                    span { class: "text-secondary cursor-pointer pb-sm", "结算账单" }
                 }
 
                 if loading() {
-                    div { class: "p-xxxl text-center", "加载资源中..." }
+                    div { class: "p-xxxl text-center text-secondary", "加载资源中..." }
                 } else {
                     div { class: "flex flex-col gap-xl",
                         // Supply Side: Local Assets
                         div {
                             div { class: "flex justify-between items-end mb-md",
                                 h2 { class: "text-subtitle font-bold m-0", "本地资源矩阵" }
-                                span { class: "text-xs text-secondary", "当前节点贡献给网络的算力资源" }
+                                span { class: "text-xxs text-secondary", "当前节点贡献给网络的算力资源" }
                             }
 
                             if channels.read().is_empty() {
-                                div { class: "card border border-dashed border-base-300 bg-base-100 p-xl text-center",
+                                div { class: "bc-card-outlined p-xl text-center",
+                                    style: "border-style: dashed; background: var(--bc-bg-card-solid);",
                                     p { class: "text-secondary", "暂无本地资源。请接入 AWS 账号开始共享算力。" }
                                     BCButton {
                                         variant: ButtonVariant::Secondary,
@@ -165,7 +166,8 @@ pub fn ConnectPage() -> Element {
                                             let current_channels = channels.read().clone();
                                             rsx! {
                                                 for channel in current_channels.iter() {
-                                                    tr { class: "hover:bg-base-200/30 transition-colors",
+                                                    tr { class: "transition-colors",
+                                                        style: "cursor: default;",
                                                         td {
                                                             div { class: "flex items-center gap-sm",
                                                                 if channel.type_ == 33 {
@@ -175,9 +177,9 @@ pub fn ConnectPage() -> Element {
                                                                 }
                                                             }
                                                         }
-                                                        td { class: "font-medium", "{channel.name}" }
+                                                        td { class: "font-medium text-primary", "{channel.name}" }
                                                         td {
-                                                            span { class: "font-mono text-xs",
+                                                            span { class: "font-mono text-xxs text-secondary",
                                                                 "{extract_region(&channel.base_url)}"
                                                             }
                                                         }
@@ -191,7 +193,7 @@ pub fn ConnectPage() -> Element {
                                                         td {
                                                             div { class: "flex flex-wrap gap-xs",
                                                                 for model in channel.models.split(',').take(2) {
-                                                                    span { class: "text-xxs bg-base-200 px-xs py-0.5 rounded", "{model}" }
+                                                                    span { class: "text-xxs px-xs py-0.5 rounded", style: "background: var(--bc-bg-hover);", "{model}" }
                                                                 }
                                                                 if channel.models.split(',').count() > 2 {
                                                                     span { class: "text-xxs text-secondary", "+{channel.models.split(',').count() - 2}" }
@@ -205,15 +207,11 @@ pub fn ConnectPage() -> Element {
                                                                     let channel_id = channel.id;
                                                                     rsx! {
                                                                         button {
-                                                                            class: "text-error hover:bg-error/10 p-2 rounded-lg transition-colors",
+                                                                            class: "p-sm rounded-lg transition-colors",
+                                                                            style: "color: var(--bc-danger); background: transparent;",
                                                                             onclick: move |_| {
                                                                                 spawn(async move {
                                                                                     let _ = ChannelService::delete(channel_id).await;
-                                                                                    // Trigger reload - tricky because load_channels moves into use_effect
-                                                                                    // Simplification: just assume it works or use a signal for trigger
-                                                                                    // Ideally we'd call load_channels() but it's a closure.
-                                                                                    // For now, let's just let the user refresh manually or use a proper resource/service pattern.
-                                                                                    // To fix the immediate compile error, we just clone ID.
                                                                                 });
                                                                             },
                                                                             "🗑️"
@@ -232,11 +230,11 @@ pub fn ConnectPage() -> Element {
                         }
 
                         // Demand Side: Connected External Pools
-                        div { class: "pt-lg border-t border-base-200",
+                        div { class: "pt-lg border-t",
                             div { class: "flex justify-between items-center mb-md",
                                 div {
                                     h2 { class: "text-subtitle font-bold m-0", "互联算力池 (Sourcing)" }
-                                    p { class: "text-xs text-secondary m-0 mt-xs", "接入外部专业矿池以采购全球算力" }
+                                    p { class: "text-xxs text-secondary m-0 mt-xs", "接入外部专业矿池以采购全球算力" }
                                 }
                                 BCButton {
                                     variant: ButtonVariant::Secondary,
@@ -257,8 +255,9 @@ pub fn ConnectPage() -> Element {
                                 }
 
                                 // Inventory within this pool
-                                div { class: "pl-xl border-l-2 border-base-200 ml-md",
-                                    h3 { class: "text-sm font-bold uppercase text-secondary mb-md", "算力池实时可用资源" }
+                                div { class: "pl-xl ml-md",
+                                    style: "border-left: 2px solid var(--bc-border);",
+                                    h3 { class: "text-caption font-bold uppercase text-secondary mb-md", "算力池实时可用资源" }
                                     div { class: "grid grid-cols-1 md:grid-cols-3 gap-md",
                                         MarketplaceCard {
                                             provider: "AWS",
@@ -298,7 +297,7 @@ pub fn ConnectPage() -> Element {
                     title: "接入本地资源 (Miner)",
                     onclose: move |_| show_add_modal.set(false),
                     div { class: "flex flex-col gap-lg p-lg",
-                        p { class: "text-secondary text-sm",
+                        p { class: "text-secondary text-caption",
                             "输入您的 AWS IAM 用户凭证。您的凭证将保持在本地加密存储，仅用于算力互联。 "
                         }
 
@@ -361,34 +360,37 @@ fn PoolCard(
         BCCard {
             div { class: "p-lg flex items-center justify-between",
                 div { class: "flex items-center gap-md",
-                    div { class: "w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-xl", "🌐" }
+                    div { class: "w-10 h-10 rounded-full flex items-center justify-center text-xl",
+                        style: "background: var(--bc-primary-light);",
+                        "🌐"
+                    }
                     div {
                         div { class: "flex items-center gap-sm",
-                            h3 { class: "font-bold m-0", "{name}" }
+                            h3 { class: "font-bold m-0 text-primary", "{name}" }
                             if is_featured {
                                 BCBadge { variant: BadgeVariant::Success, "官方推荐" }
                             }
                         }
-                        div { class: "text-sm text-secondary font-mono mt-xs", "{url}" }
+                        div { class: "text-caption text-secondary font-mono mt-xs", "{url}" }
                     }
                 }
 
                 div { class: "flex items-center gap-xl",
                     div { class: "text-right",
                         div { class: "text-xxs text-secondary uppercase", "Status" }
-                        div { class: "text-sm font-medium text-success", "● {status}" }
+                        div { class: "text-caption font-medium", style: "color: var(--bc-success);", "● {status}" }
                     }
                     div { class: "text-right",
                         div { class: "text-xxs text-secondary uppercase", "Latency" }
-                        div { class: "text-sm font-medium", "{latency}" }
+                        div { class: "text-caption font-medium text-primary", "{latency}" }
                     }
                     div { class: "text-right",
                         div { class: "text-xxs text-secondary uppercase", "Capacity" }
-                        div { class: "text-sm font-medium", "{nodes} Nodes" }
+                        div { class: "text-caption font-medium text-primary", "{nodes} Nodes" }
                     }
-                    div { class: "text-right pl-lg border-l border-base-200",
+                    div { class: "text-right pl-lg border-l",
                         div { class: "text-xxs text-secondary uppercase", "My Balance" }
-                        div { class: "text-lg font-bold text-primary", "{balance}" }
+                        div { class: "text-lg font-bold", style: "color: var(--bc-primary);", "{balance}" }
                     }
                     BCButton { variant: ButtonVariant::Ghost, "配置" }
                 }
@@ -407,15 +409,15 @@ fn MarketplaceCard(
     nodes: i32,
 ) -> Element {
     rsx! {
-        div { class: "card bg-base-100 hover:shadow-md transition-all duration-200 border border-base-200",
+        div { class: "bc-card-solid",
             div { class: "p-md flex flex-col gap-sm",
                 div { class: "flex justify-between items-start",
                     div {
                         BCBadge { variant: BadgeVariant::Neutral, "{provider}" }
-                        h3 { class: "text-sm font-bold mt-xs mb-0", "{region}" }
+                        h3 { class: "text-caption font-bold mt-xs mb-0 text-primary", "{region}" }
                     }
                     div { class: "text-right",
-                        div { class: "text-sm font-bold text-primary", "${price}" }
+                        div { class: "text-caption font-bold", style: "color: var(--bc-primary);", "${price}" }
                         div { class: "text-xxs text-secondary", "/ 1K" }
                     }
                 }

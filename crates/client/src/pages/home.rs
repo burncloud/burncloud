@@ -19,7 +19,7 @@ pub fn Root() -> Element {
 
     // Render nothing (white screen) to avoid flashing
     rsx! {
-        div { class: "h-screen w-screen bg-base-100" }
+        div { class: "h-screen w-screen", style: "background-color: var(--bc-bg-canvas);" }
     }
 }
 
@@ -39,7 +39,8 @@ pub fn HomePage() -> Element {
 
     rsx! {
         // Container: White Ceramic Base
-        div { class: "h-full w-full bg-[#F5F5F7] text-[#1D1D1F] relative selection:bg-[#0071E3] selection:text-white font-sans",
+        div { class: "h-full w-full relative font-sans",
+            style: "background-color: var(--bc-bg-canvas); color: var(--bc-text-primary); --tw-selection-color: var(--bc-primary);",
 
             // ========== BACKGROUND: Liquid Light Field ==========
             div { class: "absolute inset-0 pointer-events-none overflow-hidden",
@@ -64,7 +65,7 @@ pub fn HomePage() -> Element {
                 // Grid pattern overlay
                 div {
                     class: "absolute inset-0 opacity-[0.03]",
-                    style: "background-image: radial-gradient(circle at 1px 1px, #1D1D1F 1px, transparent 0); background-size: 40px 40px;"
+                    style: "background-image: radial-gradient(circle at 1px 1px, var(--bc-text-primary) 1px, transparent 0); background-size: 40px 40px;"
                 }
             }
 
@@ -75,13 +76,14 @@ pub fn HomePage() -> Element {
                     div { class: "flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-6",
                         Logo { class: "w-10 h-10 fill-current" }
                     }
-                    span { class: "font-semibold text-xl tracking-tight text-[#1D1D1F] transition-all duration-300 group-hover:tracking-wide", "BurnCloud" }
+                    span { class: "font-semibold text-xl tracking-tight text-primary transition-all duration-300 group-hover:tracking-wide", "BurnCloud" }
                 }
 
                 // Action: The Capsule with glow
                 Link {
                     to: Route::LoginPage {},
-                    class: "px-6 py-2.5 rounded-full bg-[#E8E8ED] hover:bg-[#1D1D1F] hover:text-white text-[#1D1D1F] text-[15px] font-medium transition-all duration-300 hover:shadow-[0_8px_20px_rgba(0,0,0,0.2)] hover:scale-105",
+                    class: "px-6 py-2.5 rounded-full text-[15px] font-medium transition-all duration-300 hover:scale-105 hover:shadow-[0_8px_20px_rgba(0,0,0,0.2)]",
+                    style: "background-color: rgba(0, 0, 0, 0.06); color: var(--bc-text-primary);",
                     "Sign In"
                 }
             }
@@ -106,7 +108,7 @@ pub fn HomePage() -> Element {
                     }
 
                     // Main headline with staggered animation
-                    h1 { class: "text-5xl lg:text-6xl xl:text-7xl font-semibold tracking-tight mb-7 text-[#1D1D1F] animate-slide-up animate-delay-100 relative z-10",
+                    h1 { class: "text-5xl lg:text-6xl xl:text-7xl font-semibold tracking-tight mb-7 text-primary animate-slide-up animate-delay-100 relative z-10",
                         span { class: "block leading-tight pb-1 mb-4", "One Interface." }
                         div { class: "block pb-4",
                             span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow leading-tight pb-2",
@@ -116,7 +118,7 @@ pub fn HomePage() -> Element {
                     }
 
                     // Subtitle
-                    p { class: "text-[20px] lg:text-[22px] text-[#86868B] mb-9 max-w-lg mx-auto lg:mx-0 font-normal leading-[1.7] animate-slide-up animate-delay-200 relative z-10",
+                    p { class: "text-[20px] lg:text-[22px] text-secondary mb-9 max-w-lg mx-auto lg:mx-0 font-normal leading-[1.7] animate-slide-up animate-delay-200 relative z-10",
                         "Connect to the world's leading AI models—GPT, Claude, Gemini—with the simplicity of a single tap."
                     }
 
@@ -125,7 +127,8 @@ pub fn HomePage() -> Element {
                         // Primary CTA with glow pulse
                         Link {
                             to: Route::RegisterPage {},
-                            class: "group relative inline-flex items-center justify-center px-10 py-4 text-[17px] font-semibold text-white transition-all duration-500 bg-gradient-to-r from-[#0071E3] to-[#5856D6] rounded-full hover:from-[#0077ED] hover:to-[#6E6AE8] shadow-[0_10px_30px_-5px_rgba(0,113,227,0.4)] hover:shadow-[0_20px_40px_-5px_rgba(0,113,227,0.5)] hover:scale-[1.05] animate-glow-pulse overflow-hidden",
+                            class: "bc-btn-gradient group relative inline-flex items-center justify-center px-10 py-4 text-[17px] font-semibold rounded-full animate-glow-pulse overflow-hidden",
+                            style: "box-shadow: var(--bc-shadow-primary);",
                             // Shimmer overlay
                             div { class: "absolute inset-0 animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-300" }
                             span { class: "relative z-10 flex items-center gap-2",
@@ -139,12 +142,14 @@ pub fn HomePage() -> Element {
 
                     // Trust indicators
                     div { class: "mt-12 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400 relative z-10",
-                        div { class: "flex items-center gap-2 text-[13px] text-[#6E6E73] font-medium",
+                        div { class: "flex items-center gap-2 text-[13px] text-secondary font-medium",
                             div { class: "w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_6px_rgba(52,199,89,0.4)]" }
                             "Enterprise Ready"
                         }
-                        div { class: "w-[1px] h-4 bg-[#C7C7CC]" }
-                        div { class: "text-[13px] text-[#6E6E73] font-medium", "Open Source" }
+                        div { class: "w-[1px] h-4",
+                            style: "background-color: var(--bc-text-disabled);",
+                        }
+                        div { class: "text-[13px] text-secondary font-medium", "Open Source" }
                     }
                 }
 
@@ -154,7 +159,8 @@ pub fn HomePage() -> Element {
 
                         // ===== Card 1: Global Network (Hero Card) =====
                         div { class: "col-span-2 row-span-1 magnetic-hover",
-                            div { class: "group h-full glass rounded-[28px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)] p-7 flex flex-col justify-between overflow-hidden relative transition-all duration-500 hover:shadow-[0_30px_60px_-12px_rgba(0,0,0,0.15)]",
+                            div { class: "group h-full bc-card-glass rounded-[28px] p-7 flex flex-col justify-between overflow-hidden relative transition-all duration-500",
+                                style: "box-shadow: var(--bc-shadow-md);",
                                 // Glossy reflection
                                 div { class: "absolute top-0 right-0 w-72 h-72 bg-gradient-to-br from-white/90 to-transparent opacity-60 pointer-events-none rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 transition-opacity group-hover:opacity-80" }
 
@@ -162,7 +168,7 @@ pub fn HomePage() -> Element {
                                 div { class: "absolute inset-0 bg-gradient-to-br from-[#007AFF]/5 to-[#5856D6]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700" }
 
                                 div { class: "flex justify-between items-start relative z-10",
-                                    span { class: "text-[12px] font-semibold text-[#86868B] uppercase tracking-[0.15em]", "Global Network" }
+                                    span { class: "text-[12px] font-semibold text-secondary uppercase tracking-[0.15em]", "Global Network" }
                                     // Pulsing live indicator
                                     div { class: "relative",
                                         div { class: "w-3 h-3 rounded-full bg-[#34C759] shadow-[0_0_8px_rgba(52,199,89,0.5)]" }
@@ -172,10 +178,10 @@ pub fn HomePage() -> Element {
 
                                 div { class: "relative z-10 mt-3",
                                     div { class: "flex items-baseline gap-2",
-                                        div { class: "text-5xl lg:text-6xl font-medium tracking-tight text-[#1D1D1F] animate-count", "{active_nodes}" }
-                                        div { class: "text-[16px] text-[#86868B] font-medium", "Nodes" }
+                                        div { class: "text-5xl lg:text-6xl font-medium tracking-tight text-primary animate-count", "{active_nodes}" }
+                                        div { class: "text-[16px] text-secondary font-medium", "Nodes" }
                                     }
-                                    div { class: "text-[14px] text-[#86868B] mt-2 font-medium", "Powering AI worldwide, 24/7" }
+                                    div { class: "text-[14px] text-secondary mt-2 font-medium", "Powering AI worldwide, 24/7" }
                                 }
 
                                 // Interactive Dot Network
@@ -207,15 +213,16 @@ pub fn HomePage() -> Element {
 
                         // ===== Card 2: Lightning Fast =====
                         div { class: "col-span-1 magnetic-hover",
-                            div { class: "group h-full glass rounded-[28px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-500 hover:shadow-[0_30px_60px_-12px_rgba(0,0,0,0.15)]",
+                            div { class: "group h-full bc-card-glass rounded-[28px] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-500",
+                                style: "box-shadow: var(--bc-shadow-md);",
                                 // Purple gradient overlay on hover
                                 div { class: "absolute inset-0 bg-gradient-to-br from-[#AF52DE]/10 to-[#5856D6]/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" }
 
                                 div { class: "relative z-10",
-                                    div { class: "text-[12px] font-semibold text-[#86868B] uppercase tracking-[0.15em] mb-3", "Response Time" }
+                                    div { class: "text-[12px] font-semibold text-secondary uppercase tracking-[0.15em] mb-3", "Response Time" }
                                     div { class: "flex items-baseline gap-1",
-                                        div { class: "text-4xl font-medium text-[#1D1D1F] transition-transform duration-300 group-hover:scale-110", "{response_time}" }
-                                        div { class: "text-[15px] text-[#86868B] font-medium", "ms" }
+                                        div { class: "text-4xl font-medium text-primary transition-transform duration-300 group-hover:scale-110", "{response_time}" }
+                                        div { class: "text-[15px] text-secondary font-medium", "ms" }
                                     }
                                 }
                                 // Lightning Icon with glow
@@ -229,15 +236,16 @@ pub fn HomePage() -> Element {
 
                         // ===== Card 3: Always Available =====
                         div { class: "col-span-1 magnetic-hover",
-                            div { class: "group h-full glass rounded-[28px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-500 hover:shadow-[0_30px_60px_-12px_rgba(0,0,0,0.15)]",
+                            div { class: "group h-full bc-card-glass rounded-[28px] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-500",
+                                style: "box-shadow: var(--bc-shadow-md);",
                                 // Green gradient overlay on hover
                                 div { class: "absolute inset-0 bg-gradient-to-br from-[#34C759]/10 to-[#30D158]/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" }
 
                                 div { class: "relative z-10",
-                                    div { class: "text-[12px] font-semibold text-[#86868B] uppercase tracking-[0.15em] mb-3", "Uptime" }
+                                    div { class: "text-[12px] font-semibold text-secondary uppercase tracking-[0.15em] mb-3", "Uptime" }
                                     div { class: "flex items-baseline gap-0",
-                                        div { class: "text-4xl font-medium text-[#1D1D1F] transition-transform duration-300 group-hover:scale-110", "{uptime}" }
-                                        div { class: "text-[16px] text-[#86868B] font-medium", "%" }
+                                        div { class: "text-4xl font-medium text-primary transition-transform duration-300 group-hover:scale-110", "{uptime}" }
+                                        div { class: "text-[16px] text-secondary font-medium", "%" }
                                     }
                                 }
                                 // Checkmark Icon with glow
@@ -251,16 +259,18 @@ pub fn HomePage() -> Element {
 
                         // ===== Card 4: Multi-Provider =====
                         div { class: "col-span-2 magnetic-hover",
-                            div { class: "group h-full glass rounded-[28px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)] p-6 flex items-center justify-between relative overflow-hidden transition-all duration-500 hover:shadow-[0_30px_60px_-12px_rgba(0,0,0,0.15)]",
+                            div { class: "group h-full bc-card-glass rounded-[28px] p-6 flex items-center justify-between relative overflow-hidden transition-all duration-500",
+                                style: "box-shadow: var(--bc-shadow-md);",
                                 div { class: "relative z-10",
-                                    div { class: "text-[12px] font-semibold text-[#86868B] uppercase tracking-[0.15em] mb-2", "Unified API" }
-                                    div { class: "text-[15px] text-[#1D1D1F] font-medium", "One key. All providers." }
+                                    div { class: "text-[12px] font-semibold text-secondary uppercase tracking-[0.15em] mb-2", "Unified API" }
+                                    div { class: "text-[15px] text-primary font-medium", "One key. All providers." }
                                 }
 
                                 // Provider logos/icons animated
                                 div { class: "flex items-center gap-3 relative z-10",
                                     // OpenAI
-                                    div { class: "w-10 h-10 rounded-xl bg-[#1D1D1F] flex items-center justify-center text-white text-[11px] font-bold transition-all duration-300 hover:scale-110 hover:rotate-6 shadow-lg",
+                                    div { class: "w-10 h-10 rounded-xl flex items-center justify-center text-white text-[11px] font-bold transition-all duration-300 hover:scale-110 hover:rotate-6 shadow-lg",
+                                        style: "background-color: var(--bc-text-primary);",
                                         "GPT"
                                     }
                                     // Anthropic
@@ -272,7 +282,8 @@ pub fn HomePage() -> Element {
                                         "Gem"
                                     }
                                     // More indicator
-                                    div { class: "w-10 h-10 rounded-xl bg-[#F2F2F7] border border-[#D1D1D6]/50 flex items-center justify-center text-[#86868B] text-[13px] font-semibold transition-all duration-300 hover:scale-110 hover:bg-[#E5E5EA] hover:text-[#1D1D1F] shadow-sm",
+                                    div { class: "w-10 h-10 rounded-xl border flex items-center justify-center text-[13px] font-semibold transition-all duration-300 hover:scale-110 shadow-sm",
+                                        style: "background-color: var(--bc-bg-hover); border-color: var(--bc-border); color: var(--bc-text-secondary);",
                                         "+9"
                                     }
                                 }
@@ -284,9 +295,12 @@ pub fn HomePage() -> Element {
 
             // ========== FOOTER: Subtle ==========
             div { class: "absolute bottom-8 w-full text-center pointer-events-none animate-slide-up animate-delay-500",
-                span { class: "text-[13px] font-medium text-[#86868B] tracking-[0.12em] uppercase",
+                span { class: "text-[13px] font-medium text-secondary tracking-[0.12em] uppercase",
                     "Engineered with "
-                    span { class: "text-[#D97757] text-[14px]", "🦀" }
+                    span { class: "text-[14px]",
+                        style: "color: var(--bc-warning);",
+                        "🦀"
+                    }
                     " Rust"
                 }
             }

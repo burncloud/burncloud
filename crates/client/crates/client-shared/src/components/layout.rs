@@ -9,7 +9,7 @@ use super::placeholders::{
 };
 use super::sidebar::Sidebar;
 use super::title_bar::TitleBar;
-use crate::styles::FLUENT_CSS;
+use crate::styles::DESIGN_SYSTEM_CSS;
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum CoreRoute {
@@ -44,7 +44,7 @@ pub enum CoreRoute {
 pub fn Layout() -> Element {
     rsx! {
         head {
-            style { "{FLUENT_CSS}" }
+            style { "{DESIGN_SYSTEM_CSS}" }
         }
         div { class: "app-container",
             TitleBar {}

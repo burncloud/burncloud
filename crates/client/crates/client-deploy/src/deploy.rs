@@ -25,24 +25,25 @@ pub fn DeployConfig() -> Element {
     };
 
     rsx! {
-        div { class: "flex flex-col h-full p-6",
+        div { class: "flex flex-col h-full p-lg",
             // Header
-            div { class: "mb-8",
-                h1 { class: "text-2xl font-bold text-base-content mb-2", "Model Deployment" }
-                p { class: "text-base-content/60", "Deploy new models from various sources." }
+            div { class: "mb-xl",
+                h1 { class: "text-title font-bold text-primary mb-sm", "Model Deployment" }
+                p { class: "text-secondary", "Deploy new models from various sources." }
             }
 
             // Form
-            div { class: "max-w-2xl bg-base-100 p-8 rounded-xl border border-base-200 shadow-sm",
-                div { class: "flex flex-col gap-6",
+            div { class: "max-w-2xl p-xl rounded-xl bc-card-solid",
+                div { class: "flex flex-col gap-lg",
 
                     // Source Selection
                     div { class: "form-control w-full",
                         label { class: "label",
-                            span { class: "label-text font-medium", "Source" }
+                            span { class: "label-text font-medium text-primary", "Source" }
                         }
                         select {
                             class: "select select-bordered w-full",
+                            style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
                             value: "{source}",
                             onchange: move |e| source.set(e.value()),
                             option { value: "HuggingFace", "HuggingFace" }
@@ -59,7 +60,7 @@ pub fn DeployConfig() -> Element {
                     }
 
                     // Deploy Button
-                    div { class: "mt-4",
+                    div { class: "mt-md",
                         BCButton {
                             class: "w-full btn-primary",
                             disabled: !is_form_valid || is_deploying(),
