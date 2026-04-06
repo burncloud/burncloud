@@ -34,6 +34,7 @@ __pycache__
 /home-current.jpeg
 /.entire
 e2e-screenshots
+.screenshots
 
 # ZIP files
 *.zip
