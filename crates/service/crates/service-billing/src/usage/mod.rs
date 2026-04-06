@@ -5,9 +5,7 @@ use crate::types::UnifiedUsage;
 use burncloud_common::types::ChannelType;
 use serde_json::Value;
 
-pub use providers::{
-    AnthropicParser, DeepSeekParser, GeminiParser, GenericParser, OpenAIParser,
-};
+pub use providers::{AnthropicParser, DeepSeekParser, GeminiParser, GenericParser, OpenAIParser};
 
 /// Parses usage information from an LLM provider response.
 ///
@@ -96,7 +94,10 @@ mod tests {
 
     #[test]
     fn test_get_parser_anthropic() {
-        assert_eq!(get_parser(ChannelType::Anthropic).provider_name(), "anthropic");
+        assert_eq!(
+            get_parser(ChannelType::Anthropic).provider_name(),
+            "anthropic"
+        );
         // z.ai uses Anthropic-compatible protocol
         assert_eq!(get_parser(ChannelType::Zai).provider_name(), "anthropic");
     }
@@ -109,6 +110,9 @@ mod tests {
 
     #[test]
     fn test_get_parser_deepseek() {
-        assert_eq!(get_parser(ChannelType::DeepSeek).provider_name(), "deepseek");
+        assert_eq!(
+            get_parser(ChannelType::DeepSeek).provider_name(),
+            "deepseek"
+        );
     }
 }

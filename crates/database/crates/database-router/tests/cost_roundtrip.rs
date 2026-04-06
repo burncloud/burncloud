@@ -15,7 +15,6 @@
 /// with plain `?` for LIMIT/OFFSET, which triggers SQLITE_MISMATCH (code 20) in some
 /// sqlx-any versions. Tests use RouterLogModel::get() and filter in Rust to stay on the
 /// well-tested code path.
-
 use burncloud_database::create_database_with_url;
 use burncloud_database_router::{DbRouterLog, RouterDatabase, RouterLogModel};
 use tempfile::NamedTempFile;
@@ -100,22 +99,39 @@ async fn test_cost_breakdown_roundtrip() {
     let request_id = format!("test-roundtrip-{}", uuid::Uuid::new_v4());
     let log = make_log(&request_id);
 
-    RouterLogModel::insert(&db, &log).await.expect("insert failed");
+    RouterLogModel::insert(&db, &log)
+        .await
+        .expect("insert failed");
 
     let row = find_log(&db, &request_id).await;
 
     // --- token counts ---
-    assert_eq!(row.cache_write_tokens, log.cache_write_tokens, "cache_write_tokens");
-    assert_eq!(row.audio_input_tokens, log.audio_input_tokens, "audio_input_tokens");
-    assert_eq!(row.audio_output_tokens, log.audio_output_tokens, "audio_output_tokens");
+    assert_eq!(
+        row.cache_write_tokens, log.cache_write_tokens,
+        "cache_write_tokens"
+    );
+    assert_eq!(
+        row.audio_input_tokens, log.audio_input_tokens,
+        "audio_input_tokens"
+    );
+    assert_eq!(
+        row.audio_output_tokens, log.audio_output_tokens,
+        "audio_output_tokens"
+    );
     assert_eq!(row.image_tokens, log.image_tokens, "image_tokens");
-    assert_eq!(row.embedding_tokens, log.embedding_tokens, "embedding_tokens");
+    assert_eq!(
+        row.embedding_tokens, log.embedding_tokens,
+        "embedding_tokens"
+    );
 
     // --- cost breakdown ---
     assert_eq!(row.input_cost, log.input_cost, "input_cost");
     assert_eq!(row.output_cost, log.output_cost, "output_cost");
     assert_eq!(row.cache_read_cost, log.cache_read_cost, "cache_read_cost");
-    assert_eq!(row.cache_write_cost, 0, "cache_write_cost (FM-10: expected 0 until P1 split)");
+    assert_eq!(
+        row.cache_write_cost, 0,
+        "cache_write_cost (FM-10: expected 0 until P1 split)"
+    );
     assert_eq!(row.audio_cost, log.audio_cost, "audio_cost");
     assert_eq!(row.image_cost, log.image_cost, "image_cost");
     assert_eq!(row.video_cost, log.video_cost, "video_cost");
@@ -124,7 +140,10 @@ async fn test_cost_breakdown_roundtrip() {
 
     // --- pre-existing fields still intact ---
     assert_eq!(row.prompt_tokens, log.prompt_tokens, "prompt_tokens");
-    assert_eq!(row.completion_tokens, log.completion_tokens, "completion_tokens");
+    assert_eq!(
+        row.completion_tokens, log.completion_tokens,
+        "completion_tokens"
+    );
     assert_eq!(row.cost, log.cost, "total cost");
     assert_eq!(row.model.as_deref(), Some("gpt-4o"), "model");
 }
@@ -151,7 +170,9 @@ async fn test_large_cost_no_truncation() {
     log.input_cost = big_cost;
     log.output_cost = 3_000_000_000; // $3.00, also > i32::MAX
 
-    RouterLogModel::insert(&db, &log).await.expect("insert failed");
+    RouterLogModel::insert(&db, &log)
+        .await
+        .expect("insert failed");
 
     let row = find_log(&db, &request_id).await;
 
@@ -210,7 +231,9 @@ async fn test_zero_values_read_as_zero_not_null() {
         created_at: None,
     };
 
-    RouterLogModel::insert(&db, &log).await.expect("insert failed");
+    RouterLogModel::insert(&db, &log)
+        .await
+        .expect("insert failed");
 
     let row = find_log(&db, &request_id).await;
 

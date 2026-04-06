@@ -28,16 +28,26 @@ impl UnifiedTokenCounter {
     /// Overwrite all counters with values from a usage snapshot.
     /// Use this for providers that send cumulative totals (OpenAI, Gemini).
     pub fn set_from_usage(&self, usage: &UnifiedUsage) {
-        self.input_tokens.store(usage.input_tokens.max(0) as u64, Ordering::Relaxed);
-        self.output_tokens.store(usage.output_tokens.max(0) as u64, Ordering::Relaxed);
-        self.cache_read_tokens.store(usage.cache_read_tokens.max(0) as u64, Ordering::Relaxed);
-        self.cache_write_tokens.store(usage.cache_write_tokens.max(0) as u64, Ordering::Relaxed);
-        self.audio_input_tokens.store(usage.audio_input_tokens.max(0) as u64, Ordering::Relaxed);
-        self.audio_output_tokens.store(usage.audio_output_tokens.max(0) as u64, Ordering::Relaxed);
-        self.image_tokens.store(usage.image_tokens.max(0) as u64, Ordering::Relaxed);
-        self.video_tokens.store(usage.video_tokens.max(0) as u64, Ordering::Relaxed);
-        self.reasoning_tokens.store(usage.reasoning_tokens.max(0) as u64, Ordering::Relaxed);
-        self.embedding_tokens.store(usage.embedding_tokens.max(0) as u64, Ordering::Relaxed);
+        self.input_tokens
+            .store(usage.input_tokens.max(0) as u64, Ordering::Relaxed);
+        self.output_tokens
+            .store(usage.output_tokens.max(0) as u64, Ordering::Relaxed);
+        self.cache_read_tokens
+            .store(usage.cache_read_tokens.max(0) as u64, Ordering::Relaxed);
+        self.cache_write_tokens
+            .store(usage.cache_write_tokens.max(0) as u64, Ordering::Relaxed);
+        self.audio_input_tokens
+            .store(usage.audio_input_tokens.max(0) as u64, Ordering::Relaxed);
+        self.audio_output_tokens
+            .store(usage.audio_output_tokens.max(0) as u64, Ordering::Relaxed);
+        self.image_tokens
+            .store(usage.image_tokens.max(0) as u64, Ordering::Relaxed);
+        self.video_tokens
+            .store(usage.video_tokens.max(0) as u64, Ordering::Relaxed);
+        self.reasoning_tokens
+            .store(usage.reasoning_tokens.max(0) as u64, Ordering::Relaxed);
+        self.embedding_tokens
+            .store(usage.embedding_tokens.max(0) as u64, Ordering::Relaxed);
     }
 
     /// Accumulate usage from a partial chunk into existing counters.
@@ -45,34 +55,44 @@ impl UnifiedTokenCounter {
     /// Individual fields are updated only when non-zero to preserve previous values.
     pub fn accumulate(&self, usage: &UnifiedUsage) {
         if usage.input_tokens > 0 {
-            self.input_tokens.store(usage.input_tokens as u64, Ordering::Relaxed);
+            self.input_tokens
+                .store(usage.input_tokens as u64, Ordering::Relaxed);
         }
         if usage.output_tokens > 0 {
-            self.output_tokens.store(usage.output_tokens as u64, Ordering::Relaxed);
+            self.output_tokens
+                .store(usage.output_tokens as u64, Ordering::Relaxed);
         }
         if usage.cache_read_tokens > 0 {
-            self.cache_read_tokens.store(usage.cache_read_tokens as u64, Ordering::Relaxed);
+            self.cache_read_tokens
+                .store(usage.cache_read_tokens as u64, Ordering::Relaxed);
         }
         if usage.cache_write_tokens > 0 {
-            self.cache_write_tokens.store(usage.cache_write_tokens as u64, Ordering::Relaxed);
+            self.cache_write_tokens
+                .store(usage.cache_write_tokens as u64, Ordering::Relaxed);
         }
         if usage.audio_input_tokens > 0 {
-            self.audio_input_tokens.store(usage.audio_input_tokens as u64, Ordering::Relaxed);
+            self.audio_input_tokens
+                .store(usage.audio_input_tokens as u64, Ordering::Relaxed);
         }
         if usage.audio_output_tokens > 0 {
-            self.audio_output_tokens.store(usage.audio_output_tokens as u64, Ordering::Relaxed);
+            self.audio_output_tokens
+                .store(usage.audio_output_tokens as u64, Ordering::Relaxed);
         }
         if usage.image_tokens > 0 {
-            self.image_tokens.store(usage.image_tokens as u64, Ordering::Relaxed);
+            self.image_tokens
+                .store(usage.image_tokens as u64, Ordering::Relaxed);
         }
         if usage.video_tokens > 0 {
-            self.video_tokens.store(usage.video_tokens as u64, Ordering::Relaxed);
+            self.video_tokens
+                .store(usage.video_tokens as u64, Ordering::Relaxed);
         }
         if usage.reasoning_tokens > 0 {
-            self.reasoning_tokens.store(usage.reasoning_tokens as u64, Ordering::Relaxed);
+            self.reasoning_tokens
+                .store(usage.reasoning_tokens as u64, Ordering::Relaxed);
         }
         if usage.embedding_tokens > 0 {
-            self.embedding_tokens.store(usage.embedding_tokens as u64, Ordering::Relaxed);
+            self.embedding_tokens
+                .store(usage.embedding_tokens as u64, Ordering::Relaxed);
         }
     }
 
@@ -119,9 +139,16 @@ mod tests {
     fn test_accumulate_two_anthropic_events() {
         let counter = UnifiedTokenCounter::new();
         // message_start sets input
-        counter.accumulate(&UnifiedUsage { input_tokens: 50, cache_read_tokens: 10, ..Default::default() });
+        counter.accumulate(&UnifiedUsage {
+            input_tokens: 50,
+            cache_read_tokens: 10,
+            ..Default::default()
+        });
         // message_delta sets output
-        counter.accumulate(&UnifiedUsage { output_tokens: 75, ..Default::default() });
+        counter.accumulate(&UnifiedUsage {
+            output_tokens: 75,
+            ..Default::default()
+        });
 
         let result = counter.get_usage();
         assert_eq!(result.input_tokens, 50);
@@ -132,8 +159,15 @@ mod tests {
     #[test]
     fn test_set_overwrites_previous() {
         let counter = UnifiedTokenCounter::new();
-        counter.set_from_usage(&UnifiedUsage { input_tokens: 100, ..Default::default() });
-        counter.set_from_usage(&UnifiedUsage { input_tokens: 200, output_tokens: 50, ..Default::default() });
+        counter.set_from_usage(&UnifiedUsage {
+            input_tokens: 100,
+            ..Default::default()
+        });
+        counter.set_from_usage(&UnifiedUsage {
+            input_tokens: 200,
+            output_tokens: 50,
+            ..Default::default()
+        });
         let result = counter.get_usage();
         assert_eq!(result.input_tokens, 200);
         assert_eq!(result.output_tokens, 50);
@@ -156,7 +190,10 @@ mod tests {
         for i in 0..10 {
             let c = Arc::clone(&counter);
             handles.push(thread::spawn(move || {
-                c.set_from_usage(&UnifiedUsage { input_tokens: i, ..Default::default() });
+                c.set_from_usage(&UnifiedUsage {
+                    input_tokens: i,
+                    ..Default::default()
+                });
             }));
         }
         for h in handles {

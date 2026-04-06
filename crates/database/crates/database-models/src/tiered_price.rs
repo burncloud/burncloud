@@ -18,11 +18,17 @@ impl TieredPriceModel {
         let tiers = match region {
             Some(r) => {
                 let sql = if is_postgres {
-                    &format!(r#"{} FROM tiered_pricing WHERE model = $1 AND region = $2
-                       ORDER BY tier_start ASC"#, base_select)
+                    &format!(
+                        r#"{} FROM tiered_pricing WHERE model = $1 AND region = $2
+                       ORDER BY tier_start ASC"#,
+                        base_select
+                    )
                 } else {
-                    &format!(r#"{} FROM tiered_pricing WHERE model = ? AND region = ?
-                       ORDER BY tier_start ASC"#, base_select)
+                    &format!(
+                        r#"{} FROM tiered_pricing WHERE model = ? AND region = ?
+                       ORDER BY tier_start ASC"#,
+                        base_select
+                    )
                 };
                 sqlx::query_as(sql)
                     .bind(model)
@@ -33,11 +39,17 @@ impl TieredPriceModel {
             None => {
                 // Get tiers with NULL region (universal) or matching region
                 let sql = if is_postgres {
-                    &format!(r#"{} FROM tiered_pricing WHERE model = $1
-                       ORDER BY tier_start ASC"#, base_select)
+                    &format!(
+                        r#"{} FROM tiered_pricing WHERE model = $1
+                       ORDER BY tier_start ASC"#,
+                        base_select
+                    )
                 } else {
-                    &format!(r#"{} FROM tiered_pricing WHERE model = ?
-                       ORDER BY tier_start ASC"#, base_select)
+                    &format!(
+                        r#"{} FROM tiered_pricing WHERE model = ?
+                       ORDER BY tier_start ASC"#,
+                        base_select
+                    )
                 };
                 sqlx::query_as(sql)
                     .bind(model)

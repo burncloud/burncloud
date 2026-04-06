@@ -374,7 +374,15 @@ pub async fn get_usage_stats_by_model(
     Ok(rows
         .into_iter()
         .map(
-            |(model, requests, prompt_tokens, completion_tokens, cache_read_tokens, reasoning_tokens, cost_nano)| ModelUsageStats {
+            |(
+                model,
+                requests,
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                reasoning_tokens,
+                cost_nano,
+            )| ModelUsageStats {
                 model,
                 requests,
                 prompt_tokens,
@@ -433,31 +441,15 @@ pub async fn get_billing_summary(
             true,
             true,
         ),
-        (Some(_), None) if is_postgres => (
-            "AND created_at::date >= $1::date",
-            true,
-            false,
-        ),
-        (None, Some(_)) if is_postgres => (
-            "AND created_at::date <= $1::date",
-            false,
-            true,
-        ),
+        (Some(_), None) if is_postgres => ("AND created_at::date >= $1::date", true, false),
+        (None, Some(_)) if is_postgres => ("AND created_at::date <= $1::date", false, true),
         (Some(_), Some(_)) => (
             "AND strftime('%Y-%m-%d', created_at) >= ? AND strftime('%Y-%m-%d', created_at) <= ?",
             true,
             true,
         ),
-        (Some(_), None) => (
-            "AND strftime('%Y-%m-%d', created_at) >= ?",
-            true,
-            false,
-        ),
-        (None, Some(_)) => (
-            "AND strftime('%Y-%m-%d', created_at) <= ?",
-            false,
-            true,
-        ),
+        (Some(_), None) => ("AND strftime('%Y-%m-%d', created_at) >= ?", true, false),
+        (None, Some(_)) => ("AND strftime('%Y-%m-%d', created_at) <= ?", false, true),
         (None, None) => ("", false, false),
     };
 
@@ -507,7 +499,15 @@ pub async fn get_billing_summary(
     let models: Vec<BillingModelSummary> = rows
         .into_iter()
         .map(
-            |(model, requests, prompt_tokens, cache_read_tokens, completion_tokens, reasoning_tokens, cost_nano)| {
+            |(
+                model,
+                requests,
+                prompt_tokens,
+                cache_read_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                cost_nano,
+            )| {
                 total_cost_nano = total_cost_nano.saturating_add(cost_nano);
                 BillingModelSummary {
                     model,

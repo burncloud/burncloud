@@ -255,14 +255,27 @@ async fn test_upsert_idempotency() -> anyhow::Result<()> {
         .iter()
         .filter(|p| p.model == "idempotency-test-model")
         .collect();
-    assert_eq!(matching.len(), 1, "Expected exactly 1 row, got {}", matching.len());
+    assert_eq!(
+        matching.len(),
+        1,
+        "Expected exactly 1 row, got {}",
+        matching.len()
+    );
 
     // Price should reflect the second upsert
     let price = PriceModel::get(&db, "idempotency-test-model", "USD", None).await?;
     assert!(price.is_some());
     let price = price.unwrap();
-    assert_eq!(price.input_price, to_nano(6.0), "input_price should be from second upsert");
-    assert_eq!(price.output_price, to_nano(18.0), "output_price should be from second upsert");
+    assert_eq!(
+        price.input_price,
+        to_nano(6.0),
+        "input_price should be from second upsert"
+    );
+    assert_eq!(
+        price.output_price,
+        to_nano(18.0),
+        "output_price should be from second upsert"
+    );
 
     Ok(())
 }

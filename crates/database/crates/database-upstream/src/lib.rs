@@ -49,13 +49,10 @@ pub fn get_master_key() -> Result<[u8; 32]> {
                 .to_string(),
         )
     })?;
-    let bytes = hex::decode(hex_key.trim()).map_err(|e| {
-        DatabaseError::Query(format!("MASTER_KEY is not valid hex: {}", e))
-    })?;
+    let bytes = hex::decode(hex_key.trim())
+        .map_err(|e| DatabaseError::Query(format!("MASTER_KEY is not valid hex: {}", e)))?;
     bytes.try_into().map_err(|_| {
-        DatabaseError::Query(
-            "MASTER_KEY must be exactly 32 bytes (64 hex characters)".to_string(),
-        )
+        DatabaseError::Query("MASTER_KEY must be exactly 32 bytes (64 hex characters)".to_string())
     })
 }
 
@@ -80,9 +77,8 @@ fn decrypt_api_key(stored: &str, key: &[u8; 32]) -> Result<String> {
     }
 
     let hex_data = &stored[ENCRYPTED_PREFIX.len()..];
-    let combined = hex::decode(hex_data).map_err(|e| {
-        DatabaseError::Query(format!("Malformed encrypted API key: {}", e))
-    })?;
+    let combined = hex::decode(hex_data)
+        .map_err(|e| DatabaseError::Query(format!("Malformed encrypted API key: {}", e)))?;
 
     if combined.len() < 12 {
         return Err(DatabaseError::Query(
@@ -95,9 +91,9 @@ fn decrypt_api_key(stored: &str, key: &[u8; 32]) -> Result<String> {
         .map_err(|e| DatabaseError::Query(format!("Failed to initialize cipher: {}", e)))?;
     let nonce = Nonce::from_slice(nonce_bytes);
 
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_| DatabaseError::Query("API key decryption failed (wrong key or corrupted data)".to_string()))?;
+    let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_| {
+        DatabaseError::Query("API key decryption failed (wrong key or corrupted data)".to_string())
+    })?;
 
     String::from_utf8(plaintext)
         .map_err(|e| DatabaseError::Query(format!("Decrypted API key is not valid UTF-8: {}", e)))

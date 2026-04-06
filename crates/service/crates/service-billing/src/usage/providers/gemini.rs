@@ -167,8 +167,8 @@ mod tests {
         });
         let u = parser.parse_response(&resp).unwrap();
         assert_eq!(u.input_tokens, 20);
-        assert_eq!(u.output_tokens, 30);       // candidates only
-        assert_eq!(u.reasoning_tokens, 50);    // thoughts separate
+        assert_eq!(u.output_tokens, 30); // candidates only
+        assert_eq!(u.reasoning_tokens, 50); // thoughts separate
         assert_eq!(u.cache_read_tokens, 0);
     }
 

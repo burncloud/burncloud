@@ -52,7 +52,11 @@ pub fn base_evidence(test_name: &str, model: &str) -> Value {
 
 /// Append a named assertion result to an evidence object's `assertions` array.
 pub fn add_assertion(evidence: &mut Value, name: &str, expected: i64, actual: i64) {
-    let result = if (actual - expected).abs() <= 1 { "PASS" } else { "FAIL" };
+    let result = if (actual - expected).abs() <= 1 {
+        "PASS"
+    } else {
+        "FAIL"
+    };
     let assertions = evidence
         .get_mut("assertions")
         .and_then(|a| a.as_array_mut());

@@ -977,7 +977,9 @@ mod tests {
 
     /// Wrap a `models` JSON object in a complete v7.0 PricingConfig JSON string.
     fn v7(models_json: &str) -> String {
-        format!(r#"{{"version":"7.0","updated_at":"2026-03-29T00:00:00Z","source":"test","models":{models_json}}}"#)
+        format!(
+            r#"{{"version":"7.0","updated_at":"2026-03-29T00:00:00Z","source":"test","models":{models_json}}}"#
+        )
     }
 
     #[test]
@@ -986,7 +988,7 @@ mod tests {
         assert_eq!(version_major("10.1"), 10);
         assert_eq!(version_major("1.0"), 1);
         assert_eq!(version_major("abc"), 1); // fallback
-        assert_eq!(version_major(""), 1);    // fallback
+        assert_eq!(version_major(""), 1); // fallback
 
         // Missing version field → from_json should succeed (warn + assume v1 via serde default)
         let json = r#"{"updated_at":"2026-01-01T00:00:00Z","source":"x","models":{}}"#;
@@ -1006,23 +1008,23 @@ mod tests {
 
     #[test]
     fn test_v7_cache_and_batch() {
-        let json = v7(r#"{"my-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75},"batch":{"in":1.5,"out":7.5}}}}"#);
+        let json = v7(
+            r#"{"my-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75},"batch":{"in":1.5,"out":7.5}}}}"#,
+        );
         let config = PricingConfig::from_json(&json).unwrap();
         assert!(config.get_pricing("my-model", "USD").is_some());
         let cache = config.get_cache_pricing("my-model", "USD").unwrap();
         assert_eq!(cache.cache_read_input_price, to_nano(0.75));
-        let batch = config
-            .models["my-model"]
-            .batch_pricing
-            .as_ref()
-            .unwrap()["USD"]
-            .batch_input_price;
+        let batch =
+            config.models["my-model"].batch_pricing.as_ref().unwrap()["USD"].batch_input_price;
         assert_eq!(batch, to_nano(1.5));
     }
 
     #[test]
     fn test_v7_tiered() {
-        let json = v7(r#"{"gemini-pro":{"USD":{"text":{"in":1.25,"out":10.0},"tiered":[{"tier_start":0,"tier_end":200000,"in":1.25,"out":10.0},{"tier_start":200000,"in":2.5,"out":15.0}]}}}"#);
+        let json = v7(
+            r#"{"gemini-pro":{"USD":{"text":{"in":1.25,"out":10.0},"tiered":[{"tier_start":0,"tier_end":200000,"in":1.25,"out":10.0},{"tier_start":200000,"in":2.5,"out":15.0}]}}}"#,
+        );
         let config = PricingConfig::from_json(&json).unwrap();
         let tiers = config.get_tiered_pricing("gemini-pro", "USD").unwrap();
         assert_eq!(tiers.len(), 2);
@@ -1045,7 +1047,8 @@ mod tests {
 
     #[test]
     fn test_v7_image_model() {
-        let json = v7(r#"{"image-model":{"USD":{"text":{"in":0.0,"out":0.0},"image":{"out":120.0}}}}"#);
+        let json =
+            v7(r#"{"image-model":{"USD":{"text":{"in":0.0,"out":0.0},"image":{"out":120.0}}}}"#);
         let config = PricingConfig::from_json(&json).unwrap();
         let pricing = config.get_pricing("image-model", "USD").unwrap();
         assert_eq!(pricing.image_output_price, Some(to_nano(120.0)));
@@ -1054,7 +1057,9 @@ mod tests {
 
     #[test]
     fn test_v7_multicurrency() {
-        let json = v7(r#"{"model":{"USD":{"text":{"in":3.0,"out":15.0}},"CNY":{"text":{"in":21.0,"out":105.0}}}}"#);
+        let json = v7(
+            r#"{"model":{"USD":{"text":{"in":3.0,"out":15.0}},"CNY":{"text":{"in":21.0,"out":105.0}}}}"#,
+        );
         let config = PricingConfig::from_json(&json).unwrap();
         assert!(config.get_pricing("model", "USD").is_some());
         assert!(config.get_pricing("model", "CNY").is_some());
@@ -1088,22 +1093,28 @@ mod tests {
         let price = 0.28_f64;
         let nano = to_nano(price);
         let back = nano as f64 / 1_000_000_000.0;
-        assert!((back - price).abs() < 1e-9, "precision loss: {back} vs {price}");
+        assert!(
+            (back - price).abs() < 1e-9,
+            "precision loss: {back} vs {price}"
+        );
     }
 
     #[test]
     fn test_v7_batch_image_out_ignored() {
         // batch.image_out present → should parse without error, not appear in batch_pricing
-        let json = v7(r#"{"img-model":{"USD":{"text":{"in":0.0,"out":0.0},"batch":{"in":5.0,"out":30.0,"image_out":60.0}}}}"#);
+        let json = v7(
+            r#"{"img-model":{"USD":{"text":{"in":0.0,"out":0.0},"batch":{"in":5.0,"out":30.0,"image_out":60.0}}}}"#,
+        );
         let config = PricingConfig::from_json(&json).unwrap();
-        let batch = config.models["img-model"]
-            .batch_pricing
-            .as_ref()
-            .unwrap()["USD"]
-            .batch_input_price;
+        let batch =
+            config.models["img-model"].batch_pricing.as_ref().unwrap()["USD"].batch_input_price;
         assert_eq!(batch, to_nano(5.0));
         // image_output_price on CurrencyPricing is None (not from batch.image_out)
-        assert!(config.get_pricing("img-model", "USD").unwrap().image_output_price.is_none());
+        assert!(config
+            .get_pricing("img-model", "USD")
+            .unwrap()
+            .image_output_price
+            .is_none());
     }
 
     #[test]
@@ -1123,7 +1134,9 @@ mod tests {
 
     /// Wrap a `models` JSON object in a complete v8.0 PricingConfig JSON string.
     fn v8(models_json: &str) -> String {
-        format!(r#"{{"version":"8.0","updated_at":"2026-03-30T00:00:00Z","source":"test","models":{models_json}}}"#)
+        format!(
+            r#"{{"version":"8.0","updated_at":"2026-03-30T00:00:00Z","source":"test","models":{models_json}}}"#
+        )
     }
 
     #[test]
@@ -1131,7 +1144,9 @@ mod tests {
         // lyria-3: music.per = 0.08 USD/request → 80_000_000 nanodollars/request
         let json = v8(r#"{"lyria-3":{"USD":{"text":{"in":0.0,"out":0.0},"music":{"per":0.08}}}}"#);
         let config = PricingConfig::from_json(&json).unwrap();
-        let pricing = config.get_pricing("lyria-3", "USD").expect("lyria-3 pricing must exist");
+        let pricing = config
+            .get_pricing("lyria-3", "USD")
+            .expect("lyria-3 pricing must exist");
         assert_eq!(
             pricing.music_price,
             Some(to_nano(0.08)),
@@ -1143,9 +1158,12 @@ mod tests {
     #[test]
     fn test_v8_cache_creation_input() {
         // cache.write present → maps to cache_creation_input_price
-        let json = v8(r#"{"cached-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75,"write":1.25}}}}"#);
+        let json = v8(
+            r#"{"cached-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75,"write":1.25}}}}"#,
+        );
         let config = PricingConfig::from_json(&json).unwrap();
-        let cache = config.get_cache_pricing("cached-model", "USD")
+        let cache = config
+            .get_cache_pricing("cached-model", "USD")
             .expect("cache pricing must exist");
         assert_eq!(cache.cache_read_input_price, to_nano(0.75));
         assert_eq!(
@@ -1158,10 +1176,13 @@ mod tests {
     #[test]
     fn test_v8_video_sec_ignored() {
         // video.sec present → should parse without error, video field is dead_code
-        let json = v8(r#"{"video-model":{"USD":{"text":{"in":0.0,"out":0.0},"video":{"sec":0.025}}}}"#);
+        let json =
+            v8(r#"{"video-model":{"USD":{"text":{"in":0.0,"out":0.0},"video":{"sec":0.025}}}}"#);
         let config = PricingConfig::from_json(&json).unwrap();
         // video field is not yet stored, but parse must succeed
-        let pricing = config.get_pricing("video-model", "USD").expect("pricing must exist");
+        let pricing = config
+            .get_pricing("video-model", "USD")
+            .expect("pricing must exist");
         assert_eq!(pricing.input_price, to_nano(0.0));
     }
 }

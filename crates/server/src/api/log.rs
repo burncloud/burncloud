@@ -30,10 +30,7 @@ pub fn routes() -> Router<AppState> {
             "/console/internal/billing/summary",
             get(billing_summary_handler),
         )
-        .route(
-            "/console/internal/prices/sync",
-            post(price_sync_handler),
-        )
+        .route("/console/internal/prices/sync", post(price_sync_handler))
 }
 
 async fn list_logs(State(state): State<AppState>, Query(params): Query<Pagination>) -> Json<Value> {

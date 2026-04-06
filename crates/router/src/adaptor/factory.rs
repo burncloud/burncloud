@@ -120,7 +120,10 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
                 .get("model")
                 .and_then(|m| m.as_str())
                 .unwrap_or("gemini-2.0-flash");
-            if raw.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.') {
+            if raw
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '.')
+            {
                 raw
             } else {
                 tracing::warn!("Invalid Gemini model name '{}', using default", raw);

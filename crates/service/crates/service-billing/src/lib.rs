@@ -25,6 +25,4 @@ pub use calculator::CostCalculator;
 pub use counter::UnifiedTokenCounter;
 pub use error::{BillingError, ParseError};
 pub use types::{CostBreakdown, CostResult, UnifiedUsage};
-pub use usage::{
-    get_parser, parse_chunk_or_default, parse_response_or_default, UsageParser,
-};
+pub use usage::{get_parser, parse_chunk_or_default, parse_response_or_default, UsageParser};
