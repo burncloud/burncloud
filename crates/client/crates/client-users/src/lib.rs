@@ -45,117 +45,130 @@ pub fn UserPage() -> Element {
     let mut active_tab = use_signal(|| "all".to_string());
 
     rsx! {
-        div { class: "flex flex-col h-full gap-8",
+        div { class: "flex flex-col h-full gap-xl",
             // Header
             div { class: "flex justify-between items-end",
                 div {
-                    h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "客户列表" }
-                    p { class: "text-sm text-base-content/60 font-medium", "用户增长与留存管理" }
+                    h1 { class: "text-title font-semibold text-primary mb-xs tracking-tight", "客户列表" }
+                    p { class: "text-caption text-secondary font-medium", "用户增长与留存管理" }
                 }
                 BCButton {
-                    class: "btn-neutral btn-sm px-6 text-white shadow-sm",
+                    class: "btn-neutral btn-sm px-lg text-white shadow-sm",
                     "邀请新用户"
                 }
             }
 
             // Stats Bar
-            div { class: "grid grid-cols-3 gap-6",
+            div { class: "grid grid-cols-3 gap-lg",
                 // Total Users
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "总用户数" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{total_users}" }
-                        span { class: "text-xs font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded", "+24 This Week" }
+                div { class: "p-lg bc-card-solid flex flex-col gap-xs",
+                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "总用户数" }
+                    div { class: "flex items-baseline gap-sm",
+                        span { class: "text-3xl font-bold text-primary tracking-tight", "{total_users}" }
+                        span { class: "text-xs font-medium px-sm py-0.5 rounded",
+                            style: "color: var(--bc-success); background: var(--bc-success-light);",
+                            "+24 This Week"
+                        }
                     }
                 }
                 // Active Users
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "今日活跃" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{active_today}" }
-                        span { class: "text-xs font-medium text-base-content/40", "67% 活跃率" }
+                div { class: "p-lg bc-card-solid flex flex-col gap-xs",
+                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "今日活跃" }
+                    div { class: "flex items-baseline gap-sm",
+                        span { class: "text-3xl font-bold text-primary tracking-tight", "{active_today}" }
+                        span { class: "text-xs font-medium text-tertiary", "67% 活跃率" }
                     }
                 }
                 // Total Funds
-                div { class: "p-5 bg-base-100 rounded-xl border border-base-200 shadow-sm flex flex-col gap-1",
-                    span { class: "text-xs font-semibold text-base-content/40 uppercase tracking-wider", "用户资金池" }
-                    div { class: "flex items-baseline gap-2",
-                        span { class: "text-3xl font-bold text-base-content tracking-tight", "{total_balance_held}" }
+                div { class: "p-lg bc-card-solid flex flex-col gap-xs",
+                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "用户资金池" }
+                    div { class: "flex items-baseline gap-sm",
+                        span { class: "text-3xl font-bold text-primary tracking-tight", "{total_balance_held}" }
                     }
                 }
             }
 
             // Client Table
-            div { class: "flex flex-col gap-4",
-                div { class: "flex items-center justify-between border-b border-base-content/10 pb-2",
-                    h3 { class: "text-sm font-medium text-base-content/80", "客户明细" }
+            div { class: "flex flex-col gap-md",
+                div { class: "flex items-center justify-between border-b pb-sm",
+                    h3 { class: "text-caption font-medium text-secondary", "客户明细" }
                     // Tabs
-                    div { class: "flex gap-4",
+                    div { class: "flex gap-md",
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
-                                if *active_tab.read() == "all" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
+                            class: format!("text-caption font-medium transition-colors pb-sm border-b-2 -mb-sm {}",
+                                if *active_tab.read() == "all" { "text-primary" } else { "text-tertiary border-transparent" }),
+                            style: if *active_tab.read() == "all" { "border-color: var(--bc-text-primary);" } else { "border-color: transparent;" },
                             onclick: move |_| active_tab.set("all".to_string()),
                             "全部客户"
                         }
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
-                                if *active_tab.read() == "vip" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
+                            class: format!("text-caption font-medium transition-colors pb-sm border-b-2 -mb-sm {}",
+                                if *active_tab.read() == "vip" { "text-primary" } else { "text-tertiary border-transparent" }),
+                            style: if *active_tab.read() == "vip" { "border-color: var(--bc-text-primary);" } else { "border-color: transparent;" },
                             onclick: move |_| active_tab.set("vip".to_string()),
                             "VIP客户"
                         }
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
-                                if *active_tab.read() == "new" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
+                            class: format!("text-caption font-medium transition-colors pb-sm border-b-2 -mb-sm {}",
+                                if *active_tab.read() == "new" { "text-primary" } else { "text-tertiary border-transparent" }),
+                            style: if *active_tab.read() == "new" { "border-color: var(--bc-text-primary);" } else { "border-color: transparent;" },
                             onclick: move |_| active_tab.set("new".to_string()),
                             "新注册"
                         }
                         button {
-                            class: format!("text-sm font-medium transition-colors pb-2 border-b-2 -mb-2.5 {}",
-                                if *active_tab.read() == "churn" { "text-base-content border-base-content" } else { "text-base-content/40 border-transparent hover:text-base-content/70" }),
+                            class: format!("text-caption font-medium transition-colors pb-sm border-b-2 -mb-sm {}",
+                                if *active_tab.read() == "churn" { "text-primary" } else { "text-tertiary border-transparent" }),
+                            style: if *active_tab.read() == "churn" { "border-color: var(--bc-text-primary);" } else { "border-color: transparent;" },
                             onclick: move |_| active_tab.set("churn".to_string()),
                             "流失预警"
                         }
                     }
                 }
 
-                div { class: "overflow-x-auto border border-base-200 rounded-lg",
-                    table { class: "table w-full text-sm",
-                        thead { class: "bg-base-50 text-base-content/60",
+                div { class: "overflow-x-auto bc-card-solid",
+                    table { class: "table w-full text-caption",
+                        thead {
+                            style: "background: var(--bc-bg-hover);",
                             tr {
-                                th { class: "font-medium", "客户信息" }
-                                th { class: "font-medium", "角色 / 分组" }
-                                th { class: "font-medium", "账户余额" }
-                                th { class: "font-medium", "历史消费 (LTV)" }
-                                th { class: "font-medium", "最后活跃" }
-                                th { class: "font-medium", "状态" }
-                                th { class: "text-right font-medium", "操作" }
+                                th { class: "font-medium text-secondary", "客户信息" }
+                                th { class: "font-medium text-secondary", "角色 / 分组" }
+                                th { class: "font-medium text-secondary", "账户余额" }
+                                th { class: "font-medium text-secondary", "历史消费 (LTV)" }
+                                th { class: "font-medium text-secondary", "最后活跃" }
+                                th { class: "font-medium text-secondary", "状态" }
+                                th { class: "text-right font-medium text-secondary", "操作" }
                             }
                         }
                         tbody {
                             match users_data {
                                 Some(list) if !list.is_empty() => rsx! {
                                     for user in list {
-                                        tr { class: "hover:bg-base-50/50 transition-colors group",
+                                        tr { class: "transition-colors group",
+                                            style: "cursor: default;",
                                             td {
-                                                div { class: "flex items-center gap-3",
-                                                    div { class: "w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm",
+                                                div { class: "flex items-center gap-md",
+                                                    div { class: "w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-caption",
+                                                        style: "background: linear-gradient(135deg, var(--bc-primary), var(--bc-primary-dark)); box-shadow: var(--bc-shadow-xs);",
                                                         "{user.username.chars().next().unwrap_or('?')}"
                                                     }
                                                     div { class: "flex flex-col",
-                                                        span { class: "font-semibold text-base-content", "{user.username}" }
-                                                        span { class: "text-xs text-base-content/40", "ID: {user.id}" }
+                                                        span { class: "font-semibold text-primary", "{user.username}" }
+                                                        span { class: "text-xxs text-tertiary", "ID: {user.id}" }
                                                     }
                                                 }
                                             }
                                             td {
-                                                div { class: "flex flex-col gap-1",
-                                                    span { class: "text-xs font-medium bg-base-200 px-1.5 py-0.5 rounded w-fit", "{user.role}" }
-                                                    span { class: "text-xs text-base-content/40", "Group: {user.group}" }
+                                                div { class: "flex flex-col gap-xs",
+                                                    span { class: "text-xxs font-medium px-sm py-0.5 rounded w-fit text-secondary",
+                                                        style: "background: var(--bc-bg-hover);",
+                                                        "{user.role}"
+                                                    }
+                                                    span { class: "text-xxs text-tertiary", "Group: {user.group}" }
                                                 }
                                             }
-                                            td { class: "font-mono font-medium text-emerald-600", "¥ {nano_to_dollars(user.balance_cny):.2}" }
-                                            td { class: "font-mono text-base-content/60", "¥ 1,240.00" } // Mock LTV
-                                            td { class: "text-xs text-base-content/60", "2 mins ago" }   // Mock Last Seen
+                                            td { class: "font-mono font-medium", style: "color: var(--bc-success);", "¥ {nano_to_dollars(user.balance_cny):.2}" }
+                                            td { class: "font-mono text-secondary", "¥ 1,240.00" } // Mock LTV
+                                            td { class: "text-xxs text-secondary", "2 mins ago" }   // Mock Last Seen
                                             td {
                                                 if user.status == 1 {
                                                     BCBadge { variant: BadgeVariant::Success, dot: true, "正常" }
@@ -164,7 +177,7 @@ pub fn UserPage() -> Element {
                                                 }
                                             }
                                             td { class: "text-right",
-                                                div { class: "flex justify-end gap-2",
+                                                div { class: "flex justify-end gap-sm",
                                                     button {
                                                         class: "btn btn-xs btn-neutral text-white",
                                                         onclick: move |_| {
@@ -176,7 +189,7 @@ pub fn UserPage() -> Element {
                                                         "充值"
                                                     }
                                                     button {
-                                                        class: "btn btn-xs btn-ghost text-base-content/40 group-hover:text-base-content transition-colors",
+                                                        class: "btn btn-xs btn-ghost text-tertiary group-hover:text-primary transition-colors",
                                                         "管理"
                                                     }
                                                 }
@@ -184,8 +197,8 @@ pub fn UserPage() -> Element {
                                         }
                                     }
                                 },
-                                Some(_) => rsx! { tr { td { colspan: "7", class: "p-8 text-center text-base-content/40", "暂无客户数据" } } },
-                                None => rsx! { tr { td { colspan: "7", class: "p-8 text-center text-base-content/40", "加载客户列表中..." } } }
+                                Some(_) => rsx! { tr { td { colspan: "7", class: "p-xl text-center text-tertiary", "暂无客户数据" } } },
+                                None => rsx! { tr { td { colspan: "7", class: "p-xl text-center text-tertiary", "加载客户列表中..." } } }
                             }
                         }
                     }
@@ -198,10 +211,11 @@ pub fn UserPage() -> Element {
                 title: "账户充值".to_string(),
                 onclose: move |_| is_topup_open.set(false),
 
-                div { class: "flex flex-col gap-4 py-2",
-                    div { class: "p-3 bg-base-200/50 rounded-lg flex items-center justify-between",
-                        span { class: "text-sm text-base-content/60", "目标账户" }
-                        span { class: "font-semibold text-base-content", "{selected_username}" }
+                div { class: "flex flex-col gap-md py-sm",
+                    div { class: "p-md rounded-lg flex items-center justify-between",
+                        style: "background: var(--bc-bg-hover);",
+                        span { class: "text-caption text-secondary", "目标账户" }
+                        span { class: "font-semibold text-primary", "{selected_username}" }
                     }
 
                     BCInput {
@@ -211,21 +225,21 @@ pub fn UserPage() -> Element {
                         oninput: move |e: FormEvent| topup_amount.set(e.value().parse().unwrap_or(0.0))
                     }
 
-                    div { class: "flex gap-2",
+                    div { class: "flex gap-sm",
                         button { class: "btn btn-xs btn-outline flex-1", onclick: move |_| topup_amount.set(100.0), "¥100" }
                         button { class: "btn btn-xs btn-outline flex-1", onclick: move |_| topup_amount.set(500.0), "¥500" }
                         button { class: "btn btn-xs btn-outline flex-1", onclick: move |_| topup_amount.set(1000.0), "¥1000" }
                     }
                 }
 
-                div { class: "modal-footer flex justify-end gap-3 mt-6",
+                div { class: "flex justify-end gap-md mt-xl",
                     BCButton {
                         variant: ButtonVariant::Ghost,
                         onclick: move |_| is_topup_open.set(false),
                         "取消"
                     }
                     BCButton {
-                        class: "btn-neutral text-white px-6",
+                        class: "btn-neutral text-white px-lg",
                         loading: is_loading(),
                         onclick: handle_confirm_topup,
                         "确认充值"

@@ -21,12 +21,11 @@ fn SidebarItem(props: SidebarItemProps) -> Element {
     rsx! {
         Link {
             to: props.to,
-            class: format!("flex items-center gap-3 px-4 py-2.5 mx-2 rounded-md text-sm transition-all duration-200 group {}",
-                if active { "bg-base-content/5 text-base-content font-medium shadow-sm" }
-                else { "text-base-content/60 hover:bg-base-content/5 hover:text-base-content" }
+            class: format!("nav-item {}",
+                if active { "active" } else { "" }
             ),
             // Icon
-            div { class: format!("w-5 h-5 {}", if active { "text-base-content" } else { "opacity-70 group-hover:opacity-100" }),
+            div { class: format!("icon {}", if active { "text-on-accent" } else { "opacity-70" }),
                 {props.icon}
             }
             // Label

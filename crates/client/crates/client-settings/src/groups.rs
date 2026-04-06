@@ -178,126 +178,151 @@ pub fn GroupManager() -> Element {
     rsx! {
         div { class: "flex flex-col gap-lg",
             // Create
-             div { class: "card p-lg",
-                h3 { class: "text-subtitle font-semibold mb-md", "新建分组" }
-                div { class: "flex gap-md items-end",
-                    div { class: "flex flex-col gap-sm flex-1",
-                        label { class: "text-caption text-secondary", "名称" }
-                        input { class: "input", value: "{form_name}", oninput: move |e| form_name.set(e.value()) }
-                    }
-                     div { class: "flex flex-col gap-sm flex-1",
-                        label { class: "text-caption text-secondary", "策略" }
-                         select { class: "input", value: "{form_strategy}", onchange: move |e| form_strategy.set(e.value()),
-                            option { value: "round_robin", "轮询 (Round Robin)" }
-                            option { value: "weighted", "权重 (Weighted)" } // Future support
+            div { class: "bc-card-solid",
+                div { class: "p-lg",
+                    h3 { class: "text-subtitle font-semibold mb-md", "新建分组" }
+                    div { class: "flex gap-md items-end",
+                        div { class: "flex flex-col gap-sm flex-1",
+                            label { class: "text-caption text-secondary", "名称" }
+                            input { class: "input", value: "{form_name}", oninput: move |e| form_name.set(e.value()) }
                         }
-                    }
-                    div { class: "flex flex-col gap-sm flex-1",
-                         label { class: "text-caption text-secondary", "匹配路径" }
-                        input { class: "input", value: "{form_match_path}", oninput: move |e| form_match_path.set(e.value()) }
-                    }
-                     button { class: "btn btn-primary", onclick: create_group, "创建" }
-                }
-             }
-
-             div { class: "grid gap-lg", style: "grid-template-columns: 1fr 2fr;",
-                // Group List
-                div { class: "card p-lg h-full",
-                    h3 { class: "text-subtitle font-semibold mb-md", "分组列表" }
-                    div { class: "flex flex-col gap-sm",
-                        {groups().iter().map(|group| {
-                            let gid1 = group.id.clone();
-                            let gid2 = group.id.clone();
-                            rsx! {
-                                div {
-                                    class: if selected_group_id() == Some(group.id.clone()) { "p-sm bg-primary-light rounded cursor-pointer border border-primary" } else { "p-sm bg-hover rounded cursor-pointer border border-transparent" },
-                                    onclick: move |_| select_group(gid1.clone()),
-                                    div { class: "flex justify-between items-center",
-                                        span { class: "font-medium", "{group.name}" }
-                                        button { class: "btn-icon text-error", onclick: move |e| {
-                                            e.stop_propagation();
-                                            let id = gid2.clone();
-                                            spawn(async move { delete_group(id).await; });
-                                        }, "🗑️" }
-                                    }
-                                    div { class: "text-caption text-secondary", "{group.match_path}" }
-                                }
+                        div { class: "flex flex-col gap-sm flex-1",
+                            label { class: "text-caption text-secondary", "策略" }
+                            select { class: "input", value: "{form_strategy}", onchange: move |e| form_strategy.set(e.value()),
+                                option { value: "round_robin", "轮询 (Round Robin)" }
+                                option { value: "weighted", "权重 (Weighted)" } // Future support
                             }
-                        })}
+                        }
+                        div { class: "flex flex-col gap-sm flex-1",
+                            label { class: "text-caption text-secondary", "匹配路径" }
+                            input { class: "input", value: "{form_match_path}", oninput: move |e| form_match_path.set(e.value()) }
+                        }
+                        button { class: "btn btn-primary", onclick: create_group, "创建" }
+                    }
+                }
+            }
+
+            div { class: "grid gap-lg", style: "grid-template-columns: 1fr 2fr;",
+                // Group List
+                div { class: "bc-card-solid h-full",
+                    div { class: "p-lg",
+                        h3 { class: "text-subtitle font-semibold mb-md", "分组列表" }
+                        div { class: "flex flex-col gap-sm",
+                            {groups().iter().map(|group| {
+                                let gid1 = group.id.clone();
+                                let gid2 = group.id.clone();
+                                rsx! {
+                                    div {
+                                        class: "p-sm cursor-pointer",
+                                        style: if selected_group_id() == Some(group.id.clone()) {{
+                                            "background: var(--bc-primary-light); border-radius: var(--bc-radius-md); border: 1px solid var(--bc-primary);"
+                                        }} else {{
+                                            "background: var(--bc-bg-hover); border-radius: var(--bc-radius-md); border: 1px solid transparent;"
+                                        }},
+                                        onclick: move |_| select_group(gid1.clone()),
+                                        div { class: "flex justify-between items-center",
+                                            span { class: "font-medium", "{group.name}" }
+                                            button { class: "btn btn-subtle",
+                                                style: "color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1);",
+                                                onclick: move |e| {
+                                                    e.stop_propagation();
+                                                    let id = gid2.clone();
+                                                    spawn(async move { delete_group(id).await; });
+                                                },
+                                                "🗑️"
+                                            }
+                                        }
+                                        div { class: "text-caption text-secondary", "{group.match_path}" }
+                                    }
+                                }
+                            })}
+                        }
                     }
                 }
 
                 // Member Editor
-                div { class: "card p-lg",
-                    if let Some(gid) = selected_group_id() {
-                        h3 { class: "text-subtitle font-semibold mb-md", "编辑成员: {gid}" }
+                div { class: "bc-card-solid",
+                    div { class: "p-lg",
+                        if let Some(gid) = selected_group_id() {
+                            h3 { class: "text-subtitle font-semibold mb-md", "编辑成员: {gid}" }
 
-                        // Current Members
-                        div { class: "mb-lg",
-                            h4 { class: "text-caption font-bold text-secondary mb-sm", "当前成员" }
-                             div { class: "flex flex-col gap-sm",
-                                {selected_group_members().iter().map(|member| {
-                                    let uid1 = member.upstream_id.clone();
-                                    let uid2 = member.upstream_id.clone();
-                                    rsx! {
-                                        div { class: "flex items-center justify-between p-sm border rounded bg-surface",
-                                            span {
-                                                // Find channel name
-                                                if let Some(ch) = all_channels().iter().find(|c| c.id == member.upstream_id) {
-                                                    "{ch.name}"
-                                                } else {
-                                                    "{member.upstream_id}"
-                                                }
-                                            }
-                                            div { class: "flex gap-sm items-center",
-                                                span { class: "text-caption", "权重:" }
-                                                input { class: "input py-0 px-sm w-16 text-center",
-                                                    type: "number",
-                                                    value: "{member.weight}",
-                                                    oninput: move |e| {
-                                                        let w = e.value().parse().unwrap_or(1);
-                                                        let id = uid1.clone();
-                                                        let mut members = selected_group_members();
-                                                        if let Some(m) = members.iter_mut().find(|m| m.upstream_id == id) {
-                                                            m.weight = w;
-                                                        }
-                                                        selected_group_members.set(members);
+                            // Current Members
+                            div { class: "mb-lg",
+                                h4 { class: "text-caption font-bold text-secondary mb-sm", "当前成员" }
+                                div { class: "flex flex-col gap-sm",
+                                    {selected_group_members().iter().map(|member| {
+                                        let uid1 = member.upstream_id.clone();
+                                        let uid2 = member.upstream_id.clone();
+                                        rsx! {
+                                            div { class: "flex items-center justify-between p-sm",
+                                                style: "background: var(--bc-bg-card-solid); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md);",
+                                                span {
+                                                    // Find channel name
+                                                    if let Some(ch) = all_channels().iter().find(|c| c.id == member.upstream_id) {
+                                                        "{ch.name}"
+                                                    } else {
+                                                        "{member.upstream_id}"
                                                     }
                                                 }
-                                                button { class: "btn-icon text-error", onclick: move |_| remove_member(uid2.clone()), "✕" }
+                                                div { class: "flex gap-sm items-center",
+                                                    span { class: "text-caption", "权重:" }
+                                                    input { class: "input",
+                                                        style: "padding: 0 var(--bc-space-1); width: 64px; text-align: center; min-height: auto;",
+                                                        r#type: "number",
+                                                        value: "{member.weight}",
+                                                        oninput: move |e| {
+                                                            let w = e.value().parse().unwrap_or(1);
+                                                            let id = uid1.clone();
+                                                            let mut members = selected_group_members();
+                                                            if let Some(m) = members.iter_mut().find(|m| m.upstream_id == id) {
+                                                                m.weight = w;
+                                                            }
+                                                            selected_group_members.set(members);
+                                                        }
+                                                    }
+                                                    button { class: "btn btn-subtle",
+                                                        style: "color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1);",
+                                                        onclick: move |_| remove_member(uid2.clone()),
+                                                        "✕"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    })}
+                                    if selected_group_members().is_empty() {
+                                        div { class: "text-secondary text-center p-md",
+                                            style: "font-style: italic;",
+                                            "暂无成员"
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Add Member
+                            div { class: "mb-lg",
+                                h4 { class: "text-caption font-bold text-secondary mb-sm", "添加成员" }
+                                div { class: "flex gap-sm", style: "flex-wrap: wrap;",
+                                    for channel in all_channels() {
+                                        if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
+                                            button { class: "btn btn-secondary",
+                                                style: "padding: var(--bc-space-1) var(--bc-space-3); font-size: var(--bc-font-sm);",
+                                                onclick: move |_| add_member(channel.id.clone()),
+                                                "+ {channel.name}"
                                             }
                                         }
                                     }
-                                })}
-                                if selected_group_members().is_empty() {
-                                    div { class: "text-secondary text-center p-md italic", "暂无成员" }
                                 }
                             }
-                        }
 
-                        // Add Member
-                        div { class: "mb-lg",
-                             h4 { class: "text-caption font-bold text-secondary mb-sm", "添加成员" }
-                             div { class: "flex flex-wrap gap-sm",
-                                for channel in all_channels() {
-                                    if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
-                                        button { class: "btn btn-secondary btn-sm",
-                                            onclick: move |_| add_member(channel.id.clone()),
-                                            "+ {channel.name}"
-                                        }
-                                    }
-                                }
-                             }
+                            div { class: "flex justify-end",
+                                button { class: "btn btn-primary", onclick: save_members, "保存更改" }
+                            }
+                        } else {
+                            div { class: "flex items-center justify-center h-full text-secondary", "请选择左侧分组进行编辑" }
                         }
-
-                        div { class: "flex justify-end",
-                             button { class: "btn btn-primary", onclick: save_members, "保存更改" }
-                        }
-                    } else {
-                        div { class: "flex items-center justify-center h-full text-secondary", "请选择左侧分组进行编辑" }
                     }
                 }
-             }
+            }
         }
     }
 }

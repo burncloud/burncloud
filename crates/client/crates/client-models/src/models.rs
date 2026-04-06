@@ -64,47 +64,10 @@ impl ProviderType {
                 svg {
                     view_box: "0 0 96 96",
                     class: "w-8 h-8",
-                     // Note: Official Azure logo uses complex gradients and specific colors.
-                     // For simplicity in this mono-color context, likely better to map to current color or keep original geometry.
-                     // But the user asked for the downloaded icon. The downloaded one has gradients.
-                     // To make it look good in "Zen" mode (often monochrome or simple), we might want to simplify or embed the full SVG.
-                     // Detailed Azure logo has definitions.
-                     // We will use the main shapes but force fill="currentColor" to match the theme, OR embed the full colorful version if preferred.
-                     // Given the critique was "icon is ugly/empty", let's try the official path structure but use currentColor for consistency,
-                     // OR use the multi-path structure.
-
-                     // Let's use the main path from the official SVG for the "A" shape, simplified for single color if possible,
-                     // or just embed the key path geometry.
-                     // The Azure logo is essentially that "A" lambda shape.
-
-                     // Using the "flat" vector path widely used for Azure icons (often just the 'A' shape).
-                     // The official one downloaded has 4 paths and defs.
-                     // Let's use a cleaner, standard "Azure A" path often found in icon sets if the complex one is too much.
-                     // Actually, let's use the one from "iconarchive" or similar which is usually a single clean path or group.
-                     // Since I cannot browse comfortably, I will take the main distinctive path from the downloaded file or a known clean path.
-
-                     // Using the path from the downloaded file (Step 280), simplified:
-                     // Path 4 (d="M66.595 9.364...") seems to be the right-hand leg/cross.
-                     // Path 1 (d="M33.338 6.544...") seems to be the left-hand part.
-                     // It's complex. Let's use a known clean "Azure A" path for reliable rendering.
-
-                     fill: "currentColor",
-                     path { d: "M53.1 63.8h29.4l-7.9-24.3-13.8-3.7z M39.4 63.8H12L25.9 21.6 42.1 6.5z" } // Simplified geometric approximation if official is too complex?
-                     // No, user wants *official*. Let's stick to the "Microsoft Azure" icon commonly used.
-
-                     // Re-reading Step 212/213: Simple Icons slug is `azure`.
-                     // The previous download failed.
-                     // Let's try to infer the path from a standard "Azure" icon which is typically:
-                     // A variation of the lambda.
-                     // The "Microsoft Azure" icon on Simple Icons v13 (which failed) is reliable.
-                     // Let's rely on the official SVG content I just read in Step 280, but strip gradients for a cleaner "Icon" look,
-                     // or include the Defs if we want full color.
-                     // PRO TIP: "Zen" UI usually implies single color.
-                     // I will include the key geometric paths from the downloaded SVG (Step 280) but set fill="currentColor".
-
-                     path { d: "M33.338 6.544h26.038l-27.03 80.087a4.152 4.152 0 0 1-3.933 2.824H8.149a4.145 4.145 0 0 1-3.928-5.47L29.404 9.368a4.152 4.152 0 0 1 3.934-2.825z" }
-                     path { d: "M71.175 60.261h-41.29a1.911 1.911 0 0 0-1.305 3.309l26.532 24.764a4.171 4.171 0 0 0 2.846 1.121h23.38z" }
-                     path { d: "M66.595 9.364a4.145 4.145 0 0 0-3.928-2.82H33.648a4.146 4.146 0 0 1 3.928 2.82l25.184 74.62a4.146 4.146 0 0 1-3.928 5.472h29.02a4.146 4.146 0 0 0 3.927-5.472z" }
+                    fill: "currentColor",
+                    path { d: "M33.338 6.544h26.038l-27.03 80.087a4.152 4.152 0 0 1-3.933 2.824H8.149a4.145 4.145 0 0 1-3.928-5.47L29.404 9.368a4.152 4.152 0 0 1 3.934-2.825z" }
+                    path { d: "M71.175 60.261h-41.29a1.911 1.911 0 0 0-1.305 3.309l26.532 24.764a4.171 4.171 0 0 0 2.846 1.121h23.38z" }
+                    path { d: "M66.595 9.364a4.145 4.145 0 0 0-3.928-2.82H33.648a4.146 4.146 0 0 1 3.928 2.82l25.184 74.62a4.146 4.146 0 0 1-3.928 5.472h29.02a4.146 4.146 0 0 0 3.927-5.472z" }
                 }
             },
             ProviderType::Local => rsx! {
@@ -183,7 +146,6 @@ pub fn ChannelPage() -> Element {
         selected_provider.set(p);
 
         // Google-Style Name Generator: {Adjective}-{Noun}-{Number}
-        // Vocabulary: Zen & Sci-Fi Tech
         let adjectives = vec![
             "cosmic",
             "fluent",
@@ -388,12 +350,6 @@ pub fn ChannelPage() -> Element {
             let noun = nouns.choose(&mut rng).unwrap_or(&"mode");
             let suffix: u16 = rng.gen_range(100..999);
 
-            // Format: cosmic-flow-888 (Google Style)
-            // Or Capitalized: Cosmic Flow 888?
-            // User feedback "Google Project ID" implies kebab-case usually, but for UI display "Title Case" might be nicer.
-            // Let's use Title Case for "Name" field as it's a display name.
-            // "Cosmic Flow 888"
-
             let candidate = format!(
                 "{} {} {}",
                 adj[0..1].to_uppercase() + &adj[1..],
@@ -443,11 +399,9 @@ pub fn ChannelPage() -> Element {
                 ProviderType::Google => {
                     if form_google_auth_type() == "vertex" {
                         final_type = 41; // VertexAi
-                                         // No Base URL needed usually, constructed by backend, but we can set a placeholder or override
                         final_base_url = "https://aiplatform.googleapis.com".to_string();
                         final_models = "gemini-pro,gemini-1.5-pro".to_string();
 
-                        // Pack params
                         let mut params_map = serde_json::Map::new();
                         params_map.insert("region".to_string(), json!(form_google_region()));
                         if !form_google_project_id().is_empty() {
@@ -463,10 +417,6 @@ pub fn ChannelPage() -> Element {
                     }
                 }
                 ProviderType::Aws => {
-                    // Map AWS to Custom type for now, or Reuse 1 (OpenAI compatible) if router handles it?
-                    // Assuming Router handles AWS SigV4 via a specific flag.
-                    // For now, we use type=1 (OpenAI) but with backend magic, OR type=99 if backend supports it.
-                    // Reverting to generic type=1 for "OpenAI Compatible" interface usually used by adapters
                     final_type = 1;
                     final_base_url = format!(
                         "https://bedrock-runtime.{}.amazonaws.com",
@@ -474,7 +424,6 @@ pub fn ChannelPage() -> Element {
                     );
                     final_models = form_aws_model_id();
 
-                    // Pack secret into params
                     let params = json!({
                         "aws_secret_key": form_aws_sk(),
                         "region": form_aws_region(),
@@ -483,14 +432,13 @@ pub fn ChannelPage() -> Element {
                     final_param_override = Some(params.to_string());
                 }
                 ProviderType::Azure => {
-                    final_type = 1; // Azure is often OpenAI compatible
-                                    // https://{resource}.openai.azure.com/openai/deployments/{deployment}
+                    final_type = 1;
                     final_base_url = format!(
                         "https://{}.openai.azure.com/openai/deployments/{}",
                         form_azure_resource(),
                         form_azure_deployment()
                     );
-                    final_models = form_azure_deployment(); // Model name usually matches deployment
+                    final_models = form_azure_deployment();
 
                     let params = json!({
                         "api_version": form_azure_api_version(),
@@ -499,7 +447,7 @@ pub fn ChannelPage() -> Element {
                     final_param_override = Some(params.to_string());
 
                     let headers = json!({
-                        "api-key": form_key() // Azure expects api-key header, not Bearer usually
+                        "api-key": form_key()
                     });
                     final_header_override = Some(headers.to_string());
                 }
@@ -569,26 +517,23 @@ pub fn ChannelPage() -> Element {
 
     let channels_data = channels.read().clone();
 
-    // Determine if any modal is open (retained for logic if needed, but styling is now handled by overlay)
     let _any_modal_open = is_modal_open() || is_delete_modal_open();
 
     rsx! {
         // Main Container for Page
         div { class: "relative h-full",
-            // Background Content (Header + Grid)
-            // Removed local blur/scale to ensure consistent "whole screen blur" via modal overlay
             div {
-                class: "flex flex-col h-full gap-8 transition-all duration-300 ease-out",
+                class: "flex flex-col h-full gap-xl transition-all duration-300 ease-out",
 
                 // Header
-                div { class: "flex justify-between items-end px-1",
+                div { class: "flex justify-between items-end px-xs",
                     div {
-                        h1 { class: "text-2xl font-semibold text-base-content mb-1 tracking-tight", "模型网络" }
-                        p { class: "text-sm text-base-content/60 font-medium", "您的 AI 算力中枢" }
+                        h1 { class: "text-title font-semibold text-primary mb-xs tracking-tight", "模型网络" }
+                        p { class: "text-caption text-secondary font-medium", "您的 AI 算力中枢" }
                     }
-                    div { class: "flex gap-3",
+                    div { class: "flex gap-md",
                         BCButton {
-                            class: "btn-neutral btn-sm px-6 shadow-sm text-white",
+                            class: "btn-neutral btn-sm px-lg shadow-sm text-white",
                             onclick: open_create_modal,
                             "添加连接"
                         }
@@ -596,15 +541,17 @@ pub fn ChannelPage() -> Element {
                 }
 
                 // Cards Grid
-                    div { class: "flex-1 overflow-y-auto min-h-0", // Scroll container
+                    div { class: "flex-1 overflow-y-auto min-h-0",
                         match channels_data {
                             Some(list) => {
                                 if list.is_empty() {
                                     rsx! {
-                                        div { class: "flex flex-col items-center justify-center h-full text-center pb-20",
-                                            div { class: "p-6 rounded-full bg-base-200/50 mb-6",
+                                        div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
+                                            div { class: "p-lg rounded-full mb-lg",
+                                                style: "background: var(--bc-bg-hover);",
                                                 svg {
-                                                    class: "w-12 h-12 text-base-content/20",
+                                                    class: "w-12 h-12",
+                                                    style: "color: var(--bc-text-disabled);",
                                                     fill: "none",
                                                     view_box: "0 0 24 24",
                                                     stroke: "currentColor",
@@ -612,12 +559,12 @@ pub fn ChannelPage() -> Element {
                                                     path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" }
                                                 }
                                             }
-                                            h3 { class: "text-xl font-bold text-base-content mb-2 tracking-tight", "暂无模型网络" }
-                                            p { class: "text-base text-base-content/60 max-w-sm mb-8 leading-relaxed",
+                                            h3 { class: "text-title font-bold text-primary mb-sm tracking-tight", "暂无模型网络" }
+                                            p { class: "text-body text-secondary max-w-sm mb-xl leading-relaxed",
                                                 "连接您的第一个 AI 服务提供商，构建专属的神经中枢。"
                                             }
                                             BCButton {
-                                                class: "btn-primary btn-md px-8 shadow-lg shadow-primary/20",
+                                                class: "btn-primary btn-md px-xl shadow-lg shadow-primary/20",
                                                 onclick: open_create_modal,
                                                 "开始连接"
                                             }
@@ -640,24 +587,24 @@ pub fn ChannelPage() -> Element {
                                                         tr {
                                                             td {
                                                                 if channel.status == 1 {
-                                                                    div { class: "badge badge-success gap-2",
+                                                                    div { class: "badge badge-success gap-sm",
                                                                         "Running"
                                                                     }
                                                                 } else {
-                                                                    div { class: "badge badge-ghost gap-2",
+                                                                    div { class: "badge badge-ghost gap-sm",
                                                                         "Stopped"
                                                                     }
                                                                 }
                                                             }
                                                             td {
                                                                 div { class: "font-bold", "{channel.name}" }
-                                                                div { class: "text-sm opacity-50", "{channel.models}" }
+                                                                div { class: "text-caption text-tertiary", "{channel.models}" }
                                                             }
                                                             td {
                                                                 "1"
                                                             }
                                                             td {
-                                                                div { class: "flex gap-2",
+                                                                div { class: "flex gap-sm",
                                                                     {
                                                                         let c_stop = channel.clone();
                                                                         let c_start = channel.clone();
@@ -704,9 +651,10 @@ pub fn ChannelPage() -> Element {
                                 }
                             },
                             None => rsx! {
-                                div { class: "flex flex-col items-center justify-center h-full gap-4 opacity-50 animate-pulse pb-20",
-                                    div { class: "w-12 h-12 rounded-full bg-base-200" }
-                                    div { class: "text-sm font-medium", "正在搜索神经网络..." }
+                                div { class: "flex flex-col items-center justify-center h-full gap-md pb-xxl animate-pulse",
+                                    style: "opacity: 0.5;",
+                                    div { class: "w-12 h-12 rounded-full", style: "background: var(--bc-bg-hover);" }
+                                    div { class: "text-caption font-medium text-secondary", "正在搜索神经网络..." }
                                 }
                             }
                         }
@@ -717,54 +665,52 @@ pub fn ChannelPage() -> Element {
             if is_modal_open() {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
                     // Backdrop (Global Blur)
-                    // Added styled backdrop-filter to ensure it hits the sidebar too (since it's fixed inset-0 over everything)
                     div {
-                        class: "absolute inset-0 bg-black/30 transition-opacity",
-                        style: "backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
+                        class: "absolute inset-0 transition-opacity",
+                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| is_modal_open.set(false)
                     }
 
                     // Modal Content
                     div {
-                        // Changed from fixed inset-0 to relative w-full h-full.
-                        // The parent wrapper is already fixed inset-0, so h-full fills it.
-                        // Added pointer-events-auto to ensure interaction.
-                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl bg-base-100 sm:rounded-2xl shadow-2xl border-0 sm:border border-base-200 flex flex-col overflow-hidden animate-[scale-in_0.2s_ease-out] pointer-events-auto overscroll-contain",
+                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
+                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
                         onclick: |e| e.stop_propagation(),
 
                         // Header
-                        div { class: "flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4 border-b border-base-200 shrink-0 bg-base-100",
-                            h3 { class: "text-lg font-bold text-base-content tracking-tight",
+                        div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
+                            style: "background: var(--bc-bg-card-solid);",
+                            h3 { class: "text-subtitle font-bold text-primary tracking-tight",
                                 if modal_step() == 0 { "选择供应商" } else { "配置连接" }
                             }
                             button {
-                                class: "btn btn-sm btn-circle btn-ghost text-base-content/50 hover:bg-base-200",
+                                class: "btn btn-sm btn-circle btn-ghost text-secondary",
                                 onclick: move |_| is_modal_open.set(false),
                                 "✕"
                             }
                         }
 
                         // Body
-                        // Added overscroll-y-contain to prevent scroll chaining
-                        div { class: "flex-1 overflow-y-auto p-4 sm:p-6 min-h-0 overscroll-y-contain",
+                        div { class: "flex-1 overflow-y-auto p-md sm:p-lg min-h-0 overscroll-y-contain",
                             if modal_step() == 0 {
                                 // Step 1: Provider Selection Grid
-                                div { class: "grid grid-cols-2 sm:grid-cols-3 gap-4",
+                                div { class: "grid grid-cols-2 sm:grid-cols-3 gap-md",
                                     for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
                                         button {
-                                            class: "group flex flex-col items-center justify-center gap-4 p-6 h-36 rounded-2xl border border-base-200 bg-base-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ease-out",
+                                            class: "bc-card-solid group flex flex-col items-center justify-center gap-md p-lg h-36 transition-all duration-300 ease-out cursor-pointer",
+                                            style: "cursor: pointer;",
                                             onclick: move |_| select_provider(p),
                                             // Icon render
-                                            div { class: "text-base-content/80 group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
+                                            div { class: "text-secondary group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
                                                 {p.icon()}
                                             }
-                                            span { class: "font-medium text-sm text-base-content/70 group-hover:text-base-content", "{p.name()}" }
+                                            span { class: "font-medium text-caption text-secondary group-hover:text-primary", "{p.name()}" }
                                         }
                                     }
                                 }
                             } else {
                                 // Step 2: Configuration Form
-                                div { class: "flex flex-col gap-4",
+                                div { class: "flex flex-col gap-md",
                                     BCInput {
                                         label: Some("连接名称".to_string()),
                                         value: "{form_name}",
@@ -791,8 +737,8 @@ pub fn ChannelPage() -> Element {
                                     }
 
                                     if selected_provider() == ProviderType::Google {
-                                        div { class: "flex flex-col gap-2 mb-2",
-                                            label { class: "text-sm font-medium text-base-content/80", "认证类型 (Auth Type)" }
+                                        div { class: "flex flex-col gap-sm mb-sm",
+                                            label { class: "text-body font-medium text-secondary", "认证类型 (Auth Type)" }
                                             div { class: "join w-full",
                                                 button {
                                                     class: if form_google_auth_type() == "api_key" { "join-item btn btn-sm btn-primary flex-1" } else { "join-item btn btn-sm btn-ghost flex-1" },
@@ -815,23 +761,25 @@ pub fn ChannelPage() -> Element {
                                                 oninput: move |e: FormEvent| form_key.set(e.value())
                                             }
                                         } else {
-                                            div { class: "flex flex-col gap-1.5",
-                                                label { class: "text-sm font-medium text-base-content/80",
+                                            div { class: "flex flex-col gap-xs",
+                                                label { class: "text-body font-medium text-secondary",
                                                     "Service Account JSON Key"
-                                                    span { class: "text-xs font-normal text-base-content/50 ml-2", "(Copied from Google Cloud Console)" }
+                                                    span { class: "text-xxs font-normal text-tertiary ml-sm", "(Copied from Google Cloud Console)" }
                                                 }
                                                 textarea {
                                                     class: "textarea textarea-bordered h-32 text-xs font-mono leading-tight",
+                                                    style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
                                                     placeholder: "{{\n  \"type\": \"service_account\",\n  \"project_id\": ...\n}}",
                                                     value: "{form_key}",
                                                     oninput: move |e| form_key.set(e.value())
                                                 }
                                             }
 
-                                            div { class: "grid grid-cols-2 gap-4",
-                                                div { class: "flex flex-col gap-1.5",
-                                                    label { class: "text-sm font-medium text-base-content/80", "区域 (Region)" }
+                                            div { class: "grid grid-cols-2 gap-md",
+                                                div { class: "flex flex-col gap-xs",
+                                                    label { class: "text-body font-medium text-secondary", "区域 (Region)" }
                                                     select { class: "select select-bordered w-full select-sm",
+                                                        style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
                                                         value: "{form_google_region}",
                                                         onchange: move |e: FormEvent| form_google_region.set(e.value()),
                                                         option { value: "us-central1", "US Central (Iowa)" }
@@ -854,6 +802,7 @@ pub fn ChannelPage() -> Element {
 
                                     if selected_provider() == ProviderType::Aws {
                                         div { class: "alert alert-info text-xs",
+                                            style: "background: var(--bc-info-light); color: var(--bc-info);",
                                             "注意: 您的密钥仅保存在本地，且通过 SigV4 签名请求，我们不会存储明文。"
                                         }
                                         BCInput {
@@ -869,9 +818,10 @@ pub fn ChannelPage() -> Element {
                                             placeholder: "wJalrX...".to_string(),
                                             oninput: move |e: FormEvent| form_aws_sk.set(e.value())
                                         }
-                                        div { class: "flex flex-col gap-1.5",
-                                            label { class: "text-sm font-medium text-base-content/80", "区域 (Region)" }
+                                        div { class: "flex flex-col gap-xs",
+                                            label { class: "text-body font-medium text-secondary", "区域 (Region)" }
                                             select { class: "select select-bordered w-full select-sm",
+                                                style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
                                                 onchange: move |e: FormEvent| form_aws_region.set(e.value()),
                                                 option { value: "us-east-1", "US East (N. Virginia)" }
                                                 option { value: "us-west-2", "US West (Oregon)" }
@@ -906,9 +856,10 @@ pub fn ChannelPage() -> Element {
                                             placeholder: "32-char hex string".to_string(),
                                             oninput: move |e: FormEvent| form_key.set(e.value())
                                         }
-                                        div { class: "flex flex-col gap-1.5",
-                                            label { class: "text-sm font-medium text-base-content/80", "API Version" }
+                                        div { class: "flex flex-col gap-xs",
+                                            label { class: "text-body font-medium text-secondary", "API Version" }
                                             select { class: "select select-bordered w-full select-sm",
+                                                style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
                                                 onchange: move |e: FormEvent| form_azure_api_version.set(e.value()),
                                                 option { value: "2023-05-15", "2023-05-15" }
                                                 option { value: "2023-12-01-preview", "2023-12-01-preview" }
@@ -930,7 +881,8 @@ pub fn ChannelPage() -> Element {
                         }
 
                         // Footer
-                        div { class: "flex justify-end gap-3 px-6 py-4 border-t border-base-200 bg-base-50/50 shrink-0",
+                        div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0",
+                            style: "background: var(--bc-bg-hover);",
                             if modal_step() == 1 {
                                 BCButton {
                                     variant: ButtonVariant::Ghost,
@@ -940,10 +892,8 @@ pub fn ChannelPage() -> Element {
                                 BCButton {
                                     class: "btn-ghost text-success",
                                     onclick: move |_| {
-                                        // Simulate Test
                                         spawn(async move {
                                             is_loading.set(true);
-                                            // TODO: Call backend check
                                             tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                                             is_loading.set(false);
                                             toast.success("连接测试成功: 延迟 45ms");
@@ -972,43 +922,46 @@ pub fn ChannelPage() -> Element {
 
             // Delete Confirmation Modal
             if is_delete_modal_open() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-4",
-                    // Backdrop (Transparent, clicks close)
+                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
                     div {
-                        class: "absolute inset-0 bg-black/30 transition-opacity",
-                        style: "backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
+                        class: "absolute inset-0 transition-opacity",
+                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| is_delete_modal_open.set(false)
                     }
 
                     // Modal Content
                     div {
-                        class: "relative w-full max-w-md bg-base-100 rounded-2xl shadow-2xl border border-base-200 overflow-hidden animate-[scale-in_0.2s_ease-out]",
+                        class: "relative w-full max-w-md overflow-hidden animate-scale-in",
+                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
                         onclick: |e| e.stop_propagation(),
 
                         // Header with Warning Icon
-                        div { class: "flex items-center gap-4 px-6 py-5 bg-error/5 border-b border-error/10",
-                            div { class: "w-12 h-12 rounded-full bg-error/10 flex items-center justify-center",
-                                svg { class: "w-6 h-6 text-error", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                        div { class: "flex items-center gap-md px-lg py-lg border-b",
+                            style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
+                            div { class: "w-12 h-12 rounded-full flex items-center justify-center",
+                                style: "background: var(--bc-danger-light);",
+                                svg { class: "w-6 h-6", style: "color: var(--bc-danger);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                     path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
                                 }
                             }
                             div { class: "flex-1",
-                                h3 { class: "text-lg font-bold text-base-content", "确认删除" }
-                                p { class: "text-sm text-base-content/60 mt-1", "此操作无法撤销" }
+                                h3 { class: "text-subtitle font-bold text-primary", "确认删除" }
+                                p { class: "text-caption text-secondary mt-xs", "此操作无法撤销" }
                             }
                         }
 
                         // Message
-                        div { class: "px-6 py-4",
-                            p { class: "text-base-content/80",
+                        div { class: "px-lg py-md",
+                            p { class: "text-secondary",
                                 "确定要删除连接 \""
-                                span { class: "font-semibold text-base-content", "{delete_channel_name()}" }
+                                span { class: "font-semibold text-primary", "{delete_channel_name()}" }
                                 "\" 吗？删除后所有相关配置将被永久清除。"
                             }
                         }
 
                         // Footer
-                        div { class: "flex justify-end gap-3 px-6 py-4 bg-base-50/50 border-t border-base-200",
+                        div { class: "flex justify-end gap-md px-lg py-md border-t",
+                            style: "background: var(--bc-bg-hover);",
                             BCButton {
                                 variant: ButtonVariant::Ghost,
                                 onclick: move |_| is_delete_modal_open.set(false),

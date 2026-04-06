@@ -87,55 +87,65 @@ pub fn TokenManager() -> Element {
     rsx! {
         div { class: "flex flex-col gap-lg",
             // Create Form
-            div { class: "card p-lg",
-                h3 { class: "text-subtitle font-semibold mb-md", "生成新令牌" }
-                div { class: "grid gap-md", style: "grid-template-columns: 1fr 1fr auto;",
-                    div { class: "flex flex-col gap-sm",
-                        label { class: "text-caption text-secondary", "用户标识 (User ID)" }
-                        input { class: "input",
-                            value: "{form_user_id}",
-                            placeholder: "e.g. user-123",
-                            oninput: move |e| form_user_id.set(e.value())
+            div { class: "bc-card-solid",
+                div { class: "p-lg",
+                    h3 { class: "text-subtitle font-semibold mb-md", "生成新令牌" }
+                    div { class: "grid gap-md", style: "grid-template-columns: 1fr 1fr auto;",
+                        div { class: "flex flex-col gap-sm",
+                            label { class: "text-caption text-secondary", "用户标识 (User ID)" }
+                            input { class: "input",
+                                value: "{form_user_id}",
+                                placeholder: "e.g. user-123",
+                                oninput: move |e| form_user_id.set(e.value())
+                            }
                         }
-                    }
-                    div { class: "flex flex-col gap-sm",
-                        label { class: "text-caption text-secondary", "额度限制 (-1 无限)" }
-                        input { class: "input", type: "number",
-                            value: "{form_quota}",
-                            oninput: move |e| form_quota.set(e.value())
+                        div { class: "flex flex-col gap-sm",
+                            label { class: "text-caption text-secondary", "额度限制 (-1 无限)" }
+                            input { class: "input", r#type: "number",
+                                value: "{form_quota}",
+                                oninput: move |e| form_quota.set(e.value())
+                            }
                         }
-                    }
-                    div { class: "flex items-end",
-                        button { class: "btn btn-primary", onclick: handle_create,
-                            "生成"
+                        div { class: "flex items-end",
+                            button { class: "btn btn-primary", onclick: handle_create,
+                                "生成"
+                            }
                         }
                     }
                 }
             }
 
             // List
-            div { class: "card",
+            div { class: "bc-card-solid",
                 div { class: "p-lg",
                     h3 { class: "text-subtitle font-semibold mb-md", "令牌列表" }
-                     if !error_msg().is_empty() {
-                        div { class: "text-error mb-md", "{error_msg}" }
+                    if !error_msg().is_empty() {
+                        div { class: "mb-md", style: "color: var(--bc-danger);", "{error_msg}" }
                     }
                     if loading() {
                         div { "加载中..." }
                     } else {
                         div { class: "flex flex-col gap-sm",
                             for token in tokens() {
-                                div { class: "flex items-center justify-between p-sm bg-hover rounded",
+                                div { class: "flex items-center justify-between p-sm",
+                                    style: "background: var(--bc-bg-hover); border-radius: var(--bc-radius-md);",
                                     div { class: "flex flex-col",
-                                        div { class: "font-medium font-mono", "{token.token}" }
+                                        div { class: "font-medium",
+                                            style: "font-family: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace;",
+                                            "{token.token}"
+                                        }
                                         div { class: "flex gap-md text-caption text-secondary",
                                             span { "User: {token.user_id}" }
                                             span { "Quota: {token.used_quota} / {token.quota_limit}" }
                                         }
                                     }
-                                    div { class: "flex gap-sm",
-                                        span { class: "tag", "{token.status}" }
-                                        button { class: "btn-icon text-error",
+                                    div { class: "flex gap-sm items-center",
+                                        span { class: "bc-badge-neutral",
+                                            style: "padding: var(--bc-space-1) var(--bc-space-2); border-radius: var(--bc-radius-full); font-size: var(--bc-font-sm);",
+                                            "{token.status}"
+                                        }
+                                        button { class: "btn btn-subtle",
+                                            style: "color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1);",
                                             onclick: move |_| handle_delete(token.token.clone()),
                                             "🗑️"
                                         }
