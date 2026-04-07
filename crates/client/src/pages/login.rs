@@ -102,7 +102,7 @@ pub fn LoginPage() -> Element {
             }
 
             // ========== LOGIN CONTAINER (Transparent) ==========
-            div { class: "relative z-10 w-full max-w-[360px] mx-4 animate-in",
+            div { class: "relative z-10 w-full mx-4 animate-in", style: "max-width: 360px;",
 
                 div { class: "p-8 relative bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[var(--bc-radius-xl)] shadow-[0_8px_32px_rgba(0,0,0,0.08)]",
 
