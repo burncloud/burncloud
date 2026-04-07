@@ -201,7 +201,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                         .login-card-container {{ width: 80% !important; max-width: 600px; }}
                     }}
                     @media (min-width: 1024px) {{
-                        .login-card-container {{ width: 60vw !important; max-width: none; }}
+                        .login-card-container {{ width: 60% !important; max-width: 900px; }}
                     }}
 
                     /* Backdrop blur */
