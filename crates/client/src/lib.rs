@@ -192,6 +192,24 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                         -webkit-backdrop-filter: blur(20px);
                         border: 1px solid rgba(255, 255, 255, 0.3);
                     }}
+
+                    /* ========== LOGIN PAGE SHIMS ========== */
+
+                    /* Login card width constraint */
+                    .login-card-container {{ max-width: 360px !important; width: 100%; }}
+
+                    /* Backdrop blur */
+                    .backdrop-blur-2xl {{ backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }}
+                    .backdrop-blur-xl {{ backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }}
+
+                    /* Animate-in entrance */
+                    @keyframes animate-in-fade-up {{
+                        0% {{ opacity: 0; transform: translateY(16px) scale(0.98); }}
+                        100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+                    }}
+                    .animate-in {{
+                        animation: animate-in-fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                    }}
                 </style>
             </head>
             <body>
