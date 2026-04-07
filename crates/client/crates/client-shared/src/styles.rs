@@ -552,6 +552,19 @@ html, body {
 .justify-between { justify-content: space-between; }
 .justify-center { justify-content: center; }
 
+/* Responsive overrides — these must come after the non-responsive rules above
+   to fix cascade order: DESIGN_SYSTEM_CSS loads after Tailwind, so Tailwind's
+   @media responsive variants would otherwise be overridden by the flat rules above. */
+@media (min-width: 640px) {
+    .sm\:flex-row { flex-direction: row; }
+}
+@media (min-width: 768px) {
+    .md\:flex-row { flex-direction: row; }
+    .md\:items-start { align-items: flex-start; }
+    .md\:text-left { text-align: left; }
+    .md\:justify-start { justify-content: flex-start; }
+}
+
 /* Spacing Utilities */
 .gap-xs { gap: var(--bc-space-1); }
 .gap-sm { gap: var(--bc-space-2); }

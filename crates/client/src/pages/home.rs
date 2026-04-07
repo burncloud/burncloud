@@ -89,12 +89,12 @@ pub fn HomePage() -> Element {
             }
 
             // ========== MAIN STAGE: Asymmetrical Balance ==========
-            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-12 lg:pt-16 pb-16 flex flex-col lg:flex-row gap-10 lg:gap-16 items-center lg:items-start",
+            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-12 md:pt-16 pb-16 flex flex-col md:flex-row gap-10 md:gap-16 items-center md:items-start",
 
                 // ========== LEFT: Typography ==========
-                div { class: "flex-1 text-center lg:text-left pt-6 relative",
+                div { class: "flex-1 text-center md:text-left pt-6 relative",
                     // Floating decorative dots around headline - hidden on mobile
-                    div { class: "hidden lg:block absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible",
+                    div { class: "hidden md:block absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible",
                         // Primary purple dot - after "Interface" period
                         div { class: "absolute top-[12%] left-[88%] w-3.5 h-3.5 rounded-full bg-[#AF52DE] shadow-[0_0_12px_rgba(175,82,222,0.6)] animate-float [animation-duration:8s]" }
                         // Smaller purple accent - near purple
@@ -118,12 +118,12 @@ pub fn HomePage() -> Element {
                     }
 
                     // Subtitle
-                    p { class: "text-[20px] lg:text-[22px] text-secondary mb-9 max-w-lg mx-auto lg:mx-0 font-normal leading-[1.7] animate-slide-up animate-delay-200 relative z-10",
+                    p { class: "text-[20px] lg:text-[22px] text-secondary mb-9 max-w-lg mx-auto md:mx-0 font-normal leading-[1.7] animate-slide-up animate-delay-200 relative z-10",
                         "Connect to the world's leading AI models—GPT, Claude, Gemini—with the simplicity of a single tap."
                     }
 
                     // CTA Buttons with enhanced effects
-                    div { class: "flex flex-col sm:flex-row gap-4 justify-center lg:justify-start items-center animate-slide-up animate-delay-300 relative z-10",
+                    div { class: "flex flex-col sm:flex-row gap-4 justify-center md:justify-start items-center animate-slide-up animate-delay-300 relative z-10",
                         // Primary CTA with glow pulse
                         Link {
                             to: Route::RegisterPage {},
@@ -141,7 +141,7 @@ pub fn HomePage() -> Element {
                     }
 
                     // Trust indicators
-                    div { class: "mt-8 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400 relative z-10",
+                    div { class: "mt-8 flex items-center gap-6 justify-center md:justify-start animate-slide-up animate-delay-400 relative z-10",
                         div { class: "flex items-center gap-2 text-[13px] text-secondary font-medium",
                             div { class: "w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_6px_rgba(52,199,89,0.4)]" }
                             "Enterprise Ready"
