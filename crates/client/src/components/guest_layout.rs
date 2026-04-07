@@ -243,8 +243,14 @@ pub fn GuestLayout() -> Element {
 
                 /* ========== LOGIN PAGE SHIMS ========== */
 
-                /* Login card width constraint — must override w-full in flex containers */
-                .login-card-container {{ width: 60% !important; max-width: 640px; }}
+                /* Login card width — responsive: full on mobile, 60vw on desktop */
+                .login-card-container {{ width: 100%; }}
+                @media (min-width: 768px) {{
+                    .login-card-container {{ width: 80% !important; max-width: 600px; }}
+                }}
+                @media (min-width: 1024px) {{
+                    .login-card-container {{ width: 60vw !important; max-width: none; }}
+                }}
 
                 /* Backdrop blur */
                 .backdrop-blur-2xl {{ backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }}
