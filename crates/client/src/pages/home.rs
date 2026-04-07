@@ -39,7 +39,7 @@ pub fn HomePage() -> Element {
 
     rsx! {
         // Container: White Ceramic Base
-        div { class: "h-full w-full relative font-sans",
+        div { class: "min-h-full w-full relative font-sans",
             style: "background-color: var(--bc-bg-canvas); color: var(--bc-text-primary); --tw-selection-color: var(--bc-primary);",
 
             // ========== BACKGROUND: Liquid Light Field ==========
@@ -89,29 +89,29 @@ pub fn HomePage() -> Element {
             }
 
             // ========== MAIN STAGE: Asymmetrical Balance ==========
-            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-6 lg:pt-8 pb-16 flex flex-col lg:flex-row gap-16 lg:gap-20 items-center lg:items-start",
+            div { class: "relative z-10 max-w-[1200px] mx-auto px-8 pt-12 lg:pt-16 pb-16 flex flex-col lg:flex-row gap-10 lg:gap-16 items-center lg:items-start",
 
                 // ========== LEFT: Typography ==========
                 div { class: "flex-1 text-center lg:text-left pt-6 relative",
-                    // Floating decorative dots around headline - Jobs-level precision
-                    div { class: "absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible",
+                    // Floating decorative dots around headline - hidden on mobile
+                    div { class: "hidden lg:block absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible",
                         // Primary purple dot - after "Interface" period
-                        div { class: "absolute top-[12%] lg:left-[88%] left-[85%] w-3.5 h-3.5 rounded-full bg-[#AF52DE] shadow-[0_0_12px_rgba(175,82,222,0.6)] animate-float [animation-duration:8s]" }
+                        div { class: "absolute top-[12%] left-[88%] w-3.5 h-3.5 rounded-full bg-[#AF52DE] shadow-[0_0_12px_rgba(175,82,222,0.6)] animate-float [animation-duration:8s]" }
                         // Smaller purple accent - near purple
-                        div { class: "absolute top-[9%] lg:left-[92%] left-[90%] w-2 h-2 rounded-full bg-[#5856D6] shadow-[0_0_8px_rgba(88,86,214,0.5)] animate-float [animation-duration:9s] [animation-delay:1s]" }
+                        div { class: "absolute top-[9%] left-[92%] w-2 h-2 rounded-full bg-[#5856D6] shadow-[0_0_8px_rgba(88,86,214,0.5)] animate-float [animation-duration:9s] [animation-delay:1s]" }
                         // Blue dot - after "Intelligence" period
-                        div { class: "absolute top-[34%] lg:left-[95%] left-[92%] w-3 h-3 rounded-full bg-[#007AFF] shadow-[0_0_12px_rgba(0,122,255,0.6)] animate-float [animation-duration:10s] [animation-delay:2s]" }
+                        div { class: "absolute top-[34%] left-[95%] w-3 h-3 rounded-full bg-[#007AFF] shadow-[0_0_12px_rgba(0,122,255,0.6)] animate-float [animation-duration:10s] [animation-delay:2s]" }
                         // Green dot - near bottom right
-                        div { class: "absolute top-[58%] lg:left-[90%] left-[88%] w-2.5 h-2.5 rounded-full bg-[#34C759] shadow-[0_0_10px_rgba(52,199,89,0.5)] animate-float [animation-duration:12s] [animation-delay:1s]" }
+                        div { class: "absolute top-[58%] left-[90%] w-2.5 h-2.5 rounded-full bg-[#34C759] shadow-[0_0_10px_rgba(52,199,89,0.5)] animate-float [animation-duration:12s] [animation-delay:1s]" }
                         // Light blue accent
-                        div { class: "absolute top-[42%] lg:left-[85%] left-[83%] w-2 h-2 rounded-full bg-[#5AC8FA] shadow-[0_0_8px_rgba(90,200,250,0.5)] animate-float [animation-duration:11s] [animation-delay:3s]" }
+                        div { class: "absolute top-[42%] left-[85%] w-2 h-2 rounded-full bg-[#5AC8FA] shadow-[0_0_8px_rgba(90,200,250,0.5)] animate-float [animation-duration:11s] [animation-delay:3s]" }
                     }
 
                     // Main headline with staggered animation
-                    h1 { class: "text-5xl lg:text-6xl xl:text-7xl font-semibold tracking-tight mb-7 text-primary animate-slide-up animate-delay-100 relative z-10",
-                        span { class: "block leading-tight pb-1 mb-4", "One Interface." }
+                    h1 { class: "text-3xl sm:text-4xl lg:text-6xl xl:text-7xl font-semibold tracking-tight mb-7 text-primary animate-slide-up animate-delay-100 relative z-10",
+                        span { class: "block leading-tight mb-4", "One Interface." }
                         div { class: "block pb-4",
-                            span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow leading-tight pb-2",
+                            span { class: "block text-transparent bg-clip-text bg-gradient-to-r from-[#007AFF] via-[#5856D6] to-[#AF52DE] animate-gradient-flow leading-tight",
                                 "Every Intelligence."
                             }
                         }
@@ -141,7 +141,7 @@ pub fn HomePage() -> Element {
                     }
 
                     // Trust indicators
-                    div { class: "mt-12 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400 relative z-10",
+                    div { class: "mt-8 flex items-center gap-6 justify-center lg:justify-start animate-slide-up animate-delay-400 relative z-10",
                         div { class: "flex items-center gap-2 text-[13px] text-secondary font-medium",
                             div { class: "w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_6px_rgba(52,199,89,0.4)]" }
                             "Enterprise Ready"
@@ -155,10 +155,10 @@ pub fn HomePage() -> Element {
 
                 // ========== RIGHT: Bento Cards ==========
                 div { class: "flex-1 w-full max-w-[520px] animate-slide-up animate-delay-300",
-                    div { class: "grid grid-cols-2 gap-5 auto-rows-[minmax(160px,auto)]",
+                    div { class: "grid grid-cols-1 sm:grid-cols-2 gap-5 auto-rows-[minmax(140px,auto)] sm:auto-rows-[minmax(160px,auto)]",
 
                         // ===== Card 1: Global Network (Hero Card) =====
-                        div { class: "col-span-2 row-span-1 magnetic-hover",
+                        div { class: "col-span-1 sm:col-span-2 row-span-1 magnetic-hover",
                             div { class: "group h-full bc-card-glass rounded-[28px] p-7 flex flex-col justify-between overflow-hidden relative transition-all duration-500",
                                 style: "box-shadow: var(--bc-shadow-md);",
                                 // Glossy reflection
@@ -258,7 +258,7 @@ pub fn HomePage() -> Element {
                         }
 
                         // ===== Card 4: Multi-Provider =====
-                        div { class: "col-span-2 magnetic-hover",
+                        div { class: "col-span-1 sm:col-span-2 magnetic-hover",
                             div { class: "group h-full bc-card-glass rounded-[28px] p-6 flex items-center justify-between relative overflow-hidden transition-all duration-500",
                                 style: "box-shadow: var(--bc-shadow-md);",
                                 div { class: "relative z-10",
@@ -294,7 +294,7 @@ pub fn HomePage() -> Element {
             }
 
             // ========== FOOTER: Subtle ==========
-            div { class: "absolute bottom-8 w-full text-center pointer-events-none animate-slide-up animate-delay-500",
+            div { class: "relative z-10 w-full text-center pb-8 pointer-events-none animate-slide-up animate-delay-500",
                 span { class: "text-[13px] font-medium text-secondary tracking-[0.12em] uppercase",
                     "Engineered with "
                     span { class: "text-[14px]",

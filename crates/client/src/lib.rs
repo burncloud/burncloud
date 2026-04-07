@@ -208,6 +208,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
 
     let app = Router::new()
         .route("/", html_handler.clone())
+        .route("/home", html_handler.clone())
         .route("/login", html_handler.clone())
         .route("/register", html_handler.clone())
         // Console Routes (SPA Mode)
