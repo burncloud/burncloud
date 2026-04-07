@@ -196,7 +196,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                     /* ========== LOGIN PAGE SHIMS ========== */
 
                     /* Login card width constraint */
-                    .login-card-container {{ max-width: 440px !important; width: 100%; }}
+                    .login-card-container {{ width: 60% !important; max-width: 640px; }}
 
                     /* Backdrop blur */
                     .backdrop-blur-2xl {{ backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }}
