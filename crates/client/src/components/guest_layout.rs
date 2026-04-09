@@ -240,6 +240,89 @@ pub fn GuestLayout() -> Element {
                 .border-white\\/20 {{ border-color: rgba(255, 255, 255, 0.2); }}
                 .drop-shadow-glow {{ filter: drop-shadow(0 0 15px rgba(88, 86, 214, 0.6)); }}
                 .active\\:brightness-90:active {{ filter: brightness(0.9); }}
+
+                /* ========== LOGIN PAGE SHIMS ========== */
+
+                /* Login card width — responsive: full on mobile, 60vw on desktop */
+                .login-card-container {{ width: 100%; }}
+                @media (min-width: 768px) {{
+                    .login-card-container {{ width: 80% !important; max-width: 600px; }}
+                }}
+                @media (min-width: 1024px) {{
+                    .login-card-container {{ width: 60% !important; max-width: 900px; }}
+                }}
+
+                /* Backdrop blur */
+                .backdrop-blur-2xl {{ backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }}
+                .backdrop-blur-xl {{ backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }}
+
+                /* Border radius with CSS variable */
+                .rounded-\\[var\\(--bc-radius-xl\\)\\] {{ border-radius: var(--bc-radius-xl); }}
+                .rounded-\\[var\\(--bc-radius-md\\)\\] {{ border-radius: var(--bc-radius-md); }}
+
+                /* Login card shadow */
+                .shadow-\\[0_8px_32px_rgba\\(0\\,0\\,0\\,0\\.08\\)\\] {{ box-shadow: 0 8px 32px rgba(0,0,0,0.08); }}
+
+                /* Animate-in: fade + slide-up entrance */
+                @keyframes animate-in-fade-up {{
+                    0% {{ opacity: 0; transform: translateY(16px) scale(0.98); }}
+                    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+                }}
+                .animate-in {{
+                    animation: animate-in-fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }}
+
+                /* Aurora background animation */
+                @keyframes aurora {{
+                    0%, 100% {{ transform: translateX(0) translateY(0) rotate(0deg) scale(1); opacity: 0.6; }}
+                    25% {{ transform: translateX(50px) translateY(-30px) rotate(5deg) scale(1.1); opacity: 0.8; }}
+                    50% {{ transform: translateX(-30px) translateY(50px) rotate(-5deg) scale(1.05); opacity: 0.7; }}
+                    75% {{ transform: translateX(-50px) translateY(-20px) rotate(3deg) scale(0.95); opacity: 0.9; }}
+                }}
+                .animate-aurora {{
+                    animation: aurora 20s ease-in-out infinite;
+                }}
+
+                /* Float animation */
+                @keyframes float {{
+                    0%, 100% {{ transform: translateY(0px); }}
+                    50% {{ transform: translateY(-12px); }}
+                }}
+                .animate-float {{
+                    animation: float 6s ease-in-out infinite;
+                }}
+
+                /* Morph animation */
+                @keyframes morph {{
+                    0%, 100% {{ border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }}
+                    25% {{ border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }}
+                    50% {{ border-radius: 50% 60% 30% 60% / 30% 60% 70% 40%; }}
+                    75% {{ border-radius: 60% 40% 60% 30% / 70% 30% 50% 60%; }}
+                }}
+                .animate-morph {{
+                    animation: morph 8s ease-in-out infinite;
+                }}
+
+                /* Aurora animation durations */
+                .\\[animation-duration\\:30s\\] {{ animation-duration: 30s; }}
+                .\\[animation-duration\\:40s\\] {{ animation-duration: 40s; }}
+                .\\[animation-duration\\:20s\\] {{ animation-duration: 20s; }}
+
+                /* Aurora animation delays */
+                .\\[animation-delay\\:3s\\] {{ animation-delay: 3s; }}
+
+                /* Login gradient colors */
+                .from-\\[var\\(--bc-primary-dark\\)\\]\\/15 {{ --tw-gradient-from: color-mix(in srgb, var(--bc-primary-dark) 15%, transparent); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent); }}
+                .via-\\[\\#AF52DE\\]\\/12 {{ --tw-gradient-stops: var(--tw-gradient-from), rgba(175, 82, 222, 0.12), var(--tw-gradient-to, transparent); }}
+                .to-\\[var\\(--bc-primary\\)\\]\\/10 {{ --tw-gradient-to: color-mix(in srgb, var(--bc-primary) 10%, transparent); }}
+                .from-\\[var\\(--bc-success\\)\\]\\/12 {{ --tw-gradient-from: color-mix(in srgb, var(--bc-success) 12%, transparent); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent); }}
+                .via-\\[\\#30B0C7\\]\\/10 {{ --tw-gradient-stops: var(--tw-gradient-from), rgba(48, 176, 199, 0.1), var(--tw-gradient-to, transparent); }}
+                .from-\\[var\\(--bc-warning\\)\\]\\/10 {{ --tw-gradient-from: color-mix(in srgb, var(--bc-warning) 10%, transparent); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent); }}
+                .to-\\[var\\(--bc-danger\\)\\]\\/8 {{ --tw-gradient-to: color-mix(in srgb, var(--bc-danger) 8%, transparent); }}
+
+                /* Login gradient text */
+                .from-\\[var\\(--bc-primary-dark\\)\\] {{ --tw-gradient-from: var(--bc-primary-dark); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent); }}
+                .to-\\[\\#AF52DE\\] {{ --tw-gradient-to: #AF52DE; }}
                 "
             }
         }
