@@ -12,7 +12,7 @@ pub fn LoginPage() -> Element {
     // Load persisted state
     let state = ClientState::load();
     let mut username = use_signal(|| state.last_username.unwrap_or_default());
-    let mut password = use_signal(|| state.last_password.unwrap_or_default());
+    let mut password = use_signal(|| String::new());
     let mut loading = use_signal(|| false);
     let mut login_error = use_signal(|| None::<String>);
     let toast = use_toast();
@@ -43,7 +43,7 @@ pub fn LoginPage() -> Element {
                     // Save credentials and token on success
                     let new_state = ClientState {
                         last_username: Some(u.clone()),
-                        last_password: Some(p.clone()),
+                        last_password: None,
                         auth_token: Some(response.token.clone()),
                         user_info: Some(
                             serde_json::to_string(&CurrentUser {
@@ -68,7 +68,7 @@ pub fn LoginPage() -> Element {
                 }
                 Err(e) => {
                     loading.set(false);
-                    println!("LoginPage: Login error: {}", e);
+                    eprintln!("LoginPage: Login error: {}", e);
                     // toast.error(&e); // Use inline error instead
                     login_error.set(Some("用户名或密码错误".to_string()));
                 }
@@ -102,17 +102,17 @@ pub fn LoginPage() -> Element {
             }
 
             // ========== LOGIN CONTAINER (Transparent) ==========
-            div { class: "relative z-10 w-full max-w-[400px] mx-4 animate-in",
+            div { class: "relative z-10 login-card-container mx-auto px-4 animate-in",
 
-                div { class: "p-8 relative",
+                div { class: "p-8 relative bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[var(--bc-radius-xl)] shadow-[0_8px_32px_rgba(0,0,0,0.08)]",
 
                     // Logo & Header
                     div { class: "text-center mb-8 relative z-10",
                         // Logo (Force Field)
-                        div { class: "relative inline-flex items-center justify-center w-24 h-24 {logo_margin}",
+                        div { class: "relative inline-flex items-center justify-center w-20 h-20 {logo_margin}",
                             div {
                                 class: "w-full h-full rounded-full bg-white/20 border border-white/30 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(88,86,214,0.12)] flex items-center justify-center",
-                                Logo { class: "w-10 h-10 text-[var(--bc-primary-dark)] fill-current translate-y-0.5" }
+                                Logo { class: "w-9 h-9 text-[var(--bc-primary-dark)] fill-current translate-y-0.5" }
                             }
                         }
 
@@ -121,7 +121,7 @@ pub fn LoginPage() -> Element {
                             h1 { class: "text-2xl font-semibold tracking-tight text-[var(--bc-text-primary)]",
                                 "Unleash Intelligence."
                             }
-                            h1 { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[var(--bc-primary-dark)] to-[#AF52DE]",
+                            p { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[var(--bc-primary-dark)] to-[#AF52DE]",
                                 "Your Second Brain."
                             }
                         }
