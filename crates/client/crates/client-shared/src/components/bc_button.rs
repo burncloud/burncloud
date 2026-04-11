@@ -8,6 +8,8 @@ pub enum ButtonVariant {
     Danger,
     Ghost,
     Gradient,
+    Black,
+    Social,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, Default)]
@@ -40,12 +42,14 @@ pub fn BCButton(
         ButtonVariant::Danger => "btn-danger",
         ButtonVariant::Ghost => "btn-ghost",
         ButtonVariant::Gradient => "",
+        ButtonVariant::Black => "btn-black",
+        ButtonVariant::Social => "btn-social",
     };
 
     let size_class = match size {
-        ButtonSize::Small => "text-[12px] min-h-[28px] px-sm py-xs",
+        ButtonSize::Small => "bc-btn-sm",
         ButtonSize::Medium => "",
-        ButtonSize::Large => "text-[16px] min-h-[40px] px-lg py-md",
+        ButtonSize::Large => "bc-btn-lg",
     };
 
     let btn_type = r#type.unwrap_or("button".to_string());

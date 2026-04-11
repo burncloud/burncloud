@@ -1,7 +1,8 @@
 use crate::app::Route;
 use burncloud_client_shared::auth_service::AuthService;
-use burncloud_client_shared::components::bc_button::{BCButton, ButtonVariant};
-use burncloud_client_shared::components::logo::Logo;
+use burncloud_client_shared::components::{
+    logo::Logo, BCButton, BCInput, ButtonSize, ButtonVariant,
+};
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::utils::storage::ClientState;
 use burncloud_client_shared::{use_auth, CurrentUser};
@@ -19,15 +20,7 @@ pub fn LoginPage() -> Element {
     let navigator = use_navigator();
     let auth = use_auth();
 
-    let logo_margin = if cfg!(feature = "liveview") {
-        "mb-6"
-    } else if cfg!(feature = "desktop") {
-        "mb-10"
-    } else {
-        "mb-6"
-    };
-
-    let handle_login = move |_| {
+    let mut handle_login = move |_: FormEvent| {
         loading.set(true);
         login_error.set(None);
 
@@ -69,7 +62,6 @@ pub fn LoginPage() -> Element {
                 Err(e) => {
                     loading.set(false);
                     eprintln!("LoginPage: Login error: {}", e);
-                    // toast.error(&e); // Use inline error instead
                     login_error.set(Some("用户名或密码错误".to_string()));
                 }
             }
@@ -77,148 +69,119 @@ pub fn LoginPage() -> Element {
     };
 
     rsx! {
-        // Container: Aurora Canvas
-        div { class: "h-full w-full min-h-screen overflow-hidden bg-[var(--bc-bg-canvas)] text-[var(--bc-text-primary)] relative selection:bg-[var(--bc-primary)] selection:text-[var(--bc-text-on-accent)] font-sans flex items-center justify-center py-12",
+        div { class: "login-shell",
 
-            // ========== BACKGROUND: Liquid Light Field ==========
-            div { class: "absolute inset-0 pointer-events-none overflow-hidden",
-                // Draggable Region
-                div { class: "absolute top-0 left-0 w-full h-16 z-50 cursor-default", style: "-webkit-app-region: drag;" }
-
-                // Layer 1: Primary Aurora Blob - slower
-                div { class: "absolute top-[-15%] right-[-15%] w-[900px] h-[900px] bg-gradient-to-l from-[var(--bc-primary-dark)]/15 via-[#AF52DE]/12 to-[var(--bc-primary)]/10 rounded-full blur-[100px] animate-aurora animate-morph [animation-duration:30s]" }
-
-                // Layer 2: Secondary Flow - slower
-                div { class: "absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-r from-[var(--bc-success)]/12 via-[#30B0C7]/10 to-transparent rounded-full blur-[80px] animate-aurora [animation-delay:5s] [animation-duration:40s]" }
-
-                // Layer 3: Accent Orb - slower
-                div { class: "absolute top-[30%] left-[15%] w-[350px] h-[350px] bg-gradient-to-br from-[var(--bc-warning)]/10 to-[var(--bc-danger)]/8 rounded-full blur-[60px] animate-float [animation-delay:3s] [animation-duration:20s]" }
-
-                // Noise Texture (Removed quotes from url() to avoid string escaping issues)
-                div {
-                    class: "absolute inset-0 opacity-[0.03] mix-blend-overlay",
-                    style: "background-image: url(data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E);"
+            // ========== LEFT: BRAND (40%) ==========
+            aside { class: "login-brand",
+                div { class: "login-brand-grid" }
+                div { class: "login-brand-inner",
+                    Logo { class: Some("login-brand-logo".to_string()) }
+                    div { style: "margin-top: auto;",
+                        h1 { class: "login-brand-headline",
+                            "Unleash"
+                            br {}
+                            "Intelligence."
+                        }
+                        p { class: "login-brand-subhead",
+                            "Seamlessly connecting your local nodes with the power of the second brain."
+                        }
+                    }
+                    div { class: "login-brand-eyebrow",
+                        div { class: "login-brand-eyebrow-line" }
+                        "Intelligence Reimagined"
+                    }
                 }
             }
 
-            // ========== LOGIN CONTAINER (Transparent) ==========
-            div { class: "relative z-10 login-card-container mx-auto px-4 animate-in",
+            // ========== RIGHT: FORM (60%) ==========
+            main { class: "login-pane",
+                div { class: "login-card",
 
-                div { class: "p-8 relative bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[var(--bc-radius-xl)] shadow-[0_8px_32px_rgba(0,0,0,0.08)]",
-
-                    // Logo & Header
-                    div { class: "text-center mb-8 relative z-10",
-                        // Logo (Force Field)
-                        div { class: "relative inline-flex items-center justify-center w-20 h-20 {logo_margin}",
-                            div {
-                                class: "w-full h-full rounded-full bg-white/20 border border-white/30 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(88,86,214,0.12)] flex items-center justify-center",
-                                Logo { class: "w-9 h-9 text-[var(--bc-primary-dark)] fill-current translate-y-0.5" }
-                            }
-                        }
-
-                        // Header Slogan
-                        div { class: "flex flex-col items-center justify-center space-y-2 mb-6",
-                            h1 { class: "text-2xl font-semibold tracking-tight text-[var(--bc-text-primary)]",
-                                "Unleash Intelligence."
-                            }
-                            p { class: "text-2xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[var(--bc-primary-dark)] to-[#AF52DE]",
-                                "Your Second Brain."
-                            }
-                        }
-                        p { class: "text-[15px] text-[var(--bc-text-primary)]/60 font-semibold tracking-wide",
-                            "登录以连接您的本地算力节点"
-                        }
+                    // Header
+                    header { class: "login-card-header",
+                        h2 { class: "login-card-title", "登录" }
+                        p { class: "login-card-subtitle", "欢迎回来，请登录您的账号" }
                     }
 
                     // Form
-                    div { class: "space-y-4 relative z-10",
-                        // Username Input
-                        div { class: "group relative",
-                            label { class: "block text-caption font-medium text-secondary mb-sm uppercase tracking-wider ml-1", "用户名" }
-                            div {
-                                class: "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-[var(--bc-shadow-xs)] rounded-[var(--bc-radius-md)] transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-[var(--bc-bg-card-solid)] hover:bg-[var(--bc-bg-card-solid)]",
-                                div { class: "pl-lg pr-sm text-secondary group-focus-within:text-[var(--bc-primary)] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
-                                    svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" }
-                                    }
-                                }
-                                input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[var(--bc-primary)] px-2 text-body text-primary placeholder-text-tertiary",
-                                    r#type: "text",
-                                    value: "{username}",
-                                    placeholder: "请输入用户名",
-                                    autofocus: true,
-                                    oninput: move |e: FormEvent| {
-                                        username.set(e.value());
-                                        login_error.set(None);
-                                    }
-                                }
+                    form {
+                        onsubmit: move |e| {
+                            e.stop_propagation();
+                            handle_login(e);
+                        },
+
+                        BCInput {
+                            class: "login-field",
+                            label: Some("用户名".to_string()),
+                            value: "{username}",
+                            placeholder: "请输入用户名",
+                            oninput: move |e: FormEvent| {
+                                username.set(e.value());
+                                login_error.set(None);
                             }
                         }
 
-                        // Password Input
-                        div { class: "group relative",
-                            label { class: "block text-caption font-medium text-secondary mb-sm uppercase tracking-wider ml-1", "密码" }
-                            div {
-                                class: if login_error().is_some() {
-                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-[var(--bc-shadow-xs)] rounded-[var(--bc-radius-md)] transition-all duration-200 shadow-[0_0_0_2px_rgba(255,59,48,0.3)] bg-[var(--bc-bg-card-solid)]"
-                                } else {
-                                    "relative flex items-center w-full h-12 bg-[var(--bc-bg-input)] shadow-[var(--bc-shadow-xs)] rounded-[var(--bc-radius-md)] transition-all duration-200 focus-within:shadow-[0_0_0_2px_rgba(88,86,214,0.3)] focus-within:bg-[var(--bc-bg-card-solid)] hover:bg-[var(--bc-bg-card-solid)]"
-                                },
-                                div { class: "pl-lg pr-sm text-secondary group-focus-within:text-[var(--bc-primary)] group-focus-within:scale-110 transition-all duration-300 flex-shrink-0 origin-center",
-                                    svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" }
-                                    }
-                                }
-                                input {
-                                    class: "w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none caret-[var(--bc-primary)] px-2 text-body text-primary placeholder-text-tertiary",
-                                    r#type: "password",
-                                    value: "{password}",
-                                    placeholder: "请输入密码",
-                                    oninput: move |e: FormEvent| {
-                                        password.set(e.value());
-                                        login_error.set(None);
-                                    }
-                                }
-                            }
-                            // Floating Error Message
-                            div {
-                                class: if login_error().is_some() {
-                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-100 z-20 pointer-events-none"
-                                } else {
-                                    "absolute top-0 right-0 flex items-center gap-1.5 transition-opacity duration-200 opacity-0 z-20 pointer-events-none"
-                                },
-                                div { class: "w-1.5 h-1.5 rounded-full bg-[var(--bc-danger)] shadow-[0_0_8px_rgba(255,59,48,0.8)] translate-y-[0.5px]" }
-                                span { class: "text-caption font-medium text-[var(--bc-danger)] opacity-90",
-                                    "{login_error().unwrap_or_default()}"
-                                }
+                        BCInput {
+                            class: "login-field-last",
+                            label: Some("密码".to_string()),
+                            value: "{password}",
+                            r#type: "password",
+                            placeholder: "请输入密码",
+                            error: login_error(),
+                            oninput: move |e: FormEvent| {
+                                password.set(e.value());
+                                login_error.set(None);
                             }
                         }
 
-                        // Login Button
                         BCButton {
-                            variant: ButtonVariant::Gradient,
-                            class: "mt-6 w-full h-12",
+                            r#type: Some("submit".to_string()),
+                            variant: ButtonVariant::Black,
+                            size: ButtonSize::Large,
+                            class: "bc-btn-block bc-btn-press",
                             loading: loading(),
-                            disabled: loading(),
-                            onclick: handle_login,
+                            children: rsx! { "登录" }
+                        }
+                    }
 
-                            if loading() {
-                                "登录中..."
-                            } else {
-                                "登录"
-                                svg { class: "w-5 h-5 transition-transform duration-300 group-hover:translate-x-1", fill: "none", stroke: "currentColor", view_box: "0 0 24 24",
-                                    path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M13 7l5 5m0 0l-5 5m5-5H6" }
+                    // Social Login
+                    div { class: "login-social-section",
+                        div { class: "login-divider",
+                            div { class: "login-divider-line" }
+                            span { class: "login-divider-text", "或者使用以下方式" }
+                            div { class: "login-divider-line" }
+                        }
+
+                        div { class: "login-social-grid",
+                            BCButton {
+                                variant: ButtonVariant::Social,
+                                size: ButtonSize::Large,
+                                class: "bc-btn-block",
+                                children: rsx! {
+                                    svg { class: "bc-btn-icon", width: "20", height: "20", view_box: "0 0 24 24", fill: "currentColor",
+                                        path { d: "M12.48 10.92v3.28h7.84c-.24 1.84-.908 3.152-1.928 4.176-1.288 1.288-3.312 2.688-6.912 2.688-5.552 0-9.92-4.48-9.92-10.032s4.368-10.032 9.92-10.032c3.008 0 5.232 1.192 6.848 2.72l2.312-2.312C18.424 1.296 15.84 0 12.48 0 6.448 0 1.552 4.936 1.552 11s4.896 11 10.928 11c3.272 0 5.752-1.072 7.712-3.12 2.032-2.032 2.672-4.904 2.672-7.232 0-.688-.048-1.344-.144-1.952h-8.24z" }
+                                    }
+                                    "Google"
+                                }
+                            }
+                            BCButton {
+                                variant: ButtonVariant::Social,
+                                size: ButtonSize::Large,
+                                class: "bc-btn-block",
+                                children: rsx! {
+                                    svg { class: "bc-btn-icon", width: "20", height: "20", view_box: "0 0 24 24", fill: "currentColor",
+                                        path { d: "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" }
+                                    }
+                                    "GitHub"
                                 }
                             }
                         }
                     }
 
                     // Footer Link
-                    div { class: "text-center mt-8 relative z-10",
+                    div { class: "login-footer",
                         Link {
                             to: Route::RegisterPage {},
-                            class: "text-[15px] font-medium text-[var(--bc-text-secondary)] hover:text-[var(--bc-text-primary)] transition-colors",
                             "还没有账号? 立即注册"
                         }
                     }
