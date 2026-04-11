@@ -14,7 +14,7 @@
 - **UI 框架**:Dioxus 0.7.2(Rust),组件用 RSX 编写,样式通过 `class:` 引用 Tailwind 工具类
 - **样式栈**:Tailwind CSS + DaisyUI(预编译资产)
 - **跨组件复用**:走 `client-shared`,不在页面里写一次性组件
-- **运行模式**:Desktop(Win 11 Fluent)/ LiveView(Web)/ SSR
+- **运行模式**:Desktop / LiveView(Web)/ SSR
 - **Token**:全部走 `--bc-*`,定义在 `crates/client/crates/client-shared/src/styles.rs`,速查见 [`tokens.md`](./tokens.md)
 
 ---

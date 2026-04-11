@@ -12,6 +12,12 @@
 
 ## 3 分钟概览
 
+### 视觉风格
+
+**参照 Apple Human Interface Guidelines** —— 留白优先、克制动效、层次靠字重和间距而非边框和阴影。
+
+这是项目唯一的视觉语言主张。不混 Fluent、不混 Material。具体落地走 [`system.md`](./system.md) 的红线和 checklist,本节只定调。
+
 ### 我们的设计哲学
 
 **守地基** —— [`system.md`](./system.md) 列的硬性要求,违反即不可合入。
