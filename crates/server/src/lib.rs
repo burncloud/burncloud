@@ -1,4 +1,5 @@
 pub mod api;
+pub mod bootstrap;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::Router;
@@ -56,6 +57,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
 }
 
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
+    bootstrap::ensure_master_key()?;
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;

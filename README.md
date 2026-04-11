@@ -105,6 +105,7 @@ Key configuration options:
 | `HOST` | Server host | 0.0.0.0 |
 | `DATABASE_URL` | Database connection | sqlite:burncloud.db |
 | `RUST_LOG` | Log level | info |
+| `MASTER_KEY` | *(Optional, advanced)* 64-char hex key used to encrypt upstream API keys at rest. Leave unset for zero-config: on first launch BurnCloud generates a random key and persists it to `$XDG_CONFIG_HOME/burncloud/master.key` (mode `0600`), then reuses it on every subsequent start. Only set this variable yourself if you need to sync a specific key across machines or inject one from a secrets manager. **If you lose the key file and have not backed it up, all encrypted data becomes permanently unrecoverable.** | *auto-generated on first run* |
 
 ### Basic Usage
 

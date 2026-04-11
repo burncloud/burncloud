@@ -32,6 +32,10 @@ dioxus-liveview.workspace = true
 burncloud-service-monitor = { workspace = true }
 bcrypt = { workspace = true }
 jsonwebtoken = { workspace = true }
+dirs = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }

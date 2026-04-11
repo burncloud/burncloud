@@ -21,6 +21,10 @@ sha1 = "0.10"
 base64 = "0.22"
 hex = "0.4"
 chrono = { workspace = true }
+burncloud-server.workspace = true
+burncloud-database-upstream.workspace = true
+tempfile = { workspace = true }
+aes-gcm = { workspace = true }
 
 [[test]]
 name = "local_nodejs_test"
