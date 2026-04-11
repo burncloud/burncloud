@@ -14,9 +14,9 @@
 │   │   ┌───────────────────────────────┐     ┌───────────────────────────────┐        │    │
 │   │   │         📡 API Tests          │     │         🖥️  UI Tests            │        │    │
 │   │   │                               │     │                               │        │    │
-│   │   │  • REST API endpoints         │     │  • Playwright browser tests   │        │    │
-│   │   │  • Integration tests          │     │  • Component tests            │        │    │
-│   │   │  • End-to-end flows           │     │  • Visual regression          │        │    │
+│   │   │  • REST API endpoints         │     │  • Agent Browser E2E tests    │        │    │
+│   │   │  • Integration tests          │     │  • Page & flow tests          │        │    │
+│   │   │  • End-to-end flows           │     │  • Design-token audits        │        │    │
 │   │   │                               │     │                               │        │    │
 │   │   └───────────────────────────────┘     └───────────────────────────────┘        │    │
 │   │                                                                                  │    │
@@ -58,14 +58,18 @@
 │   │   └───────────────────────────────────────────────────────────────────────────┘  │    │
 │   │                                                                                  │    │
 │   │   ┌───────────────────────────────────────────────────────────────────────────┐  │    │
-│   │   │                              📂 ui/                                        │  │    │
+│   │   │                              📂 e2e/                                       │  │    │
 │   │   ├───────────────────────────────────────────────────────────────────────────┤  │    │
 │   │   │                                                                            │  │    │
-│   │   │   UI Tests (Playwright)                                                    │  │    │
+│   │   │   E2E UI Tests (Agent Browser)                                             │  │    │
 │   │   │                                                                            │  │    │
-│   │   │   ├── test-results/       → Test output                                   │  │    │
-│   │   │   ├── playwright-report/  → HTML reports                                  │  │    │
-│   │   │   └── node_modules/       → Dependencies                                  │  │    │
+│   │   │   ├── agent_browser.rs     → Agent Browser CLI wrapper                    │  │    │
+│   │   │   ├── login_flow.rs        → Login / registration flows                   │  │    │
+│   │   │   ├── guest_pages.rs       → Public pages                                 │  │    │
+│   │   │   ├── console_pages.rs     → Authenticated console pages                  │  │    │
+│   │   │   ├── navigation.rs        → Route / navigation smoke tests               │  │    │
+│   │   │   ├── settings_interactions.rs → Settings page interactions               │  │    │
+│   │   │   └── design_tokens.rs     → --bc-* token regression audits               │  │    │
 │   │   │                                                                            │  │    │
 │   │   └───────────────────────────────────────────────────────────────────────────┘  │    │
 │   │                                                                                  │    │
@@ -132,42 +136,36 @@
 ├─────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                          │
 │   ┌─────────────────────────────────────────────────────────────────────────────────┐    │
-│   │                        Playwright Browser Tests                                  │    │
+│   │                         Agent Browser E2E Tests                                 │    │
 │   ├─────────────────────────────────────────────────────────────────────────────────┤    │
+│   │                                                                                  │    │
+│   │   ┌───────────────────────────────────────────────────────────────────────────┐  │    │
+│   │   │   Driver:                                                                  │  │    │
+│   │   │                                                                            │  │    │
+│   │   │   The `agent_browser` module shells out to the `agent-browser` CLI        │  │    │
+│   │   │   (install: `npm install -g agent-browser`). Tests are skipped if it      │  │    │
+│   │   │   is not available.                                                        │  │    │
+│   │   │                                                                            │  │    │
+│   │   └───────────────────────────────────────────────────────────────────────────┘  │    │
 │   │                                                                                  │    │
 │   │   ┌───────────────────────────────────────────────────────────────────────────┐  │    │
 │   │   │   Test Categories:                                                         │  │    │
 │   │   ├───────────────────────────────────────────────────────────────────────────┤  │    │
 │   │   │                                                                            │  │    │
-│   │   │   ├── Authentication                                                       │  │    │
-│   │   │   │   • Login flow                                                        │  │    │
-│   │   │   │   • Registration                                                      │  │    │
-│   │   │   │   • Password reset                                                    │  │    │
-│   │   │   │   • Session management                                                │  │    │
+│   │   │   ├── Authentication          → login_flow.rs                              │  │    │
+│   │   │   │   • Login / registration / session handling                            │  │    │
 │   │   │   │                                                                        │  │    │
-│   │   │   ├── Dashboard                                                            │  │    │
-│   │   │   │   • Overview metrics                                                  │  │    │
-│   │   │   │   • Charts and graphs                                                 │  │    │
-│   │   │   │   • Real-time updates                                                 │  │    │
+│   │   │   ├── Guest & console pages   → guest_pages.rs, console_pages.rs           │  │    │
+│   │   │   │   • Public pages                                                       │  │    │
+│   │   │   │   • Authenticated console pages                                        │  │    │
 │   │   │   │                                                                        │  │    │
-│   │   │   ├── User Management                                                      │  │    │
-│   │   │   │   • User CRUD operations                                              │  │    │
-│   │   │   │   • Group management                                                  │  │    │
-│   │   │   │   • Permission settings                                               │  │    │
+│   │   │   ├── Navigation              → navigation.rs                              │  │    │
+│   │   │   │   • Route smoke tests                                                  │  │    │
 │   │   │   │                                                                        │  │    │
-│   │   │   └── Model Management                                                     │  │    │
-│   │   │       • Model listing                                                     │  │    │
-│   │   │       • Price configuration                                               │  │    │
-│   │   │       • Channel settings                                                  │  │    │
-│   │   │                                                                            │  │    │
-│   │   └───────────────────────────────────────────────────────────────────────────┘  │    │
-│   │                                                                                  │    │
-│   │   ┌───────────────────────────────────────────────────────────────────────────┐  │    │
-│   │   │   Output Directories:                                                      │  │    │
-│   │   ├───────────────────────────────────────────────────────────────────────────┤  │    │
-│   │   │                                                                            │  │    │
-│   │   │   test-results/        → Raw test results                                 │  │    │
-│   │   │   playwright-report/   → HTML test reports                                │  │    │
+│   │   │   ├── Settings interactions   → settings_interactions.rs                   │  │    │
+│   │   │   │                                                                        │  │    │
+│   │   │   └── Design tokens           → design_tokens.rs                           │  │    │
+│   │   │       • --bc-* token regression audits                                    │  │    │
 │   │   │                                                                            │  │    │
 │   │   └───────────────────────────────────────────────────────────────────────────┘  │    │
 │   │                                                                                  │    │
@@ -195,7 +193,7 @@
 │   │   │                                                                           │  │    │
 │   │   │   # Run specific integration tests                                         │  │    │
 │   │   │   cargo test -p burncloud-tests --test api_tests                           │  │    │
-│   │   │   cargo test -p burncloud-tests --test ui_tests                            │  │    │
+│   │   │   cargo test -p burncloud-tests e2e::                                      │  │    │
 │   │   │                                                                           │  │    │
 │   │   │   # Format check                                                           │  │    │
 │   │   │   cargo fmt --all -- --check                                                │  │    │
@@ -217,4 +215,4 @@
 | Module | Description | Link |
 |--------|-------------|------|
 | API Tests | API integration tests | [api/README.md](./api/README.md) |
-| UI Tests | Playwright browser tests | [ui/README.md](./ui/README.md) |
+| E2E UI Tests | Agent Browser end-to-end tests | `crates/tests/tests/e2e/` |
