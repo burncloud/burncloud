@@ -40,7 +40,6 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>{}</style>
-                <style>{}</style>
                 <style>
                     /* Custom JIT Shims for LiveView match Desktop Layout */
                     .text-xxs {{ font-size: 10px; }}
@@ -225,7 +224,6 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
             </html>
             "#,
             include_str!("./assets/tailwind.css"),
-            include_str!("./assets/daisyui.css"),
             dioxus_liveview::interpreter_glue(&format!("ws://{}{}", host, WS_PATH))
         ))
     });

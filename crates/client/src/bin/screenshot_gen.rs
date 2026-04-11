@@ -25,14 +25,12 @@ fn main() {
     let html_content = dioxus_ssr::render(&vdom);
 
     let tailwind_css = include_str!("../assets/tailwind.css");
-    let daisyui_css = include_str!("../assets/daisyui.css");
 
     let full_html = format!(
         r#"<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <style>{}</style>
     <style>{}</style>
     <style>{}</style>
     <style>
@@ -43,7 +41,7 @@ fn main() {
     {}
 </body>
 </html>"#,
-        tailwind_css, daisyui_css, DESIGN_SYSTEM_CSS, html_content
+        tailwind_css, DESIGN_SYSTEM_CSS, html_content
     );
 
     println!("{}", full_html);

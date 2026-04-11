@@ -1234,4 +1234,216 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
     margin-right: 8px;
     flex-shrink: 0;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   DaisyUI Replacements
+   Minimal re-implementations of the DaisyUI classes still referenced
+   across the codebase, so daisyui.css can be removed entirely.
+   All values come from --bc-* design tokens.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Loading spinner — replaces `loading loading-spinner loading-{xs,sm,md,lg}` */
+.loading {
+    display: inline-block;
+    vertical-align: middle;
+}
+.loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--bc-border);
+    border-top-color: var(--bc-primary);
+    border-radius: 9999px;
+    animation: bc-spin 0.7s linear infinite;
+}
+.loading-xs { width: 12px; height: 12px; border-width: 2px; }
+.loading-sm { width: 16px; height: 16px; border-width: 2px; }
+.loading-md { width: 24px; height: 24px; border-width: 3px; }
+.loading-lg { width: 40px; height: 40px; border-width: 4px; }
+@keyframes bc-spin { to { transform: rotate(360deg); } }
+
+/* Toggle switch — replaces `toggle toggle-success toggle-sm` */
+.toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 40px;
+    height: 22px;
+    background: var(--bc-border);
+    border-radius: 9999px;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--bc-transition-fast);
+    flex-shrink: 0;
+    margin: 0;
+}
+.toggle::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background: #FFFFFF;
+    border-radius: 9999px;
+    box-shadow: var(--bc-shadow-xs);
+    transition: transform var(--bc-transition-fast);
+}
+.toggle:checked { background: var(--bc-primary); }
+.toggle:checked::before { transform: translateX(18px); }
+.toggle-success:checked { background: var(--bc-success); }
+.toggle-sm { width: 32px; height: 18px; }
+.toggle-sm::before { width: 14px; height: 14px; }
+.toggle-sm:checked::before { transform: translateX(14px); }
+
+/* Select bordered — replaces `select select-bordered select-sm select-primary` */
+.select {
+    display: block;
+    width: 100%;
+    padding: 0 36px 0 12px;
+    height: 38px;
+    font-size: var(--bc-font-base);
+    font-family: inherit;
+    color: var(--bc-text-primary);
+    background: var(--bc-bg-card-solid);
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-radius-sm);
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2386868B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    transition: border-color var(--bc-transition-fast), box-shadow var(--bc-transition-fast);
+}
+.select:hover { border-color: var(--bc-border-hover); }
+.select:focus, .select.select-primary:focus {
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+.select-bordered { /* alias */ }
+.select-primary {}
+.select-sm { height: 32px; font-size: var(--bc-font-sm); padding-right: 32px; }
+
+/* Textarea bordered — replaces `textarea textarea-bordered` */
+.textarea {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    font-size: var(--bc-font-base);
+    font-family: inherit;
+    color: var(--bc-text-primary);
+    background: var(--bc-bg-card-solid);
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-radius-sm);
+    outline: none;
+    resize: vertical;
+    transition: border-color var(--bc-transition-fast), box-shadow var(--bc-transition-fast);
+}
+.textarea:hover { border-color: var(--bc-border-hover); }
+.textarea:focus {
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+.textarea-bordered {}
+
+/* Input modifiers — `.input` is already defined above; add DaisyUI aliases */
+.input-bordered {}
+.input-primary:focus {
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+/* Form control / label — replaces `form-control`, `label`, `label-text` */
+.form-control {
+    display: flex;
+    flex-direction: column;
+    gap: var(--bc-space-1);
+}
+.label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--bc-space-1) 0;
+}
+.label-text {
+    font-size: var(--bc-font-sm);
+    color: var(--bc-text-primary);
+}
+
+/* Alert — replaces `alert alert-info alert-warning alert-success alert-error` */
+.alert {
+    display: flex;
+    align-items: center;
+    gap: var(--bc-space-2);
+    padding: var(--bc-space-3) var(--bc-space-4);
+    border-radius: var(--bc-radius-md);
+    border: 1px solid transparent;
+    font-size: var(--bc-font-base);
+}
+.alert-info    { background: var(--bc-info-light);    color: var(--bc-info);    border-color: var(--bc-info); }
+.alert-warning { background: var(--bc-warning-light); color: var(--bc-warning); border-color: var(--bc-warning); }
+.alert-success { background: var(--bc-success-light); color: var(--bc-success); border-color: var(--bc-success); }
+.alert-error   { background: var(--bc-danger-light);  color: var(--bc-danger);  border-color: var(--bc-danger); }
+
+/* Join — replaces `join` + `join-item` (segmented button groups) */
+.join { display: inline-flex; align-items: stretch; }
+.join > .join-item { border-radius: 0; }
+.join > .join-item:first-child {
+    border-top-left-radius: var(--bc-radius-sm);
+    border-bottom-left-radius: var(--bc-radius-sm);
+}
+.join > .join-item:last-child {
+    border-top-right-radius: var(--bc-radius-sm);
+    border-bottom-right-radius: var(--bc-radius-sm);
+}
+.join > .join-item + .join-item { margin-left: -1px; }
+
+/* Tooltip — replaces `tooltip tooltip-{top,bottom,left,right}` */
+.tooltip { position: relative; }
+.tooltip::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--bc-space-1) var(--bc-space-2);
+    background: #1D1D1F;
+    color: #FFFFFF;
+    font-size: var(--bc-font-xs);
+    border-radius: var(--bc-radius-xs);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--bc-transition-fast);
+    z-index: 1000;
+}
+.tooltip:hover::after { opacity: 1; }
+.tooltip-bottom::after { top: calc(100% + 4px); }
+.tooltip-top::after    { bottom: calc(100% + 4px); }
+
+/* Button modifiers — extends `.btn` already defined above */
+.btn-circle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.btn-xs { height: 26px; padding: 0 10px; font-size: var(--bc-font-xs); border-radius: var(--bc-radius-xs); }
+.btn-sm { height: 32px; padding: 0 14px; font-size: var(--bc-font-sm); }
+
+/* Badge — replaces `badge badge-ghost badge-xs` */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--bc-space-2);
+    border-radius: 9999px;
+    font-size: var(--bc-font-xs);
+    font-weight: 500;
+    background: var(--bc-bg-hover);
+    color: var(--bc-text-secondary);
+}
+.badge-ghost  { background: var(--bc-bg-hover); color: var(--bc-text-secondary); }
+.badge-xs     { padding: 1px 6px; font-size: 10px; }
 "#;
