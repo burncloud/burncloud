@@ -5,6 +5,11 @@ crates/tests/target/
 *.pdb
 Cargo.lock
 
+# Tailwind CSS standalone CLI (downloaded locally, invoked by build.rs)
+# See crates/client/build.rs — contributors download the binary to this path.
+/crates/client/tailwindcss
+/crates/client/tailwindcss.exe
+
 # Root
 /.playwright-mcp
 /nul
