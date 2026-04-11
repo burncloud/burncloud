@@ -3,32 +3,51 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub fn ensure_master_key() -> anyhow::Result<()> {
-    if std::env::var("MASTER_KEY").is_ok() {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MasterKeySource {
+    Env,
+    File,
+    Generated,
+}
+
+impl MasterKeySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MasterKeySource::Env => "env",
+            MasterKeySource::File => "file",
+            MasterKeySource::Generated => "generated",
+        }
+    }
+}
+
+pub fn ensure_master_key() -> anyhow::Result<MasterKeySource> {
+    if let Ok(existing) = std::env::var("MASTER_KEY") {
+        std::env::set_var("MASTER_KEY", &existing);
         tracing::info!(source = "env", "MASTER_KEY loaded from environment variable");
-        return Ok(());
+        return Ok(MasterKeySource::Env);
     }
 
     let key_path = master_key_path()?;
 
     if key_path.exists() {
-        let key = std::fs::read_to_string(&key_path).with_context(|| {
+        let raw = std::fs::read_to_string(&key_path).with_context(|| {
             format!(
                 "failed to read existing MASTER_KEY file at {} (check file permissions)",
                 key_path.display()
             )
         })?;
-        std::env::set_var("MASTER_KEY", key.trim());
+        let hex_key = raw.trim().to_string();
+        std::env::set_var("MASTER_KEY", &hex_key);
         tracing::info!(
             source = "file",
             key_path = %key_path.display(),
             "MASTER_KEY loaded from existing key file"
         );
-        return Ok(());
+        return Ok(MasterKeySource::File);
     }
 
-    let key = generate_master_key()?;
-    write_master_key(&key_path, &key).with_context(|| {
+    let hex_key = generate_master_key()?;
+    write_master_key(&key_path, &hex_key).with_context(|| {
         format!(
             "failed to persist newly generated MASTER_KEY to {} \
              (check directory permissions and available disk space); \
@@ -36,6 +55,7 @@ pub fn ensure_master_key() -> anyhow::Result<()> {
             key_path.display()
         )
     })?;
+    std::env::set_var("MASTER_KEY", &hex_key);
     tracing::warn!(
         source = "generated",
         key_path = %key_path.display(),
@@ -44,9 +64,8 @@ pub fn ensure_master_key() -> anyhow::Result<()> {
          To migrate between machines, copy this file or set the MASTER_KEY environment variable to its contents.",
         key_path.display()
     );
-    std::env::set_var("MASTER_KEY", &key);
 
-    Ok(())
+    Ok(MasterKeySource::Generated)
 }
 
 fn master_key_path() -> anyhow::Result<PathBuf> {

@@ -39,3 +39,5 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
+tempfile = { workspace = true }
+aes-gcm = { workspace = true }

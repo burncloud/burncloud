@@ -27,6 +27,21 @@
 │   │   │                                                                        │      │    │
 │   │   └───────────────────────────────────────────────────────────────────────┘      │    │
 │   │                                                                                  │    │
+│   │   ┌───────────────────────────────────────────────────────────────────────┐      │    │
+│   │   │                           bootstrap.rs                                 │      │    │
+│   │   │                                                                        │      │    │
+│   │   │   ensure_master_key() → MasterKeySource                               │      │    │
+│   │   │                                                                        │      │    │
+│   │   │   • Priority: env var > key file > auto-generate                      │      │    │
+│   │   │   • Reads MASTER_KEY from environment if set                          │      │    │
+│   │   │   • Falls back to $XDG_CONFIG_HOME/burncloud/master.key               │      │    │
+│   │   │   • Generates 32-byte random key (hex-encoded) on first run           │      │    │
+│   │   │   • Writes key file with mode 0600 (Unix)                             │      │    │
+│   │   │   • Sets MASTER_KEY env var for downstream consumers                  │      │    │
+│   │   │   • Errors hard on write failure — no silent in-memory fallback       │      │    │
+│   │   │                                                                        │      │    │
+│   │   └───────────────────────────────────────────────────────────────────────┘      │    │
+│   │                                                                                  │    │
 │   │   ┌───────────────────┐                                                         │    │
 │   │   │     📂 api/       │◄─────────────────────────────────────────────────────    │    │
 │   │   └───────────────────┘                                                         │    │
