@@ -6,18 +6,19 @@ fn main() {
     let config = manifest_dir.join("tailwind.config.js");
     let input = manifest_dir.join("input.css");
     let output = manifest_dir.join("src/assets/tailwind.css");
-    let cli = manifest_dir.join("tailwindcss");
+    let cli_name = if cfg!(windows) { "tailwindcss.exe" } else { "tailwindcss" };
+    let cli = manifest_dir.join(cli_name);
 
     println!("cargo:rerun-if-changed=tailwind.config.js");
     println!("cargo:rerun-if-changed=input.css");
-    println!("cargo:rerun-if-changed=tailwindcss");
+    println!("cargo:rerun-if-changed={cli_name}");
 
     if !cli.exists() {
         println!(
             "cargo:warning=tailwindcss CLI not found at {} — skipping CSS rebuild. \
              Download the standalone v3.4 binary from \
              https://github.com/tailwindlabs/tailwindcss/releases and save it as \
-             crates/client/tailwindcss (chmod +x).",
+             crates/client/{cli_name} (chmod +x).",
             cli.display()
         );
         return;
