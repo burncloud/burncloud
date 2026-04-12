@@ -1,9 +1,13 @@
 use anyhow::Result;
 use std::env;
+use std::path::Path;
 
 fn main() -> Result<()> {
     // Load .env file if present
     dotenvy::dotenv().ok();
+
+    // Auto-generate MASTER_KEY if missing
+    ensure_master_key();
 
     // 初始化日志
     env_logger::init();
@@ -73,6 +77,71 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Check whether the current MASTER_KEY is valid (present, valid hex, exactly 32 bytes).
+fn is_valid_master_key() -> bool {
+    let val = match env::var("MASTER_KEY") {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    hex::decode(val.trim())
+        .ok()
+        .map(|bytes| bytes.len() == 32)
+        .unwrap_or(false)
+}
+
+/// Ensure MASTER_KEY exists and is valid: if missing or malformed, generate a
+/// 32-byte random key, write it to `.env`, and set it in the process environment.
+fn ensure_master_key() {
+    if is_valid_master_key() {
+        return;
+    }
+
+    // Generate 32 random bytes as hex (64 chars)
+    let key: [u8; 32] = rand::random();
+    let hex_key = hex::encode(key);
+
+    // Locate .env: prefer CWD (where dotenvy reads), fall back to exe dir
+    let env_path = std::fs::canonicalize(".env").unwrap_or_else(|_| {
+        env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join(".env")))
+            .unwrap_or_else(|| Path::new(".env").to_path_buf())
+    });
+
+    // Replace or append MASTER_KEY line in .env
+    let line = format!("MASTER_KEY={hex_key}");
+    let content = if env_path.exists() {
+        let existing = std::fs::read_to_string(&env_path).unwrap_or_default();
+        let mut found = false;
+        let lines: String = existing
+            .lines()
+            .map(|l| {
+                if l.starts_with("MASTER_KEY=") {
+                    found = true;
+                    line.clone()
+                } else {
+                    l.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if found {
+            lines + "\n"
+        } else {
+            lines + "\n" + &line + "\n"
+        }
+    } else {
+        line + "\n"
+    };
+
+    match std::fs::write(&env_path, content) {
+        Ok(_) => eprintln!("Generated MASTER_KEY → {}", env_path.display()),
+        Err(e) => eprintln!("Warning: failed to write .env: {e}"),
+    }
+
+    env::set_var("MASTER_KEY", &hex_key);
 }
 
 #[tokio::main]
