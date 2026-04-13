@@ -1,3 +1,6 @@
+// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use crate::groups::GroupManager;
 use crate::tokens::TokenManager;
 use burncloud_client_shared::components::{FormMode, SchemaForm};

@@ -1,3 +1,6 @@
+// JSON Schema builder — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use serde_json::json;
 
 /// Recharge（充值记录）实体的 JSON Schema 定义

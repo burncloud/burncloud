@@ -9,7 +9,7 @@ repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
 [dependencies]
-dioxus = { workspace = true, features = ["desktop"] }
+dioxus = { workspace = true, features = ["desktop", "signals", "hooks", "html", "macro", "launch"] }
 dioxus-router.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
