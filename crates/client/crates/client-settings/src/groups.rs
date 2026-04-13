@@ -1,3 +1,5 @@
+use burncloud_client_shared::components::{FormMode, SchemaForm};
+use burncloud_client_shared::schema::group_schema;
 use dioxus::prelude::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -34,17 +36,20 @@ pub fn GroupManager() -> Element {
     let mut selected_group_id = use_signal::<Option<String>>(|| None);
     let mut selected_group_members = use_signal::<Vec<GroupMember>>(Vec::new);
 
-    // Form State (New Group)
-    let mut form_name = use_signal(String::new);
-    let mut form_strategy = use_signal(|| "round_robin".to_string());
-    let mut form_match_path = use_signal(|| "/v1/chat/completions".to_string());
+    // Form State (New Group) - SchemaForm uses Signal<serde_json::Value>
+    let form_data = use_signal(|| serde_json::json!({
+        "name": "",
+        "strategy": "round_robin",
+        "match_path": "/v1/chat/completions"
+    }));
+
+    let schema = group_schema();
 
     // Load Data
     let fetch_data = move || async move {
         loading.set(true);
         let client = Client::new();
 
-        // Fetch Groups
         if let Ok(resp) = client
             .get("http://127.0.0.1:3000/console/api/groups")
             .send()
@@ -55,7 +60,6 @@ pub fn GroupManager() -> Element {
             }
         }
 
-        // Fetch Channels (for selection)
         if let Ok(resp) = client
             .get("http://127.0.0.1:3000/console/api/channels")
             .send()
@@ -75,26 +79,35 @@ pub fn GroupManager() -> Element {
         });
     });
 
-    // Actions
-    let create_group = move |_| async move {
-        let client = Client::new();
-        let new_group = Group {
-            id: uuid::Uuid::new_v4().to_string(),
-            name: form_name(),
-            strategy: form_strategy(),
-            match_path: form_match_path(),
-        };
+    // Create group via SchemaForm submission
+    let handle_create = {
+        let mut form_data = form_data.clone();
+        move |value: serde_json::Value| {
+            spawn(async move {
+                let client = Client::new();
+                let new_group = Group {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: value["name"].as_str().unwrap_or("").to_string(),
+                    strategy: value["strategy"].as_str().unwrap_or("round_robin").to_string(),
+                    match_path: value["match_path"].as_str().unwrap_or("").to_string(),
+                };
 
-        if let Ok(resp) = client
-            .post("http://127.0.0.1:3000/console/api/groups")
-            .json(&new_group)
-            .send()
-            .await
-        {
-            if resp.status().is_success() {
-                fetch_data().await;
-                form_name.set(String::new());
-            }
+                if let Ok(resp) = client
+                    .post("http://127.0.0.1:3000/console/api/groups")
+                    .json(&new_group)
+                    .send()
+                    .await
+                {
+                    if resp.status().is_success() {
+                        fetch_data().await;
+                        form_data.set(serde_json::json!({
+                            "name": "",
+                            "strategy": "round_robin",
+                            "match_path": "/v1/chat/completions"
+                        }));
+                    }
+                }
+            });
         }
     };
 
@@ -181,23 +194,13 @@ pub fn GroupManager() -> Element {
             div { class: "bc-card-solid",
                 div { class: "p-lg",
                     h3 { class: "text-subtitle font-semibold mb-md", "新建分组" }
-                    div { class: "flex gap-md items-end",
-                        div { class: "flex flex-col gap-sm flex-1",
-                            label { class: "text-caption text-secondary", "名称" }
-                            input { class: "input", value: "{form_name}", oninput: move |e| form_name.set(e.value()) }
-                        }
-                        div { class: "flex flex-col gap-sm flex-1",
-                            label { class: "text-caption text-secondary", "策略" }
-                            select { class: "input", value: "{form_strategy}", onchange: move |e| form_strategy.set(e.value()),
-                                option { value: "round_robin", "轮询 (Round Robin)" }
-                                option { value: "weighted", "权重 (Weighted)" } // Future support
-                            }
-                        }
-                        div { class: "flex flex-col gap-sm flex-1",
-                            label { class: "text-caption text-secondary", "匹配路径" }
-                            input { class: "input", value: "{form_match_path}", oninput: move |e| form_match_path.set(e.value()) }
-                        }
-                        button { class: "btn btn-primary", onclick: create_group, "创建" }
+                    SchemaForm {
+                        schema: schema.clone(),
+                        data: form_data,
+                        mode: FormMode::Create,
+                        show_actions: false,
+                        class: "flex flex-row gap-md items-end",
+                        on_submit: handle_create,
                     }
                 }
             }
@@ -257,7 +260,6 @@ pub fn GroupManager() -> Element {
                                             div { class: "flex items-center justify-between p-sm",
                                                 style: "background: var(--bc-bg-card-solid); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md);",
                                                 span {
-                                                    // Find channel name
                                                     if let Some(ch) = all_channels().iter().find(|c| c.id == member.upstream_id) {
                                                         "{ch.name}"
                                                     } else {
