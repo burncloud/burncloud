@@ -1,0 +1,11 @@
+[template]
+cargo_generate_version = ">=0.19"
+description = "BurnCloud service crate — wraps a domain crate with business logic"
+
+[placeholders.crate_name]
+type = "string"
+prompt = "Service name (e.g. 'order', 'payment')"
+regex = "^[a-z][a-z0-9_-]*$"
+
+[hooks]
+post = ["post-generate.sh"]

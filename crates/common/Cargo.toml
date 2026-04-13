@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-common"
 version = "0.1.9"
 edition = "2021"
@@ -19,5 +20,6 @@ dirs.workspace = true
 sqlx.workspace = true
 chrono.workspace = true
 bcrypt.workspace = true
+async-trait.workspace = true
 [lints]
 workspace = true

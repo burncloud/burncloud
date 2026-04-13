@@ -54,6 +54,10 @@ members = [
     "crates/tests",
 ]
 
+[workspace.package]
+license = "MIT"
+publish = false
+
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"

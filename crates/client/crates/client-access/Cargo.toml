@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-client-access"
 version = "0.1.0"
 edition = "2021"

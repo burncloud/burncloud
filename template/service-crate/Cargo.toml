@@ -1,0 +1,17 @@
+[package]
+name = "burncloud-service-{{crate_name}}"
+version = "0.1.0"
+edition = "2021"
+publish.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burncloud-common.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# TODO: add burncloud-domain-{{crate_name}} once domain crate exists
+# burncloud-domain-{{crate_name}}.workspace = true

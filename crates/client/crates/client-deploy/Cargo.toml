@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-client-deploy"
 version = "0.1.2"
 edition = "2021"
