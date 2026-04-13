@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_database_router::RouterDatabase;
+use burncloud_service_router_log::{BillingService, RouterLogService};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -38,7 +38,7 @@ async fn list_logs(State(state): State<AppState>, Query(params): Query<Paginatio
     let page_size = params.page_size.unwrap_or(50);
     let offset = (page - 1) * page_size;
 
-    match RouterDatabase::get_logs(&state.db, page_size, offset).await {
+    match RouterLogService::get(&state.db, page_size, offset).await {
         Ok(logs) => Json(json!({
             "data": logs,
             "page": page,
@@ -49,7 +49,7 @@ async fn list_logs(State(state): State<AppState>, Query(params): Query<Paginatio
 }
 
 async fn get_user_usage(State(state): State<AppState>, Path(user_id): Path<String>) -> Json<Value> {
-    match RouterDatabase::get_usage_by_user(&state.db, &user_id).await {
+    match RouterLogService::get_usage_by_user(&state.db, &user_id).await {
         Ok((prompt, completion)) => Json(json!({
             "user_id": user_id,
             "prompt_tokens": prompt,
@@ -130,7 +130,7 @@ async fn billing_summary_inner(
         }
     }
 
-    match burncloud_database_router::get_billing_summary(&state.db, start, end).await {
+    match BillingService::get_billing_summary(&state.db, start, end).await {
         Ok(summary) => Json(json!({
             "period": {
                 "start": summary.period_start,

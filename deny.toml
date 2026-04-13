@@ -1,6 +1,8 @@
 # cargo-deny configuration
 # Wave 2: license allow list + baseline advisory ignore
-# Wave 3: activate [bans] layer boundary rules
+# Wave 3: layer boundary enforced — server no longer depends on burncloud-database-models
+#         Remaining server DB deps (burncloud-database-router, burncloud-database-user)
+#         are init-only exceptions for schema migration at startup.
 
 [graph]
 targets = []
@@ -63,12 +65,11 @@ allow = [
 ignore = true
 
 # ─── Bans ─────────────────────────────────────────────────────────────────────
-# Wave 3 TODO: activate layer boundary bans once server → service migration is done
-# [bans]
-# deny = [
-#     # Prevent server crate from directly depending on database crates
-#     # (enforce server → service → database layering)
-# ]
+# Layer boundary is enforced at the Cargo.toml level (server/Cargo.toml no longer
+# lists burncloud-database-models or other domain DB crates). cargo-deny cannot
+# enforce per-crate-pair dependency rules, so the physical Cargo.toml dep list is
+# the authoritative gate. Any new direct DB dep added to server/Cargo.toml will
+# require explicit review since it breaks the server → service → database layering.
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"

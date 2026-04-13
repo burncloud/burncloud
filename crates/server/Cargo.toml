@@ -23,7 +23,6 @@ axum = { workspace = true, features = ["macros"] }
 tower-http = { workspace = true, features = ["cors"] }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
-burncloud-database-models = { workspace = true }
 burncloud-database-user = { workspace = true }
 burncloud-router = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
@@ -31,6 +30,11 @@ burncloud-client = { workspace = true, features = ["liveview"] }
 dioxus.workspace = true
 dioxus-liveview.workspace = true
 burncloud-service-monitor = { workspace = true }
+burncloud-service-user = { workspace = true }
+burncloud-service-group = { workspace = true }
+burncloud-service-token = { workspace = true }
+burncloud-service-router-log = { workspace = true }
+burncloud-service-channel = { workspace = true }
 bcrypt = { workspace = true }
 jsonwebtoken = { workspace = true }
 

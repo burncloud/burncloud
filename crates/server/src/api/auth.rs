@@ -8,13 +8,11 @@ use axum::{
     routing::post,
     Router,
 };
-use bcrypt::{hash, verify, DEFAULT_COST};
-use burncloud_database_user::{DbUser, UserDatabase};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use burncloud_service_user::UserServiceError;
+use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
-use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct RegisterDto {
@@ -42,27 +40,6 @@ fn get_jwt_secret() -> String {
         .unwrap_or_else(|_| "burncloud-default-secret-change-in-production".to_string())
 }
 
-fn generate_jwt(user_id: &str, username: &str) -> Result<String, jsonwebtoken::errors::Error> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("SystemTime is after UNIX_EPOCH")
-        .as_secs() as usize;
-
-    let claims = Claims {
-        sub: user_id.to_string(),
-        username: username.to_string(),
-        exp: now + 86400 * 7, // 7 days
-        iat: now,
-    };
-
-    let secret = get_jwt_secret();
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
-    )
-}
-
 pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     let secret = get_jwt_secret();
     let token_data = decode::<Claims>(
@@ -83,53 +60,19 @@ async fn create_user(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
 ) -> AxumJson<Value> {
-    // 1. Check if user exists
-    match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
-        Ok(Some(_)) => {
-            return AxumJson(json!({ "success": false, "message": "Username already exists" }))
-        }
-        Err(e) => {
-            eprintln!("Database error checking username: {}", e);
-            return AxumJson(json!({ "success": false, "message": "Registration failed" }));
-        }
-        _ => {}
-    }
-
-    // 2. Hash password
-    let password_hash = match hash(&payload.password, DEFAULT_COST) {
-        Ok(h) => h,
-        Err(e) => {
-            eprintln!("Password hashing error: {}", e);
-            return AxumJson(json!({ "success": false, "message": "Registration failed" }));
-        }
-    };
-
-    // 3. Create user
-    let user = DbUser {
-        id: Uuid::new_v4().to_string(),
-        username: payload.username.clone(),
-        email: payload.email,
-        password_hash: Some(password_hash),
-        github_id: None,
-        status: 1,
-        balance_usd: 10_000_000_000, // 10 USD signup bonus in nanodollars
-        balance_cny: 0,
-        preferred_currency: Some("USD".to_string()),
-    };
-
-    match UserDatabase::create_user(&state.db, &user).await {
-        Ok(_) => {
-            // Assign default role
-            let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
-
-            // Generate JWT
-            match generate_jwt(&user.id, &user.username) {
-                Ok(token) => AxumJson(json!({
+    match state
+        .user_service
+        .register_user(&state.db, &payload.username, &payload.password, payload.email)
+        .await
+    {
+        Ok(user_id) => {
+            match state.user_service.generate_token(&user_id, &payload.username) {
+                Ok(auth_token) => AxumJson(json!({
                     "success": true,
                     "data": {
-                        "id": user.id,
-                        "username": user.username,
-                        "token": token
+                        "id": user_id,
+                        "username": payload.username,
+                        "token": auth_token.token
                     }
                 })),
                 Err(e) => {
@@ -140,58 +83,47 @@ async fn create_user(
                 }
             }
         }
+        Err(UserServiceError::UserAlreadyExists) => {
+            AxumJson(json!({ "success": false, "message": "Username already exists" }))
+        }
         Err(e) => {
-            eprintln!("Failed to create user: {}", e);
-            AxumJson(json!({ "success": false, "message": "Failed to create user account" }))
+            eprintln!("Registration error: {}", e);
+            AxumJson(json!({ "success": false, "message": "Registration failed" }))
         }
     }
 }
 
 async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> AxumJson<Value> {
-    match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
-        Ok(Some(user)) => {
-            if let Some(hash_str) = user.password_hash {
-                match verify(&payload.password, &hash_str) {
-                    Ok(true) => {
-                        // Success - generate JWT
-                        let roles = UserDatabase::get_user_roles(&state.db, &user.id)
-                            .await
-                            .unwrap_or_default();
+    match state
+        .user_service
+        .login_user(&state.db, &payload.username, &payload.password)
+        .await
+    {
+        Ok(auth_token) => {
+            let roles = state
+                .user_service
+                .get_user_roles(&state.db, &auth_token.user_id)
+                .await
+                .unwrap_or_default();
 
-                        match generate_jwt(&user.id, &user.username) {
-                            Ok(token) => {
-                                return AxumJson(json!({
-                                    "success": true,
-                                    "data": {
-                                        "id": user.id,
-                                        "username": user.username,
-                                        "roles": roles,
-                                        "token": token
-                                    }
-                                }));
-                            }
-                            Err(e) => {
-                                eprintln!("JWT generation failed: {}", e);
-                                return AxumJson(
-                                    json!({ "success": false, "message": "Failed to generate authentication token" }),
-                                );
-                            }
-                        }
-                    }
-                    Ok(false) => {
-                        // Invalid password
-                    }
-                    Err(e) => {
-                        eprintln!("Password verification error: {}", e);
-                        // Treat as invalid password for security
-                    }
+            AxumJson(json!({
+                "success": true,
+                "data": {
+                    "id": auth_token.user_id,
+                    "username": auth_token.username,
+                    "roles": roles,
+                    "token": auth_token.token
                 }
-            }
+            }))
+        }
+        Err(UserServiceError::UserNotFound) => {
+            AxumJson(json!({ "success": false, "message": "User not found" }))
+        }
+        Err(UserServiceError::InvalidCredentials) => {
             AxumJson(json!({ "success": false, "message": "Invalid credentials" }))
         }
-        Ok(None) => AxumJson(json!({ "success": false, "message": "User not found" })),
         Err(e) => {
-            eprintln!("Database error during login: {}", e);
+            eprintln!("Login error: {}", e);
             AxumJson(json!({ "success": false, "message": "Login failed" }))
         }
     }
@@ -216,7 +148,6 @@ pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Respo
 
     match verify_jwt(token) {
         Ok(claims) => {
-            // Add claims to request extensions for use in handlers
             req.extensions_mut().insert(claims);
             Ok(next.run(req).await)
         }
