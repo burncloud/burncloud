@@ -1,3 +1,6 @@
+// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::components::SchemaTable;
 use burncloud_client_shared::schema::recharge_schema;
 use burncloud_client_shared::services::usage_service::UsageService;

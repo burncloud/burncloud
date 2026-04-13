@@ -1,13 +1,13 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
+static EMAIL_REGEX: Lazy<Option<Regex>> = Lazy::new(|| {
     Regex::new(
         r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
-    ).expect("valid email regex pattern")
+    ).ok()
 });
 
-static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_]{3,20}$").expect("valid username regex pattern"));
+static USERNAME_REGEX: Lazy<Option<Regex>> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_]{3,20}$").ok());
 
 /// Password strength levels
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -49,7 +49,7 @@ pub fn validate_email(email: &str) -> bool {
         return true; // Email is optional
     }
 
-    EMAIL_REGEX.is_match(email)
+    EMAIL_REGEX.as_ref().is_some_and(|re| re.is_match(email))
 }
 
 /// Get email validation error message
@@ -71,7 +71,9 @@ pub fn validate_username(username: &str) -> bool {
         return false;
     }
 
-    USERNAME_REGEX.is_match(username)
+    USERNAME_REGEX
+        .as_ref()
+        .is_some_and(|re| re.is_match(username))
 }
 
 /// Get username validation error message

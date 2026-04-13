@@ -139,11 +139,7 @@ impl GeminiAdaptor {
         // Handle SSE format from Gemini API: "data: {...}"
         // Strip the "data: " prefix if present
         let chunk = chunk.trim();
-        let clean_chunk = if chunk.starts_with("data: ") {
-            &chunk[6..]
-        } else {
-            chunk
-        };
+        let clean_chunk = chunk.strip_prefix("data: ").unwrap_or(chunk);
 
         // Handle array format "[{...}," or ",{...}]" which happens in some stream outputs
         let clean_chunk = clean_chunk

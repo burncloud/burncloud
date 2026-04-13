@@ -1,3 +1,6 @@
+// JSON Schema builder — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use serde_json::json;
 
 /// Deploy 表单的 JSON Schema 定义

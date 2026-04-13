@@ -7,10 +7,7 @@ use dioxus::prelude::*;
 use crate::components::{BCBadge, BCTable, BadgeVariant};
 
 /// 渲染单个单元格
-fn render_cell(
-    col: &serde_json::Value,
-    row: &serde_json::Value,
-) -> Element {
+fn render_cell(col: &serde_json::Value, row: &serde_json::Value) -> Element {
     let key = col["key"].as_str().unwrap_or("");
     let render_type = col["render"].as_str().unwrap_or("text");
     let val = row.get(key);

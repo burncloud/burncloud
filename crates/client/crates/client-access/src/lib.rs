@@ -1,3 +1,6 @@
+// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::components::{
     BCBadge, BCButton, BadgeVariant, ButtonVariant, SchemaForm,
 };
@@ -48,10 +51,18 @@ pub fn AccessCredentialsPage() -> Element {
                     name: "API Key".to_string(),
                     prefix: "sk-burn".to_string(),
                     masked_key,
-                    status: if t.status == "active" { "Active" } else { "Revoked" },
+                    status: if t.status == "active" {
+                        "Active"
+                    } else {
+                        "Revoked"
+                    },
                     created_at: "N/A".to_string(),
                     expires_at: "Never".to_string(),
-                    quota_limit: if t.quota_limit < 0 { None } else { Some(format!("${}", t.quota_limit)) },
+                    quota_limit: if t.quota_limit < 0 {
+                        None
+                    } else {
+                        Some(format!("${}", t.quota_limit))
+                    },
                 }
             })
             .collect::<Vec<_>>()
@@ -63,11 +74,13 @@ pub fn AccessCredentialsPage() -> Element {
 
     // Schema for the token form
     let schema = token_schema();
-    let mut form_data = use_signal(|| serde_json::json!({"user_id": "", "quota_limit": -1}));
+    let form_data = use_signal(|| serde_json::json!({"user_id": "", "quota_limit": -1}));
 
     let handle_generate = move |value: serde_json::Value| {
         spawn(async move {
-            let limit = value["quota_limit"].as_i64().and_then(|v| if v < 0 { None } else { Some(v) });
+            let limit = value["quota_limit"]
+                .as_i64()
+                .and_then(|v| if v < 0 { None } else { Some(v) });
 
             let uid = user
                 .read()

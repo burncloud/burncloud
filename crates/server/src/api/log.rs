@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_service_router_log::{BillingService, BillingSummary, RouterLogService};
+use burncloud_service_router_log::{BillingService, RouterLogService};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -70,8 +70,16 @@ async fn list_logs(
     let offset = (page - 1) * page_size;
 
     match RouterLogService::get(&state.db, page_size, offset).await {
-        Ok(data) => Json(LogPage { data, page, page_size }).into_response(),
-        Err(e) => Json(ApiError { error: e.to_string() }).into_response(),
+        Ok(data) => Json(LogPage {
+            data,
+            page,
+            page_size,
+        })
+        .into_response(),
+        Err(e) => Json(ApiError {
+            error: e.to_string(),
+        })
+        .into_response(),
     }
 }
 
@@ -87,7 +95,10 @@ async fn get_user_usage(
             completion_tokens,
         })
         .into_response(),
-        Err(e) => Json(ApiError { error: e.to_string() }).into_response(),
+        Err(e) => Json(ApiError {
+            error: e.to_string(),
+        })
+        .into_response(),
     }
 }
 
@@ -171,4 +182,3 @@ async fn billing_summary_inner(
             .into_response(),
     }
 }
-

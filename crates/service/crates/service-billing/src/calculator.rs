@@ -19,6 +19,15 @@ const CACHE_WRITE_SURCHARGE_PERCENT: i64 = 125;
 /// Audio input tokens cost 700% of standard input rate (7x multiplier)
 const AUDIO_INPUT_SURCHARGE_PERCENT: i64 = 700;
 
+/// Parameters for a billing calculation request.
+#[derive(Debug, Clone, Default)]
+pub struct RequestOptions<'a> {
+    pub is_batch: bool,
+    pub is_priority: bool,
+    pub region: Option<&'a str>,
+    pub voice_id: Option<&'a str>,
+}
+
 /// Calculates request costs using the in-memory [`PriceCache`].
 ///
 /// # Preflight check
@@ -66,41 +75,42 @@ impl CostCalculator {
         is_priority: bool,
         region: Option<&str>,
     ) -> Result<CostResult, BillingError> {
-        self.calculate_with_voice(
-            model,
-            usage,
-            request_id,
+        let opts = RequestOptions {
             is_batch,
             is_priority,
             region,
-            None,
-        )
-        .await
+            voice_id: None,
+        };
+        self.calculate_with_voice(model, usage, request_id, opts)
+            .await
     }
 
     /// Calculate cost for a completed request with optional voice-specific pricing.
     ///
-    /// `region` selects the region-specific price (e.g. `"international"`, `"cn"`).
-    /// `voice_id` is used for TTS models that have per-voice pricing.
+    /// `opts.region` selects the region-specific price (e.g. `"international"`, `"cn"`).
+    /// `opts.voice_id` is used for TTS models that have per-voice pricing.
     /// If the voice ID is not found in the model's voices_pricing, falls back to audio_output_price.
     pub async fn calculate_with_voice(
         &self,
         model: &str,
         usage: &UnifiedUsage,
         request_id: &str,
-        is_batch: bool,
-        is_priority: bool,
-        region: Option<&str>,
-        voice_id: Option<&str>,
+        opts: RequestOptions<'_>,
     ) -> Result<CostResult, BillingError> {
         let price = self
             .cache
-            .get(model, region)
+            .get(model, opts.region)
             .await
             .ok_or_else(|| BillingError::PriceNotFound(model.to_string()))?;
 
-        let breakdown =
-            compute_breakdown(usage, &price, request_id, is_batch, is_priority, voice_id);
+        let breakdown = compute_breakdown(
+            usage,
+            &price,
+            request_id,
+            opts.is_batch,
+            opts.is_priority,
+            opts.voice_id,
+        );
         Ok(CostResult::from_breakdown(breakdown))
     }
 }

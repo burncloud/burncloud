@@ -27,7 +27,7 @@ async fn handle_create(matches: &ArgMatches) -> Result<()> {
     let output_dir = matches
         .get_one::<String>("output")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().expect("current dir must be accessible").join("bundles"));
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().join("bundles"));
 
     println!("Creating offline bundle for '{}'...", software_id);
     println!("Output directory: {}\n", output_dir.display());

@@ -142,7 +142,7 @@ impl ChannelAdaptor for DynamicAdaptor {
             "object": "chat.completion",
             "created": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .expect("SystemTime is after UNIX_EPOCH")
+                .unwrap_or_default()
                 .as_secs(),
             "model": "dynamic",
             "choices": [{

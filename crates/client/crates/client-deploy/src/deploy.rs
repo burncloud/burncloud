@@ -1,3 +1,6 @@
+// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::components::{FormMode, SchemaForm};
 use burncloud_client_shared::schema::deploy_schema;
 use burncloud_client_shared::use_toast;
@@ -5,7 +8,7 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn DeployConfig() -> Element {
-    let mut form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
+    let form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
     let mut is_deploying = use_signal(|| false);
     let nav = use_navigator();
     let toast = use_toast();

@@ -280,10 +280,15 @@ impl UserService {
             .map_err(UserServiceError::DatabaseError)?;
 
         // Return current balance
-        let user = UserDatabase::get_user_by_username(db, user_id)
-            .await?;
+        let user = UserDatabase::get_user_by_username(db, user_id).await?;
         let balance = user
-            .map(|u| if currency == "CNY" { u.balance_cny } else { u.balance_usd })
+            .map(|u| {
+                if currency == "CNY" {
+                    u.balance_cny
+                } else {
+                    u.balance_usd
+                }
+            })
             .unwrap_or(0);
         Ok(balance)
     }

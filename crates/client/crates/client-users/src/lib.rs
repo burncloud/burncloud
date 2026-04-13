@@ -1,6 +1,8 @@
+// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::components::{
-    ActionDef, ActionEvent, BCBadge, BCButton, BCModal, BadgeVariant, ButtonVariant, FormMode,
-    SchemaForm, SchemaTable,
+    ActionDef, ActionEvent, BCButton, BCModal, ButtonVariant, FormMode, SchemaForm, SchemaTable,
 };
 use burncloud_client_shared::schema::{topup_schema, user_schema};
 use burncloud_client_shared::use_toast;
@@ -78,15 +80,13 @@ pub fn UserPage() -> Element {
     };
 
     // Actions for user table
-    let uid_for_topup = selected_user_id();
-    let uname_for_topup = selected_username();
-    let actions = vec![
-        ActionDef {
-            action_id: "topup".to_string(),
-            label: "充值".to_string(),
-            color: "var(--bc-primary)".to_string(),
-        },
-    ];
+    let _uid_for_topup = selected_user_id();
+    let _uname_for_topup = selected_username();
+    let actions = vec![ActionDef {
+        action_id: "topup".to_string(),
+        label: "充值".to_string(),
+        color: "var(--bc-primary)".to_string(),
+    }];
 
     let handle_action = move |event: ActionEvent| {
         if event.action_id == "topup" {

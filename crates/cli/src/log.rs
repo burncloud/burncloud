@@ -57,10 +57,8 @@ fn extract_model_from_path(path: &str) -> String {
 
     // Look for model after /v1/models/ or /v1/engines/
     for i in 0..parts.len().saturating_sub(1) {
-        if parts[i] == "models" || parts[i] == "engines" {
-            if i + 1 < parts.len() {
-                return parts[i + 1].to_string();
-            }
+        if (parts[i] == "models" || parts[i] == "engines") && i + 1 < parts.len() {
+            return parts[i + 1].to_string();
         }
     }
 
@@ -75,13 +73,11 @@ pub async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
     let model = matches.get_one::<String>("model").map(|s| s.as_str());
     let limit: i32 = matches
         .get_one::<String>("limit")
-        .expect("required CLI argument")
-        .parse()
+        .and_then(|s| s.parse().ok())
         .unwrap_or(100);
     let offset: i32 = matches
         .get_one::<String>("offset")
-        .expect("required CLI argument")
-        .parse()
+        .and_then(|s| s.parse().ok())
         .unwrap_or(0);
     let format = matches
         .get_one::<String>("format")
@@ -181,7 +177,7 @@ pub async fn cmd_log_usage(db: &Database, matches: &ArgMatches) -> Result<()> {
 
     // Resolve user_id: either directly via --user-id or by looking up --token
     let token_key = matches.get_one::<String>("token").map(|s| s.as_str());
-    let user_id_opt = matches.get_one::<String>("user-id").map(|s| s.clone());
+    let user_id_opt = matches.get_one::<String>("user-id").cloned();
 
     let (user_id, stats) = if let Some(token) = token_key {
         match get_usage_stats_by_token(db, token, period).await? {

@@ -10,15 +10,27 @@ pub fn BCInput(
     #[props(default)] oninput: EventHandler<FormEvent>,
     #[props(default)] class: String,
 ) -> Element {
-    let state_class = if error.is_some() { "bc-input-error" } else { "" };
+    let state_class = if error.is_some() {
+        "bc-input-error"
+    } else {
+        ""
+    };
     let is_password = r#type == "password";
     let mut show_password = use_signal(|| false);
-    let actual_type = if is_password && show_password() { "text" } else { &r#type };
+    let actual_type = if is_password && show_password() {
+        "text"
+    } else {
+        &r#type
+    };
 
     // Password fields maintain their own local state to prevent the browser
     // from clearing masked characters when the parent component re-renders.
     let mut local_value = use_signal(String::new);
-    let display_value = if is_password { local_value() } else { value.clone() };
+    let display_value = if is_password {
+        local_value()
+    } else {
+        value.clone()
+    };
 
     rsx! {
         div { class: "bc-input-group {class}",

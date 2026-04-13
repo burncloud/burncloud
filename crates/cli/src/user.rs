@@ -11,8 +11,12 @@ use uuid::Uuid;
 
 /// Handle user login command
 pub async fn cmd_user_login(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let username = matches.get_one::<String>("username").expect("required CLI argument");
-    let password = matches.get_one::<String>("password").expect("required CLI argument");
+    let username = matches
+        .get_one::<String>("username")
+        .ok_or_else(|| anyhow::anyhow!("username argument is required"))?;
+    let password = matches
+        .get_one::<String>("password")
+        .ok_or_else(|| anyhow::anyhow!("password argument is required"))?;
 
     // Get user by username
     let user = match UserDatabase::get_user_by_username(db, username).await? {
@@ -83,8 +87,12 @@ pub async fn cmd_user_login(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle user register command
 pub async fn cmd_user_register(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let username = matches.get_one::<String>("username").expect("required CLI argument");
-    let password = matches.get_one::<String>("password").expect("required CLI argument");
+    let username = matches
+        .get_one::<String>("username")
+        .ok_or_else(|| anyhow::anyhow!("username argument is required"))?;
+    let password = matches
+        .get_one::<String>("password")
+        .ok_or_else(|| anyhow::anyhow!("password argument is required"))?;
     let email = matches.get_one::<String>("email").cloned();
 
     // Check if user already exists
@@ -130,13 +138,11 @@ pub async fn cmd_user_register(db: &Database, matches: &ArgMatches) -> Result<()
 pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
     let limit: i64 = matches
         .get_one::<String>("limit")
-        .expect("required CLI argument")
-        .parse()
+        .and_then(|s| s.parse().ok())
         .unwrap_or(100);
     let offset: i64 = matches
         .get_one::<String>("offset")
-        .expect("required CLI argument")
-        .parse()
+        .and_then(|s| s.parse().ok())
         .unwrap_or(0);
     let format = matches
         .get_one::<String>("format")
@@ -208,11 +214,12 @@ pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle user recharges command
 pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let user_id = matches.get_one::<String>("user-id").expect("required CLI argument");
+    let user_id = matches
+        .get_one::<String>("user-id")
+        .ok_or_else(|| anyhow::anyhow!("user-id argument is required"))?;
     let limit: i64 = matches
         .get_one::<String>("limit")
-        .expect("required CLI argument")
-        .parse()
+        .and_then(|s| s.parse().ok())
         .unwrap_or(100);
 
     // Get recharges for user
@@ -251,7 +258,9 @@ pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<(
 
 /// Handle user check-username command
 pub async fn cmd_user_check_username(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let username = matches.get_one::<String>("username").expect("required CLI argument");
+    let username = matches
+        .get_one::<String>("username")
+        .ok_or_else(|| anyhow::anyhow!("username argument is required"))?;
 
     // Check if username exists
     let existing_user = UserDatabase::get_user_by_username(db, username).await?;
@@ -267,11 +276,15 @@ pub async fn cmd_user_check_username(db: &Database, matches: &ArgMatches) -> Res
 
 /// Handle user topup command
 pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let user_id = matches.get_one::<String>("user-id").expect("required CLI argument");
-    let amount_str = matches.get_one::<String>("amount").expect("required CLI argument");
+    let user_id = matches
+        .get_one::<String>("user-id")
+        .ok_or_else(|| anyhow::anyhow!("user-id argument is required"))?;
+    let amount_str = matches
+        .get_one::<String>("amount")
+        .ok_or_else(|| anyhow::anyhow!("amount argument is required"))?;
     let currency = matches
         .get_one::<String>("currency")
-        .expect("required CLI argument")
+        .ok_or_else(|| anyhow::anyhow!("currency argument is required"))?
         .to_uppercase();
 
     // Validate currency

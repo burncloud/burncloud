@@ -1,3 +1,6 @@
+// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::components::{
     ActionDef, ActionEvent, BCBadge, BCButton, BCCard, BCModal, BadgeVariant, ButtonVariant,
     FormMode, SchemaForm, SchemaTable,
@@ -58,12 +61,14 @@ pub fn ConnectPage() -> Element {
     let mut show_add_modal = use_signal(|| false);
 
     // Form state via Signal<serde_json::Value>
-    let mut form_data = use_signal(|| serde_json::json!({
-        "name": "",
-        "aws_ak": "",
-        "aws_sk": "",
-        "aws_region": "us-east-1"
-    }));
+    let mut form_data = use_signal(|| {
+        serde_json::json!({
+            "name": "",
+            "aws_ak": "",
+            "aws_sk": "",
+            "aws_region": "us-east-1"
+        })
+    });
 
     let aws_schema = aws_connect_schema();
 
@@ -89,7 +94,10 @@ pub fn ConnectPage() -> Element {
         let name = value["name"].as_str().unwrap_or("").to_string();
         let ak = value["aws_ak"].as_str().unwrap_or("").to_string();
         let sk = value["aws_sk"].as_str().unwrap_or("").to_string();
-        let region = value["aws_region"].as_str().unwrap_or("us-east-1").to_string();
+        let region = value["aws_region"]
+            .as_str()
+            .unwrap_or("us-east-1")
+            .to_string();
 
         if name.is_empty() || ak.is_empty() || sk.is_empty() {
             return;
@@ -143,13 +151,11 @@ pub fn ConnectPage() -> Element {
         })
         .collect();
 
-    let actions = vec![
-        ActionDef {
-            action_id: "delete".to_string(),
-            label: "删除".to_string(),
-            color: "var(--bc-danger)".to_string(),
-        },
-    ];
+    let actions = vec![ActionDef {
+        action_id: "delete".to_string(),
+        label: "删除".to_string(),
+        color: "var(--bc-danger)".to_string(),
+    }];
 
     let handle_action = move |event: ActionEvent| {
         if event.action_id == "delete" {

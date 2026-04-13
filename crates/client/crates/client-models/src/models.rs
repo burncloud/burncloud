@@ -2,10 +2,10 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
+use burncloud_client_shared::components::validate_schema;
 use burncloud_client_shared::components::{
     ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,
 };
-use burncloud_client_shared::components::validate_schema;
 use burncloud_client_shared::schema::channel_schema;
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
@@ -107,16 +107,29 @@ impl ProviderType {
 /// 从 form data 构建 Channel struct
 fn build_channel_from_form(data: &serde_json::Value) -> Channel {
     let type_str = data["type"].as_str().unwrap_or("1");
-    let provider_type: i32 = type_str.parse().unwrap_or(1);
+    let _provider_type: i32 = type_str.parse().unwrap_or(1);
 
-    let (final_type, final_base_url, final_models, param_override, header_override) = match type_str {
+    let (final_type, final_base_url, final_models, param_override, header_override) = match type_str
+    {
         "1" => {
             // OpenAI
-            (1, "https://api.openai.com".to_string(), "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string(), None, None)
+            (
+                1,
+                "https://api.openai.com".to_string(),
+                "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string(),
+                None,
+                None,
+            )
         }
         "14" => {
             // Anthropic
-            (14, "https://api.anthropic.com".to_string(), "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string(), None, None)
+            (
+                14,
+                "https://api.anthropic.com".to_string(),
+                "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string(),
+                None,
+                None,
+            )
         }
         "24" => {
             // Google
@@ -133,7 +146,13 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
                 }
                 let base_url = "https://aiplatform.googleapis.com".to_string();
                 let models = "gemini-pro,gemini-1.5-pro".to_string();
-                (41, base_url, models, Some(serde_json::Value::Object(params).to_string()), None)
+                (
+                    41,
+                    base_url,
+                    models,
+                    Some(serde_json::Value::Object(params).to_string()),
+                    None,
+                )
             } else {
                 let base_url = "https://generativelanguage.googleapis.com".to_string();
                 let models = "gemini-pro,gemini-1.5-pro".to_string();
@@ -144,7 +163,10 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
             // AWS Bedrock
             let region = data["aws_region"].as_str().unwrap_or("us-east-1");
             let base_url = format!("https://bedrock-runtime.{}.amazonaws.com", region);
-            let models = data["aws_model_id"].as_str().unwrap_or("anthropic.claude-sonnet-4-5-20250929-v1:0").to_string();
+            let models = data["aws_model_id"]
+                .as_str()
+                .unwrap_or("anthropic.claude-sonnet-4-5-20250929-v1:0")
+                .to_string();
             let params = json!({
                 "aws_secret_key": data["aws_sk"].as_str().unwrap_or(""),
                 "region": region,
@@ -156,7 +178,10 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
             // Azure OpenAI
             let resource = data["azure_resource"].as_str().unwrap_or("");
             let deployment = data["azure_deployment"].as_str().unwrap_or("");
-            let base_url = format!("https://{}.openai.azure.com/openai/deployments/{}", resource, deployment);
+            let base_url = format!(
+                "https://{}.openai.azure.com/openai/deployments/{}",
+                resource, deployment
+            );
             let models = deployment.to_string();
             let params = json!({
                 "api_version": data["azure_api_version"].as_str().unwrap_or("2023-05-15"),
@@ -165,11 +190,20 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
             let headers = json!({
                 "api-key": data["azure_key"].as_str().unwrap_or("")
             });
-            (1, base_url, models, Some(params.to_string()), Some(headers.to_string()))
+            (
+                1,
+                base_url,
+                models,
+                Some(params.to_string()),
+                Some(headers.to_string()),
+            )
         }
         "97" => {
             // Local
-            let base_url = data["local_url"].as_str().unwrap_or("http://localhost:8080").to_string();
+            let base_url = data["local_url"]
+                .as_str()
+                .unwrap_or("http://localhost:8080")
+                .to_string();
             (1, base_url, "local-model".to_string(), None, None)
         }
         _ => (1, String::new(), String::new(), None, None),
@@ -211,9 +245,10 @@ pub fn ChannelPage() -> Element {
     let page = use_signal(|| 1);
     let limit = 10;
 
-    let mut channels = use_resource(
-        move || async move { ChannelService::list(page(), limit).await.unwrap_or(vec![]) },
-    );
+    let mut channels =
+        use_resource(
+            move || async move { ChannelService::list(page(), limit).await.unwrap_or(vec![]) },
+        );
 
     let mut is_modal_open = use_signal(|| false);
     let mut modal_step = use_signal(|| 0);
@@ -233,16 +268,16 @@ pub fn ChannelPage() -> Element {
         is_modal_open.set(true);
     };
 
-    let channels_ref = channels.clone();
+    let channels_ref = channels;
     let mut select_provider = move |p: ProviderType| {
         // 生成随机名称
         let adjectives = vec![
-            "cosmic", "fluent", "quantum", "hyper", "silent", "pure", "rapid", "steady",
-            "active", "neural", "prime", "noble", "swift", "calm", "wild", "bright",
+            "cosmic", "fluent", "quantum", "hyper", "silent", "pure", "rapid", "steady", "active",
+            "neural", "prime", "noble", "swift", "calm", "wild", "bright",
         ];
         let nouns = vec![
-            "flow", "grid", "core", "nexus", "pulse", "link", "node", "sphere",
-            "spark", "wave", "beam", "edge", "mind", "field", "stream", "gate",
+            "flow", "grid", "core", "nexus", "pulse", "link", "node", "sphere", "spark", "wave",
+            "beam", "edge", "mind", "field", "stream", "gate",
         ];
 
         let existing_names: Vec<String> = channels_ref
@@ -288,7 +323,10 @@ pub fn ChannelPage() -> Element {
         match p {
             ProviderType::Aws => {
                 obj.insert("aws_region".to_string(), json!("us-east-1"));
-                obj.insert("aws_model_id".to_string(), json!("anthropic.claude-sonnet-4-5-20250929-v1:0"));
+                obj.insert(
+                    "aws_model_id".to_string(),
+                    json!("anthropic.claude-sonnet-4-5-20250929-v1:0"),
+                );
             }
             ProviderType::Google => {
                 obj.insert("google_auth_type".to_string(), json!("api_key"));
@@ -351,7 +389,7 @@ pub fn ChannelPage() -> Element {
         });
     };
 
-    let handle_toggle_status = move |c: Channel| {
+    let _handle_toggle_status = move |c: Channel| {
         let mut new_c = c.clone();
         new_c.status = if c.status == 1 { 0 } else { 1 };
         spawn(async move {
@@ -387,30 +425,28 @@ pub fn ChannelPage() -> Element {
         },
     ];
 
-    let handle_action = move |event: ActionEvent| {
-        match event.action_id.as_str() {
-            "toggle" => {
-                if let Ok(ch) = serde_json::from_value::<Channel>(event.row) {
-                    let mut new_c = ch.clone();
-                    new_c.status = if ch.status == 1 { 0 } else { 1 };
-                    spawn(async move {
-                        if ChannelService::update(&new_c).await.is_ok() {
-                            channels.restart();
-                        } else {
-                            toast.error("Failed to update status");
-                        }
-                    });
-                }
+    let handle_action = move |event: ActionEvent| match event.action_id.as_str() {
+        "toggle" => {
+            if let Ok(ch) = serde_json::from_value::<Channel>(event.row) {
+                let mut new_c = ch.clone();
+                new_c.status = if ch.status == 1 { 0 } else { 1 };
+                spawn(async move {
+                    if ChannelService::update(&new_c).await.is_ok() {
+                        channels.restart();
+                    } else {
+                        toast.error("Failed to update status");
+                    }
+                });
             }
-            "delete" => {
-                let id = event.row["id"].as_i64().unwrap_or(0);
-                let name = event.row["name"].as_str().unwrap_or("").to_string();
-                delete_channel_id.set(id);
-                delete_channel_name.set(name);
-                is_delete_modal_open.set(true);
-            }
-            _ => {}
         }
+        "delete" => {
+            let id = event.row["id"].as_i64().unwrap_or(0);
+            let name = event.row["name"].as_str().unwrap_or("").to_string();
+            delete_channel_id.set(id);
+            delete_channel_name.set(name);
+            is_delete_modal_open.set(true);
+        }
+        _ => {}
     };
 
     let _any_modal_open = is_modal_open() || is_delete_modal_open();

@@ -1,3 +1,6 @@
+// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use crate::app::Route;
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::components::{
@@ -15,7 +18,7 @@ pub fn LoginPage() -> Element {
     let state = ClientState::load();
     let last_username = state.last_username.unwrap_or_default();
 
-    let mut form_data = use_signal(move || {
+    let form_data = use_signal(move || {
         serde_json::json!({
             "username": last_username,
             "password": ""

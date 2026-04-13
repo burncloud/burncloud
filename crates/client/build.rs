@@ -6,11 +6,37 @@ const TAILWIND_VERSION: &str = "3.4.17";
 fn download_tailwind(cli: &std::path::Path, cli_name: &str) -> Result<(), String> {
     // Determine target triple and extension
     let (os, arch, ext) = if cfg!(target_os = "windows") {
-        ("windows", if cfg!(target_arch = "x86_64") { "x64" } else { "x86" }, ".exe")
+        (
+            "windows",
+            if cfg!(target_arch = "x86_64") {
+                "x64"
+            } else {
+                "x86"
+            },
+            ".exe",
+        )
     } else if cfg!(target_os = "macos") {
-        ("macos", if cfg!(target_arch = "aarch64") { "arm64" } else { "x64" }, "")
+        (
+            "macos",
+            if cfg!(target_arch = "aarch64") {
+                "arm64"
+            } else {
+                "x64"
+            },
+            "",
+        )
     } else {
-        ("linux", if cfg!(target_arch = "x86_64") { "x64" } else if cfg!(target_arch = "aarch64") { "arm64" } else { "x64" }, "")
+        (
+            "linux",
+            if cfg!(target_arch = "x86_64") {
+                "x64"
+            } else if cfg!(target_arch = "aarch64") {
+                "arm64"
+            } else {
+                "x64"
+            },
+            "",
+        )
     };
 
     let filename = format!("tailwindcss-{os}-{arch}{ext}");
@@ -77,7 +103,11 @@ fn main() {
     let config = manifest_dir.join("tailwind.config.js");
     let input = manifest_dir.join("input.css");
     let output = manifest_dir.join("src/assets/tailwind.css");
-    let cli_name = if cfg!(windows) { "tailwindcss.exe" } else { "tailwindcss" };
+    let cli_name = if cfg!(windows) {
+        "tailwindcss.exe"
+    } else {
+        "tailwindcss"
+    };
     let cli = manifest_dir.join(cli_name);
 
     println!("cargo:rerun-if-changed=tailwind.config.js");
@@ -99,14 +129,23 @@ fn main() {
         }
     }
 
-    let status = Command::new(&cli)
-        .arg("-c").arg(&config)
-        .arg("-i").arg(&input)
-        .arg("-o").arg(&output)
+    let status = match Command::new(&cli)
+        .arg("-c")
+        .arg(&config)
+        .arg("-i")
+        .arg(&input)
+        .arg("-o")
+        .arg(&output)
         .arg("--minify")
         .current_dir(&manifest_dir)
         .status()
-        .expect("failed to invoke tailwindcss CLI");
+    {
+        Ok(s) => s,
+        Err(e) => {
+            println!("cargo:warning=failed to invoke tailwindcss CLI: {e}");
+            return;
+        }
+    };
 
     if !status.success() {
         panic!("tailwindcss build failed with status: {status}");

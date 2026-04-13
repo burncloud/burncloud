@@ -167,7 +167,8 @@ impl PriceSyncService {
         }
 
         // All retries exhausted
-        let err = last_err.expect("last_err is set after at least one retry attempt");
+        let err = last_err
+            .ok_or_else(|| anyhow::anyhow!("last_err is set after at least one retry attempt"))?;
         let db_count = self.count_db_models().await.unwrap_or(0);
         if db_count > 0 {
             tracing::warn!(
@@ -223,11 +224,7 @@ impl PriceSyncService {
 
         for (model_name, model_pricing) in &config.models {
             // Extract model_type from metadata
-            let model_type = model_pricing.metadata.as_ref().and_then(|_m| {
-                // Infer model_type from model capabilities or explicit setting
-                // For now, we use None as model_type is not stored in ModelMetadata
-                None::<String>
-            });
+            let model_type: Option<String> = model_pricing.metadata.as_ref().and(None);
 
             // Convert extended pricing configs to JSON strings
             let voices_pricing_json = model_pricing.voices_pricing.as_ref().and_then(|vp| {
@@ -657,7 +654,7 @@ impl PriceSyncService {
         let mut updated_count = 0;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .expect("SystemTime is after UNIX_EPOCH")
+            .unwrap_or_default()
             .as_secs() as i64;
 
         let conn = self.db.get_connection()?;

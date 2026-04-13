@@ -40,11 +40,13 @@ pub fn GroupManager() -> Element {
     let mut selected_group_members = use_signal::<Vec<GroupMember>>(Vec::new);
 
     // Form State (New Group) - SchemaForm uses Signal<serde_json::Value>
-    let form_data = use_signal(|| serde_json::json!({
-        "name": "",
-        "strategy": "round_robin",
-        "match_path": "/v1/chat/completions"
-    }));
+    let form_data = use_signal(|| {
+        serde_json::json!({
+            "name": "",
+            "strategy": "round_robin",
+            "match_path": "/v1/chat/completions"
+        })
+    });
 
     let schema = group_schema();
 
@@ -84,14 +86,17 @@ pub fn GroupManager() -> Element {
 
     // Create group via SchemaForm submission
     let handle_create = {
-        let mut form_data = form_data.clone();
+        let mut form_data = form_data;
         move |value: serde_json::Value| {
             spawn(async move {
                 let client = Client::new();
                 let new_group = Group {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: value["name"].as_str().unwrap_or("").to_string(),
-                    strategy: value["strategy"].as_str().unwrap_or("round_robin").to_string(),
+                    strategy: value["strategy"]
+                        .as_str()
+                        .unwrap_or("round_robin")
+                        .to_string(),
                     match_path: value["match_path"].as_str().unwrap_or("").to_string(),
                 };
 

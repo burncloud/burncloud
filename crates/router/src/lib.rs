@@ -257,6 +257,7 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
 ///
 /// Triggers an immediate forced price sync. Waits up to 60 seconds for completion.
 /// Internal-only; no auth required (server is assumed behind firewall).
+#[allow(dead_code)]
 async fn price_sync_handler(State(state): State<AppState>) -> Response {
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if state.force_sync_tx.send(reply_tx).await.is_err() {
@@ -871,7 +872,7 @@ async fn proxy_handler(
     // Veo request-side billing: inject video_tokens when response has no usageMetadata
     let veo_tokens = if model_name
         .as_deref()
-        .map_or(false, |m| m.to_lowercase().contains("veo"))
+        .is_some_and(|m| m.to_lowercase().contains("veo"))
     {
         video_duration_secs * video_sample_count
     } else {
@@ -1510,6 +1511,7 @@ async fn proxy_logic(
                     .or_else(|| Some(serde_json::json!(req))); // Use converted or original
 
                 // Preserve stream flag and model in converted body for adaptor's build_request
+                #[allow(clippy::collapsible_match)]
                 if let Some(ref mut body) = converted {
                     if let serde_json::Value::Object(ref mut map) = body {
                         if original_stream {
