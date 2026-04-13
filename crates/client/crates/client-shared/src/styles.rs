@@ -423,6 +423,12 @@ html, body {
 }
 .bc-input-native:focus { outline: none; }
 
+/* Hide browser's built-in password reveal/clear buttons */
+.bc-input-native::-ms-reveal,
+.bc-input-native::-ms-clear {
+    display: none;
+}
+
 .bc-input-error-row {
     display: flex;
     align-items: center;
