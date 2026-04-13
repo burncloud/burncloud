@@ -84,7 +84,7 @@ pub fn GroupManager() -> Element {
 
     // Create group via SchemaForm submission
     let handle_create = {
-        let mut form_data = form_data.clone();
+        let mut form_data = form_data;
         move |value: serde_json::Value| {
             spawn(async move {
                 let client = Client::new();

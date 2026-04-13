@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn DeployConfig() -> Element {
-    let mut form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
+    let form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
     let mut is_deploying = use_signal(|| false);
     let nav = use_navigator();
     let toast = use_toast();

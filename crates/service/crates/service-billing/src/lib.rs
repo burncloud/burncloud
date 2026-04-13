@@ -21,7 +21,7 @@ pub mod types;
 pub mod usage;
 
 pub use cache::PriceCache;
-pub use calculator::CostCalculator;
+pub use calculator::{CostCalculator, RequestOptions};
 pub use counter::UnifiedTokenCounter;
 pub use error::{BillingError, ParseError};
 pub use types::{CostBreakdown, CostResult, UnifiedUsage};

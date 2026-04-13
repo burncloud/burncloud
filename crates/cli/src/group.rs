@@ -63,7 +63,9 @@ pub async fn cmd_group_list(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle group create command
 pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let name = matches.get_one::<String>("name").expect("required CLI argument");
+    let name = matches
+        .get_one::<String>("name")
+        .ok_or_else(|| anyhow::anyhow!("name argument is required"))?;
     let members_str = matches.get_one::<String>("members").cloned();
 
     // Generate a new UUID for the group
@@ -119,7 +121,9 @@ pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()>
 
 /// Handle group show command
 pub async fn cmd_group_show(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let id = matches.get_one::<String>("id").expect("required CLI argument");
+    let id = matches
+        .get_one::<String>("id")
+        .ok_or_else(|| anyhow::anyhow!("id argument is required"))?;
 
     // Fetch the group
     let group = RouterDatabase::get_group_by_id(db, id)
@@ -159,7 +163,9 @@ pub async fn cmd_group_show(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle group delete command
 pub async fn cmd_group_delete(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let id = matches.get_one::<String>("id").expect("required CLI argument");
+    let id = matches
+        .get_one::<String>("id")
+        .ok_or_else(|| anyhow::anyhow!("id argument is required"))?;
     let skip_confirm = matches.get_flag("yes");
 
     // Check if group exists
@@ -189,7 +195,9 @@ pub async fn cmd_group_delete(db: &Database, matches: &ArgMatches) -> Result<()>
 
 /// Handle group members command
 pub async fn cmd_group_members(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let id = matches.get_one::<String>("id").expect("required CLI argument");
+    let id = matches
+        .get_one::<String>("id")
+        .ok_or_else(|| anyhow::anyhow!("id argument is required"))?;
     let set_str = matches.get_one::<String>("set").cloned();
 
     // Check if group exists

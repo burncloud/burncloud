@@ -87,7 +87,7 @@ mod nano_map_as_dollars {
         let dollars_map: HashMap<String, f64> = HashMap::deserialize(deserializer)?;
         Ok(dollars_map
             .into_iter()
-            .map(|(k, v)| (k, dollars_to_nano(v) as i64))
+            .map(|(k, v)| (k, dollars_to_nano(v)))
             .collect())
     }
 }
@@ -439,15 +439,15 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                 pricing.insert(
                     currency.clone(),
                     CurrencyPricing {
-                        input_price: dollars_to_nano(text.input) as i64,
-                        output_price: dollars_to_nano(text.output) as i64,
+                        input_price: dollars_to_nano(text.input),
+                        output_price: dollars_to_nano(text.output),
                         image_output_price: block
                             .image
-                            .map(|img| dollars_to_nano(img.output) as i64),
+                            .map(|img| dollars_to_nano(img.output)),
                         audio_output_price: block
                             .audio
-                            .map(|aud| dollars_to_nano(aud.output) as i64),
-                        music_price: block.music.map(|m| dollars_to_nano(m.per) as i64),
+                            .map(|aud| dollars_to_nano(aud.output)),
+                        music_price: block.music.map(|m| dollars_to_nano(m.per)),
                         source: None,
                     },
                 );
@@ -456,10 +456,10 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                     cache_map.insert(
                         currency.clone(),
                         CachePricingConfig {
-                            cache_read_input_price: dollars_to_nano(cache.read) as i64,
+                            cache_read_input_price: dollars_to_nano(cache.read),
                             cache_creation_input_price: cache
                                 .write
-                                .map(|v| dollars_to_nano(v) as i64),
+                                .map(dollars_to_nano),
                         },
                     );
                 }
@@ -469,8 +469,8 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                     batch_map.insert(
                         currency.clone(),
                         BatchPricingConfig {
-                            batch_input_price: dollars_to_nano(batch.input) as i64,
-                            batch_output_price: dollars_to_nano(batch.output) as i64,
+                            batch_input_price: dollars_to_nano(batch.input),
+                            batch_output_price: dollars_to_nano(batch.output),
                         },
                     );
                 }
@@ -481,8 +481,8 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                         .map(|t| TieredPriceConfig {
                             tier_start: t.tier_start,
                             tier_end: t.tier_end,
-                            input_price: dollars_to_nano(t.input) as i64,
-                            output_price: dollars_to_nano(t.output) as i64,
+                            input_price: dollars_to_nano(t.input),
+                            output_price: dollars_to_nano(t.output),
                         })
                         .collect();
                     tiered_map.insert(currency, tier_configs);

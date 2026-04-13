@@ -18,7 +18,7 @@ pub fn LoginPage() -> Element {
     let state = ClientState::load();
     let last_username = state.last_username.unwrap_or_default();
 
-    let mut form_data = use_signal(move || {
+    let form_data = use_signal(move || {
         serde_json::json!({
             "username": last_username,
             "password": ""

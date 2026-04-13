@@ -13,10 +13,10 @@ pub async fn handle_install_command(matches: &ArgMatches) -> Result<()> {
     let status = matches.get_flag("status");
     let auto_deps = matches.get_flag("auto-deps");
     let software_id = matches.get_one::<String>("software");
-    let local_path = matches.get_one::<String>("local").map(|s| PathBuf::from(s));
+    let local_path = matches.get_one::<String>("local").map(PathBuf::from);
     let bundle_dir = matches
         .get_one::<String>("bundle")
-        .map(|s| PathBuf::from(s));
+        .map(PathBuf::from);
 
     let config = InstallerConfig::new()
         .with_auto_deps(auto_deps)
@@ -174,7 +174,7 @@ async fn handle_install(installer: &Installer, software_id: &str) -> Result<()> 
 async fn handle_install_local(
     installer: &Installer,
     software_id: &str,
-    local_path: &PathBuf,
+    local_path: &std::path::Path,
 ) -> Result<()> {
     match installer.get_software(software_id) {
         Some(software) => {

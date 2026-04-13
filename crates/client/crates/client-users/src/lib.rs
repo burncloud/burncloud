@@ -2,7 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::components::{
-    ActionDef, ActionEvent, BCBadge, BCButton, BCModal, BadgeVariant, ButtonVariant, FormMode,
+    ActionDef, ActionEvent, BCButton, BCModal, ButtonVariant, FormMode,
     SchemaForm, SchemaTable,
 };
 use burncloud_client_shared::schema::{topup_schema, user_schema};
@@ -81,8 +81,8 @@ pub fn UserPage() -> Element {
     };
 
     // Actions for user table
-    let uid_for_topup = selected_user_id();
-    let uname_for_topup = selected_username();
+    let _uid_for_topup = selected_user_id();
+    let _uname_for_topup = selected_username();
     let actions = vec![
         ActionDef {
             action_id: "topup".to_string(),

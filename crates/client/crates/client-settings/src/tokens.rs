@@ -19,7 +19,7 @@ pub fn TokenManager() -> Element {
     let schema = token_schema();
 
     let fetch_tokens = move || {
-        let toast = toast.clone();
+        let toast = toast;
         async move {
             loading.set(true);
             match TokenService::list().await {
@@ -44,7 +44,7 @@ pub fn TokenManager() -> Element {
     });
 
     let handle_create = move |value: serde_json::Value| {
-        let toast = toast.clone();
+        let toast = toast;
         spawn(async move {
             let user_id = value["user_id"].as_str().unwrap_or("").to_string();
             let quota_limit = value["quota_limit"].as_i64();
@@ -54,15 +54,12 @@ pub fn TokenManager() -> Element {
                     toast.success("令牌创建成功");
                     form_data.set(serde_json::Value::Object(serde_json::Map::new()));
                     // Refresh list
-                    match TokenService::list().await {
-                        Ok(list) => {
-                            let values: Vec<serde_json::Value> = list
-                                .into_iter()
-                                .filter_map(|t| serde_json::to_value(t).ok())
-                                .collect();
-                            tokens.set(values);
-                        }
-                        Err(_) => {}
+                    if let Ok(list) = TokenService::list().await {
+                        let values: Vec<serde_json::Value> = list
+                            .into_iter()
+                            .filter_map(|t| serde_json::to_value(t).ok())
+                            .collect();
+                        tokens.set(values);
                     }
                 }
                 Err(e) => {
@@ -81,8 +78,8 @@ pub fn TokenManager() -> Element {
     let handle_action = move |event: ActionEvent| {
         if event.action_id == "delete" {
             let token_str = event.row["token"].as_str().unwrap_or("").to_string();
-            let toast = toast.clone();
-            let mut tokens = tokens.clone();
+            let toast = toast;
+            let mut tokens = tokens;
             spawn(async move {
                 match TokenService::delete(&token_str).await {
                     Ok(_) => {

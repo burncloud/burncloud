@@ -84,7 +84,7 @@ pub fn RegisterPage() -> Element {
         });
     };
 
-    let form_data_for_keydown = form_data.clone();
+    let form_data_for_keydown = form_data;
     let handle_keydown = move |e: Event<KeyboardData>| {
         if e.key() != Key::Enter || loading() {
             return;

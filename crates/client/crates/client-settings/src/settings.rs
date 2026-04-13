@@ -5,7 +5,6 @@ use crate::groups::GroupManager;
 use crate::tokens::TokenManager;
 use burncloud_client_shared::components::{FormMode, SchemaForm};
 use burncloud_client_shared::i18n::{t, use_i18n, Language};
-use burncloud_client_shared::schema;
 use dioxus::prelude::*;
 
 /// General settings schema
@@ -56,7 +55,7 @@ pub fn SystemSettings() -> Element {
         Language::Zh => "zh",
         Language::En => "en",
     };
-    let mut settings_data = use_signal(move || serde_json::json!({
+    let settings_data = use_signal(move || serde_json::json!({
         "language": lang_val,
         "auto_start": "true",
         "auto_update": "true"

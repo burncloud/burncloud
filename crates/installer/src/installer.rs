@@ -359,7 +359,7 @@ impl Installer {
                 info!("Running installer: {}", local_path.display());
                 let status = if extension == "msi" {
                     Command::new("msiexec")
-                        .args(["/i", local_path.to_str().expect("installer path is valid UTF-8"), "/quiet", "/norestart"])
+                        .args(["/i", local_path.to_str().ok_or_else(|| InstallerError::Script("installer path is not valid UTF-8".to_string()))?, "/quiet", "/norestart"])
                         .status()
                         .map_err(|e| {
                             InstallerError::Script(format!("Failed to run MSI installer: {}", e))
@@ -486,7 +486,7 @@ impl Installer {
             let status = Command::new("msiexec")
                 .args([
                     "/i",
-                    installer_path.to_str().expect("installer path is valid UTF-8"),
+                    installer_path.to_str().ok_or_else(|| InstallerError::Script("installer path is not valid UTF-8".to_string()))?,
                     "/quiet",
                     "/norestart",
                 ])
@@ -1276,7 +1276,7 @@ impl Installer {
         if let Some(branch) = branch {
             clone_args.extend_from_slice(&["-b", branch]);
         }
-        clone_args.push(clone_dir.to_str().expect("clone dir path is valid UTF-8"));
+        clone_args.push(clone_dir.to_str().ok_or_else(|| InstallerError::Script("clone dir path is not valid UTF-8".to_string()))?);
 
         let clone_result = if self.config.platform.is_windows() {
             Command::new("cmd")
@@ -1444,9 +1444,9 @@ impl Installer {
             let status = Command::new("tar")
                 .args([
                     "-xzf",
-                    nodejs_path.to_str().expect("nodejs path is valid UTF-8"),
+                    nodejs_path.to_str().ok_or_else(|| InstallerError::Script("nodejs path is not valid UTF-8".to_string()))?,
                     "-C",
-                    nodejs_install_dir.to_str().expect("nodejs install dir path is valid UTF-8"),
+                    nodejs_install_dir.to_str().ok_or_else(|| InstallerError::Script("nodejs install dir path is not valid UTF-8".to_string()))?,
                 ])
                 .status()
                 .map_err(|e| InstallerError::Script(format!("Failed to extract tar.gz: {}", e)))?;

@@ -253,7 +253,7 @@ impl BundleCreator {
                     if let Some(nodejs_url) =
                         get_nodejs_download_url(version, self.platform.os, self.platform.arch)
                     {
-                        let nodejs_filename = nodejs_url.split('/').last().unwrap_or("nodejs.zip");
+                        let nodejs_filename = nodejs_url.split('/').next_back().unwrap_or("nodejs.zip");
                         let nodejs_path = nodejs_dir.join(nodejs_filename);
 
                         info!("Downloading Node.js {} from: {}", version, nodejs_url);
@@ -383,7 +383,7 @@ impl BundleCreator {
                         self.platform.arch,
                     ) {
                         // Determine filename from URL
-                        let nodejs_filename = nodejs_url.split('/').last().unwrap_or("nodejs.zip");
+                        let nodejs_filename = nodejs_url.split('/').next_back().unwrap_or("nodejs.zip");
                         let nodejs_path = platform_dir.join(nodejs_filename);
 
                         info!("Downloading Node.js from: {}", nodejs_url);
@@ -436,7 +436,7 @@ impl BundleCreator {
                     })?;
 
                     // Determine filename from URL
-                    let nodejs_filename = nodejs_url.split('/').last().unwrap_or("nodejs.zip");
+                    let nodejs_filename = nodejs_url.split('/').next_back().unwrap_or("nodejs.zip");
                     let nodejs_path = platform_dir.join(nodejs_filename);
 
                     info!("Downloading Node.js from: {}", nodejs_url);

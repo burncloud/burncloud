@@ -54,7 +54,10 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         Some(("create", sub_m)) => {
-            let user_id = sub_m.get_one::<String>("user-id").expect("required CLI argument").to_string();
+            let user_id = sub_m
+                .get_one::<String>("user-id")
+                .ok_or_else(|| anyhow::anyhow!("user-id argument is required"))?
+                .to_string();
             let name = sub_m.get_one::<String>("name").cloned();
             let quota = sub_m
                 .get_one::<String>("quota")
@@ -77,7 +80,9 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
             println!("Key: {}", token.key);
         }
         Some(("update", sub_m)) => {
-            let key = sub_m.get_one::<String>("key").expect("required CLI argument");
+            let key = sub_m
+                .get_one::<String>("key")
+                .ok_or_else(|| anyhow::anyhow!("key argument is required"))?;
             let name = sub_m.get_one::<String>("name").cloned();
             let quota = sub_m
                 .get_one::<String>("quota")
@@ -101,7 +106,9 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         Some(("delete", sub_m)) => {
-            let key = sub_m.get_one::<String>("key").expect("required CLI argument");
+            let key = sub_m
+                .get_one::<String>("key")
+                .ok_or_else(|| anyhow::anyhow!("key argument is required"))?;
             let skip_confirm = sub_m.get_flag("yes");
 
             if !skip_confirm {

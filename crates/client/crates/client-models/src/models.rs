@@ -107,7 +107,7 @@ impl ProviderType {
 /// 从 form data 构建 Channel struct
 fn build_channel_from_form(data: &serde_json::Value) -> Channel {
     let type_str = data["type"].as_str().unwrap_or("1");
-    let provider_type: i32 = type_str.parse().unwrap_or(1);
+    let _provider_type: i32 = type_str.parse().unwrap_or(1);
 
     let (final_type, final_base_url, final_models, param_override, header_override) = match type_str {
         "1" => {
@@ -233,7 +233,7 @@ pub fn ChannelPage() -> Element {
         is_modal_open.set(true);
     };
 
-    let channels_ref = channels.clone();
+    let channels_ref = channels;
     let mut select_provider = move |p: ProviderType| {
         // 生成随机名称
         let adjectives = vec![
@@ -351,7 +351,7 @@ pub fn ChannelPage() -> Element {
         });
     };
 
-    let handle_toggle_status = move |c: Channel| {
+    let _handle_toggle_status = move |c: Channel| {
         let mut new_c = c.clone();
         new_c.status = if c.status == 1 { 0 } else { 1 };
         spawn(async move {

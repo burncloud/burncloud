@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_service_router_log::{BillingService, BillingSummary, RouterLogService};
+use burncloud_service_router_log::{BillingService, RouterLogService};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]

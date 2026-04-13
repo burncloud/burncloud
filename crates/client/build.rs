@@ -99,14 +99,20 @@ fn main() {
         }
     }
 
-    let status = Command::new(&cli)
+    let status = match Command::new(&cli)
         .arg("-c").arg(&config)
         .arg("-i").arg(&input)
         .arg("-o").arg(&output)
         .arg("--minify")
         .current_dir(&manifest_dir)
         .status()
-        .expect("failed to invoke tailwindcss CLI");
+    {
+        Ok(s) => s,
+        Err(e) => {
+            println!("cargo:warning=failed to invoke tailwindcss CLI: {e}");
+            return;
+        }
+    };
 
     if !status.success() {
         panic!("tailwindcss build failed with status: {status}");

@@ -555,24 +555,13 @@ impl RouterDatabase {
 }
 
 /// Usage statistics for a user over a time period
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UsageStats {
     pub total_requests: i64,
     pub total_prompt_tokens: i64,
     pub total_completion_tokens: i64,
     /// Total cost in nanodollars
     pub total_cost_nano: i64,
-}
-
-impl Default for UsageStats {
-    fn default() -> Self {
-        Self {
-            total_requests: 0,
-            total_prompt_tokens: 0,
-            total_completion_tokens: 0,
-            total_cost_nano: 0,
-        }
-    }
 }
 
 /// Usage statistics grouped by model
@@ -632,7 +621,7 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
     let threshold = match period {
         "day" => now - 24 * 60 * 60,
         "week" => now - 7 * 24 * 60 * 60,
-        "month" | _ => now - 30 * 24 * 60 * 60, // Default to month
+        _ => now - 30 * 24 * 60 * 60, // Default to month
     };
 
     let sql = if is_postgres {

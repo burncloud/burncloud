@@ -66,7 +66,7 @@ pub fn AccessCredentialsPage() -> Element {
 
     // Schema for the token form
     let schema = token_schema();
-    let mut form_data = use_signal(|| serde_json::json!({"user_id": "", "quota_limit": -1}));
+    let form_data = use_signal(|| serde_json::json!({"user_id": "", "quota_limit": -1}));
 
     let handle_generate = move |value: serde_json::Value| {
         spawn(async move {

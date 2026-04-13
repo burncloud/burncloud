@@ -174,7 +174,7 @@ impl ExchangeRateService {
         let conn = self.db.get_connection()?;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .expect("SystemTime is after UNIX_EPOCH")
+            .unwrap_or_default()
             .as_secs() as i64;
 
         let sql = match self.db.kind().as_str() {

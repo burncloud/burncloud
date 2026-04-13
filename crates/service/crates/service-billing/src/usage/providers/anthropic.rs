@@ -13,6 +13,7 @@ use serde_json::Value;
 /// Streaming — two events:
 ///   - `message_start`: `{"type":"message_start","message":{"usage":{"input_tokens":N}}}`
 ///   - `message_delta`: `{"type":"message_delta","usage":{"output_tokens":M}}`
+///
 /// Cache tokens (Prompt Caching):
 ///   - `usage["cache_read_input_tokens"]`
 ///   - `usage["cache_creation_input_tokens"]`

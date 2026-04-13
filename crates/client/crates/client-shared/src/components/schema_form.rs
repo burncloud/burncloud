@@ -61,7 +61,7 @@ fn render_field(
     field: &serde_json::Value,
     mut data: Signal<serde_json::Value>,
     readonly: bool,
-    mut errors: Signal<HashMap<String, String>>,
+    errors: Signal<HashMap<String, String>>,
 ) -> Element {
     let key = field["key"].as_str().unwrap_or("").to_string();
     let label = field["label"].as_str().unwrap_or("").to_string();
@@ -103,9 +103,9 @@ fn render_field(
                     placeholder: placeholder.clone(),
                     error: error_msg,
                     oninput: move |e: FormEvent| {
-                        data.write().as_object_mut().map(|m| {
+                        if let Some(m) = data.write().as_object_mut() {
                             m.insert(key_c.clone(), serde_json::Value::String(e.value()));
-                        });
+                        }
                     }
                 }
             }
@@ -129,9 +129,9 @@ fn render_field(
                                 let json_val = v.parse::<i64>()
                                     .map(serde_json::Value::from)
                                     .unwrap_or(serde_json::Value::String(v));
-                                data.write().as_object_mut().map(|m| {
+                                if let Some(m) = data.write().as_object_mut() {
                                     m.insert(key_c.clone(), json_val);
-                                });
+                                }
                             }
                         }
                     }
@@ -161,9 +161,9 @@ fn render_field(
                             class: "bc-input-native",
                             disabled: field_readonly,
                             onchange: move |e: FormEvent| {
-                                data.write().as_object_mut().map(|m| {
+                                if let Some(m) = data.write().as_object_mut() {
                                     m.insert(key_c.clone(), serde_json::Value::String(e.value()));
-                                });
+                                }
                             },
                             for opt in options.iter() {
                                 {
@@ -193,10 +193,10 @@ fn render_field(
                         checked: "{checked}",
                         disabled: field_readonly,
                         onchange: move |_| {
-                            data.write().as_object_mut().map(|m| {
+                            if let Some(m) = data.write().as_object_mut() {
                                 let new_val = if checked { "false" } else { "true" };
                                 m.insert(key_c.clone(), serde_json::Value::String(new_val.to_string()));
-                            });
+                            }
                         }
                     }
                 }
@@ -217,9 +217,9 @@ fn render_field(
                             placeholder: "{placeholder}",
                             disabled: field_readonly,
                             oninput: move |e| {
-                                data.write().as_object_mut().map(|m| {
+                                if let Some(m) = data.write().as_object_mut() {
                                     m.insert(key_c.clone(), serde_json::Value::String(e.value()));
-                                });
+                                }
                             },
                             "{value_str}"
                         }
@@ -296,7 +296,7 @@ pub fn SchemaForm(
         if !val.is_object() {
             val = serde_json::Value::Object(serde_json::Map::new());
         }
-        let obj = val.as_object_mut().expect("just set to Object above");
+        let Some(obj) = val.as_object_mut() else { return; };
         for field in &init_fields {
             let key = field["key"].as_str().unwrap_or("");
             if !obj.contains_key(key) {
@@ -308,7 +308,7 @@ pub fn SchemaForm(
         init_data.set(val);
     });
 
-    let validate_fields = fields.clone();
+    let _validate_fields = fields.clone();
     let handle_submit = move |_| {
         let current_data = data.read().clone();
         let validation_errors = validate_schema(&schema, &current_data);
