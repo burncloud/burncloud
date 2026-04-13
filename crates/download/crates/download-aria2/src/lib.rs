@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+#[allow(clippy::disallowed_types)] // Value used for aria2 JSON-RPC protocol construction/parsing
 use serde_json::Value;
 
 // 常量定义
@@ -424,6 +425,7 @@ impl Aria2RpcClient {
             .await
             .map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
+        #[allow(clippy::disallowed_types)] // Value used for aria2 JSON-RPC response parsing
         let rpc_response: Value = response
             .json()
             .await

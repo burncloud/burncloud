@@ -1,3 +1,6 @@
+// JSON schema definition for UI forms — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use serde_json::json;
 
 /// Channel 实体的 JSON Schema 定义

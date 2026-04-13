@@ -1,3 +1,6 @@
+// LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 //! Dynamic Protocol Adaptor Module
 //!
 //! This module provides a dynamic adaptor that can be configured at runtime

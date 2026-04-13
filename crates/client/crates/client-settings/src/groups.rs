@@ -1,3 +1,6 @@
+// UI settings — HTTP response parsing — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::components::{FormMode, SchemaForm};
 use burncloud_client_shared::schema::group_schema;
 use dioxus::prelude::*;

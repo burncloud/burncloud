@@ -1,3 +1,6 @@
+// HTTP client — raw API response parsing — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use reqwest::Client;

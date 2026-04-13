@@ -1,3 +1,6 @@
+// LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use super::current_unix_timestamp;
 use burncloud_common::types::OpenAIChatRequest;
 use serde::{Deserialize, Serialize};

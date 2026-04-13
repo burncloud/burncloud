@@ -1,3 +1,7 @@
+// JSON schema definitions return serde_json::Value — these are UI form schemas,
+// not domain data types.
+#![allow(clippy::disallowed_types)]
+
 use serde_json::json;
 
 /// Group 实体的 JSON Schema 定义

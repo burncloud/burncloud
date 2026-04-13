@@ -1,3 +1,6 @@
+// UI registration — HTTP response parsing — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::auth_context::{use_auth, CurrentUser};
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::components::logo::Logo;

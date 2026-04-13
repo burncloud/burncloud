@@ -1,13 +1,12 @@
 use crate::AppState;
 use axum::{
     extract::{Path, State},
-    response::Json,
+    response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
 use burncloud_service_group::{DbGroup, DbGroupMember, GroupMemberService, GroupService};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 #[derive(Deserialize, Serialize)]
 pub struct GroupDto {
@@ -23,6 +22,22 @@ pub struct GroupMemberDto {
     pub weight: i32,
 }
 
+#[derive(Serialize)]
+struct GroupOpResult {
+    status: &'static str,
+    id: String,
+}
+
+#[derive(Serialize)]
+struct SetMembersResult {
+    status: &'static str,
+}
+
+#[derive(Serialize)]
+struct ApiError {
+    error: String,
+}
+
 impl From<GroupDto> for DbGroup {
     fn from(dto: GroupDto) -> Self {
         DbGroup {
@@ -34,6 +49,12 @@ impl From<GroupDto> for DbGroup {
     }
 }
 
+fn group_err(e: impl ToString) -> impl IntoResponse {
+    Json(ApiError {
+        error: e.to_string(),
+    })
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/groups", post(create_group).get(list_groups))
@@ -41,40 +62,51 @@ pub fn routes() -> Router<AppState> {
         .route("/groups/{id}/members", get(get_members).put(set_members))
 }
 
-async fn list_groups(State(state): State<AppState>) -> Json<Value> {
+async fn list_groups(State(state): State<AppState>) -> impl IntoResponse {
     match GroupService::get_all(&state.db).await {
-        Ok(groups) => Json(json!(groups)),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(groups) => Json(groups).into_response(),
+        Err(e) => group_err(e).into_response(),
     }
 }
 
-async fn create_group(State(state): State<AppState>, Json(payload): Json<GroupDto>) -> Json<Value> {
+async fn create_group(
+    State(state): State<AppState>,
+    Json(payload): Json<GroupDto>,
+) -> impl IntoResponse {
     let group: DbGroup = payload.into();
     match GroupService::create(&state.db, &group).await {
-        Ok(_) => Json(json!({ "status": "created", "id": group.id })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(_) => Json(GroupOpResult {
+            status: "created",
+            id: group.id,
+        })
+        .into_response(),
+        Err(e) => group_err(e).into_response(),
     }
 }
 
-async fn get_group(State(state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
+async fn get_group(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     match GroupService::get(&state.db, &id).await {
-        Ok(Some(g)) => Json(json!(g)),
-        Ok(None) => Json(json!({ "error": "Not Found" })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(Some(g)) => Json(g).into_response(),
+        Ok(None) => group_err("Not Found").into_response(),
+        Err(e) => group_err(e).into_response(),
     }
 }
 
-async fn delete_group(State(state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
+async fn delete_group(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     match GroupService::delete(&state.db, &id).await {
-        Ok(_) => Json(json!({ "status": "deleted", "id": id })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(_) => Json(GroupOpResult {
+            status: "deleted",
+            id,
+        })
+        .into_response(),
+        Err(e) => group_err(e).into_response(),
     }
 }
 
-async fn get_members(State(state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
+async fn get_members(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     match GroupMemberService::get_by_group(&state.db, &id).await {
-        Ok(members) => Json(json!(members)),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(members) => Json(members).into_response(),
+        Err(e) => group_err(e).into_response(),
     }
 }
 
@@ -82,7 +114,7 @@ async fn set_members(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<Vec<GroupMemberDto>>,
-) -> Json<Value> {
+) -> impl IntoResponse {
     let members: Vec<DbGroupMember> = payload
         .into_iter()
         .map(|m| DbGroupMember {
@@ -93,7 +125,7 @@ async fn set_members(
         .collect();
 
     match GroupMemberService::set_for_group(&state.db, &id, members).await {
-        Ok(_) => Json(json!({ "status": "updated" })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
+        Ok(_) => Json(SetMembersResult { status: "updated" }).into_response(),
+        Err(e) => group_err(e).into_response(),
     }
 }

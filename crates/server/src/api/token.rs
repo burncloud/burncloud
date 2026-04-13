@@ -1,13 +1,12 @@
 use crate::AppState;
 use axum::{
     extract::{Path, State},
-    response::Json,
+    response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
 use burncloud_service_token::{DbToken, TokenService};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize)]
@@ -21,6 +20,23 @@ pub struct UpdateTokenRequest {
     pub status: String,
 }
 
+#[derive(Serialize)]
+struct TokenOpResult {
+    status: &'static str,
+    token: String,
+}
+
+#[derive(Serialize)]
+struct ApiError {
+    error: String,
+}
+
+fn token_err(e: impl ToString) -> impl IntoResponse {
+    Json(ApiError {
+        error: e.to_string(),
+    })
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/console/api/tokens", post(create_token).get(list_tokens))
@@ -30,16 +46,16 @@ pub fn routes() -> Router<AppState> {
         )
 }
 
-async fn list_tokens(State(state): State<AppState>) -> Json<Value> {
+async fn list_tokens(State(state): State<AppState>) -> impl IntoResponse {
     log::info!("[API] list_tokens request received");
     match TokenService::list(&state.db).await {
         Ok(tokens) => {
             log::info!("[API] list_tokens success: found {} tokens", tokens.len());
-            Json(json!(tokens))
+            Json(tokens).into_response()
         }
         Err(e) => {
             log::error!("[API] list_tokens error: {}", e);
-            Json(json!({ "error": e.to_string() }))
+            token_err(e).into_response()
         }
     }
 }
@@ -47,7 +63,7 @@ async fn list_tokens(State(state): State<AppState>) -> Json<Value> {
 async fn create_token(
     State(state): State<AppState>,
     Json(payload): Json<CreateTokenRequest>,
-) -> Json<Value> {
+) -> impl IntoResponse {
     log::info!(
         "[API] create_token request: user_id={}, quota={:?}",
         payload.user_id,
@@ -69,11 +85,15 @@ async fn create_token(
     match TokenService::create(&state.db, &db_token).await {
         Ok(_) => {
             log::info!("[API] create_token success: {}", token_str);
-            Json(json!({ "status": "created", "token": token_str }))
+            Json(TokenOpResult {
+                status: "created",
+                token: token_str,
+            })
+            .into_response()
         }
         Err(e) => {
             log::error!("[API] create_token error: {}", e);
-            Json(json!({ "error": e.to_string() }))
+            token_err(e).into_response()
         }
     }
 }
@@ -82,34 +102,38 @@ async fn update_token(
     State(state): State<AppState>,
     Path(token): Path<String>,
     Json(payload): Json<UpdateTokenRequest>,
-) -> Json<Value> {
-    log::info!(
-        "[API] update_token request: {} -> {}",
-        token,
-        payload.status
-    );
+) -> impl IntoResponse {
+    log::info!("[API] update_token request: {} -> {}", token, payload.status);
     match TokenService::update_status(&state.db, &token, &payload.status).await {
         Ok(_) => {
             log::info!("[API] update_token success");
-            Json(json!({ "status": "updated", "token": token }))
+            Json(TokenOpResult {
+                status: "updated",
+                token,
+            })
+            .into_response()
         }
         Err(e) => {
             log::error!("[API] update_token error: {}", e);
-            Json(json!({ "error": e.to_string() }))
+            token_err(e).into_response()
         }
     }
 }
 
-async fn delete_token(State(state): State<AppState>, Path(token): Path<String>) -> Json<Value> {
+async fn delete_token(State(state): State<AppState>, Path(token): Path<String>) -> impl IntoResponse {
     log::info!("[API] delete_token request: {}", token);
     match TokenService::delete(&state.db, &token).await {
         Ok(_) => {
             log::info!("[API] delete_token success");
-            Json(json!({ "status": "deleted", "token": token }))
+            Json(TokenOpResult {
+                status: "deleted",
+                token,
+            })
+            .into_response()
         }
         Err(e) => {
             log::error!("[API] delete_token error: {}", e);
-            Json(json!({ "error": e.to_string() }))
+            token_err(e).into_response()
         }
     }
 }

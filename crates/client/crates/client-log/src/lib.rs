@@ -27,18 +27,15 @@ pub fn LogPage() -> Element {
         let client = reqwest::Client::new();
         let res = client.get("/console/api/logs").send().await;
 
+        #[derive(Deserialize)]
+        struct LogPageResponse {
+            data: Vec<LogEntry>,
+        }
+
         match res {
             Ok(r) => {
-                if let Ok(data) = r.json::<serde_json::Value>().await {
-                    if let Some(arr) = data.get("data").and_then(|d| d.as_array()) {
-                        let mut entries = vec![];
-                        for item in arr {
-                            if let Ok(entry) = serde_json::from_value::<LogEntry>(item.clone()) {
-                                entries.push(entry);
-                            }
-                        }
-                        return entries;
-                    }
+                if let Ok(page) = r.json::<LogPageResponse>().await {
+                    return page.data;
                 }
             }
             Err(e) => {

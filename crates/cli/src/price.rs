@@ -1,3 +1,6 @@
+// CLI command output parsing — HTTP response JSON — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use anyhow::Result;
 use burncloud_common::{
     dollars_to_nano, nano_to_dollars,

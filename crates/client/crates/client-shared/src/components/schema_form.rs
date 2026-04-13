@@ -1,3 +1,6 @@
+// Dynamic form rendering from JSON schema — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use dioxus::prelude::*;
 use std::collections::HashMap;
 

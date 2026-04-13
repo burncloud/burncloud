@@ -1,3 +1,6 @@
+// LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 //! z.ai Adaptor
 //!
 //! z.ai uses an Anthropic-compatible API with Bearer authentication.

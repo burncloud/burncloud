@@ -1,3 +1,6 @@
+// LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use super::factory::ChannelAdaptor;
 use super::gemini::GeminiAdaptor;
 use anyhow::{Context, Result};

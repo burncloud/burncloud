@@ -1,3 +1,6 @@
+// UsageParser trait uses &Value in its interface — LLM API responses are dynamic JSON.
+#![allow(clippy::disallowed_types)]
+
 pub mod providers;
 
 use crate::error::ParseError;

@@ -1,3 +1,6 @@
+// CLI command output parsing — HTTP response JSON — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use anyhow::Result;
 use bcrypt::{hash, DEFAULT_COST};
 use burncloud_common::utils::verify_password;

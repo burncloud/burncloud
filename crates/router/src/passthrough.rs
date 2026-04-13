@@ -1,3 +1,6 @@
+// Router passthrough — raw LLM API proxying — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 //! Gemini Passthrough Detection Module
 //!
 //! This module provides detection logic for determining when to use passthrough mode
