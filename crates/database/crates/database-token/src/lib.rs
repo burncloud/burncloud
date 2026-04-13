@@ -3,7 +3,8 @@
 //! This crate handles all database operations related to API tokens,
 //! including validation, quota tracking, and CRUD operations.
 
-use burncloud_database::{Database, Result};
+use burncloud_common::CrudRepository;
+use burncloud_database::{Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -259,5 +260,61 @@ impl TokenModel {
 
         tx.commit().await?;
         Ok(true)
+    }
+}
+
+/// Repository wrapper that implements the standard [`CrudRepository`] contract for tokens.
+///
+/// The token string itself serves as the record ID.
+/// `update` replaces the full token record: delete + re-insert with the caller-provided
+/// `id` as the token value, keeping the rest of `input` intact.
+pub struct TokenRepository<'a>(pub &'a Database);
+
+#[async_trait::async_trait]
+impl<'a> CrudRepository<DbToken, String, DatabaseError> for TokenRepository<'a> {
+    async fn find_by_id(&self, id: &String) -> Result<Option<DbToken>> {
+        let conn = self.0.get_connection()?;
+        let sql = if self.0.kind() == "postgres" {
+            "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = $1"
+        } else {
+            "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ?"
+        };
+        let result = sqlx::query_as::<_, DbToken>(sql)
+            .bind(id)
+            .fetch_optional(conn.pool())
+            .await?;
+        Ok(result)
+    }
+
+    async fn list(&self) -> Result<Vec<DbToken>> {
+        TokenModel::list(self.0).await
+    }
+
+    async fn create(&self, input: &DbToken) -> Result<DbToken> {
+        TokenModel::create(self.0, input).await?;
+        self.find_by_id(&input.token)
+            .await?
+            .ok_or_else(|| DatabaseError::Query("token disappeared after insert".to_string()))
+    }
+
+    async fn update(&self, id: &String, input: &DbToken) -> Result<bool> {
+        let exists = self.find_by_id(id).await?.is_some();
+        if !exists {
+            return Ok(false);
+        }
+        // Delete old token, then insert the new record with the canonical id.
+        TokenModel::delete(self.0, id).await?;
+        let mut record = input.clone();
+        record.token = id.clone();
+        TokenModel::create(self.0, &record).await?;
+        Ok(true)
+    }
+
+    async fn delete(&self, id: &String) -> Result<bool> {
+        let exists = self.find_by_id(id).await?.is_some();
+        if exists {
+            TokenModel::delete(self.0, id).await?;
+        }
+        Ok(exists)
     }
 }

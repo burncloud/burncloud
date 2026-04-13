@@ -3,7 +3,8 @@
 //! This crate handles all database operations related to upstream groups,
 //! which are used for load balancing and routing strategies.
 
-use burncloud_database::{Database, Result};
+use burncloud_common::CrudRepository;
+use burncloud_database::{Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -167,5 +168,50 @@ impl GroupMemberModel {
                 .await?;
         }
         Ok(())
+    }
+}
+
+/// Repository wrapper that implements the standard [`CrudRepository`] contract for groups.
+///
+/// Note: `GroupModel` has no update method — groups are replaced by delete + create.
+/// The `update` implementation here mirrors that: delete then create with the new data
+/// and the canonical `id`.
+pub struct GroupRepository<'a>(pub &'a Database);
+
+#[async_trait::async_trait]
+impl<'a> CrudRepository<DbGroup, String, DatabaseError> for GroupRepository<'a> {
+    async fn find_by_id(&self, id: &String) -> Result<Option<DbGroup>> {
+        GroupModel::get(self.0, id).await
+    }
+
+    async fn list(&self) -> Result<Vec<DbGroup>> {
+        GroupModel::get_all(self.0).await
+    }
+
+    async fn create(&self, input: &DbGroup) -> Result<DbGroup> {
+        GroupModel::create(self.0, input).await?;
+        GroupModel::get(self.0, &input.id)
+            .await?
+            .ok_or_else(|| DatabaseError::Query("group disappeared after insert".to_string()))
+    }
+
+    async fn update(&self, id: &String, input: &DbGroup) -> Result<bool> {
+        let exists = GroupModel::get(self.0, id).await?.is_some();
+        if !exists {
+            return Ok(false);
+        }
+        GroupModel::delete(self.0, id).await?;
+        let mut record = input.clone();
+        record.id = id.clone();
+        GroupModel::create(self.0, &record).await?;
+        Ok(true)
+    }
+
+    async fn delete(&self, id: &String) -> Result<bool> {
+        let exists = GroupModel::get(self.0, id).await?.is_some();
+        if exists {
+            GroupModel::delete(self.0, id).await?;
+        }
+        Ok(exists)
     }
 }
