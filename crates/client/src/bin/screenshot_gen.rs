@@ -13,7 +13,7 @@ fn MockApp() -> Element {
     burncloud_client_shared::i18n::use_init_i18n();
     burncloud_client_shared::use_init_toast();
     burncloud_client_shared::use_init_auth();
-    
+
     rsx! {
         Router::<MockRoute> {}
     }

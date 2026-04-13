@@ -28,7 +28,10 @@ pub fn RegisterPage() -> Element {
         let current = form_data.read().clone();
         let uname = current["username"].as_str().unwrap_or("").to_string();
         let pwd = current["password"].as_str().unwrap_or("").to_string();
-        let confirm = current["confirm_password"].as_str().unwrap_or("").to_string();
+        let confirm = current["confirm_password"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let mail = current["email"].as_str().unwrap_or("").to_string();
 
         // Validate required fields
@@ -92,7 +95,10 @@ pub fn RegisterPage() -> Element {
         let current = form_data_for_keydown.read().clone();
         let uname = current["username"].as_str().unwrap_or("").to_string();
         let pwd = current["password"].as_str().unwrap_or("").to_string();
-        let confirm = current["confirm_password"].as_str().unwrap_or("").to_string();
+        let confirm = current["confirm_password"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let mail = current["email"].as_str().unwrap_or("").to_string();
 
         if uname.is_empty() || pwd.is_empty() || confirm.is_empty() || pwd != confirm {

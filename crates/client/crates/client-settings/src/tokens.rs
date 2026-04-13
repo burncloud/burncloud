@@ -84,7 +84,9 @@ pub fn TokenManager() -> Element {
                 match TokenService::delete(&token_str).await {
                     Ok(_) => {
                         toast.success("令牌已删除");
-                        tokens.write().retain(|t| t["token"].as_str() != Some(&token_str));
+                        tokens
+                            .write()
+                            .retain(|t| t["token"].as_str() != Some(&token_str));
                     }
                     Err(e) => {
                         toast.error(&format!("删除失败: {}", e));

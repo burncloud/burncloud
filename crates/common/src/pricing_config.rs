@@ -441,12 +441,8 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                     CurrencyPricing {
                         input_price: dollars_to_nano(text.input),
                         output_price: dollars_to_nano(text.output),
-                        image_output_price: block
-                            .image
-                            .map(|img| dollars_to_nano(img.output)),
-                        audio_output_price: block
-                            .audio
-                            .map(|aud| dollars_to_nano(aud.output)),
+                        image_output_price: block.image.map(|img| dollars_to_nano(img.output)),
+                        audio_output_price: block.audio.map(|aud| dollars_to_nano(aud.output)),
                         music_price: block.music.map(|m| dollars_to_nano(m.per)),
                         source: None,
                     },
@@ -457,9 +453,7 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                         currency.clone(),
                         CachePricingConfig {
                             cache_read_input_price: dollars_to_nano(cache.read),
-                            cache_creation_input_price: cache
-                                .write
-                                .map(dollars_to_nano),
+                            cache_creation_input_price: cache.write.map(dollars_to_nano),
                         },
                     );
                 }

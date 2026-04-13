@@ -103,7 +103,11 @@ async fn update_token(
     Path(token): Path<String>,
     Json(payload): Json<UpdateTokenRequest>,
 ) -> impl IntoResponse {
-    log::info!("[API] update_token request: {} -> {}", token, payload.status);
+    log::info!(
+        "[API] update_token request: {} -> {}",
+        token,
+        payload.status
+    );
     match TokenService::update_status(&state.db, &token, &payload.status).await {
         Ok(_) => {
             log::info!("[API] update_token success");
@@ -120,7 +124,10 @@ async fn update_token(
     }
 }
 
-async fn delete_token(State(state): State<AppState>, Path(token): Path<String>) -> impl IntoResponse {
+async fn delete_token(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> impl IntoResponse {
     log::info!("[API] delete_token request: {}", token);
     match TokenService::delete(&state.db, &token).await {
         Ok(_) => {

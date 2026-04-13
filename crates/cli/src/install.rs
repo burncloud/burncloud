@@ -14,9 +14,7 @@ pub async fn handle_install_command(matches: &ArgMatches) -> Result<()> {
     let auto_deps = matches.get_flag("auto-deps");
     let software_id = matches.get_one::<String>("software");
     let local_path = matches.get_one::<String>("local").map(PathBuf::from);
-    let bundle_dir = matches
-        .get_one::<String>("bundle")
-        .map(PathBuf::from);
+    let bundle_dir = matches.get_one::<String>("bundle").map(PathBuf::from);
 
     let config = InstallerConfig::new()
         .with_auto_deps(auto_deps)

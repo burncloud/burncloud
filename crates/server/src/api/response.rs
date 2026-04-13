@@ -15,7 +15,10 @@ pub struct ApiFailure {
 }
 
 pub fn ok<T: Serialize>(data: T) -> impl IntoResponse {
-    Json(ApiSuccess { success: true, data })
+    Json(ApiSuccess {
+        success: true,
+        data,
+    })
 }
 
 pub fn err(msg: impl ToString) -> impl IntoResponse {

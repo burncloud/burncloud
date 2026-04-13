@@ -359,7 +359,16 @@ impl Installer {
                 info!("Running installer: {}", local_path.display());
                 let status = if extension == "msi" {
                     Command::new("msiexec")
-                        .args(["/i", local_path.to_str().ok_or_else(|| InstallerError::Script("installer path is not valid UTF-8".to_string()))?, "/quiet", "/norestart"])
+                        .args([
+                            "/i",
+                            local_path.to_str().ok_or_else(|| {
+                                InstallerError::Script(
+                                    "installer path is not valid UTF-8".to_string(),
+                                )
+                            })?,
+                            "/quiet",
+                            "/norestart",
+                        ])
                         .status()
                         .map_err(|e| {
                             InstallerError::Script(format!("Failed to run MSI installer: {}", e))
@@ -486,7 +495,9 @@ impl Installer {
             let status = Command::new("msiexec")
                 .args([
                     "/i",
-                    installer_path.to_str().ok_or_else(|| InstallerError::Script("installer path is not valid UTF-8".to_string()))?,
+                    installer_path.to_str().ok_or_else(|| {
+                        InstallerError::Script("installer path is not valid UTF-8".to_string())
+                    })?,
                     "/quiet",
                     "/norestart",
                 ])
@@ -592,8 +603,9 @@ impl Installer {
             for entry in std::fs::read_dir(&temp_dir)
                 .map_err(|e| InstallerError::Script(format!("Failed to read temp dir: {}", e)))?
             {
-                let entry = entry
-                    .map_err(|e| InstallerError::Script(format!("Failed to read dir entry: {}", e)))?;
+                let entry = entry.map_err(|e| {
+                    InstallerError::Script(format!("Failed to read dir entry: {}", e))
+                })?;
                 let path = entry.path();
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if ext == "exe" || ext == "msi" {
@@ -1276,7 +1288,9 @@ impl Installer {
         if let Some(branch) = branch {
             clone_args.extend_from_slice(&["-b", branch]);
         }
-        clone_args.push(clone_dir.to_str().ok_or_else(|| InstallerError::Script("clone dir path is not valid UTF-8".to_string()))?);
+        clone_args.push(clone_dir.to_str().ok_or_else(|| {
+            InstallerError::Script("clone dir path is not valid UTF-8".to_string())
+        })?);
 
         let clone_result = if self.config.platform.is_windows() {
             Command::new("cmd")
@@ -1444,9 +1458,15 @@ impl Installer {
             let status = Command::new("tar")
                 .args([
                     "-xzf",
-                    nodejs_path.to_str().ok_or_else(|| InstallerError::Script("nodejs path is not valid UTF-8".to_string()))?,
+                    nodejs_path.to_str().ok_or_else(|| {
+                        InstallerError::Script("nodejs path is not valid UTF-8".to_string())
+                    })?,
                     "-C",
-                    nodejs_install_dir.to_str().ok_or_else(|| InstallerError::Script("nodejs install dir path is not valid UTF-8".to_string()))?,
+                    nodejs_install_dir.to_str().ok_or_else(|| {
+                        InstallerError::Script(
+                            "nodejs install dir path is not valid UTF-8".to_string(),
+                        )
+                    })?,
                 ])
                 .status()
                 .map_err(|e| InstallerError::Script(format!("Failed to extract tar.gz: {}", e)))?;

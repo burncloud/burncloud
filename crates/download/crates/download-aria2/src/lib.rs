@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-#[allow(clippy::disallowed_types)] // Value used for aria2 JSON-RPC protocol construction/parsing
+#[allow(clippy::disallowed_types)]
+// Value used for aria2 JSON-RPC protocol construction/parsing
 use serde_json::Value;
 
 // 常量定义
@@ -641,7 +642,12 @@ impl Aria2Daemon {
     pub async fn stop(&mut self) {
         self.is_running.store(false, Ordering::SeqCst);
 
-        if let Some(ref mut instance) = self.instance.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        if let Some(ref mut instance) = self
+            .instance
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_mut()
+        {
             let _ = instance.kill();
         }
 

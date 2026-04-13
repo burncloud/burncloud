@@ -167,7 +167,8 @@ impl PriceSyncService {
         }
 
         // All retries exhausted
-        let err = last_err.ok_or_else(|| anyhow::anyhow!("last_err is set after at least one retry attempt"))?;
+        let err = last_err
+            .ok_or_else(|| anyhow::anyhow!("last_err is set after at least one retry attempt"))?;
         let db_count = self.count_db_models().await.unwrap_or(0);
         if db_count > 0 {
             tracing::warn!(

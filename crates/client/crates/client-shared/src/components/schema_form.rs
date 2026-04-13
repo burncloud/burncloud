@@ -34,11 +34,7 @@ fn is_visible(data: &serde_json::Value, condition: &serde_json::Value) -> bool {
     let field_name = condition["field"].as_str().unwrap_or("");
     let allowed = condition["in"]
         .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>()
-        })
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
         .unwrap_or_default();
 
     let current = data.get(field_name).and_then(|v| v.as_str()).unwrap_or("");
@@ -145,10 +141,7 @@ fn render_field(
             }
         }
         "select" => {
-            let options = field["options"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
+            let options = field["options"].as_array().cloned().unwrap_or_default();
             let key_c = key.clone();
             let current_val = value_str.clone();
             rsx! {
@@ -282,10 +275,7 @@ pub fn SchemaForm(
 ) -> Element {
     let mut errors: Signal<HashMap<String, String>> = use_signal(HashMap::new);
 
-    let fields = schema["fields"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let fields = schema["fields"].as_array().cloned().unwrap_or_default();
     let is_readonly = mode == FormMode::View;
 
     // 初始化默认值
@@ -296,7 +286,9 @@ pub fn SchemaForm(
         if !val.is_object() {
             val = serde_json::Value::Object(serde_json::Map::new());
         }
-        let Some(obj) = val.as_object_mut() else { return; };
+        let Some(obj) = val.as_object_mut() else {
+            return;
+        };
         for field in &init_fields {
             let key = field["key"].as_str().unwrap_or("");
             if !obj.contains_key(key) {

@@ -71,7 +71,9 @@ pub fn validate_username(username: &str) -> bool {
         return false;
     }
 
-    USERNAME_REGEX.as_ref().is_some_and(|re| re.is_match(username))
+    USERNAME_REGEX
+        .as_ref()
+        .is_some_and(|re| re.is_match(username))
 }
 
 /// Get username validation error message

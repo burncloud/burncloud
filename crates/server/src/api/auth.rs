@@ -71,10 +71,18 @@ async fn create_user(
 ) -> impl IntoResponse {
     match state
         .user_service
-        .register_user(&state.db, &payload.username, &payload.password, payload.email)
+        .register_user(
+            &state.db,
+            &payload.username,
+            &payload.password,
+            payload.email,
+        )
         .await
     {
-        Ok(user_id) => match state.user_service.generate_token(&user_id, &payload.username) {
+        Ok(user_id) => match state
+            .user_service
+            .generate_token(&user_id, &payload.username)
+        {
             Ok(auth_token) => ok(AuthData {
                 id: user_id,
                 username: payload.username,
@@ -95,10 +103,7 @@ async fn create_user(
     }
 }
 
-async fn login(
-    State(state): State<AppState>,
-    Json(payload): Json<LoginDto>,
-) -> impl IntoResponse {
+async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> impl IntoResponse {
     match state
         .user_service
         .login_user(&state.db, &payload.username, &payload.password)

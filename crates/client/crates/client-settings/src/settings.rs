@@ -55,11 +55,13 @@ pub fn SystemSettings() -> Element {
         Language::Zh => "zh",
         Language::En => "en",
     };
-    let settings_data = use_signal(move || serde_json::json!({
-        "language": lang_val,
-        "auto_start": "true",
-        "auto_update": "true"
-    }));
+    let settings_data = use_signal(move || {
+        serde_json::json!({
+            "language": lang_val,
+            "auto_start": "true",
+            "auto_update": "true"
+        })
+    });
 
     let settings_schema_val = settings_schema();
 
