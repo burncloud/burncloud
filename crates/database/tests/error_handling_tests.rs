@@ -332,6 +332,7 @@ async fn test_resource_cleanup_on_errors() {
 }
 
 // Helper function for tests
+#[allow(dead_code)]
 fn get_test_default_path() -> Result<PathBuf> {
     use burncloud_database::DatabaseError;
 

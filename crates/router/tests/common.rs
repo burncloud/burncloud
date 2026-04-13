@@ -12,6 +12,7 @@ pub async fn setup_db() -> anyhow::Result<(Database, AnyPool)> {
     Ok((db, pool))
 }
 
+#[allow(dead_code)]
 pub async fn start_test_server(port: u16) {
     // Ensure MASTER_KEY is set for tests that need encryption (e.g. upstream API keys).
     // Use a fixed 64-hex-char test key; does not affect production.
@@ -42,39 +43,8 @@ pub async fn start_test_server(port: u16) {
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 }
 
+#[allow(dead_code)]
 pub async fn start_mock_upstream(listener: TcpListener) {
-    let handler = |headers: axum::http::HeaderMap, body: String| async move {
-        // Return a structure similar to HttpBin's response for verification
-        let mut header_map = serde_json::Map::new();
-        for (k, v) in headers {
-            if let Some(key) = k {
-                header_map.insert(
-                    key.to_string(),
-                    serde_json::Value::String(v.to_str().unwrap_or_default().to_string()),
-                );
-            }
-        }
-
-        // Construct a response that mimics HttpBin's /anything
-        // Specifically, Balancer test checks for `json["url"]`
-        // We need to inject the request URL into the response.
-        // But the handler doesn't know the full URL requested (host/port).
-        // The headers might contain Host.
-        // Or we can just mock it based on expected behavior.
-        // Balancer test expects `url` to contain `/u1` or `/u2`.
-        // We can check the path from the request URI if we had it.
-        // Let's change the handler signature to accept URI.
-
-        serde_json::json!({
-            "headers": header_map,
-            "data": body,
-            "json": serde_json::from_str::<serde_json::Value>(&body).ok(),
-            "url": "http://mocked/u1/group-test" // This needs to be dynamic!
-        })
-        .to_string()
-    };
-
-    // Improved handler to capture URI
     let handler = |method: axum::http::Method,
                    uri: axum::http::Uri,
                    headers: axum::http::HeaderMap,
@@ -91,7 +61,7 @@ pub async fn start_mock_upstream(listener: TcpListener) {
 
         serde_json::json!({
             "method": method.to_string(),
-            "url": uri.to_string(), // This will be the path only (e.g. /anything/u1/group-test) unless absolute form used
+            "url": uri.to_string(),
             "headers": header_map,
             "data": body,
             "json": serde_json::from_str::<serde_json::Value>(&body).ok()

@@ -13,7 +13,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [[example]]
-name = "usage"
+name = "database-setting-usage"
 path = "examples/usage.rs"
 
 [lints]

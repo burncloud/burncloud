@@ -1,7 +1,6 @@
 use burncloud_database::{create_default_database, Database, DatabaseError, Result};
 use std::fs;
 use std::path::PathBuf;
-use tempfile::TempDir;
 
 /// Integration tests for the default database location feature
 /// These tests focus on functional validation and real-world scenarios
@@ -34,6 +33,7 @@ async fn test_create_default_database_end_to_end() {
 
             // Verify data can be retrieved
             #[derive(sqlx::FromRow)]
+            #[allow(dead_code)]
             struct TestRow {
                 id: i64,
                 name: String,

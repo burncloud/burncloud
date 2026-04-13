@@ -499,7 +499,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_preflight_found() {
-        use burncloud_common::types::Price;
         let cache = PriceCache::empty();
         let price = make_price(5_000, 15_000);
         {

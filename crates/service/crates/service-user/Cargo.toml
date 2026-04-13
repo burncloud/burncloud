@@ -20,5 +20,9 @@ chrono.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 
+[[example]]
+name = "service-user-usage"
+path = "examples/usage.rs"
+
 [lints]
 workspace = true

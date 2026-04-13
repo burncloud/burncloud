@@ -2,8 +2,7 @@ mod common;
 
 use burncloud_common::dollars_to_nano;
 use burncloud_common::pricing_config::{
-    CachePricingConfig, CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
-    TieredPriceConfig,
+    CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
 };
 use burncloud_database::create_database_with_url;
 use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};

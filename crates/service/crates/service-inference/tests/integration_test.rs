@@ -1,4 +1,4 @@
-use burncloud_database::{create_default_database, Database};
+use burncloud_database::create_default_database;
 use burncloud_database_router::RouterDatabase;
 use burncloud_service_inference::{InferenceConfig, InferenceService, InstanceStatus};
 use std::env;

@@ -16,5 +16,9 @@ serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true
 
+[[example]]
+name = "service-models-usage"
+path = "examples/usage.rs"
+
 [lints]
 workspace = true

@@ -9,7 +9,7 @@ use uuid::Uuid;
 /// Test invalid token returns 401
 #[tokio::test]
 async fn test_invalid_token_returns_401() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, _pool) = setup_db().await?;
     let port = 3030;
     start_test_server(port).await;
 

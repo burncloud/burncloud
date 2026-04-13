@@ -88,6 +88,7 @@ async fn test_concurrent_database_access() {
 
         // Verify all data was inserted
         #[derive(sqlx::FromRow)]
+        #[allow(dead_code)]
         struct ConcurrentRow {
             id: i64,
             thread_id: i64,
@@ -331,6 +332,7 @@ async fn test_rapid_database_creation_and_destruction() {
 }
 
 // Helper function for tests
+#[allow(dead_code)]
 fn get_test_default_path() -> Result<std::path::PathBuf> {
     use burncloud_database::DatabaseError;
     use std::path::PathBuf;

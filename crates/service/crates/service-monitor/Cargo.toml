@@ -19,5 +19,10 @@ winapi.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
+
+[[example]]
+name = "service-monitor-basic-usage"
+path = "examples/basic_usage.rs"
+
 [lints]
 workspace = true

@@ -1,5 +1,4 @@
 use burncloud_database::{create_default_database, Database, DatabaseError};
-use tempfile::TempDir;
 
 /// API compatibility and regression tests
 /// These tests ensure backward compatibility and API consistency
@@ -84,6 +83,7 @@ async fn test_database_operation_consistency() {
 
         // Test fetch_one
         #[derive(sqlx::FromRow)]
+        #[allow(dead_code)]
         struct ApiTestRow {
             id: i64,
             name: String,
@@ -158,11 +158,11 @@ async fn test_error_type_consistency() {
     // Test that all database creation methods return consistent error types
 
     // Test with invalid paths
-    let invalid_path = "/definitely/invalid/path/test.db";
+    let _invalid_path = "/definitely/invalid/path/test.db";
 
     // Test with default database instead of invalid path
     // Since new_with_path is removed, test error handling with default database
-    let default_db_result = Database::new().await;
+    let _default_db_result = Database::new().await;
     // Default database creation might fail in test environments, which is acceptable
 
     // Both should return DatabaseError for invalid operations

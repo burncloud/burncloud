@@ -11,7 +11,7 @@ burncloud-database.workspace = true
 tokio.workspace = true
 
 [[example]]
-name = "usage"
+name = "service-setting-usage"
 path = "examples/usage.rs"
 
 [lints]

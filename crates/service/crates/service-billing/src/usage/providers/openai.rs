@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_parse_streaming_chunk_done() {
-        let parser = OpenAIParser;
+        let _parser = OpenAIParser;
         assert!(OpenAIParser
             .parse_streaming_chunk("data: [DONE]")
             .unwrap()

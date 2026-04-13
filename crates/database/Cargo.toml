@@ -28,7 +28,7 @@ dirs.workspace = true
 tempfile.workspace = true
 
 [[example]]
-name = "basic_usage"
+name = "database-basic-usage"
 path = "examples/basic_usage.rs"
 
 [[example]]
