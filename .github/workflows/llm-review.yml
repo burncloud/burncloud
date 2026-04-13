@@ -48,7 +48,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          RULES=$(cat docs/llm-review-rules.md)
+          RULES=$(cat docs/ci/llm-review-rules.md)
           DIFF=$(cat /tmp/pr_diff.txt)
 
           PROMPT="You are a code reviewer enforcing architecture rules for a Rust backend project.
@@ -136,10 +136,10 @@ jobs:
 
             let body;
             if (passed) {
-              body = '## 🤖 Architecture Review\n\n✅ **Passed** — no architectural violations detected.\n\n> Checked against `docs/llm-review-rules.md`';
+              body = '## 🤖 Architecture Review\n\n✅ **Passed** — no architectural violations detected.\n\n> Checked against `docs/ci/llm-review-rules.md`';
             } else {
               const list = violations.map(v => `- ${v}`).join('\n');
-              body = `## 🤖 Architecture Review\n\n❌ **Failed** — violations found:\n\n${list}\n\n> To override: add \`llm-review-skip: <reason>\` to the PR description (requires human review)\n> Rules: \`docs/llm-review-rules.md\``;
+              body = `## 🤖 Architecture Review\n\n❌ **Failed** — violations found:\n\n${list}\n\n> To override: add \`llm-review-skip: <reason>\` to the PR description (requires human review)\n> Rules: \`docs/ci/llm-review-rules.md\``;
             }
 
             github.rest.issues.createComment({
