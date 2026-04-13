@@ -2,6 +2,7 @@ pub mod api_client;
 pub mod auth_context;
 pub mod components;
 pub mod i18n;
+pub mod schema;
 pub mod services;
 pub mod styles;
 pub mod utils;

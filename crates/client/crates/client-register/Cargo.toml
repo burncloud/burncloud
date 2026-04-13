@@ -8,4 +8,5 @@ license = "MIT"
 [dependencies]
 dioxus = { workspace = true, features = ["router"] }
 tokio = { workspace = true, features = ["time"] }
+serde_json.workspace = true
 burncloud-client-shared = { path = "../client-shared" }

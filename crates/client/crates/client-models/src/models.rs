@@ -1,7 +1,13 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
-use burncloud_client_shared::components::{BCButton, BCInput, ButtonVariant};
+use burncloud_client_shared::components::{
+    ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,
+};
+use burncloud_client_shared::components::validate_schema;
+use burncloud_client_shared::schema::channel_schema;
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
+use rand::seq::SliceRandom;
+use rand::Rng;
 use serde_json::json;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -9,12 +15,23 @@ enum ProviderType {
     OpenAI = 1,
     Anthropic = 14,
     Google = 24,
-    Aws = 99,   // Custom mapping for UI
-    Azure = 98, // Custom mapping for UI
-    Local = 97, // Custom mapping for UI
+    Aws = 99,
+    Azure = 98,
+    Local = 97,
 }
 
 impl ProviderType {
+    fn value_str(&self) -> &'static str {
+        match self {
+            ProviderType::OpenAI => "1",
+            ProviderType::Anthropic => "14",
+            ProviderType::Google => "24",
+            ProviderType::Aws => "99",
+            ProviderType::Azure => "98",
+            ProviderType::Local => "97",
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
             ProviderType::OpenAI => "OpenAI",
@@ -37,7 +54,7 @@ impl ProviderType {
                 }
             },
             ProviderType::Anthropic => rsx! {
-                 svg {
+                svg {
                     view_box: "0 0 24 24",
                     class: "w-8 h-8",
                     fill: "currentColor",
@@ -84,395 +101,223 @@ impl ProviderType {
     }
 }
 
+/// 从 form data 构建 Channel struct
+fn build_channel_from_form(data: &serde_json::Value) -> Channel {
+    let type_str = data["type"].as_str().unwrap_or("1");
+    let provider_type: i32 = type_str.parse().unwrap_or(1);
+
+    let (final_type, final_base_url, final_models, param_override, header_override) = match type_str {
+        "1" => {
+            // OpenAI
+            (1, "https://api.openai.com".to_string(), "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string(), None, None)
+        }
+        "14" => {
+            // Anthropic
+            (14, "https://api.anthropic.com".to_string(), "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string(), None, None)
+        }
+        "24" => {
+            // Google
+            let auth_type = data["google_auth_type"].as_str().unwrap_or("api_key");
+            if auth_type == "vertex" {
+                let mut params = serde_json::Map::new();
+                if let Some(r) = data["google_region"].as_str() {
+                    params.insert("region".to_string(), json!(r));
+                }
+                if let Some(p) = data["google_project_id"].as_str() {
+                    if !p.is_empty() {
+                        params.insert("project_id".to_string(), json!(p));
+                    }
+                }
+                let base_url = "https://aiplatform.googleapis.com".to_string();
+                let models = "gemini-pro,gemini-1.5-pro".to_string();
+                (41, base_url, models, Some(serde_json::Value::Object(params).to_string()), None)
+            } else {
+                let base_url = "https://generativelanguage.googleapis.com".to_string();
+                let models = "gemini-pro,gemini-1.5-pro".to_string();
+                (24, base_url, models, None, None)
+            }
+        }
+        "99" => {
+            // AWS Bedrock
+            let region = data["aws_region"].as_str().unwrap_or("us-east-1");
+            let base_url = format!("https://bedrock-runtime.{}.amazonaws.com", region);
+            let models = data["aws_model_id"].as_str().unwrap_or("anthropic.claude-sonnet-4-5-20250929-v1:0").to_string();
+            let params = json!({
+                "aws_secret_key": data["aws_sk"].as_str().unwrap_or(""),
+                "region": region,
+                "auth_type": "aws_sigv4"
+            });
+            (1, base_url, models, Some(params.to_string()), None)
+        }
+        "98" => {
+            // Azure OpenAI
+            let resource = data["azure_resource"].as_str().unwrap_or("");
+            let deployment = data["azure_deployment"].as_str().unwrap_or("");
+            let base_url = format!("https://{}.openai.azure.com/openai/deployments/{}", resource, deployment);
+            let models = deployment.to_string();
+            let params = json!({
+                "api_version": data["azure_api_version"].as_str().unwrap_or("2023-05-15"),
+                "auth_type": "azure_ad"
+            });
+            let headers = json!({
+                "api-key": data["azure_key"].as_str().unwrap_or("")
+            });
+            (1, base_url, models, Some(params.to_string()), Some(headers.to_string()))
+        }
+        "97" => {
+            // Local
+            let base_url = data["local_url"].as_str().unwrap_or("http://localhost:8080").to_string();
+            (1, base_url, "local-model".to_string(), None, None)
+        }
+        _ => (1, String::new(), String::new(), None, None),
+    };
+
+    // 确定最终的 key 值
+    let final_key = match type_str {
+        "24" => {
+            let auth_type = data["google_auth_type"].as_str().unwrap_or("api_key");
+            if auth_type == "vertex" {
+                data["google_vertex_key"].as_str().unwrap_or("").to_string()
+            } else {
+                data["google_key"].as_str().unwrap_or("").to_string()
+            }
+        }
+        "98" => data["azure_key"].as_str().unwrap_or("").to_string(),
+        "99" => data["aws_key"].as_str().unwrap_or("").to_string(),
+        _ => data["key"].as_str().unwrap_or("").to_string(),
+    };
+
+    Channel {
+        id: data["id"].as_i64().unwrap_or(0),
+        type_: final_type,
+        name: data["name"].as_str().unwrap_or("").to_string(),
+        key: final_key,
+        base_url: final_base_url,
+        models: final_models,
+        group: data["group"].as_str().map(|s| s.to_string()),
+        status: data["status"].as_i64().unwrap_or(1) as i32,
+        priority: data["priority"].as_i64().unwrap_or(0) as i32,
+        weight: data["weight"].as_i64().unwrap_or(0) as i32,
+        param_override,
+        header_override,
+    }
+}
+
 #[component]
 pub fn ChannelPage() -> Element {
     let page = use_signal(|| 1);
     let limit = 10;
 
-    let mut channels =
-        use_resource(
-            move || async move { ChannelService::list(page(), limit).await.unwrap_or(vec![]) },
-        );
+    let mut channels = use_resource(
+        move || async move { ChannelService::list(page(), limit).await.unwrap_or(vec![]) },
+    );
 
     let mut is_modal_open = use_signal(|| false);
-    let mut modal_step = use_signal(|| 0); // 0: Select Provider, 1: Configure
-    let mut selected_provider = use_signal(|| ProviderType::OpenAI);
-
+    let mut modal_step = use_signal(|| 0);
     let mut is_delete_modal_open = use_signal(|| false);
     let mut delete_channel_id = use_signal(|| 0i64);
     let mut delete_channel_name = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();
 
-    // Form Fields
-    let mut form_id = use_signal(|| 0i64);
-    let mut form_name = use_signal(String::new);
-    // Common fields
-    let mut form_key = use_signal(String::new); // OpenAI Key, AWS AK, Azure Key
-                                                // AWS specific
-    let mut form_aws_sk = use_signal(String::new);
-    let mut form_aws_region = use_signal(|| "us-east-1".to_string());
-    let mut form_aws_model_id =
-        use_signal(|| "anthropic.claude-sonnet-4-5-20250929-v1:0".to_string());
-    // Azure specific
-    let mut form_azure_resource = use_signal(String::new);
-    let mut form_azure_deployment = use_signal(String::new);
-    let mut form_azure_api_version = use_signal(|| "2023-05-15".to_string());
-    // Local specific
-    let mut form_local_url = use_signal(|| "http://localhost:8080".to_string());
-    // Google specific
-    let mut form_google_auth_type = use_signal(|| "api_key".to_string()); // "api_key" or "vertex"
-    let mut form_google_region = use_signal(|| "us-central1".to_string());
-    let mut form_google_project_id = use_signal(String::new);
+    // Schema 驱动的表单数据
+    let mut form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
+    let schema = channel_schema();
 
     let open_create_modal = move |_| {
-        form_id.set(0);
-        modal_step.set(0); // Start at selection
-                           // Reset fields
-        form_name.set(String::new());
-        form_key.set(String::new());
-        form_aws_sk.set(String::new());
-        form_aws_region.set("us-east-1".to_string());
-        form_aws_model_id.set("anthropic.claude-sonnet-4-5-20250929-v1:0".to_string());
-        form_azure_resource.set(String::new());
-        form_azure_deployment.set(String::new());
-        form_google_auth_type.set("api_key".to_string());
-        form_google_region.set("us-central1".to_string());
-        form_google_project_id.set(String::new());
+        form_data.set(serde_json::Value::Object(serde_json::Map::new()));
+        modal_step.set(0);
         is_modal_open.set(true);
     };
 
+    let channels_ref = channels.clone();
     let mut select_provider = move |p: ProviderType| {
-        selected_provider.set(p);
-
-        // Google-Style Name Generator: {Adjective}-{Noun}-{Number}
+        // 生成随机名称
         let adjectives = vec![
-            "cosmic",
-            "fluent",
-            "quantum",
-            "hyper",
-            "silent",
-            "pure",
-            "rapid",
-            "steady",
-            "active",
-            "neural",
-            "prime",
-            "noble",
-            "swift",
-            "calm",
-            "wild",
-            "bright",
-            "ancient",
-            "azure",
-            "bold",
-            "brave",
-            "crimson",
-            "crystal",
-            "dawn",
-            "dusk",
-            "early",
-            "faint",
-            "frozen",
-            "gentle",
-            "global",
-            "golden",
-            "hollow",
-            "infinite",
-            "inner",
-            "jade",
-            "keen",
-            "late",
-            "living",
-            "lost",
-            "lucky",
-            "misty",
-            "morning",
-            "neon",
-            "ocean",
-            "orange",
-            "pale",
-            "proud",
-            "purple",
-            "quiet",
-            "red",
-            "rising",
-            "round",
-            "royal",
-            "sharp",
-            "shining",
-            "small",
-            "snowy",
-            "solar",
-            "sparkling",
-            "spring",
-            "still",
-            "summer",
-            "super",
-            "sweet",
-            "throbbing",
-            "tight",
-            "tiny",
-            "twilight",
-            "vast",
-            "violet",
-            "wandering",
-            "falling",
-            "flying",
-            "hidden",
-            "broken",
-            "empty",
-            "heavy",
+            "cosmic", "fluent", "quantum", "hyper", "silent", "pure", "rapid", "steady",
+            "active", "neural", "prime", "noble", "swift", "calm", "wild", "bright",
         ];
         let nouns = vec![
-            "flow",
-            "grid",
-            "core",
-            "nexus",
-            "pulse",
-            "link",
-            "node",
-            "sphere",
-            "spark",
-            "wave",
-            "beam",
-            "edge",
-            "mind",
-            "field",
-            "stream",
-            "gate",
-            "aurora",
-            "base",
-            "bird",
-            "block",
-            "boat",
-            "breeze",
-            "brook",
-            "bush",
-            "canopy",
-            "canyon",
-            "cell",
-            "cloud",
-            "cliff",
-            "creek",
-            "data",
-            "dew",
-            "dream",
-            "drive",
-            "dust",
-            "feather",
-            "fire",
-            "flame",
-            "forest",
-            "frog",
-            "frost",
-            "fume",
-            "glade",
-            "glen",
-            "grass",
-            "haze",
-            "hill",
-            "ice",
-            "island",
-            "lake",
-            "leaf",
-            "limit",
-            "log",
-            "loop",
-            "marsh",
-            "meadow",
-            "mode",
-            "moon",
-            "moss",
-            "mountain",
-            "network",
-            "night",
-            "oasis",
-            "paper",
-            "path",
-            "peak",
-            "pebble",
-            "pine",
-            "pond",
-            "port",
-            "rain",
-            "range",
-            "reef",
-            "resonance",
-            "river",
-            "rock",
-            "sea",
-            "shadow",
-            "shape",
-            "silence",
-            "sky",
-            "smoke",
-            "snow",
-            "sound",
-            "space",
-            "star",
-            "stone",
-            "storm",
-            "sun",
-            "sunset",
-            "surf",
-            "tide",
-            "tree",
-            "truth",
-            "union",
-            "valley",
-            "view",
-            "voice",
-            "water",
-            "way",
-            "web",
-            "wind",
-            "wing",
-            "wolf",
-            "wood",
-            "world",
+            "flow", "grid", "core", "nexus", "pulse", "link", "node", "sphere",
+            "spark", "wave", "beam", "edge", "mind", "field", "stream", "gate",
         ];
 
-        let existing_names: Vec<String> = channels
+        let existing_names: Vec<String> = channels_ref
             .read()
             .as_ref()
             .map(|list| list.iter().map(|c| c.name.clone()).collect())
             .unwrap_or_default();
 
-        let mut generated_name = String::new();
-
         let mut rng = rand::thread_rng();
-        use rand::seq::SliceRandom;
-        use rand::Rng;
+        let mut generated_name = String::new();
 
         for _ in 0..10 {
             let adj = adjectives.choose(&mut rng).unwrap_or(&"zen");
             let noun = nouns.choose(&mut rng).unwrap_or(&"mode");
             let suffix: u16 = rng.gen_range(100..999);
-
             let candidate = format!(
                 "{} {} {}",
                 adj[0..1].to_uppercase() + &adj[1..],
                 noun[0..1].to_uppercase() + &noun[1..],
                 suffix
             );
-
             if !existing_names.contains(&candidate) {
                 generated_name = candidate;
                 break;
             }
         }
-
-        // Fallback
         if generated_name.is_empty() {
             let suffix: u16 = rng.gen_range(1000..9999);
             generated_name = format!("{} Link {}", p.name(), suffix);
         }
 
-        form_name.set(generated_name);
+        // 设置表单初始数据（含 provider type 和默认值）
+        let mut obj = serde_json::Map::new();
+        obj.insert("type".to_string(), json!(p.value_str().to_string()));
+        obj.insert("name".to_string(), json!(generated_name));
+        obj.insert("id".to_string(), json!(0));
+        obj.insert("status".to_string(), json!(1));
+        obj.insert("group".to_string(), json!("default"));
+        obj.insert("priority".to_string(), json!(0));
+        obj.insert("weight".to_string(), json!(0));
+
+        // Provider-specific defaults
+        match p {
+            ProviderType::Aws => {
+                obj.insert("aws_region".to_string(), json!("us-east-1"));
+                obj.insert("aws_model_id".to_string(), json!("anthropic.claude-sonnet-4-5-20250929-v1:0"));
+            }
+            ProviderType::Google => {
+                obj.insert("google_auth_type".to_string(), json!("api_key"));
+                obj.insert("google_region".to_string(), json!("us-central1"));
+            }
+            ProviderType::Azure => {
+                obj.insert("azure_api_version".to_string(), json!("2023-05-15"));
+            }
+            ProviderType::Local => {
+                obj.insert("local_url".to_string(), json!("http://localhost:8080"));
+            }
+            _ => {}
+        }
+
+        form_data.set(serde_json::Value::Object(obj));
         modal_step.set(1);
     };
 
+    let schema_for_save = schema.clone();
     let handle_save = move |_| {
+        let s = schema_for_save.clone();
         spawn(async move {
             is_loading.set(true);
-
-            let provider = selected_provider();
-            let final_type;
-            let final_base_url;
-            let final_models;
-            let mut final_param_override = None;
-            let mut final_header_override = None;
-            let final_key = form_key();
-
-            match provider {
-                ProviderType::OpenAI => {
-                    final_type = 1;
-                    final_base_url = "https://api.openai.com".to_string();
-                    final_models = "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string();
-                }
-                ProviderType::Anthropic => {
-                    final_type = 14;
-                    final_base_url = "https://api.anthropic.com".to_string();
-                    final_models = "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string();
-                }
-                ProviderType::Google => {
-                    if form_google_auth_type() == "vertex" {
-                        final_type = 41; // VertexAi
-                        final_base_url = "https://aiplatform.googleapis.com".to_string();
-                        final_models = "gemini-pro,gemini-1.5-pro".to_string();
-
-                        let mut params_map = serde_json::Map::new();
-                        params_map.insert("region".to_string(), json!(form_google_region()));
-                        if !form_google_project_id().is_empty() {
-                            params_map
-                                .insert("project_id".to_string(), json!(form_google_project_id()));
-                        }
-                        final_param_override =
-                            Some(serde_json::Value::Object(params_map).to_string());
-                    } else {
-                        final_type = 24; // Gemini
-                        final_base_url = "https://generativelanguage.googleapis.com".to_string();
-                        final_models = "gemini-pro,gemini-1.5-pro".to_string();
-                    }
-                }
-                ProviderType::Aws => {
-                    final_type = 1;
-                    final_base_url = format!(
-                        "https://bedrock-runtime.{}.amazonaws.com",
-                        form_aws_region()
-                    );
-                    final_models = form_aws_model_id();
-
-                    let params = json!({
-                        "aws_secret_key": form_aws_sk(),
-                        "region": form_aws_region(),
-                        "auth_type": "aws_sigv4"
-                    });
-                    final_param_override = Some(params.to_string());
-                }
-                ProviderType::Azure => {
-                    final_type = 1;
-                    final_base_url = format!(
-                        "https://{}.openai.azure.com/openai/deployments/{}",
-                        form_azure_resource(),
-                        form_azure_deployment()
-                    );
-                    final_models = form_azure_deployment();
-
-                    let params = json!({
-                        "api_version": form_azure_api_version(),
-                        "auth_type": "azure_ad"
-                    });
-                    final_param_override = Some(params.to_string());
-
-                    let headers = json!({
-                        "api-key": form_key()
-                    });
-                    final_header_override = Some(headers.to_string());
-                }
-                ProviderType::Local => {
-                    final_type = 1;
-                    final_base_url = form_local_url();
-                    final_models = "local-model".to_string();
-                }
+            let current_data = form_data.read().clone();
+            let errors = validate_schema(&s, &current_data);
+            if !errors.is_empty() {
+                is_loading.set(false);
+                toast.error("请填写所有必填字段");
+                return;
             }
 
-            let ch = Channel {
-                id: form_id(),
-                type_: final_type,
-                name: form_name(),
-                key: final_key,
-                base_url: final_base_url,
-                models: final_models,
-                group: Some("default".to_string()),
-                status: 1,
-                priority: 0,
-                weight: 0,
-                param_override: final_param_override,
-                header_override: final_header_override,
-            };
-
+            let ch = build_channel_from_form(&current_data);
             let result = if ch.id == 0 {
                 ChannelService::create(&ch).await
             } else {
@@ -515,16 +360,61 @@ pub fn ChannelPage() -> Element {
         });
     };
 
+    // 准备 SchemaTable 数据
     let channels_data = channels.read().clone();
+    let table_data: Vec<serde_json::Value> = channels_data
+        .as_ref()
+        .map(|list| {
+            list.iter()
+                .filter_map(|c| serde_json::to_value(c).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let actions = vec![
+        ActionDef {
+            action_id: "toggle".to_string(),
+            label: "Toggle".to_string(),
+            color: "var(--bc-warning)".to_string(),
+        },
+        ActionDef {
+            action_id: "delete".to_string(),
+            label: "Delete".to_string(),
+            color: "var(--bc-danger)".to_string(),
+        },
+    ];
+
+    let handle_action = move |event: ActionEvent| {
+        match event.action_id.as_str() {
+            "toggle" => {
+                if let Ok(ch) = serde_json::from_value::<Channel>(event.row) {
+                    let mut new_c = ch.clone();
+                    new_c.status = if ch.status == 1 { 0 } else { 1 };
+                    spawn(async move {
+                        if ChannelService::update(&new_c).await.is_ok() {
+                            channels.restart();
+                        } else {
+                            toast.error("Failed to update status");
+                        }
+                    });
+                }
+            }
+            "delete" => {
+                let id = event.row["id"].as_i64().unwrap_or(0);
+                let name = event.row["name"].as_str().unwrap_or("").to_string();
+                delete_channel_id.set(id);
+                delete_channel_name.set(name);
+                is_delete_modal_open.set(true);
+            }
+            _ => {}
+        }
+    };
 
     let _any_modal_open = is_modal_open() || is_delete_modal_open();
 
     rsx! {
-        // Main Container for Page
         div { class: "relative h-full",
-            div {
-                class: "flex flex-col h-full gap-xl transition-all duration-300 ease-out",
-
+            div { class: "flex flex-col h-full gap-xl transition-all duration-300 ease-out",
                 // Header
                 div { class: "flex justify-between items-end px-xs",
                     div {
@@ -540,138 +430,64 @@ pub fn ChannelPage() -> Element {
                     }
                 }
 
-                // Cards Grid
-                    div { class: "flex-1 overflow-y-auto min-h-0",
-                        match channels_data {
-                            Some(list) => {
-                                if list.is_empty() {
-                                    rsx! {
-                                        div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
-                                            div { class: "p-lg rounded-full mb-lg",
-                                                style: "background: var(--bc-bg-hover);",
-                                                svg {
-                                                    class: "w-12 h-12",
-                                                    style: "color: var(--bc-text-disabled);",
-                                                    fill: "none",
-                                                    view_box: "0 0 24 24",
-                                                    stroke: "currentColor",
-                                                    stroke_width: "1.5",
-                                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" }
-                                                }
-                                            }
-                                            h3 { class: "text-title font-bold text-primary mb-sm tracking-tight", "暂无模型网络" }
-                                            p { class: "text-body text-secondary max-w-sm mb-xl leading-relaxed",
-                                                "连接您的第一个 AI 服务提供商，构建专属的神经中枢。"
-                                            }
-                                            BCButton {
-                                                class: "btn-primary btn-md px-xl shadow-lg shadow-primary/20",
-                                                onclick: open_create_modal,
-                                                "开始连接"
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    rsx! {
-                                        div { class: "w-full overflow-x-auto",
-                                            table { class: "table table-lg",
-                                                thead {
-                                                    tr {
-                                                        th { "Status" }
-                                                        th { "Name" }
-                                                        th { "Replicas" }
-                                                        th { "Actions" }
-                                                    }
-                                                }
-                                                tbody {
-                                                    for channel in list {
-                                                        tr {
-                                                            td {
-                                                                if channel.status == 1 {
-                                                                    div { class: "badge badge-success gap-sm",
-                                                                        "Running"
-                                                                    }
-                                                                } else {
-                                                                    div { class: "badge badge-ghost gap-sm",
-                                                                        "Stopped"
-                                                                    }
-                                                                }
-                                                            }
-                                                            td {
-                                                                div { class: "font-bold", "{channel.name}" }
-                                                                div { class: "text-caption text-tertiary", "{channel.models}" }
-                                                            }
-                                                            td {
-                                                                "1"
-                                                            }
-                                                            td {
-                                                                div { class: "flex gap-sm",
-                                                                    {
-                                                                        let c_stop = channel.clone();
-                                                                        let c_start = channel.clone();
-                                                                        if channel.status == 1 {
-                                                                            rsx! {
-                                                                                button {
-                                                                                    class: "btn btn-sm btn-warning",
-                                                                                    onclick: move |_| handle_toggle_status(c_stop.clone()),
-                                                                                    "Stop"
-                                                                                }
-                                                                            }
-                                                                        } else {
-                                                                            rsx! {
-                                                                                button {
-                                                                                    class: "btn btn-sm btn-success",
-                                                                                    onclick: move |_| handle_toggle_status(c_start.clone()),
-                                                                                    "Start"
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    {
-                                                                        let c_delete = channel.clone();
-                                                                        rsx! {
-                                                                            button {
-                                                                                class: "btn btn-sm btn-error btn-outline",
-                                                                                onclick: move |_| {
-                                                                                    delete_channel_id.set(c_delete.id);
-                                                                                    delete_channel_name.set(c_delete.name.clone());
-                                                                                    is_delete_modal_open.set(true);
-                                                                                },
-                                                                                "Delete"
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+                // 表格
+                div { class: "flex-1 overflow-y-auto min-h-0",
+                    match channels_data {
+                        Some(list) if !list.is_empty() => rsx! {
+                            SchemaTable {
+                                schema: schema.clone(),
+                                data: table_data,
+                                loading: false,
+                                actions: actions,
+                                on_action: handle_action,
+                                on_row_click: move |_| {},
+                            }
+                        },
+                        Some(_) => rsx! {
+                            div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
+                                div { class: "p-lg rounded-full mb-lg",
+                                    style: "background: var(--bc-bg-hover);",
+                                    svg {
+                                        class: "w-12 h-12",
+                                        style: "color: var(--bc-text-disabled);",
+                                        fill: "none",
+                                        view_box: "0 0 24 24",
+                                        stroke: "currentColor",
+                                        stroke_width: "1.5",
+                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" }
                                     }
                                 }
-                            },
-                            None => rsx! {
-                                div { class: "flex flex-col items-center justify-center h-full gap-md pb-xxl animate-pulse",
-                                    style: "opacity: 0.5;",
-                                    div { class: "w-12 h-12 rounded-full", style: "background: var(--bc-bg-hover);" }
-                                    div { class: "text-caption font-medium text-secondary", "正在搜索神经网络..." }
+                                h3 { class: "text-title font-bold text-primary mb-sm tracking-tight", "暂无模型网络" }
+                                p { class: "text-body text-secondary max-w-sm mb-xl leading-relaxed",
+                                    "连接您的第一个 AI 服务提供商，构建专属的神经中枢。"
                                 }
+                                BCButton {
+                                    class: "btn-primary btn-md px-xl shadow-lg shadow-primary/20",
+                                    onclick: open_create_modal,
+                                    "开始连接"
+                                }
+                            }
+                        },
+                        None => rsx! {
+                            div { class: "flex flex-col items-center justify-center h-full gap-md pb-xxl animate-pulse",
+                                style: "opacity: 0.5;",
+                                div { class: "w-12 h-12 rounded-full", style: "background: var(--bc-bg-hover);" }
+                                div { class: "text-caption font-medium text-secondary", "正在搜索神经网络..." }
                             }
                         }
                     }
                 }
+            }
 
-            // Modal (Custom Implementation for stability)
+            // 创建/编辑 Modal
             if is_modal_open() {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
-                    // Backdrop (Global Blur)
                     div {
                         class: "absolute inset-0 transition-opacity",
-                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
+                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
                         onclick: move |_| is_modal_open.set(false)
                     }
 
-                    // Modal Content
                     div {
                         class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
                         style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
@@ -700,7 +516,6 @@ pub fn ChannelPage() -> Element {
                                             class: "bc-card-solid group flex flex-col items-center justify-center gap-md p-lg h-36 transition-all duration-300 ease-out cursor-pointer",
                                             style: "cursor: pointer;",
                                             onclick: move |_| select_provider(p),
-                                            // Icon render
                                             div { class: "text-secondary group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
                                                 {p.icon()}
                                             }
@@ -709,172 +524,14 @@ pub fn ChannelPage() -> Element {
                                     }
                                 }
                             } else {
-                                // Step 2: Configuration Form
-                                div { class: "flex flex-col gap-md",
-                                    BCInput {
-                                        label: Some("连接名称".to_string()),
-                                        value: "{form_name}",
-                                        oninput: move |e: FormEvent| form_name.set(e.value())
-                                    }
-
-                                    if selected_provider() == ProviderType::OpenAI {
-                                        BCInput {
-                                            label: Some("API Key".to_string()),
-                                            value: "{form_key}",
-                                            placeholder: "sk-...".to_string(),
-                                            error: if !form_key().is_empty() && !form_key().starts_with("sk-") { Some("OpenAI Key 通常以 sk- 开头".to_string()) } else { None },
-                                            oninput: move |e: FormEvent| form_key.set(e.value())
-                                        }
-                                    }
-
-                                    if selected_provider() == ProviderType::Anthropic {
-                                        BCInput {
-                                            label: Some("API Key".to_string()),
-                                            value: "{form_key}",
-                                            placeholder: "sk-ant-...".to_string(),
-                                            oninput: move |e: FormEvent| form_key.set(e.value())
-                                        }
-                                    }
-
-                                    if selected_provider() == ProviderType::Google {
-                                        div { class: "flex flex-col gap-sm mb-sm",
-                                            label { class: "text-body font-medium text-secondary", "认证类型 (Auth Type)" }
-                                            div { class: "join w-full",
-                                                button {
-                                                    class: if form_google_auth_type() == "api_key" { "join-item btn btn-sm btn-primary flex-1" } else { "join-item btn btn-sm btn-ghost flex-1" },
-                                                    onclick: move |_| form_google_auth_type.set("api_key".to_string()),
-                                                    "Gemini API"
-                                                }
-                                                button {
-                                                    class: if form_google_auth_type() == "vertex" { "join-item btn btn-sm btn-primary flex-1" } else { "join-item btn btn-sm btn-ghost flex-1" },
-                                                    onclick: move |_| form_google_auth_type.set("vertex".to_string()),
-                                                    "Vertex AI"
-                                                }
-                                            }
-                                        }
-
-                                        if form_google_auth_type() == "api_key" {
-                                            BCInput {
-                                                label: Some("API Key".to_string()),
-                                                value: "{form_key}",
-                                                placeholder: "AIza...".to_string(),
-                                                oninput: move |e: FormEvent| form_key.set(e.value())
-                                            }
-                                        } else {
-                                            div { class: "flex flex-col gap-xs",
-                                                label { class: "text-body font-medium text-secondary",
-                                                    "Service Account JSON Key"
-                                                    span { class: "text-xxs font-normal text-tertiary ml-sm", "(Copied from Google Cloud Console)" }
-                                                }
-                                                textarea {
-                                                    class: "textarea textarea-bordered h-32 text-xs font-mono leading-tight",
-                                                    style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
-                                                    placeholder: "{{\n  \"type\": \"service_account\",\n  \"project_id\": ...\n}}",
-                                                    value: "{form_key}",
-                                                    oninput: move |e| form_key.set(e.value())
-                                                }
-                                            }
-
-                                            div { class: "grid grid-cols-2 gap-md",
-                                                div { class: "flex flex-col gap-xs",
-                                                    label { class: "text-body font-medium text-secondary", "区域 (Region)" }
-                                                    select { class: "select select-bordered w-full select-sm",
-                                                        style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
-                                                        value: "{form_google_region}",
-                                                        onchange: move |e: FormEvent| form_google_region.set(e.value()),
-                                                        option { value: "us-central1", "US Central (Iowa)" }
-                                                        option { value: "us-east4", "US East (N. Virginia)" }
-                                                        option { value: "us-west1", "US West (Oregon)" }
-                                                        option { value: "asia-northeast1", "Asia (Tokyo)" }
-                                                        option { value: "asia-southeast1", "Asia (Singapore)" }
-                                                        option { value: "europe-west1", "Europe (Belgium)" }
-                                                    }
-                                                }
-                                                BCInput {
-                                                    label: Some("Project ID (Optional)".to_string()),
-                                                    value: "{form_google_project_id}",
-                                                    placeholder: "Override JSON project_id".to_string(),
-                                                    oninput: move |e: FormEvent| form_google_project_id.set(e.value())
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if selected_provider() == ProviderType::Aws {
-                                        div { class: "alert alert-info text-xs",
-                                            style: "background: var(--bc-info-light); color: var(--bc-info);",
-                                            "注意: 您的密钥仅保存在本地，且通过 SigV4 签名请求，我们不会存储明文。"
-                                        }
-                                        BCInput {
-                                            label: Some("Access Key ID".to_string()),
-                                            value: "{form_key}",
-                                            placeholder: "AKIA...".to_string(),
-                                            error: if !form_key().is_empty() && !form_key().starts_with("AKIA") && !form_key().starts_with("ASIA") { Some("无效的 Access Key ID 格式".to_string()) } else { None },
-                                            oninput: move |e: FormEvent| form_key.set(e.value())
-                                        }
-                                        BCInput {
-                                            label: Some("Secret Access Key".to_string()),
-                                            value: "{form_aws_sk}",
-                                            placeholder: "wJalrX...".to_string(),
-                                            oninput: move |e: FormEvent| form_aws_sk.set(e.value())
-                                        }
-                                        div { class: "flex flex-col gap-xs",
-                                            label { class: "text-body font-medium text-secondary", "区域 (Region)" }
-                                            select { class: "select select-bordered w-full select-sm",
-                                                style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
-                                                onchange: move |e: FormEvent| form_aws_region.set(e.value()),
-                                                option { value: "us-east-1", "US East (N. Virginia)" }
-                                                option { value: "us-west-2", "US West (Oregon)" }
-                                                option { value: "ap-northeast-1", "Asia Pacific (Tokyo)" }
-                                                option { value: "eu-central-1", "Europe (Frankfurt)" }
-                                            }
-                                        }
-                                        BCInput {
-                                            label: Some("Model ID".to_string()),
-                                            value: "{form_aws_model_id}",
-                                            placeholder: "anthropic.claude-sonnet-4-5...".to_string(),
-                                            oninput: move |e: FormEvent| form_aws_model_id.set(e.value())
-                                        }
-                                    }
-
-                                    if selected_provider() == ProviderType::Azure {
-                                        BCInput {
-                                            label: Some("Resource Name".to_string()),
-                                            value: "{form_azure_resource}",
-                                            placeholder: "my-openai-resource".to_string(),
-                                            oninput: move |e: FormEvent| form_azure_resource.set(e.value())
-                                        }
-                                        BCInput {
-                                            label: Some("Deployment Name".to_string()),
-                                            value: "{form_azure_deployment}",
-                                            placeholder: "gpt-4-deployment".to_string(),
-                                            oninput: move |e: FormEvent| form_azure_deployment.set(e.value())
-                                        }
-                                        BCInput {
-                                            label: Some("API Key".to_string()),
-                                            value: "{form_key}",
-                                            placeholder: "32-char hex string".to_string(),
-                                            oninput: move |e: FormEvent| form_key.set(e.value())
-                                        }
-                                        div { class: "flex flex-col gap-xs",
-                                            label { class: "text-body font-medium text-secondary", "API Version" }
-                                            select { class: "select select-bordered w-full select-sm",
-                                                style: "background: var(--bc-bg-card-solid); border-color: var(--bc-border);",
-                                                onchange: move |e: FormEvent| form_azure_api_version.set(e.value()),
-                                                option { value: "2023-05-15", "2023-05-15" }
-                                                option { value: "2023-12-01-preview", "2023-12-01-preview" }
-                                                option { value: "2024-02-15-preview", "2024-02-15-preview" }
-                                            }
-                                        }
-                                    }
-
-                                    if selected_provider() == ProviderType::Local {
-                                        BCInput {
-                                            label: Some("Local Server URL".to_string()),
-                                            value: "{form_local_url}",
-                                            placeholder: "http://localhost:8080".to_string(),
-                                            oninput: move |e: FormEvent| form_local_url.set(e.value())
-                                        }
+                                // Step 2: Schema 驱动的配置表单
+                                SchemaForm {
+                                    schema: schema.clone(),
+                                    data: form_data,
+                                    mode: FormMode::Create,
+                                    show_actions: false,
+                                    on_submit: move |v| {
+                                        form_data.set(v);
                                     }
                                 }
                             }
@@ -889,22 +546,10 @@ pub fn ChannelPage() -> Element {
                                     onclick: move |_| modal_step.set(0),
                                     "上一步"
                                 }
-                                BCButton {
-                                    class: "btn-ghost text-success",
-                                    onclick: move |_| {
-                                        spawn(async move {
-                                            is_loading.set(true);
-                                            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                                            is_loading.set(false);
-                                            toast.success("连接测试成功: 延迟 45ms");
-                                        });
-                                    },
-                                    "⚡ 测试连接"
-                                }
                             }
                             BCButton {
                                 variant: ButtonVariant::Ghost,
-                                    onclick: move |_| is_modal_open.set(false),
+                                onclick: move |_| is_modal_open.set(false),
                                 "取消"
                             }
                             if modal_step() == 1 {
@@ -925,17 +570,15 @@ pub fn ChannelPage() -> Element {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
                     div {
                         class: "absolute inset-0 transition-opacity",
-                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
+                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
                         onclick: move |_| is_delete_modal_open.set(false)
                     }
 
-                    // Modal Content
                     div {
                         class: "relative w-full max-w-md overflow-hidden animate-scale-in",
                         style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
                         onclick: |e| e.stop_propagation(),
 
-                        // Header with Warning Icon
                         div { class: "flex items-center gap-md px-lg py-lg border-b",
                             style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
                             div { class: "w-12 h-12 rounded-full flex items-center justify-center",
@@ -950,7 +593,6 @@ pub fn ChannelPage() -> Element {
                             }
                         }
 
-                        // Message
                         div { class: "px-lg py-md",
                             p { class: "text-secondary",
                                 "确定要删除连接 \""
@@ -959,7 +601,6 @@ pub fn ChannelPage() -> Element {
                             }
                         }
 
-                        // Footer
                         div { class: "flex justify-end gap-md px-lg py-md border-t",
                             style: "background: var(--bc-bg-hover);",
                             BCButton {

@@ -1,158 +1,125 @@
+use burncloud_client_shared::components::{
+    ActionDef, ActionEvent, FormMode, SchemaForm, SchemaTable,
+};
+use burncloud_client_shared::schema::token_schema;
+use burncloud_client_shared::token_service::TokenService;
+use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Token {
-    pub token: String,
-    pub user_id: String,
-    pub status: String,
-    pub quota_limit: i64,
-    pub used_quota: i64,
-}
 
 #[component]
 pub fn TokenManager() -> Element {
-    let mut tokens = use_signal::<Vec<Token>>(Vec::new);
+    let mut tokens = use_signal::<Vec<serde_json::Value>>(Vec::new);
     let mut loading = use_signal(|| true);
-    let mut error_msg = use_signal(String::new);
+    let mut form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
+    let toast = use_toast();
 
-    // Form
-    let mut form_user_id = use_signal(String::new);
-    let mut form_quota = use_signal(|| "-1".to_string()); // String for input
+    let schema = token_schema();
 
-    let fetch_tokens = move || async move {
-        loading.set(true);
-        let client = Client::new();
-        match client
-            .get("http://127.0.0.1:3000/console/api/tokens")
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                if let Ok(data) = resp.json::<Vec<Token>>().await {
-                    tokens.set(data);
-                } else {
-                    error_msg.set("Failed to parse tokens".to_string());
+    let fetch_tokens = move || {
+        let toast = toast.clone();
+        async move {
+            loading.set(true);
+            match TokenService::list().await {
+                Ok(list) => {
+                    let values: Vec<serde_json::Value> = list
+                        .into_iter()
+                        .filter_map(|t| serde_json::to_value(t).ok())
+                        .collect();
+                    tokens.set(values);
+                }
+                Err(e) => {
+                    toast.error(&format!("加载令牌失败: {}", e));
                 }
             }
-            Err(e) => error_msg.set(format!("Failed to fetch: {}", e)),
+            loading.set(false);
         }
-        loading.set(false);
     };
 
     // Initial load
     use_effect(move || {
-        spawn(async move {
-            fetch_tokens().await;
-        });
+        spawn(fetch_tokens());
     });
 
-    let handle_create = move |_| async move {
-        let client = Client::new();
-        let quota_parsed = form_quota().parse::<i64>().unwrap_or(-1);
+    let handle_create = move |value: serde_json::Value| {
+        let toast = toast.clone();
+        spawn(async move {
+            let user_id = value["user_id"].as_str().unwrap_or("").to_string();
+            let quota_limit = value["quota_limit"].as_i64();
 
-        let body = serde_json::json!({
-            "user_id": form_user_id(),
-            "quota_limit": quota_parsed
-        });
-
-        if let Ok(resp) = client
-            .post("http://127.0.0.1:3000/console/api/tokens")
-            .json(&body)
-            .send()
-            .await
-        {
-            if resp.status().is_success() {
-                // Refresh
-                fetch_tokens().await;
-                form_user_id.set(String::new());
-                form_quota.set("-1".to_string());
-            } else {
-                error_msg.set("Failed to create token".to_string());
+            match TokenService::create(&user_id, quota_limit).await {
+                Ok(_) => {
+                    toast.success("令牌创建成功");
+                    form_data.set(serde_json::Value::Object(serde_json::Map::new()));
+                    // Refresh list
+                    match TokenService::list().await {
+                        Ok(list) => {
+                            let values: Vec<serde_json::Value> = list
+                                .into_iter()
+                                .filter_map(|t| serde_json::to_value(t).ok())
+                                .collect();
+                            tokens.set(values);
+                        }
+                        Err(_) => {}
+                    }
+                }
+                Err(e) => {
+                    toast.error(&format!("创建失败: {}", e));
+                }
             }
-        }
+        });
     };
 
-    let handle_delete = move |token_str: String| async move {
-        let client = Client::new();
-        let url = format!("http://127.0.0.1:3000/console/api/tokens/{}", token_str);
-        if let Ok(resp) = client.delete(&url).send().await {
-            if resp.status().is_success() {
-                tokens.write().retain(|t| t.token != token_str);
-            }
+    let actions = vec![ActionDef {
+        action_id: "delete".to_string(),
+        label: "删除".to_string(),
+        color: "var(--bc-danger)".to_string(),
+    }];
+
+    let handle_action = move |event: ActionEvent| {
+        if event.action_id == "delete" {
+            let token_str = event.row["token"].as_str().unwrap_or("").to_string();
+            let toast = toast.clone();
+            let mut tokens = tokens.clone();
+            spawn(async move {
+                match TokenService::delete(&token_str).await {
+                    Ok(_) => {
+                        toast.success("令牌已删除");
+                        tokens.write().retain(|t| t["token"].as_str() != Some(&token_str));
+                    }
+                    Err(e) => {
+                        toast.error(&format!("删除失败: {}", e));
+                    }
+                }
+            });
         }
     };
 
     rsx! {
         div { class: "flex flex-col gap-lg",
-            // Create Form
+            // 创建表单
             div { class: "bc-card-solid",
                 div { class: "p-lg",
                     h3 { class: "text-subtitle font-semibold mb-md", "生成新令牌" }
-                    div { class: "grid gap-md", style: "grid-template-columns: 1fr 1fr auto;",
-                        div { class: "flex flex-col gap-sm",
-                            label { class: "text-caption text-secondary", "用户标识 (User ID)" }
-                            input { class: "input",
-                                value: "{form_user_id}",
-                                placeholder: "e.g. user-123",
-                                oninput: move |e| form_user_id.set(e.value())
-                            }
-                        }
-                        div { class: "flex flex-col gap-sm",
-                            label { class: "text-caption text-secondary", "额度限制 (-1 无限)" }
-                            input { class: "input", r#type: "number",
-                                value: "{form_quota}",
-                                oninput: move |e| form_quota.set(e.value())
-                            }
-                        }
-                        div { class: "flex items-end",
-                            button { class: "btn btn-primary", onclick: handle_create,
-                                "生成"
-                            }
-                        }
+                    SchemaForm {
+                        schema: schema.clone(),
+                        data: form_data,
+                        mode: FormMode::Create,
+                        on_submit: handle_create,
                     }
                 }
             }
 
-            // List
+            // 令牌列表
             div { class: "bc-card-solid",
                 div { class: "p-lg",
                     h3 { class: "text-subtitle font-semibold mb-md", "令牌列表" }
-                    if !error_msg().is_empty() {
-                        div { class: "mb-md", style: "color: var(--bc-danger);", "{error_msg}" }
-                    }
-                    if loading() {
-                        div { "加载中..." }
-                    } else {
-                        div { class: "flex flex-col gap-sm",
-                            for token in tokens() {
-                                div { class: "flex items-center justify-between p-sm",
-                                    style: "background: var(--bc-bg-hover); border-radius: var(--bc-radius-md);",
-                                    div { class: "flex flex-col",
-                                        div { class: "font-medium",
-                                            style: "font-family: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace;",
-                                            "{token.token}"
-                                        }
-                                        div { class: "flex gap-md text-caption text-secondary",
-                                            span { "User: {token.user_id}" }
-                                            span { "Quota: {token.used_quota} / {token.quota_limit}" }
-                                        }
-                                    }
-                                    div { class: "flex gap-sm items-center",
-                                        span { class: "bc-badge-neutral",
-                                            style: "padding: var(--bc-space-1) var(--bc-space-2); border-radius: var(--bc-radius-full); font-size: var(--bc-font-sm);",
-                                            "{token.status}"
-                                        }
-                                        button { class: "btn btn-subtle",
-                                            style: "color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1);",
-                                            onclick: move |_| handle_delete(token.token.clone()),
-                                            "🗑️"
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    SchemaTable {
+                        schema: schema.clone(),
+                        data: tokens(),
+                        loading: loading(),
+                        actions: actions,
+                        on_action: handle_action,
+                        on_row_click: move |_| {},
                     }
                 }
             }

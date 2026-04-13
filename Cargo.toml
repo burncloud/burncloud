@@ -212,3 +212,5 @@ tokio.workspace = true
 anyhow.workspace = true
 env_logger.workspace = true
 dotenvy.workspace = true
+rand.workspace = true
+hex.workspace = true
