@@ -10,10 +10,6 @@ authors = ["burncloud contributors"]
 
 [dependencies]
 dioxus.workspace = true
-reqwest = { workspace = true, features = ["json"] }
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
-burncloud-common.workspace = true
 burncloud-client-shared = { path = "../client-shared" }
 [lints]
 workspace = true

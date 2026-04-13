@@ -10,7 +10,6 @@ burncloud-database.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 
 [[example]]
 name = "database-setting-usage"

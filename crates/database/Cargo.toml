@@ -16,11 +16,8 @@ readme = "README.md"
 [dependencies]
 sqlx = { workspace = true, features = ["postgres", "sqlite"] }
 tokio.workspace = true
-async-trait.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-uuid.workspace = true
 chrono.workspace = true
 dirs.workspace = true
 

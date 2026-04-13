@@ -10,8 +10,11 @@ dioxus.workspace = true
 burncloud-client-shared.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 tokio = { workspace = true }
+
+[package.metadata.cargo-machete]
+# burncloud-client-shared is needed for dioxus feature unification (component, rsx!, Signal)
+ignored = ["burncloud-client-shared"]
 
 [lints]
 workspace = true

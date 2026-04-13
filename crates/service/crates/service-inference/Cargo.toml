@@ -9,12 +9,9 @@ edition = "2021"
 tokio = { workspace = true, features = ["process", "io-util", "time"] }
 thiserror = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 reqwest = { workspace = true }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
-burncloud-service-setting = { workspace = true }
-burncloud-service-models = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

@@ -59,7 +59,7 @@ impl CrudRepository<Db{{crate_name | pascal_case}}, String, {{crate_name | pasca
     async fn create(
         &self,
         input: &Db{{crate_name | pascal_case}},
-    ) -> Result<Db{{crate_name | pascal_case}}>, {{crate_name | pascal_case}}DatabaseError> {
+    ) -> Result<Db{{crate_name | pascal_case}}, {{crate_name | pascal_case}}DatabaseError> {
         todo!("implement create for {{crate_name}}")
     }
 

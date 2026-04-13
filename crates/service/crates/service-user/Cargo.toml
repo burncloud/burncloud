@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 burncloud-database-user.workspace = true
 burncloud-database.workspace = true
-burncloud-common.workspace = true
 bcrypt.workspace = true
 uuid.workspace = true
 jsonwebtoken.workspace = true

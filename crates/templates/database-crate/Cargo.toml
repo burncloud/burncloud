@@ -8,6 +8,10 @@ license.workspace = true
 [lints]
 workspace = true
 
+[package.metadata.cargo-machete]
+# Template crate — all deps are intentional boilerplate for cargo-generate
+ignored = ["serde", "thiserror", "tracing", "async-trait"]
+
 [dependencies]
 burncloud-common.workspace = true
 burncloud-database.workspace = true
