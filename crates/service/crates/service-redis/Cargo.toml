@@ -9,3 +9,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 burncloud-common = { workspace = true }
+
+[lints]
+workspace = true

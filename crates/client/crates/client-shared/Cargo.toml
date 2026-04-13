@@ -21,3 +21,5 @@ regex = "1.10"
 dirs = { workspace = true }
 gloo-storage = "0.3"
 burncloud-common = { workspace = true }
+[lints]
+workspace = true

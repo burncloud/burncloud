@@ -13,3 +13,6 @@ thiserror.workspace = true
 aes-gcm.workspace = true
 hex.workspace = true
 rand.workspace = true
+
+[lints]
+workspace = true

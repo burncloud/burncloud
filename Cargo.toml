@@ -54,6 +54,10 @@ members = [
     "crates/tests",
 ]
 
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+
 [workspace.dependencies]
 anyhow = "1.0"
 env_logger = "0.11"

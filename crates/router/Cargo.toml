@@ -45,3 +45,6 @@ tempfile.workspace = true
 [[example]]
 name = "configure_apikey_test"
 path = "examples/configure_apikey_test.rs"
+
+[lints]
+workspace = true

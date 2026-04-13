@@ -8,3 +8,6 @@ burncloud-database-token.workspace = true
 burncloud-database.workspace = true
 tokio.workspace = true
 serde.workspace = true
+
+[lints]
+workspace = true

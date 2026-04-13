@@ -14,3 +14,5 @@ categories = ["development-tools"]
 burncloud-common.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
+[lints]
+workspace = true

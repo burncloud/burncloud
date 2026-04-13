@@ -10,3 +10,6 @@ dioxus = { workspace = true, features = ["router"] }
 tokio = { workspace = true, features = ["time"] }
 serde_json.workspace = true
 burncloud-client-shared = { path = "../client-shared" }
+
+[lints]
+workspace = true

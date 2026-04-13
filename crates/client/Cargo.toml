@@ -48,3 +48,6 @@ burncloud-client-tray.workspace = true
 
 [dev-dependencies]
 dioxus-ssr = { workspace = true }
+
+[lints]
+workspace = true

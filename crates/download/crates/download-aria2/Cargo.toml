@@ -35,3 +35,5 @@ path = "src/lib.rs"
 [[bin]]
 name = "aria2-test"
 path = "src/main.rs"
+[lints]
+workspace = true

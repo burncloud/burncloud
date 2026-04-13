@@ -43,7 +43,7 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
                 .get_one::<String>("channel-type")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
-            let api_version = sub_m.get_one::<String>("api-version").unwrap().to_string();
+            let api_version = sub_m.get_one::<String>("api-version").expect("required CLI argument").to_string();
             let is_default = sub_m.get_flag("default");
             let chat_endpoint = sub_m.get_one::<String>("chat-endpoint").cloned();
             let embed_endpoint = sub_m.get_one::<String>("embed-endpoint").cloned();

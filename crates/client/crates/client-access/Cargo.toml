@@ -9,3 +9,6 @@ serde_json.workspace = true
 burncloud-client-shared = { path = "../client-shared" }
 arboard = "3.4"
 tokio = { workspace = true, features = ["time"] }
+
+[lints]
+workspace = true

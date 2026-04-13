@@ -36,7 +36,7 @@ impl ToastManager {
         let id = Uuid::new_v4().to_string();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("SystemTime is after UNIX_EPOCH")
             .as_millis() as u64;
 
         let toast = Toast {
@@ -96,7 +96,7 @@ pub fn ToastContainer() -> Element {
                 timer.tick().await;
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
-                    .unwrap()
+                    .expect("SystemTime is after UNIX_EPOCH")
                     .as_millis() as u64;
 
                 // We need to check if we need to write to avoid unnecessary locks/updates

@@ -7,3 +7,6 @@ edition = "2021"
 dioxus.workspace = true
 serde_json.workspace = true
 burncloud-client-shared = { path = "../client-shared" }
+
+[lints]
+workspace = true

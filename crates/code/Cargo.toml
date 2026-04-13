@@ -15,3 +15,5 @@ burncloud-common.workspace = true
 burncloud-core.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
+[lints]
+workspace = true

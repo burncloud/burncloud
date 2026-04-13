@@ -63,7 +63,7 @@ pub async fn cmd_group_list(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle group create command
 pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let name = matches.get_one::<String>("name").unwrap();
+    let name = matches.get_one::<String>("name").expect("required CLI argument");
     let members_str = matches.get_one::<String>("members").cloned();
 
     // Generate a new UUID for the group
@@ -119,7 +119,7 @@ pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()>
 
 /// Handle group show command
 pub async fn cmd_group_show(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let id = matches.get_one::<String>("id").unwrap();
+    let id = matches.get_one::<String>("id").expect("required CLI argument");
 
     // Fetch the group
     let group = RouterDatabase::get_group_by_id(db, id)
@@ -159,7 +159,7 @@ pub async fn cmd_group_show(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle group delete command
 pub async fn cmd_group_delete(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let id = matches.get_one::<String>("id").unwrap();
+    let id = matches.get_one::<String>("id").expect("required CLI argument");
     let skip_confirm = matches.get_flag("yes");
 
     // Check if group exists
@@ -189,7 +189,7 @@ pub async fn cmd_group_delete(db: &Database, matches: &ArgMatches) -> Result<()>
 
 /// Handle group members command
 pub async fn cmd_group_members(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let id = matches.get_one::<String>("id").unwrap();
+    let id = matches.get_one::<String>("id").expect("required CLI argument");
     let set_str = matches.get_one::<String>("set").cloned();
 
     // Check if group exists

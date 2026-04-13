@@ -33,3 +33,6 @@ path = "examples/basic_usage.rs"
 [[example]]
 name = "default_location"
 path = "examples/default_location.rs"
+
+[lints]
+workspace = true

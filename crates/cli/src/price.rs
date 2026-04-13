@@ -65,7 +65,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         Some(("set", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap().to_string();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument").to_string();
             let input_price: f64 = sub_m
                 .get_one::<String>("input")
                 .and_then(|s| s.parse().ok())
@@ -181,7 +181,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         Some(("delete", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
             if let Some(r) = region {
@@ -193,7 +193,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         Some(("get", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
             let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
             let verbose = sub_m.get_flag("verbose");
@@ -326,7 +326,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         Some(("show", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
             let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
@@ -607,7 +607,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             println!("Use 'burncloud price import <file>' to import pricing configuration.");
         }
         Some(("import", sub_m)) => {
-            let file_path = sub_m.get_one::<String>("file").unwrap();
+            let file_path = sub_m.get_one::<String>("file").expect("required CLI argument");
             let override_mode = sub_m.get_flag("override");
 
             let content = std::fs::read_to_string(Path::new(file_path))?;
@@ -853,8 +853,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
         }
         Some(("export", sub_m)) => {
-            let file_path = sub_m.get_one::<String>("file").unwrap();
-            let format = sub_m.get_one::<String>("format").unwrap();
+            let file_path = sub_m.get_one::<String>("file").expect("required CLI argument");
+            let format = sub_m.get_one::<String>("format").expect("required CLI argument");
 
             // Fetch all prices from prices table
             let prices = PriceModel::list(db, 100000, 0, None, None).await?;
@@ -1026,7 +1026,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             );
         }
         Some(("validate", sub_m)) => {
-            let file_path = sub_m.get_one::<String>("file").unwrap();
+            let file_path = sub_m.get_one::<String>("file").expect("required CLI argument");
 
             let content = std::fs::read_to_string(Path::new(file_path))?;
             let config = match PricingConfig::from_json(&content) {
@@ -1212,7 +1212,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list-tiers", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
             let tiers = TieredPriceModel::get_tiers(db, model, region).await?;
@@ -1242,7 +1242,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             }
         }
         Some(("add-tier", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap().to_string();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument").to_string();
             let region = sub_m.get_one::<String>("region").cloned();
             let tier_start: i64 = sub_m
                 .get_one::<String>("tier-start")
@@ -1283,7 +1283,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             );
         }
         Some(("import-tiered", sub_m)) => {
-            let file_path = sub_m.get_one::<String>("file").unwrap();
+            let file_path = sub_m.get_one::<String>("file").expect("required CLI argument");
 
             let content = std::fs::read_to_string(Path::new(file_path))?;
             let tiers: Vec<TieredPriceInput> = serde_json::from_str(&content)?;
@@ -1299,14 +1299,14 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             println!("✓ Imported {} tiered pricing entries", count);
         }
         Some(("delete-tiers", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
             TieredPriceModel::delete_tiers(db, model, region).await?;
             println!("✓ Deleted tiered pricing for '{}'", model);
         }
         Some(("check-tiered", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
 
             let has_tiered = TieredPriceModel::has_tiered_pricing(db, model).await?;
 

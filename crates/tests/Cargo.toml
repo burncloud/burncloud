@@ -25,3 +25,6 @@ chrono = { workspace = true }
 [[test]]
 name = "local_nodejs_test"
 path = "tests/installer/local_nodejs_test.rs"
+
+[lints]
+workspace = true

@@ -13,3 +13,6 @@ serde_json.workspace = true
 [[example]]
 name = "usage"
 path = "examples/usage.rs"
+
+[lints]
+workspace = true

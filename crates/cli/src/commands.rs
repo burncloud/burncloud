@@ -1120,11 +1120,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
 
     match matches.subcommand() {
         Some(("pull", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
             model_manager.pull_model(model).await?;
         }
         Some(("run", sub_m)) => {
-            let model = sub_m.get_one::<String>("model").unwrap();
+            let model = sub_m.get_one::<String>("model").expect("required CLI argument");
             let prompt = sub_m.get_one::<String>("prompt");
 
             if prompt.is_none() {

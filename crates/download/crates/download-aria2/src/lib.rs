@@ -602,7 +602,7 @@ impl Aria2Daemon {
         let instance = start_aria2_rpc(&self.config).await?;
         println!("aria2 RPC 服务已启动在端口: {}", instance.port);
 
-        *self.instance.lock().unwrap() = Some(instance);
+        *self.instance.lock().expect("aria2 instance mutex poisoned") = Some(instance);
         self.is_running.store(true, Ordering::SeqCst);
 
         // 启动监控任务
@@ -615,7 +615,7 @@ impl Aria2Daemon {
                 tokio::time::sleep(Duration::from_millis(1000)).await;
 
                 let need_restart = {
-                    let mut lock = instance.lock().unwrap();
+                    let mut lock = instance.lock().expect("aria2 instance mutex poisoned");
                     match lock.as_mut() {
                         Some(inst) => !inst.is_running(), // 检查进程是否还在运行
                         None => true,
@@ -626,7 +626,7 @@ impl Aria2Daemon {
                     println!("检测到aria2已退出，重启中...");
                     if let Ok(new_instance) = start_aria2_rpc(&config).await {
                         let new_port = new_instance.port;
-                        *instance.lock().unwrap() = Some(new_instance);
+                        *instance.lock().expect("aria2 instance mutex poisoned") = Some(new_instance);
                         println!("aria2重启成功，端口: {}", new_port);
                     }
                 }
@@ -639,16 +639,16 @@ impl Aria2Daemon {
     pub async fn stop(&mut self) {
         self.is_running.store(false, Ordering::SeqCst);
 
-        if let Some(ref mut instance) = self.instance.lock().unwrap().as_mut() {
+        if let Some(ref mut instance) = self.instance.lock().expect("aria2 instance mutex poisoned").as_mut() {
             let _ = instance.kill();
         }
 
-        *self.instance.lock().unwrap() = None;
+        *self.instance.lock().expect("aria2 instance mutex poisoned") = None;
         println!("aria2 守护进程已停止");
     }
 
     pub fn get_rpc_client(&self) -> Option<Aria2RpcClient> {
-        let lock = self.instance.lock().unwrap();
+        let lock = self.instance.lock().expect("aria2 instance mutex poisoned");
         lock.as_ref()
             .map(|instance| Aria2RpcClient::new(instance.port, self.config.secret.clone()))
     }

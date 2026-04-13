@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 /// Handle user login command
 pub async fn cmd_user_login(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let username = matches.get_one::<String>("username").unwrap();
-    let password = matches.get_one::<String>("password").unwrap();
+    let username = matches.get_one::<String>("username").expect("required CLI argument");
+    let password = matches.get_one::<String>("password").expect("required CLI argument");
 
     // Get user by username
     let user = match UserDatabase::get_user_by_username(db, username).await? {
@@ -80,8 +80,8 @@ pub async fn cmd_user_login(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle user register command
 pub async fn cmd_user_register(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let username = matches.get_one::<String>("username").unwrap();
-    let password = matches.get_one::<String>("password").unwrap();
+    let username = matches.get_one::<String>("username").expect("required CLI argument");
+    let password = matches.get_one::<String>("password").expect("required CLI argument");
     let email = matches.get_one::<String>("email").cloned();
 
     // Check if user already exists
@@ -127,12 +127,12 @@ pub async fn cmd_user_register(db: &Database, matches: &ArgMatches) -> Result<()
 pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
     let limit: i64 = matches
         .get_one::<String>("limit")
-        .unwrap()
+        .expect("required CLI argument")
         .parse()
         .unwrap_or(100);
     let offset: i64 = matches
         .get_one::<String>("offset")
-        .unwrap()
+        .expect("required CLI argument")
         .parse()
         .unwrap_or(0);
     let format = matches
@@ -205,10 +205,10 @@ pub async fn cmd_user_list(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Handle user recharges command
 pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let user_id = matches.get_one::<String>("user-id").unwrap();
+    let user_id = matches.get_one::<String>("user-id").expect("required CLI argument");
     let limit: i64 = matches
         .get_one::<String>("limit")
-        .unwrap()
+        .expect("required CLI argument")
         .parse()
         .unwrap_or(100);
 
@@ -248,7 +248,7 @@ pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<(
 
 /// Handle user check-username command
 pub async fn cmd_user_check_username(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let username = matches.get_one::<String>("username").unwrap();
+    let username = matches.get_one::<String>("username").expect("required CLI argument");
 
     // Check if username exists
     let existing_user = UserDatabase::get_user_by_username(db, username).await?;
@@ -264,11 +264,11 @@ pub async fn cmd_user_check_username(db: &Database, matches: &ArgMatches) -> Res
 
 /// Handle user topup command
 pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
-    let user_id = matches.get_one::<String>("user-id").unwrap();
-    let amount_str = matches.get_one::<String>("amount").unwrap();
+    let user_id = matches.get_one::<String>("user-id").expect("required CLI argument");
+    let amount_str = matches.get_one::<String>("amount").expect("required CLI argument");
     let currency = matches
         .get_one::<String>("currency")
-        .unwrap()
+        .expect("required CLI argument")
         .to_uppercase();
 
     // Validate currency

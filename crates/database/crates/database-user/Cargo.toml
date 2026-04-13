@@ -9,3 +9,6 @@ sqlx.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
+
+[lints]
+workspace = true

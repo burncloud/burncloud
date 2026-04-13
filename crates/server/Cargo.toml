@@ -35,3 +35,6 @@ jsonwebtoken = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
+
+[lints]
+workspace = true

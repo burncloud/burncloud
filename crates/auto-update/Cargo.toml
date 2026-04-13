@@ -20,3 +20,5 @@ tokio.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
+[lints]
+workspace = true

@@ -45,7 +45,7 @@ fn get_jwt_secret() -> String {
 fn generate_jwt(user_id: &str, username: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("SystemTime is after UNIX_EPOCH")
         .as_secs() as usize;
 
     let claims = Claims {

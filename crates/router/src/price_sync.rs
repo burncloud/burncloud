@@ -167,7 +167,7 @@ impl PriceSyncService {
         }
 
         // All retries exhausted
-        let err = last_err.unwrap();
+        let err = last_err.expect("last_err is set after at least one retry attempt");
         let db_count = self.count_db_models().await.unwrap_or(0);
         if db_count > 0 {
             tracing::warn!(
@@ -657,7 +657,7 @@ impl PriceSyncService {
         let mut updated_count = 0;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("SystemTime is after UNIX_EPOCH")
             .as_secs() as i64;
 
         let conn = self.db.get_connection()?;
