@@ -1,3 +1,6 @@
+// LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 //! Dynamic Protocol Adaptor Module
 //!
 //! This module provides a dynamic adaptor that can be configured at runtime
@@ -139,7 +142,7 @@ impl ChannelAdaptor for DynamicAdaptor {
             "object": "chat.completion",
             "created": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .expect("SystemTime is after UNIX_EPOCH")
                 .as_secs(),
             "model": "dynamic",
             "choices": [{

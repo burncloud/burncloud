@@ -1,3 +1,6 @@
+// Router core — LLM request/response handling — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 mod adaptive_limit;
 mod adaptor;
 mod balancer;

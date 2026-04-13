@@ -1,3 +1,6 @@
+// LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use async_trait::async_trait;
 use burncloud_common::types::{ChannelType, OpenAIChatRequest};
 use burncloud_database::Database;

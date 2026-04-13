@@ -1,3 +1,6 @@
+// Dynamic form rendering from JSON schema — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use dioxus::prelude::*;
 use std::collections::HashMap;
 
@@ -293,7 +296,7 @@ pub fn SchemaForm(
         if !val.is_object() {
             val = serde_json::Value::Object(serde_json::Map::new());
         }
-        let obj = val.as_object_mut().unwrap();
+        let obj = val.as_object_mut().expect("just set to Object above");
         for field in &init_fields {
             let key = field["key"].as_str().unwrap_or("");
             if !obj.contains_key(key) {

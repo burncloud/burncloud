@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-service-redis"
 version = "0.1.0"
 edition = "2021"
@@ -9,3 +11,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 burncloud-common = { workspace = true }
+
+[lints]
+workspace = true

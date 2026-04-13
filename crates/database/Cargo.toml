@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-database"
 version = "0.1.0"
 edition = "2021"
@@ -33,3 +34,6 @@ path = "examples/basic_usage.rs"
 [[example]]
 name = "default_location"
 path = "examples/default_location.rs"
+
+[lints]
+workspace = true

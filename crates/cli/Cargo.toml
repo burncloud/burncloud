@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-cli"
 version = "0.1.11"
 edition = "2021"
@@ -31,3 +32,5 @@ serde.workspace = true
 serde_json.workspace = true
 dirs.workspace = true
 chrono.workspace = true
+[lints]
+workspace = true

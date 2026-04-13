@@ -4,10 +4,10 @@ use regex::Regex;
 static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
-    ).unwrap()
+    ).expect("valid email regex pattern")
 });
 
-static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_]{3,20}$").unwrap());
+static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_]{3,20}$").expect("valid username regex pattern"));
 
 /// Password strength levels
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-client-api"
 version = "0.1.2"
 edition = "2021"
@@ -11,3 +12,5 @@ authors = ["burncloud contributors"]
 dioxus.workspace = true
 burncloud-client-shared.workspace = true
 uuid = { workspace = true, features = ["v4"] }
+[lints]
+workspace = true

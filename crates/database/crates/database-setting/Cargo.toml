@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-database-setting"
 version = "0.1.0"
 edition = "2021"
@@ -13,3 +15,6 @@ serde_json.workspace = true
 [[example]]
 name = "usage"
 path = "examples/usage.rs"
+
+[lints]
+workspace = true

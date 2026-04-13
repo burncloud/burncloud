@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-service-models"
 version = "0.1.0"
 edition = "2021"
@@ -13,3 +15,6 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true
+
+[lints]
+workspace = true

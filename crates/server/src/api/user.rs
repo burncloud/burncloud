@@ -1,15 +1,13 @@
+use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
     extract::{Json, Query, State},
-    response::Json as AxumJson,
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
-use bcrypt::{hash, verify, DEFAULT_COST};
-use burncloud_database_user::{DbRecharge, DbUser, UserDatabase};
-use serde::Deserialize;
-use serde_json::{json, Value};
-use uuid::Uuid;
+use burncloud_service_user::UserServiceError;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct RegisterDto {
@@ -27,11 +25,42 @@ pub struct LoginDto {
 #[derive(Deserialize)]
 pub struct TopupDto {
     pub user_id: String,
-    /// Amount in nanodollars (9 decimal precision: $1 = 1_000_000_000)
+    /// Amount in nanodollars ($1 = 1_000_000_000)
     pub amount: i64,
-    /// Currency for the topup (USD or CNY, defaults to USD)
     #[serde(default)]
     pub currency: Option<String>,
+}
+
+#[derive(Serialize)]
+struct AuthData {
+    id: String,
+    username: String,
+    roles: Vec<String>,
+    token: String,
+}
+
+#[derive(Serialize)]
+struct TopupData {
+    balance: i64,
+    currency: String,
+}
+
+#[derive(Serialize)]
+struct UsernameAvailability {
+    available: bool,
+}
+
+#[derive(Serialize)]
+struct UserSummary {
+    id: String,
+    username: String,
+    email: Option<String>,
+    status: i32,
+    balance_usd: i64,
+    balance_cny: i64,
+    preferred_currency: Option<String>,
+    role: String,
+    group: &'static str,
 }
 
 pub fn routes() -> Router<AppState> {
@@ -44,81 +73,50 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/list_users", get(list_users))
 }
 
-async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> AxumJson<Value> {
+async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> impl IntoResponse {
     let currency = payload.currency.unwrap_or_else(|| "USD".to_string());
-
-    let recharge = DbRecharge {
-        id: 0,
-        user_id: payload.user_id.clone(),
-        amount: payload.amount,
-        currency: Some(currency.clone()),
-        description: Some("账户充值".to_string()),
-        created_at: None,
-    };
-    match UserDatabase::create_recharge(&state.db, &recharge).await {
-        Ok(_) => match UserDatabase::get_user_by_username(&state.db, "demo-user").await {
-            Ok(Some(u)) => {
-                // Return balance in nanodollars
-                let balance = if currency == "CNY" {
-                    u.balance_cny
-                } else {
-                    u.balance_usd
-                };
-                AxumJson(
-                    json!({ "success": true, "data": { "balance": balance, "currency": currency } }),
-                )
-            }
-            _ => AxumJson(json!({ "success": true })),
-        },
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+    match state
+        .user_service
+        .topup(&state.db, &payload.user_id, payload.amount, &currency)
+        .await
+    {
+        Ok(balance) => ok(TopupData { balance, currency }).into_response(),
+        Err(e) => err(e).into_response(),
     }
 }
 
 async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
-) -> AxumJson<Value> {
-    match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
-        Ok(Some(_)) => return AxumJson(json!({ "success": false, "message": "用户名已存在" })),
-        Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
-        _ => {}
-    }
-
-    let password_hash = match hash(&payload.password, DEFAULT_COST) {
-        Ok(h) => h,
-        Err(e) => return AxumJson(json!({ "success": false, "message": e.to_string() })),
-    };
-
-    let user = DbUser {
-        id: Uuid::new_v4().to_string(),
-        username: payload.username.clone(),
-        email: payload.email,
-        password_hash: Some(password_hash),
-        github_id: None,
-        status: 1,
-        balance_usd: 10_000_000_000, // 10 USD in nanodollars
-        balance_cny: 0,
-        preferred_currency: Some("USD".to_string()),
-    };
-
-    match UserDatabase::create_user(&state.db, &user).await {
-        Ok(_) => {
-            let _ = UserDatabase::assign_role(&state.db, &user.id, "user").await;
-            let roles = UserDatabase::get_user_roles(&state.db, &user.id)
+) -> impl IntoResponse {
+    match state
+        .user_service
+        .register_user(&state.db, &payload.username, &payload.password, payload.email)
+        .await
+    {
+        Ok(user_id) => {
+            let roles = state
+                .user_service
+                .get_user_roles(&state.db, &user_id)
                 .await
                 .unwrap_or_default();
 
-            AxumJson(json!({
-                "success": true,
-                "data": {
-                    "id": user.id,
-                    "username": user.username,
-                    "roles": roles,
-                    "token": "mock-token-for-now"
+            match state.user_service.generate_token(&user_id, &payload.username) {
+                Ok(auth_token) => ok(AuthData {
+                    id: user_id,
+                    username: payload.username,
+                    roles,
+                    token: auth_token.token,
+                })
+                .into_response(),
+                Err(e) => {
+                    eprintln!("Token generation error: {}", e);
+                    err("Registration succeeded but token generation failed").into_response()
                 }
-            }))
+            }
         }
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+        Err(UserServiceError::UserAlreadyExists) => err("用户名已存在").into_response(),
+        Err(e) => err(e).into_response(),
     }
 }
 
@@ -130,85 +128,92 @@ pub struct CheckUsernameQuery {
 async fn check_username(
     State(state): State<AppState>,
     Query(params): Query<CheckUsernameQuery>,
-) -> AxumJson<Value> {
-    match UserDatabase::get_user_by_username(&state.db, &params.username).await {
-        Ok(Some(_)) => AxumJson(json!({
-            "success": true,
-            "data": { "available": false }
-        })),
-        Ok(None) => AxumJson(json!({
-            "success": true,
-            "data": { "available": true }
-        })),
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+) -> impl IntoResponse {
+    match state
+        .user_service
+        .is_username_available(&state.db, &params.username)
+        .await
+    {
+        Ok(available) => ok(UsernameAvailability { available }).into_response(),
+        Err(e) => err(e).into_response(),
     }
 }
 
-async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> AxumJson<Value> {
-    match UserDatabase::get_user_by_username(&state.db, &payload.username).await {
-        Ok(Some(user)) => {
-            if let Some(hash_str) = user.password_hash {
-                if verify(&payload.password, &hash_str).unwrap_or(false) {
-                    let roles = UserDatabase::get_user_roles(&state.db, &user.id)
-                        .await
-                        .unwrap_or_default();
-                    return AxumJson(json!({
-                        "success": true,
-                        "data": {
-                            "id": user.id,
-                            "username": user.username,
-                            "roles": roles,
-                            "token": "mock-token-for-now"
-                        }
-                    }));
-                }
-            }
-            AxumJson(json!({ "success": false, "message": "Invalid credentials" }))
+async fn login(
+    State(state): State<AppState>,
+    Json(payload): Json<LoginDto>,
+) -> impl IntoResponse {
+    match state
+        .user_service
+        .login_user(&state.db, &payload.username, &payload.password)
+        .await
+    {
+        Ok(auth_token) => {
+            let roles = state
+                .user_service
+                .get_user_roles(&state.db, &auth_token.user_id)
+                .await
+                .unwrap_or_default();
+
+            ok(AuthData {
+                id: auth_token.user_id,
+                username: auth_token.username,
+                roles,
+                token: auth_token.token,
+            })
+            .into_response()
         }
-        Ok(None) => AxumJson(json!({ "success": false, "message": "User not found" })),
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+        Err(UserServiceError::UserNotFound) => err("User not found").into_response(),
+        Err(UserServiceError::InvalidCredentials) => err("Invalid credentials").into_response(),
+        Err(e) => err(e).into_response(),
     }
 }
 
-async fn list_users(State(state): State<AppState>) -> AxumJson<Value> {
-    match UserDatabase::list_users(&state.db).await {
+async fn list_users(State(state): State<AppState>) -> impl IntoResponse {
+    match state.user_service.list_users(&state.db).await {
         Ok(users) => {
-            let mut safe_users = Vec::new();
+            let mut summaries = Vec::new();
             for u in users {
-                let roles = UserDatabase::get_user_roles(&state.db, &u.id)
+                let roles = state
+                    .user_service
+                    .get_user_roles(&state.db, &u.id)
                     .await
                     .unwrap_or_default();
-                let role = roles.first().map(|s| s.as_str()).unwrap_or("user");
+                let role = roles
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| "user".to_string());
 
-                // Balances are returned in nanodollars (i64)
-                safe_users.push(json!({
-                    "id": u.id,
-                    "username": u.username,
-                    "email": u.email,
-                    "status": u.status,
-                    "balance_usd": u.balance_usd,
-                    "balance_cny": u.balance_cny,
-                    "preferred_currency": u.preferred_currency,
-                    "role": role,
-                    "group": "default"
-                }));
+                summaries.push(UserSummary {
+                    id: u.id,
+                    username: u.username,
+                    email: u.email,
+                    status: u.status,
+                    balance_usd: u.balance_usd,
+                    balance_cny: u.balance_cny,
+                    preferred_currency: u.preferred_currency,
+                    role,
+                    group: "default",
+                });
             }
-            AxumJson(json!({ "success": true, "data": safe_users }))
+            ok(summaries).into_response()
         }
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+        Err(e) => err(e).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+pub struct RechargeQuery {
+    user_id: Option<String>,
 }
 
 async fn list_recharges(
     State(state): State<AppState>,
-    Query(params): Query<Value>,
-) -> AxumJson<Value> {
-    let user_id = params
-        .get("user_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("demo-user");
-    match UserDatabase::list_recharges(&state.db, user_id).await {
-        Ok(recharges) => AxumJson(json!({ "success": true, "data": recharges })),
-        Err(e) => AxumJson(json!({ "success": false, "message": e.to_string() })),
+    Query(params): Query<RechargeQuery>,
+) -> impl IntoResponse {
+    let user_id = params.user_id.as_deref().unwrap_or("demo-user");
+    match state.user_service.list_recharges(&state.db, user_id).await {
+        Ok(recharges) => ok(recharges).into_response(),
+        Err(e) => err(e).into_response(),
     }
 }

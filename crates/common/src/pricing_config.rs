@@ -547,6 +547,7 @@ impl PricingConfig {
 
     /// Parse pricing configuration from JSON string.
     /// Supports both v1.x (legacy nested) and v7+ (flat currency-first) formats.
+    #[allow(clippy::disallowed_types)] // Value is an intermediate parse step for version sniffing only
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let value: serde_json::Value = serde_json::from_str(json)?;
         let version = match value["version"].as_str() {

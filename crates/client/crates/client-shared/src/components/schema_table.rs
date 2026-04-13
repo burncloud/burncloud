@@ -1,3 +1,7 @@
+// Dynamic table rendering uses Value for column/row definitions — no typed alternative
+// for arbitrary JSON schema rendering.
+#![allow(clippy::disallowed_types)]
+
 use dioxus::prelude::*;
 
 use crate::components::{BCBadge, BCTable, BadgeVariant};

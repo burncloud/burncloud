@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-client-register"
 version = "0.1.0"
 edition = "2021"
@@ -10,3 +11,6 @@ dioxus = { workspace = true, features = ["router"] }
 tokio = { workspace = true, features = ["time"] }
 serde_json.workspace = true
 burncloud-client-shared = { path = "../client-shared" }
+
+[lints]
+workspace = true

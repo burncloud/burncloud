@@ -1,3 +1,10 @@
+// Three struct fields legitimately need HashMap<String, Value>:
+//   OpenAIChatRequest::extra      — generic LLM API passthrough fields
+//   RequestMapping::add_fields    — dynamic request field injection
+//   FullPricing::additional_fields — open-ended pricing metadata
+// All other Value uses in this codebase must go through typed structs.
+#![allow(clippy::disallowed_types)]
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;

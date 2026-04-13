@@ -1,0 +1,163 @@
+name: LLM Architecture Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  llm-review:
+    name: Semantic architecture check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for skip override
+        id: skip_check
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          if echo "$PR_BODY" | grep -q "llm-review-skip:"; then
+            REASON=$(echo "$PR_BODY" | grep "llm-review-skip:" | head -1 | sed 's/.*llm-review-skip://' | xargs)
+            echo "SKIP=true" >> $GITHUB_OUTPUT
+            echo "REASON=$REASON" >> $GITHUB_OUTPUT
+            echo "LLM review skipped: $REASON"
+          else
+            echo "SKIP=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get PR diff
+        id: diff
+        if: steps.skip_check.outputs.SKIP == 'false'
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD -- '*.rs' | head -c 100000)
+          # Write to file to avoid argument length limits
+          echo "$DIFF" > /tmp/pr_diff.txt
+          echo "Diff size: $(wc -c < /tmp/pr_diff.txt) bytes"
+
+      - name: Run LLM architecture review
+        id: llm_review
+        if: steps.skip_check.outputs.SKIP == 'false'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          RULES=$(cat docs/ci/llm-review-rules.md)
+          DIFF=$(cat /tmp/pr_diff.txt)
+
+          PROMPT="You are a code reviewer enforcing architecture rules for a Rust backend project.
+
+          Review the following git diff against the architecture rules provided.
+          Only check the rules in the rules document — do not invent new rules.
+          If the diff is empty or only touches non-Rust files, return passed: true.
+
+          ARCHITECTURE RULES:
+          ${RULES}
+
+          GIT DIFF:
+          ${DIFF}
+
+          Respond with JSON only (no markdown, no prose):
+          {\"passed\": bool, \"violations\": [\"description...\"]}"
+
+          # Retry up to 3 times — LLM availability is a hard CI dependency
+          for attempt in 1 2 3; do
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              --max-time 60 \
+              -X POST https://api.anthropic.com/v1/messages \
+              -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" \
+              -d "$(jq -n \
+                --arg model "claude-haiku-4-5-20251001" \
+                --arg prompt "$PROMPT" \
+                '{model: $model, max_tokens: 1024, messages: [{role: "user", content: $prompt}]}')")
+
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | head -n -1)
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              # Extract JSON from response content
+              RESULT=$(echo "$BODY" | jq -r '.content[0].text' 2>/dev/null)
+              if [ -n "$RESULT" ] && echo "$RESULT" | jq . > /dev/null 2>&1; then
+                echo "RESULT=$RESULT" >> $GITHUB_OUTPUT
+                echo "$RESULT" > /tmp/review_result.json
+                break
+              fi
+            fi
+
+            echo "Attempt $attempt failed (HTTP $HTTP_CODE), retrying..."
+            if [ "$attempt" -lt 3 ]; then
+              sleep 10
+            else
+              echo "LLM review failed after 3 attempts — CI blocked"
+              exit 1
+            fi
+          done
+
+      - name: Evaluate review result
+        if: steps.skip_check.outputs.SKIP == 'false'
+        run: |
+          RESULT=$(cat /tmp/review_result.json)
+          PASSED=$(echo "$RESULT" | jq -r '.passed')
+          VIOLATIONS=$(echo "$RESULT" | jq -r '.violations[]' 2>/dev/null || echo "")
+
+          if [ "$PASSED" = "true" ]; then
+            echo "✅ LLM architecture review passed — no violations found"
+          else
+            echo "❌ LLM architecture review found violations:"
+            echo "$VIOLATIONS" | while IFS= read -r v; do
+              echo "  • $v"
+            done
+            exit 1
+          fi
+
+      - name: Post review comment
+        if: always() && steps.skip_check.outputs.SKIP == 'false' && steps.llm_review.outcome != 'skipped'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let result;
+            try {
+              result = JSON.parse(fs.readFileSync('/tmp/review_result.json', 'utf8'));
+            } catch (e) {
+              return; // No result to post
+            }
+
+            const passed = result.passed;
+            const violations = result.violations || [];
+
+            let body;
+            if (passed) {
+              body = '## 🤖 Architecture Review\n\n✅ **Passed** — no architectural violations detected.\n\n> Checked against `docs/ci/llm-review-rules.md`';
+            } else {
+              const list = violations.map(v => `- ${v}`).join('\n');
+              body = `## 🤖 Architecture Review\n\n❌ **Failed** — violations found:\n\n${list}\n\n> To override: add \`llm-review-skip: <reason>\` to the PR description (requires human review)\n> Rules: \`docs/ci/llm-review-rules.md\``;
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Post skip notice
+        if: steps.skip_check.outputs.SKIP == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reason = '${{ steps.skip_check.outputs.REASON }}';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🤖 Architecture Review\n\n⏭️ **Skipped** — reason: ${reason}\n\n> Human reviewer must verify architectural correctness manually.`
+            });

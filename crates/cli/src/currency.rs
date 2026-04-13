@@ -14,8 +14,8 @@ pub async fn handle_currency_command(db: &Database, matches: &ArgMatches) -> Res
     match matches.subcommand() {
         Some(("list-rates", _)) => cmd_list_rates(db).await,
         Some(("set-rate", sub_m)) => {
-            let from = sub_m.get_one::<String>("from").unwrap();
-            let to = sub_m.get_one::<String>("to").unwrap();
+            let from = sub_m.get_one::<String>("from").expect("required CLI argument");
+            let to = sub_m.get_one::<String>("to").expect("required CLI argument");
             let rate: f64 = sub_m
                 .get_one::<String>("rate")
                 .and_then(|s| s.parse().ok())
@@ -29,8 +29,8 @@ pub async fn handle_currency_command(db: &Database, matches: &ArgMatches) -> Res
                 .get_one::<String>("amount")
                 .and_then(|s| s.parse().ok())
                 .ok_or_else(|| anyhow::anyhow!("Invalid amount value"))?;
-            let from = sub_m.get_one::<String>("from").unwrap();
-            let to = sub_m.get_one::<String>("to").unwrap();
+            let from = sub_m.get_one::<String>("from").expect("required CLI argument");
+            let to = sub_m.get_one::<String>("to").expect("required CLI argument");
 
             cmd_convert(db, amount, from, to).await
         }

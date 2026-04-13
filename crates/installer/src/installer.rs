@@ -359,7 +359,7 @@ impl Installer {
                 info!("Running installer: {}", local_path.display());
                 let status = if extension == "msi" {
                     Command::new("msiexec")
-                        .args(["/i", local_path.to_str().unwrap(), "/quiet", "/norestart"])
+                        .args(["/i", local_path.to_str().expect("installer path is valid UTF-8"), "/quiet", "/norestart"])
                         .status()
                         .map_err(|e| {
                             InstallerError::Script(format!("Failed to run MSI installer: {}", e))
@@ -486,7 +486,7 @@ impl Installer {
             let status = Command::new("msiexec")
                 .args([
                     "/i",
-                    installer_path.to_str().unwrap(),
+                    installer_path.to_str().expect("installer path is valid UTF-8"),
                     "/quiet",
                     "/norestart",
                 ])
@@ -589,8 +589,11 @@ impl Installer {
             self.extract_zip(&installer_path, &temp_dir)?;
 
             // Look for an installer inside
-            for entry in std::fs::read_dir(&temp_dir).unwrap() {
-                let entry = entry.unwrap();
+            for entry in std::fs::read_dir(&temp_dir)
+                .map_err(|e| InstallerError::Script(format!("Failed to read temp dir: {}", e)))?
+            {
+                let entry = entry
+                    .map_err(|e| InstallerError::Script(format!("Failed to read dir entry: {}", e)))?;
                 let path = entry.path();
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if ext == "exe" || ext == "msi" {
@@ -1273,7 +1276,7 @@ impl Installer {
         if let Some(branch) = branch {
             clone_args.extend_from_slice(&["-b", branch]);
         }
-        clone_args.push(clone_dir.to_str().unwrap());
+        clone_args.push(clone_dir.to_str().expect("clone dir path is valid UTF-8"));
 
         let clone_result = if self.config.platform.is_windows() {
             Command::new("cmd")
@@ -1441,9 +1444,9 @@ impl Installer {
             let status = Command::new("tar")
                 .args([
                     "-xzf",
-                    nodejs_path.to_str().unwrap(),
+                    nodejs_path.to_str().expect("nodejs path is valid UTF-8"),
                     "-C",
-                    nodejs_install_dir.to_str().unwrap(),
+                    nodejs_install_dir.to_str().expect("nodejs install dir path is valid UTF-8"),
                 ])
                 .status()
                 .map_err(|e| InstallerError::Script(format!("Failed to extract tar.gz: {}", e)))?;

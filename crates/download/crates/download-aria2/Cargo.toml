@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-download-aria2"
 version = "0.1.0"
 edition = "2021"
@@ -35,3 +36,5 @@ path = "src/lib.rs"
 [[bin]]
 name = "aria2-test"
 path = "src/main.rs"
+[lints]
+workspace = true

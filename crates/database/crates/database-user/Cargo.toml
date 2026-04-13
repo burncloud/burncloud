@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-database-user"
 version = "0.1.0"
 edition = "2021"
@@ -9,3 +11,6 @@ sqlx.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
+
+[lints]
+workspace = true

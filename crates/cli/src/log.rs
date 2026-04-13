@@ -75,12 +75,12 @@ pub async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
     let model = matches.get_one::<String>("model").map(|s| s.as_str());
     let limit: i32 = matches
         .get_one::<String>("limit")
-        .unwrap()
+        .expect("required CLI argument")
         .parse()
         .unwrap_or(100);
     let offset: i32 = matches
         .get_one::<String>("offset")
-        .unwrap()
+        .expect("required CLI argument")
         .parse()
         .unwrap_or(0);
     let format = matches

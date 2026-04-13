@@ -1,3 +1,6 @@
+// HTTP service — API response parsing — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]

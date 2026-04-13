@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-database-models"
 version = "0.1.0"
 edition = "2021"
@@ -12,3 +14,6 @@ serde_json.workspace = true
 chrono.workspace = true
 burncloud-common.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
+
+[lints]
+workspace = true

@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-client-deploy"
 version = "0.1.2"
 edition = "2021"
@@ -12,3 +13,6 @@ dioxus.workspace = true
 serde_json.workspace = true
 burncloud-client-shared.workspace = true
 tokio.workspace = true
+
+[lints]
+workspace = true

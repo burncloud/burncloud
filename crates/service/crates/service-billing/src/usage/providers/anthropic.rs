@@ -1,3 +1,7 @@
+// LLM provider response parsing requires Value — all providers implement
+// UsageParser whose trait method signature uses `&Value`.
+#![allow(clippy::disallowed_types)]
+
 use crate::error::ParseError;
 use crate::types::UnifiedUsage;
 use crate::usage::UsageParser;

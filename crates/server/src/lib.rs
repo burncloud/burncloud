@@ -8,6 +8,7 @@ use burncloud_database_user::UserDatabase;
 use burncloud_router::create_router_app;
 use burncloud_router::price_sync::SyncResult;
 use burncloud_service_monitor::SystemMonitorService;
+use burncloud_service_user::UserService;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -17,6 +18,7 @@ use tower_http::cors::CorsLayer;
 pub struct AppState {
     pub db: Arc<Database>,
     pub monitor: Arc<SystemMonitorService>,
+    pub user_service: Arc<UserService>,
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
 }
 
@@ -31,6 +33,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     let state = AppState {
         db: db.clone(),
         monitor,
+        user_service: Arc::new(UserService::new()),
         force_sync_tx,
     };
 

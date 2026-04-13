@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-database-installer"
 version = "0.1.0"
 edition = "2021"
@@ -13,3 +14,6 @@ serde_json.workspace = true
 tokio.workspace = true
 chrono.workspace = true
 sqlx.workspace = true
+
+[lints]
+workspace = true

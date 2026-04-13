@@ -51,8 +51,18 @@ members = [
     "crates/service/crates/service-group",
     "crates/service/crates/service-router-log",
     "crates/service/crates/service-billing",
+    "crates/service/crates/service-channel",
     "crates/tests",
 ]
+
+[workspace.package]
+license = "MIT"
+publish = false
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+disallowed_types = "deny"
 
 [workspace.dependencies]
 anyhow = "1.0"
@@ -179,6 +189,7 @@ burncloud-service-token = { path = "crates/service/crates/service-token" }
 burncloud-service-group = { path = "crates/service/crates/service-group" }
 burncloud-service-router-log = { path = "crates/service/crates/service-router-log" }
 burncloud-service-billing = { path = "crates/service/crates/service-billing" }
+burncloud-service-channel = { path = "crates/service/crates/service-channel" }
 
 [package]
 name = "burncloud"

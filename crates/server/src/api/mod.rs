@@ -6,6 +6,7 @@ pub mod channel;
 pub mod group;
 pub mod log;
 pub mod monitor;
+pub mod response;
 pub mod token;
 pub mod user;
 

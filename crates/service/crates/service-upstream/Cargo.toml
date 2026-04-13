@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-service-upstream"
 version = "0.1.0"
 edition = "2021"
@@ -8,3 +10,6 @@ burncloud-database-upstream.workspace = true
 burncloud-database.workspace = true
 tokio.workspace = true
 serde.workspace = true
+
+[lints]
+workspace = true

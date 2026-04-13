@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-database-router"
 version = "0.1.0"
 edition = "2021"
@@ -19,3 +21,5 @@ thiserror.workspace = true
 uuid.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tempfile.workspace = true
+[lints]
+workspace = true

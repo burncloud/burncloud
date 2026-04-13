@@ -6,7 +6,9 @@
 use burncloud_database::Database;
 use burncloud_database_router_log::{BalanceModel, RouterLogModel};
 
-pub use burncloud_database_router_log::{DbRouterLog, ModelUsageStats, UsageStats};
+pub use burncloud_database_router_log::{
+    BillingModelSummary, BillingSummary, DbRouterLog, ModelUsageStats, UsageStats,
+};
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 
@@ -107,5 +109,20 @@ impl BalanceService {
             exchange_rate_nano,
         )
         .await
+    }
+}
+
+/// Billing summary service
+pub struct BillingService;
+
+impl BillingService {
+    /// Get per-model billing summary for a time range.
+    /// `start` and `end` are optional ISO-8601 date strings (e.g. "2024-01-01").
+    pub async fn get_billing_summary(
+        db: &Database,
+        start: Option<&str>,
+        end: Option<&str>,
+    ) -> Result<BillingSummary> {
+        burncloud_database_router_log::get_billing_summary(db, start, end).await
     }
 }

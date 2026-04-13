@@ -1,20 +1,14 @@
+use crate::api::response::{err, ok};
 use crate::AppState;
-use axum::{extract::State, response::Json, routing::get, Router};
-use serde_json::{json, Value};
+use axum::{extract::State, response::IntoResponse, routing::get, Router};
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/console/api/monitor", get(get_system_metrics))
 }
 
-async fn get_system_metrics(State(state): State<AppState>) -> Json<Value> {
+async fn get_system_metrics(State(state): State<AppState>) -> impl IntoResponse {
     match state.monitor.get_metrics().await {
-        Ok(metrics) => Json(json!({
-            "success": true,
-            "data": metrics
-        })),
-        Err(e) => Json(json!({
-            "success": false,
-            "error": e.to_string()
-        })),
+        Ok(metrics) => ok(metrics).into_response(),
+        Err(e) => err(e).into_response(),
     }
 }

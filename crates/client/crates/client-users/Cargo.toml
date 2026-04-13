@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-client-users"
 version = "0.1.0"
 edition = "2021"
@@ -8,3 +10,6 @@ dioxus.workspace = true
 serde_json.workspace = true
 burncloud-client-shared = { path = "../client-shared" }
 burncloud-common.workspace = true
+
+[lints]
+workspace = true

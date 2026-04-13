@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-client-tray"
 version = "0.1.3"
 edition = "2021"
@@ -22,3 +23,5 @@ path = "src/main.rs"
 
 [target.'cfg(windows)'.dependencies]
 systray.workspace = true
+[lints]
+workspace = true

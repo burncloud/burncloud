@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-installer"
 version = "0.1.0"
 edition = "2021"
@@ -30,3 +31,6 @@ winapi.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
+
+[lints]
+workspace = true

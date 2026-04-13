@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-service-user"
 version = "0.1.0"
 edition = "2021"
@@ -17,3 +19,6 @@ chrono.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 anyhow.workspace = true
+
+[lints]
+workspace = true

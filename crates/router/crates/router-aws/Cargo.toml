@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-router-aws"
 version = "0.1.0"
 edition = "2021"
@@ -13,3 +15,6 @@ hmac.workspace = true
 hex.workspace = true
 url.workspace = true
 chrono.workspace = true
+
+[lints]
+workspace = true

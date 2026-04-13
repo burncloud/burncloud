@@ -1,0 +1,11 @@
+[template]
+cargo_generate_version = ">=0.19"
+description = "BurnCloud database crate — SQLx persistence for a domain type"
+
+[placeholders.crate_name]
+type = "string"
+prompt = "Domain name (e.g. 'order', 'payment')"
+regex = "^[a-z][a-z0-9_-]*$"
+
+[hooks]
+post = ["post-generate.sh"]

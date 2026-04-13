@@ -4,7 +4,10 @@
 
 use bcrypt::{hash, verify, DEFAULT_COST};
 use burncloud_database::Database;
-use burncloud_database_user::{DbUser, UserDatabase};
+use burncloud_database_user::UserDatabase;
+
+// Re-export domain types so server can depend on service-user instead of database-user
+pub use burncloud_database_user::{DbRecharge, DbUser};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -236,6 +239,60 @@ impl UserService {
             username: username.to_string(),
             expires_at: expiration.timestamp(),
         })
+    }
+
+    /// List all users (no pagination — use sparingly in production)
+    pub async fn list_users(&self, db: &Database) -> Result<Vec<DbUser>> {
+        UserDatabase::list_users(db).await.map_err(Into::into)
+    }
+
+    /// Check whether a username is already taken. Returns `true` if available.
+    pub async fn is_username_available(&self, db: &Database, username: &str) -> Result<bool> {
+        let existing = UserDatabase::get_user_by_username(db, username).await?;
+        Ok(existing.is_none())
+    }
+
+    /// Get roles for a user
+    pub async fn get_user_roles(&self, db: &Database, user_id: &str) -> Result<Vec<String>> {
+        UserDatabase::get_user_roles(db, user_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Topup a user's balance and return the new balance in nanodollars.
+    pub async fn topup(
+        &self,
+        db: &Database,
+        user_id: &str,
+        amount: i64,
+        currency: &str,
+    ) -> Result<i64> {
+        let recharge = DbRecharge {
+            id: 0,
+            user_id: user_id.to_string(),
+            amount,
+            currency: Some(currency.to_string()),
+            description: Some("账户充值".to_string()),
+            created_at: None,
+        };
+        UserDatabase::create_recharge(db, &recharge)
+            .await
+            .map_err(UserServiceError::DatabaseError)?;
+
+        // Return current balance
+        let user = UserDatabase::get_user_by_username(db, user_id)
+            .await?;
+        let balance = user
+            .map(|u| if currency == "CNY" { u.balance_cny } else { u.balance_usd })
+            .unwrap_or(0);
+        Ok(balance)
+    }
+
+    /// List recharge history for a user
+    pub async fn list_recharges(&self, db: &Database, user_id: &str) -> Result<Vec<DbRecharge>> {
+        UserDatabase::list_recharges(db, user_id)
+            .await
+            .map_err(Into::into)
     }
 
     /// Validate JWT token and extract user information

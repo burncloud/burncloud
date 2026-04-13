@@ -1,3 +1,6 @@
+// UI model list — HTTP response parsing — Value required; no feasible typed alternative.
+#![allow(clippy::disallowed_types)]
+
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::{
     ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,

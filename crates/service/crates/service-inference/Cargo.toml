@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-service-inference"
 version = "0.1.0"
 edition = "2021"
@@ -17,3 +19,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+
+[lints]
+workspace = true

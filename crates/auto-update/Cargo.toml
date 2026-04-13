@@ -1,4 +1,5 @@
 [package]
+publish.workspace = true
 name = "burncloud-auto-update"
 version = "0.1.2"
 edition = "2021"
@@ -20,3 +21,5 @@ tokio.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
+[lints]
+workspace = true

@@ -1,4 +1,6 @@
 [package]
+publish.workspace = true
+license.workspace = true
 name = "burncloud-service-setting"
 version = "0.1.0"
 edition = "2021"
@@ -11,3 +13,6 @@ tokio.workspace = true
 [[example]]
 name = "usage"
 path = "examples/usage.rs"
+
+[lints]
+workspace = true
