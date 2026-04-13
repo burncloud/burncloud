@@ -44,13 +44,72 @@ impl DownloadDB {
                 filename TEXT,
                 connections INTEGER DEFAULT 16,
                 split INTEGER DEFAULT 5,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+                updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
             );
             CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
         ",
             )
             .await?;
+
+        // Migrate DATETIME → TEXT: the sqlx Any driver cannot decode SQLite's
+        // Datetime type affinity. If the table was created before this fix,
+        // recreate it with TEXT columns preserving all existing rows.
+        self.migrate_datetime_columns().await?;
+
+        Ok(())
+    }
+
+    async fn migrate_datetime_columns(&self) -> Result<()> {
+        // Check whether created_at was stored with DATETIME affinity.
+        // PRAGMA table_info returns one row per column; type = "DATETIME" means
+        // the old schema. sqlx Any can query PRAGMA as raw rows.
+        let rows = self
+            .db
+            .query("PRAGMA table_info(downloads)")
+            .await?;
+
+        let needs_migration = rows.iter().any(|row| {
+            use sqlx::Row;
+            let col_name: String = row.try_get("name").unwrap_or_default();
+            let col_type: String = row.try_get("type").unwrap_or_default();
+            (col_name == "created_at" || col_name == "updated_at")
+                && col_type.to_uppercase() == "DATETIME"
+        });
+
+        if !needs_migration {
+            return Ok(());
+        }
+
+        // SQLite doesn't support ALTER COLUMN; recreate via rename-copy-drop.
+        self.db.execute_query("
+            BEGIN;
+            ALTER TABLE downloads RENAME TO downloads_old;
+            CREATE TABLE downloads (
+                gid TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'waiting',
+                uris TEXT NOT NULL,
+                total_length INTEGER DEFAULT 0,
+                completed_length INTEGER DEFAULT 0,
+                download_speed INTEGER DEFAULT 0,
+                download_dir TEXT,
+                filename TEXT,
+                connections INTEGER DEFAULT 16,
+                split INTEGER DEFAULT 5,
+                created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+                updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+            );
+            INSERT OR IGNORE INTO downloads
+                SELECT gid, status, uris, total_length, completed_length, download_speed,
+                       download_dir, filename, connections, split,
+                       strftime('%Y-%m-%dT%H:%M:%S', created_at),
+                       strftime('%Y-%m-%dT%H:%M:%S', updated_at)
+                FROM downloads_old;
+            DROP TABLE downloads_old;
+            CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+            COMMIT;
+        ").await?;
+
         Ok(())
     }
 
@@ -79,14 +138,8 @@ impl DownloadDB {
             .await?;
 
         if existing.is_some() {
-            return self
-                .db
-                .execute_query_with_params(
-                    "UPDATE downloads SET gid = ? WHERE uris = ? AND download_dir = ?",
-                    vec![gid.to_string(), uris_json, download_dir_str],
-                )
-                .await
-                .map(|_| ());
+            // Duplicate uris+download_dir: silently skip, keep the original row.
+            return Ok(());
         }
 
         self.db
@@ -111,7 +164,7 @@ impl DownloadDB {
         speed: i64,
     ) -> Result<()> {
         self.db.execute_query_with_params(
-            "UPDATE downloads SET total_length = ?, completed_length = ?, download_speed = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
+            "UPDATE downloads SET total_length = ?, completed_length = ?, download_speed = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE gid = ?",
             vec![total.to_string(), completed.to_string(), speed.to_string(), gid.to_string()]
         ).await?;
         Ok(())
@@ -120,7 +173,7 @@ impl DownloadDB {
     pub async fn update_status(&self, gid: &str, status: &str) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "UPDATE downloads SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
+                "UPDATE downloads SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE gid = ?",
                 vec![status.to_string(), gid.to_string()],
             )
             .await?;
@@ -130,7 +183,7 @@ impl DownloadDB {
     pub async fn update_gid(&self, old_gid: &str, new_gid: &str) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "UPDATE downloads SET gid = ?, updated_at = CURRENT_TIMESTAMP WHERE gid = ?",
+                "UPDATE downloads SET gid = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE gid = ?",
                 vec![new_gid.to_string(), old_gid.to_string()],
             )
             .await?;
