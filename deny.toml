@@ -16,24 +16,33 @@ feature-depth = 1
 # To suppress a new advisory, add it here with a reason and the date it was reviewed.
 [advisories]
 ignore = [
-    # redis v0.24 — upgrade blocked by API compatibility; tracked separately
-    { id = "RUSTSEC-2021-0139", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0413", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0416", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0375", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2025-0057", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0412", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0418", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0411", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0414", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0415", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0420", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0419", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2025-0119", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2024-0370", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    { id = "RUSTSEC-2026-0097", reason = "redis@0.24 transitive dep, upgrade tracked" },
-    # zip v0.6 — used by installer, upgrade tracked
-    # shlex v0.1 — via systray > libappindicator-sys > bindgen, indirect dep
+    # ── systray@0.4 + dioxus-desktop transitive chain ─────────────────────────
+    # These crates are pulled in by systray@0.4 (old GTK/libappindicator/clap v2
+    # chain) and/or dioxus-desktop (gtk-rs GTK3 bindings). Neither can be upgraded
+    # without replacing the tray icon implementation entirely. All reviewed 2025-04.
+
+    # ansi_term — via clap v2 → bindgen → libappindicator → systray
+    { id = "RUSTSEC-2021-0139", reason = "ansi_term via systray>libappindicator>bindgen>clap2 chain, cannot upgrade" },
+
+    # gtk-rs GTK3 bindings — via systray (gtk 0.8) and dioxus-desktop (gtk 0.18)
+    { id = "RUSTSEC-2024-0413", reason = "gtk-rs GTK3 via systray and dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0416", reason = "gtk-rs GTK3 via systray and dioxus-desktop, cannot upgrade" },
+
+    # gdk-pixbuf, gio, glib, pango, cairo — all gtk-rs GTK3 sub-crates
+    { id = "RUSTSEC-2024-0375", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2025-0057", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0412", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0418", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0411", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0414", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0415", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0420", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0419", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2025-0119", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2024-0370", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+    { id = "RUSTSEC-2026-0097", reason = "gtk-rs GTK3 sub-crate via systray/dioxus-desktop, cannot upgrade" },
+
+    # shlex v0.1 — via systray > libappindicator-sys > bindgen
     { id = "RUSTSEC-2024-0006", reason = "shlex@0.1 via systray transitive chain, cannot upgrade directly" },
 ]
 
