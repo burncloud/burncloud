@@ -65,18 +65,97 @@ allow = [
 ignore = true
 
 # ─── Bans ─────────────────────────────────────────────────────────────────────
-# Layer boundary enforcement (Wave 3):
-#   cargo-deny cannot enforce per-crate-pair rules, so boundary checking is
-#   implemented as a dedicated CI script: .ci/check-layer-boundaries.sh
-#   triggered by .github/workflows/layer-boundary.yml on every PR that touches
-#   crates/server/Cargo.toml.
+# Layer boundary enforcement (Wave 3).
 #
-#   Allowed server → database exceptions (schema migration only):
-#     burncloud-database, burncloud-database-router, burncloud-database-user
-#   All other burncloud-database-* deps in server are banned by the CI script.
+# Rule: only service crates (and cli/router where documented) may directly
+# depend on domain database crates. The server layer must go through services.
+#
+# Mechanism: cargo-deny [[bans.deny]] with `wrappers` — a banned crate is
+# allowed only when it appears as a DIRECT dependency of a listed wrapper crate.
+# Any attempt to add a banned crate directly to server/Cargo.toml will fail CI.
+#
+# Allowed server → database exceptions (schema migration at startup):
+#   burncloud-database, burncloud-database-router, burncloud-database-user
+# These are NOT in the ban list below and remain freely usable.
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
+
+# burncloud-database-models — domain model types (channels, upstreams, etc.)
+# Legitimate direct users: service-billing, service-channel, service-models,
+#                          cli (admin commands), router (request routing)
+[[bans.deny]]
+crate = "burncloud-database-models"
+wrappers = [
+    "burncloud-service-billing",
+    "burncloud-service-channel",
+    "burncloud-service-models",
+    "burncloud-cli",
+    "burncloud-router",
+]
+reason = "Domain models must not be imported directly by server; use service layer"
+
+# burncloud-database-group — group + group-member tables
+# burncloud-database-router aggregates domain DB crates; it is an allowed
+# server dep for schema migration, so it must also be listed as a wrapper.
+[[bans.deny]]
+crate = "burncloud-database-group"
+wrappers = [
+    "burncloud-service-group",
+    "burncloud-database-router",
+]
+reason = "Group DB access must go through burncloud-service-group"
+
+# burncloud-database-token — API token table
+[[bans.deny]]
+crate = "burncloud-database-token"
+wrappers = [
+    "burncloud-service-token",
+    "burncloud-database-router",
+]
+reason = "Token DB access must go through burncloud-service-token"
+
+# burncloud-database-upstream — upstream channel table
+[[bans.deny]]
+crate = "burncloud-database-upstream"
+wrappers = [
+    "burncloud-service-upstream",
+    "burncloud-database-router",
+]
+reason = "Upstream DB access must go through burncloud-service-upstream"
+
+# burncloud-database-router-log — request log table
+[[bans.deny]]
+crate = "burncloud-database-router-log"
+wrappers = [
+    "burncloud-service-router-log",
+    "burncloud-database-router",
+]
+reason = "Log DB access must go through burncloud-service-router-log"
+
+# burncloud-database-setting — system settings table
+[[bans.deny]]
+crate = "burncloud-database-setting"
+wrappers = [
+    "burncloud-service-setting",
+]
+reason = "Settings DB access must go through burncloud-service-setting"
+
+# burncloud-database-download — download task table
+[[bans.deny]]
+crate = "burncloud-database-download"
+wrappers = [
+    "burncloud-download",
+]
+reason = "Download DB access must go through burncloud-download"
+
+# burncloud-database-installer — installer state table
+[[bans.deny]]
+crate = "burncloud-database-installer"
+wrappers = [
+    "burncloud-cli",
+]
+reason = "Installer DB access must go through burncloud-cli installer commands"
 
 # ─── Sources ──────────────────────────────────────────────────────────────────
 [sources]
