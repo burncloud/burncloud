@@ -49,17 +49,29 @@ allow = [
     "ISC",
     "0BSD",
     "Unlicense",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "CC0-1.0",
-    "OpenSSL",
     "Zlib",
     "BSL-1.0",
     "MPL-2.0",
-    "LGPL-2.1",
-    "LGPL-3.0",
+    "LGPL-2.1-only",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0-only",
     "CDLA-Permissive-2.0",
 ]
+
+# libappindicator / libappindicator-sys use the deprecated "LGPL-2.1/LGPL-3.0"
+# slash syntax that cargo-deny cannot parse. Clarify the actual expression here.
+# Both LGPL variants are in the allow list above.
+[[licenses.clarify]]
+crate = "libappindicator"
+expression = "LGPL-2.1-only OR LGPL-3.0-only"
+license-files = []
+
+[[licenses.clarify]]
+crate = "libappindicator-sys"
+expression = "LGPL-2.1-only OR LGPL-3.0-only"
+license-files = []
 
 [licenses.private]
 ignore = true
@@ -78,8 +90,19 @@ ignore = true
 #   burncloud-database, burncloud-database-router, burncloud-database-user
 # These are NOT in the ban list below and remain freely usable.
 [bans]
-multiple-versions = "warn"
+# "warn" would produce ~50 warnings for transitive dep version conflicts
+# (windows-sys, rand, getrandom, etc.) that we cannot control. "allow" is
+# appropriate for a large workspace with desktop + server + CLI in one repo.
+multiple-versions = "allow"
 wildcards = "allow"
+
+# systray@0.4 pulls in a full set of old GTK crates (gtk 0.8, gdk 0.12, etc.)
+# while dioxus-desktop pulls in the newer GTK 0.18 series. Both are transitive
+# deps we cannot upgrade directly. Skip systray's entire dep tree to suppress
+# the ~80 duplicate-version warnings these conflicts produce.
+skip-tree = [
+    { crate = "systray@0.4.0", reason = "old GTK dep chain conflicts with dioxus-desktop; upgrade blocked by systray API" },
+]
 
 # burncloud-database-models — domain model types (channels, upstreams, etc.)
 # Legitimate direct users: service-billing, service-channel, service-models,
@@ -116,10 +139,11 @@ wrappers = [
 reason = "Token DB access must go through burncloud-service-token"
 
 # burncloud-database-upstream — upstream channel table
+# Note: burncloud-service-upstream is not in the active dep graph (no crate
+# depends on it yet), so only burncloud-database-router is listed as wrapper.
 [[bans.deny]]
 crate = "burncloud-database-upstream"
 wrappers = [
-    "burncloud-service-upstream",
     "burncloud-database-router",
 ]
 reason = "Upstream DB access must go through burncloud-service-upstream"
