@@ -111,14 +111,16 @@ fn create_openclaw() -> Software {
             }),
     )
     // Node.js dependency - required for OpenClaw (needs v24+)
-    // Uses DirectDownload for offline bundle - Node.js is downloaded directly from nodejs.org
+    // Uses GitHubRelease for offline bundle support
     .with_dependency(
         Dependency::new("Node.js", "node --version")
             .with_expected_output("v2")  // Expects v24+
             .with_install_hint("Install Node.js v24+ from https://nodejs.org")
-            .with_auto_install(InstallMethod::DirectDownload {
-                url: "https://nodejs.org/dist/".to_string(), // Placeholder, actual URL is generated dynamically
-                filename: None,
+            .with_auto_install(InstallMethod::GitHubRelease {
+                owner: "nodejs".to_string(),
+                repo: "node".to_string(),
+                asset_patterns: nodejs_asset_patterns,
+                extract_archive: Some(true),
             }),
     )
     .with_platforms(vec![
