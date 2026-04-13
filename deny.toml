@@ -65,11 +65,15 @@ allow = [
 ignore = true
 
 # ─── Bans ─────────────────────────────────────────────────────────────────────
-# Layer boundary is enforced at the Cargo.toml level (server/Cargo.toml no longer
-# lists burncloud-database-models or other domain DB crates). cargo-deny cannot
-# enforce per-crate-pair dependency rules, so the physical Cargo.toml dep list is
-# the authoritative gate. Any new direct DB dep added to server/Cargo.toml will
-# require explicit review since it breaks the server → service → database layering.
+# Layer boundary enforcement (Wave 3):
+#   cargo-deny cannot enforce per-crate-pair rules, so boundary checking is
+#   implemented as a dedicated CI script: .ci/check-layer-boundaries.sh
+#   triggered by .github/workflows/layer-boundary.yml on every PR that touches
+#   crates/server/Cargo.toml.
+#
+#   Allowed server → database exceptions (schema migration only):
+#     burncloud-database, burncloud-database-router, burncloud-database-user
+#   All other burncloud-database-* deps in server are banned by the CI script.
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
