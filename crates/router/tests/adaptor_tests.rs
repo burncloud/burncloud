@@ -141,6 +141,14 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
+    // Seed a price for claude-3-opus so the preflight billing check passes.
+    sqlx::query(
+        "INSERT OR IGNORE INTO prices (model, currency, input_price, output_price, region) \
+         VALUES ('claude-3-opus', 'USD', 1, 1, '')",
+    )
+    .execute(&pool)
+    .await?;
+
     let port = 3013;
     start_test_server(port).await;
 

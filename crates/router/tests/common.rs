@@ -13,6 +13,15 @@ pub async fn setup_db() -> anyhow::Result<(Database, AnyPool)> {
 }
 
 pub async fn start_test_server(port: u16) {
+    // Ensure MASTER_KEY is set for tests that need encryption (e.g. upstream API keys).
+    // Use a fixed 64-hex-char test key; does not affect production.
+    if std::env::var("MASTER_KEY").is_err() {
+        std::env::set_var(
+            "MASTER_KEY",
+            "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
+        );
+    }
+
     // We create a new DB instance pointing to the same file
     // Note: Tests run sequentially or use different ports/tables?
     // They use the same default DB file. WAL mode handles concurrency.

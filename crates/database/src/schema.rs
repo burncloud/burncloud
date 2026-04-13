@@ -1488,6 +1488,17 @@ impl Schema {
             // ...
         }
 
+        // Ensure demo-user exists in the users table.
+        // validate_token_and_get_info does a JOIN on users, so this row must
+        // exist before the demo token is inserted (or the join returns nothing).
+        // INSERT OR IGNORE is idempotent — safe to run on every startup.
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, status) \
+             VALUES ('demo-user', 'demo-user', 'no-login', 1)",
+        )
+        .execute(pool)
+        .await;
+
         // Init Default Token
         let check_token_sql = "SELECT count(*) FROM tokens WHERE key = 'sk-burncloud-demo'";
         let t_count: i64 = match kind.as_str() {
@@ -1503,7 +1514,6 @@ impl Schema {
         };
 
         if t_count == 0 {
-            // User 'demo-user' must exist (created by UserDatabase::init)
             // created_time, accessed_time use current timestamp
             let now = current_timestamp();
             let insert_token_sql = match kind.as_str() {
