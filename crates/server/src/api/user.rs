@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use burncloud_service_user::UserServiceError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[derive(Deserialize)]
@@ -180,14 +180,16 @@ async fn list_users(State(state): State<AppState>) -> AxumJson<Value> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct RechargeQuery {
+    user_id: Option<String>,
+}
+
 async fn list_recharges(
     State(state): State<AppState>,
-    Query(params): Query<Value>,
+    Query(params): Query<RechargeQuery>,
 ) -> AxumJson<Value> {
-    let user_id = params
-        .get("user_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("demo-user");
+    let user_id = params.user_id.as_deref().unwrap_or("demo-user");
     match state
         .user_service
         .list_recharges(&state.db, user_id)

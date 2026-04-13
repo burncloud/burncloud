@@ -62,6 +62,8 @@ publish = false
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"
+# disallowed_types is "warn" (not "deny") until existing Value usages in
+# types.rs / pricing_config.rs / download-aria2 are migrated to typed structs.
 
 [workspace.dependencies]
 anyhow = "1.0"
