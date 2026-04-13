@@ -1,9 +1,54 @@
 use burncloud_client_shared::components::{
-    BCBadge, BCButton, BCCard, BCInput, BCModal, BCTable, BadgeVariant, ButtonVariant,
+    ActionDef, ActionEvent, BCBadge, BCButton, BCCard, BCModal, BadgeVariant, ButtonVariant,
+    FormMode, SchemaForm, SchemaTable,
 };
+use burncloud_client_shared::schema::channel_schema;
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
 use burncloud_common::types::ChannelType;
 use dioxus::prelude::*;
+
+/// AWS connection form schema
+fn aws_connect_schema() -> serde_json::Value {
+    serde_json::json!({
+        "entity_type": "aws_connect",
+        "label": "接入本地资源",
+        "fields": [
+            {
+                "key": "name",
+                "label": "资源别名",
+                "type": "text",
+                "required": true,
+                "placeholder": "例如: 生产环境-AWS"
+            },
+            {
+                "key": "aws_ak",
+                "label": "Access Key ID",
+                "type": "text",
+                "required": true,
+                "placeholder": "AKIA..."
+            },
+            {
+                "key": "aws_region",
+                "label": "Region",
+                "type": "text",
+                "required": true,
+                "default": "us-east-1",
+                "placeholder": "us-east-1"
+            },
+            {
+                "key": "aws_sk",
+                "label": "Secret Access Key",
+                "type": "password",
+                "required": true,
+                "placeholder": "wJalrX..."
+            }
+        ],
+        "table_columns": [],
+        "form_sections": [
+            {"title": "AWS 凭证", "fields": ["name", "aws_ak", "aws_region", "aws_sk"]}
+        ]
+    })
+}
 
 #[component]
 pub fn ConnectPage() -> Element {
@@ -12,19 +57,22 @@ pub fn ConnectPage() -> Element {
     let mut error_msg = use_signal(|| None::<String>);
     let mut show_add_modal = use_signal(|| false);
 
-    // Form state for adding AWS account
-    let mut aws_name = use_signal(String::new);
-    let mut aws_ak = use_signal(String::new);
-    let mut aws_sk = use_signal(String::new);
-    let mut aws_region = use_signal(|| "us-east-1".to_string());
+    // Form state via Signal<serde_json::Value>
+    let mut form_data = use_signal(|| serde_json::json!({
+        "name": "",
+        "aws_ak": "",
+        "aws_sk": "",
+        "aws_region": "us-east-1"
+    }));
 
-    // Load channels (Local resources contributing to the grid)
+    let aws_schema = aws_connect_schema();
+
+    // Load channels
     let load_channels = move || {
         spawn(async move {
             loading.set(true);
             match ChannelService::list(0, 100).await {
                 Ok(list) => {
-                    // In Connect mode, we only focus on the ones marked as AWS (Type 33) or our special mining channels
                     channels.set(list);
                 }
                 Err(e) => error_msg.set(Some(e)),
@@ -37,11 +85,11 @@ pub fn ConnectPage() -> Element {
         load_channels();
     });
 
-    let handle_add_aws = move |_| {
-        let name = aws_name();
-        let ak = aws_ak();
-        let sk = aws_sk();
-        let region = aws_region();
+    let handle_add_aws = move |value: serde_json::Value| {
+        let name = value["name"].as_str().unwrap_or("").to_string();
+        let ak = value["aws_ak"].as_str().unwrap_or("").to_string();
+        let sk = value["aws_sk"].as_str().unwrap_or("").to_string();
+        let region = value["aws_region"].as_str().unwrap_or("us-east-1").to_string();
 
         if name.is_empty() || ak.is_empty() || sk.is_empty() {
             return;
@@ -57,7 +105,7 @@ pub fn ConnectPage() -> Element {
                 models:
                     "anthropic.claude-3-sonnet-20240229-v1:0,anthropic.claude-3-haiku-20240307-v1:0"
                         .to_string(),
-                status: 1, // Active / Mining
+                status: 1,
                 priority: 0,
                 weight: 1,
                 ..Default::default()
@@ -67,14 +115,49 @@ pub fn ConnectPage() -> Element {
                 Ok(_) => {
                     show_add_modal.set(false);
                     load_channels();
-                    // Clear form
-                    aws_name.set(String::new());
-                    aws_ak.set(String::new());
-                    aws_sk.set(String::new());
+                    form_data.set(serde_json::json!({
+                        "name": "",
+                        "aws_ak": "",
+                        "aws_sk": "",
+                        "aws_region": "us-east-1"
+                    }));
                 }
                 Err(e) => error_msg.set(Some(e)),
             }
         });
+    };
+
+    // Channel table data
+    let schema = channel_schema();
+    let table_data: Vec<serde_json::Value> = channels
+        .read()
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "id": c.id,
+                "status": c.status.to_string(),
+                "name": c.name,
+                "models": c.models,
+                "base_url": c.base_url
+            })
+        })
+        .collect();
+
+    let actions = vec![
+        ActionDef {
+            action_id: "delete".to_string(),
+            label: "删除".to_string(),
+            color: "var(--bc-danger)".to_string(),
+        },
+    ];
+
+    let handle_action = move |event: ActionEvent| {
+        if event.action_id == "delete" {
+            let channel_id = event.row["id"].as_i64().unwrap_or(0);
+            spawn(async move {
+                let _ = ChannelService::delete(channel_id).await;
+            });
+        }
     };
 
     rsx! {
@@ -92,7 +175,7 @@ pub fn ConnectPage() -> Element {
                 }
             }
 
-            // Quick Stats - Enterprise Style
+            // Quick Stats
             div { class: "grid grid-cols-1 md:grid-cols-4 gap-lg",
                 BCCard {
                     div { class: "p-lg",
@@ -132,7 +215,7 @@ pub fn ConnectPage() -> Element {
                     div { class: "p-xxxl text-center text-secondary", "加载资源中..." }
                 } else {
                     div { class: "flex flex-col gap-xl",
-                        // Supply Side: Local Assets
+                        // Supply Side: Local Assets via SchemaTable
                         div {
                             div { class: "flex justify-between items-end mb-md",
                                 h2 { class: "text-subtitle font-bold m-0", "本地资源矩阵" }
@@ -150,86 +233,17 @@ pub fn ConnectPage() -> Element {
                                     }
                                 }
                             } else {
-                                BCTable {
-                                    thead {
-                                        tr {
-                                            th { "Provider" }
-                                            th { "Name" }
-                                            th { "Region" }
-                                            th { "Status" }
-                                            th { "Capabilities" }
-                                            th { class: "text-right", "Actions" }
-                                        }
-                                    }
-                                    tbody {
-                                        {
-                                            let current_channels = channels.read().clone();
-                                            rsx! {
-                                                for channel in current_channels.iter() {
-                                                    tr { class: "transition-colors",
-                                                        style: "cursor: default;",
-                                                        td {
-                                                            div { class: "flex items-center gap-sm",
-                                                                if channel.type_ == 33 {
-                                                                    BCBadge { variant: BadgeVariant::Neutral, "AWS" }
-                                                                } else {
-                                                                    BCBadge { variant: BadgeVariant::Info, "Other" }
-                                                                }
-                                                            }
-                                                        }
-                                                        td { class: "font-medium text-primary", "{channel.name}" }
-                                                        td {
-                                                            span { class: "font-mono text-xxs text-secondary",
-                                                                "{extract_region(&channel.base_url)}"
-                                                            }
-                                                        }
-                                                        td {
-                                                            if channel.status == 1 {
-                                                                BCBadge { variant: BadgeVariant::Success, "运行中" }
-                                                            } else {
-                                                                BCBadge { variant: BadgeVariant::Warning, "已暂停" }
-                                                            }
-                                                        }
-                                                        td {
-                                                            div { class: "flex flex-wrap gap-xs",
-                                                                for model in channel.models.split(',').take(2) {
-                                                                    span { class: "text-xxs px-xs py-0.5 rounded", style: "background: var(--bc-bg-hover);", "{model}" }
-                                                                }
-                                                                if channel.models.split(',').count() > 2 {
-                                                                    span { class: "text-xxs text-secondary", "+{channel.models.split(',').count() - 2}" }
-                                                                }
-                                                            }
-                                                        }
-                                                        td { class: "text-right",
-                                                            div { class: "flex justify-end gap-sm",
-                                                                BCButton { variant: ButtonVariant::Ghost, "审计" }
-                                                                {
-                                                                    let channel_id = channel.id;
-                                                                    rsx! {
-                                                                        button {
-                                                                            class: "p-sm rounded-lg transition-colors",
-                                                                            style: "color: var(--bc-danger); background: transparent;",
-                                                                            onclick: move |_| {
-                                                                                spawn(async move {
-                                                                                    let _ = ChannelService::delete(channel_id).await;
-                                                                                });
-                                                                            },
-                                                                            "🗑️"
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                                SchemaTable {
+                                    schema: schema.clone(),
+                                    data: table_data,
+                                    actions: actions,
+                                    on_action: handle_action,
+                                    on_row_click: move |_| {},
                                 }
                             }
                         }
 
-                        // Demand Side: Connected External Pools
+                        // Demand Side: Connected External Pools (custom UI)
                         div { class: "pt-lg border-t",
                             div { class: "flex justify-between items-center mb-md",
                                 div {
@@ -243,7 +257,6 @@ pub fn ConnectPage() -> Element {
                             }
 
                             div { class: "flex flex-col gap-lg",
-                                // Example Connected Pool (The "White Glove" partner)
                                 PoolCard {
                                     name: "SkyNet Prime (官方合作伙伴)",
                                     url: "https://pool.skynet-ops.io",
@@ -254,7 +267,6 @@ pub fn ConnectPage() -> Element {
                                     is_featured: true
                                 }
 
-                                // Inventory within this pool
                                 div { class: "pl-xl ml-md",
                                     style: "border-left: 2px solid var(--bc-border);",
                                     h3 { class: "text-caption font-bold uppercase text-secondary mb-md", "算力池实时可用资源" }
@@ -291,53 +303,38 @@ pub fn ConnectPage() -> Element {
                 }
             }
 
-            // Modal for adding AWS account
-            if show_add_modal() {
-                BCModal {
-                    title: "接入本地资源 (Miner)",
-                    onclose: move |_| show_add_modal.set(false),
-                    div { class: "flex flex-col gap-lg p-lg",
-                        p { class: "text-secondary text-caption",
-                            "输入您的 AWS IAM 用户凭证。您的凭证将保持在本地加密存储，仅用于算力互联。 "
-                        }
+            // Modal for adding AWS account via SchemaForm
+            BCModal {
+                title: "接入本地资源 (Miner)".to_string(),
+                open: show_add_modal(),
+                onclose: move |_| show_add_modal.set(false),
 
-                        BCInput {
-                            label: "资源别名 (例如: 生产环境-AWS)",
-                            value: "{aws_name}",
-                            oninput: move |e: FormEvent| aws_name.set(e.value())
-                        }
+                div { class: "flex flex-col gap-lg p-lg",
+                    p { class: "text-secondary text-caption",
+                        "输入您的 AWS IAM 用户凭证。您的凭证将保持在本地加密存储，仅用于算力互联。 "
+                    }
 
-                        div { class: "grid grid-cols-2 gap-md",
-                            BCInput {
-                                label: "Access Key ID",
-                                value: "{aws_ak}",
-                                oninput: move |e: FormEvent| aws_ak.set(e.value())
-                            }
-                            BCInput {
-                                label: "Region",
-                                value: "{aws_region}",
-                                oninput: move |e: FormEvent| aws_region.set(e.value())
-                            }
-                        }
+                    SchemaForm {
+                        schema: aws_schema.clone(),
+                        data: form_data,
+                        mode: FormMode::Create,
+                        show_actions: false,
+                        on_submit: handle_add_aws,
+                    }
 
-                        BCInput {
-                            label: "Secret Access Key",
-                            r#type: "password",
-                            value: "{aws_sk}",
-                            oninput: move |e: FormEvent| aws_sk.set(e.value())
+                    div { class: "flex justify-end gap-md mt-md",
+                        BCButton {
+                            variant: ButtonVariant::Secondary,
+                            onclick: move |_| show_add_modal.set(false),
+                            "取消"
                         }
-
-                        div { class: "flex justify-end gap-md mt-md",
-                            BCButton {
-                                variant: ButtonVariant::Secondary,
-                                onclick: move |_| show_add_modal.set(false),
-                                "取消"
-                            }
-                            BCButton {
-                                variant: ButtonVariant::Primary,
-                                onclick: handle_add_aws,
-                                "验证并开启互联"
-                            }
+                        BCButton {
+                            variant: ButtonVariant::Primary,
+                            onclick: move |_| {
+                                let data = form_data.read().clone();
+                                handle_add_aws(data);
+                            },
+                            "验证并开启互联"
                         }
                     }
                 }
@@ -432,14 +429,4 @@ fn MarketplaceCard(
             }
         }
     }
-}
-
-fn extract_region(base_url: &str) -> String {
-    if let Some(start) = base_url.find("bedrock-runtime.") {
-        let sub = &base_url[start + "bedrock-runtime.".len()..];
-        if let Some(end) = sub.find('.') {
-            return sub[..end].to_string();
-        }
-    }
-    "unknown".to_string()
 }

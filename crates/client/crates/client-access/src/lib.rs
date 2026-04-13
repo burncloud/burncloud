@@ -1,6 +1,7 @@
 use burncloud_client_shared::components::{
-    BCBadge, BCButton, BCInput, BadgeVariant, ButtonVariant,
+    BCBadge, BCButton, BadgeVariant, ButtonVariant, SchemaForm,
 };
+use burncloud_client_shared::schema::token_schema;
 use burncloud_client_shared::{token_service::TokenService, use_auth, use_toast};
 use dioxus::prelude::*;
 
@@ -10,7 +11,7 @@ struct ApiKey {
     name: String,
     prefix: String,
     masked_key: String,
-    status: &'static str, // "Active", "Revoked", "Expired"
+    status: &'static str,
     created_at: String,
     expires_at: String,
     quota_limit: Option<String>,
@@ -20,7 +21,6 @@ struct ApiKey {
 pub fn AccessCredentialsPage() -> Element {
     let toast = use_toast();
 
-    // State management
     let mut show_create_modal = use_signal(|| false);
     let mut show_key_result_modal = use_signal(|| false);
     let mut new_full_key = use_signal(String::new);
@@ -28,11 +28,9 @@ pub fn AccessCredentialsPage() -> Element {
     let auth = use_auth();
     let user = auth.current_user;
 
-    // Resource for fetching keys
     let mut keys_resource =
         use_resource(move || async move { TokenService::list().await.unwrap_or_default() });
 
-    // Computed keys for UI (mapping logic)
     let keys = use_memo(move || {
         keys_resource
             .read()
@@ -50,49 +48,32 @@ pub fn AccessCredentialsPage() -> Element {
                     name: "API Key".to_string(),
                     prefix: "sk-burn".to_string(),
                     masked_key,
-                    status: if t.status == "active" {
-                        "Active"
-                    } else {
-                        "Revoked"
-                    },
+                    status: if t.status == "active" { "Active" } else { "Revoked" },
                     created_at: "N/A".to_string(),
                     expires_at: "Never".to_string(),
-                    quota_limit: if t.quota_limit < 0 {
-                        None
-                    } else {
-                        Some(format!("${}", t.quota_limit))
-                    },
+                    quota_limit: if t.quota_limit < 0 { None } else { Some(format!("${}", t.quota_limit)) },
                 }
             })
             .collect::<Vec<_>>()
     });
 
-    // Form State
-    let mut form_name = use_signal(String::new);
-    let mut form_expiry = use_signal(|| "Never".to_string());
-    let mut form_quota = use_signal(String::new);
-
     let handle_create_click = move |_| {
-        form_name.set(String::new());
-        form_expiry.set("Never".to_string());
-        form_quota.set(String::new());
         show_create_modal.set(true);
     };
 
-    let handle_generate = move |_| {
+    // Schema for the token form
+    let schema = token_schema();
+    let mut form_data = use_signal(|| serde_json::json!({"user_id": "", "quota_limit": -1}));
+
+    let handle_generate = move |value: serde_json::Value| {
         spawn(async move {
-            let limit = if form_quota().is_empty() {
-                None
-            } else {
-                let s = form_quota().replace("$", "");
-                s.parse::<i64>().ok()
-            };
+            let limit = value["quota_limit"].as_i64().and_then(|v| if v < 0 { None } else { Some(v) });
 
             let uid = user
                 .read()
                 .as_ref()
                 .map(|u| u.id.clone())
-                .unwrap_or("demo-user".to_string());
+                .unwrap_or_else(|| value["user_id"].as_str().unwrap_or("demo-user").to_string());
 
             match TokenService::create(&uid, limit).await {
                 Ok(token) => {
@@ -117,7 +98,6 @@ pub fn AccessCredentialsPage() -> Element {
                     toast.error(&format!("复制失败: {}", e));
                 } else {
                     is_copied.set(true);
-
                     spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                         is_copied.set(false);
@@ -182,7 +162,7 @@ pub fn AccessCredentialsPage() -> Element {
                 }
             }
 
-            // Key List
+            // Key List (card-based, custom UI)
             div { class: "flex-1 overflow-y-auto min-h-0",
                 if keys.read().is_empty() {
                     div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
@@ -237,17 +217,13 @@ pub fn AccessCredentialsPage() -> Element {
                                             }
                                         }
 
-                                        // Right: Actions & Scopes
+                                        // Right: Actions
                                         div { class: "flex items-center gap-lg",
-
-                                            // Quota display
                                             if let Some(quota) = &key.quota_limit {
                                                  div { class: "badge badge-ghost font-mono text-xs", "{quota}" }
                                             }
 
-                                            // Action Buttons
                                             div { class: "flex gap-sm",
-                                                // Status Toggle Button
                                                 button {
                                                     class: format!("btn btn-sm btn-ghost btn-square transition-colors {}",
                                                         if key.status == "Active" { "text-warning hover:bg-warning/10" } else { "text-success hover:bg-success/10" }
@@ -256,7 +232,6 @@ pub fn AccessCredentialsPage() -> Element {
                                                     onclick: move |_| {
                                                         let id = status_id.clone();
                                                         let status_val = current_status;
-
                                                         spawn(async move {
                                                             let new_status_str = if status_val == "Active" { "disabled" } else { "active" };
                                                             match TokenService::update_status(&id, new_status_str).await {
@@ -291,23 +266,20 @@ pub fn AccessCredentialsPage() -> Element {
                 }
             }
 
-            // Custom Create Modal
+            // Create Modal - now uses SchemaForm from token_schema
             if show_create_modal() {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
-                    // Backdrop
                     div {
                         class: "absolute inset-0 transition-opacity",
                         style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| show_create_modal.set(false)
                     }
 
-                    // Modal Content
                     div {
                         class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
                         style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
                         onclick: |e| e.stop_propagation(),
 
-                        // Header
                         div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
                             style: "background: var(--bc-bg-card-solid);",
                             div {
@@ -322,34 +294,13 @@ pub fn AccessCredentialsPage() -> Element {
                             }
                         }
 
-                        // Body
+                        // SchemaForm body
                         div { class: "flex-1 overflow-y-auto p-md sm:p-lg min-h-0 overscroll-y-contain flex flex-col gap-md",
-                            BCInput {
-                                label: Some("凭证名称 (Description)".to_string()),
-                                value: "{form_name}",
-                                placeholder: "e.g. My Chatbot Production".to_string(),
-                                oninput: move |e: FormEvent| form_name.set(e.value())
-                            }
-
-                            div { class: "grid grid-cols-2 gap-md",
-                                div { class: "flex flex-col gap-xs",
-                                    label { class: "text-body font-medium text-secondary", "过期时间" }
-                                    select { class: "select select-bordered w-full select-sm",
-                                        style: "background: var(--bc-bg-card-solid);",
-                                        value: "{form_expiry}",
-                                        onchange: move |e: FormEvent| form_expiry.set(e.value()),
-                                        option { value: "Never", "永不过期" }
-                                        option { value: "30 Days", "30 天后" }
-                                        option { value: "7 Days", "7 天后" }
-                                        option { value: "1 Day", "24 小时后" }
-                                    }
-                                }
-                                BCInput {
-                                    label: Some("预算上限 (可选)".to_string()),
-                                    value: "{form_quota}",
-                                    placeholder: "e.g. $100.00".to_string(),
-                                    oninput: move |e: FormEvent| form_quota.set(e.value())
-                                }
+                            SchemaForm {
+                                schema: schema.clone(),
+                                data: form_data,
+                                mode: burncloud_client_shared::components::FormMode::Create,
+                                show_actions: false,
                             }
 
                             div { class: "alert alert-warning text-xs mt-sm py-sm",
@@ -359,7 +310,6 @@ pub fn AccessCredentialsPage() -> Element {
                             }
                         }
 
-                        // Footer
                         div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0",
                             style: "background: var(--bc-bg-hover);",
                             BCButton {
@@ -369,7 +319,10 @@ pub fn AccessCredentialsPage() -> Element {
                             }
                             BCButton {
                                 class: "btn-neutral text-white shadow-lg shadow-neutral/20",
-                                onclick: handle_generate,
+                                onclick: move |_| {
+                                    let data = form_data.read().clone();
+                                    handle_generate(data);
+                                },
                                 "立即创建"
                             }
                         }
@@ -377,7 +330,7 @@ pub fn AccessCredentialsPage() -> Element {
                 }
             }
 
-            // Key Result Modal (Show full key)
+            // Key Result Modal (unchanged)
             if show_key_result_modal() {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
                     div {
@@ -423,23 +376,20 @@ pub fn AccessCredentialsPage() -> Element {
                 }
             }
 
-            // Delete Confirmation Modal
+            // Delete Confirmation Modal (unchanged)
             if is_delete_modal_open() {
                 div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
-                    // Backdrop
                     div {
                         class: "absolute inset-0 transition-opacity",
                         style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
                         onclick: move |_| is_delete_modal_open.set(false)
                     }
 
-                    // Modal Content
                     div {
                         class: "relative w-full max-w-md overflow-hidden animate-scale-in",
                         style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
                         onclick: |e| e.stop_propagation(),
 
-                        // Header with Warning Icon
                         div { class: "flex items-center gap-md px-lg py-lg border-b",
                             style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
                             div { class: "w-12 h-12 rounded-full flex items-center justify-center",
@@ -454,7 +404,6 @@ pub fn AccessCredentialsPage() -> Element {
                             }
                         }
 
-                        // Message
                         div { class: "px-lg py-md",
                             p { class: "text-secondary",
                                 "确定要吊销此访问凭证吗？"
@@ -465,7 +414,6 @@ pub fn AccessCredentialsPage() -> Element {
                             }
                         }
 
-                        // Footer
                         div { class: "flex justify-end gap-md px-lg py-md border-t",
                             style: "background: var(--bc-bg-hover);",
                             BCButton {

@@ -1,13 +1,76 @@
 use crate::groups::GroupManager;
 use crate::tokens::TokenManager;
+use burncloud_client_shared::components::{FormMode, SchemaForm};
 use burncloud_client_shared::i18n::{t, use_i18n, Language};
+use burncloud_client_shared::schema;
 use dioxus::prelude::*;
+
+/// General settings schema
+fn settings_schema() -> serde_json::Value {
+    serde_json::json!({
+        "entity_type": "settings",
+        "label": "General Settings",
+        "fields": [
+            {
+                "key": "language",
+                "label": "Language / 语言",
+                "type": "select",
+                "required": true,
+                "default": "zh",
+                "options": [
+                    {"value": "zh", "label": "中文"},
+                    {"value": "en", "label": "English"}
+                ]
+            },
+            {
+                "key": "auto_start",
+                "label": "Auto Start — Launch BurnCloud on login",
+                "type": "toggle",
+                "default": "true"
+            },
+            {
+                "key": "auto_update",
+                "label": "Updates — Check for updates automatically",
+                "type": "toggle",
+                "default": "true"
+            }
+        ],
+        "table_columns": [],
+        "form_sections": [
+            {"title": "General Settings", "fields": ["language", "auto_start", "auto_update"]}
+        ]
+    })
+}
 
 #[component]
 pub fn SystemSettings() -> Element {
     let mut active_tab = use_signal(|| "general");
     let mut i18n = use_i18n();
     let lang = i18n.language.read();
+
+    // Settings form data
+    let lang_val = match *lang {
+        Language::Zh => "zh",
+        Language::En => "en",
+    };
+    let mut settings_data = use_signal(move || serde_json::json!({
+        "language": lang_val,
+        "auto_start": "true",
+        "auto_update": "true"
+    }));
+
+    let settings_schema_val = settings_schema();
+
+    // Handle settings change (immediate apply)
+    let handle_settings_change = move |value: serde_json::Value| {
+        if let Some(lang_str) = value["language"].as_str() {
+            let mut l = i18n.language.write();
+            match lang_str {
+                "en" => *l = Language::En,
+                _ => *l = Language::Zh,
+            }
+        }
+    };
 
     rsx! {
         div { class: "page-header",
@@ -46,50 +109,12 @@ pub fn SystemSettings() -> Element {
             if active_tab() == "general" {
                 div { class: "bc-card-solid",
                     div { class: "p-lg",
-                        h3 { class: "text-subtitle font-semibold mb-md", "General Settings" }
-                        div { class: "flex flex-col gap-md",
-                            // Language Switcher
-                            div { class: "flex justify-between items-center",
-                                div {
-                                    div { class: "font-medium", "Language / 语言" }
-                                    div { class: "text-caption text-secondary", "Display language" }
-                                }
-                                select {
-                                    class: "input",
-                                    style: "width: 128px; padding: var(--bc-space-1) var(--bc-space-2); font-size: var(--bc-font-sm);",
-                                    value: match *lang { Language::Zh => "zh", Language::En => "en" },
-                                    onchange: move |evt| {
-                                        let mut l = i18n.language.write();
-                                        match evt.value().as_str() {
-                                            "en" => *l = Language::En,
-                                            _ => *l = Language::Zh,
-                                        }
-                                    },
-                                    option { value: "zh", "中文" }
-                                    option { value: "en", "English" }
-                                }
-                            }
-
-                            div { class: "flex justify-between items-center",
-                                div {
-                                    div { class: "font-medium", "Auto Start" }
-                                    div { class: "text-caption text-secondary", "Launch BurnCloud on login" }
-                                }
-                                input {
-                                    r#type: "checkbox",
-                                    checked: true
-                                }
-                            }
-                            div { class: "flex justify-between items-center",
-                                div {
-                                    div { class: "font-medium", "Updates" }
-                                    div { class: "text-caption text-secondary", "Check for updates automatically" }
-                                }
-                                input {
-                                    r#type: "checkbox",
-                                    checked: true
-                                }
-                            }
+                        SchemaForm {
+                            schema: settings_schema_val.clone(),
+                            data: settings_data,
+                            mode: FormMode::Create,
+                            show_actions: false,
+                            on_submit: handle_settings_change,
                         }
                     }
                 }

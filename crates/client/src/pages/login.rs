@@ -1,8 +1,9 @@
 use crate::app::Route;
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::components::{
-    logo::Logo, BCButton, BCInput, ButtonSize, ButtonVariant,
+    logo::Logo, BCButton, ButtonSize, ButtonVariant, FormMode, SchemaForm,
 };
+use burncloud_client_shared::schema::login_schema;
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::utils::storage::ClientState;
 use burncloud_client_shared::{use_auth, CurrentUser};
@@ -12,28 +13,34 @@ use dioxus::prelude::*;
 pub fn LoginPage() -> Element {
     // Load persisted state
     let state = ClientState::load();
-    let mut username = use_signal(|| state.last_username.unwrap_or_default());
-    let mut password = use_signal(|| String::new());
+    let last_username = state.last_username.unwrap_or_default();
+
+    let mut form_data = use_signal(move || {
+        serde_json::json!({
+            "username": last_username,
+            "password": ""
+        })
+    });
     let mut loading = use_signal(|| false);
     let mut login_error = use_signal(|| None::<String>);
     let toast = use_toast();
     let navigator = use_navigator();
     let auth = use_auth();
 
-    let mut handle_login = move |_: FormEvent| {
+    let schema = login_schema();
+
+    let mut handle_login = move |value: serde_json::Value| {
         loading.set(true);
         login_error.set(None);
 
-        // Capture for async and save
-        let u = username();
-        let p = password();
+        let u = value["username"].as_str().unwrap_or("").to_string();
+        let p = value["password"].as_str().unwrap_or("").to_string();
 
         spawn(async move {
             match AuthService::login(&u, &p).await {
                 Ok(response) => {
                     loading.set(false);
 
-                    // Save credentials and token on success
                     let new_state = ClientState {
                         last_username: Some(u.clone()),
                         last_password: None,
@@ -49,7 +56,6 @@ pub fn LoginPage() -> Element {
                     };
                     new_state.save();
 
-                    // Store auth state in context
                     let user = CurrentUser {
                         id: response.id,
                         username: response.username,
@@ -103,34 +109,26 @@ pub fn LoginPage() -> Element {
                         p { class: "login-card-subtitle", "欢迎回来，请登录您的账号" }
                     }
 
-                    // Form
+                    // Schema-driven form
                     form {
-                        onsubmit: move |e| {
+                        onsubmit: move |e: FormEvent| {
                             e.stop_propagation();
-                            handle_login(e);
+                            let data = form_data.read().clone();
+                            handle_login(data);
                         },
 
-                        BCInput {
-                            class: "login-field",
-                            label: Some("用户名".to_string()),
-                            value: "{username}",
-                            placeholder: "请输入用户名",
-                            oninput: move |e: FormEvent| {
-                                username.set(e.value());
-                                login_error.set(None);
-                            }
+                        SchemaForm {
+                            schema: schema.clone(),
+                            data: form_data,
+                            mode: FormMode::Create,
+                            show_actions: false,
+                            class: "login-form",
                         }
 
-                        BCInput {
-                            class: "login-field-last",
-                            label: Some("密码".to_string()),
-                            value: "{password}",
-                            r#type: "password",
-                            placeholder: "请输入密码",
-                            error: login_error(),
-                            oninput: move |e: FormEvent| {
-                                password.set(e.value());
-                                login_error.set(None);
+                        if let Some(err) = login_error() {
+                            div { class: "bc-input-error-row",
+                                div { class: "bc-input-error-dot" }
+                                span { class: "bc-input-error-text", "{err}" }
                             }
                         }
 

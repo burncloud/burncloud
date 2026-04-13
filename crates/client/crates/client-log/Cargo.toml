@@ -8,3 +8,4 @@ dioxus = { workspace = true, features = ["desktop"] }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+burncloud-client-shared = { path = "../client-shared" }
