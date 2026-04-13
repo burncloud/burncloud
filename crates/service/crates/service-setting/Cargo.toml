@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 burncloud-database-setting.workspace = true
-burncloud-database.workspace = true
 tokio.workspace = true
 
 [[example]]

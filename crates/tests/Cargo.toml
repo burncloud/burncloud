@@ -11,7 +11,6 @@ reqwest = { workspace = true, features = ["blocking", "json", "rustls-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-sqlx = { workspace = true, features = ["sqlite", "runtime-tokio-rustls"] }
 dotenvy = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 axum = { workspace = true }
@@ -20,7 +19,6 @@ ssh2 = "0.9"
 hmac = "0.12"
 sha1 = "0.10"
 base64 = "0.22"
-hex = "0.4"
 chrono = { workspace = true }
 
 [[test]]

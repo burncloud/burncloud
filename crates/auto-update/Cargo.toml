@@ -17,7 +17,6 @@ anyhow.workspace = true
 log.workspace = true
 self_update.workspace = true
 semver.workspace = true
-tokio.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true

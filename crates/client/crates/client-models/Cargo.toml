@@ -7,13 +7,8 @@ edition = "2021"
 
 [dependencies]
 dioxus = { version = "0.7.2" }
-dioxus-router.workspace = true
-serde_json.workspace = true
-chrono.workspace = true
-burncloud-service-models.workspace = true
-burncloud-service-inference.workspace = true
 burncloud-client-shared.workspace = true
-tokio.workspace = true
+serde_json.workspace = true
 rand.workspace = true
 
 [lints]

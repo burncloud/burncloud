@@ -16,7 +16,6 @@ liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
 
 [dependencies]
 burncloud-common = { workspace = true }
-burncloud-client-api.workspace = true
 burncloud-client-dashboard.workspace = true
 burncloud-client-deploy.workspace = true
 burncloud-client-models.workspace = true
@@ -33,15 +32,17 @@ burncloud-client-register.workspace = true
 dioxus = { workspace = true, features = ["desktop", "router"] }
 dioxus-router.workspace = true
 tokio.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-once_cell.workspace = true
 dioxus-ssr = { workspace = true }
 
 # LiveView specific dependencies
 dioxus-liveview = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 burncloud-database = { workspace = true, optional = true }
+
+[package.metadata.cargo-machete]
+# winapi is under [target.'cfg(windows)'.dependencies] — machete doesn't detect cfg-gated deps
+ignored = ["winapi"]
 
 [target.'cfg(windows)'.dependencies]
 winapi.workspace = true

@@ -9,8 +9,6 @@ edition = "2021"
 burncloud-database.workspace = true
 sqlx.workspace = true
 serde.workspace = true
-async-trait.workspace = true
-thiserror.workspace = true
 
 [lints]
 workspace = true

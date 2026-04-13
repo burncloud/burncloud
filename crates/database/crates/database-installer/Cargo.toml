@@ -10,8 +10,6 @@ license = "MIT"
 [dependencies]
 burncloud-database.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-tokio.workspace = true
 chrono.workspace = true
 sqlx.workspace = true
 
