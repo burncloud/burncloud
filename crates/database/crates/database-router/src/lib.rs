@@ -9,7 +9,7 @@
 //! - [`group`] - Group management (DbGroup, GroupModel, GroupMemberModel)
 //! - [`log`] - Router logs and usage stats (DbRouterLog, RouterLogModel)
 
-use burncloud_database::{Database, DatabaseError, Result};
+use burncloud_database::{adapt_sql, Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
@@ -432,12 +432,8 @@ impl RouterDatabase {
         let is_postgres = db.kind() == "postgres";
 
         // Get current balances
-        let balances_sql = if is_postgres {
-            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = $1"
-        } else {
-            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?"
-        };
-        let balances: Option<(i64, i64)> = sqlx::query_as(balances_sql)
+        let balances_sql = adapt_sql(is_postgres, "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?");
+        let balances: Option<(i64, i64)> = sqlx::query_as(&balances_sql)
             .bind(user_id)
             .fetch_optional(conn.pool())
             .await?;
@@ -467,15 +463,11 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_cny_sql = if is_postgres {
-                "UPDATE users SET balance_cny = 0 WHERE id = $1"
-            } else {
-                "UPDATE users SET balance_cny = 0 WHERE id = ?"
-            };
+            let clear_cny_sql = adapt_sql(is_postgres, "UPDATE users SET balance_cny = 0 WHERE id = ?");
 
             // Deduct remaining CNY
             if balance_cny > 0 {
-                sqlx::query(clear_cny_sql)
+                sqlx::query(&clear_cny_sql)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
@@ -483,12 +475,8 @@ impl RouterDatabase {
 
             // Deduct required USD (already integer, no need to round)
             let usd_to_deduct = required_usd as i64;
-            let deduct_usd_sql = if is_postgres {
-                "UPDATE users SET balance_usd = balance_usd - $1 WHERE id = $2 AND balance_usd >= $3"
-            } else {
-                "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
-            };
-            sqlx::query(deduct_usd_sql)
+            let deduct_usd_sql = adapt_sql(is_postgres, "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?");
+            sqlx::query(&deduct_usd_sql)
                 .bind(usd_to_deduct)
                 .bind(user_id)
                 .bind(usd_to_deduct)
@@ -520,15 +508,11 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_usd_sql = if is_postgres {
-                "UPDATE users SET balance_usd = 0 WHERE id = $1"
-            } else {
-                "UPDATE users SET balance_usd = 0 WHERE id = ?"
-            };
+            let clear_usd_sql = adapt_sql(is_postgres, "UPDATE users SET balance_usd = 0 WHERE id = ?");
 
             // Deduct remaining USD
             if balance_usd > 0 {
-                sqlx::query(clear_usd_sql)
+                sqlx::query(&clear_usd_sql)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
@@ -536,12 +520,8 @@ impl RouterDatabase {
 
             // Deduct required CNY (already integer, no need to round)
             let cny_to_deduct = required_cny as i64;
-            let deduct_cny_sql = if is_postgres {
-                "UPDATE users SET balance_cny = balance_cny - $1 WHERE id = $2 AND balance_cny >= $3"
-            } else {
-                "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
-            };
-            sqlx::query(deduct_cny_sql)
+            let deduct_cny_sql = adapt_sql(is_postgres, "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?");
+            sqlx::query(&deduct_cny_sql)
                 .bind(cny_to_deduct)
                 .bind(user_id)
                 .bind(cny_to_deduct)
@@ -587,12 +567,8 @@ pub async fn get_usage_stats_by_token(
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    let sql = if is_postgres {
-        "SELECT user_id FROM router_tokens WHERE token = $1 AND status = 'active'"
-    } else {
-        "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'"
-    };
-    let user_id: Option<String> = sqlx::query_scalar(sql)
+    let sql = adapt_sql(is_postgres, "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'");
+    let user_id: Option<String> = sqlx::query_scalar(&sql)
         .bind(token_key)
         .fetch_optional(conn.pool())
         .await?;

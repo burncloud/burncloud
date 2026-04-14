@@ -102,9 +102,12 @@ impl TieredPriceModel {
     /// Check if a model has tiered pricing configured
     pub async fn has_tiered_pricing(db: &Database, model: &str) -> Result<bool> {
         let conn = db.get_connection()?;
-        let sql = adapt_sql(db.kind() == "postgres", "SELECT COUNT(*) FROM tiered_pricing WHERE model = ?");
+        let sql = match db.kind().as_str() {
+            "postgres" => "SELECT COUNT(*) FROM tiered_pricing WHERE model = $1",
+            _ => "SELECT COUNT(*) FROM tiered_pricing WHERE model = ?",
+        };
 
-        let count: i64 = sqlx::query_scalar(&sql)
+        let count: i64 = sqlx::query_scalar(sql)
             .bind(model)
             .fetch_one(conn.pool())
             .await?;

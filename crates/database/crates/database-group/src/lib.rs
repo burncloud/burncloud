@@ -4,7 +4,7 @@
 //! which are used for load balancing and routing strategies.
 
 use burncloud_common::CrudRepository;
-use burncloud_database::{Database, DatabaseError, Result};
+use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -58,14 +58,9 @@ impl GroupModel {
     pub async fn create(db: &Database, g: &DbGroup) -> Result<()> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
-        let placeholders = if is_postgres {
-            "$1, $2, $3, $4"
-        } else {
-            "?, ?, ?, ?"
-        };
         let sql = format!(
             "INSERT INTO router_groups (id, name, strategy, match_path) VALUES ({})",
-            placeholders
+            phs(is_postgres, 4)
         );
         sqlx::query(&sql)
             .bind(&g.id)
@@ -142,21 +137,16 @@ impl GroupMemberModel {
         let is_postgres = db.kind() == "postgres";
 
         // Delete existing members
-        let delete_sql = if is_postgres {
-            "DELETE FROM router_group_members WHERE group_id = $1"
-        } else {
-            "DELETE FROM router_group_members WHERE group_id = ?"
-        };
-        sqlx::query(delete_sql)
+        let delete_sql = adapt_sql(is_postgres, "DELETE FROM router_group_members WHERE group_id = ?");
+        sqlx::query(&delete_sql)
             .bind(group_id)
             .execute(conn.pool())
             .await?;
 
         // Insert new members
-        let insert_placeholders = if is_postgres { "$1, $2, $3" } else { "?, ?, ?" };
         let insert_sql = format!(
             "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES ({})",
-            insert_placeholders
+            phs(is_postgres, 3)
         );
 
         for m in members {

@@ -14,7 +14,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use burncloud_common::CrudRepository;
-use burncloud_database::{Database, DatabaseError, Result};
+use burncloud_database::{phs, Database, DatabaseError, Result};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -150,14 +150,9 @@ impl UpstreamModel {
 
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
-        let placeholders = if is_postgres {
-            "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11"
-        } else {
-            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
-        };
         let sql = format!(
             "INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol, param_override, header_override, api_version) VALUES ({})",
-            placeholders
+            phs(is_postgres, 11)
         );
         sqlx::query(&sql)
             .bind(&u.id)

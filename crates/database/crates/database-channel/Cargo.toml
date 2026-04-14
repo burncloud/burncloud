@@ -1,0 +1,16 @@
+[package]
+publish.workspace = true
+license.workspace = true
+name = "burncloud-database-channel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database.workspace = true
+burncloud-common.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

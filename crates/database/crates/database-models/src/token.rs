@@ -1,5 +1,5 @@
 use crate::common::current_timestamp;
-use burncloud_database::{Database, Result};
+use burncloud_database::{adapt_sql, Database, Result};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -178,12 +178,8 @@ impl TokenModel {
 
         let tokens = match user_id {
             Some(uid) => {
-                let sql = if is_postgres {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens WHERE user_id = $1 ORDER BY id DESC LIMIT $2 OFFSET $3"
-                } else {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?"
-                };
-                sqlx::query_as(sql)
+                let sql = adapt_sql(is_postgres, "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?");
+                sqlx::query_as(&sql)
                     .bind(uid)
                     .bind(limit)
                     .bind(offset)
@@ -191,12 +187,8 @@ impl TokenModel {
                     .await?
             }
             None => {
-                let sql = if is_postgres {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens ORDER BY id DESC LIMIT $1 OFFSET $2"
-                } else {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens ORDER BY id DESC LIMIT ? OFFSET ?"
-                };
-                sqlx::query_as(sql)
+                let sql = adapt_sql(is_postgres, "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens ORDER BY id DESC LIMIT ? OFFSET ?");
+                sqlx::query_as(&sql)
                     .bind(limit)
                     .bind(offset)
                     .fetch_all(conn.pool())
