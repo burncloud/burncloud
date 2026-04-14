@@ -1,0 +1,16 @@
+[package]
+name = "{{crate_name}}"
+version = "0.1.0"
+edition = "2021"
+description = "{{entity_label}} module for BurnCloud"
+publish = false
+
+[dependencies]
+burncloud-client-shared = { workspace = true }
+dioxus = { workspace = true, features = ["router"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+log = "0.4"
+
+[lints]
+workspace = true

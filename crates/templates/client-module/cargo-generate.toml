@@ -1,0 +1,18 @@
+[template]
+cargo_generate_version = ">=0.19"
+description = "BurnCloud UI Crate — Standard CRUD module driven by Schema"
+
+[placeholders.crate_name]
+type = "string"
+prompt = "Module name (e.g. 'client-billing', 'client-plugin')"
+regex = "^client-[a-z0-9_-]+$"
+
+[placeholders.entity_label]
+type = "string"
+prompt = "Display label (e.g. '计费管理', 'Plugin Manager')"
+default = "New Module"
+
+[placeholders.api_path]
+type = "string"
+prompt = "Backend API path (e.g. '/console/api/billing')"
+default = "/console/api/custom"
