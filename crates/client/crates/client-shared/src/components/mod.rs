@@ -13,6 +13,7 @@ pub mod placeholders;
 pub mod schema_form;
 pub mod schema_table;
 pub mod sidebar;
+pub mod standard_crud_page;
 pub mod title_bar;
 pub mod toast;
 
@@ -29,5 +30,6 @@ pub use layout::*;
 pub use placeholders::*;
 pub use schema_form::*;
 pub use schema_table::*;
+pub use standard_crud_page::*;
 pub use sidebar::*;
 pub use title_bar::TitleBar;
