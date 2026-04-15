@@ -10,7 +10,7 @@
 use anyhow::{anyhow, Result};
 use burncloud_common::types::{Channel, ChannelType};
 use burncloud_database::Database;
-use burncloud_database_models::ChannelModel;
+use burncloud_database_models::ChannelProviderModel;
 use clap::ArgMatches;
 use std::io::{self, Write};
 
@@ -171,7 +171,7 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
     };
 
     // Save to database
-    let id = ChannelModel::create(db, &mut channel).await?;
+    let id = ChannelProviderModel::create(db, &mut channel).await?;
     println!("Channel created with ID: {}", id);
 
     Ok(())
@@ -184,7 +184,7 @@ pub async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
         .map(|s| s.as_str())
         .unwrap_or("table");
 
-    let channels = ChannelModel::list(db, 100, 0).await?;
+    let channels = ChannelProviderModel::list(db, 100, 0).await?;
 
     if channels.is_empty() {
         println!("No channels found");
@@ -239,7 +239,7 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
         .ok_or_else(|| anyhow!("Channel ID is required"))?
         .parse()?;
 
-    let channel = ChannelModel::get_by_id(db, id)
+    let channel = ChannelProviderModel::get_by_id(db, id)
         .await?
         .ok_or_else(|| anyhow!("Channel with ID {} not found", id))?;
 
@@ -284,7 +284,7 @@ pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> 
         .parse()?;
 
     // Get existing channel
-    let mut channel = ChannelModel::get_by_id(db, id)
+    let mut channel = ChannelProviderModel::get_by_id(db, id)
         .await?
         .ok_or_else(|| anyhow!("Channel with ID {} not found", id))?;
 
@@ -328,7 +328,7 @@ pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> 
     }
 
     // Save updates
-    ChannelModel::update(db, &channel).await?;
+    ChannelProviderModel::update(db, &channel).await?;
 
     println!("Channel {} updated successfully", id);
 
@@ -345,7 +345,7 @@ pub async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> 
     let skip_confirm = args.get_flag("yes");
 
     // Check if channel exists
-    let channel = ChannelModel::get_by_id(db, id)
+    let channel = ChannelProviderModel::get_by_id(db, id)
         .await?
         .ok_or_else(|| anyhow!("Channel with ID {} not found", id))?;
 
@@ -363,7 +363,7 @@ pub async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> 
     }
 
     // Delete channel
-    ChannelModel::delete(db, id).await?;
+    ChannelProviderModel::delete(db, id).await?;
     println!("Channel {} deleted", id);
 
     Ok(())

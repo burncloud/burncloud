@@ -7,7 +7,7 @@ mod error;
 pub use error::{InferenceError, Result};
 
 use burncloud_database::Database;
-use burncloud_database_router::{DbUpstream, RouterDatabase};
+use burncloud_database_router::{RouterUpstream, RouterDatabase};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -192,7 +192,7 @@ impl InferenceService {
         let base_url = format!("http://127.0.0.1:{}", config.port);
 
         // 构建 Upstream 对象
-        let upstream = DbUpstream {
+        let upstream = RouterUpstream {
             id: upstream_id.clone(),
             name: format!("Local: {}", config.model_id),
             base_url,

@@ -9,7 +9,7 @@ use sqlx::FromRow;
 
 /// 设置项结构体
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
-pub struct Setting {
+pub struct SysSetting {
     /// 设置项名称(主键)
     pub name: String,
     /// 设置项值
@@ -41,7 +41,7 @@ impl SettingDatabase {
     /// 初始化数据库表结构
     async fn init_tables(&self) -> Result<()> {
         let create_table_sql = r#"
-            CREATE TABLE IF NOT EXISTS setting (
+            CREATE TABLE IF NOT EXISTS sys_settings (
                 name TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )
@@ -52,7 +52,7 @@ impl SettingDatabase {
 
     /// 添加或更新设置项
     pub async fn set(&self, name: &str, value: &str) -> Result<()> {
-        let sql = "INSERT OR REPLACE INTO setting (name, value) VALUES (?1, ?2)";
+        let sql = "INSERT OR REPLACE INTO sys_settings (name, value) VALUES (?1, ?2)";
         let params = vec![name.to_string(), value.to_string()];
         self.db.execute_query_with_params(sql, params).await?;
         Ok(())
@@ -60,30 +60,30 @@ impl SettingDatabase {
 
     /// 根据名称获取设置值
     pub async fn get(&self, name: &str) -> Result<Option<String>> {
-        let sql = "SELECT * FROM setting WHERE name = ?1";
+        let sql = "SELECT * FROM sys_settings WHERE name = ?1";
         let params = vec![name.to_string()];
         let rows = self.db.query_with_params(sql, params).await?;
 
         if rows.is_empty() {
             Ok(None)
         } else {
-            let setting: Setting = sqlx::FromRow::from_row(&rows[0])?;
+            let setting: SysSetting = sqlx::FromRow::from_row(&rows[0])?;
             Ok(Some(setting.value))
         }
     }
 
     /// 删除设置项
     pub async fn delete(&self, name: &str) -> Result<()> {
-        let sql = "DELETE FROM setting WHERE name = ?1";
+        let sql = "DELETE FROM sys_settings WHERE name = ?1";
         let params = vec![name.to_string()];
         self.db.execute_query_with_params(sql, params).await?;
         Ok(())
     }
 
     /// 获取所有设置项
-    pub async fn list_all(&self) -> Result<Vec<Setting>> {
-        let sql = "SELECT * FROM setting ORDER BY name";
-        self.db.fetch_all::<Setting>(sql).await
+    pub async fn list_all(&self) -> Result<Vec<SysSetting>> {
+        let sql = "SELECT * FROM sys_settings ORDER BY name";
+        self.db.fetch_all::<SysSetting>(sql).await
     }
 
     /// 关闭数据库连接

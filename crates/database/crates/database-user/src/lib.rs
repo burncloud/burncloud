@@ -5,7 +5,7 @@ use sqlx::{FromRow, Row};
 /// User with dual-currency wallet for regional pricing support.
 /// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbUser {
+pub struct UserAccount {
     pub id: String,
     pub username: String,
     pub email: Option<String>,
@@ -26,14 +26,14 @@ pub struct DbUser {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbRole {
+pub struct UserRole {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbUserRole {
+pub struct UserRoleBinding {
     pub user_id: String,
     pub role_id: String,
 }
@@ -41,7 +41,7 @@ pub struct DbUserRole {
 /// Recharge record with dual-currency support.
 /// Amount is stored as i64 nanodollars (9 decimal precision).
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbRecharge {
+pub struct UserRecharge {
     pub id: i32,
     pub user_id: String,
     /// Amount in nanodollars (9 decimal precision)
@@ -62,128 +62,100 @@ impl UserDatabase {
 
         // Table definitions
         // Note: balance_usd and balance_cny use BIGINT nanodollars (9 decimal precision)
-        let (users_sql, roles_sql, user_roles_sql, recharges_sql) = match kind.as_str() {
+        // Note: user_accounts CREATE TABLE is authoritative in schema.rs; omitted here
+        let (user_roles_sql, user_role_bindings_sql, user_recharges_sql) = match kind.as_str() {
             "sqlite" => (
                 r#"
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    username TEXT NOT NULL UNIQUE,
-                    email TEXT UNIQUE,
-                    password_hash TEXT,
-                    github_id TEXT,
-                    status INTEGER DEFAULT 1,
-                    balance_usd BIGINT DEFAULT 0,
-                    balance_cny BIGINT DEFAULT 0,
-                    preferred_currency VARCHAR(10) DEFAULT 'USD',
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS roles (
+                CREATE TABLE IF NOT EXISTS user_roles (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL UNIQUE,
                     description TEXT
                 );
                 "#,
                 r#"
-                CREATE TABLE IF NOT EXISTS user_roles (
+                CREATE TABLE IF NOT EXISTS user_role_bindings (
                     user_id TEXT NOT NULL,
                     role_id TEXT NOT NULL,
                     PRIMARY KEY (user_id, role_id),
-                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
+                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(role_id) REFERENCES user_roles(id) ON DELETE CASCADE
                 );
                 "#,
                 r#"
-                CREATE TABLE IF NOT EXISTS recharges (
+                CREATE TABLE IF NOT EXISTS user_recharges (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
                     amount BIGINT NOT NULL,
                     currency VARCHAR(10) DEFAULT 'USD',
                     description TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
                 );
                 "#,
             ),
             "postgres" => (
                 r#"
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    username TEXT NOT NULL UNIQUE,
-                    email TEXT UNIQUE,
-                    password_hash TEXT,
-                    github_id TEXT,
-                    status INTEGER DEFAULT 1,
-                    balance_usd BIGINT DEFAULT 0,
-                    balance_cny BIGINT DEFAULT 0,
-                    preferred_currency VARCHAR(10) DEFAULT 'USD',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS roles (
+                CREATE TABLE IF NOT EXISTS user_roles (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL UNIQUE,
                     description TEXT
                 );
                 "#,
                 r#"
-                CREATE TABLE IF NOT EXISTS user_roles (
+                CREATE TABLE IF NOT EXISTS user_role_bindings (
                     user_id TEXT NOT NULL,
                     role_id TEXT NOT NULL,
                     PRIMARY KEY (user_id, role_id),
-                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
+                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(role_id) REFERENCES user_roles(id) ON DELETE CASCADE
                 );
                 "#,
                 r#"
-                CREATE TABLE IF NOT EXISTS recharges (
+                CREATE TABLE IF NOT EXISTS user_recharges (
                     id SERIAL PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     amount BIGINT NOT NULL,
                     currency VARCHAR(10) DEFAULT 'USD',
                     description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
                 );
                 "#,
             ),
             _ => unreachable!("Unsupported database kind"),
         };
 
-        sqlx::query(users_sql).execute(conn.pool()).await?;
-        sqlx::query(roles_sql).execute(conn.pool()).await?;
+        sqlx::query(user_roles_sql).execute(conn.pool()).await?;
         println!("UserDatabase: tables created/verified.");
 
-        sqlx::query(user_roles_sql).execute(conn.pool()).await?;
-        sqlx::query(recharges_sql).execute(conn.pool()).await?;
+        sqlx::query(user_role_bindings_sql).execute(conn.pool()).await?;
+        sqlx::query(user_recharges_sql).execute(conn.pool()).await?;
 
         // Migrations for SQLite (Add columns if missing)
         if kind == "sqlite" {
             // Ignoring errors as "duplicate column name" is the expected error if it exists
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN password_hash TEXT")
+            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN password_hash TEXT")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN github_id TEXT")
+            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN github_id TEXT")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN status INTEGER DEFAULT 1")
+            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN status INTEGER DEFAULT 1")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_usd BIGINT DEFAULT 0")
+            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_usd BIGINT DEFAULT 0")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN balance_cny BIGINT DEFAULT 0")
+            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_cny BIGINT DEFAULT 0")
                 .execute(conn.pool())
                 .await;
             let _ = sqlx::query(
-                "ALTER TABLE users ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
+                "ALTER TABLE user_accounts ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
             )
             .execute(conn.pool())
             .await;
             let _ =
-                sqlx::query("ALTER TABLE recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'")
+                sqlx::query("ALTER TABLE user_recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'")
                     .execute(conn.pool())
                     .await;
         }
@@ -191,48 +163,48 @@ impl UserDatabase {
         // Migrations for PostgreSQL (Add columns if missing)
         if kind == "postgres" {
             let _ = sqlx::query(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
+                "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
             )
             .execute(conn.pool())
             .await;
             let _ = sqlx::query(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
+                "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
             )
             .execute(conn.pool())
             .await;
-            let _ = sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
+            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
                 .execute(conn.pool())
                 .await;
             let _ = sqlx::query(
-                "ALTER TABLE recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
+                "ALTER TABLE user_recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
             )
             .execute(conn.pool())
             .await;
         }
 
         // Initialize default roles
-        let role_count: i64 = sqlx::query("SELECT COUNT(*) FROM roles")
+        let role_count: i64 = sqlx::query("SELECT COUNT(*) FROM user_roles")
             .fetch_one(conn.pool())
             .await?
             .get(0);
 
         if role_count == 0 {
             println!("UserDatabase: inserting default roles...");
-            sqlx::query("INSERT INTO roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')")
+            let _ = sqlx::query("INSERT OR IGNORE INTO user_roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')")
                 .execute(conn.pool())
-                .await?;
+                .await;
         }
 
         println!("UserDatabase: init complete.");
         Ok(())
     }
 
-    pub async fn create_user(db: &Database, user: &DbUser) -> Result<()> {
+    pub async fn create_user(db: &Database, user: &UserAccount) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
-            "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+            "INSERT INTO user_accounts (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
         } else {
-            "INSERT INTO users (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO user_accounts (id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         };
         sqlx::query(sql)
             .bind(&user.id)
@@ -249,14 +221,14 @@ impl UserDatabase {
         Ok(())
     }
 
-    pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<DbUser>> {
+    pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<UserAccount>> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
-            "SELECT * FROM users WHERE username = $1"
+            "SELECT * FROM user_accounts WHERE username = $1"
         } else {
-            "SELECT * FROM users WHERE username = ?"
+            "SELECT * FROM user_accounts WHERE username = ?"
         };
-        let user = sqlx::query_as::<_, DbUser>(sql)
+        let user = sqlx::query_as::<_, UserAccount>(sql)
             .bind(username)
             .fetch_optional(conn.pool())
             .await?;
@@ -266,9 +238,9 @@ impl UserDatabase {
     pub async fn get_user_roles(db: &Database, user_id: &str) -> Result<Vec<String>> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
-            "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1"
+            "SELECT r.name FROM user_roles r JOIN user_role_bindings ur ON r.id = ur.role_id WHERE ur.user_id = $1"
         } else {
-            "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = ?"
+            "SELECT r.name FROM user_roles r JOIN user_role_bindings ur ON r.id = ur.role_id WHERE ur.user_id = ?"
         };
         let rows = sqlx::query(sql)
             .bind(user_id)
@@ -283,13 +255,13 @@ impl UserDatabase {
         let conn = db.get_connection()?;
         let (select_sql, insert_sql) = if db.kind() == "postgres" {
             (
-                "SELECT id FROM roles WHERE name = $1",
-                "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
+                "SELECT id FROM user_roles WHERE name = $1",
+                "INSERT INTO user_role_bindings (user_id, role_id) VALUES ($1, $2)",
             )
         } else {
             (
-                "SELECT id FROM roles WHERE name = ?",
-                "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+                "SELECT id FROM user_roles WHERE name = ?",
+                "INSERT INTO user_role_bindings (user_id, role_id) VALUES (?, ?)",
             )
         };
         let role_id: Option<String> = sqlx::query(select_sql)
@@ -312,9 +284,9 @@ impl UserDatabase {
         Ok(())
     }
 
-    pub async fn list_users(db: &Database) -> Result<Vec<DbUser>> {
+    pub async fn list_users(db: &Database) -> Result<Vec<UserAccount>> {
         let conn = db.get_connection()?;
-        let users = sqlx::query_as::<_, DbUser>("SELECT * FROM users")
+        let users = sqlx::query_as::<_, UserAccount>("SELECT * FROM user_accounts")
             .fetch_all(conn.pool())
             .await?;
         Ok(users)
@@ -325,13 +297,13 @@ impl UserDatabase {
         let conn = db.get_connection()?;
         let (update_sql, select_sql) = if db.kind() == "postgres" {
             (
-                "UPDATE users SET balance_usd = balance_usd + $1 WHERE id = $2",
-                "SELECT balance_usd FROM users WHERE id = $1",
+                "UPDATE user_accounts SET balance_usd = balance_usd + $1 WHERE id = $2",
+                "SELECT balance_usd FROM user_accounts WHERE id = $1",
             )
         } else {
             (
-                "UPDATE users SET balance_usd = balance_usd + ? WHERE id = ?",
-                "SELECT balance_usd FROM users WHERE id = ?",
+                "UPDATE user_accounts SET balance_usd = balance_usd + ? WHERE id = ?",
+                "SELECT balance_usd FROM user_accounts WHERE id = ?",
             )
         };
         sqlx::query(update_sql)
@@ -354,13 +326,13 @@ impl UserDatabase {
         let conn = db.get_connection()?;
         let (update_sql, select_sql) = if db.kind() == "postgres" {
             (
-                "UPDATE users SET balance_cny = balance_cny + $1 WHERE id = $2",
-                "SELECT balance_cny FROM users WHERE id = $1",
+                "UPDATE user_accounts SET balance_cny = balance_cny + $1 WHERE id = $2",
+                "SELECT balance_cny FROM user_accounts WHERE id = $1",
             )
         } else {
             (
-                "UPDATE users SET balance_cny = balance_cny + ? WHERE id = ?",
-                "SELECT balance_cny FROM users WHERE id = ?",
+                "UPDATE user_accounts SET balance_cny = balance_cny + ? WHERE id = ?",
+                "SELECT balance_cny FROM user_accounts WHERE id = ?",
             )
         };
         sqlx::query(update_sql)
@@ -392,12 +364,12 @@ impl UserDatabase {
         }
     }
 
-    pub async fn create_recharge(db: &Database, recharge: &DbRecharge) -> Result<i32> {
+    pub async fn create_recharge(db: &Database, recharge: &UserRecharge) -> Result<i32> {
         let conn = db.get_connection()?;
         let currency = recharge.currency.as_deref().unwrap_or("USD");
         let id: i32 = match db.kind().as_str() {
             "sqlite" => {
-                sqlx::query("INSERT INTO recharges (user_id, amount, currency, description) VALUES (?, ?, ?, ?)")
+                sqlx::query("INSERT INTO user_recharges (user_id, amount, currency, description) VALUES (?, ?, ?, ?)")
                     .bind(&recharge.user_id)
                     .bind(recharge.amount)
                     .bind(currency)
@@ -408,7 +380,7 @@ impl UserDatabase {
                     .unwrap_or(0) as i32
             }
             "postgres" => {
-                sqlx::query("INSERT INTO recharges (user_id, amount, currency, description) VALUES ($1, $2, $3, $4) RETURNING id")
+                sqlx::query("INSERT INTO user_recharges (user_id, amount, currency, description) VALUES ($1, $2, $3, $4) RETURNING id")
                     .bind(&recharge.user_id)
                     .bind(recharge.amount)
                     .bind(currency)
@@ -430,14 +402,14 @@ impl UserDatabase {
         Ok(id)
     }
 
-    pub async fn list_recharges(db: &Database, user_id: &str) -> Result<Vec<DbRecharge>> {
+    pub async fn list_recharges(db: &Database, user_id: &str) -> Result<Vec<UserRecharge>> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
-            "SELECT * FROM recharges WHERE user_id = $1 ORDER BY created_at DESC"
+            "SELECT * FROM user_recharges WHERE user_id = $1 ORDER BY created_at DESC"
         } else {
-            "SELECT * FROM recharges WHERE user_id = ? ORDER BY created_at DESC"
+            "SELECT * FROM user_recharges WHERE user_id = ? ORDER BY created_at DESC"
         };
-        let recharges = sqlx::query_as::<_, DbRecharge>(sql)
+        let recharges = sqlx::query_as::<_, UserRecharge>(sql)
             .bind(user_id)
             .fetch_all(conn.pool())
             .await?;

@@ -122,7 +122,7 @@ Apfww82b16AoK7qgtPcI8g==
 
     // Seed a price for gemini-pro so the preflight billing check passes.
     sqlx::query(
-        "INSERT OR IGNORE INTO prices (model, currency, input_price, output_price, region) \
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) \
          VALUES ('gemini-pro', 'USD', 1, 1, '')",
     )
     .execute(&pool)

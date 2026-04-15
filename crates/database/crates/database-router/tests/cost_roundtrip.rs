@@ -1,4 +1,4 @@
-/// Integration tests for DbRouterLog per-type cost and token round-trip.
+/// Integration tests for RouterLog per-type cost and token round-trip.
 ///
 /// These tests guard against two failure modes:
 ///
@@ -16,7 +16,7 @@
 /// sqlx-any versions. Tests use RouterLogModel::get() and filter in Rust to stay on the
 /// well-tested code path.
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::{DbRouterLog, RouterDatabase, RouterLogModel};
+use burncloud_database_router::{RouterLog, RouterDatabase, RouterLogModel};
 use tempfile::NamedTempFile;
 
 /// Create an isolated SQLite test database backed by a temp file.
@@ -41,7 +41,7 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
 }
 
 /// Fetch all logs and find one by request_id.
-async fn find_log(db: &burncloud_database::Database, request_id: &str) -> DbRouterLog {
+async fn find_log(db: &burncloud_database::Database, request_id: &str) -> RouterLog {
     let rows = RouterLogModel::get(db, 100, 0)
         .await
         .expect("RouterLogModel::get failed");
@@ -50,9 +50,9 @@ async fn find_log(db: &burncloud_database::Database, request_id: &str) -> DbRout
         .unwrap_or_else(|| panic!("log with request_id={request_id} not found"))
 }
 
-/// Build a complete DbRouterLog with all 14 new fields populated.
-fn make_log(request_id: &str) -> DbRouterLog {
-    DbRouterLog {
+/// Build a complete RouterLog with all 14 new fields populated.
+fn make_log(request_id: &str) -> RouterLog {
+    RouterLog {
         id: 0,
         request_id: request_id.to_string(),
         user_id: Some("test-user".to_string()),
@@ -198,7 +198,7 @@ async fn test_zero_values_read_as_zero_not_null() {
     let (db, _tmp) = create_test_db().await;
 
     let request_id = format!("test-zeros-{}", uuid::Uuid::new_v4());
-    let log = DbRouterLog {
+    let log = RouterLog {
         id: 0,
         request_id: request_id.clone(),
         user_id: Some("zero-user".to_string()),

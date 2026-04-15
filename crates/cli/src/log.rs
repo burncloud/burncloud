@@ -3,7 +3,7 @@ use burncloud_common::scaled_to_rate;
 use burncloud_database::sqlx;
 use burncloud_database::Database;
 use burncloud_database_router::{
-    get_usage_stats, get_usage_stats_by_token, DbRouterLog, RouterDatabase,
+    get_usage_stats, get_usage_stats_by_token, RouterLog, RouterDatabase,
 };
 use clap::ArgMatches;
 use serde::Serialize;
@@ -23,8 +23,8 @@ pub struct LogListItem {
     pub timestamp: Option<String>,
 }
 
-impl From<DbRouterLog> for LogListItem {
-    fn from(log: DbRouterLog) -> Self {
+impl From<RouterLog> for LogListItem {
+    fn from(log: RouterLog) -> Self {
         // Extract model from path if possible (e.g., "/v1/chat/completions" -> "N/A")
         // In most cases, model is in request body, not path
         let model = extract_model_from_path(&log.path);

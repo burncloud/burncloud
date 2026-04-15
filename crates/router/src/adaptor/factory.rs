@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 use burncloud_common::types::{ChannelType, OpenAIChatRequest};
 use burncloud_database::Database;
-use burncloud_database_models::{ProtocolConfig, ProtocolConfigModel};
+use burncloud_database_models::{ChannelProtocolConfig, ChannelProtocolConfigModel};
 use dashmap::DashMap;
 use reqwest::RequestBuilder;
 use serde_json::Value;
@@ -353,7 +353,7 @@ impl DynamicAdaptorFactory {
         api_version: &str,
     ) -> anyhow::Result<Option<Arc<dyn ChannelAdaptor>>> {
         let config =
-            ProtocolConfigModel::get_by_type_version(&self.db, channel_type, api_version).await?;
+            ChannelProtocolConfigModel::get_by_type_version(&self.db, channel_type, api_version).await?;
 
         match config {
             Some(protocol_config) => {
@@ -370,7 +370,7 @@ impl DynamicAdaptorFactory {
         &self,
         channel_type: i32,
     ) -> anyhow::Result<Option<Arc<dyn ChannelAdaptor>>> {
-        let config = ProtocolConfigModel::get_default(&self.db, channel_type).await?;
+        let config = ChannelProtocolConfigModel::get_default(&self.db, channel_type).await?;
 
         match config {
             Some(protocol_config) => {
@@ -384,7 +384,7 @@ impl DynamicAdaptorFactory {
     /// Create a DynamicAdaptor from a ProtocolConfig
     fn create_dynamic_adaptor(
         &self,
-        config: ProtocolConfig,
+        config: ChannelProtocolConfig,
     ) -> anyhow::Result<Arc<dyn ChannelAdaptor>> {
         // Parse request and response mappings
         let request_mapping = config

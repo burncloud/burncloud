@@ -7,7 +7,7 @@ use burncloud_database::Database;
 use burncloud_database_user::UserDatabase;
 
 // Re-export domain types so server can depend on service-user instead of database-user
-pub use burncloud_database_user::{DbRecharge, DbUser};
+pub use burncloud_database_user::{UserAccount, UserRecharge};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -144,7 +144,7 @@ impl UserService {
             hash(password, DEFAULT_COST).map_err(|e| UserServiceError::HashError(e.to_string()))?;
 
         // Create user
-        let user = DbUser {
+        let user = UserAccount {
             id: Uuid::new_v4().to_string(),
             username: username.to_string(),
             email,
@@ -242,7 +242,7 @@ impl UserService {
     }
 
     /// List all users (no pagination — use sparingly in production)
-    pub async fn list_users(&self, db: &Database) -> Result<Vec<DbUser>> {
+    pub async fn list_users(&self, db: &Database) -> Result<Vec<UserAccount>> {
         UserDatabase::list_users(db).await.map_err(Into::into)
     }
 
@@ -267,7 +267,7 @@ impl UserService {
         amount: i64,
         currency: &str,
     ) -> Result<i64> {
-        let recharge = DbRecharge {
+        let recharge = UserRecharge {
             id: 0,
             user_id: user_id.to_string(),
             amount,
@@ -294,7 +294,7 @@ impl UserService {
     }
 
     /// List recharge history for a user
-    pub async fn list_recharges(&self, db: &Database, user_id: &str) -> Result<Vec<DbRecharge>> {
+    pub async fn list_recharges(&self, db: &Database, user_id: &str) -> Result<Vec<UserRecharge>> {
         UserDatabase::list_recharges(db, user_id)
             .await
             .map_err(Into::into)

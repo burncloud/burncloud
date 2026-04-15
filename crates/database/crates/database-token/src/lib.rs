@@ -10,15 +10,15 @@ use sqlx::FromRow;
 
 /// Token validation result that distinguishes between invalid and expired tokens
 #[derive(Debug, Clone)]
-pub enum TokenValidationResult {
-    Valid(DbToken),
+pub enum RouterTokenValidationResult {
+    Valid(RouterToken),
     Invalid,
     Expired,
 }
 
 /// API Token configuration
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbToken {
+pub struct RouterToken {
     pub token: String,
     pub user_id: String,
     pub status: String, // "active", "disabled"
@@ -32,13 +32,13 @@ pub struct DbToken {
     pub accessed_time: i64, // unix timestamp of last access
 }
 
-pub struct TokenModel;
+pub struct RouterTokenModel;
 
-impl TokenModel {
+impl RouterTokenModel {
     /// List all tokens
-    pub async fn list(db: &Database) -> Result<Vec<DbToken>> {
+    pub async fn list(db: &Database) -> Result<Vec<RouterToken>> {
         let conn = db.get_connection()?;
-        let tokens = sqlx::query_as::<_, DbToken>(
+        let tokens = sqlx::query_as::<_, RouterToken>(
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens",
         )
         .fetch_all(conn.pool())
@@ -47,7 +47,7 @@ impl TokenModel {
     }
 
     /// Create a new token
-    pub async fn create(db: &Database, t: &DbToken) -> Result<()> {
+    pub async fn create(db: &Database, t: &RouterToken) -> Result<()> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
         let sql = format!(
@@ -88,10 +88,10 @@ impl TokenModel {
     }
 
     /// Validate a token and return the token data if valid
-    pub async fn validate(db: &Database, token: &str) -> Result<Option<DbToken>> {
+    pub async fn validate(db: &Database, token: &str) -> Result<Option<RouterToken>> {
         let conn = db.get_connection()?;
         let sql = adapt_sql(db.kind() == "postgres", "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'");
-        let token_data = sqlx::query_as::<_, DbToken>(&sql)
+        let token_data = sqlx::query_as::<_, RouterToken>(&sql)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
@@ -114,10 +114,10 @@ impl TokenModel {
     }
 
     /// Validates a token and returns detailed result distinguishing between invalid and expired
-    pub async fn validate_detailed(db: &Database, token: &str) -> Result<TokenValidationResult> {
+    pub async fn validate_detailed(db: &Database, token: &str) -> Result<RouterTokenValidationResult> {
         let conn = db.get_connection()?;
         let sql = adapt_sql(db.kind() == "postgres", "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ? AND status = 'active'");
-        let token_data = sqlx::query_as::<_, DbToken>(&sql)
+        let token_data = sqlx::query_as::<_, RouterToken>(&sql)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
@@ -132,12 +132,12 @@ impl TokenModel {
                 // expired_time > 0 means it has an expiration time
                 // If current time exceeds expiration, token is expired
                 if t.expired_time > 0 && now > t.expired_time {
-                    Ok(TokenValidationResult::Expired)
+                    Ok(RouterTokenValidationResult::Expired)
                 } else {
-                    Ok(TokenValidationResult::Valid(t))
+                    Ok(RouterTokenValidationResult::Valid(t))
                 }
             }
-            None => Ok(TokenValidationResult::Invalid),
+            None => Ok(RouterTokenValidationResult::Invalid),
         }
     }
 
@@ -231,48 +231,48 @@ impl TokenModel {
 /// The token string itself serves as the record ID.
 /// `update` replaces the full token record: delete + re-insert with the caller-provided
 /// `id` as the token value, keeping the rest of `input` intact.
-pub struct TokenRepository<'a>(pub &'a Database);
+pub struct RouterTokenRepository<'a>(pub &'a Database);
 
 #[async_trait::async_trait]
-impl<'a> CrudRepository<DbToken, String, DatabaseError> for TokenRepository<'a> {
-    async fn find_by_id(&self, id: &String) -> Result<Option<DbToken>> {
+impl<'a> CrudRepository<RouterToken, String, DatabaseError> for RouterTokenRepository<'a> {
+    async fn find_by_id(&self, id: &String) -> Result<Option<RouterToken>> {
         let conn = self.0.get_connection()?;
         let sql = adapt_sql(self.0.kind() == "postgres", "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time FROM router_tokens WHERE token = ?");
-        let result = sqlx::query_as::<_, DbToken>(&sql)
+        let result = sqlx::query_as::<_, RouterToken>(&sql)
             .bind(id)
             .fetch_optional(conn.pool())
             .await?;
         Ok(result)
     }
 
-    async fn list(&self) -> Result<Vec<DbToken>> {
-        TokenModel::list(self.0).await
+    async fn list(&self) -> Result<Vec<RouterToken>> {
+        RouterTokenModel::list(self.0).await
     }
 
-    async fn create(&self, input: &DbToken) -> Result<DbToken> {
-        TokenModel::create(self.0, input).await?;
+    async fn create(&self, input: &RouterToken) -> Result<RouterToken> {
+        RouterTokenModel::create(self.0, input).await?;
         self.find_by_id(&input.token)
             .await?
             .ok_or_else(|| DatabaseError::Query("token disappeared after insert".to_string()))
     }
 
-    async fn update(&self, id: &String, input: &DbToken) -> Result<bool> {
+    async fn update(&self, id: &String, input: &RouterToken) -> Result<bool> {
         let exists = self.find_by_id(id).await?.is_some();
         if !exists {
             return Ok(false);
         }
         // Delete old token, then insert the new record with the canonical id.
-        TokenModel::delete(self.0, id).await?;
+        RouterTokenModel::delete(self.0, id).await?;
         let mut record = input.clone();
         record.token = id.clone();
-        TokenModel::create(self.0, &record).await?;
+        RouterTokenModel::create(self.0, &record).await?;
         Ok(true)
     }
 
     async fn delete(&self, id: &String) -> Result<bool> {
         let exists = self.find_by_id(id).await?.is_some();
         if exists {
-            TokenModel::delete(self.0, id).await?;
+            RouterTokenModel::delete(self.0, id).await?;
         }
         Ok(exists)
     }

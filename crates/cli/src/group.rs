@@ -1,6 +1,6 @@
 use anyhow::Result;
 use burncloud_database::Database;
-use burncloud_database_router::{DbGroup, DbGroupMember, RouterDatabase};
+use burncloud_database_router::{RouterGroup, RouterGroupMember, RouterDatabase};
 use clap::ArgMatches;
 use serde::Serialize;
 use std::io::{self, Write};
@@ -72,7 +72,7 @@ pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()>
     let group_id = Uuid::new_v4().to_string();
 
     // Create the group with default strategy and match_path
-    let group = DbGroup {
+    let group = RouterGroup {
         id: group_id.clone(),
         name: name.clone(),
         strategy: "round_robin".to_string(),
@@ -91,9 +91,9 @@ pub async fn cmd_group_create(db: &Database, matches: &ArgMatches) -> Result<()>
             .collect();
 
         if !member_ids.is_empty() {
-            let group_members: Vec<DbGroupMember> = member_ids
+            let group_members: Vec<RouterGroupMember> = member_ids
                 .iter()
-                .map(|upstream_id| DbGroupMember {
+                .map(|upstream_id| RouterGroupMember {
                     group_id: group_id.clone(),
                     upstream_id: upstream_id.to_string(),
                     weight: 1,
@@ -220,7 +220,7 @@ pub async fn cmd_group_members(db: &Database, matches: &ArgMatches) -> Result<()
                 println!("Cleared all members from group '{}'", group.name);
             } else {
                 // Parse member specs (format: upstream_id:weight or upstream_id)
-                let group_members: Vec<DbGroupMember> = member_specs
+                let group_members: Vec<RouterGroupMember> = member_specs
                     .iter()
                     .map(|spec| {
                         let parts: Vec<&str> = spec.split(':').collect();
@@ -230,7 +230,7 @@ pub async fn cmd_group_members(db: &Database, matches: &ArgMatches) -> Result<()
                         } else {
                             1
                         };
-                        DbGroupMember {
+                        RouterGroupMember {
                             group_id: id.to_string(),
                             upstream_id,
                             weight,

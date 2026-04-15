@@ -49,7 +49,7 @@ impl ModelRouter {
             format!(
                 r#"
                 SELECT priority
-                FROM abilities
+                FROM channel_abilities
                 WHERE {} = $1 AND model = $2 AND enabled = true
                 ORDER BY priority DESC
                 LIMIT 1
@@ -60,7 +60,7 @@ impl ModelRouter {
             format!(
                 r#"
                 SELECT priority
-                FROM abilities
+                FROM channel_abilities
                 WHERE {} = ? AND model = ? AND enabled = 1
                 ORDER BY priority DESC
                 LIMIT 1
@@ -85,7 +85,7 @@ impl ModelRouter {
             format!(
                 r#"
                 SELECT channel_id, weight
-                FROM abilities
+                FROM channel_abilities
                 WHERE {} = $1 AND model = $2 AND enabled = true AND priority = $3
                 "#,
                 group_col
@@ -94,7 +94,7 @@ impl ModelRouter {
             format!(
                 r#"
                 SELECT channel_id, weight
-                FROM abilities
+                FROM channel_abilities
                 WHERE {} = ? AND model = ? AND enabled = 1 AND priority = ?
                 "#,
                 group_col
@@ -133,7 +133,7 @@ impl ModelRouter {
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channels WHERE id IN ({})
+                FROM channel_providers WHERE id IN ({})
                 "#,
                 placeholders
             )
@@ -145,7 +145,7 @@ impl ModelRouter {
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channels WHERE id IN ({})
+                FROM channel_providers WHERE id IN ({})
                 "#,
                 placeholders
             )

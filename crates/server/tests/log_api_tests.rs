@@ -1,5 +1,5 @@
 use burncloud_database::create_default_database;
-use burncloud_database_router::{DbRouterLog, RouterDatabase};
+use burncloud_database_router::{RouterLog, RouterDatabase};
 use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -10,7 +10,7 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?; // Ensure tables exist
 
-    let log_entry = DbRouterLog {
+    let log_entry = RouterLog {
         id: 0,
         request_id: uuid::Uuid::new_v4().to_string(),
         user_id: Some("test-api-user".to_string()),

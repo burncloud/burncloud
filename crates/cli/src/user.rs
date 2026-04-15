@@ -5,7 +5,7 @@ use anyhow::Result;
 use bcrypt::{hash, DEFAULT_COST};
 use burncloud_common::utils::verify_password;
 use burncloud_database::Database;
-use burncloud_database_user::{DbUser, UserDatabase};
+use burncloud_database_user::{UserAccount, UserDatabase};
 use clap::ArgMatches;
 use uuid::Uuid;
 
@@ -110,7 +110,7 @@ pub async fn cmd_user_register(db: &Database, matches: &ArgMatches) -> Result<()
     let user_id = Uuid::new_v4().to_string();
 
     // Create user struct
-    let user = DbUser {
+    let user = UserAccount {
         id: user_id.clone(),
         username: username.clone(),
         email,
@@ -307,7 +307,7 @@ pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
     let amount_nano = (amount_dollar * 1_000_000_000.0) as i64;
 
     // Create recharge record (this also updates the balance)
-    let recharge = burncloud_database_user::DbRecharge {
+    let recharge = burncloud_database_user::UserRecharge {
         id: 0, // Auto-generated
         user_id: user_id.clone(),
         amount: amount_nano,

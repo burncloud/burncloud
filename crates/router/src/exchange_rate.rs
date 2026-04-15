@@ -122,7 +122,7 @@ impl ExchangeRateService {
     /// Load exchange rates from the database into cache
     pub async fn load_rates_from_db(&self) -> anyhow::Result<usize> {
         let conn = self.db.get_connection()?;
-        let sql = "SELECT from_currency, to_currency, rate, updated_at FROM exchange_rates";
+        let sql = "SELECT from_currency, to_currency, rate, updated_at FROM billing_exchange_rates";
 
         // Rate is stored as BIGINT (scaled i64) in the database
         let rows = sqlx::query_as::<_, (String, String, i64, Option<i64>)>(sql)
@@ -180,7 +180,7 @@ impl ExchangeRateService {
         let sql = match self.db.kind().as_str() {
             "postgres" => {
                 r#"
-                INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
+                INSERT INTO billing_exchange_rates (from_currency, to_currency, rate, updated_at)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                     rate = EXCLUDED.rate,
@@ -189,7 +189,7 @@ impl ExchangeRateService {
             }
             _ => {
                 r#"
-                INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
+                INSERT INTO billing_exchange_rates (from_currency, to_currency, rate, updated_at)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                     rate = excluded.rate,

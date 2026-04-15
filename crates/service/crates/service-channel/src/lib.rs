@@ -4,7 +4,7 @@
 //! including CRUD operations and ability synchronization.
 
 use burncloud_database::Database;
-use burncloud_database_models::ChannelModel;
+use burncloud_database_models::ChannelProviderModel;
 
 pub use burncloud_common::types::Channel;
 
@@ -16,31 +16,31 @@ pub struct ChannelService;
 impl ChannelService {
     /// List channels with pagination
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Channel>> {
-        ChannelModel::list(db, limit, offset).await
+        ChannelProviderModel::list(db, limit, offset).await
     }
 
     /// Create a new channel. Sets `channel.id` to the newly assigned ID.
     pub async fn create(db: &Database, channel: &mut Channel) -> Result<i32> {
-        ChannelModel::create(db, channel).await
+        ChannelProviderModel::create(db, channel).await
     }
 
     /// Update an existing channel
     pub async fn update(db: &Database, channel: &Channel) -> Result<()> {
-        ChannelModel::update(db, channel).await
+        ChannelProviderModel::update(db, channel).await
     }
 
     /// Delete a channel by ID
     pub async fn delete(db: &Database, id: i32) -> Result<()> {
-        ChannelModel::delete(db, id).await
+        ChannelProviderModel::delete(db, id).await
     }
 
     /// Get a channel by ID
     pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
-        ChannelModel::get_by_id(db, id).await
+        ChannelProviderModel::get_by_id(db, id).await
     }
 
     /// Sync model abilities for a channel
     pub async fn sync_abilities(db: &Database, channel: &Channel) -> Result<()> {
-        ChannelModel::sync_abilities(db, channel).await
+        ChannelProviderModel::sync_abilities(db, channel).await
     }
 }

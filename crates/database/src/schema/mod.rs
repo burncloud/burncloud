@@ -12,11 +12,13 @@
 //!    configs when they don't yet exist.
 //!
 //! The implementation is split into domain sub-modules:
+//! - [`rename`] — full table rename data migrations (legacy → canonical names)
 //! - [`router`] — router_logs table fixups
 //! - [`price`]  — price table migrations and format conversions
 //! - [`user`]   — token schema migration, quota conversion and seed data
 
 mod price;
+mod rename;
 mod router;
 mod user;
 
@@ -42,6 +44,10 @@ impl Schema {
     pub async fn init(db: &Database) -> Result<()> {
         let pool = db.get_connection()?.pool();
         let kind = db.kind();
+
+        // Run table renames first so that subsequent migrations and seed data
+        // address the canonical table names.
+        rename::migrate_table_renames(pool, &kind).await?;
 
         router::migrate_router_logs(pool, &kind).await?;
         price::migrate_prices(pool, &kind).await?;

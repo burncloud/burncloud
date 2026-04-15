@@ -1,4 +1,4 @@
-use burncloud_database_router::{DbToken, DbUpstream};
+use burncloud_database_router::{RouterToken, RouterUpstream};
 use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -33,7 +33,7 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
     // 2. List Channels
     let resp_list = client.get(&base_url).send().await?;
     assert_eq!(resp_list.status(), 200);
-    let channels: Vec<DbUpstream> = resp_list.json().await?;
+    let channels: Vec<RouterUpstream> = resp_list.json().await?;
 
     let found = channels
         .iter()
@@ -48,7 +48,7 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
         .send()
         .await?;
     assert_eq!(resp_get.status(), 200);
-    let channel: DbUpstream = resp_get.json().await?;
+    let channel: RouterUpstream = resp_get.json().await?;
     assert_eq!(channel.base_url, "https://api.test.com");
 
     // 4. Update Channel
@@ -73,7 +73,7 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
         .get(format!("{}/test-chan-1", base_url))
         .send()
         .await?;
-    let channel_2: DbUpstream = resp_get_2.json().await?;
+    let channel_2: RouterUpstream = resp_get_2.json().await?;
     assert_eq!(channel_2.name, "Updated Name");
     assert_eq!(channel_2.base_url, "https://api.updated.com");
 
@@ -121,7 +121,7 @@ async fn test_token_management_lifecycle() -> anyhow::Result<()> {
 
     // 2. List Tokens
     let resp_list = client.get(&base_url).send().await?;
-    let tokens: Vec<DbToken> = resp_list.json().await?;
+    let tokens: Vec<RouterToken> = resp_list.json().await?;
     let found = tokens
         .iter()
         .find(|t| t.token == token_str)
@@ -140,7 +140,7 @@ async fn test_token_management_lifecycle() -> anyhow::Result<()> {
 
     // Verify Deletion
     let resp_list_2 = client.get(&base_url).send().await?;
-    let tokens_2: Vec<DbToken> = resp_list_2.json().await?;
+    let tokens_2: Vec<RouterToken> = resp_list_2.json().await?;
     assert!(!tokens_2.iter().any(|t| t.token == token_str));
 
     Ok(())

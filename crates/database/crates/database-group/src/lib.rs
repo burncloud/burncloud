@@ -10,7 +10,7 @@ use sqlx::FromRow;
 
 /// Upstream group configuration
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbGroup {
+pub struct RouterGroup {
     pub id: String,
     pub name: String,
     pub strategy: String, // "round_robin", "weighted"
@@ -19,19 +19,19 @@ pub struct DbGroup {
 
 /// Group member configuration
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbGroupMember {
+pub struct RouterGroupMember {
     pub group_id: String,
     pub upstream_id: String,
     pub weight: i32,
 }
 
-pub struct GroupModel;
+pub struct RouterGroupModel;
 
-impl GroupModel {
+impl RouterGroupModel {
     /// Get all groups
-    pub async fn get_all(db: &Database) -> Result<Vec<DbGroup>> {
+    pub async fn get_all(db: &Database) -> Result<Vec<RouterGroup>> {
         let conn = db.get_connection()?;
-        let rows = sqlx::query_as::<_, DbGroup>(
+        let rows = sqlx::query_as::<_, RouterGroup>(
             "SELECT id, name, strategy, match_path FROM router_groups",
         )
         .fetch_all(conn.pool())
@@ -40,14 +40,14 @@ impl GroupModel {
     }
 
     /// Get a single group by ID
-    pub async fn get(db: &Database, id: &str) -> Result<Option<DbGroup>> {
+    pub async fn get(db: &Database, id: &str) -> Result<Option<RouterGroup>> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
             "SELECT id, name, strategy, match_path FROM router_groups WHERE id = $1"
         } else {
             "SELECT id, name, strategy, match_path FROM router_groups WHERE id = ?"
         };
-        let group = sqlx::query_as::<_, DbGroup>(sql)
+        let group = sqlx::query_as::<_, RouterGroup>(sql)
             .bind(id)
             .fetch_optional(conn.pool())
             .await?;
@@ -55,7 +55,7 @@ impl GroupModel {
     }
 
     /// Create a new group
-    pub async fn create(db: &Database, g: &DbGroup) -> Result<()> {
+    pub async fn create(db: &Database, g: &RouterGroup) -> Result<()> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
         let sql = format!(
@@ -98,13 +98,13 @@ impl GroupModel {
     }
 }
 
-pub struct GroupMemberModel;
+pub struct RouterGroupMemberModel;
 
-impl GroupMemberModel {
+impl RouterGroupMemberModel {
     /// Get all group members
-    pub async fn get_all(db: &Database) -> Result<Vec<DbGroupMember>> {
+    pub async fn get_all(db: &Database) -> Result<Vec<RouterGroupMember>> {
         let conn = db.get_connection()?;
-        let rows = sqlx::query_as::<_, DbGroupMember>(
+        let rows = sqlx::query_as::<_, RouterGroupMember>(
             "SELECT group_id, upstream_id, weight FROM router_group_members",
         )
         .fetch_all(conn.pool())
@@ -113,14 +113,14 @@ impl GroupMemberModel {
     }
 
     /// Get members for a specific group
-    pub async fn get_by_group(db: &Database, group_id: &str) -> Result<Vec<DbGroupMember>> {
+    pub async fn get_by_group(db: &Database, group_id: &str) -> Result<Vec<RouterGroupMember>> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
             "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = $1"
         } else {
             "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = ?"
         };
-        let rows = sqlx::query_as::<_, DbGroupMember>(sql)
+        let rows = sqlx::query_as::<_, RouterGroupMember>(sql)
             .bind(group_id)
             .fetch_all(conn.pool())
             .await?;
@@ -131,7 +131,7 @@ impl GroupMemberModel {
     pub async fn set_for_group(
         db: &Database,
         group_id: &str,
-        members: Vec<DbGroupMember>,
+        members: Vec<RouterGroupMember>,
     ) -> Result<()> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
@@ -163,44 +163,44 @@ impl GroupMemberModel {
 
 /// Repository wrapper that implements the standard [`CrudRepository`] contract for groups.
 ///
-/// Note: `GroupModel` has no update method — groups are replaced by delete + create.
+/// Note: `RouterGroupModel` has no update method — groups are replaced by delete + create.
 /// The `update` implementation here mirrors that: delete then create with the new data
 /// and the canonical `id`.
-pub struct GroupRepository<'a>(pub &'a Database);
+pub struct RouterGroupRepository<'a>(pub &'a Database);
 
 #[async_trait::async_trait]
-impl<'a> CrudRepository<DbGroup, String, DatabaseError> for GroupRepository<'a> {
-    async fn find_by_id(&self, id: &String) -> Result<Option<DbGroup>> {
-        GroupModel::get(self.0, id).await
+impl<'a> CrudRepository<RouterGroup, String, DatabaseError> for RouterGroupRepository<'a> {
+    async fn find_by_id(&self, id: &String) -> Result<Option<RouterGroup>> {
+        RouterGroupModel::get(self.0, id).await
     }
 
-    async fn list(&self) -> Result<Vec<DbGroup>> {
-        GroupModel::get_all(self.0).await
+    async fn list(&self) -> Result<Vec<RouterGroup>> {
+        RouterGroupModel::get_all(self.0).await
     }
 
-    async fn create(&self, input: &DbGroup) -> Result<DbGroup> {
-        GroupModel::create(self.0, input).await?;
-        GroupModel::get(self.0, &input.id)
+    async fn create(&self, input: &RouterGroup) -> Result<RouterGroup> {
+        RouterGroupModel::create(self.0, input).await?;
+        RouterGroupModel::get(self.0, &input.id)
             .await?
             .ok_or_else(|| DatabaseError::Query("group disappeared after insert".to_string()))
     }
 
-    async fn update(&self, id: &String, input: &DbGroup) -> Result<bool> {
-        let exists = GroupModel::get(self.0, id).await?.is_some();
+    async fn update(&self, id: &String, input: &RouterGroup) -> Result<bool> {
+        let exists = RouterGroupModel::get(self.0, id).await?.is_some();
         if !exists {
             return Ok(false);
         }
-        GroupModel::delete(self.0, id).await?;
+        RouterGroupModel::delete(self.0, id).await?;
         let mut record = input.clone();
         record.id = id.clone();
-        GroupModel::create(self.0, &record).await?;
+        RouterGroupModel::create(self.0, &record).await?;
         Ok(true)
     }
 
     async fn delete(&self, id: &String) -> Result<bool> {
-        let exists = GroupModel::get(self.0, id).await?.is_some();
+        let exists = RouterGroupModel::get(self.0, id).await?.is_some();
         if exists {
-            GroupModel::delete(self.0, id).await?;
+            RouterGroupModel::delete(self.0, id).await?;
         }
         Ok(exists)
     }

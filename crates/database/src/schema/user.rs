@@ -153,21 +153,31 @@ async fn migrate_quota_to_balance(pool: &AnyPool) -> Result<()> {
 
 /// Ensure the demo user exists (required by validate_token_and_get_info JOIN).
 async fn seed_demo_user(pool: &AnyPool) -> Result<()> {
-    let _ = sqlx::query(
-        "INSERT OR IGNORE INTO users (id, username, password_hash, status) \
+    // Try user_accounts (canonical name) first, fall back to users (legacy) if absent.
+    let inserted = sqlx::query(
+        "INSERT OR IGNORE INTO user_accounts (id, username, password_hash, status) \
          VALUES ('demo-user', 'demo-user', 'no-login', 1)",
     )
     .execute(pool)
     .await;
+    if inserted.is_err() {
+        // Fallback for legacy installs where table hasn't been renamed yet.
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, status) \
+             VALUES ('demo-user', 'demo-user', 'no-login', 1)",
+        )
+        .execute(pool)
+        .await;
+    }
     Ok(())
 }
 
 /// Insert the default demo token if it does not yet exist.
 async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
-    // If the tokens table doesn't exist yet (fresh database before migrations run),
+    // If the user_api_keys table doesn't exist yet (fresh database before migrations run),
     // skip seeding and return Ok — the table will be created by MigrationRunner later.
     let t_count: i64 =
-        match sqlx::query_scalar("SELECT count(*) FROM tokens WHERE key = 'sk-burncloud-demo'")
+        match sqlx::query_scalar("SELECT count(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'")
             .fetch_one(pool)
             .await
         {
@@ -182,14 +192,14 @@ async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
     let now = crate::schema::current_timestamp();
     let insert_sql = match kind {
         "sqlite" => {
-            "INSERT INTO tokens \
+            "INSERT INTO user_api_keys \
              (user_id, key, status, name, remain_quota, unlimited_quota, \
               used_quota, created_time, accessed_time, expired_time) \
              VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', \
                      -1, 1, 0, ?, ?, -1)"
         }
         "postgres" => {
-            "INSERT INTO tokens \
+            "INSERT INTO user_api_keys \
              (user_id, key, status, name, remain_quota, unlimited_quota, \
               used_quota, created_time, accessed_time, expired_time) \
              VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', \
@@ -210,7 +220,7 @@ async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
 /// Insert the four default protocol configs if the table is empty.
 async fn seed_protocol_configs(pool: &AnyPool, kind: &str) -> Result<()> {
     // Skip seeding if the table doesn't exist yet (fresh database before migrations run).
-    let pc_count: i64 = match sqlx::query_scalar("SELECT count(*) FROM protocol_configs")
+    let pc_count: i64 = match sqlx::query_scalar("SELECT count(*) FROM channel_protocol_configs")
         .fetch_one(pool)
         .await
     {
@@ -263,13 +273,13 @@ async fn seed_protocol_configs(pool: &AnyPool, kind: &str) -> Result<()> {
 
     let insert_sql = match kind {
         "sqlite" => {
-            "INSERT INTO protocol_configs \
+            "INSERT INTO channel_protocol_configs \
              (channel_type, api_version, is_default, chat_endpoint, \
               embed_endpoint, models_endpoint, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         }
         "postgres" => {
-            "INSERT INTO protocol_configs \
+            "INSERT INTO channel_protocol_configs \
              (channel_type, api_version, is_default, chat_endpoint, \
               embed_endpoint, models_endpoint, created_at, updated_at) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"

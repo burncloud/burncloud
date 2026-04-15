@@ -9,7 +9,7 @@ use sqlx::FromRow;
 
 /// Router log entry
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct DbRouterLog {
+pub struct RouterLog {
     pub id: i64,
     pub request_id: String,
     pub user_id: Option<String>,
@@ -92,7 +92,7 @@ pub struct RouterLogModel;
 
 impl RouterLogModel {
     /// Insert a new router log entry
-    pub async fn insert(db: &Database, log: &DbRouterLog) -> Result<()> {
+    pub async fn insert(db: &Database, log: &RouterLog) -> Result<()> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -159,7 +159,7 @@ impl RouterLogModel {
     }
 
     /// Get logs with pagination
-    pub async fn get(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
+    pub async fn get(db: &Database, limit: i32, offset: i32) -> Result<Vec<RouterLog>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -167,7 +167,7 @@ impl RouterLogModel {
             "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, created_at FROM router_logs ORDER BY created_at DESC {}",
             adapt_sql(is_postgres, "LIMIT ? OFFSET ?")
         );
-        let logs = sqlx::query_as::<_, DbRouterLog>(&sql)
+        let logs = sqlx::query_as::<_, RouterLog>(&sql)
             .bind(limit)
             .bind(offset)
             .fetch_all(conn.pool())
@@ -183,7 +183,7 @@ impl RouterLogModel {
         model: Option<&str>,
         limit: i32,
         offset: i32,
-    ) -> Result<Vec<DbRouterLog>> {
+    ) -> Result<Vec<RouterLog>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
         let placeholder = if is_postgres { "$" } else { "?" };
@@ -220,7 +220,7 @@ impl RouterLogModel {
             where_clause, limit_offset
         );
 
-        let mut query = sqlx::query_as::<_, DbRouterLog>(&sql);
+        let mut query = sqlx::query_as::<_, RouterLog>(&sql);
 
         if let Some(uid) = user_id {
             query = query.bind(uid);

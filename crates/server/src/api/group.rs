@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_service_group::{DbGroup, DbGroupMember, GroupMemberService, GroupService};
+use burncloud_service_group::{RouterGroup, RouterGroupMember, GroupMemberService, GroupService};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -38,9 +38,9 @@ struct ApiError {
     error: String,
 }
 
-impl From<GroupDto> for DbGroup {
+impl From<GroupDto> for RouterGroup {
     fn from(dto: GroupDto) -> Self {
-        DbGroup {
+        RouterGroup {
             id: dto.id,
             name: dto.name,
             strategy: dto.strategy,
@@ -73,7 +73,7 @@ async fn create_group(
     State(state): State<AppState>,
     Json(payload): Json<GroupDto>,
 ) -> impl IntoResponse {
-    let group: DbGroup = payload.into();
+    let group: RouterGroup = payload.into();
     match GroupService::create(&state.db, &group).await {
         Ok(_) => Json(GroupOpResult {
             status: "created",
@@ -115,9 +115,9 @@ async fn set_members(
     Path(id): Path<String>,
     Json(payload): Json<Vec<GroupMemberDto>>,
 ) -> impl IntoResponse {
-    let members: Vec<DbGroupMember> = payload
+    let members: Vec<RouterGroupMember> = payload
         .into_iter()
-        .map(|m| DbGroupMember {
+        .map(|m| RouterGroupMember {
             group_id: id.clone(),
             upstream_id: m.upstream_id,
             weight: m.weight,

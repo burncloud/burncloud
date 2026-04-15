@@ -65,6 +65,10 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
         version: "0009_router_tables",
         sql: include_str!("../migrations/sqlite/0009_router_tables.sql"),
     },
+    Migration {
+        version: "0010_rename_tables",
+        sql: include_str!("../migrations/sqlite/0010_rename_tables.sql"),
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -107,6 +111,10 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
     Migration {
         version: "0009_router_tables",
         sql: include_str!("../migrations/postgres/0009_router_tables.sql"),
+    },
+    Migration {
+        version: "0010_rename_tables",
+        sql: include_str!("../migrations/postgres/0010_rename_tables.sql"),
     },
 ];
 
