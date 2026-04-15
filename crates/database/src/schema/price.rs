@@ -1,9 +1,9 @@
 //! Price-related data migrations.
 //!
 //! Handles:
-//! - Renaming `prices_v2` → `prices`
+//! - Renaming `prices_v2` → `billing_prices`
 //! - Cleaning up temporary migration tables
-//! - Migrating data from `prices_deprecated` into the canonical `prices` table
+//! - Migrating data from `prices_deprecated` into the canonical `billing_prices` table
 //! - Converting REAL-typed price values to nanodollars (SQLite only)
 //! - Converting small-integer (old USD dollar format) prices to nanodollars (SQLite only)
 //! - Normalising NULL region values and deduplicating rows
@@ -22,7 +22,12 @@ pub(super) async fn migrate_prices(pool: &AnyPool, kind: &str) -> Result<()> {
     Ok(())
 }
 
-/// Rename `prices_v2` → `prices`, preserving existing `prices` as `prices_deprecated`.
+/// Rename `prices_v2` → `billing_prices`, preserving existing data as `prices_deprecated`.
+///
+/// `prices_v2` was an intermediate migration artifact (new nanodollar format).
+/// `billing_prices` is the canonical table name.  If `billing_prices` already
+/// exists (populated by rename.rs from old-format `prices` data), it is saved as
+/// `prices_deprecated` so the higher-quality `prices_v2` data takes precedence.
 async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
     let prices_v2_exists: bool = if kind == "sqlite" {
         let count: i64 = sqlx::query_scalar(
@@ -46,7 +51,27 @@ async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!("Migrating prices_v2 to prices table...");
+    println!("Migrating prices_v2 to billing_prices table...");
+
+    // Check for existing billing_prices (canonical, created by rename.rs from old prices).
+    // Also check for legacy prices table on installs where rename.rs hasn't run yet.
+    let billing_prices_exists: bool = if kind == "sqlite" {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='billing_prices'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        count > 0
+    } else {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'billing_prices'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        count > 0
+    };
 
     let old_prices_exists: bool = if kind == "sqlite" {
         let count: i64 = sqlx::query_scalar(
@@ -66,7 +91,18 @@ async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
         count > 0
     };
 
-    if old_prices_exists {
+    // Save existing billing_prices (or legacy prices) as prices_deprecated so
+    // the newer-format prices_v2 data can take the canonical slot.
+    if billing_prices_exists {
+        let _ = sqlx::query("DROP TABLE IF EXISTS prices_deprecated")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE billing_prices RENAME TO prices_deprecated")
+            .execute(pool)
+            .await;
+        println!("  Saved existing 'billing_prices' as 'prices_deprecated'");
+    } else if old_prices_exists {
+        // Very old install: rename.rs hasn't run yet and prices still has the old name.
         let _ = sqlx::query("DROP TABLE IF EXISTS prices_deprecated")
             .execute(pool)
             .await;
@@ -76,18 +112,19 @@ async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
         println!("  Renamed old 'prices' table to 'prices_deprecated'");
     }
 
-    let _ = sqlx::query("ALTER TABLE prices_v2 RENAME TO prices")
+    let _ = sqlx::query("ALTER TABLE prices_v2 RENAME TO billing_prices")
         .execute(pool)
         .await;
-    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_prices_model ON prices(model)")
-        .execute(pool)
-        .await;
+    let _ =
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_billing_prices_model ON billing_prices(model)")
+            .execute(pool)
+            .await;
     let _ = sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_prices_model_region ON prices(model, region)",
+        "CREATE INDEX IF NOT EXISTS idx_billing_prices_model_region ON billing_prices(model, region)",
     )
     .execute(pool)
     .await;
-    println!("  Renamed 'prices_v2' to 'prices'");
+    println!("  Renamed 'prices_v2' to 'billing_prices'");
     Ok(())
 }
 
@@ -118,9 +155,9 @@ async fn cleanup_temp_tables(pool: &AnyPool, kind: &str) -> Result<()> {
     Ok(())
 }
 
-/// Copy data from `prices_deprecated` into `prices` when `prices` is empty.
+/// Copy data from `prices_deprecated` into `billing_prices` when `billing_prices` is empty.
 async fn migrate_prices_deprecated(pool: &AnyPool, kind: &str) -> Result<()> {
-    let prices_count: i64 = sqlx::query_scalar("SELECT count(*) FROM prices")
+    let prices_count: i64 = sqlx::query_scalar("SELECT count(*) FROM billing_prices")
         .fetch_one(pool)
         .await
         .unwrap_or(0);
@@ -152,7 +189,7 @@ async fn migrate_prices_deprecated(pool: &AnyPool, kind: &str) -> Result<()> {
     let migrate_sql = match kind {
         "sqlite" => {
             r#"
-            INSERT INTO prices (
+            INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -178,7 +215,7 @@ async fn migrate_prices_deprecated(pool: &AnyPool, kind: &str) -> Result<()> {
         }
         "postgres" => {
             r#"
-            INSERT INTO prices (
+            INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -211,7 +248,7 @@ async fn migrate_prices_deprecated(pool: &AnyPool, kind: &str) -> Result<()> {
         .bind(now)
         .execute(pool)
         .await;
-    println!("  Migrated data from prices_deprecated to prices");
+    println!("  Migrated data from prices_deprecated to billing_prices");
     Ok(())
 }
 
@@ -224,7 +261,7 @@ async fn fix_real_prices(pool: &AnyPool, kind: &str) -> Result<()> {
     }
 
     let real_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM prices WHERE typeof(input_price) = 'real'",
+        "SELECT COUNT(*) FROM billing_prices WHERE typeof(input_price) = 'real'",
     )
     .fetch_one(pool)
     .await
@@ -248,7 +285,7 @@ async fn fix_real_prices(pool: &AnyPool, kind: &str) -> Result<()> {
         .collect::<Vec<_>>()
         .join(", ");
     let update_sql =
-        format!("UPDATE prices SET {set_clauses} WHERE typeof(input_price) = 'real'");
+        format!("UPDATE billing_prices SET {set_clauses} WHERE typeof(input_price) = 'real'");
     let _ = sqlx::query(&update_sql).execute(pool).await;
     println!("  Converted dollar-format prices to nanodollar format");
     Ok(())
@@ -263,7 +300,7 @@ async fn fix_small_int_prices(pool: &AnyPool, kind: &str) -> Result<()> {
     }
 
     let small_int_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM prices \
+        "SELECT COUNT(*) FROM billing_prices \
          WHERE (input_price > 0 AND input_price < 10000) \
             OR (output_price > 0 AND output_price < 10000)",
     )
@@ -291,7 +328,7 @@ async fn fix_small_int_prices(pool: &AnyPool, kind: &str) -> Result<()> {
         .collect::<Vec<_>>()
         .join(", ");
     let update_sql = format!(
-        "UPDATE prices SET {set_clauses} WHERE \
+        "UPDATE billing_prices SET {set_clauses} WHERE \
          (input_price > 0 AND input_price < 10000) \
          OR (output_price > 0 AND output_price < 10000)"
     );
@@ -300,31 +337,31 @@ async fn fix_small_int_prices(pool: &AnyPool, kind: &str) -> Result<()> {
     Ok(())
 }
 
-/// Normalise NULL region values and deduplicate rows in `prices`.
+/// Normalise NULL region values and deduplicate rows in `billing_prices`.
 ///
 /// SQLite UNIQUE(model, region) does NOT deduplicate NULLs (SQL standard:
 /// NULL != NULL).  Normalise NULL → '' then remove duplicate rows.
 async fn normalise_regions(pool: &AnyPool) -> Result<()> {
     let _ = sqlx::query(
-        "DELETE FROM prices
+        "DELETE FROM billing_prices
          WHERE region IS NULL
            AND EXISTS (
-               SELECT 1 FROM prices p2
-               WHERE p2.model = prices.model
-                 AND p2.currency = prices.currency
+               SELECT 1 FROM billing_prices p2
+               WHERE p2.model = billing_prices.model
+                 AND p2.currency = billing_prices.currency
                  AND p2.region = ''
            )",
     )
     .execute(pool)
     .await;
 
-    let _ = sqlx::query("UPDATE prices SET region = '' WHERE region IS NULL")
+    let _ = sqlx::query("UPDATE billing_prices SET region = '' WHERE region IS NULL")
         .execute(pool)
         .await;
 
     let dedup_result = sqlx::query(
-        "DELETE FROM prices WHERE id NOT IN (
-             SELECT MAX(id) FROM prices GROUP BY model, region
+        "DELETE FROM billing_prices WHERE id NOT IN (
+             SELECT MAX(id) FROM billing_prices GROUP BY model, region
          )",
     )
     .execute(pool)

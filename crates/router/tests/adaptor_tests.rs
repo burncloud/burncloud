@@ -17,7 +17,7 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
     }
     let api_key = env_key;
 
-    let (_db, pool) = setup_db().await?;
+    let (db, pool) = setup_db().await?;
 
     let id = "gemini-adaptor-test";
     let name = "gemini-pro";

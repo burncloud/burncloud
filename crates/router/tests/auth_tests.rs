@@ -56,7 +56,7 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
         r#"
         INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
         VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET 
+        ON CONFLICT(id) DO UPDATE SET
             api_key = excluded.api_key,
             base_url = excluded.base_url
         "#,
@@ -125,7 +125,7 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
         r#"
         INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
         VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET 
+        ON CONFLICT(id) DO UPDATE SET
             api_key = excluded.api_key,
             base_url = excluded.base_url,
             auth_type = excluded.auth_type,
@@ -191,7 +191,7 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
         r#"
         INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
         VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET 
+        ON CONFLICT(id) DO UPDATE SET
             api_key = excluded.api_key,
             base_url = excluded.base_url,
             auth_type = excluded.auth_type,

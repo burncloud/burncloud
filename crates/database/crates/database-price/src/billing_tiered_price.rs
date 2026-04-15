@@ -1,9 +1,9 @@
 use burncloud_common::types::{TieredPrice, TieredPriceInput};
 use burncloud_database::{adapt_sql, Database, Result};
 
-pub struct TieredPriceModel;
+pub struct BillingTieredPriceModel;
 
-impl TieredPriceModel {
+impl BillingTieredPriceModel {
     /// Get all tiers for a model, optionally filtered by region
     pub async fn get_tiers(
         db: &Database,
@@ -18,7 +18,7 @@ impl TieredPriceModel {
         let tiers = match region {
             Some(r) => {
                 let sql = adapt_sql(is_postgres, &format!(
-                    r#"{} FROM tiered_pricing WHERE model = ? AND region = ?
+                    r#"{} FROM billing_tiered_prices WHERE model = ? AND region = ?
                    ORDER BY tier_start ASC"#,
                     base_select
                 ));
@@ -31,7 +31,7 @@ impl TieredPriceModel {
             None => {
                 // Get tiers with NULL region (universal) or matching region
                 let sql = adapt_sql(is_postgres, &format!(
-                    r#"{} FROM tiered_pricing WHERE model = ?
+                    r#"{} FROM billing_tiered_prices WHERE model = ?
                    ORDER BY tier_start ASC"#,
                     base_select
                 ));
@@ -51,7 +51,7 @@ impl TieredPriceModel {
         let is_postgres = db.kind() == "postgres";
 
         let sql = adapt_sql(is_postgres, r#"
-            INSERT INTO tiered_pricing (model, region, currency, tier_type, tier_start, tier_end, input_price, output_price)
+            INSERT INTO billing_tiered_prices (model, region, currency, tier_type, tier_start, tier_end, input_price, output_price)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(model, region, tier_start) DO UPDATE SET
                 tier_end = excluded.tier_end,
@@ -83,7 +83,7 @@ impl TieredPriceModel {
 
         match region {
             Some(r) => {
-                let sql = adapt_sql(is_postgres, "DELETE FROM tiered_pricing WHERE model = ? AND region = ?");
+                let sql = adapt_sql(is_postgres, "DELETE FROM billing_tiered_prices WHERE model = ? AND region = ?");
                 sqlx::query(&sql)
                     .bind(model)
                     .bind(r)
@@ -91,7 +91,7 @@ impl TieredPriceModel {
                     .await?;
             }
             None => {
-                let sql = adapt_sql(is_postgres, "DELETE FROM tiered_pricing WHERE model = ?");
+                let sql = adapt_sql(is_postgres, "DELETE FROM billing_tiered_prices WHERE model = ?");
                 sqlx::query(&sql).bind(model).execute(conn.pool()).await?;
             }
         }
@@ -103,8 +103,8 @@ impl TieredPriceModel {
     pub async fn has_tiered_pricing(db: &Database, model: &str) -> Result<bool> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "SELECT COUNT(*) FROM tiered_pricing WHERE model = $1",
-            _ => "SELECT COUNT(*) FROM tiered_pricing WHERE model = ?",
+            "postgres" => "SELECT COUNT(*) FROM billing_tiered_prices WHERE model = $1",
+            _ => "SELECT COUNT(*) FROM billing_tiered_prices WHERE model = ?",
         };
 
         let count: i64 = sqlx::query_scalar(sql)
@@ -119,7 +119,7 @@ impl TieredPriceModel {
     pub async fn list_all(db: &Database) -> Result<Vec<TieredPrice>> {
         let conn = db.get_connection()?;
         let sql = r#"SELECT id, model, region, currency, tier_type, tier_start, tier_end, input_price, output_price
-                     FROM tiered_pricing ORDER BY model, tier_start ASC"#;
+                     FROM billing_tiered_prices ORDER BY model, tier_start ASC"#;
 
         let tiers = sqlx::query_as(sql).fetch_all(conn.pool()).await?;
 

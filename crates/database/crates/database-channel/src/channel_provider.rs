@@ -1,11 +1,11 @@
 use crate::common::current_timestamp;
 use burncloud_common::types::Channel;
-use burncloud_database::{Database, Result};
+use burncloud_database::{adapt_sql, Database, Result};
 use sqlx::Row;
 
-pub struct ChannelModel;
+pub struct ChannelProviderModel;
 
-impl ChannelModel {
+impl ChannelProviderModel {
     pub async fn create(db: &Database, channel: &mut Channel) -> Result<i32> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
@@ -25,7 +25,7 @@ impl ChannelModel {
         let sql = if db.kind() == "postgres" {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                 RETURNING id
                 "#,
@@ -34,7 +34,7 @@ impl ChannelModel {
         } else {
             format!(
                 r#"
-                INSERT INTO channels ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
                 type_col, group_col
@@ -92,25 +92,14 @@ impl ChannelModel {
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
         let type_col = if is_postgres { "\"type\"" } else { "type" };
 
-        let sql = if is_postgres {
-            format!(
-                r#"
-                UPDATE channels
-                SET {} = $1, key = $2, status = $3, name = $4, weight = $5, base_url = $6, models = $7, {} = $8, priority = $9, param_override = $10, header_override = $11, api_version = $12, pricing_region = $13
-                WHERE id = $14
-                "#,
-                type_col, group_col
-            )
-        } else {
-            format!(
-                r#"
-                UPDATE channels
-                SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?
-                WHERE id = ?
-                "#,
-                type_col, group_col
-            )
-        };
+        let sql = adapt_sql(is_postgres, &format!(
+            r#"
+            UPDATE channel_providers
+            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?
+            WHERE id = ?
+            "#,
+            type_col, group_col
+        ));
 
         sqlx::query(&sql)
             .bind(channel.type_)
@@ -140,20 +129,12 @@ impl ChannelModel {
         let is_postgres = db.kind() == "postgres";
 
         // Delete Abilities first
-        let sql_abilities = if is_postgres {
-            "DELETE FROM abilities WHERE channel_id = $1"
-        } else {
-            "DELETE FROM abilities WHERE channel_id = ?"
-        };
-        sqlx::query(sql_abilities).bind(id).execute(pool).await?;
+        let sql_abilities = adapt_sql(is_postgres, "DELETE FROM channel_abilities WHERE channel_id = ?");
+        sqlx::query(&sql_abilities).bind(id).execute(pool).await?;
 
         // Delete Channel
-        let sql_channels = if is_postgres {
-            "DELETE FROM channels WHERE id = $1"
-        } else {
-            "DELETE FROM channels WHERE id = ?"
-        };
-        sqlx::query(sql_channels).bind(id).execute(pool).await?;
+        let sql_channels = adapt_sql(is_postgres, "DELETE FROM channel_providers WHERE id = ?");
+        sqlx::query(&sql_channels).bind(id).execute(pool).await?;
 
         Ok(())
     }
@@ -168,7 +149,7 @@ impl ChannelModel {
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channels WHERE id = $1
+                FROM channel_providers WHERE id = $1
             "#
             }
             _ => {
@@ -178,7 +159,7 @@ impl ChannelModel {
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channels WHERE id = ?
+                FROM channel_providers WHERE id = ?
             "#
             }
         };
@@ -201,7 +182,7 @@ impl ChannelModel {
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channels ORDER BY id DESC LIMIT $1 OFFSET $2
+                FROM channel_providers ORDER BY id DESC LIMIT $1 OFFSET $2
             "#
             }
             _ => {
@@ -211,7 +192,7 @@ impl ChannelModel {
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channels ORDER BY id DESC LIMIT ? OFFSET ?
+                FROM channel_providers ORDER BY id DESC LIMIT ? OFFSET ?
             "#
             }
         };
@@ -231,12 +212,8 @@ impl ChannelModel {
         let is_postgres = db.kind() == "postgres";
 
         // 1. Delete existing abilities for this channel
-        let sql_delete = if is_postgres {
-            "DELETE FROM abilities WHERE channel_id = $1"
-        } else {
-            "DELETE FROM abilities WHERE channel_id = ?"
-        };
-        sqlx::query(sql_delete)
+        let sql_delete = adapt_sql(is_postgres, "DELETE FROM channel_abilities WHERE channel_id = ?");
+        sqlx::query(&sql_delete)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -261,28 +238,18 @@ impl ChannelModel {
             .collect();
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
-        let sql_insert = if is_postgres {
-            format!(
-                r#"
-                INSERT INTO abilities ({}, model, channel_id, enabled, priority, weight)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                "#,
-                group_col
-            )
-        } else {
-            format!(
-                r#"
-                INSERT INTO abilities ({}, model, channel_id, enabled, priority, weight)
-                VALUES (?, ?, ?, ?, ?, ?)
-                "#,
-                group_col
-            )
-        };
+        let sql_insert = adapt_sql(is_postgres, &format!(
+            r#"
+            INSERT INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+            group_col
+        ));
 
         for model in models {
             for group in &groups {
                 println!(
-                    "ChannelModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
+                    "ChannelProviderModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
                     model, group, channel.id
                 );
                 sqlx::query(&sql_insert)

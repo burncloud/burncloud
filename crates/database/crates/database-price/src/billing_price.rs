@@ -2,9 +2,9 @@ use crate::common::current_timestamp;
 use burncloud_common::types::{Price, PriceInput};
 use burncloud_database::{Database, Result};
 
-pub struct PriceModel;
+pub struct BillingPriceModel;
 
-impl PriceModel {
+impl BillingPriceModel {
     /// Get price for a model in a specific currency and region
     /// Falls back to USD if the requested currency is not found.
     ///
@@ -34,7 +34,7 @@ impl PriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM prices WHERE model = $1 AND currency = $2 AND region = $3"#
+               FROM billing_prices WHERE model = $1 AND currency = $2 AND region = $3"#
         } else {
             r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
@@ -48,7 +48,7 @@ impl PriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM prices WHERE model = ? AND currency = ? AND region = ?"#
+               FROM billing_prices WHERE model = ? AND currency = ? AND region = ?"#
         };
 
         let price = sqlx::query_as(sql)
@@ -77,7 +77,7 @@ impl PriceModel {
                           supports_vision, supports_function_calling,
                           voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
-                   FROM prices WHERE model = $1 AND currency = 'USD' AND region = $2"#
+                   FROM billing_prices WHERE model = $1 AND currency = 'USD' AND region = $2"#
             } else {
                 r#"SELECT id, model, currency, input_price, output_price,
                           cache_read_input_price, cache_creation_input_price,
@@ -91,7 +91,7 @@ impl PriceModel {
                           supports_vision, supports_function_calling,
                           voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
-                   FROM prices WHERE model = ? AND currency = 'USD' AND region = ?"#
+                   FROM billing_prices WHERE model = ? AND currency = 'USD' AND region = ?"#
             };
 
             let usd_price = sqlx::query_as(sql_usd)
@@ -135,7 +135,7 @@ impl PriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM prices WHERE model = $1 AND region = $2"#
+               FROM billing_prices WHERE model = $1 AND region = $2"#
         } else {
             r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
@@ -149,7 +149,7 @@ impl PriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM prices WHERE model = ? AND region = ?"#
+               FROM billing_prices WHERE model = ? AND region = ?"#
         };
 
         let price = sqlx::query_as(sql)
@@ -177,7 +177,7 @@ impl PriceModel {
                           supports_vision, supports_function_calling,
                           voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
-                   FROM prices WHERE model = $1 AND region = ''"#
+                   FROM billing_prices WHERE model = $1 AND region = ''"#
             } else {
                 r#"SELECT id, model, currency, input_price, output_price,
                           cache_read_input_price, cache_creation_input_price,
@@ -191,7 +191,7 @@ impl PriceModel {
                           supports_vision, supports_function_calling,
                           voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
-                   FROM prices WHERE model = ? AND region = ''"#
+                   FROM billing_prices WHERE model = ? AND region = ''"#
             };
 
             let universal_price: Option<Price> = sqlx::query_as(sql_universal)
@@ -227,7 +227,7 @@ impl PriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM prices WHERE model = $1 AND region IS NOT DISTINCT FROM $2
+               FROM billing_prices WHERE model = $1 AND region IS NOT DISTINCT FROM $2
                ORDER BY currency"#
         } else {
             r#"SELECT id, model, currency, input_price, output_price,
@@ -242,7 +242,7 @@ impl PriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM prices WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+               FROM billing_prices WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
                ORDER BY currency"#
         };
 
@@ -292,13 +292,13 @@ impl PriceModel {
                 // Filter by both currency and region
                 let sql = if is_postgres {
                     &format!(
-                        r#"{} FROM prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
+                        r#"{} FROM billing_prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
                        ORDER BY model LIMIT $3 OFFSET $4"#,
                         base_select
                     )
                 } else {
                     &format!(
-                        r#"{} FROM prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+                        r#"{} FROM billing_prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
                        ORDER BY model LIMIT ? OFFSET ?"#,
                         base_select
                     )
@@ -326,13 +326,13 @@ impl PriceModel {
                 // Filter by currency only
                 let sql = if is_postgres {
                     &format!(
-                        r#"{} FROM prices WHERE currency = $1
+                        r#"{} FROM billing_prices WHERE currency = $1
                        ORDER BY model LIMIT $2 OFFSET $3"#,
                         base_select
                     )
                 } else {
                     &format!(
-                        r#"{} FROM prices WHERE currency = ?
+                        r#"{} FROM billing_prices WHERE currency = ?
                        ORDER BY model LIMIT ? OFFSET ?"#,
                         base_select
                     )
@@ -348,13 +348,13 @@ impl PriceModel {
                 // Filter by region only
                 let sql = if is_postgres {
                     &format!(
-                        r#"{} FROM prices WHERE region IS NOT DISTINCT FROM $1
+                        r#"{} FROM billing_prices WHERE region IS NOT DISTINCT FROM $1
                        ORDER BY model, currency LIMIT $2 OFFSET $3"#,
                         base_select
                     )
                 } else {
                     &format!(
-                        r#"{} FROM prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
+                        r#"{} FROM billing_prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
                        ORDER BY model, currency LIMIT ? OFFSET ?"#,
                         base_select
                     )
@@ -380,12 +380,12 @@ impl PriceModel {
                 // No filters
                 let sql = if is_postgres {
                     &format!(
-                        r#"{} FROM prices ORDER BY model, currency LIMIT $1 OFFSET $2"#,
+                        r#"{} FROM billing_prices ORDER BY model, currency LIMIT $1 OFFSET $2"#,
                         base_select
                     )
                 } else {
                     &format!(
-                        r#"{} FROM prices ORDER BY model, currency LIMIT ? OFFSET ?"#,
+                        r#"{} FROM billing_prices ORDER BY model, currency LIMIT ? OFFSET ?"#,
                         base_select
                     )
                 };
@@ -408,7 +408,7 @@ impl PriceModel {
 
         let sql = if is_postgres {
             r#"
-            INSERT INTO prices (
+            INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -454,7 +454,7 @@ impl PriceModel {
             "#
         } else {
             r#"
-            INSERT INTO prices (
+            INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -561,7 +561,7 @@ impl PriceModel {
 
         let sql = if is_postgres {
             r#"
-            INSERT INTO prices (
+            INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -607,7 +607,7 @@ impl PriceModel {
             "#
         } else {
             r#"
-            INSERT INTO prices (
+            INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
                 cache_read_input_price, cache_creation_input_price,
                 batch_input_price, batch_output_price,
@@ -715,9 +715,9 @@ impl PriceModel {
         let result = match region {
             Some(r) => {
                 let sql = if is_postgres {
-                    "DELETE FROM prices WHERE model = $1 AND currency = $2 AND region = $3"
+                    "DELETE FROM billing_prices WHERE model = $1 AND currency = $2 AND region = $3"
                 } else {
-                    "DELETE FROM prices WHERE model = ? AND currency = ? AND region = ?"
+                    "DELETE FROM billing_prices WHERE model = ? AND currency = ? AND region = ?"
                 };
                 sqlx::query(sql)
                     .bind(model)
@@ -728,9 +728,9 @@ impl PriceModel {
             }
             None => {
                 let sql = if is_postgres {
-                    "DELETE FROM prices WHERE model = $1 AND currency = $2 AND region IS NULL"
+                    "DELETE FROM billing_prices WHERE model = $1 AND currency = $2 AND region IS NULL"
                 } else {
-                    "DELETE FROM prices WHERE model = ? AND currency = ? AND region IS NULL"
+                    "DELETE FROM billing_prices WHERE model = ? AND currency = ? AND region IS NULL"
                 };
                 sqlx::query(sql)
                     .bind(model)
@@ -747,8 +747,8 @@ impl PriceModel {
     pub async fn delete_all_for_model(db: &Database, model: &str) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM prices WHERE model = $1",
-            _ => "DELETE FROM prices WHERE model = ?",
+            "postgres" => "DELETE FROM billing_prices WHERE model = $1",
+            _ => "DELETE FROM billing_prices WHERE model = ?",
         };
 
         sqlx::query(sql).bind(model).execute(conn.pool()).await?;
@@ -763,9 +763,9 @@ impl PriceModel {
         let is_postgres = db.kind() == "postgres";
 
         let sql = if is_postgres {
-            "DELETE FROM prices WHERE model = $1 AND region = $2"
+            "DELETE FROM billing_prices WHERE model = $1 AND region = $2"
         } else {
-            "DELETE FROM prices WHERE model = ? AND region = ?"
+            "DELETE FROM billing_prices WHERE model = ? AND region = ?"
         };
 
         let result = sqlx::query(sql)

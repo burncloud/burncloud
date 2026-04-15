@@ -1,7 +1,7 @@
 //! User, token and protocol-config data migrations and seed data.
 //!
 //! Handles:
-//! - Migrating `tokens.unlimited_quota` from BOOLEAN to INTEGER (SQLite only)
+//! - Migrating `user_api_keys.unlimited_quota` from BOOLEAN to INTEGER (SQLite only)
 //! - Migrating legacy `quota` column values to `balance_usd`
 //! - Seeding the demo user, demo token and default protocol configs
 
@@ -18,45 +18,67 @@ pub(super) async fn migrate_users_and_seed(pool: &AnyPool, kind: &str) -> Result
     Ok(())
 }
 
-/// Migrate `tokens.unlimited_quota` from BOOLEAN to INTEGER (SQLite only).
+/// Migrate `user_api_keys.unlimited_quota` from BOOLEAN to INTEGER (SQLite only).
 ///
 /// The sqlx Any driver expects INTEGER for this column; BOOLEAN causes binding
 /// failures.  SQLite does not support ALTER COLUMN, so the table is recreated.
+/// Checks both the canonical `user_api_keys` name and the legacy `tokens` name
+/// (in case rename.rs has not yet run on a very old install).
 async fn migrate_tokens_unlimited_quota(pool: &AnyPool, kind: &str) -> Result<()> {
     if kind != "sqlite" {
         return Ok(());
     }
 
-    let table_exists: bool = sqlx::query_scalar::<_, i64>(
+    // Prefer canonical name; fall back to legacy name for installs that haven't
+    // been through rename.rs yet.
+    let (table_name, index_key, index_user) = if sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_api_keys'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0)
+        > 0
+    {
+        (
+            "user_api_keys",
+            "idx_user_api_keys_key",
+            "idx_user_api_keys_user_id",
+        )
+    } else if sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tokens'",
     )
     .fetch_one(pool)
     .await
     .unwrap_or(0)
-        > 0;
+        > 0
+    {
+        ("tokens", "idx_tokens_key", "idx_tokens_user_id")
+    } else {
+        return Ok(()); // neither table exists
+    };
 
-    let needs_migration = if table_exists {
-        let col_type: Option<String> = sqlx::query_scalar(
-            "SELECT type FROM pragma_table_info('tokens') WHERE name='unlimited_quota'",
-        )
+    let needs_migration = {
+        let col_type: Option<String> = sqlx::query_scalar(&format!(
+            "SELECT type FROM pragma_table_info('{table_name}') WHERE name='unlimited_quota'"
+        ))
         .fetch_optional(pool)
         .await
         .unwrap_or(None);
 
         col_type.as_ref().map(|t| t == "boolean").unwrap_or(false)
-    } else {
-        false
     };
 
     if !needs_migration {
         return Ok(());
     }
 
-    println!("Migrating tokens.unlimited_quota from BOOLEAN to INTEGER...");
+    println!("Migrating {table_name}.unlimited_quota from BOOLEAN to INTEGER...");
 
-    let _ = sqlx::query(
+    let tmp = format!("{table_name}_new");
+
+    let _ = sqlx::query(&format!(
         r#"
-        CREATE TABLE IF NOT EXISTS tokens_new (
+        CREATE TABLE IF NOT EXISTS {tmp} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
             key CHAR(48) NOT NULL,
@@ -69,34 +91,34 @@ async fn migrate_tokens_unlimited_quota(pool: &AnyPool, kind: &str) -> Result<()
             accessed_time INTEGER,
             expired_time INTEGER DEFAULT -1
         )
-        "#,
-    )
+        "#
+    ))
     .execute(pool)
     .await;
 
-    let copy_result = sqlx::query(
+    let copy_result = sqlx::query(&format!(
         r#"
-        INSERT INTO tokens_new
+        INSERT INTO {tmp}
         SELECT id, user_id, key, status, name, remain_quota,
                CASE WHEN unlimited_quota = 1 OR unlimited_quota = 'true' THEN 1 ELSE 0 END,
                used_quota, created_time, accessed_time, expired_time
-        FROM tokens
-        "#,
-    )
+        FROM {table_name}
+        "#
+    ))
     .execute(pool)
     .await;
 
     if copy_result.is_err() {
         // Fallback: drop and recreate with correct schema
-        let _ = sqlx::query("DROP TABLE IF EXISTS tokens_new")
+        let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {tmp}"))
             .execute(pool)
             .await;
-        let _ = sqlx::query("DROP TABLE IF EXISTS tokens")
+        let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {table_name}"))
             .execute(pool)
             .await;
-        let _ = sqlx::query(
+        let _ = sqlx::query(&format!(
             r#"
-            CREATE TABLE IF NOT EXISTS tokens (
+            CREATE TABLE IF NOT EXISTS {table_name} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 key CHAR(48) NOT NULL,
@@ -109,29 +131,31 @@ async fn migrate_tokens_unlimited_quota(pool: &AnyPool, kind: &str) -> Result<()
                 accessed_time INTEGER,
                 expired_time INTEGER DEFAULT -1
             )
-            "#,
-        )
+            "#
+        ))
         .execute(pool)
         .await;
     } else {
-        let _ = sqlx::query("DROP TABLE IF EXISTS tokens")
+        let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {table_name}"))
             .execute(pool)
             .await;
-        let _ = sqlx::query("ALTER TABLE tokens_new RENAME TO tokens")
+        let _ = sqlx::query(&format!("ALTER TABLE {tmp} RENAME TO {table_name}"))
             .execute(pool)
             .await;
     }
 
-    let _ =
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_key ON tokens(key)")
-            .execute(pool)
-            .await;
-    let _ =
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)")
-            .execute(pool)
-            .await;
+    let _ = sqlx::query(&format!(
+        "CREATE INDEX IF NOT EXISTS {index_key} ON {table_name}(key)"
+    ))
+    .execute(pool)
+    .await;
+    let _ = sqlx::query(&format!(
+        "CREATE INDEX IF NOT EXISTS {index_user} ON {table_name}(user_id)"
+    ))
+    .execute(pool)
+    .await;
 
-    println!("  Migrated tokens table schema");
+    println!("  Migrated {table_name} table schema");
     Ok(())
 }
 
@@ -141,13 +165,25 @@ async fn migrate_tokens_unlimited_quota(pool: &AnyPool, kind: &str) -> Result<()
 /// → balance_usd = (quota - used_quota) * 2000
 ///
 /// Only runs for users whose `balance_usd` is still 0.
+/// Tries the canonical `user_accounts` name first; falls back to legacy `users`
+/// for installs where rename.rs has not yet executed.
 async fn migrate_quota_to_balance(pool: &AnyPool) -> Result<()> {
-    let _ = sqlx::query(
-        "UPDATE users SET balance_usd = (quota - used_quota) * 2000 \
+    // Try canonical name first; ignore errors (table may not exist yet).
+    let r = sqlx::query(
+        "UPDATE user_accounts SET balance_usd = (quota - used_quota) * 2000 \
          WHERE balance_usd = 0 AND quota > used_quota",
     )
     .execute(pool)
     .await;
+    if r.is_err() {
+        // Fallback for legacy installs where the table hasn't been renamed yet.
+        let _ = sqlx::query(
+            "UPDATE users SET balance_usd = (quota - used_quota) * 2000 \
+             WHERE balance_usd = 0 AND quota > used_quota",
+        )
+        .execute(pool)
+        .await;
+    }
     Ok(())
 }
 

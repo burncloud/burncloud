@@ -31,10 +31,10 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     sqlx::query(
         r#"
         INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES 
+        VALUES
         (?, 'Upstream 1', ?, 'key1', '/u1-direct', 'Bearer'),
         (?, 'Upstream 2', ?, 'key2', '/u2-direct', 'Bearer')
-        ON CONFLICT(id) DO UPDATE SET 
+        ON CONFLICT(id) DO UPDATE SET
             base_url = excluded.base_url,
             name = excluded.name,
             api_key = excluded.api_key,
