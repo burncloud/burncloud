@@ -3,30 +3,30 @@
 
 use serde_json::json;
 
-/// Login 表单的 JSON Schema 定义
+/// Login form JSON Schema definition
 pub fn login_schema() -> serde_json::Value {
     json!({
         "entity_type": "login",
-        "label": "登录",
+        "label": "schema.login.label",
         "fields": [
             {
                 "key": "username",
-                "label": "用户名",
+                "label": "schema.login.field.username.label",
                 "type": "text",
                 "required": true,
-                "placeholder": "请输入用户名"
+                "placeholder": "schema.login.field.username.placeholder"
             },
             {
                 "key": "password",
-                "label": "密码",
+                "label": "schema.login.field.password.label",
                 "type": "password",
                 "required": true,
-                "placeholder": "请输入密码"
+                "placeholder": "schema.login.field.password.placeholder"
             }
         ],
         "table_columns": [],
         "form_sections": [
-            {"title": "登录", "fields": ["username", "password"]}
+            {"title": "schema.login.section.label", "fields": ["username", "password"]}
         ]
     })
 }

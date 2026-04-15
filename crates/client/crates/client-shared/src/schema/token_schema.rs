@@ -4,15 +4,15 @@
 
 use serde_json::json;
 
-/// Token 实体的 JSON Schema 定义
+/// Token entity JSON Schema definition
 pub fn token_schema() -> serde_json::Value {
     json!({
         "entity_type": "token",
-        "label": "令牌",
+        "label": "schema.token.label",
         "fields": [
             {
                 "key": "token",
-                "label": "令牌",
+                "label": "schema.token.field.token.label",
                 "type": "text",
                 "required": false,
                 "readonly": true,
@@ -20,7 +20,7 @@ pub fn token_schema() -> serde_json::Value {
             },
             {
                 "key": "user_id",
-                "label": "用户标识 (User ID)",
+                "label": "schema.token.field.user_id.label",
                 "type": "text",
                 "required": true,
                 "placeholder": "e.g. user-123",
@@ -28,7 +28,7 @@ pub fn token_schema() -> serde_json::Value {
             },
             {
                 "key": "quota_limit",
-                "label": "额度限制 (-1 无限)",
+                "label": "schema.token.field.quota_limit.label",
                 "type": "number",
                 "required": false,
                 "default": -1,
@@ -36,7 +36,7 @@ pub fn token_schema() -> serde_json::Value {
             },
             {
                 "key": "used_quota",
-                "label": "已用额度",
+                "label": "schema.token.field.used_quota.label",
                 "type": "number",
                 "required": false,
                 "readonly": true,
@@ -44,7 +44,7 @@ pub fn token_schema() -> serde_json::Value {
             },
             {
                 "key": "status",
-                "label": "状态",
+                "label": "schema.token.field.status.label",
                 "type": "text",
                 "required": false,
                 "readonly": true,
@@ -52,14 +52,14 @@ pub fn token_schema() -> serde_json::Value {
             }
         ],
         "table_columns": [
-            {"key": "token", "label": "令牌", "render": "monospace"},
-            {"key": "user_id", "label": "用户", "render": "text"},
-            {"key": "status", "label": "状态", "render": "status_badge", "active_value": "active"},
-            {"key": "used_quota", "label": "已用", "render": "text"},
-            {"key": "quota_limit", "label": "额度", "render": "text"}
+            {"key": "token", "label": "schema.token.field.token.label", "render": "monospace"},
+            {"key": "user_id", "label": "schema.token.field.user_id.label", "render": "text"},
+            {"key": "status", "label": "schema.token.field.status.label", "render": "status_badge", "active_value": "active"},
+            {"key": "used_quota", "label": "schema.token.field.used_quota.label", "render": "text"},
+            {"key": "quota_limit", "label": "schema.token.field.quota_limit.label", "render": "text"}
         ],
         "form_sections": [
-            {"title": "生成新令牌", "fields": ["user_id", "quota_limit"]}
+            {"title": "schema.token.section.label", "fields": ["user_id", "quota_limit"]}
         ]
     })
 }

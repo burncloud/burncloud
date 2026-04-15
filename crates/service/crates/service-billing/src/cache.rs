@@ -1,6 +1,6 @@
 use burncloud_common::types::Price;
 use burncloud_database::Database;
-use burncloud_database_models::PriceModel;
+use burncloud_database_models::BillingPriceModel;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -41,7 +41,7 @@ impl PriceCache {
     /// Reload all prices from the database, replacing the current cache atomically.
     pub async fn refresh(&self, db: &Database) -> Result<(), burncloud_database::DatabaseError> {
         // No limit: load all prices regardless of count to avoid silent truncation.
-        let prices = PriceModel::list(db, i32::MAX, 0, None, None).await?;
+        let prices = BillingPriceModel::list(db, i32::MAX, 0, None, None).await?;
 
         let mut map = HashMap::with_capacity(prices.len());
         for price in prices {

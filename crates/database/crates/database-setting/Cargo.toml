@@ -15,5 +15,9 @@ serde.workspace = true
 name = "database-setting-usage"
 path = "examples/usage.rs"
 
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }
+
 [lints]
 workspace = true

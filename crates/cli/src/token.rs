@@ -1,6 +1,6 @@
 use anyhow::Result;
 use burncloud_database::Database;
-use burncloud_database_models::{TokenInput, TokenModel, TokenUpdateInput};
+use burncloud_database_models::{UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
 use clap::ArgMatches;
 use std::io::{self, Write};
 
@@ -17,7 +17,7 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 .unwrap_or(0);
             let user_id = sub_m.get_one::<String>("user-id").map(|s| s.as_str());
 
-            let tokens = TokenModel::list(db, limit, offset, user_id).await?;
+            let tokens = UserApiKeyModel::list(db, limit, offset, user_id).await?;
 
             if tokens.is_empty() {
                 println!("No tokens found.");
@@ -67,7 +67,7 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 .get_one::<String>("expired")
                 .and_then(|s| s.parse().ok());
 
-            let input = TokenInput {
+            let input = UserApiKeyInput {
                 user_id: user_id.clone(),
                 name,
                 remain_quota: quota,
@@ -75,7 +75,7 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 expired_time: expired,
             };
 
-            let token = TokenModel::create(db, &input).await?;
+            let token = UserApiKeyModel::create(db, &input).await?;
             println!("✓ Token created successfully!");
             println!("Key: {}", token.key);
         }
@@ -91,14 +91,14 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 .get_one::<String>("status")
                 .and_then(|s| s.parse().ok());
 
-            let input = TokenUpdateInput {
+            let input = UserApiKeyUpdateInput {
                 name,
                 remain_quota: quota,
                 status,
                 expired_time: None,
             };
 
-            let updated = TokenModel::update(db, key, &input).await?;
+            let updated = UserApiKeyModel::update(db, key, &input).await?;
             if updated {
                 println!("✓ Token '{}' updated successfully!", key);
             } else {
@@ -123,7 +123,7 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             }
 
-            let deleted = TokenModel::delete(db, key).await?;
+            let deleted = UserApiKeyModel::delete(db, key).await?;
             if deleted {
                 println!("✓ Token deleted successfully!");
             } else {

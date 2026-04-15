@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use burncloud_common::PricingConfig;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
+use burncloud_database_models::{PriceInput, BillingPriceModel, TieredPriceInput, BillingTieredPriceModel};
 use burncloud_service_billing::PriceCache;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
@@ -193,7 +193,7 @@ impl PriceSyncService {
     /// Count distinct model names in the prices table.
     async fn count_db_models(&self) -> anyhow::Result<usize> {
         let conn = self.db.get_connection()?;
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(DISTINCT model) FROM prices")
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(DISTINCT model) FROM billing_prices")
             .fetch_one(conn.pool())
             .await?;
         Ok(row.0 as usize)
@@ -348,7 +348,7 @@ impl PriceSyncService {
 
                 // Audit: read existing price before upsert so we can log changes
                 let old_price = if source == "remote" {
-                    PriceModel::get(&self.db, model_name, currency, None)
+                    BillingPriceModel::get(&self.db, model_name, currency, None)
                         .await
                         .ok()
                         .flatten()
@@ -356,7 +356,7 @@ impl PriceSyncService {
                     None
                 };
 
-                match PriceModel::upsert(&self.db, &price_input).await {
+                match BillingPriceModel::upsert(&self.db, &price_input).await {
                     Ok(_) => {
                         result.models_synced += 1;
                         result.currencies_synced += 1;
@@ -395,7 +395,7 @@ impl PriceSyncService {
                 for (currency, cache_config) in cache_pricing {
                     // Get existing price and update with cache pricing
                     if let Ok(Some(mut existing)) =
-                        PriceModel::get(&self.db, model_name, currency, None).await
+                        BillingPriceModel::get(&self.db, model_name, currency, None).await
                     {
                         existing.cache_read_input_price = Some(cache_config.cache_read_input_price);
                         existing.cache_creation_input_price =
@@ -432,7 +432,7 @@ impl PriceSyncService {
                             model_type: existing.model_type.clone(),
                         };
 
-                        if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
+                        if let Err(e) = BillingPriceModel::upsert(&self.db, &update_input).await {
                             tracing::error!(
                                 "Failed to update cache pricing for {}: {}",
                                 model_name,
@@ -447,7 +447,7 @@ impl PriceSyncService {
             if let Some(ref batch_pricing) = model_pricing.batch_pricing {
                 for (currency, batch_config) in batch_pricing {
                     if let Ok(Some(mut existing)) =
-                        PriceModel::get(&self.db, model_name, currency, None).await
+                        BillingPriceModel::get(&self.db, model_name, currency, None).await
                     {
                         existing.batch_input_price = Some(batch_config.batch_input_price);
                         existing.batch_output_price = Some(batch_config.batch_output_price);
@@ -483,7 +483,7 @@ impl PriceSyncService {
                             model_type: existing.model_type.clone(),
                         };
 
-                        if let Err(e) = PriceModel::upsert(&self.db, &update_input).await {
+                        if let Err(e) = BillingPriceModel::upsert(&self.db, &update_input).await {
                             tracing::error!(
                                 "Failed to update batch pricing for {}: {}",
                                 model_name,
@@ -509,7 +509,7 @@ impl PriceSyncService {
                             output_price: tier.output_price,
                         };
 
-                        match TieredPriceModel::upsert_tier(&self.db, &tier_input).await {
+                        match BillingTieredPriceModel::upsert_tier(&self.db, &tier_input).await {
                             Ok(_) => {
                                 result.tiered_pricing_synced += 1;
                             }
@@ -620,7 +620,7 @@ impl PriceSyncService {
                 }
             }
 
-            match TieredPriceModel::upsert_tier(&self.db, tier).await {
+            match BillingTieredPriceModel::upsert_tier(&self.db, tier).await {
                 Ok(_) => {
                     imported_count += 1;
                     tracing::info!(

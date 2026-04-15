@@ -4,11 +4,11 @@
 
 use serde_json::json;
 
-/// Group 实体的 JSON Schema 定义
+/// Group entity JSON Schema definition
 pub fn group_schema() -> serde_json::Value {
     json!({
         "entity_type": "group",
-        "label": "分组",
+        "label": "schema.group.label",
         "fields": [
             {
                 "key": "id",
@@ -18,37 +18,37 @@ pub fn group_schema() -> serde_json::Value {
             },
             {
                 "key": "name",
-                "label": "分组名称",
+                "label": "schema.group.field.name.label",
                 "type": "text",
                 "required": true,
                 "placeholder": "e.g. production"
             },
             {
                 "key": "strategy",
-                "label": "负载均衡策略",
+                "label": "schema.group.field.strategy.label",
                 "type": "select",
                 "required": true,
                 "default": "round_robin",
                 "options": [
-                    {"value": "round_robin", "label": "轮询 (Round Robin)"},
-                    {"value": "weighted", "label": "加权 (Weighted)"}
+                    {"value": "round_robin", "label": "Round Robin"},
+                    {"value": "weighted", "label": "Weighted"}
                 ]
             },
             {
                 "key": "match_path",
-                "label": "匹配路径",
+                "label": "schema.group.field.match_path.label",
                 "type": "text",
                 "default": "/v1/chat/completions",
                 "placeholder": "/v1/chat/completions"
             }
         ],
         "table_columns": [
-            {"key": "name", "label": "分组名称", "render": "text"},
-            {"key": "match_path", "label": "匹配路径", "render": "monospace"},
-            {"key": "strategy", "label": "策略", "render": "text"}
+            {"key": "name", "label": "schema.group.field.name.label", "render": "text"},
+            {"key": "match_path", "label": "schema.group.field.match_path.label", "render": "monospace"},
+            {"key": "strategy", "label": "schema.group.field.strategy.label", "render": "text"}
         ],
         "form_sections": [
-            {"title": "创建分组", "fields": ["name", "strategy", "match_path"]}
+            {"title": "schema.group.section.label", "fields": ["name", "strategy", "match_path"]}
         ]
     })
 }

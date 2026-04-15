@@ -7,7 +7,7 @@ use burncloud_database::Database;
 use burncloud_database_router_log::{BalanceModel, RouterLogModel};
 
 pub use burncloud_database_router_log::{
-    BillingModelSummary, BillingSummary, DbRouterLog, ModelUsageStats, UsageStats,
+    BillingModelSummary, BillingSummary, RouterLog, ModelUsageStats, UsageStats,
 };
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
@@ -17,12 +17,12 @@ pub struct RouterLogService;
 
 impl RouterLogService {
     /// Insert a new router log entry
-    pub async fn insert(db: &Database, log: &DbRouterLog) -> Result<()> {
+    pub async fn insert(db: &Database, log: &RouterLog) -> Result<()> {
         RouterLogModel::insert(db, log).await
     }
 
     /// Get logs with pagination
-    pub async fn get(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
+    pub async fn get(db: &Database, limit: i32, offset: i32) -> Result<Vec<RouterLog>> {
         RouterLogModel::get(db, limit, offset).await
     }
 
@@ -34,7 +34,7 @@ impl RouterLogService {
         model: Option<&str>,
         limit: i32,
         offset: i32,
-    ) -> Result<Vec<DbRouterLog>> {
+    ) -> Result<Vec<RouterLog>> {
         RouterLogModel::get_filtered(db, user_id, upstream_id, model, limit, offset).await
     }
 

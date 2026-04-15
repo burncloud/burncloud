@@ -2,9 +2,9 @@ use burncloud_common::types::Ability;
 use burncloud_database::{Database, Result};
 use serde::{Deserialize, Serialize};
 
-/// Ability model for routing
+/// Input for creating a channel ability
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AbilityInput {
+pub struct ChannelAbilityInput {
     pub group: String,
     pub model: String,
     pub channel_id: i32,
@@ -13,14 +13,14 @@ pub struct AbilityInput {
     pub weight: i32,
 }
 
-pub struct AbilityModel;
+pub struct ChannelAbilityModel;
 
-impl AbilityModel {
+impl ChannelAbilityModel {
     /// Create abilities in batch for a channel
     ///
     /// This is more efficient than creating abilities one by one.
     /// Handles conflicts by using INSERT OR IGNORE / ON CONFLICT DO NOTHING.
-    pub async fn create_batch(db: &Database, abilities: &[AbilityInput]) -> Result<usize> {
+    pub async fn create_batch(db: &Database, abilities: &[ChannelAbilityInput]) -> Result<usize> {
         if abilities.is_empty() {
             return Ok(0);
         }
@@ -35,7 +35,7 @@ impl AbilityModel {
             let sql = if is_postgres {
                 format!(
                     r#"
-                    INSERT INTO abilities ({}, model, channel_id, enabled, priority, weight)
+                    INSERT INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
                     VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT ({}, model, channel_id) DO NOTHING
                     "#,
@@ -44,7 +44,7 @@ impl AbilityModel {
             } else {
                 format!(
                     r#"
-                    INSERT OR IGNORE INTO abilities ({}, model, channel_id, enabled, priority, weight)
+                    INSERT OR IGNORE INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
                     VALUES (?, ?, ?, ?, ?, ?)
                     "#,
                     group_col
@@ -71,8 +71,8 @@ impl AbilityModel {
     pub async fn delete_by_channel(db: &Database, channel_id: i32) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM abilities WHERE channel_id = $1",
-            _ => "DELETE FROM abilities WHERE channel_id = ?",
+            "postgres" => "DELETE FROM channel_abilities WHERE channel_id = $1",
+            _ => "DELETE FROM channel_abilities WHERE channel_id = ?",
         };
 
         sqlx::query(sql)
@@ -94,11 +94,11 @@ impl AbilityModel {
 
         let sql = match db.kind().as_str() {
             "postgres" => format!(
-                "SELECT {} as \"group\", model, channel_id, enabled, priority, weight FROM abilities WHERE channel_id = $1",
+                "SELECT {} as \"group\", model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = $1",
                 group_col
             ),
             _ => format!(
-                "SELECT {} as `group`, model, channel_id, enabled, priority, weight FROM abilities WHERE channel_id = ?",
+                "SELECT {} as `group`, model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = ?",
                 group_col
             ),
         };

@@ -35,7 +35,7 @@ impl SettingService {
     }
 
     /// 获取所有配置项
-    pub async fn list_all(&self) -> Result<Vec<burncloud_database_setting::Setting>> {
+    pub async fn list_all(&self) -> Result<Vec<burncloud_database_setting::SysSetting>> {
         self.db.list_all().await
     }
 
@@ -46,4 +46,4 @@ impl SettingService {
 }
 
 /// 重新导出常用类型
-pub use burncloud_database_setting::{DatabaseError, Setting};
+pub use burncloud_database_setting::{DatabaseError, SysSetting};

@@ -5,7 +5,7 @@ use burncloud_common::pricing_config::{
     CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
 };
 use burncloud_database::create_database_with_url;
-use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
+use burncloud_database_models::{PriceInput, BillingPriceModel, TieredPriceInput, BillingTieredPriceModel};
 use burncloud_database_router::RouterDatabase;
 use burncloud_router::price_sync::{PriceSyncConfig, PriceSyncService};
 use common::setup_db;
@@ -55,10 +55,10 @@ async fn test_advanced_pricing_sync() -> anyhow::Result<()> {
     };
 
     // Upsert to database
-    PriceModel::upsert(&_db, &price_input).await?;
+    BillingPriceModel::upsert(&_db, &price_input).await?;
 
     // Retrieve and verify
-    let stored = PriceModel::get(&_db, "test-cache-model", "USD", Some("international")).await?;
+    let stored = BillingPriceModel::get(&_db, "test-cache-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();
@@ -113,10 +113,10 @@ async fn test_basic_pricing_sync() -> anyhow::Result<()> {
     };
 
     // Upsert to database
-    PriceModel::upsert(&_db, &price_input).await?;
+    BillingPriceModel::upsert(&_db, &price_input).await?;
 
     // Retrieve and verify
-    let stored = PriceModel::get(&_db, "test-basic-model", "USD", Some("international")).await?;
+    let stored = BillingPriceModel::get(&_db, "test-basic-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();
@@ -165,7 +165,7 @@ async fn test_pricing_update() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&_db, &initial_input).await?;
+    BillingPriceModel::upsert(&_db, &initial_input).await?;
 
     // Now update with cache pricing
     let updated_input = PriceInput {
@@ -198,10 +198,10 @@ async fn test_pricing_update() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&_db, &updated_input).await?;
+    BillingPriceModel::upsert(&_db, &updated_input).await?;
 
     // Verify the update
-    let stored = PriceModel::get(&_db, "test-update-model", "USD", Some("international")).await?;
+    let stored = BillingPriceModel::get(&_db, "test-update-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();
@@ -241,11 +241,11 @@ async fn test_tiered_pricing() -> anyhow::Result<()> {
         output_price: to_nano(12.0),
     };
 
-    TieredPriceModel::upsert_tier(&_db, &tier1).await?;
-    TieredPriceModel::upsert_tier(&_db, &tier2).await?;
+    BillingTieredPriceModel::upsert_tier(&_db, &tier1).await?;
+    BillingTieredPriceModel::upsert_tier(&_db, &tier2).await?;
 
     // Verify tiers
-    let tiers: Vec<_> = TieredPriceModel::get_tiers(&_db, "qwen-max", Some("USD")).await?;
+    let tiers: Vec<_> = BillingTieredPriceModel::get_tiers(&_db, "qwen-max", Some("USD")).await?;
     assert_eq!(tiers.len(), 2);
 
     Ok(())
@@ -331,12 +331,12 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
                     .map(|m| m.supports_function_calling),
                 ..Default::default()
             };
-            PriceModel::upsert(&db, &price_input).await?;
+            BillingPriceModel::upsert(&db, &price_input).await?;
         }
     }
 
     // Verify the model was imported
-    let stored = PriceModel::get(&db, "test-import-model", "USD", None).await?;
+    let stored = BillingPriceModel::get(&db, "test-import-model", "USD", None).await?;
     assert!(stored.is_some(), "Imported model should be stored");
 
     let stored = stored.unwrap();
@@ -362,7 +362,7 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
         region: None,
         ..Default::default()
     };
-    PriceModel::upsert(&db, &input).await?;
+    BillingPriceModel::upsert(&db, &input).await?;
 
     // Configure sync with an invalid URL so the HTTP fetch will fail
     let config = PriceSyncConfig {
@@ -383,7 +383,7 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
     assert_eq!(result.unwrap().source, "db_fallback");
 
     // The pre-existing price must still be in the DB
-    let price = PriceModel::get(&db, "sync-failure-test-model", "USD", None).await?;
+    let price = BillingPriceModel::get(&db, "sync-failure-test-model", "USD", None).await?;
     assert!(
         price.is_some(),
         "Pre-existing price must survive a failed sync"
@@ -407,7 +407,7 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
     let db = Arc::new(db);
 
     // Schema::init seeds default prices, so we must clear them to simulate a truly empty DB
-    db.execute_query("DELETE FROM prices").await?;
+    db.execute_query("DELETE FROM billing_prices").await?;
 
     let config = PriceSyncConfig {
         remote_url: "http://127.0.0.1:19999/nonexistent".to_string(),
@@ -450,7 +450,7 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
         region: None,
         ..Default::default()
     };
-    PriceModel::upsert(&db, &input).await?;
+    BillingPriceModel::upsert(&db, &input).await?;
 
     // Use a broken URL — with forced=false and DB prices present, should skip remote entirely
     let config = PriceSyncConfig {
@@ -492,7 +492,7 @@ async fn test_model_count_drop_protection() -> anyhow::Result<()> {
             region: None,
             ..Default::default()
         };
-        PriceModel::upsert(&db, &input).await?;
+        BillingPriceModel::upsert(&db, &input).await?;
     }
 
     let service = PriceSyncService::new(db.clone());
@@ -555,10 +555,10 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
         region: Some("international".to_string()),
         ..Default::default()
     };
-    PriceModel::upsert(&db, &first_price).await?;
+    BillingPriceModel::upsert(&db, &first_price).await?;
 
     // Verify initial price
-    let stored = PriceModel::get(&db, model_name, "USD", Some("international"))
+    let stored = BillingPriceModel::get(&db, model_name, "USD", Some("international"))
         .await?
         .unwrap();
     assert_eq!(stored.input_price, to_nano(10.0));
@@ -574,10 +574,10 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
         region: Some("international".to_string()),
         ..Default::default()
     };
-    PriceModel::upsert(&db, &local_price).await?;
+    BillingPriceModel::upsert(&db, &local_price).await?;
 
     // Verify the update
-    let stored = PriceModel::get(&db, model_name, "USD", Some("international"))
+    let stored = BillingPriceModel::get(&db, model_name, "USD", Some("international"))
         .await?
         .unwrap();
     assert_eq!(stored.input_price, to_nano(5.0));

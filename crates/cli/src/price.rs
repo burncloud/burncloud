@@ -10,7 +10,7 @@ use burncloud_common::{
     },
 };
 use burncloud_database::Database;
-use burncloud_database_models::{PriceInput, PriceModel, TieredPriceInput, TieredPriceModel};
+use burncloud_database_models::{PriceInput, BillingPriceModel, TieredPriceInput, BillingTieredPriceModel};
 use chrono::Utc;
 use clap::ArgMatches;
 use std::collections::HashMap;
@@ -41,8 +41,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let currency = sub_m.get_one::<String>("currency").map(|s| s.as_str());
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
-            // Use PriceModel for multi-currency support
-            let prices = PriceModel::list(db, limit, offset, currency, region).await?;
+            // Use BillingPriceModel for multi-currency support
+            let prices = BillingPriceModel::list(db, limit, offset, currency, region).await?;
 
             if prices.is_empty() {
                 println!("No prices found.");
@@ -124,7 +124,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 .get_one::<String>("video")
                 .and_then(|s| s.parse().ok());
 
-            // Use PriceModel for multi-currency support
+            // Use BillingPriceModel for multi-currency support
             // Convert f64 dollar input to i64 nanodollars
             let input = PriceInput {
                 model: model.clone(),
@@ -157,7 +157,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 model_type: None,
             };
 
-            PriceModel::upsert(db, &input).await?;
+            BillingPriceModel::upsert(db, &input).await?;
 
             let region_str = input.region.as_deref().unwrap_or("");
             let region_display = if region_str.is_empty() {
@@ -193,10 +193,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
             if let Some(r) = region {
-                PriceModel::delete_by_region(db, model, r).await?;
+                BillingPriceModel::delete_by_region(db, model, r).await?;
                 println!("✓ Deleted {} region price for '{}'", r, model);
             } else {
-                PriceModel::delete_all_for_model(db, model).await?;
+                BillingPriceModel::delete_all_for_model(db, model).await?;
                 println!("✓ All prices deleted for '{}'", model);
             }
         }
@@ -208,10 +208,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
             let verbose = sub_m.get_flag("verbose");
 
-            // Use PriceModel for multi-currency support
+            // Use BillingPriceModel for multi-currency support
             if let Some(curr) = currency {
                 // Get specific currency
-                match PriceModel::get(db, model, curr, region).await? {
+                match BillingPriceModel::get(db, model, curr, region).await? {
                     Some(price) => {
                         println!("Model: {}", price.model);
                         println!("Currency: {}", price.currency);
@@ -267,7 +267,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             } else {
                 // Get all currencies
-                let prices = PriceModel::get_all_currencies(db, model, region).await?;
+                let prices = BillingPriceModel::get_all_currencies(db, model, region).await?;
                 if prices.is_empty() {
                     println!("No prices found for model '{}'", model);
                 } else {
@@ -314,9 +314,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             // Show tiered pricing in verbose mode
             if verbose {
                 println!("\n--- Tiered Pricing ---");
-                let has_tiered = TieredPriceModel::has_tiered_pricing(db, model).await?;
+                let has_tiered = BillingTieredPriceModel::has_tiered_pricing(db, model).await?;
                 if has_tiered {
-                    let tiers = TieredPriceModel::get_tiers(db, model, None).await?;
+                    let tiers = BillingTieredPriceModel::get_tiers(db, model, None).await?;
                     for tier in tiers {
                         let region = tier.region.as_deref().unwrap_or("universal");
                         let tier_end =
@@ -346,12 +346,12 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             // Get all prices for this model
             let prices = if let Some(curr) = currency {
-                PriceModel::get(db, model, curr, region)
+                BillingPriceModel::get(db, model, curr, region)
                     .await?
                     .map(|p| vec![p])
                     .unwrap_or_default()
             } else {
-                PriceModel::get_all_currencies(db, model, region).await?
+                BillingPriceModel::get_all_currencies(db, model, region).await?
             };
 
             if prices.is_empty() {
@@ -521,9 +521,9 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
 
             // Show tiered pricing
-            let has_tiered = TieredPriceModel::has_tiered_pricing(db, model).await?;
+            let has_tiered = BillingTieredPriceModel::has_tiered_pricing(db, model).await?;
             if has_tiered {
-                let tiers = TieredPriceModel::get_tiers(db, model, region).await?;
+                let tiers = BillingTieredPriceModel::get_tiers(db, model, region).await?;
                 println!("\nTiered Pricing:");
                 println!(
                     "{:<12} {:>12} {:>12} {:>15} {:>15}",
@@ -570,7 +570,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
         }
         Some(("sync-status", _)) => {
             // Show sync status by counting models with advanced pricing
-            let prices = PriceModel::list(db, 10000, 0, None, None).await?;
+            let prices = BillingPriceModel::list(db, 10000, 0, None, None).await?;
 
             let mut total = 0;
             let mut with_cache = 0;
@@ -597,7 +597,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             }
 
             // Check tiered pricing count
-            let tiered_prices = TieredPriceModel::list_all(db).await?;
+            let tiered_prices = BillingTieredPriceModel::list_all(db).await?;
             let mut tiered_models = std::collections::HashSet::new();
             for tier in &tiered_prices {
                 tiered_models.insert(tier.model.clone());
@@ -710,7 +710,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         model_type: None,
                     };
 
-                    match PriceModel::upsert(db, &input).await {
+                    match BillingPriceModel::upsert(db, &input).await {
                         Ok(_) => prices_imported += 1,
                         Err(e) => errors.push(format!(
                             "Failed to import {} ({}): {}",
@@ -724,7 +724,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     for (currency, cache) in cache_pricing {
                         // Update existing price with cache pricing
                         if let Some(existing) =
-                            PriceModel::get(db, model_name, currency, None).await?
+                            BillingPriceModel::get(db, model_name, currency, None).await?
                         {
                             let supports_vision = existing.supports_vision_bool();
                             let supports_function_calling =
@@ -759,7 +759,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 realtime_pricing: existing.realtime_pricing.clone(),
                                 model_type: existing.model_type.clone(),
                             };
-                            match PriceModel::upsert(db, &input).await {
+                            match BillingPriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
                                 Err(e) => errors.push(format!(
                                     "Failed to update cache pricing for {} ({}): {}",
@@ -774,7 +774,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 if let Some(ref batch_pricing) = model_pricing.batch_pricing {
                     for (currency, batch) in batch_pricing {
                         if let Some(existing) =
-                            PriceModel::get(db, model_name, currency, None).await?
+                            BillingPriceModel::get(db, model_name, currency, None).await?
                         {
                             let supports_vision = existing.supports_vision_bool();
                             let supports_function_calling =
@@ -809,7 +809,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 realtime_pricing: existing.realtime_pricing.clone(),
                                 model_type: existing.model_type.clone(),
                             };
-                            match PriceModel::upsert(db, &input).await {
+                            match BillingPriceModel::upsert(db, &input).await {
                                 Ok(_) => {}
                                 Err(e) => errors.push(format!(
                                     "Failed to update batch pricing for {} ({}): {}",
@@ -844,7 +844,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                                 output_price: tier.output_price,
                             };
 
-                            match TieredPriceModel::upsert_tier(db, &tier_input).await {
+                            match BillingTieredPriceModel::upsert_tier(db, &tier_input).await {
                                 Ok(_) => tiers_imported += 1,
                                 Err(e) => errors.push(format!(
                                     "Failed to import tier for {} ({}): {}",
@@ -875,8 +875,8 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 .ok_or_else(|| anyhow::anyhow!("format argument is required"))?;
 
             // Fetch all prices from prices table
-            let prices = PriceModel::list(db, 100000, 0, None, None).await?;
-            let tiered_prices = TieredPriceModel::list_all(db).await?;
+            let prices = BillingPriceModel::list(db, 100000, 0, None, None).await?;
+            let tiered_prices = BillingTieredPriceModel::list_all(db).await?;
 
             if prices.is_empty() {
                 println!("No prices to export.");
@@ -1179,7 +1179,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                         model_type: None,
                     };
 
-                    match PriceModel::upsert(db, &input).await {
+                    match BillingPriceModel::upsert(db, &input).await {
                         Ok(_) => ok += 1,
                         Err(e) => {
                             eprintln!("  ⚠ {}/{}: {}", model_name, currency, e);
@@ -1237,7 +1237,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                 .ok_or_else(|| anyhow::anyhow!("model argument is required"))?;
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
-            let tiers = TieredPriceModel::get_tiers(db, model, region).await?;
+            let tiers = BillingTieredPriceModel::get_tiers(db, model, region).await?;
 
             if tiers.is_empty() {
                 println!("No tiered pricing found for model '{}'", model);
@@ -1297,7 +1297,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                 output_price: to_nano(output_price),
             };
 
-            TieredPriceModel::upsert_tier(db, &input).await?;
+            BillingTieredPriceModel::upsert_tier(db, &input).await?;
             println!(
                 "✓ Tier added for '{}': {}-{} tokens at ${:.4}/${:.4} per 1M",
                 model,
@@ -1317,7 +1317,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
 
             let mut count = 0;
             for tier in &tiers {
-                match TieredPriceModel::upsert_tier(db, tier).await {
+                match BillingTieredPriceModel::upsert_tier(db, tier).await {
                     Ok(_) => count += 1,
                     Err(e) => eprintln!("Failed to import tier for {}: {}", tier.model, e),
                 }
@@ -1331,7 +1331,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                 .ok_or_else(|| anyhow::anyhow!("model argument is required"))?;
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
-            TieredPriceModel::delete_tiers(db, model, region).await?;
+            BillingTieredPriceModel::delete_tiers(db, model, region).await?;
             println!("✓ Deleted tiered pricing for '{}'", model);
         }
         Some(("check-tiered", sub_m)) => {
@@ -1339,13 +1339,13 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                 .get_one::<String>("model")
                 .ok_or_else(|| anyhow::anyhow!("model argument is required"))?;
 
-            let has_tiered = TieredPriceModel::has_tiered_pricing(db, model).await?;
+            let has_tiered = BillingTieredPriceModel::has_tiered_pricing(db, model).await?;
 
             if has_tiered {
                 println!("✓ Model '{}' has tiered pricing configured", model);
 
                 // Show the tiers
-                let tiers = TieredPriceModel::get_tiers(db, model, None).await?;
+                let tiers = BillingTieredPriceModel::get_tiers(db, model, None).await?;
                 if !tiers.is_empty() {
                     println!("\nTier configuration:");
                     for tier in tiers {

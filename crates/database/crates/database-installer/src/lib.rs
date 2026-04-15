@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// Installation record
 #[derive(sqlx::FromRow, Serialize, Deserialize, Clone)]
-pub struct InstallationRecord {
+pub struct SysInstallation {
     /// Software ID
     pub software_id: String,
     /// Software name
@@ -46,7 +46,7 @@ impl InstallerDB {
         self.db
             .execute_query(
                 r#"
-            CREATE TABLE IF NOT EXISTS installations (
+            CREATE TABLE IF NOT EXISTS sys_installations (
                 software_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 version TEXT,
@@ -57,8 +57,8 @@ impl InstallerDB {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 error_message TEXT
             );
-            CREATE INDEX IF NOT EXISTS idx_installations_status ON installations(status);
-            CREATE INDEX IF NOT EXISTS idx_installations_installed_at ON installations(installed_at);
+            CREATE INDEX IF NOT EXISTS idx_sys_installations_status ON sys_installations(status);
+            CREATE INDEX IF NOT EXISTS idx_sys_installations_installed_at ON sys_installations(installed_at);
         "#,
             )
             .await?;
@@ -71,11 +71,11 @@ impl InstallerDB {
     }
 
     /// Add or update installation record
-    pub async fn upsert(&self, record: &InstallationRecord) -> Result<()> {
+    pub async fn upsert(&self, record: &SysInstallation) -> Result<()> {
         self.db
             .execute_query_with_params(
                 r#"
-                INSERT INTO installations
+                INSERT INTO sys_installations
                     (software_id, name, version, status, install_dir, install_method, installed_at, updated_at, error_message)
                 VALUES
                     (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -85,7 +85,7 @@ impl InstallerDB {
                     status = excluded.status,
                     install_dir = excluded.install_dir,
                     install_method = excluded.install_method,
-                    installed_at = COALESCE(excluded.installed_at, installations.installed_at),
+                    installed_at = COALESCE(excluded.installed_at, sys_installations.installed_at),
                     updated_at = excluded.updated_at,
                     error_message = excluded.error_message
                 "#,
@@ -106,30 +106,30 @@ impl InstallerDB {
     }
 
     /// Get installation record by software ID
-    pub async fn get(&self, software_id: &str) -> Result<Option<InstallationRecord>> {
+    pub async fn get(&self, software_id: &str) -> Result<Option<SysInstallation>> {
         self.db
-            .fetch_optional_with_params::<InstallationRecord>(
-                "SELECT * FROM installations WHERE software_id = ?",
+            .fetch_optional_with_params::<SysInstallation>(
+                "SELECT * FROM sys_installations WHERE software_id = ?",
                 vec![software_id.to_string()],
             )
             .await
     }
 
     /// List all installations
-    pub async fn list(&self, status: Option<&str>) -> Result<Vec<InstallationRecord>> {
+    pub async fn list(&self, status: Option<&str>) -> Result<Vec<SysInstallation>> {
         match status {
             Some(s) => {
                 self.db
-                    .fetch_all_with_params::<InstallationRecord>(
-                        "SELECT * FROM installations WHERE status = ? ORDER BY updated_at DESC",
+                    .fetch_all_with_params::<SysInstallation>(
+                        "SELECT * FROM sys_installations WHERE status = ? ORDER BY updated_at DESC",
                         vec![s.to_string()],
                     )
                     .await
             }
             None => {
                 self.db
-                    .fetch_all::<InstallationRecord>(
-                        "SELECT * FROM installations ORDER BY updated_at DESC",
+                    .fetch_all::<SysInstallation>(
+                        "SELECT * FROM sys_installations ORDER BY updated_at DESC",
                     )
                     .await
             }
@@ -146,7 +146,7 @@ impl InstallerDB {
         self.db
             .execute_query_with_params(
                 r#"
-                UPDATE installations
+                UPDATE sys_installations
                 SET status = ?, error_message = ?, updated_at = ?
                 WHERE software_id = ?
                 "#,
@@ -165,7 +165,7 @@ impl InstallerDB {
     pub async fn delete(&self, software_id: &str) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "DELETE FROM installations WHERE software_id = ?",
+                "DELETE FROM sys_installations WHERE software_id = ?",
                 vec![software_id.to_string()],
             )
             .await?;
@@ -181,7 +181,7 @@ impl InstallerDB {
         install_dir: Option<&str>,
         install_method: Option<&str>,
     ) -> Result<()> {
-        let record = InstallationRecord {
+        let record = SysInstallation {
             software_id: software_id.to_string(),
             name: name.to_string(),
             version: version.map(|s| s.to_string()),
@@ -197,7 +197,7 @@ impl InstallerDB {
 
     /// Mark software as installing
     pub async fn mark_installing(&self, software_id: &str, name: &str) -> Result<()> {
-        let record = InstallationRecord {
+        let record = SysInstallation {
             software_id: software_id.to_string(),
             name: name.to_string(),
             version: None,
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_installation_record() {
-        let record = InstallationRecord {
+        let record = SysInstallation {
             software_id: "test-software".to_string(),
             name: "Test Software".to_string(),
             version: Some("1.0.0".to_string()),

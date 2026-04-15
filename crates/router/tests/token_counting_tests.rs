@@ -5,6 +5,7 @@ use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
+use std::sync::Arc;
 
 /// Test streaming token counting with OpenAI API
 /// Requires TEST_OPENAI_API_KEY environment variable
@@ -209,7 +210,6 @@ async fn test_anthropic_streaming_token_count() -> anyhow::Result<()> {
 async fn test_token_counting_unit() -> anyhow::Result<()> {
     use burncloud_router::stream_parser::StreamingTokenParser;
     use burncloud_router::token_counter::StreamingTokenCounter;
-    use std::sync::Arc;
 
     let counter = Arc::new(StreamingTokenCounter::new());
 

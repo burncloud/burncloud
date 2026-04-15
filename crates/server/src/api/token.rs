@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_service_token::{DbToken, TokenService};
+use burncloud_service_token::{RouterToken, TokenService};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -72,7 +72,7 @@ async fn create_token(
 
     let token_str = format!("sk-burncloud-{}", Uuid::new_v4());
 
-    let db_token = DbToken {
+    let db_token = RouterToken {
         token: token_str.clone(),
         user_id: payload.user_id,
         status: "active".to_string(),

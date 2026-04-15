@@ -1,11 +1,20 @@
-use burncloud_database::{create_default_database, sqlx, Database};
+use burncloud_database::{create_database_with_url, create_default_database, sqlx, Database};
 use burncloud_database_router::RouterDatabase;
 use sqlx::AnyPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
 pub async fn setup_db() -> anyhow::Result<(Database, AnyPool)> {
-    let db = create_default_database().await?;
+    // Use a unique temp file per test to avoid SQLite lock contention when tests run in parallel.
+    let tmp = tempfile::NamedTempFile::new()?;
+    let path = tmp.path().to_string_lossy().to_string();
+    // Keep the NamedTempFile alive by leaking it; the OS will clean it up after the process exits.
+    std::mem::forget(tmp);
+    let url = format!("sqlite:{}", path);
+    // Publish the URL so start_test_server() (which calls create_default_database()) picks up the
+    // same file, ensuring data seeded via `pool` is visible to the running server.
+    std::env::set_var("BURNCLOUD_DATABASE_URL", &url);
+    let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let conn = db.get_connection()?;
     let pool = conn.pool().clone();
@@ -23,9 +32,7 @@ pub async fn start_test_server(port: u16) {
         );
     }
 
-    // We create a new DB instance pointing to the same file
-    // Note: Tests run sequentially or use different ports/tables?
-    // They use the same default DB file. WAL mode handles concurrency.
+    // Reuse the database URL set by setup_db() so the server sees the same seeded data.
     let db = create_default_database().await.expect("Failed to open DB");
     let db_arc = Arc::new(db);
 

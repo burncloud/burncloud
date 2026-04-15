@@ -2,7 +2,7 @@ mod common;
 
 use burncloud_common::price_u64::{dollars_to_nano, nano_to_dollars};
 use burncloud_database::sqlx;
-use burncloud_database_models::{PriceInput, PriceModel};
+use burncloud_database_models::{PriceInput, BillingPriceModel};
 use burncloud_database_router::RouterDatabase;
 use common::setup_db;
 use uuid::Uuid;
@@ -68,10 +68,10 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&_db, &price_input).await?;
+    BillingPriceModel::upsert(&_db, &price_input).await?;
 
     // 4. Test: Get pricing
-    let price = PriceModel::get(&_db, "gpt-4o-mini-e2e", "USD", None).await?;
+    let price = BillingPriceModel::get(&_db, "gpt-4o-mini-e2e", "USD", None).await?;
     assert!(price.is_some(), "Price should be found");
     let price = price.unwrap();
 

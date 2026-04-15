@@ -12,5 +12,9 @@ burncloud-database.workspace = true
 sqlx.workspace = true
 serde.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }
+
 [lints]
 workspace = true

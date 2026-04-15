@@ -1,11 +1,11 @@
 use crate::common::current_timestamp;
-use burncloud_database::{Database, Result};
+use burncloud_database::{adapt_sql, Database, Result};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-/// Token for API authentication
+/// User API key for application-level authentication
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Token {
+pub struct UserApiKey {
     pub id: i32,
     pub user_id: String,
     pub key: String,
@@ -21,10 +21,10 @@ pub struct Token {
 
 // Manual FromRow: SQLite stores unlimited_quota as INTEGER (BIGINT in sqlx::Any),
 // which cannot be automatically decoded into bool. Convert i64 → bool explicitly.
-impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for Token {
+impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for UserApiKey {
     fn from_row(row: &'r sqlx::any::AnyRow) -> std::result::Result<Self, sqlx::Error> {
         use sqlx::Row;
-        Ok(Token {
+        Ok(UserApiKey {
             id: row.try_get("id")?,
             user_id: row.try_get("user_id")?,
             key: row.try_get("key")?,
@@ -40,9 +40,9 @@ impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for Token {
     }
 }
 
-/// Input for creating a token
+/// Input for creating a user API key
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TokenInput {
+pub struct UserApiKeyInput {
     pub user_id: String,
     pub name: Option<String>,
     pub remain_quota: Option<i64>,
@@ -50,18 +50,18 @@ pub struct TokenInput {
     pub expired_time: Option<i64>,
 }
 
-/// Input for updating a token
+/// Input for updating a user API key
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TokenUpdateInput {
+pub struct UserApiKeyUpdateInput {
     pub name: Option<String>,
     pub remain_quota: Option<i64>,
     pub status: Option<i32>,
     pub expired_time: Option<i64>,
 }
 
-pub struct TokenModel;
+pub struct UserApiKeyModel;
 
-impl TokenModel {
+impl UserApiKeyModel {
     /// Generate a unique token key with sk- prefix and 48 random characters
     fn generate_key() -> String {
         const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -75,8 +75,8 @@ impl TokenModel {
         format!("sk-{}", key)
     }
 
-    /// Create a new token
-    pub async fn create(db: &Database, input: &TokenInput) -> Result<Token> {
+    /// Create a new user API key
+    pub async fn create(db: &Database, input: &UserApiKeyInput) -> Result<UserApiKey> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
         let is_postgres = db.kind() == "postgres";
@@ -90,13 +90,13 @@ impl TokenModel {
 
         let sql = if is_postgres {
             r#"
-            INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time)
+            INSERT INTO user_api_keys (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time)
             VALUES ($1, $2, 1, $3, $4, $5, 0, $6, $6, $7)
             RETURNING id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time
             "#
         } else {
             r#"
-            INSERT INTO tokens (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time)
+            INSERT INTO user_api_keys (user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time)
             VALUES (?, ?, 1, ?, ?, ?, 0, ?, ?, ?)
             "#
         };
@@ -104,7 +104,7 @@ impl TokenModel {
         let mut tx = pool.begin().await?;
 
         let token = if is_postgres {
-            let row = sqlx::query_as::<_, Token>(sql)
+            let row = sqlx::query_as::<_, UserApiKey>(sql)
                 .bind(&input.user_id)
                 .bind(&key)
                 .bind(&input.name)
@@ -132,7 +132,7 @@ impl TokenModel {
                 .fetch_one(&mut *tx)
                 .await?;
             tx.commit().await?;
-            Token {
+            UserApiKey {
                 id: id.0 as i32,
                 user_id: input.user_id.clone(),
                 key,
@@ -150,12 +150,12 @@ impl TokenModel {
         Ok(token)
     }
 
-    /// Get a token by key
-    pub async fn get_by_key(db: &Database, key: &str) -> Result<Option<Token>> {
+    /// Get a user API key by key
+    pub async fn get_by_key(db: &Database, key: &str) -> Result<Option<UserApiKey>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens WHERE key = $1",
-            _ => "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens WHERE key = ?",
+            "postgres" => "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM user_api_keys WHERE key = $1",
+            _ => "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM user_api_keys WHERE key = ?",
         };
 
         let token = sqlx::query_as(sql)
@@ -166,24 +166,20 @@ impl TokenModel {
         Ok(token)
     }
 
-    /// List tokens with pagination and optional user_id filter
+    /// List user API keys with pagination and optional user_id filter
     pub async fn list(
         db: &Database,
         limit: i32,
         offset: i32,
         user_id: Option<&str>,
-    ) -> Result<Vec<Token>> {
+    ) -> Result<Vec<UserApiKey>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
         let tokens = match user_id {
             Some(uid) => {
-                let sql = if is_postgres {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens WHERE user_id = $1 ORDER BY id DESC LIMIT $2 OFFSET $3"
-                } else {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?"
-                };
-                sqlx::query_as(sql)
+                let sql = adapt_sql(is_postgres, "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM user_api_keys WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?");
+                sqlx::query_as(&sql)
                     .bind(uid)
                     .bind(limit)
                     .bind(offset)
@@ -191,12 +187,8 @@ impl TokenModel {
                     .await?
             }
             None => {
-                let sql = if is_postgres {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens ORDER BY id DESC LIMIT $1 OFFSET $2"
-                } else {
-                    "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM tokens ORDER BY id DESC LIMIT ? OFFSET ?"
-                };
-                sqlx::query_as(sql)
+                let sql = adapt_sql(is_postgres, "SELECT id, user_id, key, status, name, remain_quota, unlimited_quota, used_quota, created_time, accessed_time, expired_time FROM user_api_keys ORDER BY id DESC LIMIT ? OFFSET ?");
+                sqlx::query_as(&sql)
                     .bind(limit)
                     .bind(offset)
                     .fetch_all(conn.pool())
@@ -207,8 +199,8 @@ impl TokenModel {
         Ok(tokens)
     }
 
-    /// Update a token by key
-    pub async fn update(db: &Database, key: &str, input: &TokenUpdateInput) -> Result<bool> {
+    /// Update a user API key by key
+    pub async fn update(db: &Database, key: &str, input: &UserApiKeyUpdateInput) -> Result<bool> {
         let conn = db.get_connection()?;
         let pool = conn.pool();
         let is_postgres = db.kind() == "postgres";
@@ -261,7 +253,7 @@ impl TokenModel {
         };
 
         let sql = format!(
-            "UPDATE tokens SET {} WHERE key = {}",
+            "UPDATE user_api_keys SET {} WHERE key = {}",
             updates.join(", "),
             key_param
         );
@@ -285,12 +277,12 @@ impl TokenModel {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Delete a token by key
+    /// Delete a user API key by key
     pub async fn delete(db: &Database, key: &str) -> Result<bool> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM tokens WHERE key = $1",
-            _ => "DELETE FROM tokens WHERE key = ?",
+            "postgres" => "DELETE FROM user_api_keys WHERE key = $1",
+            _ => "DELETE FROM user_api_keys WHERE key = ?",
         };
 
         let result = sqlx::query(sql).bind(key).execute(conn.pool()).await?;

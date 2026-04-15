@@ -1,7 +1,7 @@
 use burncloud_database::{Database, Result};
 
 #[derive(Debug, Clone)]
-pub struct VideoTask {
+pub struct RouterVideoTask {
     pub task_id: String,
     pub channel_id: i32,
     pub user_id: Option<String>,
@@ -10,23 +10,23 @@ pub struct VideoTask {
     pub resolution: String,
 }
 
-pub struct VideoTaskModel;
+pub struct RouterVideoTaskModel;
 
-impl VideoTaskModel {
+impl RouterVideoTaskModel {
     /// Persist a video task mapping (task_id → channel_id) for later GET routing.
-    pub async fn save(db: &Database, task: &VideoTask) -> Result<()> {
+    pub async fn save(db: &Database, task: &RouterVideoTask) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                INSERT INTO video_tasks (task_id, channel_id, user_id, model, duration, resolution)
+                INSERT INTO router_video_tasks (task_id, channel_id, user_id, model, duration, resolution)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (task_id) DO NOTHING
                 "#
             }
             _ => {
                 r#"
-                INSERT OR IGNORE INTO video_tasks (task_id, channel_id, user_id, model, duration, resolution)
+                INSERT OR IGNORE INTO router_video_tasks (task_id, channel_id, user_id, model, duration, resolution)
                 VALUES (?, ?, ?, ?, ?, ?)
                 "#
             }
@@ -46,16 +46,16 @@ impl VideoTaskModel {
     }
 
     /// Look up a video task by task_id for GET /v1/videos/{task_id} routing.
-    pub async fn get_by_task_id(db: &Database, task_id: &str) -> Result<Option<VideoTask>> {
+    pub async fn get_by_task_id(db: &Database, task_id: &str) -> Result<Option<RouterVideoTask>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"SELECT task_id, channel_id, user_id, model, duration, resolution
-                   FROM video_tasks WHERE task_id = $1"#
+                   FROM router_video_tasks WHERE task_id = $1"#
             }
             _ => {
                 r#"SELECT task_id, channel_id, user_id, model, duration, resolution
-                   FROM video_tasks WHERE task_id = ?"#
+                   FROM router_video_tasks WHERE task_id = ?"#
             }
         };
 
@@ -66,7 +66,7 @@ impl VideoTaskModel {
 
         Ok(row.map(|r| {
             use sqlx::Row;
-            VideoTask {
+            RouterVideoTask {
                 task_id: r.get("task_id"),
                 channel_id: r.get("channel_id"),
                 user_id: r.get("user_id"),

@@ -4,12 +4,12 @@
 //! database initialization functionality.
 //!
 //! # Modules
-//! - [`upstream`] - Upstream/channel configuration (DbUpstream, UpstreamModel)
-//! - [`token`] - Token management (DbToken, TokenModel)
-//! - [`group`] - Group management (DbGroup, GroupModel, GroupMemberModel)
-//! - [`log`] - Router logs and usage stats (DbRouterLog, RouterLogModel)
+//! - [`upstream`] - Upstream/channel configuration (RouterUpstream, RouterUpstreamModel)
+//! - [`token`] - Token management (RouterToken, RouterTokenModel)
+//! - [`group`] - Group management (RouterGroup, RouterGroupModel, RouterGroupMemberModel)
+//! - [`log`] - Router logs and usage stats (RouterLog, RouterLogModel)
 
-use burncloud_database::{Database, DatabaseError, Result};
+use burncloud_database::{adapt_sql, Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
@@ -19,14 +19,14 @@ pub use burncloud_database_router_log as log;
 pub use burncloud_database_token as token;
 pub use burncloud_database_upstream as upstream;
 
-// Re-export common types for backward compatibility
-pub use burncloud_database_group::{DbGroup, DbGroupMember, GroupMemberModel, GroupModel};
+// Re-export common types
+pub use burncloud_database_group::{RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel};
 pub use burncloud_database_router_log::{
-    get_billing_summary, BalanceModel, BillingModelSummary, BillingSummary, DbRouterLog,
+    get_billing_summary, BalanceModel, BillingModelSummary, BillingSummary, RouterLog,
     RouterLogModel,
 };
-pub use burncloud_database_token::{DbToken, TokenModel, TokenValidationResult};
-pub use burncloud_database_upstream::{DbUpstream, UpstreamModel};
+pub use burncloud_database_token::{RouterToken, RouterTokenModel, RouterTokenValidationResult};
+pub use burncloud_database_upstream::{RouterUpstream, RouterUpstreamModel};
 
 /// Router database operations
 pub struct RouterDatabase;
@@ -38,7 +38,7 @@ impl RouterDatabase {
         let kind = db.kind();
 
         // Table definitions
-        let (upstreams_sql, tokens_sql, groups_sql, members_sql, logs_sql) = match kind.as_str() {
+        let (upstreams_sql, tokens_sql, groups_sql, members_sql) = match kind.as_str() {
             "sqlite" => (
                 r#"
                 CREATE TABLE IF NOT EXISTS router_upstreams (
@@ -79,21 +79,6 @@ impl RouterDatabase {
                     upstream_id TEXT NOT NULL,
                     weight INTEGER NOT NULL DEFAULT 1,
                     PRIMARY KEY (group_id, upstream_id)
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS router_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    request_id TEXT NOT NULL,
-                    user_id TEXT,
-                    path TEXT NOT NULL,
-                    upstream_id TEXT,
-                    status_code INTEGER NOT NULL,
-                    latency_ms INTEGER NOT NULL,
-                    prompt_tokens INTEGER DEFAULT 0,
-                    completion_tokens INTEGER DEFAULT 0,
-                    cost INTEGER DEFAULT 0,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 "#,
             ),
@@ -139,21 +124,6 @@ impl RouterDatabase {
                     PRIMARY KEY (group_id, upstream_id)
                 );
                 "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS router_logs (
-                    id SERIAL PRIMARY KEY,
-                    request_id TEXT NOT NULL,
-                    user_id TEXT,
-                    path TEXT NOT NULL,
-                    upstream_id TEXT,
-                    status_code INTEGER NOT NULL,
-                    latency_ms BIGINT NOT NULL,
-                    prompt_tokens INTEGER DEFAULT 0,
-                    completion_tokens INTEGER DEFAULT 0,
-                    cost DOUBLE PRECISION DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                "#,
             ),
             _ => unreachable!("Unsupported database kind"),
         };
@@ -162,7 +132,6 @@ impl RouterDatabase {
         sqlx::query(tokens_sql).execute(conn.pool()).await?;
         sqlx::query(groups_sql).execute(conn.pool()).await?;
         sqlx::query(members_sql).execute(conn.pool()).await?;
-        sqlx::query(logs_sql).execute(conn.pool()).await?;
 
         // Migrations
         if kind == "sqlite" {
@@ -242,61 +211,61 @@ impl RouterDatabase {
 
     // ============== Upstream delegations ==============
 
-    pub async fn get_all_upstreams(db: &Database) -> Result<Vec<DbUpstream>> {
-        UpstreamModel::get_all(db).await
+    pub async fn get_all_upstreams(db: &Database) -> Result<Vec<RouterUpstream>> {
+        RouterUpstreamModel::get_all(db).await
     }
 
-    pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<DbUpstream>> {
-        UpstreamModel::get(db, id).await
+    pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<RouterUpstream>> {
+        RouterUpstreamModel::get(db, id).await
     }
 
-    pub async fn create_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
-        UpstreamModel::create(db, u).await
+    pub async fn create_upstream(db: &Database, u: &RouterUpstream) -> Result<()> {
+        RouterUpstreamModel::create(db, u).await
     }
 
-    pub async fn update_upstream(db: &Database, u: &DbUpstream) -> Result<()> {
-        UpstreamModel::update(db, u).await
+    pub async fn update_upstream(db: &Database, u: &RouterUpstream) -> Result<()> {
+        RouterUpstreamModel::update(db, u).await
     }
 
     pub async fn delete_upstream(db: &Database, id: &str) -> Result<()> {
-        UpstreamModel::delete(db, id).await
+        RouterUpstreamModel::delete(db, id).await
     }
 
     // ============== Token delegations ==============
 
-    pub async fn list_tokens(db: &Database) -> Result<Vec<DbToken>> {
-        TokenModel::list(db).await
+    pub async fn list_tokens(db: &Database) -> Result<Vec<RouterToken>> {
+        RouterTokenModel::list(db).await
     }
 
-    pub async fn create_token(db: &Database, t: &DbToken) -> Result<()> {
-        TokenModel::create(db, t).await
+    pub async fn create_token(db: &Database, t: &RouterToken) -> Result<()> {
+        RouterTokenModel::create(db, t).await
     }
 
     pub async fn delete_token(db: &Database, token: &str) -> Result<()> {
-        TokenModel::delete(db, token).await
+        RouterTokenModel::delete(db, token).await
     }
 
     pub async fn update_token_status(db: &Database, token: &str, status: &str) -> Result<()> {
-        TokenModel::update_status(db, token, status).await
+        RouterTokenModel::update_status(db, token, status).await
     }
 
-    pub async fn validate_token(db: &Database, token: &str) -> Result<Option<DbToken>> {
-        TokenModel::validate(db, token).await
+    pub async fn validate_token(db: &Database, token: &str) -> Result<Option<RouterToken>> {
+        RouterTokenModel::validate(db, token).await
     }
 
     pub async fn validate_token_detailed(
         db: &Database,
         token: &str,
-    ) -> Result<TokenValidationResult> {
-        TokenModel::validate_detailed(db, token).await
+    ) -> Result<RouterTokenValidationResult> {
+        RouterTokenModel::validate_detailed(db, token).await
     }
 
     pub async fn update_token_accessed_time(db: &Database, token: &str) -> Result<()> {
-        TokenModel::update_accessed_time(db, token).await
+        RouterTokenModel::update_accessed_time(db, token).await
     }
 
     pub async fn check_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
-        TokenModel::check_quota(db, token, cost).await
+        RouterTokenModel::check_quota(db, token, cost).await
     }
 
     pub async fn deduct_quota(
@@ -305,7 +274,7 @@ impl RouterDatabase {
         token: &str,
         cost: i64,
     ) -> Result<bool> {
-        TokenModel::deduct_quota(db, token, cost).await
+        RouterTokenModel::deduct_quota(db, token, cost).await
     }
 
     /// Validates a token and returns (user_id, group, token_quota_limit, token_used_quota)
@@ -322,13 +291,11 @@ impl RouterDatabase {
 
         let placeholder = if db.kind() == "postgres" { "$1" } else { "?" };
 
-        // Assuming tokens.key matches the bearer token
-        // And tokens.user_id links to users.id
         let query = format!(
             r#"
             SELECT u.id, u.{}, t.remain_quota, t.used_quota
-            FROM tokens t
-            JOIN users u ON t.user_id = u.id
+            FROM user_api_keys t
+            JOIN user_accounts u ON t.user_id = u.id
             WHERE t.key = {} AND t.status = 1 AND u.status = 1
             "#,
             group_col, placeholder
@@ -345,50 +312,50 @@ impl RouterDatabase {
 
     // ============== Group delegations ==============
 
-    pub async fn get_all_groups(db: &Database) -> Result<Vec<DbGroup>> {
-        GroupModel::get_all(db).await
+    pub async fn get_all_groups(db: &Database) -> Result<Vec<RouterGroup>> {
+        RouterGroupModel::get_all(db).await
     }
 
-    pub async fn get_group_by_id(db: &Database, id: &str) -> Result<Option<DbGroup>> {
-        GroupModel::get(db, id).await
+    pub async fn get_group_by_id(db: &Database, id: &str) -> Result<Option<RouterGroup>> {
+        RouterGroupModel::get(db, id).await
     }
 
-    pub async fn create_group(db: &Database, g: &DbGroup) -> Result<()> {
-        GroupModel::create(db, g).await
+    pub async fn create_group(db: &Database, g: &RouterGroup) -> Result<()> {
+        RouterGroupModel::create(db, g).await
     }
 
     pub async fn delete_group(db: &Database, id: &str) -> Result<()> {
-        GroupModel::delete(db, id).await
+        RouterGroupModel::delete(db, id).await
     }
 
     // ============== Group member delegations ==============
 
-    pub async fn get_group_members(db: &Database) -> Result<Vec<DbGroupMember>> {
-        GroupMemberModel::get_all(db).await
+    pub async fn get_group_members(db: &Database) -> Result<Vec<RouterGroupMember>> {
+        RouterGroupMemberModel::get_all(db).await
     }
 
     pub async fn get_group_members_by_group(
         db: &Database,
         group_id: &str,
-    ) -> Result<Vec<DbGroupMember>> {
-        GroupMemberModel::get_by_group(db, group_id).await
+    ) -> Result<Vec<RouterGroupMember>> {
+        RouterGroupMemberModel::get_by_group(db, group_id).await
     }
 
     pub async fn set_group_members(
         db: &Database,
         group_id: &str,
-        members: Vec<DbGroupMember>,
+        members: Vec<RouterGroupMember>,
     ) -> Result<()> {
-        GroupMemberModel::set_for_group(db, group_id, members).await
+        RouterGroupMemberModel::set_for_group(db, group_id, members).await
     }
 
     // ============== Log delegations ==============
 
-    pub async fn insert_log(db: &Database, log: &DbRouterLog) -> Result<()> {
+    pub async fn insert_log(db: &Database, log: &RouterLog) -> Result<()> {
         RouterLogModel::insert(db, log).await
     }
 
-    pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<DbRouterLog>> {
+    pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<RouterLog>> {
         RouterLogModel::get(db, limit, offset).await
     }
 
@@ -399,7 +366,7 @@ impl RouterDatabase {
         model: Option<&str>,
         limit: i32,
         offset: i32,
-    ) -> Result<Vec<DbRouterLog>> {
+    ) -> Result<Vec<RouterLog>> {
         RouterLogModel::get_filtered(db, user_id, upstream_id, model, limit, offset).await
     }
 
@@ -432,12 +399,8 @@ impl RouterDatabase {
         let is_postgres = db.kind() == "postgres";
 
         // Get current balances
-        let balances_sql = if is_postgres {
-            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = $1"
-        } else {
-            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?"
-        };
-        let balances: Option<(i64, i64)> = sqlx::query_as(balances_sql)
+        let balances_sql = adapt_sql(is_postgres, "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ?");
+        let balances: Option<(i64, i64)> = sqlx::query_as(&balances_sql)
             .bind(user_id)
             .fetch_optional(conn.pool())
             .await?;
@@ -467,15 +430,11 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_cny_sql = if is_postgres {
-                "UPDATE users SET balance_cny = 0 WHERE id = $1"
-            } else {
-                "UPDATE users SET balance_cny = 0 WHERE id = ?"
-            };
+            let clear_cny_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_cny = 0 WHERE id = ?");
 
             // Deduct remaining CNY
             if balance_cny > 0 {
-                sqlx::query(clear_cny_sql)
+                sqlx::query(&clear_cny_sql)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
@@ -483,12 +442,8 @@ impl RouterDatabase {
 
             // Deduct required USD (already integer, no need to round)
             let usd_to_deduct = required_usd as i64;
-            let deduct_usd_sql = if is_postgres {
-                "UPDATE users SET balance_usd = balance_usd - $1 WHERE id = $2 AND balance_usd >= $3"
-            } else {
-                "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
-            };
-            sqlx::query(deduct_usd_sql)
+            let deduct_usd_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?");
+            sqlx::query(&deduct_usd_sql)
                 .bind(usd_to_deduct)
                 .bind(user_id)
                 .bind(usd_to_deduct)
@@ -520,15 +475,11 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_usd_sql = if is_postgres {
-                "UPDATE users SET balance_usd = 0 WHERE id = $1"
-            } else {
-                "UPDATE users SET balance_usd = 0 WHERE id = ?"
-            };
+            let clear_usd_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_usd = 0 WHERE id = ?");
 
             // Deduct remaining USD
             if balance_usd > 0 {
-                sqlx::query(clear_usd_sql)
+                sqlx::query(&clear_usd_sql)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
@@ -536,12 +487,8 @@ impl RouterDatabase {
 
             // Deduct required CNY (already integer, no need to round)
             let cny_to_deduct = required_cny as i64;
-            let deduct_cny_sql = if is_postgres {
-                "UPDATE users SET balance_cny = balance_cny - $1 WHERE id = $2 AND balance_cny >= $3"
-            } else {
-                "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
-            };
-            sqlx::query(deduct_cny_sql)
+            let deduct_cny_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?");
+            sqlx::query(&deduct_cny_sql)
                 .bind(cny_to_deduct)
                 .bind(user_id)
                 .bind(cny_to_deduct)
@@ -587,12 +534,8 @@ pub async fn get_usage_stats_by_token(
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    let sql = if is_postgres {
-        "SELECT user_id FROM router_tokens WHERE token = $1 AND status = 'active'"
-    } else {
-        "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'"
-    };
-    let user_id: Option<String> = sqlx::query_scalar(sql)
+    let sql = adapt_sql(is_postgres, "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'");
+    let user_id: Option<String> = sqlx::query_scalar(&sql)
         .bind(token_key)
         .fetch_optional(conn.pool())
         .await?;

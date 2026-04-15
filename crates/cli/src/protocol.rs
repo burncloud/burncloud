@@ -1,6 +1,6 @@
 use anyhow::Result;
 use burncloud_database::Database;
-use burncloud_database_models::{ProtocolConfigInput, ProtocolConfigModel};
+use burncloud_database_models::{ChannelProtocolConfigInput, ChannelProtocolConfigModel};
 use clap::ArgMatches;
 
 pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Result<()> {
@@ -15,7 +15,7 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
 
-            let configs = ProtocolConfigModel::list(db, limit, offset).await?;
+            let configs = ChannelProtocolConfigModel::list(db, limit, offset).await?;
 
             if configs.is_empty() {
                 println!("No protocol configs found.");
@@ -55,7 +55,7 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
             let response_mapping = sub_m.get_one::<String>("response-mapping").cloned();
             let detection_rules = sub_m.get_one::<String>("detection-rules").cloned();
 
-            let input = ProtocolConfigInput {
+            let input = ChannelProtocolConfigInput {
                 channel_type,
                 api_version: api_version.clone(),
                 is_default: Some(is_default),
@@ -67,7 +67,7 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
                 detection_rules,
             };
 
-            ProtocolConfigModel::upsert(db, &input).await?;
+            ChannelProtocolConfigModel::upsert(db, &input).await?;
             println!(
                 "✓ Protocol config added: {} ({})",
                 channel_type_to_name(channel_type),
@@ -80,7 +80,7 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
 
-            let deleted = ProtocolConfigModel::delete(db, id).await?;
+            let deleted = ChannelProtocolConfigModel::delete(db, id).await?;
             if deleted {
                 println!("✓ Protocol config {} deleted", id);
             } else {
@@ -94,7 +94,7 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
                 .unwrap_or(0);
 
             // For show, we need to get by ID which isn't implemented, so use list and filter
-            let configs = ProtocolConfigModel::list(db, 1000, 0).await?;
+            let configs = ChannelProtocolConfigModel::list(db, 1000, 0).await?;
             let config = configs.iter().find(|c| c.id == id);
 
             match config {

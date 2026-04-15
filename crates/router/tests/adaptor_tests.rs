@@ -2,7 +2,7 @@ mod common;
 
 use burncloud_common::dollars_to_nano;
 use burncloud_database::sqlx;
-use burncloud_database_models::{PriceInput, PriceModel};
+use burncloud_database_models::{PriceInput, BillingPriceModel};
 use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
@@ -17,7 +17,7 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
     }
     let api_key = env_key;
 
-    let (_db, pool) = setup_db().await?;
+    let (db, pool) = setup_db().await?;
 
     let id = "gemini-adaptor-test";
     let name = "gemini-pro";
@@ -143,7 +143,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
 
     // Seed a price for claude-3-opus so the preflight billing check passes.
     sqlx::query(
-        "INSERT OR IGNORE INTO prices (model, currency, input_price, output_price, region) \
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) \
          VALUES ('claude-3-opus', 'USD', 1, 1, '')",
     )
     .execute(&pool)
@@ -291,7 +291,7 @@ async fn setup_gemini_25_pro_with_port(
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     start_test_server(port).await;
 
@@ -605,7 +605,7 @@ async fn setup_gemini_25_flash_with_port(
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     start_test_server(port).await;
 
@@ -886,10 +886,10 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     // Verify pricing was set correctly
-    let price = PriceModel::get(&db, GEMINI_25_FLASH_MODEL, "USD", Some("international")).await?;
+    let price = BillingPriceModel::get(&db, GEMINI_25_FLASH_MODEL, "USD", Some("international")).await?;
 
     assert!(
         price.is_some(),
@@ -923,7 +923,7 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
     let prompt_tokens = 1000;
     let completion_tokens = 500;
 
-    let cost_nano = PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
+    let cost_nano = BillingPriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
     let cost_dollars = cost_nano as f64 / 1_000_000_000.0;
 
     // Expected: (1000/1M * $0.075) + (500/1M * $0.30) = $0.000075 + $0.00015 = $0.000225
@@ -985,10 +985,10 @@ async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     // Verify pricing was set correctly
-    let price = PriceModel::get(&db, GEMINI_25_PRO_MODEL, "USD", Some("international")).await?;
+    let price = BillingPriceModel::get(&db, GEMINI_25_PRO_MODEL, "USD", Some("international")).await?;
 
     assert!(
         price.is_some(),
@@ -1022,7 +1022,7 @@ async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
     let prompt_tokens = 1000;
     let completion_tokens = 500;
 
-    let cost_nano = PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
+    let cost_nano = BillingPriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
     let cost_dollars = cost_nano as f64 / 1_000_000_000.0;
 
     // Expected: (1000/1M * $1.25) + (500/1M * $10.00) = $0.00125 + $0.005 = $0.00625
@@ -1123,7 +1123,7 @@ async fn setup_gemini_multimodal_with_port(
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     start_test_server(port).await;
 
@@ -1471,10 +1471,10 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     // Verify pricing was set correctly
-    let price = PriceModel::get(&db, model, "USD", Some("international")).await?;
+    let price = BillingPriceModel::get(&db, model, "USD", Some("international")).await?;
 
     assert!(price.is_some(), "Price should be found for {}", model);
     let price = price.unwrap();
@@ -1508,7 +1508,7 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     let completion_tokens = 1_000;
 
     // Text input cost calculation
-    let text_cost_nano = PriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
+    let text_cost_nano = BillingPriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
     let text_cost_dollars = text_cost_nano as f64 / 1_000_000_000.0;
 
     // Audio input cost calculation (manual with audio price)
@@ -1726,7 +1726,7 @@ async fn setup_gemini_25_flash_image_with_port(
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     start_test_server(port).await;
 
@@ -2220,10 +2220,10 @@ async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&db, &price_input).await?;
+    BillingPriceModel::upsert(&db, &price_input).await?;
 
     // Verify pricing was set correctly
-    let price = PriceModel::get(
+    let price = BillingPriceModel::get(
         &db,
         GEMINI_25_FLASH_IMAGE_MODEL,
         "USD",

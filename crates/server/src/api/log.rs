@@ -23,7 +23,7 @@ struct BillingSummaryParams {
 
 #[derive(Serialize)]
 struct LogPage {
-    data: Vec<burncloud_service_router_log::DbRouterLog>,
+    data: Vec<burncloud_service_router_log::RouterLog>,
     page: i32,
     page_size: i32,
 }

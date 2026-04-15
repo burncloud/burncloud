@@ -1,7 +1,7 @@
 mod common;
 
 use burncloud_common::dollars_to_nano;
-use burncloud_database_models::{PriceInput, PriceModel};
+use burncloud_database_models::{PriceInput, BillingPriceModel};
 use common::setup_db;
 
 /// Helper to convert dollars to nanodollars as i64
@@ -53,10 +53,10 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&_db, &input).await?;
+    BillingPriceModel::upsert(&_db, &input).await?;
 
     // Get the price and verify
-    let price = PriceModel::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
+    let price = BillingPriceModel::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
     assert!(price.is_some(), "Price should be found");
 
     let price = price.unwrap();
@@ -66,7 +66,7 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
     // Calculate cost for 100 prompt + 200 completion tokens
     // Expected: (100 * 30 / 1_000_000) + (200 * 60 / 1_000_000)
     //         = 0.003 + 0.012 = 0.015
-    let cost_nano = PriceModel::calculate_cost(&price, 100, 200);
+    let cost_nano = BillingPriceModel::calculate_cost(&price, 100, 200);
     let cost = from_nano(cost_nano);
     let expected_cost = (100.0 / 1_000_000.0) * 30.0 + (200.0 / 1_000_000.0) * 60.0;
 
@@ -87,7 +87,7 @@ async fn test_pricing_list() -> anyhow::Result<()> {
     let (_db, _pool) = setup_db().await?;
 
     // List all prices (should include default pricing)
-    let prices = PriceModel::list(&_db, 100, 0, None, None).await?;
+    let prices = BillingPriceModel::list(&_db, 100, 0, None, None).await?;
 
     println!("Found {} prices", prices.len());
 
@@ -144,17 +144,17 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&_db, &input).await?;
+    BillingPriceModel::upsert(&_db, &input).await?;
 
     // Verify it exists
-    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price = BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
 
     // Delete it
-    PriceModel::delete(&_db, "test-delete-model", "USD", Some("international")).await?;
+    BillingPriceModel::delete(&_db, "test-delete-model", "USD", Some("international")).await?;
 
     // Verify it's gone
-    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price = BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_none());
 
     // Recreate with different price
@@ -188,10 +188,10 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
         realtime_pricing: None,
         model_type: None,
     };
-    PriceModel::upsert(&_db, &input2).await?;
+    BillingPriceModel::upsert(&_db, &input2).await?;
 
     // Verify new price
-    let price = PriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price = BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
     let price = price.unwrap();
     assert_eq!(price.input_price, to_nano(50.0));
@@ -239,7 +239,7 @@ async fn test_upsert_idempotency() -> anyhow::Result<()> {
     };
 
     // Insert first time
-    PriceModel::upsert(&db, &input).await?;
+    BillingPriceModel::upsert(&db, &input).await?;
 
     // Insert second time with updated prices
     let input2 = PriceInput {
@@ -247,10 +247,10 @@ async fn test_upsert_idempotency() -> anyhow::Result<()> {
         output_price: to_nano(18.0),
         ..input
     };
-    PriceModel::upsert(&db, &input2).await?;
+    BillingPriceModel::upsert(&db, &input2).await?;
 
     // Exactly one row should exist
-    let all = PriceModel::list(&db, i32::MAX, 0, None, None).await?;
+    let all = BillingPriceModel::list(&db, i32::MAX, 0, None, None).await?;
     let matching: Vec<_> = all
         .iter()
         .filter(|p| p.model == "idempotency-test-model")
@@ -263,7 +263,7 @@ async fn test_upsert_idempotency() -> anyhow::Result<()> {
     );
 
     // Price should reflect the second upsert
-    let price = PriceModel::get(&db, "idempotency-test-model", "USD", None).await?;
+    let price = BillingPriceModel::get(&db, "idempotency-test-model", "USD", None).await?;
     assert!(price.is_some());
     let price = price.unwrap();
     assert_eq!(

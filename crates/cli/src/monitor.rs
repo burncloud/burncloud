@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::ChannelModel;
+use burncloud_database_models::ChannelProviderModel;
 use clap::ArgMatches;
 use serde::Serialize;
 
@@ -28,7 +28,7 @@ pub async fn cmd_monitor_status(db: &Database, matches: &ArgMatches) -> Result<(
         .unwrap_or("table");
 
     // Get channel counts
-    let channels = ChannelModel::list(db, 10000, 0).await?;
+    let channels = ChannelProviderModel::list(db, 10000, 0).await?;
     let total_channels = channels.len();
     let active_channels = channels.iter().filter(|c| c.status == 1).count();
 

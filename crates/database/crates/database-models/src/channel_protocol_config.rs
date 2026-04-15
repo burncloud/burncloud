@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Protocol configuration for dynamic protocol adapters
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ProtocolConfig {
+pub struct ChannelProtocolConfig {
     pub id: i32,
     pub channel_type: i32,
     pub api_version: String,
@@ -19,9 +19,9 @@ pub struct ProtocolConfig {
     pub updated_at: Option<i64>,
 }
 
-/// Input for creating/updating a protocol config
+/// Input for creating/updating a channel protocol config
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProtocolConfigInput {
+pub struct ChannelProtocolConfigInput {
     pub channel_type: i32,
     pub api_version: String,
     pub is_default: Option<bool>,
@@ -33,15 +33,15 @@ pub struct ProtocolConfigInput {
     pub detection_rules: Option<String>,
 }
 
-pub struct ProtocolConfigModel;
+pub struct ChannelProtocolConfigModel;
 
-impl ProtocolConfigModel {
+impl ChannelProtocolConfigModel {
     /// Get protocol config by channel type and API version
     pub async fn get_by_type_version(
         db: &Database,
         channel_type: i32,
         api_version: &str,
-    ) -> Result<Option<ProtocolConfig>> {
+    ) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
             "postgres" => {
@@ -49,7 +49,7 @@ impl ProtocolConfigModel {
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
-                FROM protocol_configs
+                FROM channel_protocol_configs
                 WHERE channel_type = $1 AND api_version = $2
                 "#
             }
@@ -58,7 +58,7 @@ impl ProtocolConfigModel {
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
-                FROM protocol_configs
+                FROM channel_protocol_configs
                 WHERE channel_type = ? AND api_version = ?
                 "#
             }
@@ -74,7 +74,7 @@ impl ProtocolConfigModel {
     }
 
     /// Get the default protocol config for a channel type
-    pub async fn get_default(db: &Database, channel_type: i32) -> Result<Option<ProtocolConfig>> {
+    pub async fn get_default(db: &Database, channel_type: i32) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
             "postgres" => {
@@ -82,7 +82,7 @@ impl ProtocolConfigModel {
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
-                FROM protocol_configs
+                FROM channel_protocol_configs
                 WHERE channel_type = $1 AND is_default = TRUE
                 "#
             }
@@ -91,7 +91,7 @@ impl ProtocolConfigModel {
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
-                FROM protocol_configs
+                FROM channel_protocol_configs
                 WHERE channel_type = ? AND is_default = 1
                 "#
             }
@@ -106,7 +106,7 @@ impl ProtocolConfigModel {
     }
 
     /// List all protocol configs
-    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<ProtocolConfig>> {
+    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
             "postgres" => {
@@ -114,7 +114,7 @@ impl ProtocolConfigModel {
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
-                FROM protocol_configs
+                FROM channel_protocol_configs
                 ORDER BY channel_type, api_version
                 LIMIT $1 OFFSET $2
                 "#
@@ -124,7 +124,7 @@ impl ProtocolConfigModel {
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
-                FROM protocol_configs
+                FROM channel_protocol_configs
                 ORDER BY channel_type, api_version
                 LIMIT ? OFFSET ?
                 "#
@@ -141,7 +141,7 @@ impl ProtocolConfigModel {
     }
 
     /// Create or update a protocol config (upsert)
-    pub async fn upsert(db: &Database, input: &ProtocolConfigInput) -> Result<()> {
+    pub async fn upsert(db: &Database, input: &ChannelProtocolConfigInput) -> Result<()> {
         let conn = db.get_connection()?;
         let now = current_timestamp();
 
@@ -151,9 +151,9 @@ impl ProtocolConfigModel {
         if is_default {
             let clear_sql = match db.kind().as_str() {
                 "postgres" => {
-                    "UPDATE protocol_configs SET is_default = FALSE WHERE channel_type = $1"
+                    "UPDATE channel_protocol_configs SET is_default = FALSE WHERE channel_type = $1"
                 }
-                _ => "UPDATE protocol_configs SET is_default = 0 WHERE channel_type = ?",
+                _ => "UPDATE channel_protocol_configs SET is_default = 0 WHERE channel_type = ?",
             };
             sqlx::query(clear_sql)
                 .bind(input.channel_type)
@@ -164,7 +164,7 @@ impl ProtocolConfigModel {
         let sql = match db.kind().as_str() {
             "postgres" => {
                 r#"
-                INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint,
+                INSERT INTO channel_protocol_configs (channel_type, api_version, is_default, chat_endpoint,
                     embed_endpoint, models_endpoint, request_mapping, response_mapping,
                     detection_rules, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -181,7 +181,7 @@ impl ProtocolConfigModel {
             }
             _ => {
                 r#"
-                INSERT INTO protocol_configs (channel_type, api_version, is_default, chat_endpoint,
+                INSERT INTO channel_protocol_configs (channel_type, api_version, is_default, chat_endpoint,
                     embed_endpoint, models_endpoint, request_mapping, response_mapping,
                     detection_rules, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -220,8 +220,8 @@ impl ProtocolConfigModel {
     pub async fn delete(db: &Database, id: i32) -> Result<bool> {
         let conn = db.get_connection()?;
         let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM protocol_configs WHERE id = $1",
-            _ => "DELETE FROM protocol_configs WHERE id = ?",
+            "postgres" => "DELETE FROM channel_protocol_configs WHERE id = $1",
+            _ => "DELETE FROM channel_protocol_configs WHERE id = ?",
         };
 
         let result = sqlx::query(sql).bind(id).execute(conn.pool()).await?;
