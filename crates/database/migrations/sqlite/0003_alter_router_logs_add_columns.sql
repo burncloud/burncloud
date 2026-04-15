@@ -1,5 +1,5 @@
 -- Migration 0003: Add model and multimodal token columns to router_logs
--- SQLite does not support IF NOT EXISTS on ALTER TABLE; the runner handles errors.
+-- SQLite does not support IF NOT EXISTS on ALTER TABLE. The runner handles errors.
 
 ALTER TABLE router_logs ADD COLUMN model TEXT;
 ALTER TABLE router_logs ADD COLUMN cache_read_tokens INTEGER DEFAULT 0;

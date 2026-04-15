@@ -83,7 +83,10 @@ impl Database {
                 .await;
         }
 
-        // Initialize New API Schema
+        // Run versioned DDL migrations first (creates all tables and columns).
+        crate::migration::MigrationRunner::run(self).await?;
+
+        // Run post-migration data fixups and seed initial records.
         crate::schema::Schema::init(self).await?;
 
         Ok(())

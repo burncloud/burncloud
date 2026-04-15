@@ -164,11 +164,16 @@ async fn seed_demo_user(pool: &AnyPool) -> Result<()> {
 
 /// Insert the default demo token if it does not yet exist.
 async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
+    // If the tokens table doesn't exist yet (fresh database before migrations run),
+    // skip seeding and return Ok — the table will be created by MigrationRunner later.
     let t_count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM tokens WHERE key = 'sk-burncloud-demo'")
+        match sqlx::query_scalar("SELECT count(*) FROM tokens WHERE key = 'sk-burncloud-demo'")
             .fetch_one(pool)
             .await
-            .unwrap_or(0);
+        {
+            Ok(n) => n,
+            Err(_) => return Ok(()), // table absent — skip seeding
+        };
 
     if t_count != 0 {
         return Ok(());
@@ -204,10 +209,14 @@ async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
 
 /// Insert the four default protocol configs if the table is empty.
 async fn seed_protocol_configs(pool: &AnyPool, kind: &str) -> Result<()> {
-    let pc_count: i64 = sqlx::query_scalar("SELECT count(*) FROM protocol_configs")
+    // Skip seeding if the table doesn't exist yet (fresh database before migrations run).
+    let pc_count: i64 = match sqlx::query_scalar("SELECT count(*) FROM protocol_configs")
         .fetch_one(pool)
         .await
-        .unwrap_or(0);
+    {
+        Ok(n) => n,
+        Err(_) => return Ok(()), // table absent — skip seeding
+    };
 
     if pc_count != 0 {
         return Ok(());

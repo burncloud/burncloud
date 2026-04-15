@@ -30,6 +30,14 @@ impl SettingDatabase {
         Ok(setting_db)
     }
 
+    /// Create a SettingDatabase wrapping an existing database connection.
+    /// Initialises the settings table on the provided database.
+    pub async fn new_with_db(db: Database) -> Result<Self> {
+        let setting_db = Self { db };
+        setting_db.init_tables().await?;
+        Ok(setting_db)
+    }
+
     /// 初始化数据库表结构
     async fn init_tables(&self) -> Result<()> {
         let create_table_sql = r#"
