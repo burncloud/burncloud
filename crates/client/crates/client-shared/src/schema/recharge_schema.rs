@@ -3,49 +3,49 @@
 
 use serde_json::json;
 
-/// Recharge（充值记录）实体的 JSON Schema 定义
+/// Recharge record entity JSON Schema definition
 pub fn recharge_schema() -> serde_json::Value {
     json!({
         "entity_type": "recharge",
-        "label": "充值记录",
+        "label": "schema.recharge.label",
         "fields": [
             {
                 "key": "id",
-                "label": "交易 ID",
+                "label": "schema.recharge.field.id.label",
                 "type": "text",
                 "visibility": "table_only"
             },
             {
                 "key": "created_at",
-                "label": "时间",
+                "label": "schema.recharge.field.created_at.label",
                 "type": "text",
                 "visibility": "table_only"
             },
             {
                 "key": "description",
-                "label": "描述",
+                "label": "schema.recharge.field.description.label",
                 "type": "text",
                 "visibility": "table_only"
             },
             {
                 "key": "amount",
-                "label": "金额",
+                "label": "schema.recharge.field.amount.label",
                 "type": "number",
                 "visibility": "table_only"
             },
             {
                 "key": "status",
-                "label": "状态",
+                "label": "schema.recharge.field.status.label",
                 "type": "text",
                 "visibility": "table_only"
             }
         ],
         "table_columns": [
-            {"key": "id", "label": "交易 ID", "render": "monospace"},
-            {"key": "created_at", "label": "时间", "render": "text"},
-            {"key": "description", "label": "描述", "render": "text"},
-            {"key": "amount", "label": "金额", "render": "money"},
-            {"key": "status", "label": "状态", "render": "status_badge", "active_value": "success", "active_label": "成功", "inactive_label": "失败"}
+            {"key": "id", "label": "schema.recharge.field.id.label", "render": "monospace"},
+            {"key": "created_at", "label": "schema.recharge.field.created_at.label", "render": "text"},
+            {"key": "description", "label": "schema.recharge.field.description.label", "render": "text"},
+            {"key": "amount", "label": "schema.recharge.field.amount.label", "render": "money"},
+            {"key": "status", "label": "schema.recharge.field.status.label", "render": "status_badge", "active_value": "success", "active_label": "Success", "inactive_label": "Failed"}
         ],
         "form_sections": []
     })

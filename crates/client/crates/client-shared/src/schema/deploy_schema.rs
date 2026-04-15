@@ -3,15 +3,15 @@
 
 use serde_json::json;
 
-/// Deploy 表单的 JSON Schema 定义
+/// Deploy form JSON Schema definition
 pub fn deploy_schema() -> serde_json::Value {
     json!({
         "entity_type": "deploy",
-        "label": "模型部署",
+        "label": "schema.deploy.label",
         "fields": [
             {
                 "key": "source",
-                "label": "来源",
+                "label": "schema.deploy.field.source.label",
                 "type": "select",
                 "required": true,
                 "default": "HuggingFace",
@@ -30,7 +30,7 @@ pub fn deploy_schema() -> serde_json::Value {
         ],
         "table_columns": [],
         "form_sections": [
-            {"title": "部署配置", "fields": ["source", "model_id"]}
+            {"title": "schema.deploy.section.label", "fields": ["source", "model_id"]}
         ]
     })
 }

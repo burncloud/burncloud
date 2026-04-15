@@ -15,7 +15,7 @@ use serde_json::json;
 pub fn channel_schema() -> serde_json::Value {
     json!({
         "entity_type": "channel",
-        "label": "渠道",
+        "label": "schema.channel.label",
         "fields": [
             {
                 "key": "id",
@@ -26,13 +26,13 @@ pub fn channel_schema() -> serde_json::Value {
             },
             {
                 "key": "name",
-                "label": "连接名称",
+                "label": "schema.channel.field.name.label",
                 "type": "text",
                 "required": true
             },
             {
                 "key": "type",
-                "label": "供应商类型",
+                "label": "schema.channel.field.type.label",
                 "type": "select",
                 "default": "1",
                 "visibility": "hidden",
@@ -47,7 +47,7 @@ pub fn channel_schema() -> serde_json::Value {
             },
             {
                 "key": "status",
-                "label": "状态",
+                "label": "schema.channel.field.status.label",
                 "type": "number",
                 "default": 1,
                 "visibility": "hidden"
@@ -60,27 +60,27 @@ pub fn channel_schema() -> serde_json::Value {
             },
             {
                 "key": "models",
-                "label": "模型",
+                "label": "schema.channel.field.models.label",
                 "type": "text",
                 "visibility": "hidden"
             },
             {
                 "key": "group",
-                "label": "分组",
+                "label": "schema.channel.field.group.label",
                 "type": "text",
                 "default": "default",
                 "visibility": "hidden"
             },
             {
                 "key": "priority",
-                "label": "优先级",
+                "label": "schema.channel.field.priority.label",
                 "type": "number",
                 "default": 0,
                 "visibility": "hidden"
             },
             {
                 "key": "weight",
-                "label": "权重",
+                "label": "schema.channel.field.weight.label",
                 "type": "number",
                 "default": 0,
                 "visibility": "hidden"
@@ -102,7 +102,7 @@ pub fn channel_schema() -> serde_json::Value {
             // Google: Auth Type 选择
             {
                 "key": "google_auth_type",
-                "label": "认证类型",
+                "label": "schema.channel.field.google_auth_type.label",
                 "type": "select",
                 "default": "api_key",
                 "options": [
@@ -136,7 +136,7 @@ pub fn channel_schema() -> serde_json::Value {
             // Google: Region (vertex mode)
             {
                 "key": "google_region",
-                "label": "区域 (Region)",
+                "label": "schema.channel.field.region.label",
                 "type": "select",
                 "default": "us-central1",
                 "options": [
@@ -183,7 +183,7 @@ pub fn channel_schema() -> serde_json::Value {
             },
             {
                 "key": "aws_region",
-                "label": "区域 (Region)",
+                "label": "schema.channel.field.region.label",
                 "type": "select",
                 "default": "us-east-1",
                 "options": [
@@ -258,8 +258,8 @@ pub fn channel_schema() -> serde_json::Value {
             {"key": "models", "label": "Models", "render": "tags"}
         ],
         "form_sections": [
-            {"title": "基本信息", "fields": ["name"]},
-            {"title": "认证配置", "fields": [
+            {"title": "schema.channel.section.basic.label", "fields": ["name"]},
+            {"title": "schema.channel.section.auth.label", "fields": [
                 "key", "google_auth_type", "google_key", "google_vertex_key",
                 "google_region", "google_project_id",
                 "aws_key", "aws_sk", "aws_region", "aws_model_id",

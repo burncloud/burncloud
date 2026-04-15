@@ -4,67 +4,67 @@
 
 use serde_json::json;
 
-/// 注册表单 Schema
+/// Register form Schema
 pub fn register_schema() -> serde_json::Value {
     json!({
         "entity_type": "register",
-        "label": "注册",
+        "label": "schema.register.label",
         "fields": [
             {
                 "key": "username",
-                "label": "用户名",
+                "label": "schema.register.field.username.label",
                 "type": "text",
                 "required": true,
-                "placeholder": "设置您的唯一标识",
+                "placeholder": "schema.register.field.username.placeholder",
                 "validation": [
-                    {"rule": "min_length", "value": 3, "message": "用户名至少需要3个字符"},
-                    {"rule": "max_length", "value": 20, "message": "用户名不能超过20个字符"},
-                    {"rule": "pattern", "value": "^[a-zA-Z0-9_]+$", "message": "用户名只能包含字母、数字和下划线"}
+                    {"rule": "min_length", "value": 3, "message": "schema.register.field.username.error.min_length"},
+                    {"rule": "max_length", "value": 20, "message": "schema.register.field.username.error.max_length"},
+                    {"rule": "pattern", "value": "^[a-zA-Z0-9_]+$", "message": "schema.register.field.username.error.pattern"}
                 ]
             },
             {
                 "key": "email",
-                "label": "邮箱",
+                "label": "schema.register.field.email.label",
                 "type": "text",
                 "required": false,
-                "placeholder": "用于接收通知 (可选)",
+                "placeholder": "schema.register.field.email.placeholder",
                 "validation": [
-                    {"rule": "email", "message": "邮箱格式不正确"}
+                    {"rule": "email", "message": "schema.register.field.email.error.invalid"}
                 ]
             },
             {
                 "key": "password",
-                "label": "密码",
+                "label": "schema.register.field.password.label",
                 "type": "password",
                 "required": true,
-                "placeholder": "设置强密码",
+                "placeholder": "schema.register.field.password.placeholder",
                 "validation": [
-                    {"rule": "min_length", "value": 8, "message": "密码至少需要8个字符"}
+                    {"rule": "min_length", "value": 8, "message": "schema.register.field.password.error.min_length"}
                 ]
             },
             {
                 "key": "confirm_password",
-                "label": "确认密码",
+                "label": "schema.register.field.confirm_password.label",
                 "type": "password",
                 "required": true,
-                "placeholder": "再次输入密码",
+                "placeholder": "schema.register.field.confirm_password.placeholder",
                 "validation": [
-                    {"rule": "match", "field": "password", "message": "两次输入的密码不一致"}
+                    {"rule": "match", "field": "password", "message": "schema.register.field.confirm_password.error.mismatch"}
                 ]
             }
         ],
         "table_columns": [],
         "form_sections": [
-            {"title": "注册信息", "fields": ["username", "email", "password", "confirm_password"]}
+            {"title": "schema.register.section.label", "fields": ["username", "email", "password", "confirm_password"]}
         ]
     })
 }
 
-/// User 实体的 JSON Schema 定义
+/// User entity JSON Schema definition
 pub fn user_schema() -> serde_json::Value {
     json!({
         "entity_type": "user",
-        "label": "用户",
+        "label": "schema.user.label",
         "fields": [
             {
                 "key": "id",
@@ -74,73 +74,73 @@ pub fn user_schema() -> serde_json::Value {
             },
             {
                 "key": "username",
-                "label": "用户名",
+                "label": "schema.user.field.username.label",
                 "type": "text",
                 "required": true
             },
             {
                 "key": "role",
-                "label": "角色",
+                "label": "schema.user.field.role.label",
                 "type": "text",
                 "visibility": "table_only"
             },
             {
                 "key": "balance_cny",
-                "label": "CNY 余额",
+                "label": "schema.user.field.balance_cny.label",
                 "type": "number",
                 "visibility": "table_only"
             },
             {
                 "key": "balance_usd",
-                "label": "USD 余额",
+                "label": "schema.user.field.balance_usd.label",
                 "type": "number",
                 "visibility": "table_only"
             },
             {
                 "key": "group",
-                "label": "分组",
+                "label": "schema.user.field.group.label",
                 "type": "text",
                 "visibility": "table_only"
             },
             {
                 "key": "status",
-                "label": "状态",
+                "label": "schema.user.field.status.label",
                 "type": "number",
                 "visibility": "table_only"
             },
             {
                 "key": "created_at",
-                "label": "创建时间",
+                "label": "schema.user.field.created_at.label",
                 "type": "text",
                 "visibility": "table_only"
             }
         ],
         "table_columns": [
-            {"key": "username", "label": "客户信息", "render": "text"},
-            {"key": "role", "label": "角色", "render": "text"},
-            {"key": "balance_cny", "label": "账户余额", "render": "money"},
-            {"key": "status", "label": "状态", "render": "status_badge", "active_value": "1", "active_label": "正常", "inactive_label": "已禁用"}
+            {"key": "username", "label": "schema.user.field.username.label", "render": "text"},
+            {"key": "role", "label": "schema.user.field.role.label", "render": "text"},
+            {"key": "balance_cny", "label": "schema.user.field.balance_cny.label", "render": "money"},
+            {"key": "status", "label": "schema.user.field.status.label", "render": "status_badge", "active_value": "1", "active_label": "Active", "inactive_label": "Disabled"}
         ],
         "form_sections": []
     })
 }
 
-/// Topup（充值）表单的 Schema
+/// Topup form Schema
 pub fn topup_schema() -> serde_json::Value {
     json!({
         "entity_type": "topup",
-        "label": "充值",
+        "label": "schema.topup.label",
         "fields": [
             {
                 "key": "user_id",
-                "label": "用户 ID",
+                "label": "schema.topup.field.user_id.label",
                 "type": "text",
                 "required": true,
                 "visibility": "hidden"
             },
             {
                 "key": "amount",
-                "label": "充值金额 (CNY)",
+                "label": "schema.topup.field.amount.label",
                 "type": "number",
                 "required": true,
                 "placeholder": "100.00"
@@ -148,7 +148,7 @@ pub fn topup_schema() -> serde_json::Value {
         ],
         "table_columns": [],
         "form_sections": [
-            {"title": "充值", "fields": ["amount"]}
+            {"title": "schema.topup.section.label", "fields": ["amount"]}
         ]
     })
 }
