@@ -10,7 +10,7 @@ authors = ["burncloud contributors"]
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop"]
+desktop = ["dioxus/desktop", "dep:image"]
 web = ["dioxus/web"]
 liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
 
@@ -34,6 +34,7 @@ dioxus-router.workspace = true
 tokio.workspace = true
 serde_json.workspace = true
 dioxus-ssr = { workspace = true }
+image = { workspace = true, optional = true }
 
 # LiveView specific dependencies
 dioxus-liveview = { workspace = true, optional = true }
@@ -50,6 +51,9 @@ burncloud-client-tray.workspace = true
 
 [dev-dependencies]
 dioxus-ssr = { workspace = true }
+
+[target.'cfg(windows)'.build-dependencies]
+winres.workspace = true
 
 [lints]
 workspace = true
