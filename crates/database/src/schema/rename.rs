@@ -103,13 +103,11 @@ async fn copy_and_drop(pool: &AnyPool, kind: &str, old_table: &str, new_table: &
 /// Returns `true` if `table_name` exists in the connected database.
 async fn table_exists(pool: &AnyPool, kind: &str, table_name: &str) -> bool {
     let count: i64 = if kind == "sqlite" {
-        sqlx::query_scalar(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-        )
-        .bind(table_name)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0)
+        sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?")
+            .bind(table_name)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0)
     } else {
         sqlx::query_scalar(
             "SELECT COUNT(*) FROM information_schema.tables \

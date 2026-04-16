@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_service_group::{RouterGroup, RouterGroupMember, GroupMemberService, GroupService};
+use burncloud_service_group::{GroupMemberService, GroupService, RouterGroup, RouterGroupMember};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]

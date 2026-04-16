@@ -52,7 +52,8 @@ impl ChannelProtocolConfigModel {
                 FROM channel_protocol_configs
                 WHERE channel_type = {} AND api_version = {}
                 "#,
-            ph(is_postgres, 1), ph(is_postgres, 2)
+            ph(is_postgres, 1),
+            ph(is_postgres, 2)
         );
 
         let config = sqlx::query_as(&sql)
@@ -65,7 +66,10 @@ impl ChannelProtocolConfigModel {
     }
 
     /// Get the default protocol config for a channel type
-    pub async fn get_default(db: &Database, channel_type: i32) -> Result<Option<ChannelProtocolConfig>> {
+    pub async fn get_default(
+        db: &Database,
+        channel_type: i32,
+    ) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
         let sql = if is_postgres {
@@ -101,7 +105,11 @@ impl ChannelProtocolConfigModel {
     }
 
     /// List all protocol configs
-    pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<ChannelProtocolConfig>> {
+    pub async fn list(
+        db: &Database,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
         let sql = format!(
@@ -113,7 +121,8 @@ impl ChannelProtocolConfigModel {
                 ORDER BY channel_type, api_version
                 LIMIT {} OFFSET {}
                 "#,
-            ph(is_postgres, 1), ph(is_postgres, 2)
+            ph(is_postgres, 1),
+            ph(is_postgres, 2)
         );
 
         let configs = sqlx::query_as(&sql)

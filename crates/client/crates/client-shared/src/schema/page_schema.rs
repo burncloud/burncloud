@@ -53,18 +53,19 @@ impl PageSchema {
     /// Returns the canonical schema for a given page type.
     pub fn for_type(page_type: PageType) -> Self {
         let (bg_sequence, max_sections) = match page_type {
-            PageType::HeroLanding => (
-                vec![BgVariant::Dark, BgVariant::Light, BgVariant::Dark],
-                6,
-            ),
+            PageType::HeroLanding => (vec![BgVariant::Dark, BgVariant::Light, BgVariant::Dark], 6),
             PageType::ProductGrid => (vec![BgVariant::Light], 1),
-            PageType::ProductDetail => (
-                vec![BgVariant::Dark, BgVariant::Light, BgVariant::Dark],
-                6,
-            ),
+            PageType::ProductDetail => {
+                (vec![BgVariant::Dark, BgVariant::Light, BgVariant::Dark], 6)
+            }
             PageType::FormAuth => (vec![BgVariant::Light], 1),
             PageType::FeatureContent => (
-                vec![BgVariant::Light, BgVariant::Dark, BgVariant::Light, BgVariant::Dark],
+                vec![
+                    BgVariant::Light,
+                    BgVariant::Dark,
+                    BgVariant::Light,
+                    BgVariant::Dark,
+                ],
                 8,
             ),
             PageType::Error => (vec![BgVariant::Light], 1),

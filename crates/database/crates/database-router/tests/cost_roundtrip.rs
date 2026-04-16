@@ -16,7 +16,7 @@
 /// sqlx-any versions. Tests use RouterLogModel::get() and filter in Rust to stay on the
 /// well-tested code path.
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::{RouterLog, RouterDatabase, RouterLogModel};
+use burncloud_database_router::{RouterDatabase, RouterLog, RouterLogModel};
 use tempfile::NamedTempFile;
 
 /// Create an isolated SQLite test database backed by a temp file.

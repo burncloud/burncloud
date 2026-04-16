@@ -146,7 +146,10 @@ impl RouterLogModel {
         if let Some(user_id) = &log.user_id {
             let total_tokens = log.prompt_tokens + log.completion_tokens;
             if total_tokens > 0 {
-                let update_sql = adapt_sql(is_postgres, "UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?");
+                let update_sql = adapt_sql(
+                    is_postgres,
+                    "UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?",
+                );
                 sqlx::query(&update_sql)
                     .bind(total_tokens)
                     .bind(user_id)
@@ -533,7 +536,10 @@ impl BalanceModel {
         let is_postgres = db.kind() == "postgres";
 
         // Check current balance
-        let balance_sql = adapt_sql(is_postgres, "SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?");
+        let balance_sql = adapt_sql(
+            is_postgres,
+            "SELECT COALESCE(balance_usd, 0) FROM users WHERE id = ?",
+        );
         let balance: i64 = sqlx::query_scalar(&balance_sql)
             .bind(user_id)
             .fetch_one(conn.pool())
@@ -545,7 +551,10 @@ impl BalanceModel {
         }
 
         // Deduct
-        let deduct_sql = adapt_sql(is_postgres, "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?");
+        let deduct_sql = adapt_sql(
+            is_postgres,
+            "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
+        );
         let rows_affected = sqlx::query(&deduct_sql)
             .bind(cost_nano)
             .bind(user_id)
@@ -569,7 +578,10 @@ impl BalanceModel {
         let is_postgres = db.kind() == "postgres";
 
         // Check current balance
-        let balance_sql = adapt_sql(is_postgres, "SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?");
+        let balance_sql = adapt_sql(
+            is_postgres,
+            "SELECT COALESCE(balance_cny, 0) FROM users WHERE id = ?",
+        );
         let balance: i64 = sqlx::query_scalar(&balance_sql)
             .bind(user_id)
             .fetch_one(conn.pool())
@@ -581,7 +593,10 @@ impl BalanceModel {
         }
 
         // Deduct
-        let deduct_sql = adapt_sql(is_postgres, "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?");
+        let deduct_sql = adapt_sql(
+            is_postgres,
+            "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
+        );
         let rows_affected = sqlx::query(&deduct_sql)
             .bind(cost_nano)
             .bind(user_id)
@@ -620,7 +635,10 @@ impl BalanceModel {
         let is_postgres = db.kind() == "postgres";
 
         // Get current balances
-        let balances_sql = adapt_sql(is_postgres, "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?");
+        let balances_sql = adapt_sql(
+            is_postgres,
+            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM users WHERE id = ?",
+        );
         let balances: Option<(i64, i64)> = sqlx::query_as(&balances_sql)
             .bind(user_id)
             .fetch_optional(conn.pool())
@@ -647,7 +665,8 @@ impl BalanceModel {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_cny_sql = adapt_sql(is_postgres, "UPDATE users SET balance_cny = 0 WHERE id = ?");
+            let clear_cny_sql =
+                adapt_sql(is_postgres, "UPDATE users SET balance_cny = 0 WHERE id = ?");
 
             if balance_cny > 0 {
                 sqlx::query(&clear_cny_sql)
@@ -657,7 +676,10 @@ impl BalanceModel {
             }
 
             let usd_to_deduct = required_usd as i64;
-            let deduct_usd_sql = adapt_sql(is_postgres, "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?");
+            let deduct_usd_sql = adapt_sql(
+                is_postgres,
+                "UPDATE users SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
+            );
             sqlx::query(&deduct_usd_sql)
                 .bind(usd_to_deduct)
                 .bind(user_id)
@@ -685,7 +707,8 @@ impl BalanceModel {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_usd_sql = adapt_sql(is_postgres, "UPDATE users SET balance_usd = 0 WHERE id = ?");
+            let clear_usd_sql =
+                adapt_sql(is_postgres, "UPDATE users SET balance_usd = 0 WHERE id = ?");
 
             if balance_usd > 0 {
                 sqlx::query(&clear_usd_sql)
@@ -695,7 +718,10 @@ impl BalanceModel {
             }
 
             let cny_to_deduct = required_cny as i64;
-            let deduct_cny_sql = adapt_sql(is_postgres, "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?");
+            let deduct_cny_sql = adapt_sql(
+                is_postgres,
+                "UPDATE users SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
+            );
             sqlx::query(&deduct_cny_sql)
                 .bind(cny_to_deduct)
                 .bind(user_id)

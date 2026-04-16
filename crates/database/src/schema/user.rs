@@ -212,14 +212,15 @@ async fn seed_demo_user(pool: &AnyPool) -> Result<()> {
 async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
     // If the user_api_keys table doesn't exist yet (fresh database before migrations run),
     // skip seeding and return Ok — the table will be created by MigrationRunner later.
-    let t_count: i64 =
-        match sqlx::query_scalar("SELECT count(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'")
-            .fetch_one(pool)
-            .await
-        {
-            Ok(n) => n,
-            Err(_) => return Ok(()), // table absent — skip seeding
-        };
+    let t_count: i64 = match sqlx::query_scalar(
+        "SELECT count(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'",
+    )
+    .fetch_one(pool)
+    .await
+    {
+        Ok(n) => n,
+        Err(_) => return Ok(()), // table absent — skip seeding
+    };
 
     if t_count != 0 {
         return Ok(());
@@ -323,14 +324,8 @@ async fn seed_protocol_configs(pool: &AnyPool, kind: &str) -> Result<()> {
         _ => return Ok(()),
     };
 
-    for (
-        channel_type,
-        api_version,
-        is_default,
-        chat_endpoint,
-        embed_endpoint,
-        models_endpoint,
-    ) in default_protocols
+    for (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint) in
+        default_protocols
     {
         sqlx::query(insert_sql)
             .bind(channel_type)

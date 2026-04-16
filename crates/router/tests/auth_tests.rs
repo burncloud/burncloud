@@ -43,7 +43,7 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     let id = "bedrock-sonnet-test";
     let name = "AWS Bedrock Sonnet Test";
@@ -71,7 +71,7 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
     .await?;
 
     let port = 3002;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!(
@@ -103,7 +103,7 @@ async fn test_bedrock_proxy() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_deepseek_proxy() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
     let mock_port = 3020;
@@ -142,7 +142,7 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     .await?;
 
     let port = 3009;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}{}", port, match_path);
@@ -169,7 +169,7 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_qwen_proxy() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
     let mock_port = 3021;
@@ -208,7 +208,7 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     .await?;
 
     let port = 3010;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}{}", port, match_path);

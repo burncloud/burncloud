@@ -30,6 +30,6 @@ pub use layout::*;
 pub use placeholders::*;
 pub use schema_form::*;
 pub use schema_table::*;
-pub use standard_crud_page::*;
 pub use sidebar::*;
+pub use standard_crud_page::*;
 pub use title_bar::TitleBar;

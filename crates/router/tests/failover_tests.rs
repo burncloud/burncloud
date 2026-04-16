@@ -6,7 +6,7 @@ use reqwest::Client;
 
 #[tokio::test]
 async fn test_failover() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream for Alive Node
     let mock_port = 3023;
@@ -64,7 +64,7 @@ async fn test_failover() -> anyhow::Result<()> {
 
     // 4. Start Server
     let port = 3015;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}{}", port, match_path);

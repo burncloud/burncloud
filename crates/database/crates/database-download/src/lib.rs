@@ -64,10 +64,7 @@ impl DownloadDB {
         // Check whether created_at was stored with DATETIME affinity.
         // PRAGMA table_info returns one row per column; type = "DATETIME" means
         // the old schema. sqlx Any can query PRAGMA as raw rows.
-        let rows = self
-            .db
-            .query("PRAGMA table_info(sys_downloads)")
-            .await?;
+        let rows = self.db.query("PRAGMA table_info(sys_downloads)").await?;
 
         let needs_migration = rows.iter().any(|row| {
             use sqlx::Row;
@@ -82,7 +79,9 @@ impl DownloadDB {
         }
 
         // SQLite doesn't support ALTER COLUMN; recreate via rename-copy-drop.
-        self.db.execute_query("
+        self.db
+            .execute_query(
+                "
             BEGIN;
             ALTER TABLE sys_downloads RENAME TO sys_downloads_old;
             CREATE TABLE sys_downloads (
@@ -108,7 +107,9 @@ impl DownloadDB {
             DROP TABLE sys_downloads_old;
             CREATE INDEX IF NOT EXISTS idx_sys_downloads_status ON sys_downloads(status);
             COMMIT;
-        ").await?;
+        ",
+            )
+            .await?;
 
         Ok(())
     }
@@ -211,7 +212,9 @@ impl DownloadDB {
             }
             None => {
                 self.db
-                    .fetch_all::<SysDownload>("SELECT * FROM sys_downloads ORDER BY created_at DESC")
+                    .fetch_all::<SysDownload>(
+                        "SELECT * FROM sys_downloads ORDER BY created_at DESC",
+                    )
                     .await
             }
         }
@@ -219,7 +222,10 @@ impl DownloadDB {
 
     pub async fn delete(&self, gid: &str) -> Result<()> {
         self.db
-            .execute_query_with_params("DELETE FROM sys_downloads WHERE gid = ?", vec![gid.to_string()])
+            .execute_query_with_params(
+                "DELETE FROM sys_downloads WHERE gid = ?",
+                vec![gid.to_string()],
+            )
             .await?;
         Ok(())
     }

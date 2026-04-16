@@ -353,7 +353,8 @@ impl DynamicAdaptorFactory {
         api_version: &str,
     ) -> anyhow::Result<Option<Arc<dyn ChannelAdaptor>>> {
         let config =
-            ChannelProtocolConfigModel::get_by_type_version(&self.db, channel_type, api_version).await?;
+            ChannelProtocolConfigModel::get_by_type_version(&self.db, channel_type, api_version)
+                .await?;
 
         match config {
             Some(protocol_config) => {

@@ -162,7 +162,8 @@ impl UserService {
         if let Err(e) = UserDatabase::assign_role(db, &user.id, "user").await {
             log::warn!(
                 "Warning: Failed to assign default role to user {}: {}",
-                user.id, e
+                user.id,
+                e
             );
         }
 

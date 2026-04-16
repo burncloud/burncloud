@@ -128,7 +128,9 @@ impl UserDatabase {
         sqlx::query(user_roles_sql).execute(conn.pool()).await?;
         println!("UserDatabase: tables created/verified.");
 
-        sqlx::query(user_role_bindings_sql).execute(conn.pool()).await?;
+        sqlx::query(user_role_bindings_sql)
+            .execute(conn.pool())
+            .await?;
         sqlx::query(user_recharges_sql).execute(conn.pool()).await?;
 
         // Migrations for SQLite (Add columns if missing)
@@ -143,21 +145,24 @@ impl UserDatabase {
             let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN status INTEGER DEFAULT 1")
                 .execute(conn.pool())
                 .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_usd BIGINT DEFAULT 0")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_cny BIGINT DEFAULT 0")
-                .execute(conn.pool())
-                .await;
+            let _ =
+                sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_usd BIGINT DEFAULT 0")
+                    .execute(conn.pool())
+                    .await;
+            let _ =
+                sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_cny BIGINT DEFAULT 0")
+                    .execute(conn.pool())
+                    .await;
             let _ = sqlx::query(
                 "ALTER TABLE user_accounts ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
             )
             .execute(conn.pool())
             .await;
-            let _ =
-                sqlx::query("ALTER TABLE user_recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'")
-                    .execute(conn.pool())
-                    .await;
+            let _ = sqlx::query(
+                "ALTER TABLE user_recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
+            )
+            .execute(conn.pool())
+            .await;
         }
 
         // Migrations for PostgreSQL (Add columns if missing)
@@ -221,7 +226,10 @@ impl UserDatabase {
         Ok(())
     }
 
-    pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<UserAccount>> {
+    pub async fn get_user_by_username(
+        db: &Database,
+        username: &str,
+    ) -> Result<Option<UserAccount>> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
             "SELECT * FROM user_accounts WHERE username = $1"

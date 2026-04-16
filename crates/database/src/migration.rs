@@ -170,21 +170,17 @@ impl MigrationRunner {
     /// tracking table.
     async fn is_applied(pool: &sqlx::AnyPool, version: &str, kind: &str) -> bool {
         let count: i64 = if kind == "postgres" {
-            sqlx::query_scalar(
-                "SELECT COUNT(*) FROM _schema_migrations WHERE version = $1",
-            )
-            .bind(version)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0)
+            sqlx::query_scalar("SELECT COUNT(*) FROM _schema_migrations WHERE version = $1")
+                .bind(version)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0)
         } else {
-            sqlx::query_scalar(
-                "SELECT COUNT(*) FROM _schema_migrations WHERE version = ?",
-            )
-            .bind(version)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0)
+            sqlx::query_scalar("SELECT COUNT(*) FROM _schema_migrations WHERE version = ?")
+                .bind(version)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0)
         };
         count > 0
     }
@@ -227,21 +223,17 @@ impl MigrationRunner {
         // Record the migration as successfully applied.
         let now = current_timestamp();
         if kind == "postgres" {
-            sqlx::query(
-                "INSERT INTO _schema_migrations (version, applied_at) VALUES ($1, $2)",
-            )
-            .bind(migration.version)
-            .bind(now)
-            .execute(pool)
-            .await?;
+            sqlx::query("INSERT INTO _schema_migrations (version, applied_at) VALUES ($1, $2)")
+                .bind(migration.version)
+                .bind(now)
+                .execute(pool)
+                .await?;
         } else {
-            sqlx::query(
-                "INSERT INTO _schema_migrations (version, applied_at) VALUES (?, ?)",
-            )
-            .bind(migration.version)
-            .bind(now)
-            .execute(pool)
-            .await?;
+            sqlx::query("INSERT INTO _schema_migrations (version, applied_at) VALUES (?, ?)")
+                .bind(migration.version)
+                .bind(now)
+                .execute(pool)
+                .await?;
         }
 
         Ok(())

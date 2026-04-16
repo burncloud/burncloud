@@ -1,6 +1,6 @@
 use anyhow::Result;
 use burncloud_database::Database;
-use burncloud_database_router::{RouterGroup, RouterGroupMember, RouterDatabase};
+use burncloud_database_router::{RouterDatabase, RouterGroup, RouterGroupMember};
 use clap::ArgMatches;
 use serde::Serialize;
 use std::io::{self, Write};
