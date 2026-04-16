@@ -1,6 +1,6 @@
 # 数据模型规范
 
-> 在 `crates/database/crates/database-*/src/` 中定义或修改结构体时阅读。
+> 在 `crates/database/crates/*/src/` 中定义或修改结构体时阅读。
 
 ---
 
@@ -21,7 +21,7 @@
 ## 行类型规则
 
 ```rust
-// crates/database/crates/database-models/src/user_api_key.rs
+// crates/database/crates/models/src/user_api_key.rs
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserApiKey {

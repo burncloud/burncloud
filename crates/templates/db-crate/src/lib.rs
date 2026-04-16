@@ -1,4 +1,4 @@
-//! # burncloud-database-{{crate_name}}
+//! # burncloud-{{crate_name}}
 //!
 //! SQLx persistence for the `{{crate_name}}` domain type.
 //!

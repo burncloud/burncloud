@@ -253,7 +253,7 @@ impl Default for XxxService {
 ## 模板 5：Database Model（静态方法集合）
 
 ```rust
-// crates/database/crates/database-xxx/src/lib.rs
+// crates/database/crates/xxx/src/lib.rs
 
 use burncloud_database::{Database, DatabaseError};
 use burncloud_database::placeholder::{adapt_sql, ph, phs};
