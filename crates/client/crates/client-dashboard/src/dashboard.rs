@@ -1,4 +1,3 @@
-use burncloud_client_shared::components::logo::Logo;
 use burncloud_client_shared::i18n::use_i18n;
 use burncloud_client_shared::log_service::LogService;
 use burncloud_client_shared::monitor_service::MonitorService;
@@ -28,10 +27,6 @@ pub fn Dashboard() -> Element {
             // 1. Enterprise Header
             div { class: "flex items-end justify-between mb-xxxl",
                 div {
-                    div { class: "flex items-center gap-3 mb-md",
-                        Logo { class: "w-8 h-8 fill-current" }
-                        span { class: "font-semibold text-lg tracking-tight text-primary", "BurnCloud" }
-                    }
                     h1 { class: "text-4xl font-bold tracking-tight text-primary",
                         "企业控制台"
                     }
