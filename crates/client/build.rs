@@ -99,6 +99,20 @@ fn download_tailwind(cli: &std::path::Path, cli_name: &str) -> Result<(), String
 }
 
 fn main() {
+    // Embed icon resource into Windows executable
+    #[cfg(target_os = "windows")]
+    {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let ico_path = manifest_dir.join("assets/favicon.ico");
+        if ico_path.exists() {
+            let mut res = winres::WindowsResource::new();
+            res.set_icon(&ico_path.to_string_lossy());
+            if let Err(e) = res.compile() {
+                println!("cargo:warning=Failed to compile Windows icon resource: {e}");
+            }
+        }
+    }
+
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let config = manifest_dir.join("tailwind.config.js");
     let input = manifest_dir.join("input.css");

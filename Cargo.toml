@@ -131,6 +131,10 @@ winapi = { version = "0.3", features = ["winuser", "pdh", "psapi", "winbase", "w
 dioxus-desktop = "0.7.2"
 dioxus-ssr = "0.7.2"
 
+# Build
+winres = "0.1"
+image = "0.25"
+
 # Application
 self_update = { version = "0.42.0", features = ["archive-zip"] }
 systray = "0.4.0"
