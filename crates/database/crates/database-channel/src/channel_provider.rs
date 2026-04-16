@@ -22,7 +22,9 @@ impl ChannelProviderModel {
                 VALUES ({})
                 RETURNING id
                 "#,
-                type_col, group_col, phs(is_postgres, 14)
+                type_col,
+                group_col,
+                phs(is_postgres, 14)
             )
         } else {
             format!(
@@ -30,7 +32,9 @@ impl ChannelProviderModel {
                 INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
                 VALUES ({})
                 "#,
-                type_col, group_col, phs(is_postgres, 14)
+                type_col,
+                group_col,
+                phs(is_postgres, 14)
             )
         };
 
@@ -85,14 +89,17 @@ impl ChannelProviderModel {
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
         let type_col = if is_postgres { "\"type\"" } else { "type" };
 
-        let sql = adapt_sql(is_postgres, &format!(
-            r#"
+        let sql = adapt_sql(
+            is_postgres,
+            &format!(
+                r#"
             UPDATE channel_providers
             SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?
             WHERE id = ?
             "#,
-            type_col, group_col
-        ));
+                type_col, group_col
+            ),
+        );
 
         sqlx::query(&sql)
             .bind(channel.type_)
@@ -122,7 +129,10 @@ impl ChannelProviderModel {
         let is_postgres = db.kind() == "postgres";
 
         // Delete Abilities first
-        let sql_abilities = adapt_sql(is_postgres, "DELETE FROM channel_abilities WHERE channel_id = ?");
+        let sql_abilities = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
         sqlx::query(&sql_abilities).bind(id).execute(pool).await?;
 
         // Delete Channel
@@ -182,7 +192,8 @@ impl ChannelProviderModel {
                     header_override, remark, api_version, pricing_region
                 FROM channel_providers ORDER BY id DESC LIMIT {} OFFSET {}
             "#,
-                ph(is_postgres, 1), ph(is_postgres, 2)
+                ph(is_postgres, 1),
+                ph(is_postgres, 2)
             )
         } else {
             format!(
@@ -194,7 +205,8 @@ impl ChannelProviderModel {
                     header_override, remark, api_version, pricing_region
                 FROM channel_providers ORDER BY id DESC LIMIT {} OFFSET {}
             "#,
-                ph(is_postgres, 1), ph(is_postgres, 2)
+                ph(is_postgres, 1),
+                ph(is_postgres, 2)
             )
         };
 
@@ -213,7 +225,10 @@ impl ChannelProviderModel {
         let is_postgres = db.kind() == "postgres";
 
         // 1. Delete existing abilities for this channel
-        let sql_delete = adapt_sql(is_postgres, "DELETE FROM channel_abilities WHERE channel_id = ?");
+        let sql_delete = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
         sqlx::query(&sql_delete)
             .bind(channel.id)
             .execute(pool)
@@ -239,19 +254,24 @@ impl ChannelProviderModel {
             .collect();
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
-        let sql_insert = adapt_sql(is_postgres, &format!(
-            r#"
+        let sql_insert = adapt_sql(
+            is_postgres,
+            &format!(
+                r#"
             INSERT INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
             VALUES (?, ?, ?, ?, ?, ?)
             "#,
-            group_col
-        ));
+                group_col
+            ),
+        );
 
         for model in models {
             for group in &groups {
                 log::info!(
                     "ChannelProviderModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
-                    model, group, channel.id
+                    model,
+                    group,
+                    channel.id
                 );
                 sqlx::query(&sql_insert)
                     .bind(group)

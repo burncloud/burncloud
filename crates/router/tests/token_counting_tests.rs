@@ -17,7 +17,7 @@ async fn test_openai_streaming_token_count() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Insert test upstream
     sqlx::query(
@@ -53,7 +53,7 @@ async fn test_openai_streaming_token_count() -> anyhow::Result<()> {
     .await?;
 
     let port = 3020;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
@@ -117,7 +117,7 @@ async fn test_anthropic_streaming_token_count() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Insert test upstream
     sqlx::query(
@@ -153,7 +153,7 @@ async fn test_anthropic_streaming_token_count() -> anyhow::Result<()> {
     .await?;
 
     let port = 3021;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/messages", port);

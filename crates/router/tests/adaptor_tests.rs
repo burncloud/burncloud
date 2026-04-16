@@ -17,7 +17,7 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
     }
     let api_key = env_key;
 
-    let (db, pool) = setup_db().await?;
+    let (db, pool, db_url) = setup_db().await?;
 
     let id = "gemini-adaptor-test";
     let name = "gemini-pro";
@@ -45,7 +45,7 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
     .await?;
 
     let port = 3012;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     // Assuming path rewriting is not yet fully dynamic, we target the matched path
@@ -84,7 +84,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     // Test Claude Adaptor Transformation (OpenAI -> Claude)
     // Uses HttpBin to inspect the converted request body
 
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
     let mock_port = 3014;
@@ -150,7 +150,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     .await?;
 
     let port = 3013;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/anything", port);
@@ -232,7 +232,7 @@ async fn setup_gemini_25_pro_with_port(
         return Ok(None);
     }
 
-    let (db, pool) = setup_db().await?;
+    let (db, pool, db_url) = setup_db().await?;
 
     let id = format!("gemini-25-pro-test-{}", port);
     let name = "gemini-2.5-pro";
@@ -293,7 +293,7 @@ async fn setup_gemini_25_pro_with_port(
     };
     BillingPriceModel::upsert(&db, &price_input).await?;
 
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     Ok(Some((db, pool)))
 }
@@ -546,7 +546,7 @@ async fn setup_gemini_25_flash_with_port(
         return Ok(None);
     }
 
-    let (db, pool) = setup_db().await?;
+    let (db, pool, db_url) = setup_db().await?;
 
     let id = format!("gemini-25-flash-test-{}", port);
     let name = "gemini-2.5-flash";
@@ -607,7 +607,7 @@ async fn setup_gemini_25_flash_with_port(
     };
     BillingPriceModel::upsert(&db, &price_input).await?;
 
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     Ok(Some((db, pool)))
 }
@@ -852,7 +852,7 @@ async fn test_gemini_25_flash_speed() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
     // Billing test doesn't need actual API calls, so we use setup_db directly
-    let (db, _pool) = setup_db().await?;
+    let (db, _pool, db_url) = setup_db().await?;
 
     // Setup pricing for gemini-2.5-flash (nanodollars)
     // Standard tier: $0.075 input / $0.30 output per 1M tokens
@@ -952,7 +952,7 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
     // Billing test doesn't need actual API calls, so we use setup_db directly
-    let (db, _pool) = setup_db().await?;
+    let (db, _pool, db_url) = setup_db().await?;
 
     // Setup pricing for gemini-2.5-pro (nanodollars)
     // Standard tier (<=200K context): $1.25 input / $10 output per 1M tokens
@@ -1066,7 +1066,7 @@ async fn setup_gemini_multimodal_with_port(
         return Ok(None);
     }
 
-    let (db, pool) = setup_db().await?;
+    let (db, pool, db_url) = setup_db().await?;
 
     let id = format!("gemini-multimodal-test-{}", port);
     let name = "gemini-2.5-flash";
@@ -1127,7 +1127,7 @@ async fn setup_gemini_multimodal_with_port(
     };
     BillingPriceModel::upsert(&db, &price_input).await?;
 
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     Ok(Some((db, pool)))
 }
@@ -1433,7 +1433,7 @@ async fn test_gemini_multimodal_audio_input() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     // This test verifies audio_input_price is properly stored and retrieved
-    let (db, _pool) = setup_db().await?;
+    let (db, _pool, db_url) = setup_db().await?;
 
     let model = "gemini-2.5-flash-audio-test";
 
@@ -1670,7 +1670,7 @@ async fn setup_gemini_25_flash_image_with_port(
         return Ok(None);
     }
 
-    let (db, pool) = setup_db().await?;
+    let (db, pool, db_url) = setup_db().await?;
 
     let id = format!("gemini-25-flash-image-test-{}", port);
     let name = "gemini-2.5-flash-image";
@@ -1731,7 +1731,7 @@ async fn setup_gemini_25_flash_image_with_port(
     };
     BillingPriceModel::upsert(&db, &price_input).await?;
 
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     Ok(Some((db, pool)))
 }
@@ -2190,7 +2190,7 @@ async fn test_gemini_response_modalities_passthrough() -> anyhow::Result<()> {
 /// Test 5: Verify pricing is correctly configured for image model
 #[tokio::test]
 async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
-    let (db, _pool) = setup_db().await?;
+    let (db, _pool, db_url) = setup_db().await?;
 
     // Setup pricing for gemini-2.5-flash-image
     let price_input = PriceInput {

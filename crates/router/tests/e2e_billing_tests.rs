@@ -11,7 +11,7 @@ use uuid::Uuid;
 /// Tests: token creation, pricing, streaming, token counting, cost calculation, quota deduction
 #[tokio::test]
 async fn test_e2e_billing_flow() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, _db_url) = setup_db().await?;
 
     // 1. Setup: Create unique test token
     let unique_id = Uuid::new_v4();

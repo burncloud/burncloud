@@ -22,7 +22,7 @@ fn to_nano(price: f64) -> i64 {
 /// Test that pricing config with cache pricing is correctly applied
 #[tokio::test]
 async fn test_advanced_pricing_sync() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
 
     // Create a price input with advanced pricing
     let price_input = PriceInput {
@@ -81,7 +81,7 @@ async fn test_advanced_pricing_sync() -> anyhow::Result<()> {
 /// Test that prices with NULL advanced fields are handled correctly
 #[tokio::test]
 async fn test_basic_pricing_sync() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
 
     // Create a basic price without advanced pricing
     let price_input = PriceInput {
@@ -136,7 +136,7 @@ async fn test_basic_pricing_sync() -> anyhow::Result<()> {
 /// Test that price sync updates existing records correctly
 #[tokio::test]
 async fn test_pricing_update() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
 
     // First insert basic pricing
     let initial_input = PriceInput {
@@ -221,7 +221,7 @@ async fn test_pricing_update() -> anyhow::Result<()> {
 /// Test tiered pricing upsert
 #[tokio::test]
 async fn test_tiered_pricing() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
 
     // Insert a tiered price
     let tier1 = TieredPriceInput {
@@ -259,7 +259,7 @@ async fn test_tiered_pricing() -> anyhow::Result<()> {
 /// Test that PricingConfig can be applied through the service
 #[tokio::test]
 async fn test_pricing_config_import() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
     let db = Arc::new(_db);
 
     // Create a PricingConfig manually
@@ -354,7 +354,7 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
 /// Test that sync failure with existing DB prices returns Ok (graceful degradation)
 #[tokio::test]
 async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
-    let (db, _pool) = setup_db().await?;
+    let (db, _pool, _db_url) = setup_db().await?;
     let db = Arc::new(db);
 
     // Pre-populate a price before any sync
@@ -483,7 +483,7 @@ async fn test_model_count_drop_protection() -> anyhow::Result<()> {
     use burncloud_common::pricing_config::{CurrencyPricing, ModelPricing};
     use std::collections::HashMap;
 
-    let (db, _pool) = setup_db().await?;
+    let (db, _pool, _db_url) = setup_db().await?;
     let db = Arc::new(db);
 
     // Pre-populate 10 models in DB
@@ -545,7 +545,7 @@ async fn test_model_count_drop_protection() -> anyhow::Result<()> {
 /// Test data source priority
 #[tokio::test]
 async fn test_data_source_priority() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
     let db = Arc::new(_db);
 
     let model_name = "test-priority-model-unique";

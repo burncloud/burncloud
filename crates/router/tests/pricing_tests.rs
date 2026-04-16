@@ -18,7 +18,7 @@ fn from_nano(nano: i64) -> f64 {
 /// Formula: cost = (prompt_tokens * input_price / 1M) + (completion_tokens * output_price / 1M)
 #[tokio::test]
 async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, db_url) = setup_db().await?;
 
     // Set up pricing for test model
     // Input: $30/1M tokens, Output: $60/1M tokens (like GPT-4)
@@ -85,14 +85,46 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
 /// Test price listing
 #[tokio::test]
 async fn test_pricing_list() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, db_url) = setup_db().await?;
 
-    // List all prices (should include default pricing)
+    // Seed a price so the list is non-empty
+    let seed = PriceInput {
+        model: "list-test-model".to_string(),
+        currency: "USD".to_string(),
+        input_price: to_nano(10.0),
+        output_price: to_nano(20.0),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        audio_output_price: None,
+        reasoning_price: None,
+        embedding_price: None,
+        image_price: None,
+        video_price: None,
+        music_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
+    };
+    BillingPriceModel::upsert(&_db, &seed).await?;
+
     let prices = BillingPriceModel::list(&_db, 100, 0, None, None).await?;
 
     println!("Found {} prices", prices.len());
 
-    // Default prices should include at least some models
+    // Should have at least the price we just seeded
     assert!(!prices.is_empty(), "Should have some prices");
 
     // Print all prices for debugging
@@ -112,7 +144,7 @@ async fn test_pricing_list() -> anyhow::Result<()> {
 /// Test price delete and recreate
 #[tokio::test]
 async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, db_url) = setup_db().await?;
 
     // Create a test model
     let input = PriceInput {
@@ -209,7 +241,7 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
 /// The second upsert should overwrite the first.
 #[tokio::test]
 async fn test_upsert_idempotency() -> anyhow::Result<()> {
-    let (db, _pool) = setup_db().await?;
+    let (db, _pool, db_url) = setup_db().await?;
 
     let input = PriceInput {
         model: "idempotency-test-model".to_string(),

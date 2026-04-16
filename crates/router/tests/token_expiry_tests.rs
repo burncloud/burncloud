@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn test_expired_token_returns_401() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Use unique token name for each test run
     let unique_token = format!("sk-expired-{}", Uuid::new_v4());
@@ -42,7 +42,7 @@ async fn test_expired_token_returns_401() -> anyhow::Result<()> {
     .await?;
 
     let port = 3030;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
@@ -66,7 +66,7 @@ async fn test_expired_token_returns_401() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_valid_token_with_future_expiry_passes_auth() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Use unique token name for each test run
     let unique_token = format!("sk-future-{}", Uuid::new_v4());
@@ -100,7 +100,7 @@ async fn test_valid_token_with_future_expiry_passes_auth() -> anyhow::Result<()>
     .await?;
 
     let port = 3031;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
@@ -133,7 +133,7 @@ async fn test_valid_token_with_future_expiry_passes_auth() -> anyhow::Result<()>
 
 #[tokio::test]
 async fn test_token_with_never_expire_minus_one_passes_auth() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Use unique token name for each test run
     let unique_token = format!("sk-never-{}", Uuid::new_v4());
@@ -161,7 +161,7 @@ async fn test_token_with_never_expire_minus_one_passes_auth() -> anyhow::Result<
     .await?;
 
     let port = 3032;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
@@ -193,7 +193,7 @@ async fn test_token_with_never_expire_minus_one_passes_auth() -> anyhow::Result<
 
 #[tokio::test]
 async fn test_accessed_time_updates_on_valid_token() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Use unique token name for each test run
     let unique_token = format!("sk-access-{}", Uuid::new_v4());
@@ -222,7 +222,7 @@ async fn test_accessed_time_updates_on_valid_token() -> anyhow::Result<()> {
     .await?;
 
     let port = 3033;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
