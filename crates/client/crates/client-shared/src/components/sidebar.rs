@@ -1,3 +1,4 @@
+use crate::components::logo::Logo;
 use crate::i18n::{t, use_i18n};
 use dioxus::prelude::*;
 use dioxus_router::components::Link;
@@ -45,12 +46,7 @@ pub fn Sidebar() -> Element {
             // Brand Area - Minimalist & Premium
             div { class: "px-6 pb-2",
                 div { class: "flex items-center gap-3",
-                    div { class: "w-8 h-8 bg-black rounded-lg shadow-sm flex items-center justify-center text-white",
-                        svg { class: "w-5 h-5", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" }
-                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" }
-                        }
-                    }
+                    Logo { class: "w-8 h-8 fill-current" }
                     div { class: "flex flex-col",
                         span { class: "text-base font-semibold tracking-tight leading-none text-base-content", "BurnCloud" }
                         span { class: "text-[11px] font-medium text-base-content/40 uppercase tracking-widest leading-none mt-1", "Enterprise" }
