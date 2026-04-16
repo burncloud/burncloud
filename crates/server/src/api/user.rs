@@ -118,7 +118,7 @@ async fn register(
                 })
                 .into_response(),
                 Err(e) => {
-                    eprintln!("Token generation error: {}", e);
+                    log::error!("Token generation error: {}", e);
                     err("Registration succeeded but token generation failed").into_response()
                 }
             }

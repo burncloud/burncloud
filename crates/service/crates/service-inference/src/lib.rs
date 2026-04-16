@@ -39,25 +39,18 @@ pub struct InferenceService {
     processes: Arc<Mutex<HashMap<String, Child>>>,
     // 存储实例状态: Map<ModelID, Status>
     statuses: Arc<Mutex<HashMap<String, InstanceStatus>>>,
-    // 数据库连接
-    db: Database,
 }
 
 impl InferenceService {
-    pub async fn new() -> Result<Self> {
-        let db = Database::new().await?;
-        // Ensure tables exist
-        RouterDatabase::init(&db).await?;
-
-        Ok(Self {
+    pub fn new() -> Self {
+        Self {
             processes: Arc::new(Mutex::new(HashMap::new())),
             statuses: Arc::new(Mutex::new(HashMap::new())),
-            db,
-        })
+        }
     }
 
     /// 启动一个推理实例
-    pub async fn start_instance(&self, config: InferenceConfig) -> Result<()> {
+    pub async fn start_instance(&self, db: &Database, config: InferenceConfig) -> Result<()> {
         // 1. 检查是否已经在运行
         {
             let statuses = self.statuses.lock().await;
@@ -91,7 +84,7 @@ impl InferenceService {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        println!("Starting inference: {:?}", cmd);
+        log::info!("Starting inference: {:?}", cmd);
 
         match cmd.spawn() {
             Ok(child) => {
@@ -119,7 +112,7 @@ impl InferenceService {
                 }
 
                 // 5. 注册到 Router
-                self.register_upstream(&config).await?;
+                self.register_upstream(db, &config).await?;
 
                 Ok(())
             }
@@ -133,7 +126,7 @@ impl InferenceService {
     }
 
     /// 停止一个推理实例
-    pub async fn stop_instance(&self, model_id: &str) -> Result<()> {
+    pub async fn stop_instance(&self, db: &Database, model_id: &str) -> Result<()> {
         let mut processes = self.processes.lock().await;
         if let Some(mut child) = processes.remove(model_id) {
             // 尝试优雅停止
@@ -144,7 +137,7 @@ impl InferenceService {
             self.set_status(model_id, InstanceStatus::Stopped).await;
 
             // 从 Router 注销
-            self.unregister_upstream(model_id).await?;
+            self.unregister_upstream(db, model_id).await?;
         }
         Ok(())
     }
@@ -187,7 +180,7 @@ impl InferenceService {
     }
 
     // 注册 Upstream 到 Router 数据库
-    async fn register_upstream(&self, config: &InferenceConfig) -> Result<()> {
+    async fn register_upstream(&self, db: &Database, config: &InferenceConfig) -> Result<()> {
         let upstream_id = format!("local-{}", config.model_id);
         let base_url = format!("http://127.0.0.1:{}", config.port);
 
@@ -208,17 +201,17 @@ impl InferenceService {
 
         // Upsert: 先删后插，或者检查是否存在
         // 这里简单处理：DELETE 然后 INSERT，确保是最新的
-        let _ = RouterDatabase::delete_upstream(&self.db, &upstream_id).await;
-        RouterDatabase::create_upstream(&self.db, &upstream).await?;
+        let _ = RouterDatabase::delete_upstream(db, &upstream_id).await;
+        RouterDatabase::create_upstream(db, &upstream).await?;
 
-        println!("Registered local upstream: {}", upstream_id);
+        log::info!("Registered local upstream: {}", upstream_id);
         Ok(())
     }
 
-    async fn unregister_upstream(&self, model_id: &str) -> Result<()> {
+    async fn unregister_upstream(&self, db: &Database, model_id: &str) -> Result<()> {
         let upstream_id = format!("local-{}", model_id);
-        RouterDatabase::delete_upstream(&self.db, &upstream_id).await?;
-        println!("Unregistered local upstream: {}", upstream_id);
+        RouterDatabase::delete_upstream(db, &upstream_id).await?;
+        log::info!("Unregistered local upstream: {}", upstream_id);
         Ok(())
     }
 
@@ -241,7 +234,7 @@ impl InferenceService {
 
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
-                    println!(
+                    log::info!(
                         "Health check passed for {} after {} attempts",
                         model_id, attempts
                     );

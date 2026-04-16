@@ -1,4 +1,4 @@
-use burncloud_service_setting::SettingService;
+use burncloud_service_setting::{SettingDatabase, SettingService};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -42,10 +42,10 @@ impl FromStr for Region {
 
 /// 获取用户地区（带缓存）
 pub async fn get_location() -> Result<String, Box<dyn std::error::Error>> {
-    let service = SettingService::new().await?;
+    let db = SettingDatabase::new().await?;
 
     // 先查询缓存
-    if let Some(location) = service.get("location").await? {
+    if let Some(location) = SettingService::get(&db, "location").await? {
         return Ok(location);
     }
 
@@ -54,7 +54,7 @@ pub async fn get_location() -> Result<String, Box<dyn std::error::Error>> {
     let location = region.as_str().to_string();
 
     // 保存到数据库
-    service.set("location", &location).await?;
+    SettingService::set(&db, "location", &location).await?;
 
     Ok(location)
 }

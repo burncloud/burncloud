@@ -4,7 +4,7 @@
 //! which are used for load balancing and routing strategies.
 
 use burncloud_common::CrudRepository;
-use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
+use burncloud_database::{adapt_sql, ph, phs, Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -42,12 +42,12 @@ impl RouterGroupModel {
     /// Get a single group by ID
     pub async fn get(db: &Database, id: &str) -> Result<Option<RouterGroup>> {
         let conn = db.get_connection()?;
-        let sql = if db.kind() == "postgres" {
-            "SELECT id, name, strategy, match_path FROM router_groups WHERE id = $1"
-        } else {
-            "SELECT id, name, strategy, match_path FROM router_groups WHERE id = ?"
-        };
-        let group = sqlx::query_as::<_, RouterGroup>(sql)
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            "SELECT id, name, strategy, match_path FROM router_groups WHERE id = {}",
+            ph(is_postgres, 1)
+        );
+        let group = sqlx::query_as::<_, RouterGroup>(&sql)
             .bind(id)
             .fetch_optional(conn.pool())
             .await?;
@@ -75,25 +75,24 @@ impl RouterGroupModel {
     /// Delete a group and all its members
     pub async fn delete(db: &Database, id: &str) -> Result<()> {
         let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
 
         // Delete members first
-        let sql_members = if db.kind() == "postgres" {
-            "DELETE FROM router_group_members WHERE group_id = $1"
-        } else {
-            "DELETE FROM router_group_members WHERE group_id = ?"
-        };
-        sqlx::query(sql_members)
+        let sql_members = format!(
+            "DELETE FROM router_group_members WHERE group_id = {}",
+            ph(is_postgres, 1)
+        );
+        sqlx::query(&sql_members)
             .bind(id)
             .execute(conn.pool())
             .await?;
 
         // Delete group
-        let sql_group = if db.kind() == "postgres" {
-            "DELETE FROM router_groups WHERE id = $1"
-        } else {
-            "DELETE FROM router_groups WHERE id = ?"
-        };
-        sqlx::query(sql_group).bind(id).execute(conn.pool()).await?;
+        let sql_group = format!(
+            "DELETE FROM router_groups WHERE id = {}",
+            ph(is_postgres, 1)
+        );
+        sqlx::query(&sql_group).bind(id).execute(conn.pool()).await?;
         Ok(())
     }
 }
@@ -115,12 +114,12 @@ impl RouterGroupMemberModel {
     /// Get members for a specific group
     pub async fn get_by_group(db: &Database, group_id: &str) -> Result<Vec<RouterGroupMember>> {
         let conn = db.get_connection()?;
-        let sql = if db.kind() == "postgres" {
-            "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = $1"
-        } else {
-            "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = ?"
-        };
-        let rows = sqlx::query_as::<_, RouterGroupMember>(sql)
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            "SELECT group_id, upstream_id, weight FROM router_group_members WHERE group_id = {}",
+            ph(is_postgres, 1)
+        );
+        let rows = sqlx::query_as::<_, RouterGroupMember>(&sql)
             .bind(group_id)
             .fetch_all(conn.pool())
             .await?;

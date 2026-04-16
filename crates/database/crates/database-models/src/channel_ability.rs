@@ -1,5 +1,5 @@
 use burncloud_common::types::Ability;
-use burncloud_database::{Database, Result};
+use burncloud_database::{ph, phs, Database, Result};
 use serde::{Deserialize, Serialize};
 
 /// Input for creating a channel ability
@@ -36,18 +36,18 @@ impl ChannelAbilityModel {
                 format!(
                     r#"
                     INSERT INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                    VALUES ({})
                     ON CONFLICT ({}, model, channel_id) DO NOTHING
                     "#,
-                    group_col, group_col
+                    group_col, phs(is_postgres, 6), group_col
                 )
             } else {
                 format!(
                     r#"
                     INSERT OR IGNORE INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES ({})
                     "#,
-                    group_col
+                    group_col, phs(is_postgres, 6)
                 )
             };
 
@@ -70,12 +70,13 @@ impl ChannelAbilityModel {
     /// Delete all abilities for a channel
     pub async fn delete_by_channel(db: &Database, channel_id: i32) -> Result<()> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM channel_abilities WHERE channel_id = $1",
-            _ => "DELETE FROM channel_abilities WHERE channel_id = ?",
-        };
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            "DELETE FROM channel_abilities WHERE channel_id = {}",
+            ph(is_postgres, 1)
+        );
 
-        sqlx::query(sql)
+        sqlx::query(&sql)
             .bind(channel_id)
             .execute(conn.pool())
             .await?;
@@ -86,21 +87,19 @@ impl ChannelAbilityModel {
     /// List abilities for a channel
     pub async fn list_by_channel(db: &Database, channel_id: i32) -> Result<Vec<Ability>> {
         let conn = db.get_connection()?;
-        let group_col = if db.kind() == "postgres" {
-            "\"group\""
-        } else {
-            "`group`"
-        };
+        let is_postgres = db.kind() == "postgres";
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
-        let sql = match db.kind().as_str() {
-            "postgres" => format!(
-                "SELECT {} as \"group\", model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = $1",
-                group_col
-            ),
-            _ => format!(
-                "SELECT {} as `group`, model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = ?",
-                group_col
-            ),
+        let sql = if is_postgres {
+            format!(
+                "SELECT {} as \"group\", model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = {}",
+                group_col, ph(is_postgres, 1)
+            )
+        } else {
+            format!(
+                "SELECT {} as `group`, model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = {}",
+                group_col, ph(is_postgres, 1)
+            )
         };
 
         let abilities = sqlx::query_as(&sql)
