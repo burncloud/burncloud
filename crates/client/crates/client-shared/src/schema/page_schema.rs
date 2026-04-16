@@ -1,4 +1,9 @@
-use crate::components::page_layouts::BgVariant;
+/// Background variant for alternating section styles.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BgVariant {
+    Dark,
+    Light,
+}
 
 /// Identifies which of the six canonical page layouts this schema describes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

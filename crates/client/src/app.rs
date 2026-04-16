@@ -90,7 +90,7 @@ pub fn launch_gui_with_tray() {
     let icon = {
         let icon_bytes = include_bytes!("../assets/favicon.ico");
         let mut cursor = std::io::Cursor::new(icon_bytes);
-        match image::io::Reader::with_format(
+        match image::ImageReader::with_format(
             std::io::BufReader::new(&mut cursor),
             image::ImageFormat::Ico,
         )
