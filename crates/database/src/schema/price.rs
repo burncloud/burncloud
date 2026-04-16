@@ -271,7 +271,9 @@ async fn fix_real_prices(pool: &AnyPool, kind: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!("Fixing {real_count} rows with REAL-typed prices (converting dollars to nanodollars)...");
+    println!(
+        "Fixing {real_count} rows with REAL-typed prices (converting dollars to nanodollars)..."
+    );
     let price_cols = price_column_names();
     let set_clauses = price_cols
         .iter()

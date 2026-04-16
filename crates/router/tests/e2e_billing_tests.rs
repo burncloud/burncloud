@@ -2,7 +2,7 @@ mod common;
 
 use burncloud_common::price_u64::{dollars_to_nano, nano_to_dollars};
 use burncloud_database::sqlx;
-use burncloud_database_models::{PriceInput, BillingPriceModel};
+use burncloud_database_models::{BillingPriceModel, PriceInput};
 use burncloud_database_router::RouterDatabase;
 use common::setup_db;
 use uuid::Uuid;

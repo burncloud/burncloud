@@ -5,7 +5,9 @@ use burncloud_common::pricing_config::{
     CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
 };
 use burncloud_database::create_database_with_url;
-use burncloud_database_models::{PriceInput, BillingPriceModel, TieredPriceInput, BillingTieredPriceModel};
+use burncloud_database_models::{
+    BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
+};
 use burncloud_database_router::RouterDatabase;
 use burncloud_router::price_sync::{PriceSyncConfig, PriceSyncService};
 use common::setup_db;
@@ -58,7 +60,8 @@ async fn test_advanced_pricing_sync() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&_db, &price_input).await?;
 
     // Retrieve and verify
-    let stored = BillingPriceModel::get(&_db, "test-cache-model", "USD", Some("international")).await?;
+    let stored =
+        BillingPriceModel::get(&_db, "test-cache-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();
@@ -116,7 +119,8 @@ async fn test_basic_pricing_sync() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&_db, &price_input).await?;
 
     // Retrieve and verify
-    let stored = BillingPriceModel::get(&_db, "test-basic-model", "USD", Some("international")).await?;
+    let stored =
+        BillingPriceModel::get(&_db, "test-basic-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();
@@ -201,7 +205,8 @@ async fn test_pricing_update() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&_db, &updated_input).await?;
 
     // Verify the update
-    let stored = BillingPriceModel::get(&_db, "test-update-model", "USD", Some("international")).await?;
+    let stored =
+        BillingPriceModel::get(&_db, "test-update-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
     let stored = stored.unwrap();

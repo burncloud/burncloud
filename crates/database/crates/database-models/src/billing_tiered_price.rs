@@ -17,11 +17,14 @@ impl BillingTieredPriceModel {
 
         let tiers = match region {
             Some(r) => {
-                let sql = adapt_sql(is_postgres, &format!(
-                    r#"{} FROM billing_tiered_prices WHERE model = ? AND region = ?
+                let sql = adapt_sql(
+                    is_postgres,
+                    &format!(
+                        r#"{} FROM billing_tiered_prices WHERE model = ? AND region = ?
                    ORDER BY tier_start ASC"#,
-                    base_select
-                ));
+                        base_select
+                    ),
+                );
                 sqlx::query_as(&sql)
                     .bind(model)
                     .bind(r)
@@ -30,11 +33,14 @@ impl BillingTieredPriceModel {
             }
             None => {
                 // Get tiers with NULL region (universal) or matching region
-                let sql = adapt_sql(is_postgres, &format!(
-                    r#"{} FROM billing_tiered_prices WHERE model = ?
+                let sql = adapt_sql(
+                    is_postgres,
+                    &format!(
+                        r#"{} FROM billing_tiered_prices WHERE model = ?
                    ORDER BY tier_start ASC"#,
-                    base_select
-                ));
+                        base_select
+                    ),
+                );
                 sqlx::query_as(&sql)
                     .bind(model)
                     .fetch_all(conn.pool())
@@ -50,7 +56,9 @@ impl BillingTieredPriceModel {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
-        let sql = adapt_sql(is_postgres, r#"
+        let sql = adapt_sql(
+            is_postgres,
+            r#"
             INSERT INTO billing_tiered_prices (model, region, currency, tier_type, tier_start, tier_end, input_price, output_price)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(model, region, tier_start) DO UPDATE SET
@@ -59,7 +67,8 @@ impl BillingTieredPriceModel {
                 output_price = excluded.output_price,
                 currency = excluded.currency,
                 tier_type = excluded.tier_type
-            "#);
+            "#,
+        );
 
         sqlx::query(&sql)
             .bind(&input.model)
@@ -83,7 +92,10 @@ impl BillingTieredPriceModel {
 
         match region {
             Some(r) => {
-                let sql = adapt_sql(is_postgres, "DELETE FROM billing_tiered_prices WHERE model = ? AND region = ?");
+                let sql = adapt_sql(
+                    is_postgres,
+                    "DELETE FROM billing_tiered_prices WHERE model = ? AND region = ?",
+                );
                 sqlx::query(&sql)
                     .bind(model)
                     .bind(r)
@@ -91,7 +103,10 @@ impl BillingTieredPriceModel {
                     .await?;
             }
             None => {
-                let sql = adapt_sql(is_postgres, "DELETE FROM billing_tiered_prices WHERE model = ?");
+                let sql = adapt_sql(
+                    is_postgres,
+                    "DELETE FROM billing_tiered_prices WHERE model = ?",
+                );
                 sqlx::query(&sql).bind(model).execute(conn.pool()).await?;
             }
         }
@@ -102,7 +117,10 @@ impl BillingTieredPriceModel {
     /// Check if a model has tiered pricing configured
     pub async fn has_tiered_pricing(db: &Database, model: &str) -> Result<bool> {
         let conn = db.get_connection()?;
-        let sql = adapt_sql(db.kind() == "postgres", "SELECT COUNT(*) FROM billing_tiered_prices WHERE model = ?");
+        let sql = adapt_sql(
+            db.kind() == "postgres",
+            "SELECT COUNT(*) FROM billing_tiered_prices WHERE model = ?",
+        );
 
         let count: i64 = sqlx::query_scalar(&sql)
             .bind(model)

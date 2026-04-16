@@ -7,7 +7,7 @@ mod error;
 pub use error::{InferenceError, Result};
 
 use burncloud_database::Database;
-use burncloud_database_router::{RouterUpstream, RouterDatabase};
+use burncloud_database_router::{RouterDatabase, RouterUpstream};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -236,7 +236,8 @@ impl InferenceService {
                 Ok(resp) if resp.status().is_success() => {
                     log::info!(
                         "Health check passed for {} after {} attempts",
-                        model_id, attempts
+                        model_id,
+                        attempts
                     );
                     return Ok(());
                 }

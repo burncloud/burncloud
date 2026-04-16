@@ -122,8 +122,7 @@ async fn test_valid_token_with_future_expiry_passes_auth() -> anyhow::Result<()>
         let body: serde_json::Value = resp.json().await?;
         // The error should NOT be token_expired
         assert_ne!(
-            body["error"]["code"],
-            "token_expired",
+            body["error"]["code"], "token_expired",
             "Token with future expiry should not be reported as expired"
         );
     }
@@ -183,8 +182,7 @@ async fn test_token_with_never_expire_minus_one_passes_auth() -> anyhow::Result<
         let body: serde_json::Value = resp.json().await?;
         // The error should NOT be token_expired
         assert_ne!(
-            body["error"]["code"],
-            "token_expired",
+            body["error"]["code"], "token_expired",
             "Token with never-expire (-1) should not be reported as expired"
         );
     }

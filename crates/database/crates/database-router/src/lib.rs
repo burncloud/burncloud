@@ -20,7 +20,9 @@ pub use burncloud_database_token as token;
 pub use burncloud_database_upstream as upstream;
 
 // Re-export common types
-pub use burncloud_database_group::{RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel};
+pub use burncloud_database_group::{
+    RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel,
+};
 pub use burncloud_database_router_log::{
     get_billing_summary, BalanceModel, BillingModelSummary, BillingSummary, RouterLog,
     RouterLogModel,
@@ -430,7 +432,10 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_cny_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_cny = 0 WHERE id = ?");
+            let clear_cny_sql = adapt_sql(
+                is_postgres,
+                "UPDATE user_accounts SET balance_cny = 0 WHERE id = ?",
+            );
 
             // Deduct remaining CNY
             if balance_cny > 0 {
@@ -475,7 +480,10 @@ impl RouterDatabase {
             // Deduct from both currencies atomically
             let mut tx = conn.pool().begin().await?;
 
-            let clear_usd_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_usd = 0 WHERE id = ?");
+            let clear_usd_sql = adapt_sql(
+                is_postgres,
+                "UPDATE user_accounts SET balance_usd = 0 WHERE id = ?",
+            );
 
             // Deduct remaining USD
             if balance_usd > 0 {
@@ -534,7 +542,10 @@ pub async fn get_usage_stats_by_token(
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    let sql = adapt_sql(is_postgres, "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'");
+    let sql = adapt_sql(
+        is_postgres,
+        "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'",
+    );
     let user_id: Option<String> = sqlx::query_scalar(&sql)
         .bind(token_key)
         .fetch_optional(conn.pool())

@@ -9,13 +9,15 @@ async fn main() -> Result<()> {
 
     let result = db
         .execute_query(
-            "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)",
+            "CREATE TABLE IF NOT EXISTS user_accounts (id INTEGER PRIMARY KEY, name TEXT, email TEXT)",
         )
         .await?;
     println!("Table created with result: {:?}", result);
 
     let insert_result = db
-        .execute_query("INSERT INTO users (name, email) VALUES ('Test User', 'test@example.com')")
+        .execute_query(
+            "INSERT INTO user_accounts (name, email) VALUES ('Test User', 'test@example.com')",
+        )
         .await?;
     println!("Insert result: {:?}", insert_result);
 

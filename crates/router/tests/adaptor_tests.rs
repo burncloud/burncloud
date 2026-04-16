@@ -2,7 +2,7 @@ mod common;
 
 use burncloud_common::dollars_to_nano;
 use burncloud_database::sqlx;
-use burncloud_database_models::{PriceInput, BillingPriceModel};
+use burncloud_database_models::{BillingPriceModel, PriceInput};
 use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
@@ -889,7 +889,8 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&db, &price_input).await?;
 
     // Verify pricing was set correctly
-    let price = BillingPriceModel::get(&db, GEMINI_25_FLASH_MODEL, "USD", Some("international")).await?;
+    let price =
+        BillingPriceModel::get(&db, GEMINI_25_FLASH_MODEL, "USD", Some("international")).await?;
 
     assert!(
         price.is_some(),
@@ -988,7 +989,8 @@ async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&db, &price_input).await?;
 
     // Verify pricing was set correctly
-    let price = BillingPriceModel::get(&db, GEMINI_25_PRO_MODEL, "USD", Some("international")).await?;
+    let price =
+        BillingPriceModel::get(&db, GEMINI_25_PRO_MODEL, "USD", Some("international")).await?;
 
     assert!(
         price.is_some(),
@@ -1508,7 +1510,8 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     let completion_tokens = 1_000;
 
     // Text input cost calculation
-    let text_cost_nano = BillingPriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
+    let text_cost_nano =
+        BillingPriceModel::calculate_cost(&price, prompt_tokens, completion_tokens);
     let text_cost_dollars = text_cost_nano as f64 / 1_000_000_000.0;
 
     // Audio input cost calculation (manual with audio price)

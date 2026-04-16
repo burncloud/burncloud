@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use burncloud_common::PricingConfig;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::{PriceInput, BillingPriceModel, TieredPriceInput, BillingTieredPriceModel};
+use burncloud_database_models::{
+    BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
+};
 use burncloud_service_billing::PriceCache;
 use chrono::{DateTime, Utc};
 use reqwest::Client;

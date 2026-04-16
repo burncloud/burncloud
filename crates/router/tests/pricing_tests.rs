@@ -1,7 +1,7 @@
 mod common;
 
 use burncloud_common::dollars_to_nano;
-use burncloud_database_models::{PriceInput, BillingPriceModel};
+use burncloud_database_models::{BillingPriceModel, PriceInput};
 use common::setup_db;
 
 /// Helper to convert dollars to nanodollars as i64
@@ -56,7 +56,8 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&_db, &input).await?;
 
     // Get the price and verify
-    let price = BillingPriceModel::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
+    let price =
+        BillingPriceModel::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
     assert!(price.is_some(), "Price should be found");
 
     let price = price.unwrap();
@@ -147,14 +148,16 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&_db, &input).await?;
 
     // Verify it exists
-    let price = BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price =
+        BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
 
     // Delete it
     BillingPriceModel::delete(&_db, "test-delete-model", "USD", Some("international")).await?;
 
     // Verify it's gone
-    let price = BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price =
+        BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_none());
 
     // Recreate with different price
@@ -191,7 +194,8 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
     BillingPriceModel::upsert(&_db, &input2).await?;
 
     // Verify new price
-    let price = BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
+    let price =
+        BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
     let price = price.unwrap();
     assert_eq!(price.input_price, to_nano(50.0));
