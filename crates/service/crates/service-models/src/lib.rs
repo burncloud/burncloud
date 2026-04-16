@@ -3,7 +3,7 @@
 //! 模型服务层，提供简洁的增删改查接口
 
 use burncloud_database_models::ModelDatabase;
-use burncloud_service_setting::SettingService;
+use burncloud_service_setting::{SettingDatabase, SettingService};
 use serde::Deserialize;
 
 type Result<T> = std::result::Result<T, burncloud_database_models::DatabaseError>;
@@ -166,10 +166,10 @@ impl ModelService {
 
 /// 获取 HuggingFace Host（带缓存）
 pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::error::Error>> {
-    let setting = SettingService::new().await?;
+    let db = SettingDatabase::new().await?;
 
     // 先查询缓存
-    if let Some(host) = setting.get("huggingface").await? {
+    if let Some(host) = SettingService::get(&db, "huggingface").await? {
         return Ok(host);
     }
 
@@ -181,7 +181,7 @@ pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::
     };
 
     // 保存到数据库
-    setting.set("huggingface", host).await?;
+    SettingService::set(&db, "huggingface", host).await?;
 
     Ok(host.to_string())
 }
@@ -239,14 +239,14 @@ pub fn filter_gguf_files(files: &[Vec<String>]) -> Vec<Vec<String>> {
 
 /// 获取数据存储目录
 pub async fn get_data_dir() -> std::result::Result<String, Box<dyn std::error::Error>> {
-    let setting = SettingService::new().await?;
+    let db = SettingDatabase::new().await?;
 
-    if let Some(dir) = setting.get("dir_data").await? {
+    if let Some(dir) = SettingService::get(&db, "dir_data").await? {
         return Ok(dir);
     }
 
     let dir = "./data";
-    setting.set("dir_data", dir).await?;
+    SettingService::set(&db, "dir_data", dir).await?;
     Ok(dir.to_string())
 }
 

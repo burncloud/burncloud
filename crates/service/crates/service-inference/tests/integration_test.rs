@@ -22,7 +22,7 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
     RouterDatabase::init(&db).await?;
 
     // 2. 初始化服务
-    let service = InferenceService::new().await?;
+    let service = InferenceService::new();
 
     let model_id = "test-model-qwen";
     let port = 18080;
@@ -37,7 +37,7 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
 
     println!(">>> Starting Instance...");
     // 3. 启动实例
-    service.start_instance(config).await?;
+    service.start_instance(&db, config).await?;
 
     // 验证状态
     let status = service.get_status(model_id).await;
@@ -63,7 +63,7 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
 
     // 5. 停止实例
     println!(">>> Stopping Instance...");
-    service.stop_instance(model_id).await?;
+    service.stop_instance(&db, model_id).await?;
 
     // 验证状态
     let status_stopped = service.get_status(model_id).await;

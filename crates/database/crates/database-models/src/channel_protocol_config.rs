@@ -1,5 +1,5 @@
 use crate::common::current_timestamp;
-use burncloud_database::{Database, Result};
+use burncloud_database::{ph, phs, Database, Result};
 use serde::{Deserialize, Serialize};
 
 /// Protocol configuration for dynamic protocol adapters
@@ -43,28 +43,19 @@ impl ChannelProtocolConfigModel {
         api_version: &str,
     ) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => {
-                r#"
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            r#"
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
-                WHERE channel_type = $1 AND api_version = $2
-                "#
-            }
-            _ => {
-                r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
-                       models_endpoint, request_mapping, response_mapping, detection_rules,
-                       created_at, updated_at
-                FROM channel_protocol_configs
-                WHERE channel_type = ? AND api_version = ?
-                "#
-            }
-        };
+                WHERE channel_type = {} AND api_version = {}
+                "#,
+            ph(is_postgres, 1), ph(is_postgres, 2)
+        );
 
-        let config = sqlx::query_as(sql)
+        let config = sqlx::query_as(&sql)
             .bind(channel_type)
             .bind(api_version)
             .fetch_optional(conn.pool())
@@ -76,28 +67,32 @@ impl ChannelProtocolConfigModel {
     /// Get the default protocol config for a channel type
     pub async fn get_default(db: &Database, channel_type: i32) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => {
+        let is_postgres = db.kind() == "postgres";
+        let sql = if is_postgres {
+            format!(
                 r#"
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
-                WHERE channel_type = $1 AND is_default = TRUE
-                "#
-            }
-            _ => {
+                WHERE channel_type = {} AND is_default = TRUE
+                "#,
+                ph(is_postgres, 1)
+            )
+        } else {
+            format!(
                 r#"
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
-                WHERE channel_type = ? AND is_default = 1
-                "#
-            }
+                WHERE channel_type = {} AND is_default = 1
+                "#,
+                ph(is_postgres, 1)
+            )
         };
 
-        let config = sqlx::query_as(sql)
+        let config = sqlx::query_as(&sql)
             .bind(channel_type)
             .fetch_optional(conn.pool())
             .await?;
@@ -108,30 +103,20 @@ impl ChannelProtocolConfigModel {
     /// List all protocol configs
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => {
-                r#"
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            r#"
                 SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
                 ORDER BY channel_type, api_version
-                LIMIT $1 OFFSET $2
-                "#
-            }
-            _ => {
-                r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
-                       models_endpoint, request_mapping, response_mapping, detection_rules,
-                       created_at, updated_at
-                FROM channel_protocol_configs
-                ORDER BY channel_type, api_version
-                LIMIT ? OFFSET ?
-                "#
-            }
-        };
+                LIMIT {} OFFSET {}
+                "#,
+            ph(is_postgres, 1), ph(is_postgres, 2)
+        );
 
-        let configs = sqlx::query_as(sql)
+        let configs = sqlx::query_as(&sql)
             .bind(limit)
             .bind(offset)
             .fetch_all(conn.pool())
@@ -144,30 +129,29 @@ impl ChannelProtocolConfigModel {
     pub async fn upsert(db: &Database, input: &ChannelProtocolConfigInput) -> Result<()> {
         let conn = db.get_connection()?;
         let now = current_timestamp();
+        let is_postgres = db.kind() == "postgres";
 
         let is_default = input.is_default.unwrap_or(false);
 
         // If this is set as default, clear other defaults for the same channel type
         if is_default {
-            let clear_sql = match db.kind().as_str() {
-                "postgres" => {
-                    "UPDATE channel_protocol_configs SET is_default = FALSE WHERE channel_type = $1"
-                }
-                _ => "UPDATE channel_protocol_configs SET is_default = 0 WHERE channel_type = ?",
-            };
-            sqlx::query(clear_sql)
+            let clear_sql = format!(
+                "UPDATE channel_protocol_configs SET is_default = {} WHERE channel_type = {}",
+                if is_postgres { "FALSE" } else { "0" },
+                ph(is_postgres, 1)
+            );
+            sqlx::query(&clear_sql)
                 .bind(input.channel_type)
                 .execute(conn.pool())
                 .await?;
         }
 
-        let sql = match db.kind().as_str() {
-            "postgres" => {
-                r#"
+        let sql = format!(
+            r#"
                 INSERT INTO channel_protocol_configs (channel_type, api_version, is_default, chat_endpoint,
                     embed_endpoint, models_endpoint, request_mapping, response_mapping,
                     detection_rules, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                VALUES ({})
                 ON CONFLICT(channel_type, api_version) DO UPDATE SET
                     is_default = EXCLUDED.is_default,
                     chat_endpoint = EXCLUDED.chat_endpoint,
@@ -177,28 +161,11 @@ impl ChannelProtocolConfigModel {
                     response_mapping = EXCLUDED.response_mapping,
                     detection_rules = EXCLUDED.detection_rules,
                     updated_at = EXCLUDED.updated_at
-                "#
-            }
-            _ => {
-                r#"
-                INSERT INTO channel_protocol_configs (channel_type, api_version, is_default, chat_endpoint,
-                    embed_endpoint, models_endpoint, request_mapping, response_mapping,
-                    detection_rules, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(channel_type, api_version) DO UPDATE SET
-                    is_default = excluded.is_default,
-                    chat_endpoint = excluded.chat_endpoint,
-                    embed_endpoint = excluded.embed_endpoint,
-                    models_endpoint = excluded.models_endpoint,
-                    request_mapping = excluded.request_mapping,
-                    response_mapping = excluded.response_mapping,
-                    detection_rules = excluded.detection_rules,
-                    updated_at = excluded.updated_at
-                "#
-            }
-        };
+                "#,
+            phs(is_postgres, 11)
+        );
 
-        sqlx::query(sql)
+        sqlx::query(&sql)
             .bind(input.channel_type)
             .bind(&input.api_version)
             .bind(is_default)
@@ -219,12 +186,13 @@ impl ChannelProtocolConfigModel {
     /// Delete a protocol config
     pub async fn delete(db: &Database, id: i32) -> Result<bool> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM channel_protocol_configs WHERE id = $1",
-            _ => "DELETE FROM channel_protocol_configs WHERE id = ?",
-        };
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            "DELETE FROM channel_protocol_configs WHERE id = {}",
+            ph(is_postgres, 1)
+        );
 
-        let result = sqlx::query(sql).bind(id).execute(conn.pool()).await?;
+        let result = sqlx::query(&sql).bind(id).execute(conn.pool()).await?;
 
         Ok(result.rows_affected() > 0)
     }

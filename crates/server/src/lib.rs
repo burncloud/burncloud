@@ -67,11 +67,11 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     let app = create_app(db, enable_liveview).await?;
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    println!("Unified Gateway listening on {}", addr);
+    log::info!("Unified Gateway listening on {}", addr);
     if enable_liveview {
-        println!("- Dashboard: http://{}:{}/", host, port);
+        log::info!("- Dashboard: http://{}:{}/", host, port);
     }
-    println!("- LLM API:   http://{}:{}/v1/...", host, port);
+    log::info!("- LLM API:   http://{}:{}/v1/...", host, port);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

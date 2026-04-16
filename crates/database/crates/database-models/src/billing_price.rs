@@ -1,6 +1,6 @@
 use crate::common::current_timestamp;
 use burncloud_common::types::{Price, PriceInput};
-use burncloud_database::{Database, Result};
+use burncloud_database::{ph, phs, Database, Result};
 
 pub struct BillingPriceModel;
 
@@ -21,7 +21,7 @@ impl BillingPriceModel {
         let region_key = region.unwrap_or("");
 
         // First try exact match (model, currency, region)
-        let sql = if is_postgres {
+        let sql = format!(
             r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
@@ -34,24 +34,11 @@ impl BillingPriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = $1 AND currency = $2 AND region = $3"#
-        } else {
-            r#"SELECT id, model, currency, input_price, output_price,
-                      cache_read_input_price, cache_creation_input_price,
-                      batch_input_price, batch_output_price,
-                      priority_input_price, priority_output_price,
-                      audio_input_price, audio_output_price,
-                      reasoning_price, embedding_price,
-                      image_price, video_price, music_price,
-                      source, region,
-                      context_window, max_output_tokens,
-                      supports_vision, supports_function_calling,
-                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
-                      synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = ? AND currency = ? AND region = ?"#
-        };
+               FROM billing_prices WHERE model = {} AND currency = {} AND region = {}"#,
+            ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
+        );
 
-        let price = sqlx::query_as(sql)
+        let price = sqlx::query_as(&sql)
             .bind(model)
             .bind(currency)
             .bind(region_key)
@@ -64,7 +51,7 @@ impl BillingPriceModel {
 
         // Fallback to USD if different currency requested
         if currency != "USD" {
-            let sql_usd = if is_postgres {
+            let sql_usd = format!(
                 r#"SELECT id, model, currency, input_price, output_price,
                           cache_read_input_price, cache_creation_input_price,
                           batch_input_price, batch_output_price,
@@ -77,24 +64,11 @@ impl BillingPriceModel {
                           supports_vision, supports_function_calling,
                           voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
-                   FROM billing_prices WHERE model = $1 AND currency = 'USD' AND region = $2"#
-            } else {
-                r#"SELECT id, model, currency, input_price, output_price,
-                          cache_read_input_price, cache_creation_input_price,
-                          batch_input_price, batch_output_price,
-                          priority_input_price, priority_output_price,
-                          audio_input_price, audio_output_price,
-                          reasoning_price, embedding_price,
-                          image_price, video_price, music_price,
-                          source, region,
-                          context_window, max_output_tokens,
-                          supports_vision, supports_function_calling,
-                          voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
-                          synced_at, created_at, updated_at
-                   FROM billing_prices WHERE model = ? AND currency = 'USD' AND region = ?"#
-            };
+                   FROM billing_prices WHERE model = {} AND currency = 'USD' AND region = {}"#,
+                ph(is_postgres, 1), ph(is_postgres, 2)
+            );
 
-            let usd_price = sqlx::query_as(sql_usd)
+            let usd_price = sqlx::query_as(&sql_usd)
                 .bind(model)
                 .bind(region_key)
                 .fetch_optional(conn.pool())
@@ -122,7 +96,7 @@ impl BillingPriceModel {
         let region_key = region.unwrap_or("");
 
         // First try exact match for the region
-        let sql = if is_postgres {
+        let sql = format!(
             r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
@@ -135,24 +109,11 @@ impl BillingPriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = $1 AND region = $2"#
-        } else {
-            r#"SELECT id, model, currency, input_price, output_price,
-                      cache_read_input_price, cache_creation_input_price,
-                      batch_input_price, batch_output_price,
-                      priority_input_price, priority_output_price,
-                      audio_input_price, audio_output_price,
-                      reasoning_price, embedding_price,
-                      image_price, video_price, music_price,
-                      source, region,
-                      context_window, max_output_tokens,
-                      supports_vision, supports_function_calling,
-                      voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
-                      synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = ? AND region = ?"#
-        };
+               FROM billing_prices WHERE model = {} AND region = {}"#,
+            ph(is_postgres, 1), ph(is_postgres, 2)
+        );
 
-        let price = sqlx::query_as(sql)
+        let price = sqlx::query_as(&sql)
             .bind(model)
             .bind(region_key)
             .fetch_optional(conn.pool())
@@ -164,7 +125,7 @@ impl BillingPriceModel {
 
         // Fallback to universal price (region = "") if region-specific price not found
         if !region_key.is_empty() {
-            let sql_universal = if is_postgres {
+            let sql_universal = format!(
                 r#"SELECT id, model, currency, input_price, output_price,
                           cache_read_input_price, cache_creation_input_price,
                           batch_input_price, batch_output_price,
@@ -177,24 +138,11 @@ impl BillingPriceModel {
                           supports_vision, supports_function_calling,
                           voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
-                   FROM billing_prices WHERE model = $1 AND region = ''"#
-            } else {
-                r#"SELECT id, model, currency, input_price, output_price,
-                          cache_read_input_price, cache_creation_input_price,
-                          batch_input_price, batch_output_price,
-                          priority_input_price, priority_output_price,
-                          audio_input_price, audio_output_price,
-                          reasoning_price, embedding_price,
-                          image_price, video_price, music_price,
-                          source, region,
-                          context_window, max_output_tokens,
-                          supports_vision, supports_function_calling,
-                          voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
-                          synced_at, created_at, updated_at
-                   FROM billing_prices WHERE model = ? AND region = ''"#
-            };
+                   FROM billing_prices WHERE model = {} AND region = ''"#,
+                ph(is_postgres, 1)
+            );
 
-            let universal_price: Option<Price> = sqlx::query_as(sql_universal)
+            let universal_price: Option<Price> = sqlx::query_as(&sql_universal)
                 .bind(model)
                 .fetch_optional(conn.pool())
                 .await?;
@@ -215,7 +163,8 @@ impl BillingPriceModel {
         let is_postgres = db.kind() == "postgres";
 
         let sql = if is_postgres {
-            r#"SELECT id, model, currency, input_price, output_price,
+            format!(
+                r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
@@ -227,10 +176,13 @@ impl BillingPriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = $1 AND region IS NOT DISTINCT FROM $2
-               ORDER BY currency"#
+               FROM billing_prices WHERE model = {} AND region IS NOT DISTINCT FROM {}
+               ORDER BY currency"#,
+                ph(is_postgres, 1), ph(is_postgres, 2)
+            )
         } else {
-            r#"SELECT id, model, currency, input_price, output_price,
+            format!(
+                r#"SELECT id, model, currency, input_price, output_price,
                       cache_read_input_price, cache_creation_input_price,
                       batch_input_price, batch_output_price,
                       priority_input_price, priority_output_price,
@@ -242,18 +194,20 @@ impl BillingPriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
-               ORDER BY currency"#
+               FROM billing_prices WHERE model = {} AND (region = {} OR (region IS NULL AND {} IS NULL))
+               ORDER BY currency"#,
+                ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
+            )
         };
 
         let prices = if is_postgres {
-            sqlx::query_as(sql)
+            sqlx::query_as(&sql)
                 .bind(model)
                 .bind(region)
                 .fetch_all(conn.pool())
                 .await?
         } else {
-            sqlx::query_as(sql)
+            sqlx::query_as(&sql)
                 .bind(model)
                 .bind(region)
                 .bind(region)
@@ -291,20 +245,22 @@ impl BillingPriceModel {
             (Some(curr), Some(reg)) => {
                 // Filter by both currency and region
                 let sql = if is_postgres {
-                    &format!(
-                        r#"{} FROM billing_prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
-                       ORDER BY model LIMIT $3 OFFSET $4"#,
-                        base_select
+                    format!(
+                        r#"{} FROM billing_prices WHERE currency = {} AND region IS NOT DISTINCT FROM {}
+                       ORDER BY model LIMIT {} OFFSET {}"#,
+                        base_select,
+                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3), ph(is_postgres, 4)
                     )
                 } else {
-                    &format!(
-                        r#"{} FROM billing_prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
-                       ORDER BY model LIMIT ? OFFSET ?"#,
-                        base_select
+                    format!(
+                        r#"{} FROM billing_prices WHERE currency = {} AND (region = {} OR (region IS NULL AND {} IS NULL))
+                       ORDER BY model LIMIT {} OFFSET {}"#,
+                        base_select,
+                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3), ph(is_postgres, 4), ph(is_postgres, 5)
                     )
                 };
                 if is_postgres {
-                    sqlx::query_as(sql)
+                    sqlx::query_as(&sql)
                         .bind(curr)
                         .bind(reg)
                         .bind(limit)
@@ -312,7 +268,7 @@ impl BillingPriceModel {
                         .fetch_all(conn.pool())
                         .await?
                 } else {
-                    sqlx::query_as(sql)
+                    sqlx::query_as(&sql)
                         .bind(curr)
                         .bind(reg)
                         .bind(reg)
@@ -324,20 +280,15 @@ impl BillingPriceModel {
             }
             (Some(curr), None) => {
                 // Filter by currency only
-                let sql = if is_postgres {
-                    &format!(
-                        r#"{} FROM billing_prices WHERE currency = $1
-                       ORDER BY model LIMIT $2 OFFSET $3"#,
-                        base_select
-                    )
-                } else {
-                    &format!(
-                        r#"{} FROM billing_prices WHERE currency = ?
-                       ORDER BY model LIMIT ? OFFSET ?"#,
-                        base_select
-                    )
-                };
-                sqlx::query_as(sql)
+                let sql = format!(
+                    r#"{} FROM billing_prices WHERE currency = {}
+                       ORDER BY model LIMIT {} OFFSET {}"#,
+                    base_select,
+                    ph(is_postgres, 1),
+                    ph(is_postgres, 2),
+                    ph(is_postgres, 3)
+                );
+                sqlx::query_as(&sql)
                     .bind(curr)
                     .bind(limit)
                     .bind(offset)
@@ -347,27 +298,29 @@ impl BillingPriceModel {
             (None, Some(reg)) => {
                 // Filter by region only
                 let sql = if is_postgres {
-                    &format!(
-                        r#"{} FROM billing_prices WHERE region IS NOT DISTINCT FROM $1
-                       ORDER BY model, currency LIMIT $2 OFFSET $3"#,
-                        base_select
+                    format!(
+                        r#"{} FROM billing_prices WHERE region IS NOT DISTINCT FROM {}
+                       ORDER BY model, currency LIMIT {} OFFSET {}"#,
+                        base_select,
+                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
                     )
                 } else {
-                    &format!(
-                        r#"{} FROM billing_prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
-                       ORDER BY model, currency LIMIT ? OFFSET ?"#,
-                        base_select
+                    format!(
+                        r#"{} FROM billing_prices WHERE (region = {} OR (region IS NULL AND {} IS NULL))
+                       ORDER BY model, currency LIMIT {} OFFSET {}"#,
+                        base_select,
+                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3), ph(is_postgres, 4)
                     )
                 };
                 if is_postgres {
-                    sqlx::query_as(sql)
+                    sqlx::query_as(&sql)
                         .bind(reg)
                         .bind(limit)
                         .bind(offset)
                         .fetch_all(conn.pool())
                         .await?
                 } else {
-                    sqlx::query_as(sql)
+                    sqlx::query_as(&sql)
                         .bind(reg)
                         .bind(reg)
                         .bind(limit)
@@ -378,18 +331,13 @@ impl BillingPriceModel {
             }
             (None, None) => {
                 // No filters
-                let sql = if is_postgres {
-                    &format!(
-                        r#"{} FROM billing_prices ORDER BY model, currency LIMIT $1 OFFSET $2"#,
-                        base_select
-                    )
-                } else {
-                    &format!(
-                        r#"{} FROM billing_prices ORDER BY model, currency LIMIT ? OFFSET ?"#,
-                        base_select
-                    )
-                };
-                sqlx::query_as(sql)
+                let sql = format!(
+                    r#"{} FROM billing_prices ORDER BY model, currency LIMIT {} OFFSET {}"#,
+                    base_select,
+                    ph(is_postgres, 1),
+                    ph(is_postgres, 2)
+                );
+                sqlx::query_as(&sql)
                     .bind(limit)
                     .bind(offset)
                     .fetch_all(conn.pool())
@@ -406,7 +354,7 @@ impl BillingPriceModel {
         let now = current_timestamp();
         let is_postgres = db.kind() == "postgres";
 
-        let sql = if is_postgres {
+        let sql = format!(
             r#"
             INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
@@ -421,7 +369,7 @@ impl BillingPriceModel {
                 supports_vision, supports_function_calling,
                 voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+            ) VALUES ({})
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
@@ -451,60 +399,15 @@ impl BillingPriceModel {
                 model_type = EXCLUDED.model_type,
                 synced_at = EXCLUDED.synced_at,
                 updated_at = EXCLUDED.updated_at
-            "#
-        } else {
-            r#"
-            INSERT INTO billing_prices (
-                model, currency, input_price, output_price,
-                cache_read_input_price, cache_creation_input_price,
-                batch_input_price, batch_output_price,
-                priority_input_price, priority_output_price,
-                audio_input_price, audio_output_price,
-                reasoning_price, embedding_price,
-                image_price, video_price, music_price,
-                source, region,
-                context_window, max_output_tokens,
-                supports_vision, supports_function_calling,
-                voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
-                synced_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(model, region) DO UPDATE SET
-                currency = excluded.currency,
-                input_price = excluded.input_price,
-                output_price = excluded.output_price,
-                cache_read_input_price = excluded.cache_read_input_price,
-                cache_creation_input_price = excluded.cache_creation_input_price,
-                batch_input_price = excluded.batch_input_price,
-                batch_output_price = excluded.batch_output_price,
-                priority_input_price = excluded.priority_input_price,
-                priority_output_price = excluded.priority_output_price,
-                audio_input_price = excluded.audio_input_price,
-                audio_output_price = excluded.audio_output_price,
-                reasoning_price = excluded.reasoning_price,
-                embedding_price = excluded.embedding_price,
-                image_price = excluded.image_price,
-                video_price = excluded.video_price,
-                music_price = excluded.music_price,
-                source = excluded.source,
-                context_window = excluded.context_window,
-                max_output_tokens = excluded.max_output_tokens,
-                supports_vision = excluded.supports_vision,
-                supports_function_calling = excluded.supports_function_calling,
-                voices_pricing = excluded.voices_pricing,
-                video_pricing = excluded.video_pricing,
-                asr_pricing = excluded.asr_pricing,
-                realtime_pricing = excluded.realtime_pricing,
-                model_type = excluded.model_type,
-                synced_at = excluded.synced_at,
-                updated_at = excluded.updated_at
-            "#
-        };
+            "#,
+            phs(is_postgres, 31)
+        );
 
         // Normalize region: None → "" to ensure UNIQUE(model, region) works correctly.
         // SQLite treats NULL != NULL, so NULL regions can't deduplicate via ON CONFLICT.
         let region = input.region.as_deref().unwrap_or("").to_string();
 
-        sqlx::query(sql)
+        sqlx::query(&sql)
             .bind(&input.model)
             .bind(&input.currency)
             .bind(input.input_price)
@@ -559,7 +462,7 @@ impl BillingPriceModel {
         let now = current_timestamp();
         let is_postgres = db.kind() == "postgres";
 
-        let sql = if is_postgres {
+        let sql = format!(
             r#"
             INSERT INTO billing_prices (
                 model, currency, input_price, output_price,
@@ -574,7 +477,7 @@ impl BillingPriceModel {
                 supports_vision, supports_function_calling,
                 voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                 synced_at, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+            ) VALUES ({})
             ON CONFLICT(model, region) DO UPDATE SET
                 currency = EXCLUDED.currency,
                 input_price = EXCLUDED.input_price,
@@ -604,54 +507,9 @@ impl BillingPriceModel {
                 model_type = EXCLUDED.model_type,
                 synced_at = EXCLUDED.synced_at,
                 updated_at = EXCLUDED.updated_at
-            "#
-        } else {
-            r#"
-            INSERT INTO billing_prices (
-                model, currency, input_price, output_price,
-                cache_read_input_price, cache_creation_input_price,
-                batch_input_price, batch_output_price,
-                priority_input_price, priority_output_price,
-                audio_input_price, audio_output_price,
-                reasoning_price, embedding_price,
-                image_price, video_price, music_price,
-                source, region,
-                context_window, max_output_tokens,
-                supports_vision, supports_function_calling,
-                voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
-                synced_at, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(model, region) DO UPDATE SET
-                currency = excluded.currency,
-                input_price = excluded.input_price,
-                output_price = excluded.output_price,
-                cache_read_input_price = excluded.cache_read_input_price,
-                cache_creation_input_price = excluded.cache_creation_input_price,
-                batch_input_price = excluded.batch_input_price,
-                batch_output_price = excluded.batch_output_price,
-                priority_input_price = excluded.priority_input_price,
-                priority_output_price = excluded.priority_output_price,
-                audio_input_price = excluded.audio_input_price,
-                audio_output_price = excluded.audio_output_price,
-                reasoning_price = excluded.reasoning_price,
-                embedding_price = excluded.embedding_price,
-                image_price = excluded.image_price,
-                video_price = excluded.video_price,
-                music_price = excluded.music_price,
-                source = excluded.source,
-                context_window = excluded.context_window,
-                max_output_tokens = excluded.max_output_tokens,
-                supports_vision = excluded.supports_vision,
-                supports_function_calling = excluded.supports_function_calling,
-                voices_pricing = excluded.voices_pricing,
-                video_pricing = excluded.video_pricing,
-                asr_pricing = excluded.asr_pricing,
-                realtime_pricing = excluded.realtime_pricing,
-                model_type = excluded.model_type,
-                synced_at = excluded.synced_at,
-                updated_at = excluded.updated_at
-            "#
-        };
+            "#,
+            phs(is_postgres, 31)
+        );
 
         let mut tx = conn.pool().begin().await?;
         let mut count = 0usize;
@@ -660,7 +518,7 @@ impl BillingPriceModel {
             // Normalize region: None → "" (same logic as upsert)
             let region = input.region.as_deref().unwrap_or("").to_string();
 
-            sqlx::query(sql)
+            sqlx::query(&sql)
                 .bind(&input.model)
                 .bind(&input.currency)
                 .bind(input.input_price)
@@ -714,12 +572,11 @@ impl BillingPriceModel {
 
         let result = match region {
             Some(r) => {
-                let sql = if is_postgres {
-                    "DELETE FROM billing_prices WHERE model = $1 AND currency = $2 AND region = $3"
-                } else {
-                    "DELETE FROM billing_prices WHERE model = ? AND currency = ? AND region = ?"
-                };
-                sqlx::query(sql)
+                let sql = format!(
+                    "DELETE FROM billing_prices WHERE model = {} AND currency = {} AND region = {}",
+                    ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
+                );
+                sqlx::query(&sql)
                     .bind(model)
                     .bind(currency)
                     .bind(r)
@@ -727,12 +584,11 @@ impl BillingPriceModel {
                     .await?
             }
             None => {
-                let sql = if is_postgres {
-                    "DELETE FROM billing_prices WHERE model = $1 AND currency = $2 AND region IS NULL"
-                } else {
-                    "DELETE FROM billing_prices WHERE model = ? AND currency = ? AND region IS NULL"
-                };
-                sqlx::query(sql)
+                let sql = format!(
+                    "DELETE FROM billing_prices WHERE model = {} AND currency = {} AND region IS NULL",
+                    ph(is_postgres, 1), ph(is_postgres, 2)
+                );
+                sqlx::query(&sql)
                     .bind(model)
                     .bind(currency)
                     .execute(conn.pool())
@@ -746,12 +602,13 @@ impl BillingPriceModel {
     /// Delete all prices for a model
     pub async fn delete_all_for_model(db: &Database, model: &str) -> Result<()> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => "DELETE FROM billing_prices WHERE model = $1",
-            _ => "DELETE FROM billing_prices WHERE model = ?",
-        };
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            "DELETE FROM billing_prices WHERE model = {}",
+            ph(is_postgres, 1)
+        );
 
-        sqlx::query(sql).bind(model).execute(conn.pool()).await?;
+        sqlx::query(&sql).bind(model).execute(conn.pool()).await?;
 
         Ok(())
     }
@@ -762,13 +619,12 @@ impl BillingPriceModel {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
-        let sql = if is_postgres {
-            "DELETE FROM billing_prices WHERE model = $1 AND region = $2"
-        } else {
-            "DELETE FROM billing_prices WHERE model = ? AND region = ?"
-        };
+        let sql = format!(
+            "DELETE FROM billing_prices WHERE model = {} AND region = {}",
+            ph(is_postgres, 1), ph(is_postgres, 2)
+        );
 
-        let result = sqlx::query(sql)
+        let result = sqlx::query(&sql)
             .bind(model)
             .bind(region)
             .execute(conn.pool())

@@ -14,6 +14,7 @@ jsonwebtoken.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
+log.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

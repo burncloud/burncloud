@@ -1,6 +1,6 @@
 use crate::common::current_timestamp;
 use burncloud_common::types::Channel;
-use burncloud_database::{adapt_sql, Database, Result};
+use burncloud_database::{adapt_sql, ph, phs, Database, Result};
 use sqlx::Row;
 
 pub struct ChannelProviderModel;
@@ -10,34 +10,27 @@ impl ChannelProviderModel {
         let conn = db.get_connection()?;
         let pool = conn.pool();
 
-        let group_col = if db.kind() == "postgres" {
-            "\"group\""
-        } else {
-            "`group`"
-        };
-        let type_col = if db.kind() == "postgres" {
-            "\"type\""
-        } else {
-            "type"
-        };
+        let is_postgres = db.kind() == "postgres";
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
+        let type_col = if is_postgres { "\"type\"" } else { "type" };
 
         // Basic Insert
-        let sql = if db.kind() == "postgres" {
+        let sql = if is_postgres {
             format!(
                 r#"
                 INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                VALUES ({})
                 RETURNING id
                 "#,
-                type_col, group_col
+                type_col, group_col, phs(is_postgres, 14)
             )
         } else {
             format!(
                 r#"
                 INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({})
                 "#,
-                type_col, group_col
+                type_col, group_col, phs(is_postgres, 14)
             )
         };
 
@@ -141,30 +134,34 @@ impl ChannelProviderModel {
 
     pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => {
+        let is_postgres = db.kind() == "postgres";
+        let sql = if is_postgres {
+            format!(
                 r#"
                 SELECT
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channel_providers WHERE id = $1
-            "#
-            }
-            _ => {
+                FROM channel_providers WHERE id = {}
+            "#,
+                ph(is_postgres, 1)
+            )
+        } else {
+            format!(
                 r#"
                 SELECT
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channel_providers WHERE id = ?
-            "#
-            }
+                FROM channel_providers WHERE id = {}
+            "#,
+                ph(is_postgres, 1)
+            )
         };
 
-        let channel = sqlx::query_as(sql)
+        let channel = sqlx::query_as(&sql)
             .bind(id)
             .fetch_optional(conn.pool())
             .await?;
@@ -174,30 +171,34 @@ impl ChannelProviderModel {
 
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Channel>> {
         let conn = db.get_connection()?;
-        let sql = match db.kind().as_str() {
-            "postgres" => {
+        let is_postgres = db.kind() == "postgres";
+        let sql = if is_postgres {
+            format!(
                 r#"
                 SELECT
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channel_providers ORDER BY id DESC LIMIT $1 OFFSET $2
-            "#
-            }
-            _ => {
+                FROM channel_providers ORDER BY id DESC LIMIT {} OFFSET {}
+            "#,
+                ph(is_postgres, 1), ph(is_postgres, 2)
+            )
+        } else {
+            format!(
                 r#"
                 SELECT
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region
-                FROM channel_providers ORDER BY id DESC LIMIT ? OFFSET ?
-            "#
-            }
+                FROM channel_providers ORDER BY id DESC LIMIT {} OFFSET {}
+            "#,
+                ph(is_postgres, 1), ph(is_postgres, 2)
+            )
         };
 
-        let channels = sqlx::query_as(sql)
+        let channels = sqlx::query_as(&sql)
             .bind(limit)
             .bind(offset)
             .fetch_all(conn.pool())
@@ -248,7 +249,7 @@ impl ChannelProviderModel {
 
         for model in models {
             for group in &groups {
-                println!(
+                log::info!(
                     "ChannelProviderModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
                     model, group, channel.id
                 );
