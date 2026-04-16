@@ -82,11 +82,10 @@ pub(super) async fn migrate_router_logs(pool: &AnyPool, kind: &str) -> Result<()
     let _ = sqlx::query("ALTER TABLE router_logs_new RENAME TO router_logs")
         .execute(pool)
         .await;
-    let _ = sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id)",
-    )
-    .execute(pool)
-    .await;
+    let _ =
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id)")
+            .execute(pool)
+            .await;
     let _ = sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at)",
     )

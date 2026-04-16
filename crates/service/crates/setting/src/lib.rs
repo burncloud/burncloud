@@ -24,7 +24,9 @@ impl SettingService {
     }
 
     /// 获取所有配置项
-    pub async fn list_all(db: &SettingDatabase) -> Result<Vec<burncloud_database_setting::SysSetting>> {
+    pub async fn list_all(
+        db: &SettingDatabase,
+    ) -> Result<Vec<burncloud_database_setting::SysSetting>> {
         db.list_all().await
     }
 }

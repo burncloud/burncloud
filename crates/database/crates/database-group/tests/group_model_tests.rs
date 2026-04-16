@@ -4,7 +4,9 @@
 /// touch the user's default database and can run in any CI environment.
 use burncloud_common::CrudRepository;
 use burncloud_database::create_database_with_url;
-use burncloud_database_group::{RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel, RouterGroupRepository};
+use burncloud_database_group::{
+    RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel, RouterGroupRepository,
+};
 use tempfile::NamedTempFile;
 
 /// Create an isolated SQLite database with the `router_groups` and
@@ -63,7 +65,9 @@ async fn test_group_model_create_and_get() {
     let (db, _tmp) = create_test_db().await;
     let g = make_group("group-1");
 
-    RouterGroupModel::create(&db, &g).await.expect("create failed");
+    RouterGroupModel::create(&db, &g)
+        .await
+        .expect("create failed");
 
     let found = RouterGroupModel::get(&db, "group-1")
         .await
@@ -91,7 +95,9 @@ async fn test_group_model_get_missing_returns_none() {
 async fn test_group_model_get_all_empty() {
     let (db, _tmp) = create_test_db().await;
 
-    let all = RouterGroupModel::get_all(&db).await.expect("get_all failed");
+    let all = RouterGroupModel::get_all(&db)
+        .await
+        .expect("get_all failed");
     assert!(all.is_empty());
 }
 
@@ -99,11 +105,19 @@ async fn test_group_model_get_all_empty() {
 async fn test_group_model_get_all_multiple() {
     let (db, _tmp) = create_test_db().await;
 
-    RouterGroupModel::create(&db, &make_group("g-a")).await.unwrap();
-    RouterGroupModel::create(&db, &make_group("g-b")).await.unwrap();
-    RouterGroupModel::create(&db, &make_group("g-c")).await.unwrap();
+    RouterGroupModel::create(&db, &make_group("g-a"))
+        .await
+        .unwrap();
+    RouterGroupModel::create(&db, &make_group("g-b"))
+        .await
+        .unwrap();
+    RouterGroupModel::create(&db, &make_group("g-c"))
+        .await
+        .unwrap();
 
-    let all = RouterGroupModel::get_all(&db).await.expect("get_all failed");
+    let all = RouterGroupModel::get_all(&db)
+        .await
+        .expect("get_all failed");
     assert_eq!(all.len(), 3);
 
     let ids: Vec<&str> = all.iter().map(|g| g.id.as_str()).collect();
@@ -118,10 +132,18 @@ async fn test_group_model_delete_removes_group() {
     let g = make_group("del-group");
 
     RouterGroupModel::create(&db, &g).await.unwrap();
-    assert!(RouterGroupModel::get(&db, "del-group").await.unwrap().is_some());
+    assert!(RouterGroupModel::get(&db, "del-group")
+        .await
+        .unwrap()
+        .is_some());
 
-    RouterGroupModel::delete(&db, "del-group").await.expect("delete failed");
-    assert!(RouterGroupModel::get(&db, "del-group").await.unwrap().is_none());
+    RouterGroupModel::delete(&db, "del-group")
+        .await
+        .expect("delete failed");
+    assert!(RouterGroupModel::get(&db, "del-group")
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]
@@ -169,7 +191,9 @@ async fn test_group_model_delete_also_removes_members() {
 async fn test_member_model_set_and_get_by_group() {
     let (db, _tmp) = create_test_db().await;
 
-    RouterGroupModel::create(&db, &make_group("grp")).await.unwrap();
+    RouterGroupModel::create(&db, &make_group("grp"))
+        .await
+        .unwrap();
 
     let members = vec![
         RouterGroupMember {
@@ -202,7 +226,9 @@ async fn test_member_model_set_and_get_by_group() {
 async fn test_member_model_set_for_group_replaces_existing() {
     let (db, _tmp) = create_test_db().await;
 
-    RouterGroupModel::create(&db, &make_group("replace-grp")).await.unwrap();
+    RouterGroupModel::create(&db, &make_group("replace-grp"))
+        .await
+        .unwrap();
 
     let initial = vec![RouterGroupMember {
         group_id: "replace-grp".to_string(),
@@ -235,8 +261,12 @@ async fn test_member_model_set_for_group_replaces_existing() {
 async fn test_member_model_get_all() {
     let (db, _tmp) = create_test_db().await;
 
-    RouterGroupModel::create(&db, &make_group("g1")).await.unwrap();
-    RouterGroupModel::create(&db, &make_group("g2")).await.unwrap();
+    RouterGroupModel::create(&db, &make_group("g1"))
+        .await
+        .unwrap();
+    RouterGroupModel::create(&db, &make_group("g2"))
+        .await
+        .unwrap();
 
     let m1 = vec![RouterGroupMember {
         group_id: "g1".to_string(),
@@ -249,10 +279,16 @@ async fn test_member_model_get_all() {
         weight: 2,
     }];
 
-    RouterGroupMemberModel::set_for_group(&db, "g1", m1).await.unwrap();
-    RouterGroupMemberModel::set_for_group(&db, "g2", m2).await.unwrap();
+    RouterGroupMemberModel::set_for_group(&db, "g1", m1)
+        .await
+        .unwrap();
+    RouterGroupMemberModel::set_for_group(&db, "g2", m2)
+        .await
+        .unwrap();
 
-    let all = RouterGroupMemberModel::get_all(&db).await.expect("get_all failed");
+    let all = RouterGroupMemberModel::get_all(&db)
+        .await
+        .expect("get_all failed");
     assert_eq!(all.len(), 2);
 }
 
@@ -260,7 +296,9 @@ async fn test_member_model_get_all() {
 async fn test_member_model_set_empty_clears_members() {
     let (db, _tmp) = create_test_db().await;
 
-    RouterGroupModel::create(&db, &make_group("clear-grp")).await.unwrap();
+    RouterGroupModel::create(&db, &make_group("clear-grp"))
+        .await
+        .unwrap();
 
     let members = vec![RouterGroupMember {
         group_id: "clear-grp".to_string(),

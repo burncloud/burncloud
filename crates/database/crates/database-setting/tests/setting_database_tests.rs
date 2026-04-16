@@ -130,7 +130,9 @@ async fn test_list_all_is_ordered_by_name() {
 async fn test_empty_string_value() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    sdb.set("empty-val", "").await.expect("set empty value failed");
+    sdb.set("empty-val", "")
+        .await
+        .expect("set empty value failed");
     let value = sdb.get("empty-val").await.unwrap();
     assert_eq!(value, Some("".to_string()));
 }
@@ -154,7 +156,9 @@ async fn test_set_then_delete_then_set_again() {
 
     sdb.set("cycle", "first").await.unwrap();
     sdb.delete("cycle").await.unwrap();
-    sdb.set("cycle", "second").await.expect("re-set after delete failed");
+    sdb.set("cycle", "second")
+        .await
+        .expect("re-set after delete failed");
 
     let value = sdb.get("cycle").await.unwrap();
     assert_eq!(value, Some("second".to_string()));

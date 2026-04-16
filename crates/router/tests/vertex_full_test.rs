@@ -6,7 +6,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn test_vertex_full_flow() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, _db_url) = setup_db().await?;
 
     // 1. Start Mock Upstream (Vertex API & Auth)
     let mut server = mockito::Server::new_async().await;
@@ -130,7 +130,7 @@ Apfww82b16AoK7qgtPcI8g==
 
     // 3. Start Router
     let port = 3050;
-    start_test_server(port).await;
+    start_test_server(port, &_db_url).await;
 
     // 4. Send Request (Non-Stream for simplicity first, or Stream if we want to test that too)
     let client = Client::new();

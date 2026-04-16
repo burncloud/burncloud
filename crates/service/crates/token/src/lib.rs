@@ -40,7 +40,10 @@ impl TokenService {
     }
 
     /// Validates a token and returns detailed result
-    pub async fn validate_detailed(db: &Database, token: &str) -> Result<RouterTokenValidationResult> {
+    pub async fn validate_detailed(
+        db: &Database,
+        token: &str,
+    ) -> Result<RouterTokenValidationResult> {
         RouterTokenModel::validate_detailed(db, token).await
     }
 

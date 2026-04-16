@@ -33,25 +33,27 @@ members = [
     "crates/database/crates/database-token",
     "crates/database/crates/database-upstream",
     "crates/database/crates/database-user",
+    "crates/database/crates/database-channel",
+    "crates/database/crates/database-price",
     "crates/download",
     "crates/download/crates/download-aria2",
     "crates/router",
     "crates/router/crates/router-aws",
     "crates/server",
     "crates/service",
-    "crates/service/crates/service-ip",
-    "crates/service/crates/service-models",
-    "crates/service/crates/service-monitor",
-    "crates/service/crates/service-setting",
-    "crates/service/crates/service-inference",
-    "crates/service/crates/service-redis",
-    "crates/service/crates/service-user",
-    "crates/service/crates/service-upstream",
-    "crates/service/crates/service-token",
-    "crates/service/crates/service-group",
-    "crates/service/crates/service-router-log",
-    "crates/service/crates/service-billing",
-    "crates/service/crates/service-channel",
+    "crates/service/crates/ip",
+    "crates/service/crates/models",
+    "crates/service/crates/monitor",
+    "crates/service/crates/setting",
+    "crates/service/crates/inference",
+    "crates/service/crates/redis",
+    "crates/service/crates/user",
+    "crates/service/crates/upstream",
+    "crates/service/crates/token",
+    "crates/service/crates/group",
+    "crates/service/crates/router-log",
+    "crates/service/crates/billing",
+    "crates/service/crates/channel",
     "crates/tests",
 ]
 
@@ -174,6 +176,8 @@ burncloud-database-setting = { path = "crates/database/crates/database-setting" 
 burncloud-database-token = { path = "crates/database/crates/database-token" }
 burncloud-database-upstream = { path = "crates/database/crates/database-upstream" }
 burncloud-database-user = { path = "crates/database/crates/database-user" }
+burncloud-database-channel = { path = "crates/database/crates/database-channel" }
+burncloud-database-price = { path = "crates/database/crates/database-price" }
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
 burncloud-installer = { path = "crates/installer" }
@@ -181,19 +185,19 @@ burncloud-router = { path = "crates/router" }
 burncloud-router-aws = { path = "crates/router/crates/router-aws" }
 burncloud-server = { path = "crates/server" }
 burncloud-service = { path = "crates/service" }
-burncloud-service-ip = { path = "crates/service/crates/service-ip" }
-burncloud-service-models = { path = "crates/service/crates/service-models" }
-burncloud-service-monitor = { path = "crates/service/crates/service-monitor" }
-burncloud-service-setting = { path = "crates/service/crates/service-setting" }
-burncloud-service-inference = { path = "crates/service/crates/service-inference" }
-burncloud-service-redis = { path = "crates/service/crates/service-redis" }
-burncloud-service-user = { path = "crates/service/crates/service-user" }
-burncloud-service-upstream = { path = "crates/service/crates/service-upstream" }
-burncloud-service-token = { path = "crates/service/crates/service-token" }
-burncloud-service-group = { path = "crates/service/crates/service-group" }
-burncloud-service-router-log = { path = "crates/service/crates/service-router-log" }
-burncloud-service-billing = { path = "crates/service/crates/service-billing" }
-burncloud-service-channel = { path = "crates/service/crates/service-channel" }
+burncloud-service-ip = { path = "crates/service/crates/ip" }
+burncloud-service-models = { path = "crates/service/crates/models" }
+burncloud-service-monitor = { path = "crates/service/crates/monitor" }
+burncloud-service-setting = { path = "crates/service/crates/setting" }
+burncloud-service-inference = { path = "crates/service/crates/inference" }
+burncloud-service-redis = { path = "crates/service/crates/redis" }
+burncloud-service-user = { path = "crates/service/crates/user" }
+burncloud-service-upstream = { path = "crates/service/crates/upstream" }
+burncloud-service-token = { path = "crates/service/crates/token" }
+burncloud-service-group = { path = "crates/service/crates/group" }
+burncloud-service-router-log = { path = "crates/service/crates/router-log" }
+burncloud-service-billing = { path = "crates/service/crates/billing" }
+burncloud-service-channel = { path = "crates/service/crates/channel" }
 
 [package]
 name = "burncloud"

@@ -8,7 +8,7 @@ use std::time::Duration;
 /// Test quota deduction
 #[tokio::test]
 async fn test_quota_deduction() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, _db_url) = setup_db().await?;
 
     // Create a test token with limited quota
     sqlx::query(
@@ -78,7 +78,7 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
 /// Test unlimited quota token
 #[tokio::test]
 async fn test_unlimited_quota() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, _db_url) = setup_db().await?;
 
     // Create a token with unlimited quota
     sqlx::query(
@@ -112,7 +112,7 @@ async fn test_unlimited_quota() -> anyhow::Result<()> {
 /// Test quota check without deduction
 #[tokio::test]
 async fn test_quota_check() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, _db_url) = setup_db().await?;
 
     // Create a token with quota 100
     sqlx::query(

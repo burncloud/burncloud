@@ -1,4 +1,6 @@
-use crate::components::{ActionDef, ActionEvent, FormMode, SchemaForm, SchemaTable, BCButton, ButtonVariant};
+use crate::components::{
+    ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,
+};
 use crate::use_toast;
 use dioxus::prelude::*;
 use serde_json::{json, Value};
@@ -11,10 +13,7 @@ use serde_json::{json, Value};
 /// 3. 自动处理 Loading 和 API 错误提示
 /// 4. 封装标准的 CRUD 操作流
 #[component]
-pub fn StandardCrudPage(
-    schema: Value,
-    api_endpoint: String,
-) -> Element {
+pub fn StandardCrudPage(schema: Value, api_endpoint: String) -> Element {
     let mut show_form = use_signal(|| false);
     let mut form_mode = use_signal(|| FormMode::Create);
     let mut form_data = use_signal(|| json!({}));

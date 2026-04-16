@@ -7,7 +7,7 @@ use serde_json::Value;
 
 #[tokio::test]
 async fn test_round_robin_balancer() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
     let mock_port = 3022;
@@ -79,7 +79,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
 
     // 4. Start Server
     let port = 3014;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}{}", port, match_path);

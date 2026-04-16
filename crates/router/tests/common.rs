@@ -1,28 +1,25 @@
-use burncloud_database::{create_database_with_url, create_default_database, sqlx, Database};
+use burncloud_database::{create_database_with_url, sqlx, Database};
 use burncloud_database_router::RouterDatabase;
 use sqlx::AnyPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-pub async fn setup_db() -> anyhow::Result<(Database, AnyPool)> {
+pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     // Use a unique temp file per test to avoid SQLite lock contention when tests run in parallel.
     let tmp = tempfile::NamedTempFile::new()?;
     let path = tmp.path().to_string_lossy().to_string();
     // Keep the NamedTempFile alive by leaking it; the OS will clean it up after the process exits.
     std::mem::forget(tmp);
     let url = format!("sqlite:{}", path);
-    // Publish the URL so start_test_server() (which calls create_default_database()) picks up the
-    // same file, ensuring data seeded via `pool` is visible to the running server.
-    std::env::set_var("BURNCLOUD_DATABASE_URL", &url);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let conn = db.get_connection()?;
     let pool = conn.pool().clone();
-    Ok((db, pool))
+    Ok((db, pool, url))
 }
 
 #[allow(dead_code)]
-pub async fn start_test_server(port: u16) {
+pub async fn start_test_server(port: u16, db_url: &str) {
     // Ensure MASTER_KEY is set for tests that need encryption (e.g. upstream API keys).
     // Use a fixed 64-hex-char test key; does not affect production.
     if std::env::var("MASTER_KEY").is_err() {
@@ -32,8 +29,10 @@ pub async fn start_test_server(port: u16) {
         );
     }
 
-    // Reuse the database URL set by setup_db() so the server sees the same seeded data.
-    let db = create_default_database().await.expect("Failed to open DB");
+    // Use the URL directly so concurrent tests don't interfere via a shared env var.
+    let db = create_database_with_url(db_url)
+        .await
+        .expect("Failed to open DB");
     let db_arc = Arc::new(db);
 
     let (app, _force_sync_tx) = burncloud_router::create_router_app(db_arc)

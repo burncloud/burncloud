@@ -92,7 +92,10 @@ impl RouterGroupModel {
             "DELETE FROM router_groups WHERE id = {}",
             ph(is_postgres, 1)
         );
-        sqlx::query(&sql_group).bind(id).execute(conn.pool()).await?;
+        sqlx::query(&sql_group)
+            .bind(id)
+            .execute(conn.pool())
+            .await?;
         Ok(())
     }
 }
@@ -136,7 +139,10 @@ impl RouterGroupMemberModel {
         let is_postgres = db.kind() == "postgres";
 
         // Delete existing members
-        let delete_sql = adapt_sql(is_postgres, "DELETE FROM router_group_members WHERE group_id = ?");
+        let delete_sql = adapt_sql(
+            is_postgres,
+            "DELETE FROM router_group_members WHERE group_id = ?",
+        );
         sqlx::query(&delete_sql)
             .bind(group_id)
             .execute(conn.pool())

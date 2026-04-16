@@ -7,7 +7,7 @@ use burncloud_database::Database;
 use burncloud_database_router_log::{BalanceModel, RouterLogModel};
 
 pub use burncloud_database_router_log::{
-    BillingModelSummary, BillingSummary, RouterLog, ModelUsageStats, UsageStats,
+    BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, UsageStats,
 };
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;

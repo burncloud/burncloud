@@ -9,9 +9,9 @@ use uuid::Uuid;
 /// Test invalid token returns 401
 #[tokio::test]
 async fn test_invalid_token_returns_401() -> anyhow::Result<()> {
-    let (_db, _pool) = setup_db().await?;
+    let (_db, _pool, db_url) = setup_db().await?;
     let port = 3030;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
@@ -43,7 +43,7 @@ async fn test_invalid_token_returns_401() -> anyhow::Result<()> {
 /// Test expired token returns 401
 #[tokio::test]
 async fn test_expired_token_returns_401_boundary() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Create unique expired token
     let unique_id = Uuid::new_v4();
@@ -67,7 +67,7 @@ async fn test_expired_token_returns_401_boundary() -> anyhow::Result<()> {
     .await?;
 
     let port = 3031;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
@@ -96,7 +96,7 @@ async fn test_expired_token_returns_401_boundary() -> anyhow::Result<()> {
 /// Test insufficient quota returns 402
 #[tokio::test]
 async fn test_insufficient_quota_returns_402() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Create unique token
     let unique_id = Uuid::new_v4();
@@ -114,7 +114,7 @@ async fn test_insufficient_quota_returns_402() -> anyhow::Result<()> {
     .await?;
 
     let port = 3032;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);
@@ -145,7 +145,7 @@ async fn test_insufficient_quota_returns_402() -> anyhow::Result<()> {
 /// This test verifies the fallback behavior works correctly.
 #[tokio::test]
 async fn test_model_not_found_fallback() -> anyhow::Result<()> {
-    let (_db, pool) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     // Create unique token
     let unique_id = Uuid::new_v4();
@@ -163,7 +163,7 @@ async fn test_model_not_found_fallback() -> anyhow::Result<()> {
     .await?;
 
     let port = 3033;
-    start_test_server(port).await;
+    start_test_server(port, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);

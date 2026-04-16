@@ -35,7 +35,9 @@ impl BillingPriceModel {
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM billing_prices WHERE model = {} AND currency = {} AND region = {}"#,
-            ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
+            ph(is_postgres, 1),
+            ph(is_postgres, 2),
+            ph(is_postgres, 3)
         );
 
         let price = sqlx::query_as(&sql)
@@ -65,7 +67,8 @@ impl BillingPriceModel {
                           voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                           synced_at, created_at, updated_at
                    FROM billing_prices WHERE model = {} AND currency = 'USD' AND region = {}"#,
-                ph(is_postgres, 1), ph(is_postgres, 2)
+                ph(is_postgres, 1),
+                ph(is_postgres, 2)
             );
 
             let usd_price = sqlx::query_as(&sql_usd)
@@ -110,7 +113,8 @@ impl BillingPriceModel {
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
                FROM billing_prices WHERE model = {} AND region = {}"#,
-            ph(is_postgres, 1), ph(is_postgres, 2)
+            ph(is_postgres, 1),
+            ph(is_postgres, 2)
         );
 
         let price = sqlx::query_as(&sql)
@@ -178,7 +182,8 @@ impl BillingPriceModel {
                       synced_at, created_at, updated_at
                FROM billing_prices WHERE model = {} AND region IS NOT DISTINCT FROM {}
                ORDER BY currency"#,
-                ph(is_postgres, 1), ph(is_postgres, 2)
+                ph(is_postgres, 1),
+                ph(is_postgres, 2)
             )
         } else {
             format!(
@@ -196,7 +201,9 @@ impl BillingPriceModel {
                       synced_at, created_at, updated_at
                FROM billing_prices WHERE model = {} AND (region = {} OR (region IS NULL AND {} IS NULL))
                ORDER BY currency"#,
-                ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
+                ph(is_postgres, 1),
+                ph(is_postgres, 2),
+                ph(is_postgres, 3)
             )
         };
 
@@ -249,14 +256,21 @@ impl BillingPriceModel {
                         r#"{} FROM billing_prices WHERE currency = {} AND region IS NOT DISTINCT FROM {}
                        ORDER BY model LIMIT {} OFFSET {}"#,
                         base_select,
-                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3), ph(is_postgres, 4)
+                        ph(is_postgres, 1),
+                        ph(is_postgres, 2),
+                        ph(is_postgres, 3),
+                        ph(is_postgres, 4)
                     )
                 } else {
                     format!(
                         r#"{} FROM billing_prices WHERE currency = {} AND (region = {} OR (region IS NULL AND {} IS NULL))
                        ORDER BY model LIMIT {} OFFSET {}"#,
                         base_select,
-                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3), ph(is_postgres, 4), ph(is_postgres, 5)
+                        ph(is_postgres, 1),
+                        ph(is_postgres, 2),
+                        ph(is_postgres, 3),
+                        ph(is_postgres, 4),
+                        ph(is_postgres, 5)
                     )
                 };
                 if is_postgres {
@@ -302,14 +316,19 @@ impl BillingPriceModel {
                         r#"{} FROM billing_prices WHERE region IS NOT DISTINCT FROM {}
                        ORDER BY model, currency LIMIT {} OFFSET {}"#,
                         base_select,
-                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
+                        ph(is_postgres, 1),
+                        ph(is_postgres, 2),
+                        ph(is_postgres, 3)
                     )
                 } else {
                     format!(
                         r#"{} FROM billing_prices WHERE (region = {} OR (region IS NULL AND {} IS NULL))
                        ORDER BY model, currency LIMIT {} OFFSET {}"#,
                         base_select,
-                        ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3), ph(is_postgres, 4)
+                        ph(is_postgres, 1),
+                        ph(is_postgres, 2),
+                        ph(is_postgres, 3),
+                        ph(is_postgres, 4)
                     )
                 };
                 if is_postgres {
@@ -572,7 +591,8 @@ impl BillingPriceModel {
 
         let result = match region {
             Some(r) => {
-                let sql = format!(
+                let sql =
+                    format!(
                     "DELETE FROM billing_prices WHERE model = {} AND currency = {} AND region = {}",
                     ph(is_postgres, 1), ph(is_postgres, 2), ph(is_postgres, 3)
                 );
@@ -621,7 +641,8 @@ impl BillingPriceModel {
 
         let sql = format!(
             "DELETE FROM billing_prices WHERE model = {} AND region = {}",
-            ph(is_postgres, 1), ph(is_postgres, 2)
+            ph(is_postgres, 1),
+            ph(is_postgres, 2)
         );
 
         let result = sqlx::query(&sql)

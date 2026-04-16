@@ -1,5 +1,5 @@
 use burncloud_database::create_default_database;
-use burncloud_database_router::{RouterLog, RouterDatabase};
+use burncloud_database_router::{RouterDatabase, RouterLog};
 use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;

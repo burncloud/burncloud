@@ -39,7 +39,9 @@ impl ChannelAbilityModel {
                     VALUES ({})
                     ON CONFLICT ({}, model, channel_id) DO NOTHING
                     "#,
-                    group_col, phs(is_postgres, 6), group_col
+                    group_col,
+                    phs(is_postgres, 6),
+                    group_col
                 )
             } else {
                 format!(
@@ -47,7 +49,8 @@ impl ChannelAbilityModel {
                     INSERT OR IGNORE INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
                     VALUES ({})
                     "#,
-                    group_col, phs(is_postgres, 6)
+                    group_col,
+                    phs(is_postgres, 6)
                 )
             };
 

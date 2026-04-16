@@ -10,7 +10,9 @@ use burncloud_common::{
     },
 };
 use burncloud_database::Database;
-use burncloud_database_models::{PriceInput, BillingPriceModel, TieredPriceInput, BillingTieredPriceModel};
+use burncloud_database_models::{
+    BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
+};
 use chrono::Utc;
 use clap::ArgMatches;
 use std::collections::HashMap;
