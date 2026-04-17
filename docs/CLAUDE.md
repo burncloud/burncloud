@@ -80,7 +80,7 @@ crates/
   server/        ← axum HTTP 层，Handler 和路由
   service/       ← 业务逻辑（service-user, service-group 等）
   database/      ← 核心 Database + schema + placeholder utils
-  database-*/    ← 各业务域 DB crate（database-user, database-token 等）
+                ← 子 crate 在 database/crates/ 下按业务域组织（user, token, group, channel, router, router-log, billing, models, setting, installer, download 等）
   common/        ← CrudRepository trait，跨 crate 纯工具
   router/        ← LLM 数据面路由（独立，不在 Service 依赖链内）
   client/        ← Dioxus 前端

@@ -53,11 +53,11 @@ channel_abilities   →  channel_ability.rs    →  ChannelAbility / ChannelAbil
 
 | 实体 | SQL 表名 | .rs 文件名 | 行类型 | 操作类型 | 仓库类型 |
 |------|---------|----------|--------|---------|---------|
-| 请求日志 | `router_logs` | lib.rs (database-router-log) | `RouterLog` | `RouterLogModel` | — |
-| 路由内部 Token | `router_tokens` | lib.rs (database-token) | `RouterToken` | `RouterTokenModel` | `RouterTokenRepository` |
-| 路由分组 | `router_groups` | lib.rs (database-group) | `RouterGroup` | `RouterGroupModel` | `RouterGroupRepository` |
-| 分组成员 | `router_group_members` | lib.rs (database-group) | `RouterGroupMember` | `RouterGroupMemberModel` | — |
-| 上游配置 | `router_upstreams` | lib.rs (database-upstream) | `RouterUpstream` | `RouterUpstreamModel` | `RouterUpstreamRepository` |
+| 请求日志 | `router_logs` | lib.rs (router-log) | `RouterLog` | `RouterLogModel` | — |
+| 路由内部 Token | `router_tokens` | lib.rs (token) | `RouterToken` | `RouterTokenModel` | `RouterTokenRepository` |
+| 路由分组 | `router_groups` | lib.rs (group) | `RouterGroup` | `RouterGroupModel` | `RouterGroupRepository` |
+| 分组成员 | `router_group_members` | lib.rs (group) | `RouterGroupMember` | `RouterGroupMemberModel` | — |
+| 上游配置 | `router_upstreams` | lib.rs (upstream) | `RouterUpstream` | `RouterUpstreamModel` | `RouterUpstreamRepository` |
 | 视频任务 | `router_video_tasks` | `router_video_task.rs` | `RouterVideoTask` | `RouterVideoTaskModel` | — |
 
 ### billing\_ 域
@@ -80,9 +80,9 @@ channel_abilities   →  channel_ability.rs    →  ChannelAbility / ChannelAbil
 
 | 实体 | SQL 表名 | .rs 文件名 | 行类型 | 控制器 |
 |------|---------|----------|--------|-------|
-| 系统设置 | `sys_settings` | lib.rs (database-setting) | `SysSetting` | `SettingDatabase` |
-| 软件安装记录 | `sys_installations` | lib.rs (database-installer) | `SysInstallation` | `InstallerDB` |
-| 下载任务 | `sys_downloads` | lib.rs (database-download) | `SysDownload` | `DownloadDB` |
+| 系统设置 | `sys_settings` | lib.rs (setting) | `SysSetting` | `SettingDatabase` |
+| 软件安装记录 | `sys_installations` | lib.rs (installer) | `SysInstallation` | `InstallerDB` |
+| 下载任务 | `sys_downloads` | lib.rs (download) | `SysDownload` | `DownloadDB` |
 
 ## 类型后缀规则
 
@@ -101,7 +101,7 @@ channel_abilities   →  channel_ability.rs    →  ChannelAbility / ChannelAbil
 
 - `crates/database/src/schema.rs` 是所有核心业务表的唯一 CREATE TABLE 来源。
 - Sub-crate 的 `init()` 只能执行 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`。
-- 只有独立 crate（`database-setting`, `database-installer`, `database-download`）可自行 CREATE TABLE，
+- 只有独立 crate（`setting`, `installer`, `download`）可自行 CREATE TABLE，
   并在 `schema.rs` 末尾注释中登记。
 - 禁止在多个 crate 中重复定义同一张表的 CREATE TABLE。
 
@@ -118,7 +118,7 @@ channel_abilities   →  channel_ability.rs    →  ChannelAbility / ChannelAbil
 
 # Repository 层规范（Database Model）
 
-> 仅在编写 `crates/database/crates/database-*/src/` 下的代码时需要详细阅读。
+> 仅在编写 `crates/database/crates/*/src/` 下的代码时需要详细阅读。
 
 ---
 
