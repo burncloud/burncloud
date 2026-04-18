@@ -111,7 +111,7 @@ pub type SchedulerPolicyMap = HashMap<String, SchedulerKind>;
 
 /// Cold-start RPM default, matching AdaptiveLimitConfig::initial_limit.
 /// Used when a channel has no adaptive rate limit data yet.
-pub const COLD_START_RPM_LIMIT: u32 = 10;
+pub const COLD_START_RPM_LIMIT: u32 = crate::adaptive_limit::DEFAULT_INITIAL_LIMIT;
 
 /// Load scheduler policies from environment configuration.
 ///

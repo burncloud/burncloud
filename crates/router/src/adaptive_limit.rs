@@ -29,6 +29,10 @@ pub enum RateLimitState {
     Cooldown,
 }
 
+/// Default initial RPM limit for channels without adaptive rate limit data.
+/// Single source of truth — referenced by AdaptiveLimitConfig::default() and scheduler.
+pub const DEFAULT_INITIAL_LIMIT: u32 = 10;
+
 /// Configuration for the adaptive rate limiter.
 #[derive(Debug, Clone)]
 pub struct AdaptiveLimitConfig {
@@ -53,14 +57,14 @@ pub struct AdaptiveLimitConfig {
 impl Default for AdaptiveLimitConfig {
     fn default() -> Self {
         Self {
-            learning_duration: 10, // Learn over 10 requests
-            initial_limit: 10,     // Start conservatively
-            adjustment_step: 5,    // Adjust by 5 requests at a time
-            success_threshold: 5,  // 5 successes to increase
-            failure_threshold: 2,  // 2 failures to cooldown
+            learning_duration: 10,
+            initial_limit: DEFAULT_INITIAL_LIMIT,
+            adjustment_step: 5,
+            success_threshold: 5,
+            failure_threshold: 2,
             cooldown_duration: Duration::from_secs(30),
-            recovery_ratio: 0.5, // Reduce to 50% after cooldown
-            max_limit: 1000,     // Cap at 1000 requests
+            recovery_ratio: 0.5,
+            max_limit: 1000,
         }
     }
 }

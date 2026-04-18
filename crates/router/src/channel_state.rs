@@ -437,7 +437,7 @@ impl ChannelStateTracker {
     /// Calculate a health score for a channel.
     ///
     /// Higher scores indicate healthier channels.
-    /// Considers success rate, average latency, and current status.
+    /// For model-specific scoring, delegates to `get_health_and_adaptive`.
     ///
     /// # Arguments
     /// * `channel_id` - The channel ID to calculate score for
@@ -446,56 +446,27 @@ impl ChannelStateTracker {
     /// # Returns
     /// A health score (higher is better). Default is 1.0 for unknown channels.
     pub fn get_health_score(&self, channel_id: i32, model: Option<&str>) -> f64 {
-        // Get channel state
-        let channel_state = match self.channel_states.get(&channel_id) {
-            Some(state) => state,
-            None => return 1.0, // Unknown channel, neutral score
-        };
-
-        let mut score = 1.0;
-
-        // Penalize if auth is not OK
-        if !channel_state.auth_ok {
-            score *= 0.1;
-        }
-
-        // Penalize based on balance status
-        match channel_state.balance_status {
-            BalanceStatus::Ok => {}
-            BalanceStatus::Low => score *= 0.7,
-            BalanceStatus::Exhausted => score *= 0.1,
-            BalanceStatus::Unknown => {}
-        }
-
-        // If model is specified, factor in model-level stats
-        if let Some(model_name) = model {
-            if let Some(model_state) = channel_state.models.get(model_name) {
-                // Calculate success rate
-                let total = model_state.success_count + model_state.failure_count;
-                if total > 0 {
-                    let success_rate = model_state.success_count as f64 / total as f64;
-                    score *= success_rate;
+        match model {
+            Some(m) => self.get_health_and_adaptive(channel_id, m).0,
+            None => {
+                // Channel-only score (no model)
+                let channel_state = match self.channel_states.get(&channel_id) {
+                    Some(state) => state,
+                    None => return 1.0,
+                };
+                let mut score = 1.0;
+                if !channel_state.auth_ok {
+                    score *= 0.1;
                 }
-
-                // Factor in average latency (lower is better)
-                if model_state.avg_latency_ms > 0.0 {
-                    // Normalize: 100ms = 1.0, 1000ms = 0.5, 5000ms = 0.1
-                    let latency_factor = 100.0 / (100.0 + model_state.avg_latency_ms);
-                    score *= latency_factor;
+                match channel_state.balance_status {
+                    BalanceStatus::Ok => {}
+                    BalanceStatus::Low => score *= 0.7,
+                    BalanceStatus::Exhausted => score *= 0.1,
+                    BalanceStatus::Unknown => {}
                 }
-
-                // Penalize based on model status
-                match model_state.status {
-                    ModelStatus::Available => {}
-                    ModelStatus::RateLimited => score *= 0.3,
-                    ModelStatus::QuotaExhausted => score *= 0.1,
-                    ModelStatus::ModelNotFound => score *= 0.0,
-                    ModelStatus::TemporarilyDown => score *= 0.2,
-                }
+                score
             }
         }
-
-        score
     }
 
     /// Get all channel states for monitoring/health reporting.
@@ -508,20 +479,13 @@ impl ChannelStateTracker {
             .collect()
     }
 
-    /// Get the adaptive rate limit snapshot for a specific channel and model.
-    pub fn get_adaptive_snapshot(&self, channel_id: i32, model: &str) -> Option<AdaptiveSnapshot> {
-        let ch = self.channel_states.get(&channel_id)?;
-        let ms = ch.models.get(model)?;
-        Some(ms.adaptive_limit.snapshot())
-    }
-
     /// Combined lookup: health score + adaptive snapshot in a single DashMap get.
     ///
     /// Returns (health_score, Some(snapshot)) on success,
     /// (1.0, None) for unknown channels, or (computed_score, cold_start_snapshot) for unknown models.
     pub fn get_health_and_adaptive(&self, channel_id: i32, model: &str) -> (f64, AdaptiveSnapshot) {
         let cold_start = AdaptiveSnapshot {
-            current_limit: crate::scheduler::COLD_START_RPM_LIMIT,
+            current_limit: crate::adaptive_limit::DEFAULT_INITIAL_LIMIT,
             state: crate::adaptive_limit::RateLimitState::Learning,
         };
 
