@@ -68,6 +68,27 @@ fn build_response(status: StatusCode, body: Body) -> Response {
         })
 }
 
+/// Apply header_override JSON to a request builder.
+fn apply_header_override(
+    req_builder: reqwest::RequestBuilder,
+    override_str: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let Some(override_str) = override_str else {
+        return req_builder;
+    };
+    if let Ok(header_map) =
+        serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
+    {
+        let mut req_builder = req_builder;
+        for (k, v) in header_map {
+            req_builder = req_builder.header(k, v);
+        }
+        req_builder
+    } else {
+        req_builder
+    }
+}
+
 /// Helper function to build a response with a header safely.
 fn build_response_with_header(
     status: StatusCode,
@@ -1257,7 +1278,7 @@ async fn proxy_logic(
         // Circuit Breaker Check
         if !state.circuit_breaker.allow_request(&upstream.id) {
             tracing::debug!("Skipping upstream {} (Circuit Open)", upstream.name);
-            last_error = "Circuit Breaker Open".to_string();
+            last_error = format!("Circuit Breaker Open for {}", upstream.name);
             continue;
         }
 
@@ -1341,21 +1362,13 @@ async fn proxy_logic(
             }
 
             // Build passthrough request with final URL
-            let mut req_builder = state
+            let req_builder = state
                 .client
                 .request(method.clone(), &final_url)
                 .header("x-goog-api-key", &upstream.api_key);
 
             // Apply header_override
-            if let Some(ref override_str) = upstream.header_override {
-                if let Ok(header_map) =
-                    serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
-                {
-                    for (k, v) in header_map {
-                        req_builder = req_builder.header(k, v);
-                    }
-                }
-            }
+            let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
 
             let req_builder = req_builder.json(&passthrough_body);
 
@@ -1444,6 +1457,7 @@ async fn proxy_logic(
                                 Ok(b) => b,
                                 Err(e) => {
                                     last_error = format!("Failed to read response: {}", e);
+                                    tracing::warn!("Passthrough: {} response read failed: {}", upstream.name, e);
                                     continue;
                                 }
                             };
@@ -1537,6 +1551,10 @@ async fn proxy_logic(
                         &FailureType::Timeout,
                         &last_error,
                     );
+                    tracing::warn!(
+                        "Failover: {} network error: {}, trying next...",
+                        upstream.name, e
+                    );
                     continue;
                 }
             }
@@ -1589,11 +1607,7 @@ async fn proxy_logic(
                 Some(body_json)
             };
 
-        if request_body_json.is_none() {
-            last_error = "Failed to prepare request body".to_string();
-            continue;
-        }
-        // SAFETY: We just checked that request_body_json is Some
+        // SAFETY: The two branches above both return Some
         let mut request_body_json = match request_body_json {
             Some(json) => json,
             None => {
@@ -1623,19 +1637,10 @@ async fn proxy_logic(
         }
 
         // 4. Build Request via Adaptor
-        let mut req_builder = state.client.request(method.clone(), &target_url);
+        let req_builder = state.client.request(method.clone(), &target_url);
 
         // Apply header_override
-        if let Some(ref override_str) = upstream.header_override {
-            if let Ok(header_map) =
-                serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
-            {
-                for (k, v) in header_map {
-                    req_builder = req_builder.header(k, v);
-                }
-                tracing::debug!("Applied header_override for {}", upstream.name);
-            }
-        }
+        let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
 
         let req_builder = adaptor
             .build_request(
@@ -1672,7 +1677,6 @@ async fn proxy_logic(
                 if resp.status().is_success() {
                     state.circuit_breaker.record_success(&upstream.id);
                     let status = resp.status();
-                    let resp_headers = resp.headers().clone();
 
                     // Parse rate limit info from response headers
                     let rate_limit_info = parse_rate_limit_info(

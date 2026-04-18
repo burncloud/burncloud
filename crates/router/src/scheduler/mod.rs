@@ -275,13 +275,13 @@ pub async fn build_context(
     exchange_rate: &ExchangeRateService,
 ) -> SchedulingContext {
     // Single pass: collect prices + health + adaptive + pre-computed cost
-    let mut prices_usd: HashMap<String, f64> = HashMap::new();
+    let mut prices_usd: HashMap<&str, f64> = HashMap::new();
     let mut factors = HashMap::with_capacity(candidates.len());
 
     for (ch, _) in candidates {
         // Look up price for this channel's region (deduplicated, normalized to USD)
         let region = ch.pricing_region.as_deref().unwrap_or("");
-        if !prices_usd.contains_key(region) {
+        if let std::collections::hash_map::Entry::Vacant(e) = prices_usd.entry(region) {
             if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
                 let raw = price.input_price as f64 + price.output_price as f64;
                 let price_usd = match burncloud_common::Currency::from_str(&price.currency) {
@@ -290,7 +290,7 @@ pub async fn build_context(
                     }
                     _ => raw,
                 };
-                prices_usd.insert(region.to_string(), price_usd);
+                e.insert(price_usd);
             } else if !region.is_empty() {
                 tracing::debug!("No price data for model='{model}' region='{region}', cost factor will use default");
             }
