@@ -272,32 +272,31 @@ pub async fn build_context(
     price_cache: &PriceCache,
     exchange_rate: &ExchangeRateService,
 ) -> SchedulingContext {
-    // Collect prices per pricing_region (deduplicated, async lookups)
-    let mut prices: HashMap<String, f64> = HashMap::new();
-    for (ch, _) in candidates {
-        let region = ch.pricing_region.as_deref().unwrap_or("");
-        if !prices.contains_key(region) {
-            if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
-                let cost = price.input_price as f64 + price.output_price as f64;
-                prices.entry(region.to_string()).or_insert(cost);
-            } else if !region.is_empty() {
-                tracing::debug!("No price data for model='{model}' region='{region}', cost factor will use default");
-            }
-        }
-    }
-
-    // USD→CNY rate for cross-region cost normalization
+    // USD→CNY rate (fetch once, used for all cost normalization)
     let usd_cny_rate = exchange_rate
         .get_rate(burncloud_common::Currency::USD, burncloud_common::Currency::CNY)
         .unwrap_or(7.0);
 
-    // Single pass: combined health + adaptive lookup + pre-computed cost
+    // Single pass: collect prices + health + adaptive + pre-computed cost
+    let mut prices: HashMap<String, f64> = HashMap::new();
     let mut factors = HashMap::with_capacity(candidates.len());
+
     for (ch, _) in candidates {
+        // Look up price for this channel's region (deduplicated)
+        let region = ch.pricing_region.as_deref().unwrap_or("");
+        if !prices.contains_key(region) {
+            if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
+                prices.insert(region.to_string(), price.input_price as f64 + price.output_price as f64);
+            } else if !region.is_empty() {
+                tracing::debug!("No price data for model='{model}' region='{region}', cost factor will use default");
+            }
+        }
+
+        // Combined health + adaptive lookup (1 DashMap get + 1 HashMap get)
         let (health, adaptive) = state_tracker.get_health_and_adaptive(ch.id, model);
 
+        // Pre-compute cost factor with CNY→USD normalization
         let cost = {
-            let region = ch.pricing_region.as_deref().unwrap_or("");
             let price_raw = prices.get(region).copied().unwrap_or(0.0);
             if price_raw <= 0.0 {
                 1.0
