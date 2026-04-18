@@ -290,14 +290,14 @@ pub async fn build_context(
         adaptive_limits.insert(ch.id, snap);
     }
 
-    // Collect prices per candidate's pricing_region
+    // Collect prices per candidate's pricing_region (deduplicated by entry API)
     let mut prices: RegionalPrices = HashMap::new();
     for (ch, _) in candidates {
         let region = ch.pricing_region.as_deref().unwrap_or("");
         if !prices.contains_key(region) {
             if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
                 let cost = price.input_price as f64 + price.output_price as f64;
-                prices.insert(region.to_string(), cost);
+                prices.entry(region.to_string()).or_insert(cost);
             } else if !region.is_empty() {
                 tracing::debug!("No price data for model='{model}' region='{region}', cost factor will use default");
             }

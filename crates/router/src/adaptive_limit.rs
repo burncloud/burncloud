@@ -18,7 +18,7 @@ pub struct AdaptiveSnapshot {
 }
 
 /// Represents the state of the adaptive rate limit state machine.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub enum RateLimitState {
     /// Initial state - learning the actual rate limits
     #[default]
@@ -270,7 +270,7 @@ impl AdaptiveRateLimit {
     pub fn snapshot(&self) -> AdaptiveSnapshot {
         AdaptiveSnapshot {
             current_limit: self.current_limit,
-            state: self.state.clone(),
+            state: self.state,
         }
     }
 

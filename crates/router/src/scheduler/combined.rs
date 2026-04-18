@@ -158,8 +158,7 @@ fn compute_cost_factor(ch: &Channel, ctx: &SchedulingContext) -> f64 {
     }
 
     // Normalize to USD: CNY-region prices are divided by USD→CNY rate
-    let region_lower = region.to_lowercase();
-    let is_cny_region = region_lower == "cn" || region_lower == "cny";
+    let is_cny_region = region.eq_ignore_ascii_case("cn") || region.eq_ignore_ascii_case("cny");
     let price_usd = if is_cny_region && ctx.usd_cny_rate > 0.0 {
         price_raw / ctx.usd_cny_rate
     } else {

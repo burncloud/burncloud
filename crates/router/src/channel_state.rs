@@ -181,6 +181,8 @@ impl ChannelStateTracker {
     /// * `true` if the channel (and model if specified) is available
     /// * `false` if any condition prevents the channel/model from being used
     pub fn is_available(&self, channel_id: i32, model: Option<&str>) -> bool {
+        let now = Instant::now();
+
         // Get or create channel state
         let channel_state = self
             .channel_states
@@ -198,7 +200,7 @@ impl ChannelStateTracker {
 
         // Check account-level rate limit
         if let Some(rate_limit_until) = channel_state.account_rate_limit_until {
-            if rate_limit_until > Instant::now() {
+            if rate_limit_until > now {
                 return false;
             }
         }
@@ -222,7 +224,7 @@ impl ChannelStateTracker {
 
             // Check model-level rate limit
             if let Some(rate_limit_until) = model_state.rate_limit_until {
-                if rate_limit_until > Instant::now() {
+                if rate_limit_until > now {
                     return false;
                 }
             }
