@@ -279,15 +279,21 @@ pub async fn build_context(
         .unwrap_or(7.0);
 
     // Single pass: collect prices + health + adaptive + pre-computed cost
-    let mut prices: HashMap<String, f64> = HashMap::new();
+    let mut prices_usd: HashMap<String, f64> = HashMap::new();
     let mut factors = HashMap::with_capacity(candidates.len());
 
     for (ch, _) in candidates {
-        // Look up price for this channel's region (deduplicated)
+        // Look up price for this channel's region (deduplicated, normalized to USD)
         let region = ch.pricing_region.as_deref().unwrap_or("");
-        if !prices.contains_key(region) {
+        if !prices_usd.contains_key(region) {
             if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
-                prices.insert(region.to_string(), price.input_price as f64 + price.output_price as f64);
+                let raw = price.input_price as f64 + price.output_price as f64;
+                let price_usd = if price.currency.eq_ignore_ascii_case("CNY") && usd_cny_rate > 0.0 {
+                    raw / usd_cny_rate
+                } else {
+                    raw
+                };
+                prices_usd.insert(region.to_string(), price_usd);
             } else if !region.is_empty() {
                 tracing::debug!("No price data for model='{model}' region='{region}', cost factor will use default");
             }
@@ -296,20 +302,10 @@ pub async fn build_context(
         // Combined health + adaptive lookup (1 DashMap get + 1 HashMap get)
         let (health, adaptive) = state_tracker.get_health_and_adaptive(ch.id, model);
 
-        // Pre-compute cost factor with CNY→USD normalization
+        // Pre-compute cost factor (prices already USD-normalized at cache time)
         let cost = {
-            let price_raw = prices.get(region).copied().unwrap_or(0.0);
-            if price_raw <= 0.0 {
-                1.0
-            } else {
-                let is_cny = region.eq_ignore_ascii_case("cn") || region.eq_ignore_ascii_case("cny");
-                let price_usd = if is_cny && usd_cny_rate > 0.0 {
-                    price_raw / usd_cny_rate
-                } else {
-                    price_raw
-                };
-                1.0 / price_usd
-            }
+            let price_usd = prices_usd.get(region).copied().unwrap_or(0.0);
+            if price_usd <= 0.0 { 1.0 } else { 1.0 / price_usd }
         };
 
         let rpm = match adaptive.state {
