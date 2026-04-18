@@ -51,13 +51,16 @@ impl ChannelScheduler for CombinedScheduler {
                 .copied()
                 .unwrap_or(1.0)
                 .max(0.0);
-            health_raw.push((ch.id, health));
+            // Guard against NaN from upstream health score computation
+            health_raw.push((ch.id, if health.is_nan() { 1.0 } else { health }));
 
             let cost = compute_cost_factor(ch, ctx);
-            cost_raw.push((ch.id, cost));
+            // Guard against NaN or infinity from cost computation
+            cost_raw.push((ch.id, if cost.is_finite() && cost > 0.0 { cost } else { 1.0 }));
 
             let rpm = rpm_factor(ch.id, ctx);
-            rpm_raw.push((ch.id, rpm));
+            // Guard against NaN from RPM snapshot
+            rpm_raw.push((ch.id, if rpm.is_nan() { 10.0 } else { rpm }));
         }
 
         // Normalize using 0.5-offset min-max
@@ -80,13 +83,26 @@ impl ChannelScheduler for CombinedScheduler {
             let final_score = (*admin_w).max(1) as f64 * quality;
 
             // Guard against non-finite scores
-            scores.insert(
-                ch.id,
-                if final_score.is_finite() && final_score > 0.0 {
-                    final_score
-                } else {
-                    0.0
-                },
+            let score = if final_score.is_finite() && final_score > 0.0 {
+                final_score
+            } else {
+                0.0
+            };
+            scores.insert(ch.id, score);
+
+            tracing::trace!(
+                channel_id = ch.id,
+                channel_name = %ch.name,
+                admin_weight = *admin_w,
+                health_norm = h,
+                cost_norm = c,
+                rpm_norm = r,
+                effective_w_h = w_h,
+                effective_w_c = w_c,
+                effective_w_r = w_r,
+                quality = quality,
+                final_score = score,
+                "scheduler scored channel"
             );
         }
 
