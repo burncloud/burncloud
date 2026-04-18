@@ -509,8 +509,25 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
     let circuit_breaker_status = state.circuit_breaker.get_status_map();
     let channel_states = state.channel_state_tracker.get_all_states();
 
+    // Collect scheduler policies for observability
+    let scheduler_info = {
+        let policies = state.scheduler_policies.read().await;
+        let mut map = std::collections::HashMap::new();
+        for (group, kind) in policies.iter() {
+            map.insert(group.clone(), match kind {
+                scheduler::SchedulerKind::Passthrough => "passthrough".to_string(),
+                scheduler::SchedulerKind::Combined { config } => format!(
+                    "combined(h={:.1},c={:.1},r={:.1})",
+                    config.health_weight, config.cost_weight, config.rpm_weight
+                ),
+            });
+        }
+        map
+    };
+
     // Build comprehensive health report
     let health_report = serde_json::json!({
+        "scheduler_policies": scheduler_info,
         "circuit_breaker": circuit_breaker_status,
         "channels": channel_states.iter().map(|(ch_id, ch_state)| {
             let models: Vec<_> = ch_state.models.iter().map(|m| {

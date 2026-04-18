@@ -259,13 +259,16 @@ pub fn rank_candidates(
 }
 
 /// Rank candidates using PassthroughScheduler (no context needed).
+///
+/// Short-circuits to a simple sort by admin weight (descending) without
+/// allocating SchedulingContext or going through the full scoring pipeline.
 pub fn rank_passthrough(candidates: &[(Channel, i32)]) -> Vec<(Channel, i32)> {
     if candidates.len() <= 1 {
         return candidates.to_vec();
     }
-    let passthrough = PassthroughScheduler;
-    let ctx = SchedulingContext::default();
-    rank_candidates(candidates, &ctx, &passthrough, &passthrough)
+    let mut sorted = candidates.to_vec();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted
 }
 
 /// Assemble a SchedulingContext from live state.
