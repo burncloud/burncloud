@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
 // Import FailureType from circuit_breaker module
-use crate::adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit};
+use crate::adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit, AdaptiveSnapshot};
 use crate::circuit_breaker::{FailureType, RateLimitScope};
 
 /// Represents the balance status of a channel's account.
@@ -502,6 +502,25 @@ impl ChannelStateTracker {
         self.channel_states
             .iter()
             .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect()
+    }
+
+    /// Get the adaptive rate limit snapshot for a specific channel and model.
+    pub fn get_adaptive_snapshot(&self, channel_id: i32, model: &str) -> Option<AdaptiveSnapshot> {
+        let ch = self.channel_states.get(&channel_id)?;
+        let ms = ch.models.get(model)?;
+        Some(ms.adaptive_limit.snapshot())
+    }
+
+    /// Get health scores for a batch of channels.
+    pub fn get_all_health_scores(
+        &self,
+        channel_ids: &[i32],
+        model: Option<&str>,
+    ) -> std::collections::HashMap<i32, f64> {
+        channel_ids
+            .iter()
+            .map(|&id| (id, self.get_health_score(id, model)))
             .collect()
     }
 }

@@ -16,6 +16,7 @@ pub mod passthrough;
 pub mod price_sync;
 pub mod pricing_loader;
 pub mod response_parser;
+mod scheduler;
 mod state;
 pub mod stream_parser;
 pub mod token_counter;
@@ -164,6 +165,19 @@ pub async fn create_router_app(
         });
     let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
 
+    // Exchange Rate Service for multi-currency cost calculations
+    let exchange_rate_service = Arc::new(exchange_rate::ExchangeRateService::new(db.clone()));
+    if let Err(e) = exchange_rate_service.load_rates_from_db().await {
+        tracing::warn!("Failed to load exchange rates at startup: {e}");
+    }
+    let exch_clone = exchange_rate_service.clone();
+    tokio::spawn(async move {
+        exch_clone.start_sync_task();
+    });
+
+    // Scheduler policies for multi-channel routing
+    let scheduler_policies = Arc::new(RwLock::new(scheduler::load_scheduler_config()));
+
     // Start background price sync task (every 24 hours)
     // Prices pulled from pricing_data repo (GitHub/Gitee fallback).
     // Price cache is refreshed after each successful sync.
@@ -213,6 +227,8 @@ pub async fn create_router_app(
         price_cache,
         cost_calculator,
         force_sync_tx: force_sync_tx.clone(),
+        exchange_rate_service,
+        scheduler_policies,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -244,6 +260,11 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
         Ok(new_config) => {
             let mut config_write = state.config.write().await;
             *config_write = new_config;
+            // Reload scheduler policies
+            {
+                let mut policies = state.scheduler_policies.write().await;
+                *policies = scheduler::load_scheduler_config();
+            }
             build_response(StatusCode::OK, Body::from("Reloaded"))
         }
         Err(e) => build_response(
@@ -1028,76 +1049,67 @@ async fn proxy_logic(
                 "ProxyLogic: Attempting to route model '{}' for group '{}'",
                 model, user_group
             );
-            // Use state-aware routing to filter out unavailable channels
+
+            // Use scheduler-based routing for multi-channel failover
+            let policies = state.scheduler_policies.read().await;
             match state
                 .model_router
-                .route_with_state(user_group, model, &state.channel_state_tracker)
+                .route_with_scheduler(
+                    user_group,
+                    model,
+                    &state.channel_state_tracker,
+                    &state.price_cache,
+                    &state.exchange_rate_service,
+                    &policies,
+                )
                 .await
             {
-                Ok(Some(channel)) => {
+                Ok(channels) if !channels.is_empty() => {
                     tracing::debug!(
-                        "ModelRouter: Routed {} -> Channel {} (state-filtered)",
-                        model, channel.name
+                        "ModelRouter: Got {} candidates for {}",
+                        channels.len(),
+                        model
                     );
-                    // Map Channel Type
-                    let channel_type = ChannelType::from(channel.type_);
+                    // Save pricing_region from first candidate for billing
+                    selected_pricing_region = channels[0].pricing_region.clone();
 
-                    // Map Channel Type to AuthType/Protocol (Still needed for legacy config struct compatibility if used elsewhere)
-                    // But AdaptorFactory will handle logic based on ChannelType.
-                    let (auth_type, protocol) = match channel_type {
-                        ChannelType::OpenAI => (AuthType::Bearer, "openai".to_string()),
-                        ChannelType::Anthropic => (AuthType::Claude, "claude".to_string()),
-                        ChannelType::Gemini | ChannelType::VertexAi => {
-                            (AuthType::GoogleAI, "gemini".to_string())
-                        }
-                        // z.ai uses Anthropic-compatible protocol with Bearer auth
-                        ChannelType::Zai => (AuthType::Bearer, "zai".to_string()),
-                        _ => (AuthType::Bearer, "openai".to_string()),
-                    };
-
-                    // Save pricing_region for billing
-                    selected_pricing_region = channel.pricing_region.clone();
-
-                    candidates.push(Upstream {
-                        id: channel.id.to_string(),
-                        name: channel.name,
-                        base_url: channel.base_url.unwrap_or_default(),
-                        api_key: channel.key,
-                        match_path: "".to_string(),
-                        auth_type,
-                        priority: channel.priority as i32,
-                        protocol, // Ideally we should store ChannelType in Upstream too
-                        param_override: channel.param_override.clone(),
-                        header_override: channel.header_override.clone(),
-                        api_version: channel.api_version.clone(),
-                    });
+                    for channel in channels {
+                        let channel_type = ChannelType::from(channel.type_);
+                        let (auth_type, protocol) = match channel_type {
+                            ChannelType::OpenAI => (AuthType::Bearer, "openai".to_string()),
+                            ChannelType::Anthropic => (AuthType::Claude, "claude".to_string()),
+                            ChannelType::Gemini | ChannelType::VertexAi => {
+                                (AuthType::GoogleAI, "gemini".to_string())
+                            }
+                            ChannelType::Zai => (AuthType::Bearer, "zai".to_string()),
+                            _ => (AuthType::Bearer, "openai".to_string()),
+                        };
+                        candidates.push(Upstream {
+                            id: channel.id.to_string(),
+                            name: channel.name,
+                            base_url: channel.base_url.unwrap_or_default(),
+                            api_key: channel.key,
+                            match_path: "".to_string(),
+                            auth_type,
+                            priority: channel.priority as i32,
+                            protocol,
+                            param_override: channel.param_override.clone(),
+                            header_override: channel.header_override.clone(),
+                            api_version: channel.api_version.clone(),
+                        });
+                    }
                 }
-                Ok(None) => {
+                Ok(_) => {
                     tracing::debug!(
-                        "ModelRouter: No route found for {} (Group: {})",
+                        "ModelRouter: No candidates for {} (Group: {})",
                         model, user_group
                     );
                 }
                 Err(e) => {
-                    // NoAvailableChannelsError - all channels are unavailable
-                    tracing::warn!("ModelRouter: No available channels for {}: {}", model, e);
-                    return (
-                        build_response_with_header(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "content-type",
-                            "application/json",
-                            Body::from(format!(
-                                r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels"}}}}"#,
-                                e
-                            )),
-                        ),
-                        None,
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        None,
-                        None,
-                    );
+                    tracing::warn!("ModelRouter: Error routing {}: {}", model, e);
                 }
             }
+            drop(policies);
         } else {
             tracing::debug!("ProxyLogic: No 'model' field in JSON body");
         }

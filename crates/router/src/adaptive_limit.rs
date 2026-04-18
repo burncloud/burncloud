@@ -10,6 +10,13 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+/// Read-only snapshot of adaptive rate limit state for scheduling decisions.
+#[derive(Debug, Clone, Default)]
+pub struct AdaptiveSnapshot {
+    pub current_limit: u32,
+    pub state: RateLimitState,
+}
+
 /// Represents the state of the adaptive rate limit state machine.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum RateLimitState {
@@ -259,11 +266,19 @@ impl AdaptiveRateLimit {
         &self.state
     }
 
+    /// Take a point-in-time snapshot for scheduling decisions.
+    pub fn snapshot(&self) -> AdaptiveSnapshot {
+        AdaptiveSnapshot {
+            current_limit: self.current_limit,
+            state: self.state.clone(),
+        }
+    }
+
     /// Enter cooldown state.
     fn enter_cooldown(&mut self, now: Instant) {
         self.state = RateLimitState::Cooldown;
         self.cooldown_until = Some(now + self.config.cooldown_duration);
-        println!(
+        tracing::warn!(
             "AdaptiveLimit: Entering Cooldown for {}s",
             self.config.cooldown_duration.as_secs()
         );
@@ -286,7 +301,7 @@ impl AdaptiveRateLimit {
         self.success_streak = 0;
         self.last_adjusted_at = Some(now);
 
-        println!(
+        tracing::info!(
             "AdaptiveLimit: Recovered from Cooldown, new limit: {}",
             self.current_limit
         );
@@ -306,7 +321,7 @@ impl AdaptiveRateLimit {
             self.last_adjusted_at = Some(now);
             self.success_streak = 0; // Reset streak after adjustment
 
-            println!("AdaptiveLimit: Increased limit to {}", self.current_limit);
+            tracing::debug!("AdaptiveLimit: Increased limit to {}", self.current_limit);
         }
     }
 }

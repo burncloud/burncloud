@@ -2,9 +2,11 @@ use anyhow::Result;
 use burncloud_common::types::Channel;
 use burncloud_database::sqlx;
 use burncloud_database::Database;
-use rand::Rng; // Use re-exported sqlx
+use rand::Rng;
 
 use crate::channel_state::ChannelStateTracker;
+use crate::exchange_rate::ExchangeRateService;
+use crate::scheduler::{self, PassthroughScheduler, CombinedScheduler, SchedulerPolicyMap, SchedulerKind};
 
 /// Error returned when no channels are available for a model.
 #[derive(Debug)]
@@ -267,5 +269,66 @@ impl ModelRouter {
         model: &str,
     ) -> f64 {
         state_tracker.get_health_score(channel_id, Some(model))
+    }
+
+    /// Route with multi-factor scheduler, returning ranked candidates (top-5).
+    ///
+    /// Uses PassthroughScheduler for groups without explicit policy.
+    /// Returns at most 5 channels to limit failover attempts.
+    pub async fn route_with_scheduler(
+        &self,
+        group: &str,
+        model: &str,
+        state_tracker: &ChannelStateTracker,
+        price_cache: &burncloud_service_billing::PriceCache,
+        exchange_rate: &ExchangeRateService,
+        policies: &SchedulerPolicyMap,
+    ) -> Result<Vec<Channel>> {
+        let candidates = self.get_candidates(group, model).await?;
+
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Filter by availability
+        let available: Vec<_> = candidates
+            .into_iter()
+            .filter(|(ch, _)| state_tracker.is_available(ch.id, Some(model)))
+            .collect();
+
+        if available.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let passthrough = PassthroughScheduler;
+
+        // Pick scheduler for this group
+        let ranked = match policies.get(&group.to_lowercase()) {
+            Some(SchedulerKind::Combined { config }) => {
+                let combined = CombinedScheduler::new(config.clone());
+                let ctx = scheduler::build_context(
+                    model,
+                    group,
+                    &available,
+                    state_tracker,
+                    price_cache,
+                    exchange_rate,
+                )
+                .await;
+                scheduler::rank_candidates(&available, &ctx, &combined, &passthrough)
+            }
+            _ => {
+                // Passthrough fast path — no context building needed
+                scheduler::rank_passthrough(&available)
+            }
+        };
+
+        // Limit to top-5 candidates
+        let channels: Vec<Channel> = ranked
+            .into_iter()
+            .take(5)
+            .map(|(ch, _)| ch)
+            .collect();
+        Ok(channels)
     }
 }
