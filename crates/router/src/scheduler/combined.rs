@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use burncloud_common::types::Channel;
 
-use super::{CandidateFactors, ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext, COLD_START_RPM_LIMIT};
+use super::{CandidateFactors, ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext, RPM_FACTOR_LEARNING};
 
 /// Small epsilon to avoid division by zero.
 const EPS: f64 = 1e-6;
@@ -45,7 +45,7 @@ impl ChannelScheduler for CombinedScheduler {
         let default_factors = CandidateFactors {
             health: 1.0,
             cost: 1.0,
-            rpm: COLD_START_RPM_LIMIT as f64,
+            rpm: RPM_FACTOR_LEARNING,
         };
 
         // Single pass: read pre-computed factors + track min/max for normalization
@@ -64,7 +64,7 @@ impl ChannelScheduler for CombinedScheduler {
             let cost = if f.cost.is_finite() && f.cost > 0.0 { f.cost } else { 1.0 };
             c_min = c_min.min(cost); c_max = c_max.max(cost);
 
-            let rpm = if f.rpm.is_nan() { COLD_START_RPM_LIMIT as f64 } else { f.rpm };
+            let rpm = if f.rpm.is_nan() { RPM_FACTOR_LEARNING } else { f.rpm };
             r_min = r_min.min(rpm); r_max = r_max.max(rpm);
 
             raw.push(CandidateFactors { health, cost, rpm });
@@ -297,7 +297,7 @@ mod tests {
     fn test_cold_start_rpm_default() {
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
-        // Empty context → both use default factors with COLD_START_RPM_LIMIT
+        // Empty context → both use default factors with RPM_FACTOR_LEARNING
         let ctx = SchedulingContext::default();
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,

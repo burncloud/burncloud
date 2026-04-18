@@ -109,9 +109,10 @@ pub enum SchedulerKind {
 /// Maps group name → scheduler kind.
 pub type SchedulerPolicyMap = HashMap<String, SchedulerKind>;
 
-/// Cold-start RPM default, matching AdaptiveLimitConfig::initial_limit.
-/// Used when a channel has no adaptive rate limit data yet.
-pub const COLD_START_RPM_LIMIT: u32 = crate::adaptive_limit::DEFAULT_INITIAL_LIMIT;
+/// RPM factor for channels in Learning state — neutral, capacity unknown.
+const RPM_FACTOR_LEARNING: f64 = 1.0;
+/// RPM factor for channels in Cooldown state — severely penalized.
+const RPM_FACTOR_COOLDOWN: f64 = 0.1;
 
 /// Load scheduler policies from environment configuration.
 ///
@@ -313,8 +314,8 @@ pub async fn build_context(
 
         let rpm = match adaptive.state {
             crate::adaptive_limit::RateLimitState::Stable => adaptive.current_limit as f64,
-            crate::adaptive_limit::RateLimitState::Learning => 1.0,
-            crate::adaptive_limit::RateLimitState::Cooldown => 0.1,
+            crate::adaptive_limit::RateLimitState::Learning => RPM_FACTOR_LEARNING,
+            crate::adaptive_limit::RateLimitState::Cooldown => RPM_FACTOR_COOLDOWN,
         };
 
         factors.insert(ch.id, CandidateFactors {
