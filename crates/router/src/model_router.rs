@@ -225,11 +225,11 @@ impl ModelRouter {
                     exchange_rate,
                 )
                 .await;
-                scheduler::rank_candidates(&available, &ctx, &combined)
+                scheduler::rank_candidates(available, &ctx, &combined)
             }
             _ => {
                 // Passthrough fast path — no context building needed
-                scheduler::rank_passthrough(&available)
+                scheduler::rank_passthrough(available)
             }
         };
 

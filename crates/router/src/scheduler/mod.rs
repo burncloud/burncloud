@@ -111,6 +111,10 @@ pub enum SchedulerKind {
 /// Maps group name → scheduler kind.
 pub type SchedulerPolicyMap = HashMap<String, SchedulerKind>;
 
+/// Cold-start RPM default, matching AdaptiveLimitConfig::initial_limit.
+/// Used when a channel has no adaptive rate limit data yet.
+const COLD_START_RPM_LIMIT: u32 = 10;
+
 /// Load scheduler policies from environment configuration.
 ///
 /// Reads `SCHEDULER_POLICIES` env var (JSON) with format:
@@ -207,16 +211,18 @@ pub fn pick_scheduler<'a>(
 ///
 /// Wraps `score()` in `catch_unwind` for panic protection.
 /// On panic or error, falls back to PassthroughScheduler ordering.
+/// Takes ownership to avoid cloning Channels.
 pub fn rank_candidates(
-    candidates: &[(Channel, i32)],
+    candidates: Vec<(Channel, i32)>,
     ctx: &SchedulingContext,
     scheduler: &dyn ChannelScheduler,
 ) -> Vec<(Channel, i32)> {
     if candidates.len() <= 1 {
-        return candidates.to_vec();
+        return candidates;
     }
 
-    let scores = match catch_unwind(AssertUnwindSafe(|| scheduler.score(candidates, ctx))) {
+    let n = candidates.len();
+    let scores = match catch_unwind(AssertUnwindSafe(|| scheduler.score(&candidates, ctx))) {
         Ok(Ok(map)) => map,
         Ok(Err(e)) => {
             tracing::warn!("Scheduler '{}' returned error: {e}, falling back to passthrough", scheduler.name());
@@ -234,41 +240,50 @@ pub fn rank_candidates(
         }
     };
 
-    let mut ranked: Vec<(Channel, i32, f64)> = candidates
-        .iter()
-        .filter_map(|(ch, w)| {
-            scores
-                .get(&ch.id)
-                .map(|&s| (ch.clone(), *w, s))
-        })
+    // Sort by index first (cheap: just usize + f64 per candidate)
+    let mut indexed: Vec<usize> = (0..n)
+        .filter(|&i| scores.contains_key(&candidates[i].0.id))
         .collect();
 
-    if ranked.len() < candidates.len() {
+    if indexed.len() < n {
         tracing::warn!(
             "Scheduler '{}' returned {} scores for {} candidates, {} dropped",
             scheduler.name(),
-            ranked.len(),
-            candidates.len(),
-            candidates.len() - ranked.len()
+            indexed.len(),
+            n,
+            n - indexed.len()
         );
     }
 
-    ranked.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    indexed.sort_by(|&a, &b| {
+        let sa = scores[&candidates[a].0.id];
+        let sb = scores[&candidates[b].0.id];
+        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+    });
 
-    ranked.into_iter().map(|(ch, w, _)| (ch, w)).collect()
+    // Now move candidates into result in sorted order (no Channel cloning)
+    // into_iter() takes ownership; we pick elements by sorted index
+    let mut owned: Vec<Option<(Channel, i32)>> = candidates
+        .into_iter()
+        .map(Some)
+        .collect();
+
+    indexed.into_iter()
+        .map(|i| owned[i].take().unwrap())
+        .collect()
 }
 
 /// Rank candidates using PassthroughScheduler (no context needed).
 ///
 /// Short-circuits to a simple sort by admin weight (descending) without
 /// allocating SchedulingContext or going through the full scoring pipeline.
-pub fn rank_passthrough(candidates: &[(Channel, i32)]) -> Vec<(Channel, i32)> {
+/// Takes ownership to avoid cloning Channels.
+pub fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Channel, i32)> {
     if candidates.len() <= 1 {
-        return candidates.to_vec();
+        return candidates;
     }
-    let mut sorted = candidates.to_vec();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
-    sorted
+    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    candidates
 }
 
 /// Assemble a SchedulingContext from live state.
@@ -295,7 +310,7 @@ pub async fn build_context(
             let snap = state_tracker
                 .get_adaptive_snapshot(ch.id, model)
                 .unwrap_or(AdaptiveSnapshot {
-                    current_limit: 10, // Cold-start default matches AdaptiveLimitConfig::initial_limit
+                    current_limit: COLD_START_RPM_LIMIT,
                     state: crate::adaptive_limit::RateLimitState::Learning,
                 });
             (ch.id, snap)
@@ -403,7 +418,7 @@ pub mod tests {
         let c = vec![make_channel(1, 10)];
         let ctx = SchedulingContext::default();
         let passthrough = PassthroughScheduler;
-        let result = rank_candidates(&c, &ctx, &passthrough);
+        let result = rank_candidates(c, &ctx, &passthrough);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0.id, 1);
     }
@@ -411,7 +426,7 @@ pub mod tests {
     #[test]
     fn test_rank_passthrough_shortcut() {
         let c = vec![make_channel(1, 5), make_channel(2, 10)];
-        let result = rank_passthrough(&c);
+        let result = rank_passthrough(c);
         assert_eq!(result.len(), 2);
         // Higher weight should be first
         assert_eq!(result[0].0.id, 2);
@@ -438,7 +453,7 @@ pub mod tests {
         let c = vec![make_channel(1, 5), make_channel(2, 10)];
         let ctx = SchedulingContext::default();
         let failing = FailingScheduler;
-        let result = rank_candidates(&c, &ctx, &failing);
+        let result = rank_candidates(c, &ctx, &failing);
         // Should fall back to passthrough ordering (higher weight first)
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].0.id, 2, "fallback should order by weight (10 > 5)");
@@ -466,7 +481,7 @@ pub mod tests {
         let c = vec![make_channel(1, 3), make_channel(2, 7), make_channel(3, 1)];
         let ctx = SchedulingContext::default();
         let panicking = PanickingScheduler;
-        let result = rank_candidates(&c, &ctx, &panicking);
+        let result = rank_candidates(c, &ctx, &panicking);
         // Should fall back to passthrough ordering (7, 3, 1)
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].0.id, 2);

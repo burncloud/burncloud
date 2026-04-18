@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use burncloud_common::types::Channel;
 
-use super::{ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext};
+use super::{ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext, COLD_START_RPM_LIMIT};
 
 /// Small epsilon to avoid division by zero.
 const EPS: f64 = 1e-6;
@@ -179,12 +179,12 @@ fn compute_cost_factor(ch: &Channel, ctx: &SchedulingContext) -> f64 {
 }
 
 /// Extract RPM factor from adaptive limit snapshot.
-/// Cold-start channels (no data) use default of 10 from AdaptiveLimitConfig::initial_limit.
+/// Cold-start channels (no data) use default matching AdaptiveLimitConfig::initial_limit.
 fn rpm_factor(channel_id: i32, ctx: &SchedulingContext) -> f64 {
     ctx.adaptive_limits
         .get(&channel_id)
         .map(|snap| snap.current_limit as f64)
-        .unwrap_or(10.0) // Cold-start default
+        .unwrap_or(COLD_START_RPM_LIMIT as f64)
 }
 
 /// Check if all values in a factor are identical (degenerate dimension).
