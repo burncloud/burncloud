@@ -3,6 +3,7 @@
 //! This module provides functionality for tracking the health and availability
 //! of upstream channels and their models.
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
@@ -127,7 +128,7 @@ pub struct ChannelState {
     /// When the account-level rate limit will expire
     pub account_rate_limit_until: Option<Instant>,
     /// State of individual models within this channel
-    pub models: DashMap<String, ModelState>,
+    pub models: HashMap<String, ModelState>,
 }
 
 impl ChannelState {
@@ -138,7 +139,7 @@ impl ChannelState {
             auth_ok: true, // Assume auth is OK until proven otherwise
             balance_status: BalanceStatus::default(),
             account_rate_limit_until: None,
-            models: DashMap::new(),
+            models: HashMap::new(),
         }
     }
 }
@@ -183,11 +184,11 @@ impl ChannelStateTracker {
     pub fn is_available(&self, channel_id: i32, model: Option<&str>) -> bool {
         let now = Instant::now();
 
-        // Get or create channel state
-        let channel_state = self
-            .channel_states
-            .entry(channel_id)
-            .or_insert_with(|| ChannelState::new(channel_id));
+        // Read-only: use get() to avoid write lock + allocation on hot path
+        let channel_state = match self.channel_states.get(&channel_id) {
+            Some(state) => state,
+            None => return true, // Unknown channel = available
+        };
 
         // Check channel-level conditions
         if !channel_state.auth_ok {
@@ -268,7 +269,7 @@ impl ChannelStateTracker {
         match failure_type {
             FailureType::AuthFailed => {
                 channel_state.auth_ok = false;
-                channel_state.models.iter_mut().for_each(|mut m| {
+                channel_state.models.iter_mut().for_each(|(_, m)| {
                     m.status = ModelStatus::TemporarilyDown;
                 });
             }
@@ -288,7 +289,7 @@ impl ChannelStateTracker {
                     }
                     RateLimitScope::Model => {
                         if let Some(model_name) = model {
-                            let mut model_state = channel_state
+                            let model_state = channel_state
                                 .models
                                 .entry(model_name.to_string())
                                 .or_insert_with(|| {
@@ -308,7 +309,7 @@ impl ChannelStateTracker {
                         channel_state.account_rate_limit_until = Some(retry_until);
                         // Also update model-level adaptive limiter if model is specified
                         if let Some(model_name) = model {
-                            let mut model_state = channel_state
+                            let model_state = channel_state
                                 .models
                                 .entry(model_name.to_string())
                                 .or_insert_with(|| {
@@ -321,7 +322,7 @@ impl ChannelStateTracker {
             }
             FailureType::ModelNotFound => {
                 if let Some(model_name) = model {
-                    let mut model_state = channel_state
+                    let model_state = channel_state
                         .models
                         .entry(model_name.to_string())
                         .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
@@ -334,7 +335,7 @@ impl ChannelStateTracker {
             FailureType::ServerError | FailureType::Timeout => {
                 // These are transient errors, just update the model state if available
                 if let Some(model_name) = model {
-                    let mut model_state = channel_state
+                    let model_state = channel_state
                         .models
                         .entry(model_name.to_string())
                         .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
@@ -365,7 +366,7 @@ impl ChannelStateTracker {
         upstream_limit: Option<u32>,
     ) {
         // Get or create channel state
-        let channel_state = self
+        let mut channel_state = self
             .channel_states
             .entry(channel_id)
             .or_insert_with(|| ChannelState::new(channel_id));
@@ -377,7 +378,7 @@ impl ChannelStateTracker {
         };
 
         // Update model state
-        let mut model_state = channel_state
+        let model_state = channel_state
             .models
             .entry(model_name.to_string())
             .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));

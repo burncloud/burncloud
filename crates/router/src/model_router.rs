@@ -218,7 +218,6 @@ impl ModelRouter {
                 let combined = CombinedScheduler::new(config.clone());
                 let ctx = scheduler::build_context(
                     model,
-                    group,
                     &available,
                     state_tracker,
                     price_cache,

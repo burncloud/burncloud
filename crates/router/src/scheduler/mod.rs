@@ -35,10 +35,6 @@ pub enum ScheduleError {
 /// Read-only context assembled per scheduling decision.
 #[derive(Debug, Clone, Default)]
 pub struct SchedulingContext {
-    #[allow(dead_code)] // Available for future model-aware scoring strategies
-    pub model: String,
-    #[allow(dead_code)] // Available for future group-aware scoring strategies
-    pub group: String,
     pub health_scores: HashMap<i32, f64>,
     pub prices: RegionalPrices,
     pub adaptive_limits: HashMap<i32, AdaptiveSnapshot>,
@@ -270,7 +266,6 @@ pub fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Channel, i3
 /// for all candidate channels.
 pub async fn build_context(
     model: &str,
-    group: &str,
     candidates: &[(Channel, i32)],
     state_tracker: &ChannelStateTracker,
     price_cache: &PriceCache,
@@ -310,8 +305,6 @@ pub async fn build_context(
         .unwrap_or(7.0);
 
     SchedulingContext {
-        model: model.to_string(),
-        group: group.to_string(),
         health_scores,
         prices,
         adaptive_limits,

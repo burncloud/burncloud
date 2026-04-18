@@ -222,8 +222,6 @@ mod tests {
         limits: HashMap<i32, u32>,
     ) -> SchedulingContext {
         SchedulingContext {
-            model: "test".into(),
-            group: "default".into(),
             health_scores: health,
             prices,
             adaptive_limits: limits

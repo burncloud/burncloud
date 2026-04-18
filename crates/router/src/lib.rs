@@ -530,8 +530,7 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
         "scheduler_policies": scheduler_info,
         "circuit_breaker": circuit_breaker_status,
         "channels": channel_states.iter().map(|(ch_id, ch_state)| {
-            let models: Vec<_> = ch_state.models.iter().map(|m| {
-                let model_state = m.value();
+            let models: Vec<_> = ch_state.models.iter().map(|(_, model_state)| {
                 serde_json::json!({
                     "model": model_state.model,
                     "status": format!("{:?}", model_state.status),

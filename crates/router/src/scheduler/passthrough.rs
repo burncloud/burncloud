@@ -38,8 +38,6 @@ mod tests {
 
     fn empty_ctx() -> SchedulingContext {
         SchedulingContext {
-            model: "test".into(),
-            group: "default".into(),
             health_scores: HashMap::new(),
             prices: HashMap::new(),
             adaptive_limits: HashMap::new(),
