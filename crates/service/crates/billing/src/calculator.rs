@@ -335,6 +335,7 @@ fn saturating_mul_percent(price: i64, percent: i64) -> i64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use burncloud_common::types::Price;
@@ -493,8 +494,8 @@ mod tests {
     async fn test_preflight_not_found() {
         let cache = PriceCache::empty();
         let calc = CostCalculator::new(cache);
-        let err = calc.preflight("nonexistent-model", None).await.unwrap_or_else(|_| panic!("expected PriceNotFound error"));
-        assert!(matches!(err, BillingError::PriceNotFound(m) if m == "nonexistent-model"));
+        let result = calc.preflight("nonexistent-model", None).await;
+        assert!(matches!(result, Err(BillingError::PriceNotFound(ref m)) if m == "nonexistent-model"));
     }
 
     #[tokio::test]

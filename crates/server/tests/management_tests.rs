@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 use burncloud_database_router::{RouterToken, RouterUpstream};
 use reqwest::Client;
 use std::time::Duration;

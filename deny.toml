@@ -44,6 +44,9 @@ ignore = [
 
     # shlex v0.1 — via systray > libappindicator-sys > bindgen
     { id = "RUSTSEC-2024-0006", reason = "shlex@0.1 via systray transitive chain, cannot upgrade directly" },
+
+    # paste — unmaintained (no update since 2021), transitive dep from proc-macro crates
+    { id = "RUSTSEC-2024-0436", reason = "paste@1.0.15 unmaintained, transitive dep from proc-macro crates, cannot upgrade directly" },
 ]
 
 # ─── Licenses ─────────────────────────────────────────────────────────────────
@@ -67,6 +70,7 @@ allow = [
     "LGPL-2.1-or-later",
     "LGPL-3.0-only",
     "CDLA-Permissive-2.0",
+    "NCSA",
 ]
 
 # libappindicator / libappindicator-sys use the deprecated "LGPL-2.1/LGPL-3.0"
@@ -148,11 +152,10 @@ wrappers = [
 reason = "Token DB access must go through burncloud-service-token"
 
 # burncloud-database-upstream — upstream channel table
-# Note: burncloud-service-upstream is not in the active dep graph (no crate
-# depends on it yet), so only burncloud-database-router is listed as wrapper.
 [[bans.deny]]
 crate = "burncloud-database-upstream"
 wrappers = [
+    "burncloud-service-upstream",
     "burncloud-database-router",
 ]
 reason = "Upstream DB access must go through burncloud-service-upstream"

@@ -24,7 +24,7 @@ use std::str::FromStr;
 use tempfile::NamedTempFile;
 
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("failed to create temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("failed to create temp file"));
     let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
     let db = create_database_with_url(&url)
         .await
@@ -36,7 +36,7 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
 async fn table_exists(db: &burncloud_database::Database, table_name: &str) -> bool {
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?")
@@ -51,7 +51,7 @@ async fn table_exists(db: &burncloud_database::Database, table_name: &str) -> bo
 async fn count_rows(db: &burncloud_database::Database, table_name: &str) -> i64 {
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
     let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table_name}"))
         .fetch_one(pool)
@@ -238,7 +238,7 @@ async fn test_user_accounts_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -262,7 +262,7 @@ async fn test_user_role_bindings_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     // Insert a user for the FK
@@ -296,7 +296,7 @@ async fn test_user_api_keys_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -321,7 +321,7 @@ async fn test_channel_providers_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -345,7 +345,7 @@ async fn test_channel_abilities_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -369,7 +369,7 @@ async fn test_channel_protocol_configs_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -394,7 +394,7 @@ async fn test_billing_prices_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -418,7 +418,7 @@ async fn test_billing_tiered_prices_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -443,7 +443,7 @@ async fn test_billing_exchange_rates_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -468,7 +468,7 @@ async fn test_router_video_tasks_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -492,7 +492,7 @@ async fn test_sys_settings_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query("INSERT INTO sys_settings (name, value) VALUES ('test-theme', 'dark')")
@@ -513,7 +513,7 @@ async fn test_sys_downloads_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -536,7 +536,7 @@ async fn test_sys_installations_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -560,7 +560,7 @@ async fn test_user_recharges_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     sqlx::query(
@@ -594,7 +594,7 @@ async fn test_seed_user_in_user_accounts() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let count: i64 =
@@ -633,7 +633,7 @@ async fn test_migration_0010_is_recorded() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let count: i64 = sqlx::query_scalar(
@@ -650,7 +650,7 @@ async fn test_all_migrations_recorded() {
     let (db, _tmp) = create_test_db().await;
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _schema_migrations")
@@ -880,7 +880,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
 
 #[tokio::test]
 async fn test_data_migration_users_to_user_accounts() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     // Phase 1: create old schema and insert data
@@ -906,7 +906,7 @@ async fn test_data_migration_users_to_user_accounts() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     // Phase 3: verify data migrated to new table
@@ -929,7 +929,7 @@ async fn test_data_migration_users_to_user_accounts() {
 
 #[tokio::test]
 async fn test_data_migration_channels_to_channel_providers() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -953,7 +953,7 @@ async fn test_data_migration_channels_to_channel_providers() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let (name, base_url): (String, String) =
@@ -969,7 +969,7 @@ async fn test_data_migration_channels_to_channel_providers() {
 
 #[tokio::test]
 async fn test_data_migration_abilities_to_channel_abilities() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -993,7 +993,7 @@ async fn test_data_migration_abilities_to_channel_abilities() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let count: i64 = sqlx::query_scalar(
@@ -1009,7 +1009,7 @@ async fn test_data_migration_abilities_to_channel_abilities() {
 
 #[tokio::test]
 async fn test_data_migration_tokens_to_user_api_keys() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1033,7 +1033,7 @@ async fn test_data_migration_tokens_to_user_api_keys() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let (name, remain): (String, i64) = sqlx::query_as(
@@ -1051,7 +1051,7 @@ async fn test_data_migration_tokens_to_user_api_keys() {
 
 #[tokio::test]
 async fn test_data_migration_prices_to_billing_prices() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1077,7 +1077,7 @@ async fn test_data_migration_prices_to_billing_prices() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let (inp, outp): (i64, i64) = sqlx::query_as(
@@ -1094,7 +1094,7 @@ async fn test_data_migration_prices_to_billing_prices() {
 
 #[tokio::test]
 async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1118,7 +1118,7 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let ep: String = sqlx::query_scalar(
@@ -1134,7 +1134,7 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
 
 #[tokio::test]
 async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1158,7 +1158,7 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let (inp, outp): (i64, i64) = sqlx::query_as(
@@ -1176,7 +1176,7 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
 
 #[tokio::test]
 async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1200,7 +1200,7 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let rate: i64 = sqlx::query_scalar(
@@ -1217,7 +1217,7 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
 
 #[tokio::test]
 async fn test_data_migration_video_tasks_to_router_video_tasks() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1241,7 +1241,7 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let (dur, res): (i64, String) = sqlx::query_as(
@@ -1258,7 +1258,7 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
 
 #[tokio::test]
 async fn test_data_migration_setting_to_sys_settings() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1279,7 +1279,7 @@ async fn test_data_migration_setting_to_sys_settings() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let val: String =
@@ -1294,7 +1294,7 @@ async fn test_data_migration_setting_to_sys_settings() {
 
 #[tokio::test]
 async fn test_data_migration_downloads_to_sys_downloads() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1318,7 +1318,7 @@ async fn test_data_migration_downloads_to_sys_downloads() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let (status, total): (String, i64) =
@@ -1334,7 +1334,7 @@ async fn test_data_migration_downloads_to_sys_downloads() {
 
 #[tokio::test]
 async fn test_data_migration_installations_to_sys_installations() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1358,7 +1358,7 @@ async fn test_data_migration_installations_to_sys_installations() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let (name, ver): (String, String) =
@@ -1374,7 +1374,7 @@ async fn test_data_migration_installations_to_sys_installations() {
 
 #[tokio::test]
 async fn test_data_migration_preserves_multiple_rows() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1401,7 +1401,7 @@ async fn test_data_migration_preserves_multiple_rows() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     let count: i64 =
@@ -1424,7 +1424,7 @@ async fn test_data_migration_preserves_multiple_rows() {
 async fn test_data_migration_cross_domain() {
     // Verify that data from different domains (user_, channel_, billing_, sys_)
     // all migrate correctly in a single migration run.
-    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
+    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1470,7 +1470,7 @@ async fn test_data_migration_cross_domain() {
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
     let pool = db
         .get_connection()
-        .unwrap_or_else(|| panic!("no connection"))
+        .unwrap_or_else(|_| panic!("no connection"))
         .pool();
 
     // user_accounts

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
