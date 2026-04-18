@@ -1513,6 +1513,7 @@ async fn proxy_logic(
                                     retry_after: None,
                                 },
                             );
+                            continue;
                         }
 
                         return (
@@ -1957,6 +1958,15 @@ async fn proxy_logic(
                     state
                         .circuit_breaker
                         .record_failure_with_type(&upstream.id, failure_type);
+
+                    // 429: try next ranked candidate (scheduler provides alternatives)
+                    if status_code == 429 {
+                        tracing::warn!(
+                            "Upstream {} rate limited, trying next candidate",
+                            upstream.name
+                        );
+                        continue;
+                    }
 
                     // Check for API version deprecation and auto-update if detected
                     if adaptor::detector::ApiVersionDetector::is_deprecation_error(error_message) {

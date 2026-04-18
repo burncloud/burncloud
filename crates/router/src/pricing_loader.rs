@@ -112,13 +112,13 @@ impl PricingLoader {
     pub fn load_with_priority(&self) -> Result<Option<PricingConfig>, PricingLoaderError> {
         // First try the override file (highest priority)
         if let Some(config) = self.load_local_override()? {
-            println!("Loaded pricing configuration from override file");
+            tracing::info!("Loaded pricing configuration from override file");
             return Ok(Some(config));
         }
 
         // Then try the main config file
         if let Some(config) = self.load_local_config()? {
-            println!("Loaded pricing configuration from main file");
+            tracing::info!("Loaded pricing configuration from main file");
             return Ok(Some(config));
         }
 
