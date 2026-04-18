@@ -144,7 +144,7 @@ impl AdaptiveRateLimit {
                 // Check if we should transition to Stable
                 if self.request_count >= self.config.learning_duration {
                     self.state = RateLimitState::Stable;
-                    println!(
+                    tracing::info!(
                         "AdaptiveLimit: Transitioned to Stable after {} requests",
                         self.request_count
                     );
@@ -206,7 +206,7 @@ impl AdaptiveRateLimit {
         self.current_limit = new_limit.max(1); // Ensure at least 1
         self.last_adjusted_at = Some(now);
 
-        println!(
+        tracing::warn!(
             "AdaptiveLimit: Reduced limit to {} after rate limit error",
             self.current_limit
         );

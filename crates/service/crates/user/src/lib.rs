@@ -89,7 +89,7 @@ impl UserService {
 
             #[cfg(debug_assertions)]
             {
-                log::warn!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
+                tracing::warn!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
                 "default-secret-key-change-in-production".to_string()
             }
         });
@@ -160,7 +160,7 @@ impl UserService {
 
         // Assign default role - log warning if it fails but don't fail registration
         if let Err(e) = UserDatabase::assign_role(db, &user.id, "user").await {
-            log::warn!(
+            tracing::warn!(
                 "Warning: Failed to assign default role to user {}: {}",
                 user.id,
                 e

@@ -187,13 +187,13 @@ pub async fn create_router_app(
 
     // Spawn Logging Task
     tokio::spawn(async move {
-        println!("Logging task started");
+        tracing::info!("Logging task started");
         while let Some(log) = log_rx.recv().await {
             // Need to create a new default database or use the shared one?
             // Since Database struct isn't thread-safe or Clone by default, we rely on Arc<Database>.
             // But RouterDatabase::insert_log takes &Database.
             if let Err(e) = RouterDatabase::insert_log(&db_for_logger, &log).await {
-                eprintln!("Failed to insert log: {}", e);
+                tracing::error!("Failed to insert log: {}", e);
             }
         }
     });
@@ -1024,7 +1024,7 @@ async fn proxy_logic(
         let model_opt = model_ref.or(gemini_path_model.as_deref());
 
         if let Some(model) = model_opt {
-            println!(
+            tracing::debug!(
                 "ProxyLogic: Attempting to route model '{}' for group '{}'",
                 model, user_group
             );
@@ -1035,7 +1035,7 @@ async fn proxy_logic(
                 .await
             {
                 Ok(Some(channel)) => {
-                    println!(
+                    tracing::debug!(
                         "ModelRouter: Routed {} -> Channel {} (state-filtered)",
                         model, channel.name
                     );
@@ -1073,14 +1073,14 @@ async fn proxy_logic(
                     });
                 }
                 Ok(None) => {
-                    println!(
+                    tracing::debug!(
                         "ModelRouter: No route found for {} (Group: {})",
                         model, user_group
                     );
                 }
                 Err(e) => {
                     // NoAvailableChannelsError - all channels are unavailable
-                    println!("ModelRouter: No available channels for {}: {}", model, e);
+                    tracing::warn!("ModelRouter: No available channels for {}: {}", model, e);
                     return (
                         build_response_with_header(
                             StatusCode::SERVICE_UNAVAILABLE,
@@ -1099,15 +1099,15 @@ async fn proxy_logic(
                 }
             }
         } else {
-            println!("ProxyLogic: No 'model' field in JSON body");
+            tracing::debug!("ProxyLogic: No 'model' field in JSON body");
         }
     } else {
-        println!("ProxyLogic: Failed to parse body as JSON");
+        tracing::debug!("ProxyLogic: Failed to parse body as JSON");
     }
 
     // 2. Path Routing (Fallback)
     if candidates.is_empty() {
-        println!(
+        tracing::debug!(
             "ProxyLogic: Model routing failed/skipped, trying path routing for {}",
             path
         );
@@ -1200,7 +1200,7 @@ async fn proxy_logic(
 
         // Circuit Breaker Check
         if !state.circuit_breaker.allow_request(&upstream.id) {
-            println!("Skipping upstream {} (Circuit Open)", upstream.name);
+            tracing::debug!("Skipping upstream {} (Circuit Open)", upstream.name);
             last_error = "Circuit Breaker Open".to_string();
             continue;
         }
@@ -1210,7 +1210,7 @@ async fn proxy_logic(
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
         let target_url = format!("{}{}{}", upstream.base_url, path, query);
 
-        println!(
+        tracing::debug!(
             "Proxying {} -> {} (via {}) [Attempt {}] Protocol: {}",
             path,
             target_url,
@@ -1244,7 +1244,7 @@ async fn proxy_logic(
 
         // Handle Gemini passthrough mode
         if passthrough_decision == PassthroughDecision::Passthrough {
-            println!(
+            tracing::debug!(
                 "Using passthrough mode for Gemini request: path={}, has_contents={}",
                 path,
                 body_json.get("contents").is_some()
@@ -1254,7 +1254,7 @@ async fn proxy_logic(
             let passthrough_url =
                 passthrough::build_gemini_passthrough_url(&upstream.base_url, path, &body_json);
 
-            println!("Passthrough URL: {}", passthrough_url);
+            tracing::debug!("Passthrough URL: {}", passthrough_url);
 
             // Check if streaming
             let is_stream = body_json
@@ -1274,7 +1274,7 @@ async fn proxy_logic(
                 passthrough_url.clone()
             };
 
-            println!("Final passthrough URL: {}", final_url);
+            tracing::debug!("Final passthrough URL: {}", final_url);
 
             // Prepare request body - remove 'stream' field for Gemini native API
             let mut passthrough_body = body_json.clone();
@@ -1560,7 +1560,7 @@ async fn proxy_logic(
                     for (k, v) in override_map {
                         body_map.insert(k, v);
                     }
-                    println!("Applied param_override for {}", upstream.name);
+                    tracing::debug!("Applied param_override for {}", upstream.name);
                 }
             }
         }
@@ -1576,7 +1576,7 @@ async fn proxy_logic(
                 for (k, v) in header_map {
                     req_builder = req_builder.header(k, v);
                 }
-                println!("Applied header_override for {}", upstream.name);
+                tracing::debug!("Applied header_override for {}", upstream.name);
             }
         }
 
@@ -1639,7 +1639,7 @@ async fn proxy_logic(
                     if rate_limit_info.request_limit.is_some()
                         || rate_limit_info.token_limit.is_some()
                     {
-                        println!(
+                        tracing::debug!(
                             "Rate limit info for {}: requests={:?}, tokens={:?}, remaining={:?}, retry_after={:?}",
                             upstream.name,
                             rate_limit_info.request_limit,
@@ -1915,7 +1915,7 @@ async fn proxy_logic(
                                 .await
                             {
                                 Ok(Some(new_version)) => {
-                                    println!(
+                                    tracing::info!(
                                         "API version deprecation detected, updated channel {} to version: {}",
                                         channel_id_for_detector, new_version
                                     );
@@ -1924,14 +1924,14 @@ async fn proxy_logic(
                                     // No deprecation detected or no new version found
                                 }
                                 Err(e) => {
-                                    eprintln!("Failed to detect/update API version: {}", e);
+                                    tracing::error!("Failed to detect/update API version: {}", e);
                                 }
                             }
                         });
                     }
 
                     // Log the error
-                    println!(
+                    tracing::warn!(
                         "Upstream {} returned {}: {}",
                         upstream.name, status_code, error_message
                     );
@@ -1962,7 +1962,7 @@ async fn proxy_logic(
                     &FailureType::Timeout,
                     &last_error,
                 );
-                eprintln!(
+                tracing::warn!(
                     "Failover: {} failed with {}, trying next...",
                     upstream.name, e
                 );
