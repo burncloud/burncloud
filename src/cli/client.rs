@@ -17,7 +17,7 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub async fn new() -> Result<Self> {
-        let home_dir = dirs::home_dir().context("无法找到用户主目录")?;
+        let home_dir = dirs::home_dir().context("Unable to find user home directory")?;
         let config_dir = home_dir.join(".burncloud");
         if !config_dir.exists() {
             fs::create_dir_all(&config_dir).await?;
@@ -64,17 +64,17 @@ impl ApiClient {
 
         if !resp.status().is_success() {
             let error_text = resp.text().await?;
-            return Err(anyhow::anyhow!("登录失败: {}", error_text));
+            return Err(anyhow::anyhow!("Login failed: {}", error_text));
         }
 
         let json: serde_json::Value = resp.json().await?;
         
-        // 假设返回格式为 { "token": "..." } 或者 { "data": { "token": "..." } }
-        // 根据实际 API 调整。这里假设标准 JWT 返回。
+        // Assume response format is { "token": "..." } or { "data": { "token": "..." } }
+        // Adjust based on actual API. Standard JWT return assumed here.
         let token = json["token"]
             .as_str()
             .or_else(|| json["data"]["token"].as_str())
-            .context("响应中未找到 token")?
+            .context("Token not found in response")?
             .to_string();
 
         self.config.token = Some(token.clone());
@@ -89,7 +89,7 @@ impl ApiClient {
     
     pub async fn chat_completions(&self, model: &str, messages: Vec<serde_json::Value>, stream: bool) -> Result<reqwest::Response> {
         let url = format!("{}/v1/chat/completions", self.config.base_url);
-        let token = self.config.token.as_ref().context("未登录，请先运行 login 命令")?;
+        let token = self.config.token.as_ref().context("Not logged in, please run the login command first")?;
         
         let body = serde_json::json!({
             "model": model,
@@ -106,7 +106,7 @@ impl ApiClient {
             
         if !resp.status().is_success() {
              let error_text = resp.text().await?;
-             return Err(anyhow::anyhow!("请求失败 ({}): {}", resp.status(), error_text));
+             return Err(anyhow::anyhow!("Request failed ({}): {}", resp.status(), error_text));
         }
         
         Ok(resp)

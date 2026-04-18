@@ -115,14 +115,14 @@ skip-tree = [
 
 # burncloud-database-models — domain model types (channels, upstreams, etc.)
 # Legitimate direct users: service-billing, service-channel, service-models,
-#                          cli (admin commands), router (request routing)
+#                          burncloud (cli admin commands), router (request routing)
 [[bans.deny]]
 crate = "burncloud-database-models"
 wrappers = [
     "burncloud-service-billing",
     "burncloud-service-channel",
     "burncloud-service-models",
-    "burncloud-cli",
+    "burncloud",
     "burncloud-router",
 ]
 reason = "Domain models must not be imported directly by server; use service layer"
@@ -186,9 +186,9 @@ reason = "Download DB access must go through burncloud-download"
 [[bans.deny]]
 crate = "burncloud-database-installer"
 wrappers = [
-    "burncloud-cli",
+    "burncloud",
 ]
-reason = "Installer DB access must go through burncloud-cli installer commands"
+reason = "Installer DB access must go through burncloud CLI installer commands"
 
 # ─── Sources ──────────────────────────────────────────────────────────────────
 [sources]
