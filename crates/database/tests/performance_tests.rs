@@ -56,7 +56,7 @@ async fn test_concurrent_database_access() {
         for i in 0..num_tasks {
             let connection = db
                 .get_connection()
-                .expect("Database should be initialized")
+                .unwrap_or_else(|e| panic!("Database should be initialized: {e}"))
                 .clone();
             let handle = tokio::spawn(async move {
                 let timestamp = chrono::Utc::now().to_rfc3339();
@@ -66,7 +66,7 @@ async fn test_concurrent_database_access() {
                 );
                 // Use connection pool directly for concurrent access
                 let result = sqlx::query(&query).execute(connection.pool()).await;
-                result.map_err(|e| burncloud_database::DatabaseError::Connection(e))
+                result.map_err(burncloud_database::DatabaseError::Connection)
             });
             handles.push(handle);
         }
@@ -140,7 +140,7 @@ async fn test_large_dataset_operations() {
                 batch_query.push_str(&format!(" ('test_data_{}', {})", i, i * 2));
             }
 
-            if let Ok(_) = db.execute_query(&batch_query).await {
+            if db.execute_query(&batch_query).await.is_ok() {
                 successful_inserts += batch_end - batch_start;
             }
         }

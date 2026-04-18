@@ -41,6 +41,12 @@ pub struct InferenceService {
     statuses: Arc<Mutex<HashMap<String, InstanceStatus>>>,
 }
 
+impl Default for InferenceService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InferenceService {
     pub fn new() -> Self {
         Self {

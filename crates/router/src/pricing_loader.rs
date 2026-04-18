@@ -153,13 +153,15 @@ mod tests {
         let loader = PricingLoader::new();
         let result = loader
             .load_from_path(Path::new("/nonexistent/path.json"))
-            .unwrap();
+            .unwrap_or_else(|e| {
+                panic!("load_from_path should not error for nonexistent file: {e}")
+            });
         assert!(result.is_none());
     }
 
     #[test]
     fn test_load_valid_config() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().unwrap_or_else(|e| panic!("failed to create temp dir: {e}"));
         let config_path = dir.path().join("pricing.json");
 
         let config_content = r#"{
@@ -169,7 +171,8 @@ mod tests {
             "models": {}
         }"#;
 
-        std::fs::write(&config_path, config_content).unwrap();
+        std::fs::write(&config_path, config_content)
+            .unwrap_or_else(|e| panic!("failed to write config file: {e}"));
 
         let loader_config = PricingLoaderConfig {
             config_path: config_path.clone(),
@@ -177,17 +180,19 @@ mod tests {
         };
         let loader = PricingLoader::with_config(loader_config);
 
-        let result = loader.load_local_config().unwrap();
+        let result = loader
+            .load_local_config()
+            .unwrap_or_else(|e| panic!("load_local_config failed: {e}"));
         assert!(result.is_some());
 
-        let config = result.unwrap();
+        let config = result.unwrap_or_else(|| panic!("config should be Some"));
         assert_eq!(config.version, "1.0");
         assert_eq!(config.source, "test");
     }
 
     #[test]
     fn test_load_override_priority() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().unwrap_or_else(|e| panic!("failed to create temp dir: {e}"));
         let config_path = dir.path().join("pricing.json");
         let override_path = dir.path().join("pricing.override.json");
 
@@ -198,7 +203,8 @@ mod tests {
             "source": "main",
             "models": {}
         }"#;
-        std::fs::write(&config_path, main_content).unwrap();
+        std::fs::write(&config_path, main_content)
+            .unwrap_or_else(|e| panic!("failed to write main config: {e}"));
 
         // Write override config
         let override_content = r#"{
@@ -207,7 +213,8 @@ mod tests {
             "source": "override",
             "models": {}
         }"#;
-        std::fs::write(&override_path, override_content).unwrap();
+        std::fs::write(&override_path, override_content)
+            .unwrap_or_else(|e| panic!("failed to write override config: {e}"));
 
         let loader_config = PricingLoaderConfig {
             config_path,
@@ -215,17 +222,19 @@ mod tests {
         };
         let loader = PricingLoader::with_config(loader_config);
 
-        let result = loader.load_with_priority().unwrap();
+        let result = loader
+            .load_with_priority()
+            .unwrap_or_else(|e| panic!("load_with_priority failed: {e}"));
         assert!(result.is_some());
 
-        let config = result.unwrap();
+        let config = result.unwrap_or_else(|| panic!("config should be Some"));
         // Override should have priority
         assert_eq!(config.source, "override");
     }
 
     #[test]
     fn test_validate_config() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().unwrap_or_else(|e| panic!("failed to create temp dir: {e}"));
         let config_path = dir.path().join("pricing.json");
 
         // Config with high prices (should generate warnings, not errors)
@@ -246,7 +255,8 @@ mod tests {
                 }
             }
         }"#;
-        std::fs::write(&config_path, content).unwrap();
+        std::fs::write(&config_path, content)
+            .unwrap_or_else(|e| panic!("failed to write config file: {e}"));
 
         let loader_config = PricingLoaderConfig {
             config_path,
@@ -254,7 +264,10 @@ mod tests {
         };
         let loader = PricingLoader::with_config(loader_config);
 
-        let config = loader.load_local_config().unwrap().unwrap();
+        let config = loader
+            .load_local_config()
+            .unwrap_or_else(|e| panic!("load_local_config failed: {e}"))
+            .unwrap_or_else(|| panic!("config should be Some"));
         let result = loader.validate_config(&config);
 
         // Validation should succeed (returns Ok with warnings vector)
@@ -263,10 +276,11 @@ mod tests {
 
     #[test]
     fn test_invalid_json() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().unwrap_or_else(|e| panic!("failed to create temp dir: {e}"));
         let config_path = dir.path().join("pricing.json");
 
-        std::fs::write(&config_path, "not valid json").unwrap();
+        std::fs::write(&config_path, "not valid json")
+            .unwrap_or_else(|e| panic!("failed to write invalid json file: {e}"));
 
         let loader_config = PricingLoaderConfig {
             config_path,

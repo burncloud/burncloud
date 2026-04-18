@@ -32,24 +32,27 @@ pub async fn start_test_server(port: u16, db_url: &str) {
     // Use the URL directly so concurrent tests don't interfere via a shared env var.
     let db = create_database_with_url(db_url)
         .await
-        .expect("Failed to open DB");
+        .unwrap_or_else(|e| panic!("Failed to open DB: {e}"));
     let db_arc = Arc::new(db);
 
     let (app, _force_sync_tx) = burncloud_router::create_router_app(db_arc)
         .await
-        .expect("Failed to create app");
+        .unwrap_or_else(|e| panic!("Failed to create app: {e}"));
 
     tokio::spawn(async move {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
             .await
-            .unwrap();
-        axum::serve(listener, app).await.unwrap();
+            .unwrap_or_else(|e| panic!("Failed to bind port {port}: {e}"));
+        axum::serve(listener, app)
+            .await
+            .unwrap_or_else(|e| panic!("Server error: {e}"));
     });
     // Give server a moment to start
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 }
 
 #[allow(dead_code)]
+#[allow(clippy::disallowed_types)]
 pub async fn start_mock_upstream(listener: TcpListener) {
     let handler = |method: axum::http::Method,
                    uri: axum::http::Uri,
@@ -77,5 +80,5 @@ pub async fn start_mock_upstream(listener: TcpListener) {
 
     axum::serve(listener, axum::Router::new().fallback(handler))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Mock upstream server error: {e}"));
 }

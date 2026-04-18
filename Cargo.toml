@@ -141,6 +141,9 @@ image = "0.25"
 self_update = { version = "0.42.0", features = ["archive-zip"] }
 systray = "0.4.0"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+tracing-log = "0.2"
 redis = { version = "0.27", features = ["tokio-comp"] }
 
 # Internal crates
@@ -227,7 +230,6 @@ burncloud-client = { workspace = true, default-features = false, features = ["li
 
 tokio.workspace = true
 anyhow.workspace = true
-env_logger.workspace = true
 dotenvy.workspace = true
 rand.workspace = true
 hex.workspace = true

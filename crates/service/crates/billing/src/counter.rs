@@ -197,7 +197,7 @@ mod tests {
             }));
         }
         for h in handles {
-            h.join().unwrap();
+            h.join().unwrap_or_else(|e| panic!("thread panicked: {e:?}"));
         }
         // After all threads, some value in 0..10 should be set (no crash)
         let _ = counter.get_usage();

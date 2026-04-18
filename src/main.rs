@@ -9,8 +9,8 @@ fn main() -> Result<()> {
     // Auto-generate MASTER_KEY if missing
     ensure_master_key();
 
-    // 初始化日志
-    env_logger::init();
+    // 初始化日志（tracing-subscriber + 文件输出）
+    let _logging_guards = burncloud_server::logging::init_logging();
 
     let args: Vec<String> = env::args().collect();
 

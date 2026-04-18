@@ -113,7 +113,9 @@ mod tests {
         // Validate extraction of system prompt
         assert_eq!(claude_val["system"], "Be helpful");
         // Validate messages (system should be removed from messages array)
-        let messages = claude_val["messages"].as_array().unwrap();
+        let messages = claude_val["messages"]
+            .as_array()
+            .unwrap_or_else(|| panic!("messages should be an array"));
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
         assert_eq!(messages[0]["content"], "Hi");

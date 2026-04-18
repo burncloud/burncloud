@@ -205,7 +205,9 @@ mod tests {
         assert_eq!(zai_req["model"], "glm-5");
         assert_eq!(zai_req["system"], "Be helpful");
         assert_eq!(zai_req["max_tokens"], 100);
-        let messages = zai_req["messages"].as_array().unwrap();
+        let messages = zai_req["messages"]
+            .as_array()
+            .unwrap_or_else(|| panic!("messages should be an array"));
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
     }
@@ -264,7 +266,7 @@ mod tests {
         let result = ZaiAdaptor::convert_stream_chunk(chunk, "glm-5");
 
         assert!(result.is_some());
-        let output = result.unwrap();
+        let output = result.unwrap_or_else(|| panic!("stream chunk conversion should return Some"));
         assert!(output.starts_with("data: "));
         assert!(output.contains("\"delta\":{\"content\":\"Hello\"}"));
     }
@@ -276,7 +278,7 @@ mod tests {
         let result = ZaiAdaptor::convert_stream_chunk(chunk, "glm-5");
 
         assert!(result.is_some());
-        let output = result.unwrap();
+        let output = result.unwrap_or_else(|| panic!("stream chunk conversion should return Some"));
         assert!(output.contains("\"delta\":{\"content\":\"World\"}"));
     }
 

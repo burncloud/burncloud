@@ -12,11 +12,11 @@ use tempfile::NamedTempFile;
 /// Create an isolated SQLite database with the `router_groups` and
 /// `router_group_members` tables pre-created.
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
-    let tmp = NamedTempFile::new().expect("failed to create temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
     let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
     let db = create_database_with_url(&url)
         .await
-        .expect("failed to connect to test database");
+        .unwrap_or_else(|e| panic!("failed to connect to test database: {e}"));
 
     db.execute_query(
         r#"
@@ -29,7 +29,7 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
         "#,
     )
     .await
-    .expect("failed to create router_groups table");
+    .unwrap_or_else(|e| panic!("failed to create router_groups table: {e}"));
 
     db.execute_query(
         r#"
@@ -42,7 +42,7 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
         "#,
     )
     .await
-    .expect("failed to create router_group_members table");
+    .unwrap_or_else(|e| panic!("failed to create router_group_members table: {e}"));
 
     (db, tmp)
 }
@@ -67,12 +67,12 @@ async fn test_group_model_create_and_get() {
 
     RouterGroupModel::create(&db, &g)
         .await
-        .expect("create failed");
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     let found = RouterGroupModel::get(&db, "group-1")
         .await
-        .expect("get failed")
-        .expect("group not found");
+        .unwrap_or_else(|e| panic!("get failed: {e}"))
+        .unwrap_or_else(|| panic!("group not found"));
 
     assert_eq!(found.id, g.id);
     assert_eq!(found.name, g.name);
@@ -86,7 +86,7 @@ async fn test_group_model_get_missing_returns_none() {
 
     let result = RouterGroupModel::get(&db, "does-not-exist")
         .await
-        .expect("get failed");
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
 
     assert!(result.is_none());
 }
@@ -97,7 +97,7 @@ async fn test_group_model_get_all_empty() {
 
     let all = RouterGroupModel::get_all(&db)
         .await
-        .expect("get_all failed");
+        .unwrap_or_else(|e| panic!("get_all failed: {e}"));
     assert!(all.is_empty());
 }
 
@@ -107,17 +107,17 @@ async fn test_group_model_get_all_multiple() {
 
     RouterGroupModel::create(&db, &make_group("g-a"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create g-a failed: {e}"));
     RouterGroupModel::create(&db, &make_group("g-b"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create g-b failed: {e}"));
     RouterGroupModel::create(&db, &make_group("g-c"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create g-c failed: {e}"));
 
     let all = RouterGroupModel::get_all(&db)
         .await
-        .expect("get_all failed");
+        .unwrap_or_else(|e| panic!("get_all failed: {e}"));
     assert_eq!(all.len(), 3);
 
     let ids: Vec<&str> = all.iter().map(|g| g.id.as_str()).collect();
@@ -131,18 +131,20 @@ async fn test_group_model_delete_removes_group() {
     let (db, _tmp) = create_test_db().await;
     let g = make_group("del-group");
 
-    RouterGroupModel::create(&db, &g).await.unwrap();
+    RouterGroupModel::create(&db, &g)
+        .await
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
     assert!(RouterGroupModel::get(&db, "del-group")
         .await
-        .unwrap()
+        .unwrap_or_else(|e| panic!("get failed: {e}"))
         .is_some());
 
     RouterGroupModel::delete(&db, "del-group")
         .await
-        .expect("delete failed");
+        .unwrap_or_else(|e| panic!("delete failed: {e}"));
     assert!(RouterGroupModel::get(&db, "del-group")
         .await
-        .unwrap()
+        .unwrap_or_else(|e| panic!("get failed: {e}"))
         .is_none());
 }
 
@@ -151,7 +153,9 @@ async fn test_group_model_delete_also_removes_members() {
     let (db, _tmp) = create_test_db().await;
 
     let g = make_group("parent-group");
-    RouterGroupModel::create(&db, &g).await.unwrap();
+    RouterGroupModel::create(&db, &g)
+        .await
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     let members = vec![
         RouterGroupMember {
@@ -167,19 +171,21 @@ async fn test_group_model_delete_also_removes_members() {
     ];
     RouterGroupMemberModel::set_for_group(&db, "parent-group", members)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("set_for_group failed: {e}"));
 
     // Verify members exist
     let before = RouterGroupMemberModel::get_by_group(&db, "parent-group")
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("get_by_group failed: {e}"));
     assert_eq!(before.len(), 2);
 
     // Delete the group — members should be cascaded
-    RouterGroupModel::delete(&db, "parent-group").await.unwrap();
+    RouterGroupModel::delete(&db, "parent-group")
+        .await
+        .unwrap_or_else(|e| panic!("delete failed: {e}"));
     let after = RouterGroupMemberModel::get_by_group(&db, "parent-group")
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("get_by_group failed: {e}"));
     assert!(after.is_empty());
 }
 
@@ -193,7 +199,7 @@ async fn test_member_model_set_and_get_by_group() {
 
     RouterGroupModel::create(&db, &make_group("grp"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     let members = vec![
         RouterGroupMember {
@@ -210,11 +216,11 @@ async fn test_member_model_set_and_get_by_group() {
 
     RouterGroupMemberModel::set_for_group(&db, "grp", members)
         .await
-        .expect("set_for_group failed");
+        .unwrap_or_else(|e| panic!("set_for_group failed: {e}"));
 
     let rows = RouterGroupMemberModel::get_by_group(&db, "grp")
         .await
-        .expect("get_by_group failed");
+        .unwrap_or_else(|e| panic!("get_by_group failed: {e}"));
 
     assert_eq!(rows.len(), 2);
     let upstream_ids: Vec<&str> = rows.iter().map(|m| m.upstream_id.as_str()).collect();
@@ -228,7 +234,7 @@ async fn test_member_model_set_for_group_replaces_existing() {
 
     RouterGroupModel::create(&db, &make_group("replace-grp"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     let initial = vec![RouterGroupMember {
         group_id: "replace-grp".to_string(),
@@ -237,7 +243,7 @@ async fn test_member_model_set_for_group_replaces_existing() {
     }];
     RouterGroupMemberModel::set_for_group(&db, "replace-grp", initial)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("set_for_group initial failed: {e}"));
 
     let replacement = vec![RouterGroupMember {
         group_id: "replace-grp".to_string(),
@@ -246,11 +252,11 @@ async fn test_member_model_set_for_group_replaces_existing() {
     }];
     RouterGroupMemberModel::set_for_group(&db, "replace-grp", replacement)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("set_for_group replacement failed: {e}"));
 
     let rows = RouterGroupMemberModel::get_by_group(&db, "replace-grp")
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("get_by_group failed: {e}"));
 
     assert_eq!(rows.len(), 1, "old members should be replaced");
     assert_eq!(rows[0].upstream_id, "new-upstream");
@@ -263,10 +269,10 @@ async fn test_member_model_get_all() {
 
     RouterGroupModel::create(&db, &make_group("g1"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create g1 failed: {e}"));
     RouterGroupModel::create(&db, &make_group("g2"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create g2 failed: {e}"));
 
     let m1 = vec![RouterGroupMember {
         group_id: "g1".to_string(),
@@ -281,14 +287,14 @@ async fn test_member_model_get_all() {
 
     RouterGroupMemberModel::set_for_group(&db, "g1", m1)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("set_for_group g1 failed: {e}"));
     RouterGroupMemberModel::set_for_group(&db, "g2", m2)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("set_for_group g2 failed: {e}"));
 
     let all = RouterGroupMemberModel::get_all(&db)
         .await
-        .expect("get_all failed");
+        .unwrap_or_else(|e| panic!("get_all failed: {e}"));
     assert_eq!(all.len(), 2);
 }
 
@@ -298,7 +304,7 @@ async fn test_member_model_set_empty_clears_members() {
 
     RouterGroupModel::create(&db, &make_group("clear-grp"))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     let members = vec![RouterGroupMember {
         group_id: "clear-grp".to_string(),
@@ -307,16 +313,16 @@ async fn test_member_model_set_empty_clears_members() {
     }];
     RouterGroupMemberModel::set_for_group(&db, "clear-grp", members)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("set_for_group failed: {e}"));
 
     // Clear by setting empty list
     RouterGroupMemberModel::set_for_group(&db, "clear-grp", vec![])
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("set_for_group clear failed: {e}"));
 
     let rows = RouterGroupMemberModel::get_by_group(&db, "clear-grp")
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("get_by_group failed: {e}"));
     assert!(rows.is_empty());
 }
 
@@ -330,7 +336,10 @@ async fn test_repository_create_and_find() {
     let repo = RouterGroupRepository(&db);
 
     let g = make_group("repo-1");
-    let created = repo.create(&g).await.expect("create failed");
+    let created = repo
+        .create(&g)
+        .await
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     assert_eq!(created.id, "repo-1");
     assert_eq!(created.name, g.name);
@@ -338,8 +347,8 @@ async fn test_repository_create_and_find() {
     let found = repo
         .find_by_id(&"repo-1".to_string())
         .await
-        .expect("find_by_id failed")
-        .expect("should be Some");
+        .unwrap_or_else(|e| panic!("find_by_id failed: {e}"))
+        .unwrap_or_else(|| panic!("should be Some"));
 
     assert_eq!(found.id, "repo-1");
 }
@@ -352,7 +361,7 @@ async fn test_repository_find_missing_returns_none() {
     let result = repo
         .find_by_id(&"no-such-group".to_string())
         .await
-        .expect("find_by_id failed");
+        .unwrap_or_else(|e| panic!("find_by_id failed: {e}"));
 
     assert!(result.is_none());
 }
@@ -362,10 +371,17 @@ async fn test_repository_list() {
     let (db, _tmp) = create_test_db().await;
     let repo = RouterGroupRepository(&db);
 
-    repo.create(&make_group("list-a")).await.unwrap();
-    repo.create(&make_group("list-b")).await.unwrap();
+    repo.create(&make_group("list-a"))
+        .await
+        .unwrap_or_else(|e| panic!("create list-a failed: {e}"));
+    repo.create(&make_group("list-b"))
+        .await
+        .unwrap_or_else(|e| panic!("create list-b failed: {e}"));
 
-    let all = repo.list().await.expect("list failed");
+    let all = repo
+        .list()
+        .await
+        .unwrap_or_else(|e| panic!("list failed: {e}"));
     assert_eq!(all.len(), 2);
 }
 
@@ -374,7 +390,9 @@ async fn test_repository_update() {
     let (db, _tmp) = create_test_db().await;
     let repo = RouterGroupRepository(&db);
 
-    repo.create(&make_group("upd-1")).await.unwrap();
+    repo.create(&make_group("upd-1"))
+        .await
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     let updated = RouterGroup {
         id: "upd-1".to_string(),
@@ -385,14 +403,14 @@ async fn test_repository_update() {
     let found = repo
         .update(&"upd-1".to_string(), &updated)
         .await
-        .expect("update failed");
+        .unwrap_or_else(|e| panic!("update failed: {e}"));
     assert!(found, "update should return true for existing group");
 
     let after = repo
         .find_by_id(&"upd-1".to_string())
         .await
-        .unwrap()
-        .unwrap();
+        .unwrap_or_else(|e| panic!("find_by_id failed: {e}"))
+        .unwrap_or_else(|| panic!("upd-1 should exist after update"));
     assert_eq!(after.name, "Updated Name");
     assert_eq!(after.strategy, "weighted");
 }
@@ -406,7 +424,7 @@ async fn test_repository_update_nonexistent_returns_false() {
     let result = repo
         .update(&"ghost".to_string(), &g)
         .await
-        .expect("update failed");
+        .unwrap_or_else(|e| panic!("update failed: {e}"));
     assert!(!result, "update on non-existent group should return false");
 }
 
@@ -415,15 +433,20 @@ async fn test_repository_delete() {
     let (db, _tmp) = create_test_db().await;
     let repo = RouterGroupRepository(&db);
 
-    repo.create(&make_group("del-1")).await.unwrap();
+    repo.create(&make_group("del-1"))
+        .await
+        .unwrap_or_else(|e| panic!("create failed: {e}"));
 
     let deleted = repo
         .delete(&"del-1".to_string())
         .await
-        .expect("delete failed");
+        .unwrap_or_else(|e| panic!("delete failed: {e}"));
     assert!(deleted, "delete should return true for existing group");
 
-    let after = repo.find_by_id(&"del-1".to_string()).await.unwrap();
+    let after = repo
+        .find_by_id(&"del-1".to_string())
+        .await
+        .unwrap_or_else(|e| panic!("find_by_id failed: {e}"));
     assert!(after.is_none());
 }
 
@@ -435,6 +458,6 @@ async fn test_repository_delete_nonexistent_returns_false() {
     let result = repo
         .delete(&"phantom".to_string())
         .await
-        .expect("delete failed");
+        .unwrap_or_else(|e| panic!("delete failed: {e}"));
     assert!(!result, "delete on non-existent group should return false");
 }

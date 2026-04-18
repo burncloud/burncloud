@@ -340,13 +340,16 @@ mod tests {
     /// Since ExchangeRateService tests only use in-memory cache, we can use a minimal mock
     fn create_test_service() -> ExchangeRateService {
         // Lock to ensure tests run serially to avoid DB conflicts
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| panic!("failed to acquire test mutex: {e}"));
 
         use burncloud_database::Database;
         use std::sync::Arc;
 
         // Use tokio runtime to create database with unique path
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new()
+            .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"));
         let db = rt.block_on(async {
             // Generate unique database path to avoid conflicts between tests
             let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -362,7 +365,9 @@ mod tests {
                 format!("sqlite://{}?mode=rwc", db_path),
             );
 
-            let db = Database::new().await.unwrap();
+            let db = Database::new()
+                .await
+                .unwrap_or_else(|e| panic!("failed to create test database: {e}"));
             db
         });
         ExchangeRateService::new(Arc::new(db))

@@ -35,7 +35,8 @@ mod tests {
     #[test]
     fn test_hash_password() {
         let password = "test_password_123";
-        let hash = hash_password(password).expect("Failed to hash password");
+        let hash =
+            hash_password(password).unwrap_or_else(|e| panic!("Failed to hash password: {e}"));
 
         // Bcrypt hashes should start with $2 (bcrypt identifier)
         assert!(hash.starts_with("$2"));
@@ -46,9 +47,11 @@ mod tests {
     #[test]
     fn test_verify_password_success() {
         let password = "correct_password";
-        let hash = hash_password(password).expect("Failed to hash password");
+        let hash =
+            hash_password(password).unwrap_or_else(|e| panic!("Failed to hash password: {e}"));
 
-        let result = verify_password(password, &hash).expect("Failed to verify password");
+        let result = verify_password(password, &hash)
+            .unwrap_or_else(|e| panic!("Failed to verify password: {e}"));
         assert!(result, "Password verification should succeed");
     }
 
@@ -56,9 +59,11 @@ mod tests {
     fn test_verify_password_failure() {
         let password = "correct_password";
         let wrong_password = "wrong_password";
-        let hash = hash_password(password).expect("Failed to hash password");
+        let hash =
+            hash_password(password).unwrap_or_else(|e| panic!("Failed to hash password: {e}"));
 
-        let result = verify_password(wrong_password, &hash).expect("Failed to verify password");
+        let result = verify_password(wrong_password, &hash)
+            .unwrap_or_else(|e| panic!("Failed to verify password: {e}"));
         assert!(
             !result,
             "Password verification should fail for wrong password"
@@ -68,14 +73,20 @@ mod tests {
     #[test]
     fn test_hash_same_password_different_hashes() {
         let password = "same_password";
-        let hash1 = hash_password(password).expect("Failed to hash password");
-        let hash2 = hash_password(password).expect("Failed to hash password");
+        let hash1 =
+            hash_password(password).unwrap_or_else(|e| panic!("Failed to hash password: {e}"));
+        let hash2 =
+            hash_password(password).unwrap_or_else(|e| panic!("Failed to hash password: {e}"));
 
         // Same password should produce different hashes due to random salt
         assert_ne!(hash1, hash2);
 
         // But both should verify successfully
-        assert!(verify_password(password, &hash1).expect("Failed to verify"));
-        assert!(verify_password(password, &hash2).expect("Failed to verify"));
+        assert!(
+            verify_password(password, &hash1).unwrap_or_else(|e| panic!("Failed to verify: {e}"))
+        );
+        assert!(
+            verify_password(password, &hash2).unwrap_or_else(|e| panic!("Failed to verify: {e}"))
+        );
     }
 }

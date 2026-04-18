@@ -493,7 +493,7 @@ mod tests {
     async fn test_preflight_not_found() {
         let cache = PriceCache::empty();
         let calc = CostCalculator::new(cache);
-        let err = calc.preflight("nonexistent-model", None).await.unwrap_err();
+        let err = calc.preflight("nonexistent-model", None).await.unwrap_or_else(|_| panic!("expected PriceNotFound error"));
         assert!(matches!(err, BillingError::PriceNotFound(m) if m == "nonexistent-model"));
     }
 

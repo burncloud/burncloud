@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod client_tests {
     use crate::app::App;
     use dioxus::prelude::*;
 

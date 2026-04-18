@@ -109,14 +109,14 @@ async fn test_connection_pool_exhaustion() {
         for i in 0..num_operations {
             let connection = db
                 .get_connection()
-                .expect("Database should be initialized")
+                .unwrap_or_else(|e| panic!("Database should be initialized: {e}"))
                 .clone();
             let handle = tokio::spawn(async move {
                 // Perform a long-running operation
                 let result = sqlx::query(&format!("SELECT {} as operation_id", i))
                     .execute(connection.pool())
                     .await
-                    .map_err(|e| burncloud_database::DatabaseError::Connection(e));
+                    .map_err(burncloud_database::DatabaseError::Connection);
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 result
             });
@@ -283,7 +283,7 @@ fn test_error_message_quality() {
     assert!(error_msg.len() > 20);
 
     // Test that errors implement standard traits
-    assert!(format!("{:?}", path_error).len() > 0); // Debug formatting
+    assert!(!format!("{:?}", path_error).is_empty()); // Debug formatting
 
     println!("✓ Error messages are informative and well-formatted");
 }

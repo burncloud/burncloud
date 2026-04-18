@@ -1,3 +1,5 @@
+// serde_json::Value is required for dynamic JSON parsing in auth tests
+#![allow(clippy::disallowed_types)]
 mod common;
 
 use burncloud_database::sqlx;
@@ -29,7 +31,7 @@ async fn start_mock_upstream(listener: tokio::net::TcpListener) {
 
     axum::serve(listener, axum::Router::new().fallback(handler))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Mock upstream server error: {e}"));
 }
 
 #[tokio::test]
@@ -109,7 +111,7 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     let mock_port = 3020;
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
@@ -157,12 +159,19 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await?;
 
-    let headers = json.get("headers").unwrap();
+    let headers = json
+        .get("headers")
+        .unwrap_or_else(|| panic!("Expected headers in response"));
     let auth_header = headers
         .get("Authorization")
         .or(headers.get("authorization"))
-        .unwrap();
-    assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-deepseek-mock-key");
+        .unwrap_or_else(|| panic!("Expected Authorization header"));
+    assert_eq!(
+        auth_header
+            .as_str()
+            .unwrap_or_else(|| panic!("Expected auth header as string")),
+        "Bearer sk-deepseek-mock-key"
+    );
 
     Ok(())
 }
@@ -175,7 +184,7 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     let mock_port = 3021;
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
@@ -223,12 +232,19 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await?;
 
-    let headers = json.get("headers").unwrap();
+    let headers = json
+        .get("headers")
+        .unwrap_or_else(|| panic!("Expected headers in response"));
     let auth_header = headers
         .get("Authorization")
         .or(headers.get("authorization"))
-        .unwrap();
-    assert_eq!(auth_header.as_str().unwrap(), "Bearer sk-qwen-mock-key");
+        .unwrap_or_else(|| panic!("Expected Authorization header"));
+    assert_eq!(
+        auth_header
+            .as_str()
+            .unwrap_or_else(|| panic!("Expected auth header as string")),
+        "Bearer sk-qwen-mock-key"
+    );
 
     Ok(())
 }

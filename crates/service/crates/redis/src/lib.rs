@@ -104,11 +104,17 @@ mod tests {
         let val = "hello_world";
 
         assert!(service.set(key, val, Some(10)).await.is_ok());
-        let retrieved = service.get(key).await.unwrap();
+        let retrieved = service
+            .get(key)
+            .await
+            .unwrap_or_else(|e| panic!("failed to get key '{key}' after set: {e}"));
         assert_eq!(retrieved, Some(val.to_string()));
 
         assert!(service.del(key).await.is_ok());
-        let retrieved_after = service.get(key).await.unwrap();
+        let retrieved_after = service
+            .get(key)
+            .await
+            .unwrap_or_else(|e| panic!("failed to get key '{key}' after delete: {e}"));
         assert_eq!(retrieved_after, None);
     }
 }

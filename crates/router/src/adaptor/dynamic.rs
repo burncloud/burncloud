@@ -225,7 +225,8 @@ mod tests {
         let mapping = DynamicAdaptor::parse_request_mapping(json);
 
         assert!(mapping.is_some());
-        let mapping = mapping.unwrap();
+        let mapping =
+            mapping.unwrap_or_else(|| panic!("request mapping should parse successfully"));
         assert_eq!(
             mapping.field_map.get("input"),
             Some(&"messages".to_string())
@@ -242,7 +243,8 @@ mod tests {
         let mapping = DynamicAdaptor::parse_response_mapping(json);
 
         assert!(mapping.is_some());
-        let mapping = mapping.unwrap();
+        let mapping =
+            mapping.unwrap_or_else(|| panic!("response mapping should parse successfully"));
         assert_eq!(
             mapping.content_path,
             Some("choices[0].message.content".to_string())
@@ -269,7 +271,7 @@ mod tests {
         let converted = adaptor.convert_request(&req);
         assert!(converted.is_some());
 
-        let json = converted.unwrap();
+        let json = converted.unwrap_or_else(|| panic!("converted request should be Some"));
         assert_eq!(json.get("model").and_then(|v| v.as_str()), Some("gpt-4"));
     }
 
@@ -297,7 +299,7 @@ mod tests {
         let converted = adaptor.convert_request(&req);
         assert!(converted.is_some());
 
-        let json = converted.unwrap();
+        let json = converted.unwrap_or_else(|| panic!("converted request should be Some"));
         // model should be renamed to deployment_id
         assert!(json.get("model").is_none());
         assert_eq!(
@@ -358,7 +360,7 @@ mod tests {
         let converted = adaptor.convert_response(resp, "test");
         assert!(converted.is_some());
 
-        let json = converted.unwrap();
+        let json = converted.unwrap_or_else(|| panic!("converted response should be Some"));
         assert_eq!(
             json.get("choices")
                 .and_then(|c| c.get(0))

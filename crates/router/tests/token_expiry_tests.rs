@@ -1,3 +1,5 @@
+// serde_json::Value is required for dynamic JSON parsing in token expiry tests
+#![allow(clippy::disallowed_types)]
 mod common;
 
 use burncloud_database::sqlx;
@@ -16,7 +18,7 @@ async fn test_expired_token_returns_401() -> anyhow::Result<()> {
     // Create a token that expired 1 hour ago
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_else(|e| panic!("System time before epoch: {e}"))
         .as_secs() as i64;
     let expired_time = now - 3600; // 1 hour ago
 
@@ -74,7 +76,7 @@ async fn test_valid_token_with_future_expiry_passes_auth() -> anyhow::Result<()>
     // Create a token that expires 1 hour in the future
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_else(|e| panic!("System time before epoch: {e}"))
         .as_secs() as i64;
     let expired_time = now + 3600; // 1 hour in the future
 
@@ -230,7 +232,7 @@ async fn test_accessed_time_updates_on_valid_token() -> anyhow::Result<()> {
     // Get current time before request
     let before_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_else(|e| panic!("System time before epoch: {e}"))
         .as_secs() as i64;
 
     // Make a request with the token

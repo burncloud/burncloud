@@ -276,10 +276,10 @@ mod tests {
 
         // Rounding behavior
         // 0.000_000_0015 should round to 2
-        assert_eq!(dollars_to_nano(0.000_000_0015), 2);
+        assert_eq!(dollars_to_nano(0.000_000_001_5), 2);
 
         // 0.000_000_0014 should round to 1
-        assert_eq!(dollars_to_nano(0.000_000_0014), 1);
+        assert_eq!(dollars_to_nano(0.000_000_001_4), 1);
     }
 
     #[test]

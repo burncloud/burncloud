@@ -24,17 +24,20 @@ use std::str::FromStr;
 use tempfile::NamedTempFile;
 
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
-    let tmp = NamedTempFile::new().expect("failed to create temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("failed to create temp file"));
     let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
     let db = create_database_with_url(&url)
         .await
-        .expect("failed to initialize test database");
+        .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));
     (db, tmp)
 }
 
 /// Helper: check that a table exists in SQLite.
 async fn table_exists(db: &burncloud_database::Database, table_name: &str) -> bool {
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?")
             .bind(table_name)
@@ -46,7 +49,10 @@ async fn table_exists(db: &burncloud_database::Database, table_name: &str) -> bo
 
 /// Helper: count rows in a table.
 async fn count_rows(db: &burncloud_database::Database, table_name: &str) -> i64 {
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
     let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table_name}"))
         .fetch_one(pool)
         .await
@@ -230,7 +236,10 @@ async fn test_old_video_tasks_dropped() {
 #[tokio::test]
 async fn test_user_accounts_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO user_accounts (id, username, password_hash, display_name) \
@@ -238,20 +247,23 @@ async fn test_user_accounts_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into user_accounts failed");
+    .unwrap_or_else(|e| panic!("insert into user_accounts failed: {e}"));
 
     let username: String =
         sqlx::query_scalar("SELECT username FROM user_accounts WHERE id = 'test-ua-1'")
             .fetch_one(pool)
             .await
-            .expect("select from user_accounts failed");
+            .unwrap_or_else(|e| panic!("select from user_accounts failed: {e}"));
     assert_eq!(username, "testuser");
 }
 
 #[tokio::test]
 async fn test_user_role_bindings_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     // Insert a user for the FK
     sqlx::query(
@@ -260,7 +272,7 @@ async fn test_user_role_bindings_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert user failed");
+    .unwrap_or_else(|e| panic!("insert user failed: {e}"));
 
     // Insert a binding (user_role_bindings has FK to user_accounts and user_roles,
     // but user_roles is currently missing on fresh installs — insert without FK check)
@@ -275,14 +287,17 @@ async fn test_user_role_bindings_insert_and_query() {
         sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = 'bind-user-1'")
             .fetch_one(pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("count from user_accounts failed: {e}"));
     assert_eq!(count, 1, "user should be queryable in user_accounts");
 }
 
 #[tokio::test]
 async fn test_user_api_keys_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO user_api_keys (user_id, key, name, status) \
@@ -290,21 +305,24 @@ async fn test_user_api_keys_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into user_api_keys failed");
+    .unwrap_or_else(|e| panic!("insert into user_api_keys failed: {e}"));
 
     let name: String = sqlx::query_scalar(
         "SELECT name FROM user_api_keys WHERE key = 'sk-test-key-0000000000000000000000000001'",
     )
     .fetch_one(pool)
     .await
-    .expect("select from user_api_keys failed");
+    .unwrap_or_else(|e| panic!("select from user_api_keys failed: {e}"));
     assert_eq!(name, "my-key");
 }
 
 #[tokio::test]
 async fn test_channel_providers_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO channel_providers (key, name, status) \
@@ -312,20 +330,23 @@ async fn test_channel_providers_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into channel_providers failed");
+    .unwrap_or_else(|e| panic!("insert into channel_providers failed: {e}"));
 
     let name: String =
         sqlx::query_scalar("SELECT name FROM channel_providers WHERE name = 'test-channel'")
             .fetch_one(pool)
             .await
-            .expect("select from channel_providers failed");
+            .unwrap_or_else(|e| panic!("select from channel_providers failed: {e}"));
     assert_eq!(name, "test-channel");
 }
 
 #[tokio::test]
 async fn test_channel_abilities_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO channel_abilities (`group`, model, channel_id, enabled, priority, weight) \
@@ -333,20 +354,23 @@ async fn test_channel_abilities_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into channel_abilities failed");
+    .unwrap_or_else(|e| panic!("insert into channel_abilities failed: {e}"));
 
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM channel_abilities WHERE model = 'gpt-4o'")
             .fetch_one(pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("count from channel_abilities failed: {e}"));
     assert_eq!(count, 1);
 }
 
 #[tokio::test]
 async fn test_channel_protocol_configs_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO channel_protocol_configs (channel_type, api_version, is_default, chat_endpoint) \
@@ -354,21 +378,24 @@ async fn test_channel_protocol_configs_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into channel_protocol_configs failed");
+    .unwrap_or_else(|e| panic!("insert into channel_protocol_configs failed: {e}"));
 
     let ep: String = sqlx::query_scalar(
         "SELECT chat_endpoint FROM channel_protocol_configs WHERE channel_type = 99",
     )
     .fetch_one(pool)
     .await
-    .expect("select from channel_protocol_configs failed");
+    .unwrap_or_else(|e| panic!("select from channel_protocol_configs failed: {e}"));
     assert_eq!(ep, "/v1/chat/completions");
 }
 
 #[tokio::test]
 async fn test_billing_prices_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO billing_prices (model, input_price, output_price) \
@@ -376,20 +403,23 @@ async fn test_billing_prices_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into billing_prices failed");
+    .unwrap_or_else(|e| panic!("insert into billing_prices failed: {e}"));
 
     let price: i64 =
         sqlx::query_scalar("SELECT input_price FROM billing_prices WHERE model = 'test-model-x'")
             .fetch_one(pool)
             .await
-            .expect("select from billing_prices failed");
+            .unwrap_or_else(|e| panic!("select from billing_prices failed: {e}"));
     assert_eq!(price, 5000);
 }
 
 #[tokio::test]
 async fn test_billing_tiered_prices_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO billing_tiered_prices (model, tier_start, input_price, output_price) \
@@ -397,21 +427,24 @@ async fn test_billing_tiered_prices_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into billing_tiered_prices failed");
+    .unwrap_or_else(|e| panic!("insert into billing_tiered_prices failed: {e}"));
 
     let price: i64 = sqlx::query_scalar(
         "SELECT input_price FROM billing_tiered_prices WHERE model = 'test-tiered-x'",
     )
     .fetch_one(pool)
     .await
-    .expect("select from billing_tiered_prices failed");
+    .unwrap_or_else(|e| panic!("select from billing_tiered_prices failed: {e}"));
     assert_eq!(price, 3000);
 }
 
 #[tokio::test]
 async fn test_billing_exchange_rates_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO billing_exchange_rates (from_currency, to_currency, rate) \
@@ -419,21 +452,24 @@ async fn test_billing_exchange_rates_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into billing_exchange_rates failed");
+    .unwrap_or_else(|e| panic!("insert into billing_exchange_rates failed: {e}"));
 
     let rate: i64 = sqlx::query_scalar(
         "SELECT rate FROM billing_exchange_rates WHERE from_currency = 'USD' AND to_currency = 'CNY'",
     )
     .fetch_one(pool)
     .await
-    .expect("select from billing_exchange_rates failed");
+    .unwrap_or_else(|e| panic!("select from billing_exchange_rates failed: {e}"));
     assert_eq!(rate, 7200000);
 }
 
 #[tokio::test]
 async fn test_router_video_tasks_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO router_video_tasks (task_id, channel_id, model, duration, resolution) \
@@ -441,58 +477,67 @@ async fn test_router_video_tasks_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into router_video_tasks failed");
+    .unwrap_or_else(|e| panic!("insert into router_video_tasks failed: {e}"));
 
     let dur: i64 =
         sqlx::query_scalar("SELECT duration FROM router_video_tasks WHERE task_id = 'task-001'")
             .fetch_one(pool)
             .await
-            .expect("select from router_video_tasks failed");
+            .unwrap_or_else(|e| panic!("select from router_video_tasks failed: {e}"));
     assert_eq!(dur, 10);
 }
 
 #[tokio::test]
 async fn test_sys_settings_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query("INSERT INTO sys_settings (name, value) VALUES ('test-theme', 'dark')")
         .execute(pool)
         .await
-        .expect("insert into sys_settings failed");
+        .unwrap_or_else(|e| panic!("insert into sys_settings failed: {e}"));
 
     let val: String =
         sqlx::query_scalar("SELECT value FROM sys_settings WHERE name = 'test-theme'")
             .fetch_one(pool)
             .await
-            .expect("select from sys_settings failed");
+            .unwrap_or_else(|e| panic!("select from sys_settings failed: {e}"));
     assert_eq!(val, "dark");
 }
 
 #[tokio::test]
 async fn test_sys_downloads_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO sys_downloads (gid, status, uris) VALUES ('dl-001', 'waiting', 'http://example.com/file')",
     )
     .execute(pool)
     .await
-    .expect("insert into sys_downloads failed");
+    .unwrap_or_else(|e| panic!("insert into sys_downloads failed: {e}"));
 
     let status: String =
         sqlx::query_scalar("SELECT status FROM sys_downloads WHERE gid = 'dl-001'")
             .fetch_one(pool)
             .await
-            .expect("select from sys_downloads failed");
+            .unwrap_or_else(|e| panic!("select from sys_downloads failed: {e}"));
     assert_eq!(status, "waiting");
 }
 
 #[tokio::test]
 async fn test_sys_installations_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO sys_installations (software_id, name, version, status) \
@@ -500,20 +545,23 @@ async fn test_sys_installations_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into sys_installations failed");
+    .unwrap_or_else(|e| panic!("insert into sys_installations failed: {e}"));
 
     let status: String =
         sqlx::query_scalar("SELECT status FROM sys_installations WHERE software_id = 'sw-001'")
             .fetch_one(pool)
             .await
-            .expect("select from sys_installations failed");
+            .unwrap_or_else(|e| panic!("select from sys_installations failed: {e}"));
     assert_eq!(status, "installed");
 }
 
 #[tokio::test]
 async fn test_user_recharges_insert_and_query() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     sqlx::query(
         "INSERT INTO user_accounts (id, username, password_hash) \
@@ -521,7 +569,7 @@ async fn test_user_recharges_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert user failed");
+    .unwrap_or_else(|e| panic!("insert user failed: {e}"));
 
     sqlx::query(
         "INSERT INTO user_recharges (user_id, amount, currency, description) \
@@ -529,13 +577,13 @@ async fn test_user_recharges_insert_and_query() {
     )
     .execute(pool)
     .await
-    .expect("insert into user_recharges failed");
+    .unwrap_or_else(|e| panic!("insert into user_recharges failed: {e}"));
 
     let amount: i64 =
         sqlx::query_scalar("SELECT amount FROM user_recharges WHERE user_id = 'rech-user'")
             .fetch_one(pool)
             .await
-            .expect("select from user_recharges failed");
+            .unwrap_or_else(|e| panic!("select from user_recharges failed: {e}"));
     assert_eq!(amount, 1000000000);
 }
 
@@ -544,13 +592,16 @@ async fn test_user_recharges_insert_and_query() {
 #[tokio::test]
 async fn test_seed_user_in_user_accounts() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE username = 'demo-user'")
             .fetch_one(pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("count seed user failed: {e}"));
     assert!(
         count > 0,
         "seed user 'demo-user' should exist in user_accounts"
@@ -580,26 +631,32 @@ async fn test_seed_data_uses_new_table_names() {
 #[tokio::test]
 async fn test_migration_0010_is_recorded() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM _schema_migrations WHERE version = '0010_rename_tables'",
     )
     .fetch_one(pool)
     .await
-    .unwrap();
+    .unwrap_or_else(|e| panic!("count migrations failed: {e}"));
     assert_eq!(count, 1, "migration 0010 should be recorded as applied");
 }
 
 #[tokio::test]
 async fn test_all_migrations_recorded() {
     let (db, _tmp) = create_test_db().await;
-    let pool = db.get_connection().expect("no connection").pool();
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _schema_migrations")
         .fetch_one(pool)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("count all migrations failed: {e}"));
     assert!(
         count >= 10,
         "all 10 migrations should be recorded, got {count}"
@@ -620,12 +677,13 @@ async fn test_all_migrations_recorded() {
 async fn raw_sqlite_pool(path: &std::path::Path) -> sqlx::AnyPool {
     sqlx::any::install_default_drivers();
     let url = format!("sqlite://{}?mode=rwc", path.display());
-    let options = AnyConnectOptions::from_str(&url).unwrap();
+    let options = AnyConnectOptions::from_str(&url)
+        .unwrap_or_else(|e| panic!("parse sqlite url failed: {e}"));
     AnyPoolOptions::new()
         .max_connections(1)
         .connect_with(options)
         .await
-        .expect("raw sqlite connect failed")
+        .unwrap_or_else(|e| panic!("raw sqlite connect failed: {e}"))
 }
 
 /// Create old-style tables (matching 0001 schema) with no migration tracking.
@@ -648,7 +706,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create users failed");
+    .unwrap_or_else(|e| panic!("create users failed: {e}"));
 
     // channels (old name for channel_providers)
     sqlx::query(
@@ -667,7 +725,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create channels failed");
+    .unwrap_or_else(|e| panic!("create channels failed: {e}"));
 
     // abilities (old name for channel_abilities)
     sqlx::query(
@@ -680,7 +738,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create abilities failed");
+    .unwrap_or_else(|e| panic!("create abilities failed: {e}"));
 
     // tokens (old name for user_api_keys)
     sqlx::query(
@@ -695,7 +753,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create tokens failed");
+    .unwrap_or_else(|e| panic!("create tokens failed: {e}"));
 
     // prices (old name for billing_prices)
     sqlx::query(
@@ -722,7 +780,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create prices failed");
+    .unwrap_or_else(|e| panic!("create prices failed: {e}"));
 
     // protocol_configs (old name for channel_protocol_configs)
     sqlx::query(
@@ -738,7 +796,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create protocol_configs failed");
+    .unwrap_or_else(|e| panic!("create protocol_configs failed: {e}"));
 
     // tiered_pricing (old name for billing_tiered_prices)
     sqlx::query(
@@ -753,7 +811,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create tiered_pricing failed");
+    .unwrap_or_else(|e| panic!("create tiered_pricing failed: {e}"));
 
     // exchange_rates (old name for billing_exchange_rates)
     sqlx::query(
@@ -766,7 +824,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create exchange_rates failed");
+    .unwrap_or_else(|e| panic!("create exchange_rates failed: {e}"));
 
     // video_tasks (old name for router_video_tasks)
     sqlx::query(
@@ -779,7 +837,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create video_tasks failed");
+    .unwrap_or_else(|e| panic!("create video_tasks failed: {e}"));
 
     // setting (old name for sys_settings)
     sqlx::query(
@@ -789,7 +847,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create setting failed");
+    .unwrap_or_else(|e| panic!("create setting failed: {e}"));
 
     // downloads (old name for sys_downloads)
     sqlx::query(
@@ -804,7 +862,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create downloads failed");
+    .unwrap_or_else(|e| panic!("create downloads failed: {e}"));
 
     // installations (old name for sys_installations)
     sqlx::query(
@@ -817,12 +875,12 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
     )
     .execute(pool)
     .await
-    .expect("create installations failed");
+    .unwrap_or_else(|e| panic!("create installations failed: {e}"));
 }
 
 #[tokio::test]
 async fn test_data_migration_users_to_user_accounts() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     // Phase 1: create old schema and insert data
@@ -836,7 +894,7 @@ async fn test_data_migration_users_to_user_accounts() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old users failed");
+        .unwrap_or_else(|e| panic!("insert into old users failed: {e}"));
 
         pool.close().await;
     }
@@ -845,8 +903,11 @@ async fn test_data_migration_users_to_user_accounts() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     // Phase 3: verify data migrated to new table
     let (username, display, balance): (String, String, i64) = sqlx::query_as(
@@ -854,7 +915,7 @@ async fn test_data_migration_users_to_user_accounts() {
     )
     .fetch_one(pool)
     .await
-    .expect("row should exist in user_accounts");
+    .unwrap_or_else(|e| panic!("row should exist in user_accounts: {e}"));
     assert_eq!(username, "miguser");
     assert_eq!(display, "Migration Test");
     assert_eq!(balance, 500000000);
@@ -868,7 +929,7 @@ async fn test_data_migration_users_to_user_accounts() {
 
 #[tokio::test]
 async fn test_data_migration_channels_to_channel_providers() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -881,7 +942,7 @@ async fn test_data_migration_channels_to_channel_providers() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old channels failed");
+        .unwrap_or_else(|e| panic!("insert into old channels failed: {e}"));
 
         pool.close().await;
     }
@@ -889,14 +950,17 @@ async fn test_data_migration_channels_to_channel_providers() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let (name, base_url): (String, String) =
         sqlx::query_as("SELECT name, base_url FROM channel_providers WHERE name = 'mig-channel'")
             .fetch_one(pool)
             .await
-            .expect("row should exist in channel_providers");
+            .unwrap_or_else(|e| panic!("row should exist in channel_providers: {e}"));
     assert_eq!(name, "mig-channel");
     assert_eq!(base_url, "https://api.example.com");
 
@@ -905,7 +969,7 @@ async fn test_data_migration_channels_to_channel_providers() {
 
 #[tokio::test]
 async fn test_data_migration_abilities_to_channel_abilities() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -918,7 +982,7 @@ async fn test_data_migration_abilities_to_channel_abilities() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old abilities failed");
+        .unwrap_or_else(|e| panic!("insert into old abilities failed: {e}"));
 
         pool.close().await;
     }
@@ -926,15 +990,18 @@ async fn test_data_migration_abilities_to_channel_abilities() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM channel_abilities WHERE model = 'mig-model-x' AND channel_id = 42",
     )
     .fetch_one(pool)
     .await
-    .unwrap();
+    .unwrap_or_else(|e| panic!("count from channel_abilities failed: {e}"));
     assert_eq!(count, 1, "ability data should be in channel_abilities");
 
     assert!(!table_exists(&db, "abilities").await);
@@ -942,7 +1009,7 @@ async fn test_data_migration_abilities_to_channel_abilities() {
 
 #[tokio::test]
 async fn test_data_migration_tokens_to_user_api_keys() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -955,7 +1022,7 @@ async fn test_data_migration_tokens_to_user_api_keys() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old tokens failed");
+        .unwrap_or_else(|e| panic!("insert into old tokens failed: {e}"));
 
         pool.close().await;
     }
@@ -963,8 +1030,11 @@ async fn test_data_migration_tokens_to_user_api_keys() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let (name, remain): (String, i64) = sqlx::query_as(
         "SELECT name, remain_quota FROM user_api_keys \
@@ -972,7 +1042,7 @@ async fn test_data_migration_tokens_to_user_api_keys() {
     )
     .fetch_one(pool)
     .await
-    .expect("row should exist in user_api_keys");
+    .unwrap_or_else(|e| panic!("row should exist in user_api_keys: {e}"));
     assert_eq!(name, "mig-key");
     assert_eq!(remain, 999);
 
@@ -981,7 +1051,7 @@ async fn test_data_migration_tokens_to_user_api_keys() {
 
 #[tokio::test]
 async fn test_data_migration_prices_to_billing_prices() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -996,7 +1066,7 @@ async fn test_data_migration_prices_to_billing_prices() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old prices failed");
+        .unwrap_or_else(|e| panic!("insert into old prices failed: {e}"));
 
         pool.close().await;
     }
@@ -1004,15 +1074,18 @@ async fn test_data_migration_prices_to_billing_prices() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let (inp, outp): (i64, i64) = sqlx::query_as(
         "SELECT input_price, output_price FROM billing_prices WHERE model = 'mig-pricing-model'",
     )
     .fetch_one(pool)
     .await
-    .expect("row should exist in billing_prices");
+    .unwrap_or_else(|e| panic!("row should exist in billing_prices: {e}"));
     assert_eq!(inp, 75000000);
     assert_eq!(outp, 220000000);
 
@@ -1021,7 +1094,7 @@ async fn test_data_migration_prices_to_billing_prices() {
 
 #[tokio::test]
 async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1034,7 +1107,7 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old protocol_configs failed");
+        .unwrap_or_else(|e| panic!("insert into old protocol_configs failed: {e}"));
 
         pool.close().await;
     }
@@ -1042,15 +1115,18 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let ep: String = sqlx::query_scalar(
         "SELECT chat_endpoint FROM channel_protocol_configs WHERE channel_type = 88",
     )
     .fetch_one(pool)
     .await
-    .expect("row should exist in channel_protocol_configs");
+    .unwrap_or_else(|e| panic!("row should exist in channel_protocol_configs: {e}"));
     assert_eq!(ep, "/v2/mig/chat");
 
     assert!(!table_exists(&db, "protocol_configs").await);
@@ -1058,7 +1134,7 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
 
 #[tokio::test]
 async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1071,7 +1147,7 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old tiered_pricing failed");
+        .unwrap_or_else(|e| panic!("insert into old tiered_pricing failed: {e}"));
 
         pool.close().await;
     }
@@ -1079,8 +1155,11 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let (inp, outp): (i64, i64) = sqlx::query_as(
         "SELECT input_price, output_price FROM billing_tiered_prices \
@@ -1088,7 +1167,7 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
     )
     .fetch_one(pool)
     .await
-    .expect("row should exist in billing_tiered_prices");
+    .unwrap_or_else(|e| panic!("row should exist in billing_tiered_prices: {e}"));
     assert_eq!(inp, 4500);
     assert_eq!(outp, 18000);
 
@@ -1097,7 +1176,7 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
 
 #[tokio::test]
 async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1110,7 +1189,7 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old exchange_rates failed");
+        .unwrap_or_else(|e| panic!("insert into old exchange_rates failed: {e}"));
 
         pool.close().await;
     }
@@ -1118,8 +1197,11 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let rate: i64 = sqlx::query_scalar(
         "SELECT rate FROM billing_exchange_rates \
@@ -1127,7 +1209,7 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
     )
     .fetch_one(pool)
     .await
-    .expect("row should exist in billing_exchange_rates");
+    .unwrap_or_else(|e| panic!("row should exist in billing_exchange_rates: {e}"));
     assert_eq!(rate, 160000000);
 
     assert!(!table_exists(&db, "exchange_rates").await);
@@ -1135,7 +1217,7 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
 
 #[tokio::test]
 async fn test_data_migration_video_tasks_to_router_video_tasks() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1148,7 +1230,7 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old video_tasks failed");
+        .unwrap_or_else(|e| panic!("insert into old video_tasks failed: {e}"));
 
         pool.close().await;
     }
@@ -1156,15 +1238,18 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let (dur, res): (i64, String) = sqlx::query_as(
         "SELECT duration, resolution FROM router_video_tasks WHERE task_id = 'mig-task-1'",
     )
     .fetch_one(pool)
     .await
-    .expect("row should exist in router_video_tasks");
+    .unwrap_or_else(|e| panic!("row should exist in router_video_tasks: {e}"));
     assert_eq!(dur, 15);
     assert_eq!(res, "4k");
 
@@ -1173,7 +1258,7 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
 
 #[tokio::test]
 async fn test_data_migration_setting_to_sys_settings() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1183,7 +1268,7 @@ async fn test_data_migration_setting_to_sys_settings() {
         sqlx::query("INSERT INTO setting (name, value) VALUES ('mig-setting', 'mig-value')")
             .execute(&pool)
             .await
-            .expect("insert into old setting failed");
+            .unwrap_or_else(|e| panic!("insert into old setting failed: {e}"));
 
         pool.close().await;
     }
@@ -1191,14 +1276,17 @@ async fn test_data_migration_setting_to_sys_settings() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let val: String =
         sqlx::query_scalar("SELECT value FROM sys_settings WHERE name = 'mig-setting'")
             .fetch_one(pool)
             .await
-            .expect("row should exist in sys_settings");
+            .unwrap_or_else(|e| panic!("row should exist in sys_settings: {e}"));
     assert_eq!(val, "mig-value");
 
     assert!(!table_exists(&db, "setting").await);
@@ -1206,7 +1294,7 @@ async fn test_data_migration_setting_to_sys_settings() {
 
 #[tokio::test]
 async fn test_data_migration_downloads_to_sys_downloads() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1219,7 +1307,7 @@ async fn test_data_migration_downloads_to_sys_downloads() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old downloads failed");
+        .unwrap_or_else(|e| panic!("insert into old downloads failed: {e}"));
 
         pool.close().await;
     }
@@ -1227,14 +1315,17 @@ async fn test_data_migration_downloads_to_sys_downloads() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let (status, total): (String, i64) =
         sqlx::query_as("SELECT status, total_length FROM sys_downloads WHERE gid = 'mig-dl-1'")
             .fetch_one(pool)
             .await
-            .expect("row should exist in sys_downloads");
+            .unwrap_or_else(|e| panic!("row should exist in sys_downloads: {e}"));
     assert_eq!(status, "active");
     assert_eq!(total, 1024);
 
@@ -1243,7 +1334,7 @@ async fn test_data_migration_downloads_to_sys_downloads() {
 
 #[tokio::test]
 async fn test_data_migration_installations_to_sys_installations() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1256,7 +1347,7 @@ async fn test_data_migration_installations_to_sys_installations() {
         )
         .execute(&pool)
         .await
-        .expect("insert into old installations failed");
+        .unwrap_or_else(|e| panic!("insert into old installations failed: {e}"));
 
         pool.close().await;
     }
@@ -1264,14 +1355,17 @@ async fn test_data_migration_installations_to_sys_installations() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let (name, ver): (String, String) =
         sqlx::query_as("SELECT name, version FROM sys_installations WHERE software_id = 'mig-sw'")
             .fetch_one(pool)
             .await
-            .expect("row should exist in sys_installations");
+            .unwrap_or_else(|e| panic!("row should exist in sys_installations: {e}"));
     assert_eq!(name, "mig-app");
     assert_eq!(ver, "2.0.0");
 
@@ -1280,7 +1374,7 @@ async fn test_data_migration_installations_to_sys_installations() {
 
 #[tokio::test]
 async fn test_data_migration_preserves_multiple_rows() {
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1295,7 +1389,7 @@ async fn test_data_migration_preserves_multiple_rows() {
             ))
             .execute(&pool)
             .await
-            .expect("insert failed");
+            .unwrap_or_else(|e| panic!("insert failed: {e}"));
         }
 
         pool.close().await;
@@ -1304,14 +1398,17 @@ async fn test_data_migration_preserves_multiple_rows() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id LIKE 'multi-%'")
             .fetch_one(pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("count migrated users failed: {e}"));
     assert_eq!(count, 5, "all 5 users should be migrated to user_accounts");
 
     // Verify a specific row's data integrity
@@ -1319,7 +1416,7 @@ async fn test_data_migration_preserves_multiple_rows() {
         sqlx::query_scalar("SELECT balance_usd FROM user_accounts WHERE id = 'multi-3'")
             .fetch_one(pool)
             .await
-            .expect("user multi-3 should exist");
+            .unwrap_or_else(|e| panic!("user multi-3 should exist: {e}"));
     assert_eq!(balance, 3_000_000_000);
 }
 
@@ -1327,7 +1424,7 @@ async fn test_data_migration_preserves_multiple_rows() {
 async fn test_data_migration_cross_domain() {
     // Verify that data from different domains (user_, channel_, billing_, sys_)
     // all migrate correctly in a single migration run.
-    let tmp = NamedTempFile::new().expect("temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|| panic!("temp file"));
     let path = tmp.path().to_path_buf();
 
     {
@@ -1341,13 +1438,13 @@ async fn test_data_migration_cross_domain() {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("insert cross-domain user failed: {e}"));
 
         // channel_ domain
         sqlx::query("INSERT INTO channels (key, name) VALUES ('cross-ch-key', 'cross-channel')")
             .execute(&pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("insert cross-domain channel failed: {e}"));
 
         // billing_ domain
         sqlx::query(
@@ -1356,13 +1453,13 @@ async fn test_data_migration_cross_domain() {
         )
         .execute(&pool)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("insert cross-domain price failed: {e}"));
 
         // sys_ domain
         sqlx::query("INSERT INTO setting (name, value) VALUES ('cross-key', 'cross-val')")
             .execute(&pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("insert cross-domain setting failed: {e}"));
 
         pool.close().await;
     }
@@ -1370,15 +1467,18 @@ async fn test_data_migration_cross_domain() {
     let url = format!("sqlite://{}?mode=rwc", path.display());
     let db = create_database_with_url(&url)
         .await
-        .expect("migration failed");
-    let pool = db.get_connection().expect("no connection").pool();
+        .unwrap_or_else(|e| panic!("migration failed: {e}"));
+    let pool = db
+        .get_connection()
+        .unwrap_or_else(|| panic!("no connection"))
+        .pool();
 
     // user_accounts
     let u: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE username = 'crossuser'")
             .fetch_one(pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("count cross-domain user failed: {e}"));
     assert_eq!(u, 1, "cross-domain user should be in user_accounts");
 
     // channel_providers
@@ -1386,7 +1486,7 @@ async fn test_data_migration_cross_domain() {
         sqlx::query_scalar("SELECT COUNT(*) FROM channel_providers WHERE name = 'cross-channel'")
             .fetch_one(pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("count cross-domain channel failed: {e}"));
     assert_eq!(c, 1, "cross-domain channel should be in channel_providers");
 
     // billing_prices
@@ -1394,14 +1494,14 @@ async fn test_data_migration_cross_domain() {
         sqlx::query_scalar("SELECT COUNT(*) FROM billing_prices WHERE model = 'cross-model'")
             .fetch_one(pool)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("count cross-domain price failed: {e}"));
     assert_eq!(p, 1, "cross-domain price should be in billing_prices");
 
     // sys_settings
     let s: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sys_settings WHERE name = 'cross-key'")
         .fetch_one(pool)
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("count cross-domain setting failed: {e}"));
     assert_eq!(s, 1, "cross-domain setting should be in sys_settings");
 
     // All old tables gone

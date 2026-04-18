@@ -254,8 +254,8 @@ mod tests {
             "client_id": "123"
         }"#;
 
-        let (email, key, project_id) =
-            VertexAdaptor::parse_service_account(json_str).expect("Failed to parse");
+        let (email, key, project_id) = VertexAdaptor::parse_service_account(json_str)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
         assert_eq!(email, "test@test-project.iam.gserviceaccount.com");
         assert_eq!(
             key,
@@ -313,7 +313,7 @@ Apfww82b16AoK7qgtPcI8g==
         let token = adaptor
             .get_access_token("client@email.com", private_key, None)
             .await
-            .expect("Failed to get token");
+            .unwrap_or_else(|e| panic!("Failed to get token: {e}"));
         assert_eq!(token, "mock_token");
 
         mock.assert();
@@ -383,7 +383,9 @@ Apfww82b16AoK7qgtPcI8g==
         let req_builder = adaptor
             .build_request(&client, builder, &api_key_json, &body)
             .await;
-        let req = req_builder.build().expect("Failed to build");
+        let req = req_builder
+            .build()
+            .unwrap_or_else(|e| panic!("Failed to build: {e}"));
 
         assert_eq!(req.url().as_str(), format!("{}/v1/v1/projects/config-project/locations/us-central1/publishers/google/models/gemini-pro:streamGenerateContent", server.url()));
 
@@ -462,7 +464,9 @@ Apfww82b16AoK7qgtPcI8g==
         let req_builder = adaptor
             .build_request(&client, builder, &api_key_json, &body)
             .await;
-        let req = req_builder.build().expect("Failed to build req");
+        let req = req_builder
+            .build()
+            .unwrap_or_else(|e| panic!("Failed to build req: {e}"));
 
         // Verify URL: Should use "override-project" and "asia-northeast1"
         assert_eq!(req.url().as_str(), "https://asia-northeast1-aiplatform.googleapis.com/v1/projects/override-project/locations/asia-northeast1/publishers/google/models/gemini-pro:streamGenerateContent");
@@ -470,8 +474,11 @@ Apfww82b16AoK7qgtPcI8g==
         // Verify Body: Should be converted to Gemini format
 
         if let Some(body) = req.body() {
-            let bytes = body.as_bytes().unwrap();
-            let json_body: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+            let bytes = body
+                .as_bytes()
+                .unwrap_or_else(|| panic!("request body should have bytes"));
+            let json_body: serde_json::Value = serde_json::from_slice(bytes)
+                .unwrap_or_else(|e| panic!("failed to parse request body as JSON: {e}"));
             // Check if it has "contents" (Gemini) instead of "messages" (OpenAI)
             assert!(json_body.get("contents").is_some());
             assert!(json_body.get("messages").is_none());

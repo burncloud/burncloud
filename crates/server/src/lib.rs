@@ -1,4 +1,5 @@
 pub mod api;
+pub mod logging;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::Router;
@@ -13,6 +14,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -53,6 +55,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
 
     let app = app
         .fallback_service(router_app)
+        .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 
     Ok(app)

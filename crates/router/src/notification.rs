@@ -495,7 +495,8 @@ mod tests {
             "Test message",
         );
 
-        let json = serde_json::to_string(&notification).unwrap();
+        let json = serde_json::to_string(&notification)
+            .unwrap_or_else(|e| panic!("failed to serialize notification: {e}"));
         assert!(json.contains("channel_error"));
         assert!(json.contains("high"));
         assert!(json.contains("Test"));

@@ -616,7 +616,7 @@ mod tests {
 
     /// Helper to convert dollars to nanodollars as i64
     fn to_nano(price: f64) -> i64 {
-        dollars_to_nano(price) as i64
+        dollars_to_nano(price)
     }
 
     fn create_test_tier(
@@ -664,7 +664,8 @@ mod tests {
         let tiers = vec![create_test_tier(0, None, 1.0, 4.0)];
 
         // 100K tokens at $1/1M = $0.1
-        let cost = calculate_tiered_cost(100_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(100_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!((cost - 0.1).abs() < 0.000001);
     }
 
@@ -685,7 +686,8 @@ mod tests {
         // Tier 2: 96K × $2.4/1M = $0.2304
         // Tier 3: 22K × $3.0/1M = $0.066
         // Total: $0.3348
-        let cost = calculate_tiered_cost(150_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(150_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!(
             (cost - 0.3348).abs() < 0.000001,
             "Expected $0.3348, got ${}",
@@ -706,7 +708,8 @@ mod tests {
         // Tier 2: 96K × $2.0/1M = $0.192
         // Beyond: 72K × $2.0/1M = $0.144
         // Total: $0.368
-        let cost = calculate_tiered_cost(200_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(200_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!(
             (cost - 0.368).abs() < 0.000001,
             "Expected $0.368, got ${}",
@@ -726,7 +729,8 @@ mod tests {
         // Tier 1: 32K × $1.0/1M = $0.032
         // Tier 2: 96K × $2.0/1M = $0.192
         // Total: $0.224
-        let cost = calculate_tiered_cost(128_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(128_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!(
             (cost - 0.224).abs() < 0.000001,
             "Expected $0.224, got ${}",
@@ -737,7 +741,8 @@ mod tests {
     #[test]
     fn test_zero_tokens() {
         let tiers = vec![create_test_tier(0, None, 1.0, 4.0)];
-        let cost = calculate_tiered_cost(0, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(0, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert_eq!(cost, 0.0);
     }
 
@@ -758,7 +763,8 @@ mod tests {
         ];
 
         // Test CN region pricing (lower prices)
-        let cn_cost = calculate_tiered_cost(50_000, &tiers, Some("cn")).unwrap();
+        let cn_cost = calculate_tiered_cost(50_000, &tiers, Some("cn"))
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
 
         // CN: 32K × $0.359/1M + 18K × $0.574/1M
         // = $0.011488 + $0.010332 = $0.02182
@@ -771,7 +777,8 @@ mod tests {
         );
 
         // Test international region pricing
-        let intl_cost = calculate_tiered_cost(50_000, &tiers, Some("international")).unwrap();
+        let intl_cost = calculate_tiered_cost(50_000, &tiers, Some("international"))
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
 
         // International: 32K × $1.2/1M + 18K × $2.4/1M
         // = $0.0384 + $0.0432 = $0.0816
@@ -793,7 +800,8 @@ mod tests {
         let tiers = vec![create_test_tier(0, None, 1.0, 4.0)];
 
         // Request with region that doesn't exist should use universal
-        let cost = calculate_tiered_cost(100_000, &tiers, Some("nonexistent")).unwrap();
+        let cost = calculate_tiered_cost(100_000, &tiers, Some("nonexistent"))
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!((cost - 0.1).abs() < 0.000001);
     }
 
@@ -913,7 +921,14 @@ mod tests {
         let result_cny = CostResult::with_local(1.0, "CNY", 7.2);
         assert_eq!(result_cny.display, "¥7.200000");
         assert!((result_cny.usd_amount() - 1.0).abs() < 0.000001);
-        assert!((result_cny.local_amount().unwrap() - 7.2).abs() < 0.000001);
+        assert!(
+            (result_cny
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 7.2)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -927,7 +942,8 @@ mod tests {
         // Input: 32K × $1.2 + 18K × $2.4 = $0.0384 + $0.0432 = $0.0816
         // Output: 10K × $6.0 = $0.06 (using first tier output price)
         // Wait, output should also be tiered based on prompt tokens
-        let cost = calculate_tiered_cost_full(50_000, 10_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost_full(50_000, 10_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost full calculation failed: {e}"));
 
         // For now, output is calculated at first tier price
         // This test verifies the function works
@@ -967,7 +983,14 @@ mod tests {
 
         // CNY: 1M × ¥0.359 + 0.5M × ¥1.434 = ¥0.359 + ¥0.717 = ¥1.076
         let expected_cny = 0.359 + 0.717;
-        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_cny)
+                .abs()
+                < 0.000001
+        );
         assert_eq!(result.local_currency, "CNY");
     }
 
@@ -997,7 +1020,14 @@ mod tests {
         assert!((result.usd_amount() - 1.0).abs() < 0.000001);
 
         // CNY via exchange rate: $1.0 × 7.2 = ¥7.2
-        assert!((result.local_amount().unwrap() - 7.2).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 7.2)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1036,7 +1066,14 @@ mod tests {
         assert!((result.usd_amount() - 20.0).abs() < 0.000001);
 
         // CNY batch: ¥35 + ¥105 = ¥140
-        assert!((result.local_amount().unwrap() - 140.0).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 140.0)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1069,7 +1106,14 @@ mod tests {
 
         // With exchange rate, local amount should be USD × rate
         let expected_local = result.usd_amount() * 7.2;
-        assert!((result.local_amount().unwrap() - expected_local).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_local)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1110,7 +1154,14 @@ mod tests {
 
         // CNY priority: ¥119 + ¥178.5 = ¥297.5
         let expected_cny = 1.0 * 119.0 + 0.5 * 357.0;
-        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_cny)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1173,7 +1224,14 @@ mod tests {
         assert!((result.usd_amount() - 20.0).abs() < 0.000001);
 
         // EUR: 0.5 × €9.3 + 0.5 × €27.9 = €4.65 + €13.95 = €18.6
-        assert!((result.local_amount().unwrap() - 18.6).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 18.6)
+                .abs()
+                < 0.000001
+        );
         assert_eq!(result.local_currency, "EUR");
     }
 
@@ -1214,7 +1272,14 @@ mod tests {
 
         // CNY: (50K × ¥7 + 10K × ¥28 + 10K × ¥49) / 1M = ¥0.35 + ¥0.28 + ¥0.49 = ¥1.12
         let expected_cny = 0.35 + 0.28 + 0.49;
-        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_cny)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
