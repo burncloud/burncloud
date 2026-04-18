@@ -20,19 +20,23 @@ use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
 
 pub use combined::CombinedScheduler;
+#[allow(unused_imports)] // Used in tests; passthrough fast-path uses rank_passthrough directly
 pub use passthrough::PassthroughScheduler;
 
 /// Error type for scheduling operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ScheduleError {
     #[error("scheduling failed: {0}")]
+    #[allow(dead_code)] // Used by trait implementors; compiler can't see across dyn dispatch
     Internal(String),
 }
 
 /// Read-only context assembled per scheduling decision.
 #[derive(Debug, Clone, Default)]
 pub struct SchedulingContext {
+    #[allow(dead_code)] // Available for future model-aware scoring strategies
     pub model: String,
+    #[allow(dead_code)] // Available for future group-aware scoring strategies
     pub group: String,
     pub health_scores: HashMap<i32, f64>,
     pub prices: RegionalPrices,
@@ -183,7 +187,13 @@ fn default_type() -> String {
 }
 
 /// Pick the scheduler for a group (case-insensitive, falls back to Passthrough).
-#[allow(dead_code)]
+///
+/// Currently only used in tests; `route_with_scheduler` inlines this logic
+/// to avoid an extra dyn dispatch when the passthrough fast-path is taken.
+#[cfg(test)]
+///
+/// Currently only used in tests; `route_with_scheduler` inlines this logic
+/// to avoid an extra dyn dispatch when the passthrough fast-path is taken.
 pub fn pick_scheduler<'a>(
     group: &str,
     policies: &'a SchedulerPolicyMap,
@@ -204,7 +214,6 @@ pub fn rank_candidates(
     candidates: &[(Channel, i32)],
     ctx: &SchedulingContext,
     scheduler: &dyn ChannelScheduler,
-    passthrough: &PassthroughScheduler,
 ) -> Vec<(Channel, i32)> {
     if candidates.len() <= 1 {
         return candidates.to_vec();
@@ -213,24 +222,18 @@ pub fn rank_candidates(
     let scores = match catch_unwind(AssertUnwindSafe(|| scheduler.score(candidates, ctx))) {
         Ok(Ok(map)) => map,
         Ok(Err(e)) => {
-            tracing::warn!("Scheduler '{}' returned error: {e}", scheduler.name());
-            match passthrough.score(candidates, ctx) {
-                Ok(m) => m,
-                Err(_) => return candidates.to_vec(),
-            }
+            tracing::warn!("Scheduler '{}' returned error: {e}, falling back to passthrough", scheduler.name());
+            return rank_passthrough(candidates);
         }
         Err(payload) => {
             tracing::error!(
-                "Scheduler '{}' panicked: {}",
+                "Scheduler '{}' panicked: {}, falling back to passthrough",
                 scheduler.name(),
                 payload
                     .downcast_ref::<&str>()
                     .unwrap_or(&"unknown panic")
             );
-            match passthrough.score(candidates, ctx) {
-                Ok(m) => m,
-                Err(_) => return candidates.to_vec(),
-            }
+            return rank_passthrough(candidates);
         }
     };
 
@@ -401,7 +404,7 @@ pub mod tests {
         let c = vec![make_channel(1, 10)];
         let ctx = SchedulingContext::default();
         let passthrough = PassthroughScheduler;
-        let result = rank_candidates(&c, &ctx, &passthrough, &passthrough);
+        let result = rank_candidates(&c, &ctx, &passthrough);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0.id, 1);
     }

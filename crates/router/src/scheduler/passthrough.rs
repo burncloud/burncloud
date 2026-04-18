@@ -6,6 +6,11 @@ use burncloud_common::types::Channel;
 
 use super::{ChannelScheduler, ScheduleError, SchedulingContext};
 
+/// Passthrough scheduler — uses admin-configured weights only.
+///
+/// Implements `ChannelScheduler` for use in tests and as the fallback/error-recovery
+/// strategy. The hot-path uses `rank_passthrough` directly to avoid HashMap allocation.
+#[allow(dead_code)]
 pub struct PassthroughScheduler;
 
 impl ChannelScheduler for PassthroughScheduler {

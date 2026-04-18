@@ -2,11 +2,10 @@ use anyhow::Result;
 use burncloud_common::types::Channel;
 use burncloud_database::sqlx;
 use burncloud_database::Database;
-use rand::Rng;
 
 use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
-use crate::scheduler::{self, PassthroughScheduler, CombinedScheduler, SchedulerPolicyMap, SchedulerKind};
+use crate::scheduler::{self, CombinedScheduler, SchedulerPolicyMap, SchedulerKind};
 
 /// Error returned when no channels are available for a model.
 #[derive(Debug)]
@@ -171,107 +170,6 @@ impl ModelRouter {
         Ok(result)
     }
 
-    /// Routes a request to a suitable channel with state filtering.
-    ///
-    /// This method filters out unavailable channels based on the ChannelStateTracker
-    /// and selects from the remaining healthy channels using weighted random selection.
-    ///
-    /// # Arguments
-    /// * `group` - The user group for routing
-    /// * `model` - The model to route to
-    /// * `state_tracker` - The channel state tracker for health filtering
-    ///
-    /// # Returns
-    /// * `Ok(Some(channel))` - A healthy channel was selected
-    /// * `Ok(None)` - No channels configured for this model/group
-    /// * `Err(NoAvailableChannelsError)` - Channels exist but none are available
-    #[allow(dead_code)]
-    pub async fn route_with_state(
-        &self,
-        group: &str,
-        model: &str,
-        state_tracker: &ChannelStateTracker,
-    ) -> std::result::Result<Option<Channel>, NoAvailableChannelsError> {
-        let candidates =
-            self.get_candidates(group, model)
-                .await
-                .map_err(|e| NoAvailableChannelsError {
-                    model: model.to_string(),
-                    reason: format!("Database error: {}", e),
-                })?;
-
-        if candidates.is_empty() {
-            return Ok(None);
-        }
-
-        // Filter by availability using state tracker
-        let available: Vec<(Channel, i32)> = candidates
-            .into_iter()
-            .filter(|(ch, _)| state_tracker.is_available(ch.id, Some(model)))
-            .collect();
-
-        if available.is_empty() {
-            return Err(NoAvailableChannelsError {
-                model: model.to_string(),
-                reason: "All channels are currently unavailable (rate limited, auth failed, or exhausted)"
-                    .to_string(),
-            });
-        }
-
-        // Sort by health score (channels with more success and less failures first)
-        let mut sorted = available;
-        sorted.sort_by(|(a, _), (b, _)| {
-            // Calculate health score: higher is better
-            // This is a simple heuristic - could be improved with more sophisticated scoring
-            let score_a = self.calculate_health_score(a.id, state_tracker, model);
-            let score_b = self.calculate_health_score(b.id, state_tracker, model);
-            score_b
-                .partial_cmp(&score_a)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        // Weighted Random Selection from available channels
-        let selected_channel = if sorted.len() == 1 {
-            sorted[0].0.clone()
-        } else {
-            let total_weight: i32 = sorted.iter().map(|(_, w)| *w).sum();
-            if total_weight <= 0 {
-                sorted[rand::thread_rng().gen_range(0..sorted.len())]
-                    .0
-                    .clone()
-            } else {
-                let mut r = rand::thread_rng().gen_range(0..total_weight);
-                let mut selected = sorted[0].0.clone();
-                for (ch, weight) in &sorted {
-                    if *weight <= 0 {
-                        continue;
-                    }
-                    if r < *weight {
-                        selected = ch.clone();
-                        break;
-                    }
-                    r -= weight;
-                }
-                selected
-            }
-        };
-
-        Ok(Some(selected_channel))
-    }
-
-    /// Calculate a health score for a channel.
-    ///
-    /// Higher scores indicate healthier channels.
-    /// Considers success rate, average latency, and current status.
-    fn calculate_health_score(
-        &self,
-        channel_id: i32,
-        state_tracker: &ChannelStateTracker,
-        model: &str,
-    ) -> f64 {
-        state_tracker.get_health_score(channel_id, Some(model))
-    }
-
     /// Route with multi-factor scheduler, returning ranked candidates (top-5).
     ///
     /// Uses PassthroughScheduler for groups without explicit policy.
@@ -314,8 +212,6 @@ impl ModelRouter {
             });
         }
 
-        let passthrough = PassthroughScheduler;
-
         // Pick scheduler for this group
         let ranked = match policies.get(&group.to_lowercase()) {
             Some(SchedulerKind::Combined { config }) => {
@@ -329,7 +225,7 @@ impl ModelRouter {
                     exchange_rate,
                 )
                 .await;
-                scheduler::rank_candidates(&available, &ctx, &combined, &passthrough)
+                scheduler::rank_candidates(&available, &ctx, &combined)
             }
             _ => {
                 // Passthrough fast path — no context building needed
