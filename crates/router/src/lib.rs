@@ -1035,6 +1035,9 @@ async fn proxy_logic(
     let mut candidates: Vec<Upstream> = Vec::new();
     // Track pricing_region from selected channel for billing
     let mut selected_pricing_region: Option<String> = None;
+    // Map upstream ID → pricing_region for failover accuracy
+    let mut upstream_pricing_regions: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
 
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
@@ -1084,8 +1087,10 @@ async fn proxy_logic(
                             ChannelType::Zai => (AuthType::Bearer, "zai".to_string()),
                             _ => (AuthType::Bearer, "openai".to_string()),
                         };
+                        let ch_id = channel.id.to_string();
+                        upstream_pricing_regions.insert(ch_id.clone(), channel.pricing_region.clone());
                         candidates.push(Upstream {
-                            id: channel.id.to_string(),
+                            id: ch_id,
                             name: channel.name,
                             base_url: channel.base_url.unwrap_or_default(),
                             api_key: channel.key,
@@ -1106,7 +1111,23 @@ async fn proxy_logic(
                     );
                 }
                 Err(e) => {
-                    tracing::warn!("ModelRouter: Error routing {}: {}", model, e);
+                    // NoAvailableChannelsError - all channels are unavailable
+                    tracing::warn!("ModelRouter: No available channels for {}: {}", model, e);
+                    return (
+                        build_response_with_header(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "content-type",
+                            "application/json",
+                            Body::from(format!(
+                                r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels"}}}}"#,
+                                e
+                            )),
+                        ),
+                        None,
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        None,
+                        None,
+                    );
                 }
             }
             drop(policies);
@@ -1209,6 +1230,11 @@ async fn proxy_logic(
 
     for (attempt, upstream) in candidates.iter().enumerate() {
         last_upstream_id = Some(upstream.id.clone());
+
+        // Update pricing_region for billing to match the actual upstream serving
+        if let Some(region) = upstream_pricing_regions.get(&upstream.id) {
+            selected_pricing_region = region.clone();
+        }
 
         // Circuit Breaker Check
         if !state.circuit_breaker.allow_request(&upstream.id) {

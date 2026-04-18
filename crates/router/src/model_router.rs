@@ -185,6 +185,7 @@ impl ModelRouter {
     /// * `Ok(Some(channel))` - A healthy channel was selected
     /// * `Ok(None)` - No channels configured for this model/group
     /// * `Err(NoAvailableChannelsError)` - Channels exist but none are available
+    #[allow(dead_code)]
     pub async fn route_with_state(
         &self,
         group: &str,
@@ -275,6 +276,10 @@ impl ModelRouter {
     ///
     /// Uses PassthroughScheduler for groups without explicit policy.
     /// Returns at most 5 channels to limit failover attempts.
+    ///
+    /// Returns:
+    /// - `Ok(vec)` with ranked channels (may be empty if model has no configuration)
+    /// - `Err(NoAvailableChannelsError)` if channels exist but all are unavailable
     pub async fn route_with_scheduler(
         &self,
         group: &str,
@@ -283,8 +288,13 @@ impl ModelRouter {
         price_cache: &burncloud_service_billing::PriceCache,
         exchange_rate: &ExchangeRateService,
         policies: &SchedulerPolicyMap,
-    ) -> Result<Vec<Channel>> {
-        let candidates = self.get_candidates(group, model).await?;
+    ) -> std::result::Result<Vec<Channel>, NoAvailableChannelsError> {
+        let candidates = self.get_candidates(group, model).await.map_err(|e| {
+            NoAvailableChannelsError {
+                model: model.to_string(),
+                reason: format!("Database error: {}", e),
+            }
+        })?;
 
         if candidates.is_empty() {
             return Ok(Vec::new());
@@ -297,7 +307,11 @@ impl ModelRouter {
             .collect();
 
         if available.is_empty() {
-            return Ok(Vec::new());
+            return Err(NoAvailableChannelsError {
+                model: model.to_string(),
+                reason: "All channels are currently unavailable (rate limited, auth failed, or exhausted)"
+                    .to_string(),
+            });
         }
 
         let passthrough = PassthroughScheduler;
