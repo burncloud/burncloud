@@ -104,6 +104,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             param_override: u.param_override,
             header_override: u.header_override,
             api_version: u.api_version,
+            pricing_region: None,
         })
         .collect();
 
@@ -1051,9 +1052,6 @@ async fn proxy_logic(
     let mut candidates: Vec<Upstream> = Vec::new();
     // Track pricing_region from selected channel for billing
     let mut selected_pricing_region: Option<String> = None;
-    // Map upstream ID → pricing_region for failover accuracy
-    let mut upstream_pricing_regions: std::collections::HashMap<String, Option<String>> =
-        std::collections::HashMap::new();
 
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
@@ -1112,7 +1110,6 @@ async fn proxy_logic(
                             _ => (AuthType::Bearer, "openai".to_string()),
                         };
                         let ch_id = channel.id.to_string();
-                        upstream_pricing_regions.insert(ch_id.clone(), channel.pricing_region.clone());
                         candidates.push(Upstream {
                             id: ch_id,
                             name: channel.name,
@@ -1125,6 +1122,7 @@ async fn proxy_logic(
                             param_override: channel.param_override.clone(),
                             header_override: channel.header_override.clone(),
                             api_version: channel.api_version.clone(),
+                            pricing_region: channel.pricing_region.clone(),
                         });
                     }
                 }
@@ -1255,9 +1253,7 @@ async fn proxy_logic(
         last_upstream_id = Some(upstream.id.clone());
 
         // Update pricing_region for billing to match the actual upstream serving
-        if let Some(region) = upstream_pricing_regions.get(&upstream.id) {
-            selected_pricing_region = region.clone();
-        }
+        selected_pricing_region = upstream.pricing_region.clone();
 
         // Circuit Breaker Check
         if !state.circuit_breaker.allow_request(&upstream.id) {
