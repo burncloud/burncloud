@@ -38,10 +38,7 @@ mod tests {
 
     fn empty_ctx() -> SchedulingContext {
         SchedulingContext {
-            health_scores: HashMap::new(),
-            prices: HashMap::new(),
-            adaptive_limits: HashMap::new(),
-            usd_cny_rate: 7.0,
+            factors: HashMap::new(),
         }
     }
 

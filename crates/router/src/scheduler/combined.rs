@@ -4,22 +4,18 @@
 //!
 //! Uses 0.5-offset min-max normalization to avoid extreme distortion
 //! with small candidate sets.
+//!
+//! All factors (health, cost, rpm) are pre-computed in `build_context`,
+//! so `score()` only performs a single HashMap lookup per candidate.
 
 use std::collections::HashMap;
 
 use burncloud_common::types::Channel;
 
-use super::{ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext, COLD_START_RPM_LIMIT};
+use super::{CandidateFactors, ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext, COLD_START_RPM_LIMIT};
 
 /// Small epsilon to avoid division by zero.
 const EPS: f64 = 1e-6;
-
-/// Per-candidate raw factor data, collected in a single pass.
-struct CandidateFactors {
-    health: f64,
-    cost: f64,
-    rpm: f64,
-}
 
 pub struct CombinedScheduler {
     config: SchedulerPolicyConfig,
@@ -46,31 +42,32 @@ impl ChannelScheduler for CombinedScheduler {
             return Ok(HashMap::new());
         }
 
-        // Single pass: collect all factors into one Vec + track min/max
-        let mut factors: Vec<CandidateFactors> = Vec::with_capacity(n);
+        let default_factors = CandidateFactors {
+            health: 1.0,
+            cost: 1.0,
+            rpm: COLD_START_RPM_LIMIT as f64,
+        };
+
+        // Single pass: read pre-computed factors + track min/max for normalization
+        let mut raw: Vec<CandidateFactors> = Vec::with_capacity(n);
         let (mut h_min, mut h_max) = (f64::INFINITY, f64::NEG_INFINITY);
         let (mut c_min, mut c_max) = (f64::INFINITY, f64::NEG_INFINITY);
         let (mut r_min, mut r_max) = (f64::INFINITY, f64::NEG_INFINITY);
 
         for (ch, _) in candidates {
-            let health = ctx
-                .health_scores
-                .get(&ch.id)
-                .copied()
-                .unwrap_or(1.0)
-                .max(0.0);
+            let f = ctx.factors.get(&ch.id).unwrap_or(&default_factors);
+
+            let health = f.health.max(0.0);
             let health = if health.is_nan() { 1.0 } else { health };
             h_min = h_min.min(health); h_max = h_max.max(health);
 
-            let cost = compute_cost_factor(ch, ctx);
-            let cost = if cost.is_finite() && cost > 0.0 { cost } else { 1.0 };
+            let cost = if f.cost.is_finite() && f.cost > 0.0 { f.cost } else { 1.0 };
             c_min = c_min.min(cost); c_max = c_max.max(cost);
 
-            let rpm = rpm_factor(ch.id, ctx);
-            let rpm = if rpm.is_nan() { COLD_START_RPM_LIMIT as f64 } else { rpm };
+            let rpm = if f.rpm.is_nan() { COLD_START_RPM_LIMIT as f64 } else { f.rpm };
             r_min = r_min.min(rpm); r_max = r_max.max(rpm);
 
-            factors.push(CandidateFactors { health, cost, rpm });
+            raw.push(CandidateFactors { health, cost, rpm });
         }
 
         // Degeneracy from pre-tracked bounds
@@ -85,9 +82,9 @@ impl ChannelScheduler for CombinedScheduler {
         let c_range = if c_degen { 0.0 } else { c_max - c_min };
         let r_range = if r_degen { 0.0 } else { r_max - r_min };
 
-        // Compute final scores with inline normalization (no HashMap lookups)
+        // Compute final scores with inline normalization (no further HashMap lookups)
         let mut scores = HashMap::with_capacity(n);
-        for ((ch, admin_w), f) in candidates.iter().zip(factors.iter()) {
+        for ((ch, admin_w), f) in candidates.iter().zip(raw.iter()) {
             let h = if h_degen { 0.75 } else { (0.5 + 0.5 * (f.health - h_min) / h_range).clamp(0.5, 1.0) };
             let c = if c_degen { 0.75 } else { (0.5 + 0.5 * (f.cost - c_min) / c_range).clamp(0.5, 1.0) };
             let r = if r_degen { 0.75 } else { (0.5 + 0.5 * (f.rpm - r_min) / r_range).clamp(0.5, 1.0) };
@@ -144,41 +141,7 @@ impl CombinedScheduler {
     }
 }
 
-/// Compute cost factor for a channel (lower cost = higher factor).
-///
-/// Looks up price from regional prices and normalizes to USD using exchange rate.
-/// Without normalization, CNY-denominated prices (larger numbers) would be
-/// unfairly penalized compared to USD prices.
-fn compute_cost_factor(ch: &Channel, ctx: &SchedulingContext) -> f64 {
-    let region = ch.pricing_region.as_deref().unwrap_or("");
-    let price_raw = ctx.prices.get(region).copied().unwrap_or(0.0);
-
-    if price_raw <= 0.0 {
-        return 1.0; // Free or unknown = best
-    }
-
-    // Normalize to USD: CNY-region prices are divided by USD→CNY rate
-    let is_cny_region = region.eq_ignore_ascii_case("cn") || region.eq_ignore_ascii_case("cny");
-    let price_usd = if is_cny_region && ctx.usd_cny_rate > 0.0 {
-        price_raw / ctx.usd_cny_rate
-    } else {
-        price_raw
-    };
-
-    1.0 / price_usd
-}
-
-/// Extract RPM factor from adaptive limit snapshot.
-/// Cold-start channels (no data) use default matching AdaptiveLimitConfig::initial_limit.
-fn rpm_factor(channel_id: i32, ctx: &SchedulingContext) -> f64 {
-    ctx.adaptive_limits
-        .get(&channel_id)
-        .map(|snap| snap.current_limit as f64)
-        .unwrap_or(COLD_START_RPM_LIMIT as f64)
-}
-
 /// 0.5-offset min-max normalization with pre-computed bounds.
-/// Used by normalize_05 test helper; production code normalizes inline in score().
 #[cfg(test)]
 fn normalize_with_bounds(values: &[(i32, f64)], min_val: f64, max_val: f64) -> HashMap<i32, f64> {
     if values.is_empty() {
@@ -199,7 +162,6 @@ fn normalize_with_bounds(values: &[(i32, f64)], min_val: f64, max_val: f64) -> H
 
 #[cfg(test)]
 /// 0.5-offset min-max normalization (computes bounds internally).
-/// Convenience wrapper for tests.
 fn normalize_05(values: &[(i32, f64)]) -> HashMap<i32, f64> {
     if values.is_empty() {
         return HashMap::new();
@@ -216,27 +178,12 @@ mod tests {
     use super::*;
     use crate::scheduler::tests::make_channel;
 
-    fn make_ctx(
-        health: HashMap<i32, f64>,
-        prices: HashMap<String, f64>,
-        limits: HashMap<i32, u32>,
-    ) -> SchedulingContext {
+    /// Build context with explicit per-channel factors.
+    fn make_ctx_with_factors(factors: Vec<(i32, f64, f64, f64)>) -> SchedulingContext {
         SchedulingContext {
-            health_scores: health,
-            prices,
-            adaptive_limits: limits
-                .into_iter()
-                .map(|(id, lim)| {
-                    (
-                        id,
-                        crate::adaptive_limit::AdaptiveSnapshot {
-                            current_limit: lim,
-                            state: crate::adaptive_limit::RateLimitState::Stable,
-                        },
-                    )
-                })
-                .collect(),
-            usd_cny_rate: 7.0,
+            factors: factors.into_iter().map(|(id, h, c, r)| {
+                (id, CandidateFactors { health: h, cost: c, rpm: r })
+            }).collect(),
         }
     }
 
@@ -244,11 +191,10 @@ mod tests {
     fn test_combined_prefers_healthier() {
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
-        let ctx = make_ctx(
-            HashMap::from([(1, 0.9), (2, 0.5)]),
-            HashMap::new(),
-            HashMap::new(),
-        );
+        let ctx = make_ctx_with_factors(vec![
+            (1, 0.9, 1.0, 10.0),
+            (2, 0.5, 1.0, 10.0),
+        ]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 1.0,
             cost_weight: 0.0,
@@ -268,11 +214,11 @@ mod tests {
         let mut c2 = make_channel(2, 10);
         c2.0.pricing_region = Some("us".into());
 
-        let ctx = make_ctx(
-            HashMap::new(),
-            HashMap::from([("cn".to_string(), 100.0), ("us".to_string(), 500.0)]),
-            HashMap::new(),
-        );
+        // CN: 100 CNY → cost=1.0/(100/7)=0.07, US: 500 → cost=1/500=0.002
+        let ctx = make_ctx_with_factors(vec![
+            (1, 1.0, 0.07, 10.0),   // cheaper (1/14.28)
+            (2, 1.0, 0.002, 10.0),  // more expensive (1/500)
+        ]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 1.0,
@@ -289,11 +235,10 @@ mod tests {
     fn test_combined_prefers_higher_rpm() {
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
-        let ctx = make_ctx(
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::from([(1, 100), (2, 10)]),
-        );
+        let ctx = make_ctx_with_factors(vec![
+            (1, 1.0, 1.0, 100.0),
+            (2, 1.0, 1.0, 10.0),
+        ]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 0.0,
@@ -310,10 +255,8 @@ mod tests {
     fn test_normalize_05_two_candidates() {
         let values = vec![(1, 1.0), (2, 5.0)];
         let norm = normalize_05(&values);
-        // 1.0 → 0.5, 5.0 → 1.0
         assert!((norm[&1] - 0.5).abs() < 1e-9);
         assert!((norm[&2] - 1.0).abs() < 1e-9);
-        // Ratio is 2:1, not 1000:1
         assert!(norm[&2] / norm[&1] < 3.0);
     }
 
@@ -333,11 +276,11 @@ mod tests {
         let mut c2 = make_channel(2, 10);
         c2.0.pricing_region = Some("paid".into());
 
-        let ctx = make_ctx(
-            HashMap::new(),
-            HashMap::from([("free".to_string(), 0.0), ("paid".to_string(), 100.0)]),
-            HashMap::new(),
-        );
+        // Free: price=0 → cost=1.0 (best), Paid: price=100 → cost=1/100=0.01
+        let ctx = make_ctx_with_factors(vec![
+            (1, 1.0, 1.0, 10.0),
+            (2, 1.0, 0.01, 10.0),
+        ]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 1.0,
@@ -352,17 +295,16 @@ mod tests {
 
     #[test]
     fn test_cold_start_rpm_default() {
-        // No adaptive_limits entries → cold start
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
-        let ctx = make_ctx(HashMap::new(), HashMap::new(), HashMap::new());
+        // Empty context → both use default factors with COLD_START_RPM_LIMIT
+        let ctx = SchedulingContext::default();
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 0.0,
             rpm_weight: 1.0,
         });
         let scores = scheduler.score(&[c1, c2], &ctx).unwrap();
-        // Both should get equal score (degenerate RPM → both get 10.0 default)
         assert!(
             (scores[&1] - scores[&2]).abs() < 0.01,
             "cold-start channels should get equal RPM score"
@@ -371,20 +313,18 @@ mod tests {
 
     #[test]
     fn test_cross_currency_cost_comparison() {
-        // CN channel: price in CNY (larger number, e.g. 18 CNY/MTok)
-        // US channel: price in USD (smaller number, e.g. 2.5 USD/MTok)
-        // At 7.2 CNY/USD: CN = 18/7.2 = 2.5 USD, should be equal
+        // CN: 18 CNY at 7.2 rate → 18/7.2 = 2.5 USD → cost = 1/2.5 = 0.4
+        // US: 2.5 USD → cost = 1/2.5 = 0.4
+        // Equal cost after normalization → equal scores
         let mut c1 = make_channel(1, 10);
         c1.0.pricing_region = Some("cn".into());
         let mut c2 = make_channel(2, 10);
         c2.0.pricing_region = Some("us".into());
 
-        let mut ctx = make_ctx(
-            HashMap::new(),
-            HashMap::from([("cn".to_string(), 18.0), ("us".to_string(), 2.5)]),
-            HashMap::new(),
-        );
-        ctx.usd_cny_rate = 7.2;
+        let ctx = make_ctx_with_factors(vec![
+            (1, 1.0, 0.4, 10.0),
+            (2, 1.0, 0.4, 10.0),
+        ]);
 
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
@@ -392,7 +332,6 @@ mod tests {
             rpm_weight: 0.0,
         });
         let scores = scheduler.score(&[c1, c2], &ctx).unwrap();
-        // After CNY→USD normalization, both should have equal cost
         let ratio = scores[&1] / scores[&2];
         assert!(
             (ratio - 1.0).abs() < 0.1,

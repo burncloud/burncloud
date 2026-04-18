@@ -515,6 +515,59 @@ impl ChannelStateTracker {
         Some(ms.adaptive_limit.snapshot())
     }
 
+    /// Combined lookup: health score + adaptive snapshot in a single DashMap get.
+    ///
+    /// Returns (health_score, Some(snapshot)) on success,
+    /// (1.0, None) for unknown channels, or (computed_score, cold_start_snapshot) for unknown models.
+    pub fn get_health_and_adaptive(&self, channel_id: i32, model: &str) -> (f64, AdaptiveSnapshot) {
+        let cold_start = AdaptiveSnapshot {
+            current_limit: crate::scheduler::COLD_START_RPM_LIMIT,
+            state: crate::adaptive_limit::RateLimitState::Learning,
+        };
+
+        let channel_state = match self.channel_states.get(&channel_id) {
+            Some(state) => state,
+            None => return (1.0, cold_start),
+        };
+
+        let mut score = 1.0;
+
+        if !channel_state.auth_ok {
+            score *= 0.1;
+        }
+
+        match channel_state.balance_status {
+            BalanceStatus::Ok => {}
+            BalanceStatus::Low => score *= 0.7,
+            BalanceStatus::Exhausted => score *= 0.1,
+            BalanceStatus::Unknown => {}
+        }
+
+        let model_state = match channel_state.models.get(model) {
+            Some(ms) => ms,
+            None => return (score, cold_start),
+        };
+
+        let total = model_state.success_count + model_state.failure_count;
+        if total > 0 {
+            score *= model_state.success_count as f64 / total as f64;
+        }
+
+        if model_state.avg_latency_ms > 0.0 {
+            score *= 100.0 / (100.0 + model_state.avg_latency_ms);
+        }
+
+        match model_state.status {
+            ModelStatus::Available => {}
+            ModelStatus::RateLimited => score *= 0.3,
+            ModelStatus::QuotaExhausted => score *= 0.1,
+            ModelStatus::ModelNotFound => score *= 0.0,
+            ModelStatus::TemporarilyDown => score *= 0.2,
+        }
+
+        (score, model_state.adaptive_limit.snapshot())
+    }
+
     /// Get health scores for a batch of channels.
     #[cfg(test)]
     pub fn get_all_health_scores(

@@ -16,7 +16,6 @@ use burncloud_common::types::Channel;
 use burncloud_service_billing::PriceCache;
 use serde::{Deserialize, Serialize};
 
-use crate::adaptive_limit::AdaptiveSnapshot;
 use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
 
@@ -32,18 +31,20 @@ pub enum ScheduleError {
     Internal(String),
 }
 
+/// Pre-computed scheduling factors for a single candidate.
+#[derive(Debug, Clone, Copy)]
+pub struct CandidateFactors {
+    pub health: f64,
+    pub cost: f64,
+    pub rpm: f64,
+}
+
 /// Read-only context assembled per scheduling decision.
 #[derive(Debug, Clone, Default)]
 pub struct SchedulingContext {
-    pub health_scores: HashMap<i32, f64>,
-    pub prices: RegionalPrices,
-    pub adaptive_limits: HashMap<i32, AdaptiveSnapshot>,
-    pub usd_cny_rate: f64,
+    /// Per-candidate pre-computed factors (health, cost, rpm).
+    pub factors: HashMap<i32, CandidateFactors>,
 }
-
-/// Per-region price lookups for candidates.
-/// Key: pricing_region (empty string = universal)
-pub type RegionalPrices = HashMap<String, f64>;
 
 /// Trait for channel scheduling strategies.
 ///
@@ -110,7 +111,7 @@ pub type SchedulerPolicyMap = HashMap<String, SchedulerKind>;
 
 /// Cold-start RPM default, matching AdaptiveLimitConfig::initial_limit.
 /// Used when a channel has no adaptive rate limit data yet.
-const COLD_START_RPM_LIMIT: u32 = 10;
+pub const COLD_START_RPM_LIMIT: u32 = 10;
 
 /// Load scheduler policies from environment configuration.
 ///
@@ -262,8 +263,8 @@ pub fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Channel, i3
 
 /// Assemble a SchedulingContext from live state.
 ///
-/// Collects health scores, adaptive snapshots, and regional prices
-/// for all candidate channels.
+/// Pre-computes all scheduling factors (health, cost, rpm) per candidate
+/// in a single pass over channel state.
 pub async fn build_context(
     model: &str,
     candidates: &[(Channel, i32)],
@@ -271,22 +272,8 @@ pub async fn build_context(
     price_cache: &PriceCache,
     exchange_rate: &ExchangeRateService,
 ) -> SchedulingContext {
-    // Single pass: collect health scores + adaptive snapshots
-    let mut health_scores = HashMap::with_capacity(candidates.len());
-    let mut adaptive_limits = HashMap::with_capacity(candidates.len());
-    for (ch, _) in candidates {
-        health_scores.insert(ch.id, state_tracker.get_health_score(ch.id, Some(model)));
-        let snap = state_tracker
-            .get_adaptive_snapshot(ch.id, model)
-            .unwrap_or(AdaptiveSnapshot {
-                current_limit: COLD_START_RPM_LIMIT,
-                state: crate::adaptive_limit::RateLimitState::Learning,
-            });
-        adaptive_limits.insert(ch.id, snap);
-    }
-
-    // Collect prices per candidate's pricing_region (deduplicated by entry API)
-    let mut prices: RegionalPrices = HashMap::new();
+    // Collect prices per pricing_region (deduplicated, async lookups)
+    let mut prices: HashMap<String, f64> = HashMap::new();
     for (ch, _) in candidates {
         let region = ch.pricing_region.as_deref().unwrap_or("");
         if !prices.contains_key(region) {
@@ -299,17 +286,40 @@ pub async fn build_context(
         }
     }
 
-    // USD→CNY rate
+    // USD→CNY rate for cross-region cost normalization
     let usd_cny_rate = exchange_rate
         .get_rate(burncloud_common::Currency::USD, burncloud_common::Currency::CNY)
         .unwrap_or(7.0);
 
-    SchedulingContext {
-        health_scores,
-        prices,
-        adaptive_limits,
-        usd_cny_rate,
+    // Single pass: combined health + adaptive lookup + pre-computed cost
+    let mut factors = HashMap::with_capacity(candidates.len());
+    for (ch, _) in candidates {
+        let (health, adaptive) = state_tracker.get_health_and_adaptive(ch.id, model);
+
+        let cost = {
+            let region = ch.pricing_region.as_deref().unwrap_or("");
+            let price_raw = prices.get(region).copied().unwrap_or(0.0);
+            if price_raw <= 0.0 {
+                1.0
+            } else {
+                let is_cny = region.eq_ignore_ascii_case("cn") || region.eq_ignore_ascii_case("cny");
+                let price_usd = if is_cny && usd_cny_rate > 0.0 {
+                    price_raw / usd_cny_rate
+                } else {
+                    price_raw
+                };
+                1.0 / price_usd
+            }
+        };
+
+        factors.insert(ch.id, CandidateFactors {
+            health,
+            cost,
+            rpm: adaptive.current_limit as f64,
+        });
     }
+
+    SchedulingContext { factors }
 }
 
 #[cfg(test)]
