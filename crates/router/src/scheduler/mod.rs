@@ -6,6 +6,7 @@
 //! - **Combined**: Multi-factor scoring using health, cost, and RPM rate limits
 
 mod combined;
+#[cfg(test)]
 mod passthrough;
 
 use std::collections::HashMap;
@@ -20,7 +21,7 @@ use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
 
 pub use combined::CombinedScheduler;
-#[allow(unused_imports)] // Used in tests; passthrough fast-path uses rank_passthrough directly
+#[cfg(test)]
 pub use passthrough::PassthroughScheduler;
 
 /// Error type for scheduling operations.

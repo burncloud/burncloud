@@ -1,4 +1,7 @@
-//! Passthrough scheduler — uses admin-configured weights only.
+//! Passthrough scheduler — test-only implementation.
+//!
+//! The production passthrough path uses `rank_passthrough` directly (no HashMap allocation).
+//! This module provides a `ChannelScheduler` implementation for testing purposes only.
 
 use std::collections::HashMap;
 
@@ -8,9 +11,7 @@ use super::{ChannelScheduler, ScheduleError, SchedulingContext};
 
 /// Passthrough scheduler — uses admin-configured weights only.
 ///
-/// Implements `ChannelScheduler` for use in tests and as the fallback/error-recovery
-/// strategy. The hot-path uses `rank_passthrough` directly to avoid HashMap allocation.
-#[allow(dead_code)]
+/// Test-only. Production code uses `rank_passthrough` directly.
 pub struct PassthroughScheduler;
 
 impl ChannelScheduler for PassthroughScheduler {

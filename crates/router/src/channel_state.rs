@@ -513,6 +513,7 @@ impl ChannelStateTracker {
     }
 
     /// Get health scores for a batch of channels.
+    #[cfg(test)]
     pub fn get_all_health_scores(
         &self,
         channel_ids: &[i32],
