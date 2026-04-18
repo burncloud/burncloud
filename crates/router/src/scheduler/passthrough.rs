@@ -34,7 +34,6 @@ impl ChannelScheduler for PassthroughScheduler {
 mod tests {
     use super::*;
     use crate::scheduler::tests::make_channel;
-    use std::collections::HashMap;
 
     fn empty_ctx() -> SchedulingContext {
         SchedulingContext {
