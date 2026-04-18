@@ -265,7 +265,7 @@ pub struct UsageOutput {
 async fn get_usd_to_cny_rate(db: &Database) -> Result<f64> {
     let conn = db.get_connection()?;
 
-    let sql = "SELECT rate FROM exchange_rates WHERE from_currency = ? AND to_currency = ?";
+    let sql = "SELECT rate FROM billing_exchange_rates WHERE from_currency = ? AND to_currency = ?";
 
     let rate_nano: Option<i64> = sqlx::query_scalar(sql)
         .bind("USD")

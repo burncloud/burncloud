@@ -54,7 +54,7 @@ async fn cmd_list_rates(db: &Database) -> Result<()> {
     use burncloud_database::sqlx;
 
     let conn = db.get_connection()?;
-    let sql = "SELECT from_currency, to_currency, rate, updated_at FROM exchange_rates ORDER BY from_currency, to_currency";
+    let sql = "SELECT from_currency, to_currency, rate, updated_at FROM billing_exchange_rates ORDER BY from_currency, to_currency";
 
     // Rate is stored as BIGINT (scaled i64)
     let rows = sqlx::query_as::<_, (String, String, i64, Option<i64>)>(sql)
@@ -115,7 +115,7 @@ async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<
     let sql = match db.kind().as_str() {
         "postgres" => {
             r#"
-            INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
+            INSERT INTO billing_exchange_rates (from_currency, to_currency, rate, updated_at)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                 rate = EXCLUDED.rate,
@@ -124,7 +124,7 @@ async fn cmd_set_rate(db: &Database, from: &str, to: &str, rate: f64) -> Result<
         }
         _ => {
             r#"
-            INSERT INTO exchange_rates (from_currency, to_currency, rate, updated_at)
+            INSERT INTO billing_exchange_rates (from_currency, to_currency, rate, updated_at)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(from_currency, to_currency) DO UPDATE SET
                 rate = excluded.rate,
@@ -180,7 +180,7 @@ async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result
 
     // Simple direct lookup for conversion
     let conn = db.get_connection()?;
-    let sql = "SELECT rate FROM exchange_rates WHERE from_currency = ? AND to_currency = ?";
+    let sql = "SELECT rate FROM billing_exchange_rates WHERE from_currency = ? AND to_currency = ?";
 
     // Rate is stored as BIGINT (scaled i64)
     let rate_nano: Option<i64> = sqlx::query_scalar(sql)
@@ -195,7 +195,8 @@ async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result
         amount * r
     } else {
         // Try reverse rate
-        let sql = "SELECT rate FROM exchange_rates WHERE from_currency = ? AND to_currency = ?";
+        let sql =
+            "SELECT rate FROM billing_exchange_rates WHERE from_currency = ? AND to_currency = ?";
         let reverse_rate_nano: Option<i64> = sqlx::query_scalar(sql)
             .bind(to_currency.code())
             .bind(from_currency.code())

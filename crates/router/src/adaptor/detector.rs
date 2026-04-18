@@ -112,9 +112,9 @@ impl ApiVersionDetector {
 
         // Use appropriate syntax for the database type
         let sql = match db_kind.as_str() {
-            "sqlite" => "UPDATE channels SET api_version = ? WHERE id = ?",
-            "postgres" => "UPDATE channels SET api_version = $1 WHERE id = $2",
-            _ => "UPDATE channels SET api_version = ? WHERE id = ?",
+            "sqlite" => "UPDATE channel_providers SET api_version = ? WHERE id = ?",
+            "postgres" => "UPDATE channel_providers SET api_version = $1 WHERE id = $2",
+            _ => "UPDATE channel_providers SET api_version = ? WHERE id = ?",
         };
 
         sqlx::query(sql)
