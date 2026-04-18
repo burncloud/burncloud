@@ -14,6 +14,13 @@ use super::{ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingCo
 /// Small epsilon to avoid division by zero.
 const EPS: f64 = 1e-6;
 
+/// Per-candidate raw factor data, collected in a single pass.
+struct CandidateFactors {
+    health: f64,
+    cost: f64,
+    rpm: f64,
+}
+
 pub struct CombinedScheduler {
     config: SchedulerPolicyConfig,
 }
@@ -39,11 +46,8 @@ impl ChannelScheduler for CombinedScheduler {
             return Ok(HashMap::new());
         }
 
-        // Single pass: collect raw factors + track min/max per dimension
-        let mut health_raw: Vec<(i32, f64)> = Vec::with_capacity(n);
-        let mut cost_raw: Vec<(i32, f64)> = Vec::with_capacity(n);
-        let mut rpm_raw: Vec<(i32, f64)> = Vec::with_capacity(n);
-
+        // Single pass: collect all factors into one Vec + track min/max
+        let mut factors: Vec<CandidateFactors> = Vec::with_capacity(n);
         let (mut h_min, mut h_max) = (f64::INFINITY, f64::NEG_INFINITY);
         let (mut c_min, mut c_max) = (f64::INFINITY, f64::NEG_INFINITY);
         let (mut r_min, mut r_max) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -56,43 +60,42 @@ impl ChannelScheduler for CombinedScheduler {
                 .unwrap_or(1.0)
                 .max(0.0);
             let health = if health.is_nan() { 1.0 } else { health };
-            health_raw.push((ch.id, health));
             h_min = h_min.min(health); h_max = h_max.max(health);
 
             let cost = compute_cost_factor(ch, ctx);
             let cost = if cost.is_finite() && cost > 0.0 { cost } else { 1.0 };
-            cost_raw.push((ch.id, cost));
             c_min = c_min.min(cost); c_max = c_max.max(cost);
 
             let rpm = rpm_factor(ch.id, ctx);
             let rpm = if rpm.is_nan() { COLD_START_RPM_LIMIT as f64 } else { rpm };
-            rpm_raw.push((ch.id, rpm));
             r_min = r_min.min(rpm); r_max = r_max.max(rpm);
+
+            factors.push(CandidateFactors { health, cost, rpm });
         }
 
-        // Degeneracy from pre-tracked bounds (no extra iteration)
+        // Degeneracy from pre-tracked bounds
         let h_degen = (h_max - h_min).abs() < EPS;
         let c_degen = (c_max - c_min).abs() < EPS;
         let r_degen = (r_max - r_min).abs() < EPS;
 
         let (w_h, w_c, w_r) = self.effective_weights(h_degen, c_degen, r_degen);
 
-        // Normalize using pre-tracked bounds (1 pass each instead of 3)
-        let health_norm = normalize_with_bounds(&health_raw, h_min, h_max);
-        let cost_norm = normalize_with_bounds(&cost_raw, c_min, c_max);
-        let rpm_norm = normalize_with_bounds(&rpm_raw, r_min, r_max);
+        // Pre-compute normalization ranges (avoids division per candidate)
+        let h_range = if h_degen { 0.0 } else { h_max - h_min };
+        let c_range = if c_degen { 0.0 } else { c_max - c_min };
+        let r_range = if r_degen { 0.0 } else { r_max - r_min };
 
-        // Compute final scores
+        // Compute final scores with inline normalization (no HashMap lookups)
         let mut scores = HashMap::with_capacity(n);
-        for (ch, admin_w) in candidates {
-            let h = health_norm.get(&ch.id).copied().unwrap_or(0.75);
-            let c = cost_norm.get(&ch.id).copied().unwrap_or(0.75);
-            let r = rpm_norm.get(&ch.id).copied().unwrap_or(0.75);
+        for (i, (ch, admin_w)) in candidates.iter().enumerate() {
+            let f = &factors[i];
+            let h = if h_degen { 0.75 } else { (0.5 + 0.5 * (f.health - h_min) / h_range).clamp(0.5, 1.0) };
+            let c = if c_degen { 0.75 } else { (0.5 + 0.5 * (f.cost - c_min) / c_range).clamp(0.5, 1.0) };
+            let r = if r_degen { 0.75 } else { (0.5 + 0.5 * (f.rpm - r_min) / r_range).clamp(0.5, 1.0) };
 
             let quality = h.powf(w_h) * c.powf(w_c) * r.powf(w_r);
             let final_score = (*admin_w).max(1) as f64 * quality;
 
-            // Guard against non-finite scores
             let score = if final_score.is_finite() && final_score > 0.0 {
                 final_score
             } else {
@@ -177,10 +180,8 @@ fn rpm_factor(channel_id: i32, ctx: &SchedulingContext) -> f64 {
 }
 
 /// 0.5-offset min-max normalization with pre-computed bounds.
-///
-/// Maps [min, max] → [0.5, 1.0] to avoid extreme distortion with small candidate sets.
-/// When min == max (degenerate), returns 0.75 for all.
-/// Single pass over values (caller provides pre-computed min/max).
+/// Used by normalize_05 test helper; production code normalizes inline in score().
+#[cfg(test)]
 fn normalize_with_bounds(values: &[(i32, f64)], min_val: f64, max_val: f64) -> HashMap<i32, f64> {
     if values.is_empty() {
         return HashMap::new();

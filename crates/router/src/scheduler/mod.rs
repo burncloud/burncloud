@@ -298,10 +298,11 @@ pub async fn build_context(
     price_cache: &PriceCache,
     exchange_rate: &ExchangeRateService,
 ) -> SchedulingContext {
-    let channel_ids: Vec<i32> = candidates.iter().map(|(ch, _)| ch.id).collect();
-
-    // Collect health scores
-    let health_scores = state_tracker.get_all_health_scores(&channel_ids, Some(model));
+    // Collect health scores (inline to avoid intermediate Vec allocation)
+    let health_scores: HashMap<i32, f64> = candidates
+        .iter()
+        .map(|(ch, _)| (ch.id, state_tracker.get_health_score(ch.id, Some(model))))
+        .collect();
 
     // Collect adaptive snapshots (cold-start default: RPM = initial_limit = 10)
     let adaptive_limits: HashMap<i32, AdaptiveSnapshot> = candidates
