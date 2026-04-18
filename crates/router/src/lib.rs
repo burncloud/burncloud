@@ -1050,8 +1050,9 @@ async fn proxy_logic(
 
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
-    // Track pricing_region from selected channel for billing
-    let mut selected_pricing_region: Option<String> = None;
+    // Track pricing_region from selected channel for billing.
+    // Assigned inside the retry loop (candidates guaranteed non-empty at this point).
+    let mut selected_pricing_region: Option<String>;
 
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
@@ -1095,8 +1096,6 @@ async fn proxy_logic(
                         channels.len(),
                         model
                     );
-                    // Save pricing_region from first candidate for billing
-                    selected_pricing_region = channels[0].pricing_region.clone();
 
                     for channel in channels {
                         let channel_type = ChannelType::from(channel.type_);
