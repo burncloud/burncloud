@@ -39,10 +39,14 @@ impl ChannelScheduler for CombinedScheduler {
             return Ok(HashMap::new());
         }
 
-        // Collect raw factors for each candidate
+        // Single pass: collect raw factors + track min/max per dimension
         let mut health_raw: Vec<(i32, f64)> = Vec::with_capacity(n);
         let mut cost_raw: Vec<(i32, f64)> = Vec::with_capacity(n);
         let mut rpm_raw: Vec<(i32, f64)> = Vec::with_capacity(n);
+
+        let (mut h_min, mut h_max) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut c_min, mut c_max) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut r_min, mut r_max) = (f64::INFINITY, f64::NEG_INFINITY);
 
         for (ch, _) in candidates {
             let health = ctx
@@ -51,26 +55,32 @@ impl ChannelScheduler for CombinedScheduler {
                 .copied()
                 .unwrap_or(1.0)
                 .max(0.0);
-            // Guard against NaN from upstream health score computation
-            health_raw.push((ch.id, if health.is_nan() { 1.0 } else { health }));
+            let health = if health.is_nan() { 1.0 } else { health };
+            health_raw.push((ch.id, health));
+            h_min = h_min.min(health); h_max = h_max.max(health);
 
             let cost = compute_cost_factor(ch, ctx);
-            // Guard against NaN or infinity from cost computation
-            cost_raw.push((ch.id, if cost.is_finite() && cost > 0.0 { cost } else { 1.0 }));
+            let cost = if cost.is_finite() && cost > 0.0 { cost } else { 1.0 };
+            cost_raw.push((ch.id, cost));
+            c_min = c_min.min(cost); c_max = c_max.max(cost);
 
             let rpm = rpm_factor(ch.id, ctx);
-            // Guard against NaN from RPM snapshot
-            rpm_raw.push((ch.id, if rpm.is_nan() { 10.0 } else { rpm }));
+            let rpm = if rpm.is_nan() { COLD_START_RPM_LIMIT as f64 } else { rpm };
+            rpm_raw.push((ch.id, rpm));
+            r_min = r_min.min(rpm); r_max = r_max.max(rpm);
         }
 
-        // Normalize using 0.5-offset min-max
-        let health_norm = normalize_05(&health_raw);
-        let cost_norm = normalize_05(&cost_raw);
-        let rpm_norm = normalize_05(&rpm_raw);
+        // Degeneracy from pre-tracked bounds (no extra iteration)
+        let h_degen = (h_max - h_min).abs() < EPS;
+        let c_degen = (c_max - c_min).abs() < EPS;
+        let r_degen = (r_max - r_min).abs() < EPS;
 
-        // Detect degenerate dimensions (all values identical)
-        // and redistribute their weights to remaining dimensions
-        let (w_h, w_c, w_r) = self.effective_weights(&health_raw, &cost_raw, &rpm_raw);
+        let (w_h, w_c, w_r) = self.effective_weights(h_degen, c_degen, r_degen);
+
+        // Normalize using pre-tracked bounds (1 pass each instead of 3)
+        let health_norm = normalize_with_bounds(&health_raw, h_min, h_max);
+        let cost_norm = normalize_with_bounds(&cost_raw, c_min, c_max);
+        let rpm_norm = normalize_with_bounds(&rpm_raw, r_min, r_max);
 
         // Compute final scores
         let mut scores = HashMap::with_capacity(n);
@@ -112,31 +122,10 @@ impl ChannelScheduler for CombinedScheduler {
 
 impl CombinedScheduler {
     /// Compute effective weights, redistributing weight from degenerate dimensions.
-    fn effective_weights(
-        &self,
-        health: &[(i32, f64)],
-        cost: &[(i32, f64)],
-        rpm: &[(i32, f64)],
-    ) -> (f64, f64, f64) {
-        let h_degen = is_degenerate(health);
-        let c_degen = is_degenerate(cost);
-        let r_degen = is_degenerate(rpm);
-
-        let mut w_h = if h_degen {
-            0.0
-        } else {
-            self.config.health_weight
-        };
-        let mut w_c = if c_degen {
-            0.0
-        } else {
-            self.config.cost_weight
-        };
-        let mut w_r = if r_degen {
-            0.0
-        } else {
-            self.config.rpm_weight
-        };
+    fn effective_weights(&self, h_degen: bool, c_degen: bool, r_degen: bool) -> (f64, f64, f64) {
+        let mut w_h = if h_degen { 0.0 } else { self.config.health_weight };
+        let mut w_c = if c_degen { 0.0 } else { self.config.cost_weight };
+        let mut w_r = if r_degen { 0.0 } else { self.config.rpm_weight };
 
         // If all degenerate, fall back to equal weights (1/3 each)
         let total = w_h + w_c + w_r;
@@ -187,35 +176,18 @@ fn rpm_factor(channel_id: i32, ctx: &SchedulingContext) -> f64 {
         .unwrap_or(COLD_START_RPM_LIMIT as f64)
 }
 
-/// Check if all values in a factor are identical (degenerate dimension).
-fn is_degenerate(values: &[(i32, f64)]) -> bool {
-    if values.len() <= 1 {
-        return true;
-    }
-    let first = values[0].1;
-    values.iter().all(|(_, v)| (v - first).abs() < EPS)
-}
-
-/// 0.5-offset min-max normalization.
+/// 0.5-offset min-max normalization with pre-computed bounds.
 ///
 /// Maps [min, max] → [0.5, 1.0] to avoid extreme distortion with small candidate sets.
 /// When min == max (degenerate), returns 0.75 for all.
-fn normalize_05(values: &[(i32, f64)]) -> HashMap<i32, f64> {
-    let n = values.len();
-    if n == 0 {
+/// Single pass over values (caller provides pre-computed min/max).
+fn normalize_with_bounds(values: &[(i32, f64)], min_val: f64, max_val: f64) -> HashMap<i32, f64> {
+    if values.is_empty() {
         return HashMap::new();
     }
-
-    let min_val = values.iter().fold(f64::INFINITY, |a, &(_, v)| a.min(v));
-    let max_val = values
-        .iter()
-        .fold(f64::NEG_INFINITY, |a, &(_, v)| a.max(v));
-
-    // All identical → neutral score
     if (max_val - min_val).abs() < EPS {
         return values.iter().map(|&(id, _)| (id, 0.75)).collect();
     }
-
     let range = max_val - min_val;
     values
         .iter()
@@ -224,6 +196,20 @@ fn normalize_05(values: &[(i32, f64)]) -> HashMap<i32, f64> {
             (id, norm.clamp(0.5, 1.0))
         })
         .collect()
+}
+
+#[cfg(test)]
+/// 0.5-offset min-max normalization (computes bounds internally).
+/// Convenience wrapper for tests.
+fn normalize_05(values: &[(i32, f64)]) -> HashMap<i32, f64> {
+    if values.is_empty() {
+        return HashMap::new();
+    }
+    let (min_val, max_val) = values.iter().fold(
+        (f64::INFINITY, f64::NEG_INFINITY),
+        |(min, max), &(_, v)| (min.min(v), max.max(v)),
+    );
+    normalize_with_bounds(values, min_val, max_val)
 }
 
 #[cfg(test)]
