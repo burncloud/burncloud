@@ -80,7 +80,11 @@ impl CircuitBreaker {
 
     /// Checks if a request is allowed to proceed to the given upstream.
     pub fn allow_request(&self, upstream_id: &str) -> bool {
-        let entry = self.states.entry(upstream_id.to_string()).or_default();
+        // Read-only: use get() to avoid creating entries for healthy upstreams
+        let entry = match self.states.get(upstream_id) {
+            Some(e) => e,
+            None => return true, // No state = never failed = allowed
+        };
 
         // Check if currently rate limited
         if let Some(rate_limit_until) = entry.rate_limit_until {
@@ -99,10 +103,6 @@ impl CircuitBreaker {
         if let Some(last_failure) = entry.last_failure_time {
             if last_failure.elapsed() >= self.cooldown_duration {
                 // Transition to Half-Open (allow one probe)
-                // We don't change state explicitly here, but we allow *this* request.
-                // In a real strict implementation, we might want to ensure only ONE request passes,
-                // but for simplicity in this stateless router, allowing traffic after cooldown is acceptable.
-                // If it fails again, the time updates and we wait again.
                 return true;
             }
         }
@@ -140,7 +140,7 @@ impl CircuitBreaker {
                 entry
                     .failure_count
                     .store(self.failure_threshold, Ordering::Relaxed);
-                println!(
+                tracing::warn!(
                     "Circuit Breaker: Upstream {} immediately tripped due to {:?}",
                     upstream_id, failure_type
                 );
@@ -158,7 +158,7 @@ impl CircuitBreaker {
                 // Also increment failure count for rate limits
                 let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
                 if new_count >= self.failure_threshold {
-                    println!(
+                    tracing::warn!(
                         "Circuit Breaker: Upstream {} tripped due to rate limit (Failures: {})",
                         upstream_id, new_count
                     );
@@ -168,7 +168,7 @@ impl CircuitBreaker {
                 // Other failures just increment the count
                 let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
                 if new_count >= self.failure_threshold {
-                    println!(
+                    tracing::warn!(
                         "Circuit Breaker: Upstream {} tripped! (Failures: {})",
                         upstream_id, new_count
                     );
