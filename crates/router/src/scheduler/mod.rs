@@ -313,6 +313,8 @@ pub async fn build_context(
             if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
                 let cost = price.input_price as f64 + price.output_price as f64;
                 prices.insert(region.to_string(), cost);
+            } else if !region.is_empty() {
+                tracing::debug!("No price data for model='{model}' region='{region}', cost factor will use default");
             }
         }
     }
