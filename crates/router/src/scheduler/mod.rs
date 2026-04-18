@@ -221,7 +221,6 @@ pub fn rank_candidates(
         return candidates;
     }
 
-    let n = candidates.len();
     let scores = match catch_unwind(AssertUnwindSafe(|| scheduler.score(&candidates, ctx))) {
         Ok(Ok(map)) => map,
         Ok(Err(e)) => {
@@ -240,37 +239,15 @@ pub fn rank_candidates(
         }
     };
 
-    // Sort by index first (cheap: just usize + f64 per candidate)
-    let mut indexed: Vec<usize> = (0..n)
-        .filter(|&i| scores.contains_key(&candidates[i].0.id))
-        .collect();
-
-    if indexed.len() < n {
-        tracing::warn!(
-            "Scheduler '{}' returned {} scores for {} candidates, {} dropped",
-            scheduler.name(),
-            indexed.len(),
-            n,
-            n - indexed.len()
-        );
-    }
-
-    indexed.sort_by(|&a, &b| {
-        let sa = scores[&candidates[a].0.id];
-        let sb = scores[&candidates[b].0.id];
+    // Sort candidates in-place by score (descending) — no index Vec or Option wrapping needed
+    let mut candidates = candidates;
+    candidates.sort_by(|a, b| {
+        let sa = scores.get(&a.0.id).copied().unwrap_or(0.0);
+        let sb = scores.get(&b.0.id).copied().unwrap_or(0.0);
         sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    // Now move candidates into result in sorted order (no Channel cloning)
-    // into_iter() takes ownership; we pick elements by sorted index
-    let mut owned: Vec<Option<(Channel, i32)>> = candidates
-        .into_iter()
-        .map(Some)
-        .collect();
-
-    indexed.into_iter()
-        .map(|i| owned[i].take().unwrap())
-        .collect()
+    candidates
 }
 
 /// Rank candidates using PassthroughScheduler (no context needed).

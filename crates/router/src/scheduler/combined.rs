@@ -87,8 +87,7 @@ impl ChannelScheduler for CombinedScheduler {
 
         // Compute final scores with inline normalization (no HashMap lookups)
         let mut scores = HashMap::with_capacity(n);
-        for (i, (ch, admin_w)) in candidates.iter().enumerate() {
-            let f = &factors[i];
+        for ((ch, admin_w), f) in candidates.iter().zip(factors.iter()) {
             let h = if h_degen { 0.75 } else { (0.5 + 0.5 * (f.health - h_min) / h_range).clamp(0.5, 1.0) };
             let c = if c_degen { 0.75 } else { (0.5 + 0.5 * (f.cost - c_min) / c_range).clamp(0.5, 1.0) };
             let r = if r_degen { 0.75 } else { (0.5 + 0.5 * (f.rpm - r_min) / r_range).clamp(0.5, 1.0) };
