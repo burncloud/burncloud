@@ -312,6 +312,48 @@ mod tests {
     }
 
     #[test]
+    fn test_cooldown_channel_penalized() {
+        let c1 = make_channel(1, 10);
+        let c2 = make_channel(2, 10);
+        // Channel 1: Stable with high RPM, Channel 2: Cooldown (rpm=0.1)
+        let ctx = make_ctx_with_factors(vec![
+            (1, 1.0, 1.0, 100.0),
+            (2, 1.0, 1.0, 0.1),
+        ]);
+        let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
+            health_weight: 0.0,
+            cost_weight: 0.0,
+            rpm_weight: 1.0,
+        });
+        let scores = scheduler.score(&[c1, c2], &ctx).unwrap();
+        assert!(
+            scores[&1] > scores[&2],
+            "cooldown channel (rpm=0.1) should score lower than stable channel (rpm=100)"
+        );
+    }
+
+    #[test]
+    fn test_learning_channel_fixed_rpm() {
+        let c1 = make_channel(1, 10);
+        let c2 = make_channel(2, 10);
+        // Both in Learning state: rpm=1.0 regardless of current_limit
+        let ctx = make_ctx_with_factors(vec![
+            (1, 1.0, 1.0, 1.0),
+            (2, 1.0, 1.0, 1.0),
+        ]);
+        let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
+            health_weight: 0.0,
+            cost_weight: 0.0,
+            rpm_weight: 1.0,
+        });
+        let scores = scheduler.score(&[c1, c2], &ctx).unwrap();
+        assert!(
+            (scores[&1] - scores[&2]).abs() < 0.01,
+            "learning channels should get equal RPM score (both rpm=1.0)"
+        );
+    }
+
+    #[test]
     fn test_cross_currency_cost_comparison() {
         // CN: 18 CNY at 7.2 rate → 18/7.2 = 2.5 USD → cost = 1/2.5 = 0.4
         // US: 2.5 USD → cost = 1/2.5 = 0.4

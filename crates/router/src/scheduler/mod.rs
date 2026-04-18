@@ -311,10 +311,16 @@ pub async fn build_context(
             }
         };
 
+        let rpm = match adaptive.state {
+            crate::adaptive_limit::RateLimitState::Stable => adaptive.current_limit as f64,
+            crate::adaptive_limit::RateLimitState::Learning => 1.0,
+            crate::adaptive_limit::RateLimitState::Cooldown => 0.1,
+        };
+
         factors.insert(ch.id, CandidateFactors {
             health,
             cost,
-            rpm: adaptive.current_limit as f64,
+            rpm,
         });
     }
 
