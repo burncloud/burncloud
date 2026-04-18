@@ -1384,9 +1384,9 @@ async fn proxy_logic(
                         continue;
                     }
 
-                    state.circuit_breaker.record_success(&upstream.id);
-
                     if status.is_success() {
+                        state.circuit_breaker.record_success(&upstream.id);
+
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
                         // Parse rate limit info from response headers for adaptive limiter
@@ -1673,9 +1673,8 @@ async fn proxy_logic(
                     continue;
                 }
 
-                state.circuit_breaker.record_success(&upstream.id);
-
                 if resp.status().is_success() {
+                    state.circuit_breaker.record_success(&upstream.id);
                     let status = resp.status();
                     let resp_headers = resp.headers().clone();
 
