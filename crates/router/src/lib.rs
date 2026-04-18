@@ -1071,7 +1071,15 @@ async fn proxy_logic(
             );
 
             // Use scheduler-based routing for multi-channel failover
-            let policies = state.scheduler_policies.read().await;
+            // Clone the policy for this group, then release the lock immediately.
+            // This prevents the lock from being held during SQL queries and async
+            // price lookups in route_with_scheduler, which could starve reload_handler.
+            let scheduler_kind = {
+                let policies = state.scheduler_policies.read().await;
+                policies.get(&user_group.to_lowercase()).cloned()
+            };
+            // Lock released here — before SQL queries in route_with_scheduler
+
             match state
                 .model_router
                 .route_with_scheduler(
@@ -1080,7 +1088,7 @@ async fn proxy_logic(
                     &state.channel_state_tracker,
                     &state.price_cache,
                     &state.exchange_rate_service,
-                    &policies,
+                    scheduler_kind.as_ref(),
                 )
                 .await
             {
@@ -1147,7 +1155,6 @@ async fn proxy_logic(
                     );
                 }
             }
-            drop(policies);
         } else {
             tracing::debug!("ProxyLogic: No 'model' field in JSON body");
         }

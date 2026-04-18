@@ -298,25 +298,19 @@ pub async fn build_context(
     price_cache: &PriceCache,
     exchange_rate: &ExchangeRateService,
 ) -> SchedulingContext {
-    // Collect health scores (inline to avoid intermediate Vec allocation)
-    let health_scores: HashMap<i32, f64> = candidates
-        .iter()
-        .map(|(ch, _)| (ch.id, state_tracker.get_health_score(ch.id, Some(model))))
-        .collect();
-
-    // Collect adaptive snapshots (cold-start default: RPM = initial_limit = 10)
-    let adaptive_limits: HashMap<i32, AdaptiveSnapshot> = candidates
-        .iter()
-        .map(|(ch, _)| {
-            let snap = state_tracker
-                .get_adaptive_snapshot(ch.id, model)
-                .unwrap_or(AdaptiveSnapshot {
-                    current_limit: COLD_START_RPM_LIMIT,
-                    state: crate::adaptive_limit::RateLimitState::Learning,
-                });
-            (ch.id, snap)
-        })
-        .collect();
+    // Single pass: collect health scores + adaptive snapshots
+    let mut health_scores = HashMap::with_capacity(candidates.len());
+    let mut adaptive_limits = HashMap::with_capacity(candidates.len());
+    for (ch, _) in candidates {
+        health_scores.insert(ch.id, state_tracker.get_health_score(ch.id, Some(model)));
+        let snap = state_tracker
+            .get_adaptive_snapshot(ch.id, model)
+            .unwrap_or(AdaptiveSnapshot {
+                current_limit: COLD_START_RPM_LIMIT,
+                state: crate::adaptive_limit::RateLimitState::Learning,
+            });
+        adaptive_limits.insert(ch.id, snap);
+    }
 
     // Collect prices per candidate's pricing_region
     let mut prices: RegionalPrices = HashMap::new();

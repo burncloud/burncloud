@@ -5,7 +5,7 @@ use burncloud_database::Database;
 
 use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
-use crate::scheduler::{self, CombinedScheduler, SchedulerPolicyMap, SchedulerKind};
+use crate::scheduler::{self, CombinedScheduler, SchedulerKind};
 
 /// Error returned when no channels are available for a model.
 #[derive(Debug)]
@@ -185,7 +185,7 @@ impl ModelRouter {
         state_tracker: &ChannelStateTracker,
         price_cache: &burncloud_service_billing::PriceCache,
         exchange_rate: &ExchangeRateService,
-        policies: &SchedulerPolicyMap,
+        scheduler_kind: Option<&SchedulerKind>,
     ) -> std::result::Result<Vec<Channel>, NoAvailableChannelsError> {
         let candidates = self.get_candidates(group, model).await.map_err(|e| {
             NoAvailableChannelsError {
@@ -213,7 +213,7 @@ impl ModelRouter {
         }
 
         // Pick scheduler for this group
-        let ranked = match policies.get(&group.to_lowercase()) {
+        let ranked = match scheduler_kind {
             Some(SchedulerKind::Combined { config }) => {
                 let combined = CombinedScheduler::new(config.clone());
                 let ctx = scheduler::build_context(
