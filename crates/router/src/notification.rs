@@ -203,7 +203,7 @@ impl NotificationService {
         }
 
         // Log the notification
-        println!(
+        tracing::info!(
             "[Notification] [{:?}] {:?}: {} - {}",
             notification.priority,
             notification.notification_type,

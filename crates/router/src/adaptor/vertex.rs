@@ -78,7 +78,7 @@ impl ChannelAdaptor for VertexAdaptor {
         {
             Ok(acc) => acc,
             Err(e) => {
-                eprintln!("VertexAdaptor: Failed to parse Service Account: {}", e);
+                tracing::warn!("VertexAdaptor: Failed to parse Service Account: {}", e);
                 return client.post("http://invalid-service-account-config");
             }
         };
@@ -87,7 +87,7 @@ impl ChannelAdaptor for VertexAdaptor {
         let openai_req: OpenAIChatRequest = match serde_json::from_value(body.clone()) {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("VertexAdaptor: Failed to parse OpenAI Request: {}", e);
+                tracing::warn!("VertexAdaptor: Failed to parse OpenAI Request: {}", e);
                 return client.post("http://failed-to-parse-body");
             }
         };
@@ -102,7 +102,7 @@ impl ChannelAdaptor for VertexAdaptor {
         {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("VertexAdaptor: Failed to get Access Token: {}", e);
+                tracing::warn!("VertexAdaptor: Failed to get Access Token: {}", e);
                 return client.post("http://failed-to-get-token");
             }
         };
