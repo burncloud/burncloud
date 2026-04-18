@@ -11,6 +11,7 @@ mod passthrough;
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::str::FromStr;
 
 use burncloud_common::types::Channel;
 use burncloud_service_billing::PriceCache;
@@ -273,11 +274,6 @@ pub async fn build_context(
     price_cache: &PriceCache,
     exchange_rate: &ExchangeRateService,
 ) -> SchedulingContext {
-    // USD→CNY rate (fetch once, used for all cost normalization)
-    let usd_cny_rate = exchange_rate
-        .get_rate(burncloud_common::Currency::USD, burncloud_common::Currency::CNY)
-        .unwrap_or(7.0);
-
     // Single pass: collect prices + health + adaptive + pre-computed cost
     let mut prices_usd: HashMap<String, f64> = HashMap::new();
     let mut factors = HashMap::with_capacity(candidates.len());
@@ -288,10 +284,11 @@ pub async fn build_context(
         if !prices_usd.contains_key(region) {
             if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
                 let raw = price.input_price as f64 + price.output_price as f64;
-                let price_usd = if price.currency.eq_ignore_ascii_case("CNY") && usd_cny_rate > 0.0 {
-                    raw / usd_cny_rate
-                } else {
-                    raw
+                let price_usd = match burncloud_common::Currency::from_str(&price.currency) {
+                    Ok(curr) if curr != burncloud_common::Currency::USD => {
+                        exchange_rate.convert(raw, curr, burncloud_common::Currency::USD)
+                    }
+                    _ => raw,
                 };
                 prices_usd.insert(region.to_string(), price_usd);
             } else if !region.is_empty() {
