@@ -139,16 +139,26 @@ impl CombinedScheduler {
 
 /// Compute cost factor for a channel (lower cost = higher factor).
 ///
-/// Looks up price from regional prices, converts to USD if needed.
+/// Looks up price from regional prices and normalizes to USD using exchange rate.
+/// Without normalization, CNY-denominated prices (larger numbers) would be
+/// unfairly penalized compared to USD prices.
 fn compute_cost_factor(ch: &Channel, ctx: &SchedulingContext) -> f64 {
     let region = ch.pricing_region.as_deref().unwrap_or("");
-    let price = ctx.prices.get(region).copied().unwrap_or(0.0);
+    let price_raw = ctx.prices.get(region).copied().unwrap_or(0.0);
 
-    if price <= 0.0 {
+    if price_raw <= 0.0 {
         return 1.0; // Free or unknown = best
     }
 
-    1.0 / price
+    // Normalize to USD: CNY-region prices are divided by USD→CNY rate
+    let is_cny_region = region == "cn" || region == "CNY" || region == "cny";
+    let price_usd = if is_cny_region && ctx.usd_cny_rate > 0.0 {
+        price_raw / ctx.usd_cny_rate
+    } else {
+        price_raw
+    };
+
+    1.0 / price_usd
 }
 
 /// Extract RPM factor from adaptive limit snapshot.
@@ -356,6 +366,37 @@ mod tests {
         assert!(
             (scores[&1] - scores[&2]).abs() < 0.01,
             "cold-start channels should get equal RPM score"
+        );
+    }
+
+    #[test]
+    fn test_cross_currency_cost_comparison() {
+        // CN channel: price in CNY (larger number, e.g. 18 CNY/MTok)
+        // US channel: price in USD (smaller number, e.g. 2.5 USD/MTok)
+        // At 7.2 CNY/USD: CN = 18/7.2 = 2.5 USD, should be equal
+        let mut c1 = make_channel(1, 10);
+        c1.0.pricing_region = Some("cn".into());
+        let mut c2 = make_channel(2, 10);
+        c2.0.pricing_region = Some("us".into());
+
+        let mut ctx = make_ctx(
+            HashMap::new(),
+            HashMap::from([("cn".to_string(), 18.0), ("us".to_string(), 2.5)]),
+            HashMap::new(),
+        );
+        ctx.usd_cny_rate = 7.2;
+
+        let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
+            health_weight: 0.0,
+            cost_weight: 1.0,
+            rpm_weight: 0.0,
+        });
+        let scores = scheduler.score(&[c1, c2], &ctx).unwrap();
+        // After CNY→USD normalization, both should have equal cost
+        let ratio = scores[&1] / scores[&2];
+        assert!(
+            (ratio - 1.0).abs() < 0.1,
+            "cross-currency equal cost should give similar scores, got ratio {ratio}"
         );
     }
 }

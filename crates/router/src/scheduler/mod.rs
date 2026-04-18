@@ -159,7 +159,7 @@ pub fn load_scheduler_config() -> SchedulerPolicyMap {
                 SchedulerKind::Passthrough
             }
         };
-        policies.insert(group, kind);
+        policies.insert(group.to_lowercase(), kind);
     }
 
     tracing::info!("Loaded {} scheduler policies", policies.len());
@@ -242,6 +242,16 @@ pub fn rank_candidates(
                 .map(|&s| (ch.clone(), *w, s))
         })
         .collect();
+
+    if ranked.len() < candidates.len() {
+        tracing::warn!(
+            "Scheduler '{}' returned {} scores for {} candidates, {} dropped",
+            scheduler.name(),
+            ranked.len(),
+            candidates.len(),
+            candidates.len() - ranked.len()
+        );
+    }
 
     ranked.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
