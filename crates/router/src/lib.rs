@@ -53,6 +53,23 @@ use uuid::Uuid;
 
 pub use state::AppState;
 
+/// Record a channel error in both circuit breaker and channel state tracker.
+fn record_upstream_failure(
+    state: &AppState,
+    upstream: &Upstream,
+    model_name: Option<&str>,
+    failure_type: FailureType,
+    error_msg: &str,
+) {
+    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+    state
+        .circuit_breaker
+        .record_failure_with_type(&upstream.id, failure_type.clone());
+    state
+        .channel_state_tracker
+        .record_error(channel_id, model_name, &failure_type, error_msg);
+}
+
 /// Helper function to build a response safely without panicking.
 /// Falls back to an empty body with the same status if body construction fails.
 fn build_response(status: StatusCode, body: Body) -> Response {
@@ -167,9 +184,9 @@ pub async fn create_router_app(
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
-    // Default Limit: 100 burst, 10 requests/second
+    // Rate limiter: 100 burst, 10 requests/second
     let limiter = Arc::new(RateLimiter::new(100.0, 10.0));
-    // Circuit Breaker: 5 failures, 30s cooldown
+    // Circuit breaker: 5 failure threshold, 30s cooldown
     let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30));
     let model_router = Arc::new(ModelRouter::new(db.clone()));
     // Channel State Tracker for health monitoring
@@ -1385,15 +1402,8 @@ async fn proxy_logic(
 
                     if status.is_server_error() {
                         last_error = format!("Upstream returned {}", status);
-                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                        state
-                            .circuit_breaker
-                            .record_failure_with_type(&upstream.id, FailureType::ServerError);
-                        state.channel_state_tracker.record_error(
-                            channel_id,
-                            model_name,
-                            &FailureType::ServerError,
-                            &last_error,
+                        record_upstream_failure(
+                            &state, upstream, model_name, FailureType::ServerError, &last_error,
                         );
                         continue;
                     }
@@ -1511,22 +1521,13 @@ async fn proxy_logic(
 
                         // Record rate limit errors
                         if status.as_u16() == 429 {
-                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                model_name,
-                                &FailureType::RateLimited {
-                                    scope: circuit_breaker::RateLimitScope::Unknown,
-                                    retry_after: None,
-                                },
-                                "Rate limited",
-                            );
-                            state.circuit_breaker.record_failure_with_type(
-                                &upstream.id,
+                            record_upstream_failure(
+                                &state, upstream, model_name,
                                 FailureType::RateLimited {
                                     scope: circuit_breaker::RateLimitScope::Unknown,
                                     retry_after: None,
                                 },
+                                "Rate limited",
                             );
                             continue;
                         }
@@ -1547,15 +1548,8 @@ async fn proxy_logic(
                 }
                 Err(e) => {
                     last_error = format!("Network Error: {}", e);
-                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                    state
-                        .circuit_breaker
-                        .record_failure_with_type(&upstream.id, FailureType::Timeout);
-                    state.channel_state_tracker.record_error(
-                        channel_id,
-                        model_name,
-                        &FailureType::Timeout,
-                        &last_error,
+                    record_upstream_failure(
+                        &state, upstream, model_name, FailureType::Timeout, &last_error,
                     );
                     tracing::warn!(
                         "Failover: {} network error: {}, trying next...",
@@ -1667,15 +1661,8 @@ async fn proxy_logic(
                 if status.is_server_error() {
                     // 5xx Server Error
                     last_error = format!("Upstream returned {}", status);
-                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                    state
-                        .circuit_breaker
-                        .record_failure_with_type(&upstream.id, FailureType::ServerError);
-                    state.channel_state_tracker.record_error(
-                        channel_id,
-                        model_name,
-                        &FailureType::ServerError,
-                        &last_error,
+                    record_upstream_failure(
+                        &state, upstream, model_name, FailureType::ServerError, &last_error,
                     );
                     continue;
                 }
@@ -1900,74 +1887,33 @@ async fn proxy_logic(
                     let error_info = parse_error_response(&body_str, &upstream.protocol);
                     let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
 
-                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-
                     // Determine failure type based on status code
                     let failure_type = match status_code {
-                        401 => {
-                            // Authentication failed - channel-level issue
-                            let ft = FailureType::AuthFailed;
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                None, // Auth failure affects entire channel
-                                &ft,
-                                error_message,
-                            );
-                            ft
-                        }
-                        402 => {
-                            // Payment required - balance exhausted
-                            let ft = FailureType::PaymentRequired;
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                None,
-                                &ft,
-                                error_message,
-                            );
-                            ft
-                        }
+                        401 => FailureType::AuthFailed,
+                        402 => FailureType::PaymentRequired,
                         429 => {
-                            // Rate limited - extract retry_after from headers or error info
                             let retry_after = resp_headers
                                 .get("retry-after")
                                 .and_then(|v| v.to_str().ok())
                                 .and_then(|v| v.parse::<u64>().ok());
-
-                            // Determine scope from error response
                             let scope = error_info
                                 .scope
                                 .unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
-
-                            let ft = FailureType::RateLimited { scope, retry_after };
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                model_name,
-                                &ft,
-                                error_message,
-                            );
-                            ft
+                            FailureType::RateLimited { scope, retry_after }
                         }
-                        404 => {
-                            // Model not found
-                            let ft = FailureType::ModelNotFound;
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                model_name,
-                                &ft,
-                                error_message,
-                            );
-                            ft
-                        }
-                        _ => {
-                            // Other client errors - treat as server error for retry logic
-                            FailureType::ServerError
-                        }
+                        404 => FailureType::ModelNotFound,
+                        _ => FailureType::ServerError,
                     };
 
-                    // Record failure with circuit breaker
-                    state
-                        .circuit_breaker
-                        .record_failure_with_type(&upstream.id, failure_type);
+                    // Auth/payment failures affect entire channel (model_name=None)
+                    let error_model = match status_code {
+                        401 | 402 => None,
+                        _ => model_name,
+                    };
+
+                    record_upstream_failure(
+                        &state, upstream, error_model, failure_type, error_message,
+                    );
 
                     // 429: try next ranked candidate (scheduler provides alternatives)
                     if status_code == 429 {
@@ -1980,7 +1926,7 @@ async fn proxy_logic(
 
                     // Check for API version deprecation and auto-update if detected
                     if adaptor::detector::ApiVersionDetector::is_deprecation_error(error_message) {
-                        let channel_id_for_detector = channel_id;
+                        let channel_id_for_detector: i32 = upstream.id.parse().unwrap_or(0);
                         let adaptor_factory_for_detector = state.adaptor_factory.clone();
                         let detector = state.api_version_detector.clone();
                         let error_message_for_detector = error_message.to_string();
@@ -2032,15 +1978,8 @@ async fn proxy_logic(
             }
             Err(e) => {
                 last_error = format!("Network Error: {}", e);
-                let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                state
-                    .circuit_breaker
-                    .record_failure_with_type(&upstream.id, FailureType::Timeout);
-                state.channel_state_tracker.record_error(
-                    channel_id,
-                    model_name,
-                    &FailureType::Timeout,
-                    &last_error,
+                record_upstream_failure(
+                    &state, upstream, model_name, FailureType::Timeout, &last_error,
                 );
                 tracing::warn!(
                     "Failover: {} failed with {}, trying next...",
@@ -2104,6 +2043,7 @@ fn handle_response_with_token_parsing(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::inject_video_tokens_if_empty;
     use axum::http::StatusCode;

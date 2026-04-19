@@ -17,6 +17,13 @@ use burncloud_common::Currency;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+// Price ratio defaults for cache/batch/priority tiers
+const CACHE_READ_DIVISOR: i64 = 10;         // 10% of input price
+const CACHE_CREATION_DIVISOR: i64 = 4;      // 125% of input price (1 + 1/4)
+const BATCH_DISCOUNT_DIVISOR: i64 = 2;      // 50% of standard price
+const PRIORITY_NUMERATOR: i128 = 17;        // 170% of standard price (17/10)
+const PRIORITY_DENOMINATOR: i128 = 10;
+
 /// Errors that can occur during billing calculations
 #[derive(Debug, Error)]
 pub enum BillingError {
@@ -514,7 +521,7 @@ pub fn calculate_cache_cost_nano(usage: &TokenUsage, pricing: &AdvancedPricing) 
     // Cache read tokens (10% of standard price)
     if usage.cache_read_tokens > 0 {
         // Default cache read price is 10% of input price
-        let cache_price = pricing.cache_read_price.unwrap_or(pricing.input_price / 10);
+        let cache_price = pricing.cache_read_price.unwrap_or(pricing.input_price / CACHE_READ_DIVISOR);
         total_cost += (usage.cache_read_tokens as i128 * cache_price as i128) / 1_000_000;
     }
 
@@ -523,7 +530,7 @@ pub fn calculate_cache_cost_nano(usage: &TokenUsage, pricing: &AdvancedPricing) 
         // Default cache creation price is 125% of input price
         let cache_creation_price = pricing
             .cache_creation_price
-            .unwrap_or(pricing.input_price + pricing.input_price / 4);
+            .unwrap_or(pricing.input_price + pricing.input_price / CACHE_CREATION_DIVISOR);
         total_cost +=
             (usage.cache_creation_tokens as i128 * cache_creation_price as i128) / 1_000_000;
     }
@@ -554,10 +561,10 @@ pub fn calculate_batch_cost_nano(
     pricing: &AdvancedPricing,
 ) -> i64 {
     // Default batch price is 50% of standard price
-    let input_price = pricing.batch_input_price.unwrap_or(pricing.input_price / 2);
+    let input_price = pricing.batch_input_price.unwrap_or(pricing.input_price / BATCH_DISCOUNT_DIVISOR);
     let output_price = pricing
         .batch_output_price
-        .unwrap_or(pricing.output_price / 2);
+        .unwrap_or(pricing.output_price / BATCH_DISCOUNT_DIVISOR);
 
     let input_cost = (prompt_tokens as i128 * input_price as i128) / 1_000_000;
     let output_cost = (completion_tokens as i128 * output_price as i128) / 1_000_000;
@@ -585,13 +592,12 @@ pub fn calculate_priority_cost_nano(
     pricing: &AdvancedPricing,
 ) -> i64 {
     // Default priority price is 170% of standard price
-    // Use 170/100 = 17/10 for integer math
     let input_price = pricing
         .priority_input_price
-        .unwrap_or((pricing.input_price as i128 * 17 / 10) as i64);
+        .unwrap_or((pricing.input_price as i128 * PRIORITY_NUMERATOR / PRIORITY_DENOMINATOR) as i64);
     let output_price = pricing
         .priority_output_price
-        .unwrap_or((pricing.output_price as i128 * 17 / 10) as i64);
+        .unwrap_or((pricing.output_price as i128 * PRIORITY_NUMERATOR / PRIORITY_DENOMINATOR) as i64);
 
     let input_cost = (prompt_tokens as i128 * input_price as i128) / 1_000_000;
     let output_cost = (completion_tokens as i128 * output_price as i128) / 1_000_000;
