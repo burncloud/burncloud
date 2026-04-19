@@ -9,9 +9,18 @@ use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
-// Import FailureType from circuit_breaker module
 use crate::adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit, AdaptiveSnapshot};
 use crate::circuit_breaker::{FailureType, RateLimitScope};
+
+// Health score penalty factors
+const PENALTY_AUTH_FAILED: f64 = 0.1;
+const PENALTY_BALANCE_LOW: f64 = 0.7;
+const PENALTY_BALANCE_EXHAUSTED: f64 = 0.1;
+const PENALTY_RATE_LIMITED: f64 = 0.3;
+const PENALTY_QUOTA_EXHAUSTED: f64 = 0.1;
+const PENALTY_MODEL_NOT_FOUND: f64 = 0.0;
+const PENALTY_TEMPORARILY_DOWN: f64 = 0.2;
+const LATENCY_SCORE_MIDPOINT_MS: f64 = 100.0;
 
 /// Represents the balance status of a channel's account.
 ///
@@ -456,12 +465,12 @@ impl ChannelStateTracker {
                 };
                 let mut score = 1.0;
                 if !channel_state.auth_ok {
-                    score *= 0.1;
+                    score *= PENALTY_AUTH_FAILED;
                 }
                 match channel_state.balance_status {
                     BalanceStatus::Ok => {}
-                    BalanceStatus::Low => score *= 0.7,
-                    BalanceStatus::Exhausted => score *= 0.1,
+                    BalanceStatus::Low => score *= PENALTY_BALANCE_LOW,
+                    BalanceStatus::Exhausted => score *= PENALTY_BALANCE_EXHAUSTED,
                     BalanceStatus::Unknown => {}
                 }
                 score
@@ -518,15 +527,15 @@ impl ChannelStateTracker {
         }
 
         if model_state.avg_latency_ms > 0.0 {
-            score *= 100.0 / (100.0 + model_state.avg_latency_ms);
+            score *= LATENCY_SCORE_MIDPOINT_MS / (LATENCY_SCORE_MIDPOINT_MS + model_state.avg_latency_ms);
         }
 
         match model_state.status {
             ModelStatus::Available => {}
-            ModelStatus::RateLimited => score *= 0.3,
-            ModelStatus::QuotaExhausted => score *= 0.1,
-            ModelStatus::ModelNotFound => score *= 0.0,
-            ModelStatus::TemporarilyDown => score *= 0.2,
+            ModelStatus::RateLimited => score *= PENALTY_RATE_LIMITED,
+            ModelStatus::QuotaExhausted => score *= PENALTY_QUOTA_EXHAUSTED,
+            ModelStatus::ModelNotFound => score *= PENALTY_MODEL_NOT_FOUND,
+            ModelStatus::TemporarilyDown => score *= PENALTY_TEMPORARILY_DOWN,
         }
 
         (score, model_state.adaptive_limit.snapshot())

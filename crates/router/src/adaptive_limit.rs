@@ -33,6 +33,9 @@ pub enum RateLimitState {
 /// Single source of truth — referenced by AdaptiveLimitConfig::default() and scheduler.
 pub const DEFAULT_INITIAL_LIMIT: u32 = 10;
 
+/// Multiplier applied to current limit on rate-limit events (20% reduction).
+const RATE_LIMIT_REDUCTION_RATIO: f64 = 0.8;
+
 /// Configuration for the adaptive rate limiter.
 #[derive(Debug, Clone)]
 pub struct AdaptiveLimitConfig {
@@ -213,7 +216,7 @@ impl AdaptiveRateLimit {
         }
 
         // Reduce current limit by 20% (keep 80%)
-        let new_limit = (self.current_limit as f64 * 0.8).ceil() as u32;
+        let new_limit = (self.current_limit as f64 * RATE_LIMIT_REDUCTION_RATIO).ceil() as u32;
         self.current_limit = new_limit.max(1); // Ensure at least 1
         self.last_adjusted_at = Some(now);
 
@@ -367,7 +370,7 @@ mod tests {
         assert!(limiter.current_limit < initial_limit);
         assert_eq!(
             limiter.current_limit,
-            (initial_limit as f64 * 0.8).ceil() as u32
+            (initial_limit as f64 * RATE_LIMIT_REDUCTION_RATIO).ceil() as u32
         );
     }
 
@@ -410,7 +413,7 @@ mod tests {
 
         assert_eq!(limiter.state, RateLimitState::Learning);
         // Limit should be reduced by recovery_ratio (50%)
-        assert!(limiter.current_limit <= (initial_limit as f64 * 0.8 * 0.5).ceil() as u32);
+        assert!(limiter.current_limit <= (initial_limit as f64 * RATE_LIMIT_REDUCTION_RATIO * 0.5).ceil() as u32);
     }
 
     #[test]
