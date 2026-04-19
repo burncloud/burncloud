@@ -552,7 +552,7 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
         "scheduler_policies": scheduler_info,
         "circuit_breaker": circuit_breaker_status,
         "channels": channel_states.iter().map(|(ch_id, ch_state)| {
-            let models: Vec<_> = ch_state.models.iter().map(|(_, model_state)| {
+            let models: Vec<_> = ch_state.models.values().map(|model_state| {
                 serde_json::json!({
                     "model": model_state.model,
                     "status": format!("{:?}", model_state.status),
@@ -865,7 +865,10 @@ async fn proxy_handler(
         return match upstream_resp {
             Ok(resp) => {
                 let status = resp.status();
-                let resp_bytes = resp.bytes().await.unwrap_or_default();
+                let resp_bytes = resp.bytes().await.unwrap_or_else(|e| {
+                    tracing::warn!("Failed to read response bytes: {}", e);
+                    axum::body::Bytes::new()
+                });
                 build_response_with_header(
                     status,
                     "content-type",
@@ -1073,6 +1076,7 @@ async fn proxy_logic(
     let mut candidates: Vec<Upstream> = Vec::new();
     // Track pricing_region from selected channel for billing.
     // Assigned inside the retry loop (candidates guaranteed non-empty at this point).
+    // Uninitialized: assigned inside the retry loop before any use
     let mut selected_pricing_region: Option<String>;
 
     // Try to extract model from Gemini native path first
@@ -1308,7 +1312,7 @@ async fn proxy_logic(
         };
 
         // 3. Parse Request Body early for passthrough detection
-        let body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+        let mut body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(_) => {
                 last_error = "Invalid JSON body".to_string();
@@ -1354,7 +1358,9 @@ async fn proxy_logic(
             tracing::debug!("Final passthrough URL: {}", final_url);
 
             // Prepare request body - remove 'stream' field for Gemini native API
-            let mut passthrough_body = body_json.clone();
+            // Safe to take ownership: passthrough path always returns or continues,
+            // so body_json is never used after this point in the current iteration.
+            let mut passthrough_body = std::mem::take(&mut body_json);
             if passthrough_body.get("stream").is_some() {
                 if let Some(obj) = passthrough_body.as_object_mut() {
                     obj.remove("stream");
@@ -1823,8 +1829,13 @@ async fn proxy_logic(
 
                     // 6. Handle Response Conversion
                     // Read body to memory to convert
-                    let resp_json: serde_json::Value =
-                        resp.json().await.unwrap_or(serde_json::json!({}));
+                    let resp_json: serde_json::Value = match resp.json().await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!("Failed to parse response JSON from {}: {}", upstream.name, e);
+                            serde_json::json!({})
+                        }
+                    };
 
                     // Extract token usage from non-streaming response for billing
                     {
