@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 pub mod api_client;
 pub mod auth_context;
 pub mod components;

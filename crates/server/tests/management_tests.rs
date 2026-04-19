@@ -14,7 +14,7 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
     sleep(Duration::from_secs(2)).await;
 
     let client = Client::new();
-    let base_url = format!("http://localhost:{}/console/api/channels", port);
+    let base_url = format!("http://localhost:{}/console/api/channel", port);
 
     // 1. Create Channel
     let new_channel = serde_json::json!({

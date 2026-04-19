@@ -9,7 +9,7 @@ async fn test_unified_gateway_routing() -> anyhow::Result<()> {
     tokio::spawn(async move {
         // Set env var just in case, though main.rs parses it or defaults
         // But here we call start_server directly which takes port arg
-        if let Err(_e) = burncloud_server::start_server("127.0.0.1", port, false).await {
+        if let Err(_e) = burncloud_server::start_server("127.0.0.1", port, true).await {
             // Ignore bind errors if already running (it might fail in CI if port is taken)
         }
     });
@@ -25,9 +25,9 @@ async fn test_unified_gateway_routing() -> anyhow::Result<()> {
     assert!(html_text.contains("<!DOCTYPE html>"), "Should return HTML");
     assert!(html_text.contains("BurnCloud"), "Should contain App Title");
 
-    // 2. Test Management API (/console/api/channels)
+    // 2. Test Management API (/console/api/channel)
     let resp_api = client
-        .get(format!("{}/console/api/channels", base_url))
+        .get(format!("{}/console/api/channel", base_url))
         .send()
         .await?;
     assert_eq!(resp_api.status(), 200);

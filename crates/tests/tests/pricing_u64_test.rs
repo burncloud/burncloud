@@ -1,3 +1,4 @@
+#![allow(clippy::expect_used, clippy::disallowed_types)]
 //! Integration tests for u64 nanodollar pricing precision migration
 //!
 //! These tests validate the end-to-end behavior of the pricing system

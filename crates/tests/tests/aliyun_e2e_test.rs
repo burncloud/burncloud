@@ -1,3 +1,4 @@
+#![allow(clippy::expect_used, clippy::disallowed_types)]
 //! Aliyun ECS Bundle Installation E2E Test
 //!
 //! Run with: cargo test -p burncloud-tests --test aliyun_e2e_test -- --ignored

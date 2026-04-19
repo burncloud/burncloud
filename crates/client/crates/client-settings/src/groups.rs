@@ -66,7 +66,7 @@ pub fn GroupManager() -> Element {
         }
 
         if let Ok(resp) = client
-            .get("http://127.0.0.1:3000/console/api/channels")
+            .get("http://127.0.0.1:3000/console/api/channel")
             .send()
             .await
         {

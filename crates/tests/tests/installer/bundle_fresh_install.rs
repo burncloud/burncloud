@@ -1,3 +1,4 @@
+#![allow(clippy::expect_used, clippy::disallowed_types)]
 //! Bundle Fresh Install Test
 //!
 //! This test validates that a bundle can be installed on a completely fresh machine.
