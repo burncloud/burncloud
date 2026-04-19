@@ -104,7 +104,7 @@ impl PricingLoader {
         config: &PricingConfig,
     ) -> Result<Vec<ValidationWarning>, PricingLoaderError> {
         config.validate().map_err(|e| {
-            PricingLoaderError::ValidationError(format!("Configuration validation failed: {}", e))
+            PricingLoaderError::ValidationError(format!("Configuration validation failed: {e}"))
         })
     }
 

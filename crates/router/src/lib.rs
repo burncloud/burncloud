@@ -84,6 +84,11 @@ const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 
 pub use state::AppState;
 
+/// Build a JSON error response body: `{"error": "<message>"}`.
+fn json_error_body(message: impl std::fmt::Display) -> Body {
+    Body::from(serde_json::json!({"error": message.to_string()}).to_string())
+}
+
 /// Record a channel error in both circuit breaker and channel state tracker.
 fn record_upstream_failure(
     state: &AppState,
@@ -506,7 +511,7 @@ async fn usage_handler(State(state): State<AppState>, headers: axum::http::Heade
         ),
         Err(e) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(serde_json::json!({"error": e.to_string()}).to_string()),
+            json_error_body(&e),
         ),
     }
 }
@@ -546,7 +551,7 @@ async fn usage_models_handler(
         ),
         Err(e) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(serde_json::json!({"error": e.to_string()}).to_string()),
+            json_error_body(&e),
         ),
     }
 }

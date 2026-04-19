@@ -135,7 +135,10 @@ impl PriceSyncService {
             http_client: Client::builder()
                 .timeout(std::time::Duration::from_secs(HTTP_CLIENT_TIMEOUT_SECS))
                 .build()
-                .unwrap_or_default(),
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to build HTTP client with timeout, using default: {e}");
+                    Client::new()
+                }),
             config: PriceSyncConfig::default(),
             last_remote_sync: None,
         }
@@ -148,7 +151,10 @@ impl PriceSyncService {
             http_client: Client::builder()
                 .timeout(std::time::Duration::from_secs(HTTP_CLIENT_TIMEOUT_SECS))
                 .build()
-                .unwrap_or_default(),
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to build HTTP client with timeout, using default: {e}");
+                    Client::new()
+                }),
             config,
             last_remote_sync: None,
         }

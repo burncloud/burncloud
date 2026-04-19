@@ -18,3 +18,9 @@ pub fn current_unix_timestamp() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
+
+/// Generate a unique chat completion ID following OpenAI convention.
+#[inline]
+pub fn generate_chat_id() -> String {
+    format!("chatcmpl-{}", uuid::Uuid::new_v4())
+}
