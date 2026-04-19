@@ -1,7 +1,7 @@
 // LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
-use super::current_unix_timestamp;
+use super::{current_unix_timestamp, generate_chat_id};
 use burncloud_common::types::OpenAIChatRequest;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -118,7 +118,7 @@ impl GeminiAdaptor {
             .unwrap_or("");
 
         json!({
-            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+            "id": generate_chat_id(),
             "object": "chat.completion",
             "created": current_unix_timestamp(),
             "model": model,

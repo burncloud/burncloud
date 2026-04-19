@@ -6,7 +6,7 @@
 //! This module provides a dynamic adaptor that can be configured at runtime
 //! through protocol configurations stored in the database.
 
-use crate::adaptor::factory::ChannelAdaptor;
+use crate::adaptor::{factory::ChannelAdaptor, generate_chat_id};
 use crate::adaptor::mapping::{apply_mapping, extract_value, RequestMapping, ResponseMapping};
 use async_trait::async_trait;
 use burncloud_common::types::OpenAIChatRequest;
@@ -138,7 +138,7 @@ impl ChannelAdaptor for DynamicAdaptor {
 
         // Build OpenAI-format response
         Some(serde_json::json!({
-            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+            "id": generate_chat_id(),
             "object": "chat.completion",
             "created": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
