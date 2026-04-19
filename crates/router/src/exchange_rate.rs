@@ -12,6 +12,14 @@ use std::sync::Arc;
 use burncloud_common::{rate_to_scaled, scaled_to_rate, Currency};
 use burncloud_database::{sqlx, Database};
 use chrono::{DateTime, Utc};
+
+/// Background sync check interval (1 hour).
+const SYNC_CHECK_INTERVAL_SECS: u64 = 3600;
+/// Hours after which exchange rates are considered stale and should be refreshed.
+const STALE_THRESHOLD_HOURS: i64 = 24;
+/// Timeout for exchange rate API calls.
+#[cfg(feature = "exchange-api")]
+const API_TIMEOUT_SECS: u64 = 5;
 use dashmap::DashMap;
 
 /// Scale factor for exchange rates (10^9 for 9 decimal precision)
@@ -253,7 +261,7 @@ impl ExchangeRateService {
     /// ```
     pub fn start_sync_task(self: Arc<Self>) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Check hourly
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(SYNC_CHECK_INTERVAL_SECS));
 
             loop {
                 interval.tick().await;
@@ -272,7 +280,7 @@ impl ExchangeRateService {
                 let now = Utc::now();
                 let needs_refresh = self.rates.iter().any(|entry| {
                     let age = now.signed_duration_since(entry.updated_at);
-                    age.num_hours() >= 24
+                    age.num_hours() >= STALE_THRESHOLD_HOURS
                 });
 
                 if needs_refresh {
@@ -295,7 +303,7 @@ impl ExchangeRateService {
     #[cfg(feature = "exchange-api")]
     pub async fn fetch_from_api(&self, api_url: &str) -> anyhow::Result<()> {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(API_TIMEOUT_SECS))
             .build()?;
 
         let response = client.get(api_url).send().await?;

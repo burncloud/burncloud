@@ -54,6 +54,12 @@ use uuid::Uuid;
 /// Video billing: resolution multiplier for 720p Seedance videos.
 const SEEDANCE_RESOLUTION_WEIGHT_HD: i64 = 2;
 const SEEDANCE_RESOLUTION_WEIGHT_SD: i64 = 1;
+/// Default price sync interval (24 hours).
+const DEFAULT_PRICE_SYNC_INTERVAL_SECS: u64 = 86400;
+/// Video task polling timeout (10 minutes).
+const VIDEO_TASK_TIMEOUT_SECS: u64 = 600;
+/// Router log channel buffer capacity.
+const LOG_CHANNEL_BUFFER: usize = 1000;
 
 pub use state::AppState;
 
@@ -227,7 +233,7 @@ pub async fn create_router_app(
     let interval_secs = std::env::var("PRICE_SYNC_INTERVAL_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(86400);
+        .unwrap_or(DEFAULT_PRICE_SYNC_INTERVAL_SECS);
     let (force_sync_tx, force_sync_rx) =
         tokio::sync::mpsc::channel::<tokio::sync::oneshot::Sender<price_sync::SyncResult>>(4);
     price_sync::start_price_sync_task(
@@ -239,7 +245,7 @@ pub async fn create_router_app(
     );
 
     // Setup Async Logging Channel
-    let (log_tx, mut log_rx) = mpsc::channel::<RouterLog>(1000);
+    let (log_tx, mut log_rx) = mpsc::channel::<RouterLog>(LOG_CHANNEL_BUFFER);
     let db_for_logger = db.clone(); // Clone Arc
 
     // Spawn Logging Task
@@ -879,7 +885,7 @@ async fn proxy_handler(
             .client
             .get(&upstream_url)
             .header("Authorization", format!("Bearer {}", channel.key))
-            .timeout(std::time::Duration::from_secs(600))
+            .timeout(std::time::Duration::from_secs(VIDEO_TASK_TIMEOUT_SECS))
             .send()
             .await;
 

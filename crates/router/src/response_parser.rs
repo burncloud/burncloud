@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::circuit_breaker::RateLimitScope;
 
+/// HTTP 429 Too Many Requests status code (as i64 for JSON comparison).
+const HTTP_TOO_MANY_REQUESTS: i64 = 429;
+/// gRPC RESOURCE_EXHAUSTED status code.
+const GRPC_RESOURCE_EXHAUSTED: i64 = 8;
+
 /// Information about rate limits extracted from API response headers.
 ///
 /// Different providers expose rate limit information in different ways,
@@ -280,7 +285,7 @@ pub fn parse_gemini_rate_limit(headers: &HeaderMap, body: Option<&str>) -> RateL
             // Check for RESOURCE_EXHAUSTED error
             if let Some(error) = json.get("error") {
                 if let Some(code) = error.get("code").and_then(|c| c.as_i64()) {
-                    if code == 429 || code == 8 {
+                    if code == HTTP_TOO_MANY_REQUESTS || code == GRPC_RESOURCE_EXHAUSTED {
                         // HTTP 429 or gRPC RESOURCE_EXHAUSTED
                         // Try to extract retry delay from details
                         if let Some(details) = error.get("details").and_then(|d| d.as_array()) {
