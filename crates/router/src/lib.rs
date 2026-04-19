@@ -60,6 +60,12 @@ const DEFAULT_PRICE_SYNC_INTERVAL_SECS: u64 = 86400;
 const VIDEO_TASK_TIMEOUT_SECS: u64 = 600;
 /// Router log channel buffer capacity.
 const LOG_CHANNEL_BUFFER: usize = 1000;
+/// Circuit breaker failure threshold before opening.
+const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 5;
+/// Circuit breaker cooldown duration after opening (seconds).
+const CIRCUIT_BREAKER_COOLDOWN_SECS: u64 = 30;
+/// Timeout for price sync trigger requests (seconds).
+const PRICE_SYNC_TRIGGER_TIMEOUT_SECS: u64 = 60;
 
 pub use state::AppState;
 
@@ -197,7 +203,7 @@ pub async fn create_router_app(
     // Rate limiter: 100 burst, 10 requests/second
     let limiter = Arc::new(RateLimiter::new(100.0, 10.0));
     // Circuit breaker: 5 failure threshold, 30s cooldown
-    let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30));
+    let circuit_breaker = Arc::new(CircuitBreaker::new(CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_COOLDOWN_SECS));
     let model_router = Arc::new(ModelRouter::new(db.clone()));
     // Channel State Tracker for health monitoring
     let channel_state_tracker = Arc::new(ChannelStateTracker::new());
@@ -336,7 +342,7 @@ async fn price_sync_handler(State(state): State<AppState>) -> Response {
             Body::from("Price sync task is not running"),
         );
     }
-    match tokio::time::timeout(std::time::Duration::from_secs(60), reply_rx).await {
+    match tokio::time::timeout(std::time::Duration::from_secs(PRICE_SYNC_TRIGGER_TIMEOUT_SECS), reply_rx).await {
         Ok(Ok(result)) => {
             let body = format!(
                 r#"{{"models_synced":{},"currencies_synced":{},"tiers_synced":{},"errors":{},"source":"{}"}}"#,

@@ -24,6 +24,8 @@ const LATENCY_SCORE_MIDPOINT_MS: f64 = 100.0;
 
 /// Default retry duration when no retry_after is provided (seconds).
 const DEFAULT_RATE_LIMIT_RETRY_SECS: u64 = 60;
+/// Exponential moving average smoothing factor for latency tracking.
+const LATENCY_EMA_ALPHA: f64 = 0.2;
 
 /// Represents the balance status of a channel's account.
 ///
@@ -397,9 +399,8 @@ impl ChannelStateTracker {
         model_state.success_count += 1;
 
         // Update average latency using exponential moving average
-        let alpha = 0.2; // Weight for new value
-        model_state.avg_latency_ms =
-            alpha * latency_ms as f64 + (1.0 - alpha) * model_state.avg_latency_ms;
+        model_state.avg_latency_ms = LATENCY_EMA_ALPHA * latency_ms as f64
+            + (1.0 - LATENCY_EMA_ALPHA) * model_state.avg_latency_ms;
 
         // If the model was temporarily down, restore it to available
         // (successful request indicates the issue is resolved)

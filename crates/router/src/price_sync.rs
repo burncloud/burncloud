@@ -23,6 +23,9 @@ use burncloud_database_models::{
 };
 use burncloud_service_billing::PriceCache;
 
+/// HTTP client timeout for price sync API calls (seconds).
+const HTTP_CLIENT_TIMEOUT_SECS: u64 = 30;
+
 /// Build a PriceInput from an existing Price record, preserving all fields.
 fn price_input_from_existing(existing: &Price) -> PriceInput {
     PriceInput {
@@ -128,7 +131,7 @@ impl PriceSyncService {
         Self {
             db,
             http_client: Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(HTTP_CLIENT_TIMEOUT_SECS))
                 .build()
                 .unwrap_or_default(),
             config: PriceSyncConfig::default(),
@@ -141,7 +144,7 @@ impl PriceSyncService {
         Self {
             db,
             http_client: Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(HTTP_CLIENT_TIMEOUT_SECS))
                 .build()
                 .unwrap_or_default(),
             config,
