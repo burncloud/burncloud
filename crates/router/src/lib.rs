@@ -66,6 +66,19 @@ const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 5;
 const CIRCUIT_BREAKER_COOLDOWN_SECS: u64 = 30;
 /// Timeout for price sync trigger requests (seconds).
 const PRICE_SYNC_TRIGGER_TIMEOUT_SECS: u64 = 60;
+/// Default video duration for Veo billing when not specified in request (seconds).
+const VEO_DEFAULT_DURATION_SECS: i64 = 8;
+/// Default video sample count for Veo billing when not specified in request.
+const VEO_DEFAULT_SAMPLE_COUNT: i64 = 1;
+/// Default video duration for Seedance billing when not specified in request (seconds).
+const SEEDANCE_DEFAULT_DURATION_SECS: i64 = 5;
+/// Default resolution for Seedance billing when not specified in request.
+const SEEDANCE_DEFAULT_RESOLUTION: &str = "720p";
+/// Protocol identifier constants for upstream channels.
+const PROTOCOL_OPENAI: &str = "openai";
+const PROTOCOL_CLAUDE: &str = "claude";
+const PROTOCOL_GEMINI: &str = "gemini";
+const PROTOCOL_ZAI: &str = "zai";
 
 pub use state::AppState;
 
@@ -784,11 +797,11 @@ async fn proxy_handler(
         let dur = v
             .as_ref()
             .and_then(|v| v.get("durationSeconds").and_then(|d| d.as_i64()))
-            .unwrap_or(8);
+            .unwrap_or(VEO_DEFAULT_DURATION_SECS);
         let count = v
             .as_ref()
             .and_then(|v| v.get("sampleCount").and_then(|d| d.as_i64()))
-            .unwrap_or(1);
+            .unwrap_or(VEO_DEFAULT_SAMPLE_COUNT);
         (dur, count)
     };
 
@@ -800,11 +813,11 @@ async fn proxy_handler(
             .as_ref()
             .and_then(|v| v.get("duration").and_then(|d| d.as_i64()))
             .filter(|&d| d > 0) // duration=-1 means model-decided; fall back to default
-            .unwrap_or(5);
+            .unwrap_or(SEEDANCE_DEFAULT_DURATION_SECS);
         let res = v
             .as_ref()
             .and_then(|v| v.get("resolution").and_then(|r| r.as_str()))
-            .unwrap_or("720p")
+            .unwrap_or(SEEDANCE_DEFAULT_RESOLUTION)
             .to_string();
         (dur, res)
     } else {
@@ -1158,13 +1171,13 @@ async fn proxy_logic(
                     for channel in channels {
                         let channel_type = ChannelType::from(channel.type_);
                         let (auth_type, protocol) = match channel_type {
-                            ChannelType::OpenAI => (AuthType::Bearer, "openai".to_string()),
-                            ChannelType::Anthropic => (AuthType::Claude, "claude".to_string()),
+                            ChannelType::OpenAI => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
+                            ChannelType::Anthropic => (AuthType::Claude, PROTOCOL_CLAUDE.to_string()),
                             ChannelType::Gemini | ChannelType::VertexAi => {
-                                (AuthType::GoogleAI, "gemini".to_string())
+                                (AuthType::GoogleAI, PROTOCOL_GEMINI.to_string())
                             }
-                            ChannelType::Zai => (AuthType::Bearer, "zai".to_string()),
-                            _ => (AuthType::Bearer, "openai".to_string()),
+                            ChannelType::Zai => (AuthType::Bearer, PROTOCOL_ZAI.to_string()),
+                            _ => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
                         };
                         let ch_id = channel.id.to_string();
                         candidates.push(Upstream {
@@ -1172,7 +1185,7 @@ async fn proxy_logic(
                             name: channel.name,
                             base_url: channel.base_url.unwrap_or_default(),
                             api_key: channel.key,
-                            match_path: "".to_string(),
+                            match_path: String::new(),
                             auth_type,
                             priority: channel.priority as i32,
                             protocol,

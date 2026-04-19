@@ -25,6 +25,8 @@ use burncloud_service_billing::PriceCache;
 
 /// HTTP client timeout for price sync API calls (seconds).
 const HTTP_CLIENT_TIMEOUT_SECS: u64 = 30;
+/// Default remote price sync interval (seconds).
+const DEFAULT_REMOTE_SYNC_INTERVAL_SECS: u64 = 86400;
 
 /// Build a PriceInput from an existing Price record, preserving all fields.
 fn price_input_from_existing(existing: &Price) -> PriceInput {
@@ -107,7 +109,7 @@ impl Default for PriceSyncConfig {
             remote_url: BURNSCLOUD_PRICES_URL.to_string(),
             remote_url_fallback: Some(BURNSCLOUD_PRICES_URL_GITEE.to_string()),
             remote_sync_enabled: true,
-            remote_sync_interval_secs: 86400, // 24 hours
+            remote_sync_interval_secs: DEFAULT_REMOTE_SYNC_INTERVAL_SECS,
         }
     }
 }
