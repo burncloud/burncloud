@@ -79,6 +79,8 @@ const PROTOCOL_OPENAI: &str = "openai";
 const PROTOCOL_CLAUDE: &str = "claude";
 const PROTOCOL_GEMINI: &str = "gemini";
 const PROTOCOL_ZAI: &str = "zai";
+/// SSE stream termination marker sent to clients.
+const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 
 pub use state::AppState;
 
@@ -337,7 +339,7 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
         }
         Err(e) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(format!("Reload Failed: {}", e)),
+            Body::from(format!("Reload Failed: {e}")),
         ),
     }
 }
@@ -761,7 +763,7 @@ async fn proxy_handler(
         Err(e) => {
             return build_response(
                 StatusCode::BAD_REQUEST,
-                Body::from(format!("Body Read Error: {}", e)),
+                Body::from(format!("Body Read Error: {e}")),
             )
         }
     };
@@ -1241,7 +1243,7 @@ async fn proxy_logic(
                 return (
                     build_response(
                         StatusCode::NOT_FOUND,
-                        Body::from(format!("No matching upstream found for path: {}", path)),
+                        Body::from(format!("No matching upstream found for path: {path}")),
                     ),
                     None,
                     StatusCode::NOT_FOUND,
@@ -1430,7 +1432,7 @@ async fn proxy_logic(
                     let status = resp.status();
 
                     if status.is_server_error() {
-                        last_error = format!("Upstream returned {}", status);
+                        last_error = format!("Upstream returned {status}");
                         record_upstream_failure(
                             &state, upstream, model_name, FailureType::ServerError, &last_error,
                         );
@@ -1501,7 +1503,7 @@ async fn proxy_logic(
                             let resp_bytes = match resp.bytes().await {
                                 Ok(b) => b,
                                 Err(e) => {
-                                    last_error = format!("Failed to read response: {}", e);
+                                    last_error = format!("Failed to read response: {e}");
                                     tracing::warn!("Passthrough: {} response read failed: {}", upstream.name, e);
                                     continue;
                                 }
@@ -1537,7 +1539,7 @@ async fn proxy_logic(
                         let body_bytes = match resp.bytes().await {
                             Ok(b) => b,
                             Err(e) => {
-                                last_error = format!("Failed to read error response: {}", e);
+                                last_error = format!("Failed to read error response: {e}");
                                 return (
                                     build_response(status, Body::from(last_error.clone())),
                                     last_upstream_id,
@@ -1576,7 +1578,7 @@ async fn proxy_logic(
                     }
                 }
                 Err(e) => {
-                    last_error = format!("Network Error: {}", e);
+                    last_error = format!("Network Error: {e}");
                     record_upstream_failure(
                         &state, upstream, model_name, FailureType::Timeout, &last_error,
                     );
@@ -1689,7 +1691,7 @@ async fn proxy_logic(
                 // Handle different response status codes
                 if status.is_server_error() {
                     // 5xx Server Error
-                    last_error = format!("Upstream returned {}", status);
+                    last_error = format!("Upstream returned {status}");
                     record_upstream_failure(
                         &state, upstream, model_name, FailureType::ServerError, &last_error,
                     );
@@ -1741,7 +1743,7 @@ async fn proxy_logic(
                                 Ok(b) => b,
                                 Err(e) => {
                                     last_error =
-                                        format!("Failed to read video gen response: {}", e);
+                                        format!("Failed to read video gen response: {e}");
                                     continue;
                                 }
                             };
@@ -1819,7 +1821,7 @@ async fn proxy_logic(
                         });
 
                         let done = futures::stream::once(async {
-                            Ok(axum::body::Bytes::from("data: [DONE]\n\n"))
+                            Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
                         });
                         let final_stream = stream.chain(done);
 
@@ -1899,7 +1901,7 @@ async fn proxy_logic(
                         Ok(b) => b,
                         Err(e) => {
                             // If we can't read the body, return a simple error
-                            last_error = format!("Failed to read response body: {}", e);
+                            last_error = format!("Failed to read response body: {e}");
                             return (
                                 build_response(status, Body::from(last_error.clone())),
                                 last_upstream_id,
@@ -2005,7 +2007,7 @@ async fn proxy_logic(
                 }
             }
             Err(e) => {
-                last_error = format!("Network Error: {}", e);
+                last_error = format!("Network Error: {e}");
                 record_upstream_failure(
                     &state, upstream, model_name, FailureType::Timeout, &last_error,
                 );
@@ -2021,7 +2023,7 @@ async fn proxy_logic(
     (
         build_response(
             StatusCode::BAD_GATEWAY,
-            Body::from(format!("All upstreams failed. Last error: {}", last_error)),
+            Body::from(format!("All upstreams failed. Last error: {last_error}")),
         ),
         None,
         StatusCode::BAD_GATEWAY,

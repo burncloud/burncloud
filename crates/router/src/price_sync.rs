@@ -615,7 +615,7 @@ impl PriceSyncService {
                         "Imported tier for model {} ({}-{} tokens): ${:.4}/${:.4} per 1M",
                         tier.model,
                         tier.tier_start,
-                        tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e)),
+                        tier.tier_end.map_or("∞".to_string(), |e| format!("{e}")),
                         tier.input_price,
                         tier.output_price
                     );

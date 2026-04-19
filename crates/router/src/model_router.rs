@@ -122,7 +122,7 @@ impl ModelRouter {
             .iter()
             .map(|_| if is_postgres { "$" } else { "?" })
             .enumerate()
-            .map(|(i, prefix)| format!("{}{}", prefix, i + 1))
+            .map(|(i, prefix)| format!("{prefix}{}", i + 1))
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -190,7 +190,7 @@ impl ModelRouter {
         let candidates = self.get_candidates(group, model).await.map_err(|e| {
             NoAvailableChannelsError {
                 model: model.to_string(),
-                reason: format!("Database error: {}", e),
+                reason: format!("Database error: {e}"),
             }
         })?;
 

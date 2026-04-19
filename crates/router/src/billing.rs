@@ -152,7 +152,7 @@ fn format_cost_nano(amount_nano: i64, currency: &str) -> String {
         "EUR" => "€",
         _ => "",
     };
-    format!("{}{:.6}", symbol, amount)
+    format!("{symbol}{amount:.6}")
 }
 
 /// Multi-currency pricing information
