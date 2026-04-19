@@ -898,7 +898,7 @@ async fn proxy_handler(
         };
 
         let base_url = channel.base_url.unwrap_or_default();
-        let upstream_url = format!("{}/v1/videos/{}", base_url.trim_end_matches('/'), task_id);
+        let upstream_url = format!("{}/v1/videos/{task_id}", base_url.trim_end_matches('/'));
 
         let upstream_resp = state
             .client
@@ -1335,7 +1335,7 @@ async fn proxy_logic(
         // 2. Construct Target URL
         // Note: Some adaptors might override URL, but we set base here.
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
-        let target_url = format!("{}{}{}", upstream.base_url, path, query);
+        let target_url = format!("{}{path}{query}", upstream.base_url);
 
         tracing::debug!(
             "Proxying {} -> {} (via {}) [Attempt {}] Protocol: {}",
@@ -1396,7 +1396,7 @@ async fn proxy_logic(
                 } else {
                     "?"
                 };
-                format!("{}{}alt=sse", passthrough_url, separator)
+                format!("{passthrough_url}{separator}alt=sse")
             } else {
                 passthrough_url.clone()
             };
@@ -1456,7 +1456,7 @@ async fn proxy_logic(
                         if is_stream {
                             // Stream passthrough - directly forward Gemini SSE format
                             let body_stream = resp.bytes_stream();
-                            let counter_clone = token_counter.clone();
+                            let counter_clone = Arc::clone(&token_counter);
 
                             let parser = get_parser(channel_type);
                             let stream = body_stream.map(move |chunk_result| match chunk_result {
@@ -1788,8 +1788,8 @@ async fn proxy_logic(
                     // Handle Streaming for non-OpenAI
                     if is_stream {
                         let body_stream = resp.bytes_stream();
-                        let adaptor_clone = adaptor.clone();
-                        let counter_clone = token_counter.clone();
+                        let adaptor_clone = Arc::clone(&adaptor);
+                        let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
 
                         let stream = body_stream.map(move |chunk_result| match chunk_result {

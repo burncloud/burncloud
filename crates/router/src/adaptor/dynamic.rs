@@ -63,7 +63,7 @@ impl DynamicAdaptor {
         let endpoint = endpoint.replace("{model}", model);
 
         // Combine with base URL
-        format!("{}{}", base_url.trim_end_matches('/'), endpoint)
+        format!("{}{endpoint}", base_url.trim_end_matches('/'))
     }
 
     /// Parse request mapping from JSON string
