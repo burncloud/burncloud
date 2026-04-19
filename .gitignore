@@ -68,9 +68,9 @@ test-results
 # Download test
 *.iso
 *.aria2
-download
-downloads
-data
+/download
+/downloads
+/data
 
 # IDEs
 .claude
