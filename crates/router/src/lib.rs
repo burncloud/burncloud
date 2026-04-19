@@ -51,6 +51,10 @@ use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
+/// Video billing: resolution multiplier for 720p Seedance videos.
+const SEEDANCE_RESOLUTION_WEIGHT_HD: i64 = 2;
+const SEEDANCE_RESOLUTION_WEIGHT_SD: i64 = 1;
+
 pub use state::AppState;
 
 /// Record a channel error in both circuit breaker and channel state tracker.
@@ -960,7 +964,7 @@ async fn proxy_handler(
     let usage = inject_video_tokens_if_empty(final_status, usage, veo_tokens, "veo");
 
     // Seedance request-side billing: inject video_tokens from duration × resolution_weight
-    let resolution_weight: i64 = if seedance_resolution == "720p" { 2 } else { 1 };
+    let resolution_weight: i64 = if seedance_resolution == "720p" { SEEDANCE_RESOLUTION_WEIGHT_HD } else { SEEDANCE_RESOLUTION_WEIGHT_SD };
     let seedance_tokens = seedance_duration_secs * resolution_weight;
     let usage = inject_video_tokens_if_empty(final_status, usage, seedance_tokens, "seedance");
 
@@ -1520,7 +1524,7 @@ async fn proxy_logic(
                         };
 
                         // Record rate limit errors
-                        if status.as_u16() == 429 {
+                        if status == StatusCode::TOO_MANY_REQUESTS {
                             record_upstream_failure(
                                 &state, upstream, model_name,
                                 FailureType::RateLimited {
@@ -1866,7 +1870,6 @@ async fn proxy_logic(
                     );
                 } else {
                     // Handle non-success responses (4xx errors)
-                    let status_code = status.as_u16();
                     let body_bytes = match resp.bytes().await {
                         Ok(b) => b,
                         Err(e) => {
@@ -1888,10 +1891,10 @@ async fn proxy_logic(
                     let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
 
                     // Determine failure type based on status code
-                    let failure_type = match status_code {
-                        401 => FailureType::AuthFailed,
-                        402 => FailureType::PaymentRequired,
-                        429 => {
+                    let failure_type = match status {
+                        StatusCode::UNAUTHORIZED => FailureType::AuthFailed,
+                        StatusCode::PAYMENT_REQUIRED => FailureType::PaymentRequired,
+                        StatusCode::TOO_MANY_REQUESTS => {
                             let retry_after = resp_headers
                                 .get("retry-after")
                                 .and_then(|v| v.to_str().ok())
@@ -1901,13 +1904,13 @@ async fn proxy_logic(
                                 .unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
                             FailureType::RateLimited { scope, retry_after }
                         }
-                        404 => FailureType::ModelNotFound,
+                        StatusCode::NOT_FOUND => FailureType::ModelNotFound,
                         _ => FailureType::ServerError,
                     };
 
                     // Auth/payment failures affect entire channel (model_name=None)
-                    let error_model = match status_code {
-                        401 | 402 => None,
+                    let error_model = match status {
+                        StatusCode::UNAUTHORIZED | StatusCode::PAYMENT_REQUIRED => None,
                         _ => model_name,
                     };
 
@@ -1916,7 +1919,7 @@ async fn proxy_logic(
                     );
 
                     // 429: try next ranked candidate (scheduler provides alternatives)
-                    if status_code == 429 {
+                    if status == StatusCode::TOO_MANY_REQUESTS {
                         tracing::warn!(
                             "Upstream {} rate limited, trying next candidate",
                             upstream.name
@@ -1959,7 +1962,7 @@ async fn proxy_logic(
                     // Log the error
                     tracing::warn!(
                         "Upstream {} returned {}: {}",
-                        upstream.name, status_code, error_message
+                        upstream.name, status.as_u16(), error_message
                     );
 
                     return (

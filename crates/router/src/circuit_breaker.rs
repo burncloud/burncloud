@@ -63,6 +63,9 @@ impl Default for UpstreamState {
     }
 }
 
+/// Default retry duration when no retry_after header is provided.
+const DEFAULT_RATE_LIMIT_RETRY_SECS: u64 = 60;
+
 pub struct CircuitBreaker {
     states: DashMap<String, UpstreamState>,
     failure_threshold: u32,
@@ -152,7 +155,7 @@ impl CircuitBreaker {
                 // Set rate limit expiry time
                 let duration = retry_after
                     .map(Duration::from_secs)
-                    .unwrap_or(Duration::from_secs(60));
+                    .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
                 entry.rate_limit_until = Some(Instant::now() + duration);
 
                 // Also increment failure count for rate limits
