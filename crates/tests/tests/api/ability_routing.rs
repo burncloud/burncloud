@@ -87,6 +87,7 @@ async fn mock_chat_handler(req: Request<Body>) -> Json<serde_json::Value> {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (running server)"]
 async fn test_ability_routing_and_passthrough() {
     // 1. Setup
     let app_url = common_mod::spawn_app().await;

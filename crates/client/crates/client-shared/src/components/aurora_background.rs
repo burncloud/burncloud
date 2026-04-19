@@ -25,7 +25,7 @@ pub enum AuroraVariant {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// rsx! {
 ///     AuroraBackground {
 ///         variant: AuroraVariant::DeepSpace,

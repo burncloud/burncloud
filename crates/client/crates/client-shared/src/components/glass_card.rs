@@ -27,12 +27,12 @@ pub enum GlassVariant {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// rsx! {
 ///     GlassCard {
 ///         variant: GlassVariant::Light,
 ///         class: "p-10 max-w-md",
-///         
+///
 ///         h1 { "Welcome" }
 ///         p { "This is inside a glass card" }
 ///     }
@@ -94,7 +94,7 @@ pub fn GlassCard(
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// rsx! {
 ///     ZenContainer {
 ///         GlassCard {

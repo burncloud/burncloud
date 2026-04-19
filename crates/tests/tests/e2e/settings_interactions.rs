@@ -2,6 +2,7 @@
 use super::*;
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_language_switch() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -41,6 +42,7 @@ async fn test_language_switch() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_tab_switching() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;

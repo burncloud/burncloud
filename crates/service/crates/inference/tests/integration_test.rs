@@ -7,6 +7,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 #[tokio::test]
+#[ignore = "requires mock_server.bat (Windows-only mock)"]
 async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
     // 1. 设置测试环境
     // 指向我们的 mock_server.bat

@@ -2,6 +2,7 @@
 use super::*;
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_login_success() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -11,6 +12,7 @@ async fn test_login_success() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_login_invalid_credentials() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -55,6 +57,7 @@ async fn test_login_invalid_credentials() {
 /// Verify the dashboard loads and shows the sidebar navigation.
 /// TODO: Add logout test once logout button is implemented in the UI.
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_dashboard_after_login() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;

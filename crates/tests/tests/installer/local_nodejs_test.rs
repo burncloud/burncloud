@@ -26,6 +26,7 @@ fn cli_binary_path() -> PathBuf {
 
 /// Test 1: Build the CLI
 #[test]
+#[ignore = "requires node.js"]
 fn test_build_cli() {
     println!("=== Building CLI ===");
 
@@ -45,6 +46,7 @@ fn test_build_cli() {
 
 /// Test 2: Create bundle for openclaw
 #[test]
+#[ignore = "requires node.js"]
 fn test_create_bundle() {
     // First ensure CLI is built
     let build_output = Command::new("cargo")
@@ -109,6 +111,7 @@ fn test_create_bundle() {
 
 /// Test 3: Run installation locally with verbose logging
 #[test]
+#[ignore = "requires node.js"]
 fn test_local_install_verbose() {
     // First create bundle
     let bundle_dir = project_root().join("test").join("bundle-output");
@@ -148,6 +151,7 @@ fn test_local_install_verbose() {
 
 /// Test 4: Check if Node.js is accessible
 #[test]
+#[ignore = "requires node.js"]
 fn test_check_nodejs() {
     println!("=== Checking Node.js Installation ===");
 
@@ -196,6 +200,7 @@ fn test_check_nodejs() {
 /// Test 5: Simulate remote installation behavior (without bundle)
 /// This should reveal why remote installation takes 1 hour
 #[test]
+#[ignore = "requires node.js"]
 fn test_remote_install_simulation() {
     println!("=== Simulating Remote Installation (No Bundle) ===");
 

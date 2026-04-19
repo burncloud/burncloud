@@ -2,6 +2,7 @@
 use super::*;
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_sidebar_navigation() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -32,6 +33,7 @@ async fn test_sidebar_navigation() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_sidebar_active_state() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -51,6 +53,7 @@ async fn test_sidebar_active_state() {
 /// Note: Front-end route guard is not yet implemented, so the page
 /// renders even without auth. This test verifies the page at least loads.
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_console_page_loads_without_auth() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;

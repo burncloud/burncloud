@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::common as common_mod;
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (running server)"]
 async fn test_channel_lifecycle() {
     let base_url = common_mod::spawn_app().await;
     let client = TestClient::new(&base_url).with_token(&common_mod::get_root_token());

@@ -1439,7 +1439,7 @@ async fn proxy_logic(
                     if status.is_server_error() {
                         last_error = format!("Upstream returned {status}");
                         record_upstream_failure(
-                            &state, upstream, model_name, FailureType::ServerError, &last_error,
+                            state, upstream, model_name, FailureType::ServerError, &last_error,
                         );
                         continue;
                     }
@@ -1558,7 +1558,7 @@ async fn proxy_logic(
                         // Record rate limit errors
                         if status == StatusCode::TOO_MANY_REQUESTS {
                             record_upstream_failure(
-                                &state, upstream, model_name,
+                                state, upstream, model_name,
                                 FailureType::RateLimited {
                                     scope: circuit_breaker::RateLimitScope::Unknown,
                                     retry_after: None,
@@ -1585,7 +1585,7 @@ async fn proxy_logic(
                 Err(e) => {
                     last_error = format!("Network Error: {e}");
                     record_upstream_failure(
-                        &state, upstream, model_name, FailureType::Timeout, &last_error,
+                        state, upstream, model_name, FailureType::Timeout, &last_error,
                     );
                     tracing::warn!(
                         "Failover: {} network error: {}, trying next...",
@@ -1698,7 +1698,7 @@ async fn proxy_logic(
                     // 5xx Server Error
                     last_error = format!("Upstream returned {status}");
                     record_upstream_failure(
-                        &state, upstream, model_name, FailureType::ServerError, &last_error,
+                        state, upstream, model_name, FailureType::ServerError, &last_error,
                     );
                     continue;
                 }
@@ -1947,7 +1947,7 @@ async fn proxy_logic(
                     };
 
                     record_upstream_failure(
-                        &state, upstream, error_model, failure_type, error_message,
+                        state, upstream, error_model, failure_type, error_message,
                     );
 
                     // 429: try next ranked candidate (scheduler provides alternatives)
@@ -2014,7 +2014,7 @@ async fn proxy_logic(
             Err(e) => {
                 last_error = format!("Network Error: {e}");
                 record_upstream_failure(
-                    &state, upstream, model_name, FailureType::Timeout, &last_error,
+                    state, upstream, model_name, FailureType::Timeout, &last_error,
                 );
                 tracing::warn!(
                     "Failover: {} failed with {}, trying next...",

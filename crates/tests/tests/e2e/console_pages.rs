@@ -2,6 +2,7 @@
 use super::*;
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_dashboard_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -14,6 +15,7 @@ async fn test_dashboard_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_models_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -28,6 +30,7 @@ async fn test_models_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_access_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -42,6 +45,7 @@ async fn test_access_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_deploy_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -56,6 +60,7 @@ async fn test_deploy_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_monitor_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -70,6 +75,7 @@ async fn test_monitor_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_logs_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -82,6 +88,7 @@ async fn test_logs_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_users_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -96,6 +103,7 @@ async fn test_users_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_settings_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -110,6 +118,7 @@ async fn test_settings_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_billing_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -124,6 +133,7 @@ async fn test_billing_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_connect_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -138,6 +148,7 @@ async fn test_connect_page_loads() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_playground_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
