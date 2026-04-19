@@ -156,19 +156,20 @@ impl ChannelState {
     }
 
     /// Get or create a ModelState for the given model name.
-    /// Avoids double String allocation by using get_mut() first.
+    /// Uses entry API: single hash lookup for both existing and new entries.
     fn get_or_create_model(
         &mut self,
         model_name: &str,
         channel_id: i32,
     ) -> &mut ModelState {
-        if !self.models.contains_key(model_name) {
-            self.models.insert(
-                model_name.to_string(),
-                ModelState::new(model_name.to_string(), channel_id),
-            );
+        use std::collections::hash_map::Entry;
+        match self.models.entry(model_name.to_string()) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => {
+                let key = e.key().clone();
+                e.insert(ModelState::new(key, channel_id))
+            }
         }
-        self.models.get_mut(model_name).unwrap()
     }
 }
 

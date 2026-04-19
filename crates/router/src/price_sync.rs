@@ -16,11 +16,46 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use burncloud_common::PricingConfig;
+use burncloud_common::types::Price;
 use burncloud_database::{sqlx, Database};
 use burncloud_database_models::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
 };
 use burncloud_service_billing::PriceCache;
+
+/// Build a PriceInput from an existing Price record, preserving all fields.
+fn price_input_from_existing(existing: &Price) -> PriceInput {
+    PriceInput {
+        model: existing.model.clone(),
+        currency: existing.currency.clone(),
+        input_price: existing.input_price,
+        output_price: existing.output_price,
+        cache_read_input_price: existing.cache_read_input_price,
+        cache_creation_input_price: existing.cache_creation_input_price,
+        batch_input_price: existing.batch_input_price,
+        batch_output_price: existing.batch_output_price,
+        priority_input_price: existing.priority_input_price,
+        priority_output_price: existing.priority_output_price,
+        audio_input_price: existing.audio_input_price,
+        audio_output_price: existing.audio_output_price,
+        reasoning_price: existing.reasoning_price,
+        embedding_price: existing.embedding_price,
+        image_price: existing.image_price,
+        video_price: existing.video_price,
+        music_price: existing.music_price,
+        source: existing.source.clone(),
+        region: existing.region.clone(),
+        context_window: existing.context_window,
+        max_output_tokens: existing.max_output_tokens,
+        supports_vision: existing.supports_vision_bool(),
+        supports_function_calling: existing.supports_function_calling_bool(),
+        voices_pricing: existing.voices_pricing.clone(),
+        video_pricing: existing.video_pricing.clone(),
+        asr_pricing: existing.asr_pricing.clone(),
+        realtime_pricing: existing.realtime_pricing.clone(),
+        model_type: existing.model_type.clone(),
+    }
+}
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 
@@ -403,36 +438,9 @@ impl PriceSyncService {
                         existing.cache_creation_input_price =
                             cache_config.cache_creation_input_price;
 
-                        let update_input = PriceInput {
-                            model: existing.model.clone(),
-                            currency: existing.currency.clone(),
-                            input_price: existing.input_price,
-                            output_price: existing.output_price,
-                            cache_read_input_price: Some(cache_config.cache_read_input_price),
-                            cache_creation_input_price: cache_config.cache_creation_input_price,
-                            batch_input_price: existing.batch_input_price,
-                            batch_output_price: existing.batch_output_price,
-                            priority_input_price: existing.priority_input_price,
-                            priority_output_price: existing.priority_output_price,
-                            audio_input_price: existing.audio_input_price,
-                            audio_output_price: existing.audio_output_price,
-                            reasoning_price: existing.reasoning_price,
-                            embedding_price: existing.embedding_price,
-                            image_price: existing.image_price,
-                            video_price: existing.video_price,
-                            music_price: existing.music_price,
-                            source: existing.source.clone(),
-                            region: existing.region.clone(),
-                            context_window: existing.context_window,
-                            max_output_tokens: existing.max_output_tokens,
-                            supports_vision: existing.supports_vision_bool(),
-                            supports_function_calling: existing.supports_function_calling_bool(),
-                            voices_pricing: existing.voices_pricing.clone(),
-                            video_pricing: existing.video_pricing.clone(),
-                            asr_pricing: existing.asr_pricing.clone(),
-                            realtime_pricing: existing.realtime_pricing.clone(),
-                            model_type: existing.model_type.clone(),
-                        };
+                        let mut update_input = price_input_from_existing(&existing);
+                        update_input.cache_read_input_price = Some(cache_config.cache_read_input_price);
+                        update_input.cache_creation_input_price = cache_config.cache_creation_input_price;
 
                         if let Err(e) = BillingPriceModel::upsert(&self.db, &update_input).await {
                             tracing::error!(
@@ -454,36 +462,9 @@ impl PriceSyncService {
                         existing.batch_input_price = Some(batch_config.batch_input_price);
                         existing.batch_output_price = Some(batch_config.batch_output_price);
 
-                        let update_input = PriceInput {
-                            model: existing.model.clone(),
-                            currency: existing.currency.clone(),
-                            input_price: existing.input_price,
-                            output_price: existing.output_price,
-                            cache_read_input_price: existing.cache_read_input_price,
-                            cache_creation_input_price: existing.cache_creation_input_price,
-                            batch_input_price: Some(batch_config.batch_input_price),
-                            batch_output_price: Some(batch_config.batch_output_price),
-                            priority_input_price: existing.priority_input_price,
-                            priority_output_price: existing.priority_output_price,
-                            audio_input_price: existing.audio_input_price,
-                            audio_output_price: existing.audio_output_price,
-                            reasoning_price: existing.reasoning_price,
-                            embedding_price: existing.embedding_price,
-                            image_price: existing.image_price,
-                            video_price: existing.video_price,
-                            music_price: existing.music_price,
-                            source: existing.source.clone(),
-                            region: existing.region.clone(),
-                            context_window: existing.context_window,
-                            max_output_tokens: existing.max_output_tokens,
-                            supports_vision: existing.supports_vision_bool(),
-                            supports_function_calling: existing.supports_function_calling_bool(),
-                            voices_pricing: existing.voices_pricing.clone(),
-                            video_pricing: existing.video_pricing.clone(),
-                            asr_pricing: existing.asr_pricing.clone(),
-                            realtime_pricing: existing.realtime_pricing.clone(),
-                            model_type: existing.model_type.clone(),
-                        };
+                        let mut update_input = price_input_from_existing(&existing);
+                        update_input.batch_input_price = Some(batch_config.batch_input_price);
+                        update_input.batch_output_price = Some(batch_config.batch_output_price);
 
                         if let Err(e) = BillingPriceModel::upsert(&self.db, &update_input).await {
                             tracing::error!(
