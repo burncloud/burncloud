@@ -22,6 +22,9 @@ const PENALTY_MODEL_NOT_FOUND: f64 = 0.0;
 const PENALTY_TEMPORARILY_DOWN: f64 = 0.2;
 const LATENCY_SCORE_MIDPOINT_MS: f64 = 100.0;
 
+/// Default retry duration when no retry_after is provided (seconds).
+const DEFAULT_RATE_LIMIT_RETRY_SECS: u64 = 60;
+
 /// Represents the balance status of a channel's account.
 ///
 /// This is used to track whether the channel has sufficient quota/credits
@@ -150,6 +153,22 @@ impl ChannelState {
             account_rate_limit_until: None,
             models: HashMap::new(),
         }
+    }
+
+    /// Get or create a ModelState for the given model name.
+    /// Avoids double String allocation by using get_mut() first.
+    fn get_or_create_model(
+        &mut self,
+        model_name: &str,
+        channel_id: i32,
+    ) -> &mut ModelState {
+        if !self.models.contains_key(model_name) {
+            self.models.insert(
+                model_name.to_string(),
+                ModelState::new(model_name.to_string(), channel_id),
+            );
+        }
+        self.models.get_mut(model_name).unwrap()
     }
 }
 
@@ -288,7 +307,7 @@ impl ChannelStateTracker {
             FailureType::RateLimited { scope, retry_after } => {
                 let retry_after_duration = retry_after
                     .map(Duration::from_secs)
-                    .unwrap_or(Duration::from_secs(60)); // Default 60s if not specified
+                    .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
 
                 let retry_until = now + retry_after_duration;
 
@@ -298,12 +317,7 @@ impl ChannelStateTracker {
                     }
                     RateLimitScope::Model => {
                         if let Some(model_name) = model {
-                            let model_state = channel_state
-                                .models
-                                .entry(model_name.to_string())
-                                .or_insert_with(|| {
-                                    ModelState::new(model_name.to_string(), channel_id)
-                                });
+                            let model_state = channel_state.get_or_create_model(model_name, channel_id);
                             model_state.status = ModelStatus::RateLimited;
                             model_state.rate_limit_until = Some(retry_until);
                             model_state.last_error = Some(error_message.to_string());
@@ -318,12 +332,7 @@ impl ChannelStateTracker {
                         channel_state.account_rate_limit_until = Some(retry_until);
                         // Also update model-level adaptive limiter if model is specified
                         if let Some(model_name) = model {
-                            let model_state = channel_state
-                                .models
-                                .entry(model_name.to_string())
-                                .or_insert_with(|| {
-                                    ModelState::new(model_name.to_string(), channel_id)
-                                });
+                            let model_state = channel_state.get_or_create_model(model_name, channel_id);
                             model_state.adaptive_limit.on_rate_limited(*retry_after);
                         }
                     }
@@ -331,10 +340,7 @@ impl ChannelStateTracker {
             }
             FailureType::ModelNotFound => {
                 if let Some(model_name) = model {
-                    let model_state = channel_state
-                        .models
-                        .entry(model_name.to_string())
-                        .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
+                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
                     model_state.status = ModelStatus::ModelNotFound;
                     model_state.last_error = Some(error_message.to_string());
                     model_state.last_error_time = Some(now);
@@ -344,10 +350,7 @@ impl ChannelStateTracker {
             FailureType::ServerError | FailureType::Timeout => {
                 // These are transient errors, just update the model state if available
                 if let Some(model_name) = model {
-                    let model_state = channel_state
-                        .models
-                        .entry(model_name.to_string())
-                        .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
+                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
                     model_state.status = ModelStatus::TemporarilyDown;
                     model_state.last_error = Some(error_message.to_string());
                     model_state.last_error_time = Some(now);
@@ -387,10 +390,7 @@ impl ChannelStateTracker {
         };
 
         // Update model state
-        let model_state = channel_state
-            .models
-            .entry(model_name.to_string())
-            .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
+        let model_state = channel_state.get_or_create_model(model_name, channel_id);
 
         // Update success count
         model_state.success_count += 1;
