@@ -10,6 +10,9 @@ use super::current_unix_timestamp;
 use burncloud_common::types::OpenAIChatRequest;
 use serde_json::{json, Value};
 
+/// SSE stream termination marker.
+const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
+
 pub struct ZaiAdaptor;
 
 impl ZaiAdaptor {
@@ -121,14 +124,14 @@ impl ZaiAdaptor {
             // Process data lines
             if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
-                    return Some("data: [DONE]\n\n".to_string());
+                    return Some(SSE_DONE_MARKER.to_string());
                 }
 
                 // Check if this is a stop event based on event: line or data content
                 if current_event == Some("message_stop")
                     || current_event == Some("content_block_stop")
                 {
-                    return Some("data: [DONE]\n\n".to_string());
+                    return Some(SSE_DONE_MARKER.to_string());
                 }
 
                 if let Ok(json) = serde_json::from_str::<Value>(data) {
@@ -161,7 +164,7 @@ impl ZaiAdaptor {
                                 ));
                             }
                             "message_stop" | "content_block_stop" => {
-                                return Some("data: [DONE]\n\n".to_string());
+                                return Some(SSE_DONE_MARKER.to_string());
                             }
                             // Skip other event types (message_start, content_block_start, etc.)
                             _ => {}
@@ -287,7 +290,7 @@ mod tests {
         let chunk = "event: message_stop\ndata: {}\n";
         let result = ZaiAdaptor::convert_stream_chunk(chunk, "glm-5");
 
-        assert_eq!(result, Some("data: [DONE]\n\n".to_string()));
+        assert_eq!(result, Some(SSE_DONE_MARKER.to_string()));
     }
 
     #[test]
