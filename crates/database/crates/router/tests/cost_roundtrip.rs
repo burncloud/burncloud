@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 /// Integration tests for RouterLog per-type cost and token round-trip.
 ///
 /// These tests guard against two failure modes:

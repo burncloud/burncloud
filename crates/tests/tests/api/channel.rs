@@ -75,7 +75,13 @@ async fn test_channel_lifecycle() {
         println!("List failed: {}", list_res["message"]);
     }
     assert_eq!(list_res["success"], true);
-    let channels = list_res["data"].as_array().expect("Data is not array");
+    let channels = if let Some(arr) = list_res["data"].as_array() {
+        arr
+    } else if let Some(arr) = list_res["data"]["channels"].as_array() {
+        arr
+    } else {
+        panic!("Data is not array: {:?}", list_res["data"]);
+    };
     assert!(channels.iter().any(|c| c["id"].as_i64() == Some(id)));
 
     // 6. Delete

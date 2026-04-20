@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
 /// Internal tests for `database-group` — RouterGroupModel, RouterGroupMemberModel, RouterGroupRepository.
 ///
 /// All tests run against an isolated SQLite temp-file database so they do not

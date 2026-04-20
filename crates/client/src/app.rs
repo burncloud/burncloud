@@ -86,37 +86,21 @@ pub fn launch_gui() {
 pub fn launch_gui_with_tray() {
     use dioxus::desktop::{Config, WindowBuilder};
 
-    // Load the application icon from the embedded ICO file
-    let icon = {
-        let icon_bytes = include_bytes!("../assets/favicon.ico");
-        let mut cursor = std::io::Cursor::new(icon_bytes);
-        match image::ImageReader::with_format(
-            std::io::BufReader::new(&mut cursor),
-            image::ImageFormat::Ico,
-        )
-        .decode()
-        {
-            Ok(img) => {
-                let rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                dioxus::desktop::tao::window::Icon::from_rgba(rgba.into_raw(), w, h).ok()
-            }
-            Err(e) => {
-                eprintln!("Warning: Failed to decode application icon: {e}");
-                None
-            }
-        }
-    };
-
-    let mut window = WindowBuilder::new()
-        .with_title("BurnCloud - AI Local Deployment Platform")
+    let window = WindowBuilder::new()
+        .with_title("BurnCloud - AI Local Deployment Platform") // Changed to English/Bilingual
         .with_inner_size(dioxus::desktop::LogicalSize::new(1200.0, 800.0))
         .with_resizable(true)
         .with_decorations(false);
 
-    if let Some(icon) = icon {
-        window = window.with_window_icon(Some(icon));
-    }
+    // Load window icon from embedded multi-resolution ICO resource (set via winres in build.rs)
+    #[cfg(target_os = "windows")]
+    let window = {
+        use dioxus::desktop::tao::platform::windows::IconExtWindows;
+        match dioxus::desktop::tao::window::Icon::from_resource(1, None) {
+            Ok(icon) => window.with_window_icon(Some(icon)),
+            Err(_) => window,
+        }
+    };
 
     // Use a specific data directory in temp to avoid permission issues or path conflicts
     let data_dir = std::env::temp_dir().join("burncloud_webview_data");

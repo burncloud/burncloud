@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use burncloud_service_upstream::{UpstreamService, RouterUpstream};
+use burncloud_service_upstream::{RouterUpstream, UpstreamService};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -16,7 +16,9 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/console/api/upstreams/{id}",
-            get(get_upstream).put(update_upstream).delete(delete_upstream),
+            get(get_upstream)
+                .put(update_upstream)
+                .delete(delete_upstream),
         )
 }
 
@@ -37,10 +39,7 @@ async fn create_upstream(
     }
 }
 
-async fn get_upstream(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn get_upstream(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     match UpstreamService::get(&state.db, &id).await {
         Ok(Some(u)) => ok(u).into_response(),
         Ok(None) => err("Not Found").into_response(),

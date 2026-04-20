@@ -111,12 +111,13 @@ async fn test_user_flow() {
     // 5. Topup
     let topup_body = json!({
         "user_id": user_id,
-        "amount": 100.0
+        "amount": 100_000_000_000i64 // 100 dollars in nanodollars
     });
     let topup_res = client
         .post("/console/api/user/topup", &topup_body)
         .await
         .expect("Topup failed");
     assert_eq!(topup_res["success"], true);
-    assert_eq!(topup_res["data"]["balance"], 110.0); // 10 (signup) + 100
+    // 10 (signup bonus) + 100 = 110 dollars in nanodollars
+    assert_eq!(topup_res["data"]["balance"], 110_000_000_000i64);
 }

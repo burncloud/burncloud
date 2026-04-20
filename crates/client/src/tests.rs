@@ -1,5 +1,6 @@
 #[cfg(test)]
-mod client_tests {
+#[allow(clippy::module_inception)]
+mod tests {
     use crate::app::App;
     use dioxus::prelude::*;
 

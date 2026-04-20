@@ -1,4 +1,15 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::let_unit_value,
+    clippy::redundant_pattern,
+    clippy::manual_is_multiple_of,
+    clippy::let_and_return,
+    clippy::to_string_trait_impl,
+    clippy::to_string_in_format_args,
+    clippy::redundant_pattern_matching
+)]
 //! Aliyun ECS API Client
 //!
 //! Direct HTTP API calls to Aliyun ECS without external CLI dependency
@@ -148,10 +159,7 @@ impl AliyunECS {
         let key = format!("{}&", self.config.access_key_secret);
         let mut mac = HmacSha1::new_from_slice(key.as_bytes()).expect("HMAC key creation failed");
         mac.update(string_to_sign.as_bytes());
-        let signature =
-            base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
-
-        signature
+        base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes())
     }
 
     /// Call ECS API

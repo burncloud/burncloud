@@ -6,6 +6,7 @@ use crate::components::{
 };
 use crate::use_toast;
 use dioxus::prelude::*;
+#[allow(clippy::disallowed_types)]
 use serde_json::{json, Value};
 
 /// 通用的 CRUD 页面容器

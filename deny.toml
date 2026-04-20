@@ -118,14 +118,13 @@ skip-tree = [
 ]
 
 # burncloud-database-models — domain model types (channels, upstreams, etc.)
-# Legitimate direct users: service-billing, service-channel, service-models,
+# Legitimate direct users: service-billing, service-channel,
 #                          cli (admin commands), router (request routing)
 [[bans.deny]]
 crate = "burncloud-database-models"
 wrappers = [
     "burncloud-service-billing",
     "burncloud-service-channel",
-    "burncloud-service-models",
     "burncloud-cli",
     "burncloud-router",
 ]
@@ -152,6 +151,8 @@ wrappers = [
 reason = "Token DB access must go through burncloud-service-token"
 
 # burncloud-database-upstream — upstream channel table
+# burncloud-database-router aggregates domain DB crates; it is an allowed
+# server dep for schema migration.
 [[bans.deny]]
 crate = "burncloud-database-upstream"
 wrappers = [

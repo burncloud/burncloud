@@ -1,8 +1,21 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::let_and_return,
+    clippy::disallowed_types
+)]
+
 use burncloud_database_router::{RouterToken, RouterUpstream};
 use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct ApiResponse<T> {
+    success: bool,
+    data: T,
+}
 
 #[tokio::test]
 #[ignore = "requires running server with specific port"]
@@ -16,44 +29,50 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
     sleep(Duration::from_secs(2)).await;
 
     let client = Client::new();
-    let base_url = format!("http://localhost:{}/console/api/channel", port);
+    let base_url = format!("http://localhost:{}/console/api/upstreams", port);
 
-    // 1. Create Channel
-    let new_channel = serde_json::json!({
+
+    // 1. Create Upstream
+    let new_upstream = serde_json::json!({
         "id": "test-chan-1",
         "name": "Test Channel",
         "base_url": "https://api.test.com",
         "api_key": "sk-test",
         "match_path": "/v1/test",
         "auth_type": "Bearer",
-        "priority": 10
+        "priority": 10,
+        "protocol": "",
+        "param_override": null,
+        "header_override": null,
+        "api_version": null
     });
 
-    let resp_create = client.post(&base_url).json(&new_channel).send().await?;
+    let resp_create = client.post(&base_url).json(&new_upstream).send().await?;
     assert_eq!(resp_create.status(), 200);
 
-    // 2. List Channels
+    // 2. List Upstreams
     let resp_list = client.get(&base_url).send().await?;
     assert_eq!(resp_list.status(), 200);
-    let channels: Vec<RouterUpstream> = resp_list.json().await?;
+    let list_json: ApiResponse<Vec<RouterUpstream>> = resp_list.json().await?;
 
-    let found = channels
+    let found = list_json
+        .data
         .iter()
         .find(|c| c.id == "test-chan-1")
-        .expect("Channel not found");
+        .expect("Upstream not found");
     assert_eq!(found.name, "Test Channel");
     assert_eq!(found.priority, 10);
 
-    // 3. Get Specific Channel
+    // 3. Get Specific Upstream
     let resp_get = client
         .get(format!("{}/test-chan-1", base_url))
         .send()
         .await?;
     assert_eq!(resp_get.status(), 200);
-    let channel: RouterUpstream = resp_get.json().await?;
-    assert_eq!(channel.base_url, "https://api.test.com");
+    let get_json: ApiResponse<RouterUpstream> = resp_get.json().await?;
+    assert_eq!(get_json.data.base_url, "https://api.test.com");
 
-    // 4. Update Channel
+    // 4. Update Upstream
     let update_payload = serde_json::json!({
         "id": "test-chan-1",
         "name": "Updated Name",
@@ -61,7 +80,11 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
         "api_key": "sk-updated",
         "match_path": "/v1/test",
         "auth_type": "Bearer",
-        "priority": 5
+        "priority": 5,
+        "protocol": "",
+        "param_override": null,
+        "header_override": null,
+        "api_version": null
     });
     let resp_update = client
         .put(format!("{}/test-chan-1", base_url))
@@ -75,11 +98,11 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
         .get(format!("{}/test-chan-1", base_url))
         .send()
         .await?;
-    let channel_2: RouterUpstream = resp_get_2.json().await?;
-    assert_eq!(channel_2.name, "Updated Name");
-    assert_eq!(channel_2.base_url, "https://api.updated.com");
+    let get_json_2: ApiResponse<RouterUpstream> = resp_get_2.json().await?;
+    assert_eq!(get_json_2.data.name, "Updated Name");
+    assert_eq!(get_json_2.data.base_url, "https://api.updated.com");
 
-    // 5. Delete Channel
+    // 5. Delete Upstream
     let resp_del = client
         .delete(format!("{}/test-chan-1", base_url))
         .send()
@@ -92,7 +115,7 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
         .send()
         .await?;
     let json_3: serde_json::Value = resp_get_3.json().await?;
-    assert_eq!(json_3["error"], "Not Found"); // Assuming API returns this on not found wrapper
+    assert_eq!(json_3["message"], "Not Found");
 
     Ok(())
 }

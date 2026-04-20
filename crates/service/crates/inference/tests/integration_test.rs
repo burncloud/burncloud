@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use burncloud_database::create_default_database;
 use burncloud_database_router::RouterDatabase;
 use burncloud_service_inference::{InferenceConfig, InferenceService, InstanceStatus};
@@ -7,7 +9,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 #[tokio::test]
-#[ignore = "requires mock_server.bat (Windows-only mock)"]
+#[ignore = "requires mock_server binary (Windows-only)"]
 async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
     // 1. 设置测试环境
     // 指向我们的 mock_server.bat

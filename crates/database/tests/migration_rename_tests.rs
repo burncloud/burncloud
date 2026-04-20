@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
 //! Integration tests for migration 0010 (table renames).
 //!
 //! Verifies that:

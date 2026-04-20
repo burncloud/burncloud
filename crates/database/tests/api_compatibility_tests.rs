@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
 use burncloud_database::{create_default_database, Database, DatabaseError};
 
 /// API compatibility and regression tests

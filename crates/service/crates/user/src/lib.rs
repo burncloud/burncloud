@@ -280,16 +280,9 @@ impl UserService {
             .await
             .map_err(UserServiceError::DatabaseError)?;
 
-        // Return current balance
-        let user = UserDatabase::get_user_by_username(db, user_id).await?;
-        let balance = user
-            .map(|u| {
-                if currency == "CNY" {
-                    u.balance_cny
-                } else {
-                    u.balance_usd
-                }
-            })
+        // create_recharge already updates the balance; read it back
+        let balance = UserDatabase::update_balance(db, user_id, 0, Some(currency))
+            .await
             .unwrap_or(0);
         Ok(balance)
     }
@@ -328,6 +321,7 @@ impl Default for UserService {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use burncloud_database::create_default_database;

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 /// Internal tests for `database-setting` — SettingDatabase CRUD operations.
 ///
 /// Each test spins up an isolated SQLite temp-file database so tests are

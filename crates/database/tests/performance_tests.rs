@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
 use burncloud_database::{create_default_database, Database, Result};
 use std::time::{Duration, Instant};
 use tokio::time::timeout;

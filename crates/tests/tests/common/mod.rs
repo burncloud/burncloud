@@ -133,3 +133,34 @@ pub fn get_openai_config() -> Option<(String, String)> {
 }
 
 // Removed deprecated functions: get_base_url (sync), get_db_pool, seed_demo_data
+
+/// Insert a price entry for a mock model so the router's preflight check passes.
+pub async fn insert_mock_price(model: &str) {
+    let db_url = std::env::var("BURNCLOUD_DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite:///tmp/test_burncloud.db?mode=rwc".to_string());
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&db_url)
+        .await
+        .expect("Failed to connect to test DB");
+    sqlx::query(
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 0, 0, '')"
+    )
+    .bind(model)
+    .execute(&pool)
+    .await
+    .expect("Failed to insert mock price");
+    pool.close().await;
+
+    // Trigger a price cache refresh via the internal API
+    let base_url = SERVER_HANDLE
+        .get()
+        .map(|h| h.base_url.clone())
+        .unwrap_or_default();
+    if !base_url.is_empty() {
+        let _ = reqwest::Client::new()
+            .post(format!("{}/console/internal/prices/sync", base_url))
+            .send()
+            .await;
+    }
+}
