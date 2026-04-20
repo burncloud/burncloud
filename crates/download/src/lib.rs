@@ -1,4 +1,4 @@
-use burncloud_database_download::DownloadDB;
+use burncloud_database_sys::DownloadDB;
 use burncloud_download_aria2::{quick_start, Aria2Manager};
 use std::sync::Arc;
 use thiserror::Error;

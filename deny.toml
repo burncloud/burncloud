@@ -1,6 +1,6 @@
 # cargo-deny configuration
 # Wave 2: license allow list + baseline advisory ignore
-# Wave 3: layer boundary enforced — server no longer depends on burncloud-database-models
+# Wave 3: layer boundary enforced — server no longer depends on domain-specific database crates.
 #         Remaining server DB deps (burncloud-database-router, burncloud-database-user)
 #         are init-only exceptions for schema migration at startup.
 
@@ -45,8 +45,8 @@ ignore = [
     # shlex v0.1 — via systray > libappindicator-sys > bindgen
     { id = "RUSTSEC-2024-0006", reason = "shlex@0.1 via systray transitive chain, cannot upgrade directly" },
 
-    # paste — unmaintained (no update since 2021), transitive dep from proc-macro crates
-    { id = "RUSTSEC-2024-0436", reason = "paste@1.0.15 unmaintained, transitive dep from proc-macro crates, cannot upgrade directly" },
+    # paste — unmaintained, pulled in by rav1e via image/arboard (clipboard support)
+    { id = "RUSTSEC-2024-0436", reason = "paste via rav1e>image>arboard chain, no safe upgrade available" },
 ]
 
 # ─── Licenses ─────────────────────────────────────────────────────────────────
@@ -117,83 +117,45 @@ skip-tree = [
     { crate = "systray@0.4.0", reason = "old GTK dep chain conflicts with dioxus-desktop; upgrade blocked by systray API" },
 ]
 
-# burncloud-database-models — domain model types (channels, upstreams, etc.)
-# Legitimate direct users: service-billing, service-channel, service-models,
-#                          burncloud (cli admin commands), router (request routing)
+# burncloud-database-model — model_ domain (model_capabilities metadata)
 [[bans.deny]]
-crate = "burncloud-database-models"
+crate = "burncloud-database-model"
 wrappers = [
-    "burncloud-service-billing",
-    "burncloud-service-channel",
     "burncloud-service-models",
     "burncloud",
     "burncloud-router",
 ]
-reason = "Domain models must not be imported directly by server; use service layer"
+reason = "Model metadata must not be imported directly by server; use service layer"
 
-# burncloud-database-group — group + group-member tables
-# burncloud-database-router aggregates domain DB crates; it is an allowed
-# server dep for schema migration, so it must also be listed as a wrapper.
+# burncloud-database-billing — billing_ domain (prices, tiered prices, exchange rates)
 [[bans.deny]]
-crate = "burncloud-database-group"
+crate = "burncloud-database-billing"
 wrappers = [
-    "burncloud-service-group",
-    "burncloud-database-router",
+    "burncloud-service-billing",
+    "burncloud",
+    "burncloud-router",
 ]
-reason = "Group DB access must go through burncloud-service-group"
+reason = "Billing DB access must go through burncloud-service-billing"
 
-# burncloud-database-token — API token table
+# burncloud-database-channel — channel_ domain (providers, abilities, protocol configs)
 [[bans.deny]]
-crate = "burncloud-database-token"
+crate = "burncloud-database-channel"
 wrappers = [
-    "burncloud-service-token",
-    "burncloud-database-router",
+    "burncloud-service-channel",
+    "burncloud",
+    "burncloud-router",
 ]
-reason = "Token DB access must go through burncloud-service-token"
+reason = "Channel DB access must go through burncloud-service-channel"
 
-# burncloud-database-upstream — upstream channel table
-# burncloud-database-router aggregates domain DB crates; it is an allowed
-# server dep for schema migration.
+# burncloud-database-sys — sys_ domain (settings, installations, downloads)
 [[bans.deny]]
-crate = "burncloud-database-upstream"
-wrappers = [
-    "burncloud-service-upstream",
-    "burncloud-database-router",
-]
-reason = "Upstream DB access must go through burncloud-service-upstream"
-
-# burncloud-database-router-log — request log table
-[[bans.deny]]
-crate = "burncloud-database-router-log"
-wrappers = [
-    "burncloud-service-router-log",
-    "burncloud-database-router",
-]
-reason = "Log DB access must go through burncloud-service-router-log"
-
-# burncloud-database-setting — system settings table
-[[bans.deny]]
-crate = "burncloud-database-setting"
+crate = "burncloud-database-sys"
 wrappers = [
     "burncloud-service-setting",
-]
-reason = "Settings DB access must go through burncloud-service-setting"
-
-# burncloud-database-download — download task table
-[[bans.deny]]
-crate = "burncloud-database-download"
-wrappers = [
+    "burncloud",
     "burncloud-download",
 ]
-reason = "Download DB access must go through burncloud-download"
-
-# burncloud-database-installer — installer state table
-[[bans.deny]]
-crate = "burncloud-database-installer"
-wrappers = [
-    "burncloud",
-]
-reason = "Installer DB access must go through burncloud CLI installer commands"
+reason = "Sys DB access must go through service layer (or download/cli for their tables)"
 
 # ─── Sources ──────────────────────────────────────────────────────────────────
 [sources]

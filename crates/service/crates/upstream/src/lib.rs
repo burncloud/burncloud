@@ -3,9 +3,9 @@
 //! Upstream service layer providing business logic for upstream/channel management.
 
 use burncloud_database::Database;
-use burncloud_database_upstream::RouterUpstreamModel;
+use burncloud_database_router::upstream::RouterUpstreamModel;
 
-pub use burncloud_database_upstream::RouterUpstream;
+pub use burncloud_database_router::upstream::RouterUpstream;
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 

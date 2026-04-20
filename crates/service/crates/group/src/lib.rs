@@ -4,9 +4,9 @@
 //! which are used for load balancing and routing strategies.
 
 use burncloud_database::Database;
-use burncloud_database_group::{RouterGroupMemberModel, RouterGroupModel};
+use burncloud_database_router::group::{RouterGroupMemberModel, RouterGroupModel};
 
-pub use burncloud_database_group::{RouterGroup, RouterGroupMember};
+pub use burncloud_database_router::group::{RouterGroup, RouterGroupMember};
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 

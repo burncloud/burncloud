@@ -1,59 +1,36 @@
+//! Database operations for user_ domain (accounts, roles, bindings, recharges, API keys).
+//!
+//! The spec-aligned entity layout is split across per-entity files:
+//! - `user_account.rs`: `UserAccount`, `UserAccountInput`
+//! - `user_role.rs`: `UserRole`
+//! - `user_role_binding.rs`: `UserRoleBinding`
+//! - `user_recharge.rs`: `UserRecharge`
+//! - `user_api_key.rs`: `UserApiKey`, `UserApiKeyModel`, `UserApiKeyInput`, `UserApiKeyUpdateInput`
+//!
+//! `UserDatabase` is the crate-level controller (initialises sub-tables, seeds default roles,
+//! and contains operation-style helpers). `UserAccountModel` is exposed as a spec-aligned alias
+//! so callers can reference it under the canonical `{Domain}{Entity}Model` naming.
+
+mod common;
+mod user_account;
+mod user_api_key;
+mod user_recharge;
+mod user_role;
+mod user_role_binding;
+
+pub use user_account::{UserAccount, UserAccountInput};
+pub use user_api_key::{UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
+pub use user_recharge::UserRecharge;
+pub use user_role::UserRole;
+pub use user_role_binding::UserRoleBinding;
+
 use burncloud_database::{Database, Result};
-use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row};
-
-/// User with dual-currency wallet for regional pricing support.
-/// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct UserAccount {
-    pub id: String,
-    pub username: String,
-    pub email: Option<String>,
-    pub password_hash: Option<String>, // Nullable for OIDC users
-    pub github_id: Option<String>,
-    #[sqlx(default)]
-    pub status: i32, // 1: Active, 0: Disabled
-    /// USD balance in nanodollars (9 decimal precision)
-    #[sqlx(default)]
-    pub balance_usd: i64,
-    /// CNY balance in nanodollars (9 decimal precision)
-    #[sqlx(default)]
-    pub balance_cny: i64,
-    /// User's preferred currency for display
-    #[sqlx(default)]
-    pub preferred_currency: Option<String>,
-    // created_at handled by DB
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct UserRole {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct UserRoleBinding {
-    pub user_id: String,
-    pub role_id: String,
-}
-
-/// Recharge record with dual-currency support.
-/// Amount is stored as i64 nanodollars (9 decimal precision).
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct UserRecharge {
-    pub id: i32,
-    pub user_id: String,
-    /// Amount in nanodollars (9 decimal precision)
-    pub amount: i64,
-    /// Currency of the recharge (USD, CNY)
-    #[sqlx(default)]
-    pub currency: Option<String>,
-    pub description: Option<String>,
-    pub created_at: Option<String>, // SQL datetime string
-}
+use sqlx::Row;
 
 pub struct UserDatabase;
+
+/// Spec-aligned alias: operation type for the `user_accounts` table.
+pub type UserAccountModel = UserDatabase;
 
 impl UserDatabase {
     pub async fn init(db: &Database) -> Result<()> {

@@ -1,6 +1,6 @@
 use burncloud_common::types::Price;
 use burncloud_database::Database;
-use burncloud_database_models::BillingPriceModel;
+use burncloud_database_billing::BillingPriceModel;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

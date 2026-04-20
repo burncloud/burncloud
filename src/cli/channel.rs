@@ -10,7 +10,7 @@
 use anyhow::{anyhow, Result};
 use burncloud_common::types::{Channel, ChannelType};
 use burncloud_database::Database;
-use burncloud_database_models::ChannelProviderModel;
+use burncloud_database_channel::ChannelProviderModel;
 use clap::ArgMatches;
 use std::io::{self, Write};
 

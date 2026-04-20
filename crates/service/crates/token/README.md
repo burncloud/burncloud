@@ -12,4 +12,4 @@ API Token 管理服务。Token CRUD、验证、配额检查和扣减。
 
 ## 依赖
 
-- `burncloud-database-token`, `burncloud-database` — 数据持久化
+- `burncloud-database-router`, `burncloud-database` — 数据持久化

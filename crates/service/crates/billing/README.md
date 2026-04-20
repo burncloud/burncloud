@@ -14,5 +14,5 @@
 
 ## 依赖
 
-- `burncloud-database`, `burncloud-database-models` — 价格数据
+- `burncloud-database`, `burncloud-database-model` — 价格数据
 - `burncloud-common` — 共享类型

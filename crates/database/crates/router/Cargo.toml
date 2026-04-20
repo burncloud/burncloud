@@ -6,18 +6,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait.workspace = true
+burncloud-common.workspace = true
 burncloud-database.workspace = true
-burncloud-database-upstream = { path = "../upstream" }
-burncloud-database-token = { path = "../token" }
-burncloud-database-group = { path = "../group" }
-burncloud-database-router-log = { path = "../router-log" }
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true
+aes-gcm.workspace = true
+hex.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
 uuid.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tempfile.workspace = true
+
 [lints]
 workspace = true

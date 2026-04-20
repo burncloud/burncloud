@@ -4,7 +4,7 @@ BurnCloud 设置服务层，提供简洁的配置管理接口。
 
 ## 功能特性
 
-- ✅ 基于 `burncloud-database-setting` 构建
+- ✅ 基于 `burncloud-database-sys` 构建
 - ✅ 简洁的服务层 API
 - ✅ 支持增加、修改、删除、查询操作
 - ✅ 异步接口设计
@@ -12,7 +12,7 @@ BurnCloud 设置服务层，提供简洁的配置管理接口。
 
 ## 架构说明
 
-此服务层封装了 `burncloud-database-setting`，提供更高层次的业务逻辑接口。服务层与数据层分离，便于：
+此服务层封装了 `burncloud-database-sys`，提供更高层次的业务逻辑接口。服务层与数据层分离，便于：
 - 业务逻辑的集中管理
 - API 的统一封装
 - 未来扩展（如缓存、权限控制等）
@@ -137,7 +137,7 @@ crates/service/crates/service-setting/
 
 ## 依赖项
 
-- `burncloud-database-setting` - 设置数据库层
+- `burncloud-database-sys` - 设置数据库层
 - `burncloud-database` - 核心数据库抽象层
 - `tokio` - 异步运行时
 
@@ -145,7 +145,7 @@ crates/service/crates/service-setting/
 
 ```
 burncloud-service-setting (服务层)
-    └── burncloud-database-setting (数据库层)
+    └── burncloud-database-sys (数据库层)
             └── burncloud-database (核心抽象层)
                     └── sqlx (SQLite ORM)
 ```

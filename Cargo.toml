@@ -22,20 +22,14 @@ members = [
     "crates/common",
     "crates/core",
     "crates/database",
-    # "crates/database/crates/download",
-    "crates/database/crates/installer",
-    "crates/database/crates/group",
-    "crates/database/crates/models",
-    "crates/database/crates/router",
-    "crates/database/crates/router-log",
-    "crates/database/crates/setting",
-    "crates/database/crates/token",
-    "crates/database/crates/upstream",
-    "crates/database/crates/user",
-    "crates/database/crates/channel",
     "crates/database/crates/billing",
-    # "crates/download",
-    # "crates/download/crates/download-aria2",
+    "crates/database/crates/channel",
+    "crates/database/crates/model",
+    "crates/database/crates/router",
+    "crates/database/crates/sys",
+    "crates/database/crates/user",
+    "crates/download",
+    "crates/download/crates/download-aria2",
     "crates/router",
     "crates/router/crates/router-aws",
     "crates/server",
@@ -167,18 +161,12 @@ burncloud-code = { path = "crates/code" }
 burncloud-common = { path = "crates/common" }
 burncloud-core = { path = "crates/core" }
 burncloud-database = { path = "crates/database" }
-burncloud-database-download = { path = "crates/database/crates/download" }
-burncloud-database-installer = { path = "crates/database/crates/installer" }
-burncloud-database-group = { path = "crates/database/crates/group" }
-burncloud-database-models = { path = "crates/database/crates/models" }
-burncloud-database-router = { path = "crates/database/crates/router" }
-burncloud-database-router-log = { path = "crates/database/crates/router-log" }
-burncloud-database-setting = { path = "crates/database/crates/setting" }
-burncloud-database-token = { path = "crates/database/crates/token" }
-burncloud-database-upstream = { path = "crates/database/crates/upstream" }
-burncloud-database-user = { path = "crates/database/crates/user" }
+burncloud-database-billing = { path = "crates/database/crates/billing" }
 burncloud-database-channel = { path = "crates/database/crates/channel" }
-burncloud-database-price = { path = "crates/database/crates/billing" }
+burncloud-database-model = { path = "crates/database/crates/model" }
+burncloud-database-router = { path = "crates/database/crates/router" }
+burncloud-database-sys = { path = "crates/database/crates/sys" }
+burncloud-database-user = { path = "crates/database/crates/user" }
 burncloud-download = { path = "crates/download" }
 burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
 burncloud-installer = { path = "crates/installer" }
@@ -235,11 +223,12 @@ hex.workspace = true
 burncloud-core.workspace = true
 burncloud-auto-update.workspace = true
 burncloud-database.workspace = true
-burncloud-database-models.workspace = true
-burncloud-database-user.workspace = true
+burncloud-database-billing.workspace = true
+burncloud-database-channel.workspace = true
 burncloud-database-router.workspace = true
+burncloud-database-sys.workspace = true
+burncloud-database-user.workspace = true
 burncloud-installer.workspace = true
-burncloud-database-installer.workspace = true
 bcrypt.workspace = true
 uuid.workspace = true
 clap.workspace = true

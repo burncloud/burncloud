@@ -1,6 +1,6 @@
 use anyhow::Result;
 use burncloud_database::Database;
-use burncloud_database_models::{UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
+use burncloud_database_user::{UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
 use clap::ArgMatches;
 use std::io::{self, Write};
 

@@ -2,11 +2,11 @@
 //!
 //! 模型服务层，提供简洁的增删改查接口
 
-use burncloud_database_models::ModelDatabase;
+use burncloud_database_model::ModelDatabase;
 use burncloud_service_setting::{SettingDatabase, SettingService};
 use serde::Deserialize;
 
-type Result<T> = std::result::Result<T, burncloud_database_models::DatabaseError>;
+type Result<T> = std::result::Result<T, burncloud_database_model::DatabaseError>;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HfApiModel {
@@ -52,7 +52,7 @@ impl ModelService {
     }
 
     /// 添加模型
-    pub async fn create(&self, model: &burncloud_database_models::ModelInfo) -> Result<()> {
+    pub async fn create(&self, model: &burncloud_database_model::ModelInfo) -> Result<()> {
         self.db.add_model(model).await
     }
 
@@ -113,7 +113,7 @@ impl ModelService {
     }
 
     /// 更新模型（使用 add_model 的 INSERT OR REPLACE 逻辑）
-    pub async fn update(&self, model: &burncloud_database_models::ModelInfo) -> Result<()> {
+    pub async fn update(&self, model: &burncloud_database_model::ModelInfo) -> Result<()> {
         self.db.add_model(model).await
     }
 
@@ -121,12 +121,12 @@ impl ModelService {
     pub async fn get(
         &self,
         model_id: &str,
-    ) -> Result<Option<burncloud_database_models::ModelInfo>> {
+    ) -> Result<Option<burncloud_database_model::ModelInfo>> {
         self.db.get_model(model_id).await
     }
 
     /// 查询所有模型
-    pub async fn list(&self) -> Result<Vec<burncloud_database_models::ModelInfo>> {
+    pub async fn list(&self) -> Result<Vec<burncloud_database_model::ModelInfo>> {
         self.db.list_models().await
     }
 
@@ -134,7 +134,7 @@ impl ModelService {
     pub async fn search_by_pipeline(
         &self,
         pipeline_tag: &str,
-    ) -> Result<Vec<burncloud_database_models::ModelInfo>> {
+    ) -> Result<Vec<burncloud_database_model::ModelInfo>> {
         self.db.search_by_pipeline(pipeline_tag).await
     }
 
@@ -142,7 +142,7 @@ impl ModelService {
     pub async fn get_popular(
         &self,
         limit: i64,
-    ) -> Result<Vec<burncloud_database_models::ModelInfo>> {
+    ) -> Result<Vec<burncloud_database_model::ModelInfo>> {
         self.db.get_popular_models(limit).await
     }
 
@@ -278,4 +278,4 @@ pub async fn download_model_file(
 }
 
 /// 重新导出常用类型
-pub use burncloud_database_models::{DatabaseError, ModelInfo};
+pub use burncloud_database_model::{DatabaseError, ModelInfo};

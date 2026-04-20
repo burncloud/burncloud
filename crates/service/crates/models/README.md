@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- ✅ 调用 `burncloud-database-models` 数据库层
+- ✅ 调用 `burncloud-database-model` 数据库层
 - ✅ 提供简洁的 CRUD 接口
 - ✅ 支持高级查询（搜索、排序）
 - ✅ 100% Rust 编写
@@ -55,6 +55,6 @@ cargo run --example usage
 
 ```
 burncloud-service-models
-  └─ burncloud-database-models
+  └─ burncloud-database-model
        └─ burncloud-database
 ```

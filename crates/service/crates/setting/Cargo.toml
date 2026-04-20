@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database-setting.workspace = true
+burncloud-database-sys.workspace = true
 tokio.workspace = true
 
 [[example]]

@@ -11,7 +11,7 @@
 mod common;
 
 use burncloud_common::dollars_to_nano;
-use burncloud_database_models::{BillingPriceModel, PriceInput};
+use burncloud_database_billing::{BillingPriceModel, PriceInput};
 use common::setup_db;
 
 /// Helper to convert dollars to nanodollars as i64

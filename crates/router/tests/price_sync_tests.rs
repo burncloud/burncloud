@@ -14,7 +14,7 @@ use burncloud_common::pricing_config::{
     CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
 };
 use burncloud_database::create_database_with_url;
-use burncloud_database_models::{
+use burncloud_database_billing::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
 };
 use burncloud_database_router::RouterDatabase;

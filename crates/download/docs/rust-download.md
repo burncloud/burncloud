@@ -10,7 +10,7 @@
 - 支持暂停/恢复/移除操作
 ## 架构
 - `burncloud-download`: Rust 下载核心
-- `burncloud-database-download`: 下载数据存储
+- `burncloud-database-sys`: 下载数据存储
 - `burncloud-download-aria2`: Aria2 引擎实现
 
 ## 核心组件

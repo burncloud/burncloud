@@ -8,7 +8,7 @@ use axum::{
     http::{HeaderMap, Method, Response, StatusCode, Uri},
 };
 use burncloud_common::types::{Channel, ChannelType};
-use burncloud_database_models::{Price, BillingPriceModel, BillingTieredPriceModel};
+use burncloud_database_billing::{BillingPriceModel, BillingTieredPriceModel, Price};
 use circuit_breaker::FailureType;
 use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
 use futures::stream::StreamExt;
