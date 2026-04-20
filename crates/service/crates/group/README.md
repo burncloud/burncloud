@@ -12,4 +12,4 @@
 
 ## 依赖
 
-- `burncloud-database-group`, `burncloud-database` — 数据持久化
+- `burncloud-database-router`, `burncloud-database` — 数据持久化

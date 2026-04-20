@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database-group.workspace = true
+burncloud-database-router.workspace = true
 burncloud-database.workspace = true
 
 [lints]

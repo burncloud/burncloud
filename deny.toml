@@ -1,6 +1,6 @@
 # cargo-deny configuration
 # Wave 2: license allow list + baseline advisory ignore
-# Wave 3: layer boundary enforced — server no longer depends on burncloud-database-models
+# Wave 3: layer boundary enforced — server no longer depends on domain-specific database crates.
 #         Remaining server DB deps (burncloud-database-router, burncloud-database-user)
 #         are init-only exceptions for schema migration at startup.
 
@@ -117,82 +117,45 @@ skip-tree = [
     { crate = "systray@0.4.0", reason = "old GTK dep chain conflicts with dioxus-desktop; upgrade blocked by systray API" },
 ]
 
-# burncloud-database-models — domain model types (channels, upstreams, etc.)
-# Legitimate direct users: service-billing, service-channel,
-#                          cli (admin commands), router (request routing)
+# burncloud-database-model — model_ domain (model_capabilities metadata)
 [[bans.deny]]
-crate = "burncloud-database-models"
+crate = "burncloud-database-model"
+wrappers = [
+    "burncloud-service-models",
+    "burncloud-cli",
+    "burncloud-router",
+]
+reason = "Model metadata must not be imported directly by server; use service layer"
+
+# burncloud-database-billing — billing_ domain (prices, tiered prices, exchange rates)
+[[bans.deny]]
+crate = "burncloud-database-billing"
 wrappers = [
     "burncloud-service-billing",
+    "burncloud-cli",
+    "burncloud-router",
+]
+reason = "Billing DB access must go through burncloud-service-billing"
+
+# burncloud-database-channel — channel_ domain (providers, abilities, protocol configs)
+[[bans.deny]]
+crate = "burncloud-database-channel"
+wrappers = [
     "burncloud-service-channel",
     "burncloud-cli",
     "burncloud-router",
 ]
-reason = "Domain models must not be imported directly by server; use service layer"
+reason = "Channel DB access must go through burncloud-service-channel"
 
-# burncloud-database-group — group + group-member tables
-# burncloud-database-router aggregates domain DB crates; it is an allowed
-# server dep for schema migration, so it must also be listed as a wrapper.
+# burncloud-database-sys — sys_ domain (settings, installations, downloads)
 [[bans.deny]]
-crate = "burncloud-database-group"
-wrappers = [
-    "burncloud-service-group",
-    "burncloud-database-router",
-]
-reason = "Group DB access must go through burncloud-service-group"
-
-# burncloud-database-token — API token table
-[[bans.deny]]
-crate = "burncloud-database-token"
-wrappers = [
-    "burncloud-service-token",
-    "burncloud-database-router",
-]
-reason = "Token DB access must go through burncloud-service-token"
-
-# burncloud-database-upstream — upstream channel table
-# burncloud-database-router aggregates domain DB crates; it is an allowed
-# server dep for schema migration.
-[[bans.deny]]
-crate = "burncloud-database-upstream"
-wrappers = [
-    "burncloud-service-upstream",
-    "burncloud-database-router",
-]
-reason = "Upstream DB access must go through burncloud-service-upstream"
-
-# burncloud-database-router-log — request log table
-[[bans.deny]]
-crate = "burncloud-database-router-log"
-wrappers = [
-    "burncloud-service-router-log",
-    "burncloud-database-router",
-]
-reason = "Log DB access must go through burncloud-service-router-log"
-
-# burncloud-database-setting — system settings table
-[[bans.deny]]
-crate = "burncloud-database-setting"
+crate = "burncloud-database-sys"
 wrappers = [
     "burncloud-service-setting",
-]
-reason = "Settings DB access must go through burncloud-service-setting"
-
-# burncloud-database-download — download task table
-[[bans.deny]]
-crate = "burncloud-database-download"
-wrappers = [
+    "burncloud-cli",
     "burncloud-download",
 ]
-reason = "Download DB access must go through burncloud-download"
-
-# burncloud-database-installer — installer state table
-[[bans.deny]]
-crate = "burncloud-database-installer"
-wrappers = [
-    "burncloud-cli",
-]
-reason = "Installer DB access must go through burncloud-cli installer commands"
+reason = "Sys DB access must go through service layer (or download/cli for their tables)"
 
 # ─── Sources ──────────────────────────────────────────────────────────────────
 [sources]

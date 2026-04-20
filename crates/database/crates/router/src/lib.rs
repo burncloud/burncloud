@@ -7,28 +7,31 @@
 //! - [`upstream`] - Upstream/channel configuration (RouterUpstream, RouterUpstreamModel)
 //! - [`token`] - Token management (RouterToken, RouterTokenModel)
 //! - [`group`] - Group management (RouterGroup, RouterGroupModel, RouterGroupMemberModel)
-//! - [`log`] - Router logs and usage stats (RouterLog, RouterLogModel)
+//! - [`log`] - Router logs, usage stats and balance deduction (RouterLog, RouterLogModel, BalanceModel)
+//! - [`router_video_task`] - Router video task persistence (RouterVideoTask, RouterVideoTaskModel)
 
-use burncloud_database::{adapt_sql, Database, DatabaseError, Result};
-use serde::{Deserialize, Serialize};
+use burncloud_database::{adapt_sql, Database, Result};
 use sqlx::Row;
 
-// Re-export sub-crates as modules
-pub use burncloud_database_group as group;
-pub use burncloud_database_router_log as log;
-pub use burncloud_database_token as token;
-pub use burncloud_database_upstream as upstream;
+pub mod group;
+pub mod log;
+pub mod router_video_task;
+pub mod token;
+pub mod upstream;
 
-// Re-export common types
-pub use burncloud_database_group::{
-    RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel,
+// Re-export common types.
+pub use group::{
+    RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel, RouterGroupRepository,
 };
-pub use burncloud_database_router_log::{
-    get_billing_summary, BalanceModel, BillingModelSummary, BillingSummary, RouterLog,
-    RouterLogModel,
+pub use log::{
+    get_billing_summary, get_usage_stats, get_usage_stats_by_model, BalanceModel,
+    BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, RouterLogModel, UsageStats,
 };
-pub use burncloud_database_token::{RouterToken, RouterTokenModel, RouterTokenValidationResult};
-pub use burncloud_database_upstream::{RouterUpstream, RouterUpstreamModel};
+pub use router_video_task::{RouterVideoTask, RouterVideoTaskModel};
+pub use token::{
+    RouterToken, RouterTokenModel, RouterTokenRepository, RouterTokenValidationResult,
+};
+pub use upstream::{RouterUpstream, RouterUpstreamModel, RouterUpstreamRepository};
 
 /// Router database operations
 pub struct RouterDatabase;
@@ -509,29 +512,6 @@ impl RouterDatabase {
     }
 }
 
-/// Usage statistics for a user over a time period
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct UsageStats {
-    pub total_requests: i64,
-    pub total_prompt_tokens: i64,
-    pub total_completion_tokens: i64,
-    /// Total cost in nanodollars
-    pub total_cost_nano: i64,
-}
-
-/// Usage statistics grouped by model
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelUsageStats {
-    pub model: String,
-    pub requests: i64,
-    pub prompt_tokens: i64,
-    pub completion_tokens: i64,
-    pub cache_read_tokens: i64,
-    pub reasoning_tokens: i64,
-    /// Cost in nanodollars
-    pub cost_nano: i64,
-}
-
 /// Get aggregated usage statistics by token key over a time period.
 /// Looks up the user_id from router_tokens, then queries router_logs.
 pub async fn get_usage_stats_by_token(
@@ -558,132 +538,4 @@ pub async fn get_usage_stats_by_token(
             Ok(Some((uid, stats)))
         }
     }
-}
-
-/// Get aggregated usage statistics for a user over a time period
-/// Period can be: "day", "week", "month"
-pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Result<UsageStats> {
-    let conn = db.get_connection()?;
-    let is_postgres = db.kind() == "postgres";
-
-    // Calculate time threshold based on period
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| DatabaseError::Query(format!("Time error: {}", e)))?
-        .as_secs() as i64;
-
-    let threshold = match period {
-        "day" => now - 24 * 60 * 60,
-        "week" => now - 7 * 24 * 60 * 60,
-        _ => now - 30 * 24 * 60 * 60, // Default to month
-    };
-
-    let sql = if is_postgres {
-        r#"
-        SELECT
-            COUNT(*) as total_requests,
-            COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
-            COALESCE(SUM(cost), 0) as total_cost
-        FROM router_logs
-        WHERE user_id = $1 AND created_at IS NOT NULL AND CAST(created_at AS BIGINT) >= $2
-        "#
-    } else {
-        // SQLite: created_at is stored as datetime string "2026-03-21 08:18:27"
-        // Use strftime('%s', ...) to convert to unix timestamp for comparison
-        r#"
-        SELECT
-            COUNT(*) as total_requests,
-            COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
-            COALESCE(SUM(cost), 0) as total_cost
-        FROM router_logs
-        WHERE user_id = ? AND created_at IS NOT NULL AND CAST(strftime('%s', created_at) AS INTEGER) >= ?
-        "#
-    };
-
-    // Note: created_at is stored as string, need to handle carefully
-    // We'll parse the timestamp from the string format
-    let row: (Option<i64>, Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(sql)
-        .bind(user_id)
-        .bind(threshold.to_string())
-        .fetch_one(conn.pool())
-        .await?;
-
-    Ok(UsageStats {
-        total_requests: row.0.unwrap_or(0),
-        total_prompt_tokens: row.1.unwrap_or(0),
-        total_completion_tokens: row.2.unwrap_or(0),
-        total_cost_nano: row.3.unwrap_or(0),
-    })
-}
-
-/// Get usage statistics grouped by model for a user over a time period
-pub async fn get_usage_stats_by_model(
-    db: &Database,
-    user_id: &str,
-    _period: &str,
-) -> Result<Vec<ModelUsageStats>> {
-    let conn = db.get_connection()?;
-    let is_postgres = db.kind() == "postgres";
-
-    let sql = if is_postgres {
-        r#"
-        SELECT
-            COALESCE(model, 'Unknown') as model,
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-            COALESCE(SUM(cost), 0) as cost
-        FROM router_logs
-        WHERE user_id = $1
-        GROUP BY model
-        ORDER BY cost DESC
-        "#
-    } else {
-        r#"
-        SELECT
-            COALESCE(model, 'Unknown') as model,
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-            COALESCE(SUM(cost), 0) as cost
-        FROM router_logs
-        WHERE user_id = ?
-        GROUP BY model
-        ORDER BY cost DESC
-        "#
-    };
-
-    let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(sql)
-        .bind(user_id)
-        .fetch_all(conn.pool())
-        .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(
-            |(
-                model,
-                requests,
-                prompt_tokens,
-                completion_tokens,
-                cache_read_tokens,
-                reasoning_tokens,
-                cost_nano,
-            )| ModelUsageStats {
-                model,
-                requests,
-                prompt_tokens,
-                completion_tokens,
-                cache_read_tokens,
-                reasoning_tokens,
-                cost_nano,
-            },
-        )
-        .collect())
 }

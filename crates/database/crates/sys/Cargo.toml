@@ -1,18 +1,22 @@
 [package]
 publish.workspace = true
 license.workspace = true
-name = "burncloud-database-setting"
+name = "burncloud-database-sys"
 version = "0.1.0"
 edition = "2021"
+description = "Database persistence for sys_ domain (settings, installations, downloads)"
+authors = ["BurnCloud Team"]
 
 [dependencies]
 burncloud-database.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
 
 [[example]]
-name = "database-setting-usage"
+name = "database-sys-usage"
 path = "examples/usage.rs"
 
 [dev-dependencies]

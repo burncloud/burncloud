@@ -5,7 +5,7 @@
 /// touch the user's default database and can run in any CI environment.
 use burncloud_common::CrudRepository;
 use burncloud_database::create_database_with_url;
-use burncloud_database_group::{
+use burncloud_database_router::{
     RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel, RouterGroupRepository,
 };
 use tempfile::NamedTempFile;

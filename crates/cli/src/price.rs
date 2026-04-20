@@ -10,7 +10,7 @@ use burncloud_common::{
     },
 };
 use burncloud_database::Database;
-use burncloud_database_models::{
+use burncloud_database_billing::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
 };
 use chrono::Utc;

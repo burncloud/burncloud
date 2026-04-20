@@ -4,9 +4,9 @@
 //! including validation, quota tracking, and CRUD operations.
 
 use burncloud_database::Database;
-use burncloud_database_token::RouterTokenModel;
+use burncloud_database_router::token::RouterTokenModel;
 
-pub use burncloud_database_token::{RouterToken, RouterTokenValidationResult};
+pub use burncloud_database_router::token::{RouterToken, RouterTokenValidationResult};
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 

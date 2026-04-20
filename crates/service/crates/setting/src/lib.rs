@@ -2,7 +2,7 @@
 //!
 //! 设置服务层，提供简洁的增删改查接口
 
-type Result<T> = std::result::Result<T, burncloud_database_setting::DatabaseError>;
+type Result<T> = std::result::Result<T, burncloud_database_sys::DatabaseError>;
 
 /// 设置服务（无状态）
 pub struct SettingService;
@@ -26,10 +26,10 @@ impl SettingService {
     /// 获取所有配置项
     pub async fn list_all(
         db: &SettingDatabase,
-    ) -> Result<Vec<burncloud_database_setting::SysSetting>> {
+    ) -> Result<Vec<burncloud_database_sys::SysSetting>> {
         db.list_all().await
     }
 }
 
 /// 重新导出常用类型
-pub use burncloud_database_setting::{DatabaseError, SettingDatabase, SysSetting};
+pub use burncloud_database_sys::{DatabaseError, SettingDatabase, SysSetting};

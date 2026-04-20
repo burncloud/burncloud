@@ -1,22 +1,32 @@
 # burncloud-database-router
 
-路由数据库聚合器。初始化所有路由相关表(upstream, token, group, router_log),聚合 4 个子 crate 的操作。
+`router_` 业务域数据库 crate。管理路由相关表：`router_upstreams`, `router_tokens`,
+`router_groups`, `router_group_members`, `router_logs`, `router_video_tasks`。
 
 ## 关键类型
 
 | 类型 | 说明 |
 |------|------|
-| `RouterDatabase` | 聚合器,提供 `init(&db)` 建表 |
-| `DbUpstream` | 上游/Channel 配置 |
-| `DbToken` | API Token |
-| `DbGroup` / `DbGroupMember` | 分组和成员 |
-| `DbRouterLog` | 路由日志 |
+| `RouterDatabase`     | 聚合器，`init(&db)` 建表 + 跨模块委托 |
+| `RouterUpstream` / `RouterUpstreamModel` | 上游配置 |
+| `RouterToken` / `RouterTokenModel` | 路由内部 Token |
+| `RouterGroup` / `RouterGroupMember` / `RouterGroupModel` / `RouterGroupMemberModel` | 分组与成员 |
+| `RouterLog` / `RouterLogModel` | 路由日志 |
+| `RouterVideoTask` / `RouterVideoTaskModel` | 视频任务映射 |
+| `BalanceModel` | 双币种余额扣费操作（操作 user_accounts 表） |
+
+## 目录结构
+
+```
+src/
+├── lib.rs               — 聚合器 + re-exports
+├── upstream.rs          — RouterUpstream, RouterUpstreamModel, RouterUpstreamRepository
+├── token.rs             — RouterToken, RouterTokenModel, RouterTokenRepository
+├── group.rs             — RouterGroup(Member)(Model|Repository)
+├── log.rs               — RouterLog, RouterLogModel, BalanceModel, usage stats
+└── router_video_task.rs — RouterVideoTask, RouterVideoTaskModel
+```
 
 ## 依赖
 
-- `burncloud-database` — 核心数据库抽象
-- `burncloud-database-upstream`, `burncloud-database-token`, `burncloud-database-group`, `burncloud-database-router-log` — 子 crate
-
-## 注意
-
-这是聚合器 crate,职责是统一 init。具体 CRUD 由各子 crate 提供。
+- `burncloud-database`, `burncloud-common` — 核心抽象和共享类型

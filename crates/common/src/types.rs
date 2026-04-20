@@ -93,6 +93,9 @@ pub struct ExchangeRate {
     pub updated_at: Option<i64>,
 }
 
+/// Spec-aligned alias: `billing_exchange_rates` row type.
+pub type BillingExchangeRate = ExchangeRate;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelInfo {
     pub name: String,
@@ -341,6 +344,12 @@ pub struct Ability {
     pub priority: i64,
     pub weight: i32,
 }
+
+/// Spec-aligned alias: `channel_abilities` row type.
+pub type ChannelAbility = Ability;
+
+/// Spec-aligned alias: `channel_providers` row type.
+pub type ChannelProvider = Channel;
 
 /// User with dual-currency wallet for regional pricing support.
 /// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
@@ -596,6 +605,15 @@ pub struct Price {
     pub model_type: Option<String>,
 }
 
+/// Spec-aligned alias: `billing_prices` row type.
+pub type BillingPrice = Price;
+
+/// Spec-aligned alias: `billing_tiered_prices` row type.
+pub type BillingTieredPrice = TieredPrice;
+
+/// Spec-aligned alias: `billing_tiered_prices` input type.
+pub type BillingTieredPriceInput = TieredPriceInput;
+
 /// Input for creating/updating a Price entry
 /// All prices are in nanodollars (i64, 9 decimal precision)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -685,6 +703,9 @@ impl Default for PriceInput {
         }
     }
 }
+
+/// Spec-aligned alias: `billing_prices` input type.
+pub type BillingPriceInput = PriceInput;
 
 impl Price {
     /// Check if vision is supported

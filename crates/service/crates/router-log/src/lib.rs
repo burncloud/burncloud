@@ -4,9 +4,9 @@
 //! usage statistics, and balance deductions.
 
 use burncloud_database::Database;
-use burncloud_database_router_log::{BalanceModel, RouterLogModel};
+use burncloud_database_router::{BalanceModel, RouterLogModel};
 
-pub use burncloud_database_router_log::{
+pub use burncloud_database_router::{
     BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, UsageStats,
 };
 
@@ -51,7 +51,7 @@ impl UsageStatsService {
     /// Get aggregated usage statistics for a user over a time period
     /// Period can be: "day", "week", "month"
     pub async fn get_stats(db: &Database, user_id: &str, period: &str) -> Result<UsageStats> {
-        burncloud_database_router_log::get_usage_stats(db, user_id, period).await
+        burncloud_database_router::get_usage_stats(db, user_id, period).await
     }
 
     /// Get usage statistics grouped by model for a user over a time period
@@ -60,7 +60,7 @@ impl UsageStatsService {
         user_id: &str,
         period: &str,
     ) -> Result<Vec<ModelUsageStats>> {
-        burncloud_database_router_log::get_usage_stats_by_model(db, user_id, period).await
+        burncloud_database_router::get_usage_stats_by_model(db, user_id, period).await
     }
 }
 
@@ -123,6 +123,6 @@ impl BillingService {
         start: Option<&str>,
         end: Option<&str>,
     ) -> Result<BillingSummary> {
-        burncloud_database_router_log::get_billing_summary(db, start, end).await
+        burncloud_database_router::get_billing_summary(db, start, end).await
     }
 }

@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 use burncloud_common::types::{ChannelType, OpenAIChatRequest};
 use burncloud_database::Database;
-use burncloud_database_models::{ChannelProtocolConfig, ChannelProtocolConfigModel};
+use burncloud_database_channel::{ChannelProtocolConfig, ChannelProtocolConfigModel};
 use dashmap::DashMap;
 use reqwest::RequestBuilder;
 use serde_json::Value;

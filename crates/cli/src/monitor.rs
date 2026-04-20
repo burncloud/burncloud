@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::ChannelProviderModel;
+use burncloud_database_channel::ChannelProviderModel;
 use clap::ArgMatches;
 use serde::Serialize;
 

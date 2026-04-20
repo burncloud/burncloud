@@ -4,7 +4,7 @@
 //! including CRUD operations and ability synchronization.
 
 use burncloud_database::Database;
-use burncloud_database_models::ChannelProviderModel;
+use burncloud_database_channel::ChannelProviderModel;
 
 pub use burncloud_common::types::Channel;
 

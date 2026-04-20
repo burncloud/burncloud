@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database-download.workspace = true
+burncloud-database-sys.workspace = true
 burncloud-download-aria2.workspace = true
 burncloud-database.workspace = true
 tokio.workspace = true

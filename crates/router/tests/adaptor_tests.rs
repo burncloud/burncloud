@@ -12,7 +12,7 @@ mod common;
 
 use burncloud_common::dollars_to_nano;
 use burncloud_database::sqlx;
-use burncloud_database_models::{BillingPriceModel, PriceInput};
+use burncloud_database_billing::{BillingPriceModel, PriceInput};
 use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;

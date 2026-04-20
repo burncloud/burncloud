@@ -72,7 +72,7 @@ async fn migrate_tokens_unlimited_quota(pool: &AnyPool, kind: &str) -> Result<()
         return Ok(());
     }
 
-    println!("Migrating {table_name}.unlimited_quota from BOOLEAN to INTEGER...");
+    log::info!("Migrating {table_name}.unlimited_quota from BOOLEAN to INTEGER...");
 
     let tmp = format!("{table_name}_new");
 
@@ -155,7 +155,7 @@ async fn migrate_tokens_unlimited_quota(pool: &AnyPool, kind: &str) -> Result<()
     .execute(pool)
     .await;
 
-    println!("  Migrated {table_name} table schema");
+    log::info!("  Migrated {table_name} table schema");
     Ok(())
 }
 
@@ -250,7 +250,7 @@ async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
         .bind(now)
         .execute(pool)
         .await?;
-    println!("Initialized demo token: sk-burncloud-demo");
+    log::info!("Initialized demo token: sk-burncloud-demo");
     Ok(())
 }
 
@@ -339,7 +339,7 @@ async fn seed_protocol_configs(pool: &AnyPool, kind: &str) -> Result<()> {
             .execute(pool)
             .await?;
     }
-    println!(
+    log::info!(
         "Initialized default protocol configs for {} channel types",
         default_protocols.len()
     );

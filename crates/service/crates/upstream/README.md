@@ -11,4 +11,4 @@
 
 ## 依赖
 
-- `burncloud-database-upstream`, `burncloud-database` — 数据持久化
+- `burncloud-database-router`, `burncloud-database` — 数据持久化

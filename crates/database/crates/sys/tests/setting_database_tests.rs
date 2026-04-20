@@ -5,7 +5,7 @@
 /// Each test spins up an isolated SQLite temp-file database so tests are
 /// hermetic and never touch the user's default database.
 use burncloud_database::create_database_with_url;
-use burncloud_database_setting::SettingDatabase;
+use burncloud_database_sys::SettingDatabase;
 use tempfile::NamedTempFile;
 
 /// Create an isolated `SettingDatabase` backed by a fresh SQLite temp file.

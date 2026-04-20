@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database-models.workspace = true
+burncloud-database-model.workspace = true
 burncloud-service-ip.workspace = true
 burncloud-service-setting.workspace = true
 burncloud-download.workspace = true

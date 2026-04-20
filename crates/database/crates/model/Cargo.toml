@@ -1,19 +1,15 @@
 [package]
 publish.workspace = true
 license.workspace = true
-name = "burncloud-database-upstream"
+name = "burncloud-database-model"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait.workspace = true
-burncloud-common.workspace = true
 burncloud-database.workspace = true
 sqlx.workspace = true
+tokio.workspace = true
 serde.workspace = true
-aes-gcm.workspace = true
-hex.workspace = true
-rand.workspace = true
 
 [lints]
 workspace = true

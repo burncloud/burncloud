@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use burncloud_common::PricingConfig;
 use burncloud_database::{sqlx, Database};
-use burncloud_database_models::{
+use burncloud_database_billing::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
 };
 use burncloud_service_billing::PriceCache;

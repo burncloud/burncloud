@@ -1,7 +1,7 @@
 //! Install subcommand handler
 
 use anyhow::Result;
-use burncloud_database_installer::InstallerDB;
+use burncloud_database_sys::InstallerDB;
 use burncloud_installer::{Installer, InstallerConfig};
 use clap::ArgMatches;
 use log::error;

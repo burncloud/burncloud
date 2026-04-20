@@ -5,7 +5,7 @@
 //! cargo run --example usage
 //! ```
 
-use burncloud_database_setting::SettingDatabase;
+use burncloud_database_sys::SettingDatabase;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
