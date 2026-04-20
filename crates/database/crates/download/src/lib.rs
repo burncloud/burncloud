@@ -4,9 +4,9 @@ use burncloud_database::{Database, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-/// Download record
+/// Download task record
 #[derive(sqlx::FromRow, Serialize, Deserialize, Clone)]
-pub struct DownloadRecord {
+pub struct SysDownload {
     /// Download GID (from aria2)
     pub gid: String,
     /// JSON array of URIs
@@ -48,7 +48,7 @@ impl DownloadDB {
         self.db
             .execute_query(
                 r#"
-            CREATE TABLE IF NOT EXISTS downloads (
+            CREATE TABLE IF NOT EXISTS sys_downloads (
                 gid TEXT PRIMARY KEY,
                 uris TEXT NOT NULL,
                 download_dir TEXT,
@@ -60,8 +60,8 @@ impl DownloadDB {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
-            CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at);
+            CREATE INDEX IF NOT EXISTS idx_sys_downloads_status ON sys_downloads(status);
+            CREATE INDEX IF NOT EXISTS idx_sys_downloads_created_at ON sys_downloads(created_at);
         "#,
             )
             .await?;
@@ -83,7 +83,7 @@ impl DownloadDB {
         self.db
             .execute_query_with_params(
                 r#"
-                INSERT INTO downloads (gid, uris, download_dir, filename, status, updated_at)
+                INSERT INTO sys_downloads (gid, uris, download_dir, filename, status, updated_at)
                 VALUES (?, ?, ?, ?, 'active', ?)
                 "#,
                 vec![
@@ -102,7 +102,7 @@ impl DownloadDB {
     pub async fn update_status(&self, gid: &str, status: &str) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "UPDATE downloads SET status = ?, updated_at = ? WHERE gid = ?",
+                "UPDATE sys_downloads SET status = ?, updated_at = ? WHERE gid = ?",
                 vec![status.to_string(), Self::now_string(), gid.to_string()],
             )
             .await?;
@@ -119,7 +119,7 @@ impl DownloadDB {
     ) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "UPDATE downloads SET total = ?, completed = ?, speed = ?, updated_at = ? WHERE gid = ?",
+                "UPDATE sys_downloads SET total = ?, completed = ?, speed = ?, updated_at = ? WHERE gid = ?",
                 vec![
                     total.to_string(),
                     completed.to_string(),
@@ -136,7 +136,7 @@ impl DownloadDB {
     pub async fn delete(&self, gid: &str) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "DELETE FROM downloads WHERE gid = ?",
+                "DELETE FROM sys_downloads WHERE gid = ?",
                 vec![gid.to_string()],
             )
             .await?;
@@ -144,20 +144,20 @@ impl DownloadDB {
     }
 
     /// List downloads, optionally filtered by status
-    pub async fn list(&self, status: Option<&str>) -> Result<Vec<DownloadRecord>> {
+    pub async fn list(&self, status: Option<&str>) -> Result<Vec<SysDownload>> {
         match status {
             Some(s) => {
                 self.db
-                    .fetch_all_with_params::<DownloadRecord>(
-                        "SELECT * FROM downloads WHERE status = ? ORDER BY created_at DESC",
+                    .fetch_all_with_params::<SysDownload>(
+                        "SELECT * FROM sys_downloads WHERE status = ? ORDER BY created_at DESC",
                         vec![s.to_string()],
                     )
                     .await
             }
             None => {
                 self.db
-                    .fetch_all::<DownloadRecord>(
-                        "SELECT * FROM downloads ORDER BY created_at DESC",
+                    .fetch_all::<SysDownload>(
+                        "SELECT * FROM sys_downloads ORDER BY created_at DESC",
                     )
                     .await
             }
@@ -168,7 +168,7 @@ impl DownloadDB {
     pub async fn update_gid(&self, old_gid: &str, new_gid: &str) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "UPDATE downloads SET gid = ?, updated_at = ? WHERE gid = ?",
+                "UPDATE sys_downloads SET gid = ?, updated_at = ? WHERE gid = ?",
                 vec![new_gid.to_string(), Self::now_string(), old_gid.to_string()],
             )
             .await?;

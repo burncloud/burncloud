@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::let_and_return, clippy::disallowed_types)]
+
 use burncloud_database::create_default_database;
 use burncloud_database_router::{RouterDatabase, RouterLog};
 use reqwest::Client;

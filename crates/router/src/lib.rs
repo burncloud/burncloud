@@ -2024,6 +2024,7 @@ fn handle_response_with_token_parsing(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::unnecessary_cast, clippy::let_and_return, clippy::redundant_pattern_matching, clippy::identity_op)]
 mod tests {
     use super::inject_video_tokens_if_empty;
     use axum::http::StatusCode;
@@ -2095,7 +2096,7 @@ mod tests {
     #[test]
     fn test_seedance_billing_480p() {
         // Seedance 480p 5s: duration=5, resolution_weight=1 → video_tokens=5
-        let tokens = 5i64 * 1;
+        let tokens = 5i64;
         let usage = inject_video_tokens_if_empty(
             StatusCode::OK,
             UnifiedUsage::default(),
@@ -2135,7 +2136,7 @@ mod tests {
         );
 
         // 5s 480p: video_tokens = 5, cost should be $0.35 (same video_price, half cost)
-        let video_tokens_480p = 5i64 * 1;
+        let video_tokens_480p = 5i64;
         let cost_nanos_480p = video_tokens_480p * video_price / 1_000_000;
         let expected_nanos_480p = 350_000_000i64; // $0.35
         assert_eq!(

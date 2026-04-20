@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
 use burncloud_database::{create_default_database, Database, DatabaseError, Result};
 use std::fs;
 use std::path::PathBuf;

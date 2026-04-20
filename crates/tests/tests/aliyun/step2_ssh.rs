@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::let_and_return, clippy::redundant_pattern_matching, clippy::manual_is_multiple_of)]
+
 //! Step 2: SSH Installation and Connection Tests
 //!
 //! Test installing SSH on Windows ECS and connecting via SSH

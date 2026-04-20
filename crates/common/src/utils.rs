@@ -29,6 +29,7 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

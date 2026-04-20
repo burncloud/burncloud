@@ -242,6 +242,7 @@ async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     #[test]
     fn test_currency_parsing() {

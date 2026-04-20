@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use crate::{aws_uri_encode, AwsConfig}; // Absolute path within crate
 

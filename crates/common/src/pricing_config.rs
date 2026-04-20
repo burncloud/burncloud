@@ -720,12 +720,13 @@ pub enum ValidationError {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     /// Helper function to convert dollars to nanodollars as i64
     fn to_nano(price: f64) -> i64 {
-        dollars_to_nano(price) as i64
+        dollars_to_nano(price)
     }
 
     #[test]

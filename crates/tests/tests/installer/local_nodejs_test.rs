@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::disallowed_types)]
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::disallowed_types)]
 //! Local Node.js Installation Test
 //!
 //! This test validates that Node.js can be installed from a local bundle.

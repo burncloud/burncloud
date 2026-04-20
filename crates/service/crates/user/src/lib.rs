@@ -328,6 +328,7 @@ impl Default for UserService {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use burncloud_database::create_default_database;

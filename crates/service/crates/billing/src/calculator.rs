@@ -335,6 +335,7 @@ fn saturating_mul_percent(price: i64, percent: i64) -> i64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use burncloud_common::types::Price;

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::let_and_return, clippy::redundant_pattern_matching, clippy::manual_is_multiple_of)]
+
 //! End-to-End Bundle Installation Test (Full Pipeline)
 //!
 //! This test runs the complete installation flow in one go.

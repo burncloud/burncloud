@@ -49,6 +49,9 @@ ignored = ["winapi"]
 winapi.workspace = true
 burncloud-client-tray.workspace = true
 
+[build-dependencies]
+winres = "0.1"
+
 [dev-dependencies]
 dioxus-ssr = { workspace = true }
 

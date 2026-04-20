@@ -328,6 +328,7 @@ impl ExchangeRateService {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::unnecessary_cast, clippy::let_and_return, clippy::redundant_pattern_matching)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};

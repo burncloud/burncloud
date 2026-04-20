@@ -82,6 +82,7 @@ impl RedisService {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -104,11 +105,11 @@ mod tests {
         let val = "hello_world";
 
         assert!(service.set(key, val, Some(10)).await.is_ok());
-        let retrieved = service.get(key).await.unwrap();
+        let retrieved = service.get(key).await.expect("get should succeed");
         assert_eq!(retrieved, Some(val.to_string()));
 
         assert!(service.del(key).await.is_ok());
-        let retrieved_after = service.get(key).await.unwrap();
+        let retrieved_after = service.get(key).await.expect("get after del should succeed");
         assert_eq!(retrieved_after, None);
     }
 }

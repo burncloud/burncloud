@@ -8,6 +8,7 @@ pub mod log;
 pub mod monitor;
 pub mod response;
 pub mod token;
+pub mod upstream;
 pub mod user;
 
 pub fn routes(state: AppState) -> Router {
@@ -16,6 +17,7 @@ pub fn routes(state: AppState) -> Router {
         .merge(channel::routes())
         .merge(group::routes())
         .merge(token::routes())
+        .merge(upstream::routes())
         .merge(log::routes())
         .merge(monitor::routes())
         .merge(user::routes())

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::unnecessary_cast, clippy::let_and_return, clippy::redundant_pattern_matching, unused_variables)]
+
 mod common;
 
 use burncloud_common::dollars_to_nano;
@@ -734,8 +736,7 @@ async fn test_gemini_25_flash_streaming() -> anyhow::Result<()> {
 
         // Parse SSE chunks
         for line in chunk_str.lines() {
-            if line.starts_with("data: ") {
-                let data = &line[6..];
+            if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
                     continue;
                 }
