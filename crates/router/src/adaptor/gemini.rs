@@ -1,7 +1,7 @@
 // LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
-use super::current_unix_timestamp;
+use super::{current_unix_timestamp, generate_chat_id};
 use burncloud_common::types::OpenAIChatRequest;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -118,7 +118,7 @@ impl GeminiAdaptor {
             .unwrap_or("");
 
         json!({
-            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+            "id": generate_chat_id(),
             "object": "chat.completion",
             "created": current_unix_timestamp(),
             "model": model,
@@ -228,6 +228,14 @@ impl GeminiAdaptor {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
 mod tests {
     use super::*;
     use burncloud_common::types::{OpenAIChatMessage, OpenAIChatRequest};
@@ -302,14 +310,16 @@ mod tests {
     fn test_convert_stream_response() {
         let chunk = r#"[{"candidates": [{"content": {"parts": [{"text": "Hello stream"}]}, "finishReason": null, "index": 0}]}]"#;
 
-        let sse = GeminiAdaptor::convert_stream_response(chunk).unwrap();
+        let sse = GeminiAdaptor::convert_stream_response(chunk)
+            .unwrap_or_else(|| panic!("stream response should convert for valid chunk"));
         assert!(sse.starts_with("data: "));
         assert!(sse.contains("Hello stream"));
         assert!(sse.contains(r#""finish_reason":null"#));
 
         // Test dirty chunk with STOP
         let dirty_chunk = r#",{"candidates": [{"finishReason": "STOP", "index": 0}]},"#;
-        let sse2 = GeminiAdaptor::convert_stream_response(dirty_chunk).unwrap();
+        let sse2 = GeminiAdaptor::convert_stream_response(dirty_chunk)
+            .unwrap_or_else(|| panic!("stream response should convert for dirty chunk"));
         assert!(sse2.contains(r#""finish_reason":"stop""#));
 
         // Test invalid/empty
@@ -318,7 +328,8 @@ mod tests {
 
         // Test usageMetadata extraction (sent in final chunk)
         let usage_chunk = r#"{"candidates": [{"finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 25, "totalTokenCount": 35}}"#;
-        let sse3 = GeminiAdaptor::convert_stream_response(usage_chunk).unwrap();
+        let sse3 = GeminiAdaptor::convert_stream_response(usage_chunk)
+            .unwrap_or_else(|| panic!("stream response should convert for usage chunk"));
         assert!(sse3.contains(r#""prompt_tokens":10"#));
         assert!(sse3.contains(r#""completion_tokens":25"#));
         assert!(sse3.contains(r#""total_tokens":35"#));
@@ -326,7 +337,8 @@ mod tests {
 
         // Test chunk with content and usageMetadata together
         let full_chunk = r#"{"candidates": [{"content": {"parts": [{"text": "Hello"}]}, "finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 10, "totalTokenCount": 15}}"#;
-        let sse4 = GeminiAdaptor::convert_stream_response(full_chunk).unwrap();
+        let sse4 = GeminiAdaptor::convert_stream_response(full_chunk)
+            .unwrap_or_else(|| panic!("stream response should convert for full chunk"));
         assert!(sse4.contains("Hello"));
         assert!(sse4.contains(r#""prompt_tokens":5"#));
         assert!(sse4.contains(r#""completion_tokens":10"#));

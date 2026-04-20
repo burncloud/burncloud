@@ -1,3 +1,13 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching,
+    unused_variables
+)]
+
 mod common;
 
 use burncloud_common::dollars_to_nano;
@@ -6,7 +16,7 @@ use common::setup_db;
 
 /// Helper to convert dollars to nanodollars as i64
 fn to_nano(price: f64) -> i64 {
-    dollars_to_nano(price) as i64
+    dollars_to_nano(price)
 }
 
 /// Helper to convert nanodollars back to dollars
@@ -18,7 +28,7 @@ fn from_nano(nano: i64) -> f64 {
 /// Formula: cost = (prompt_tokens * input_price / 1M) + (completion_tokens * output_price / 1M)
 #[tokio::test]
 async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
-    let (_db, _pool, db_url) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
 
     // Set up pricing for test model
     // Input: $30/1M tokens, Output: $60/1M tokens (like GPT-4)
@@ -60,7 +70,7 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
         BillingPriceModel::get(&_db, "test-pricing-model", "USD", Some("international")).await?;
     assert!(price.is_some(), "Price should be found");
 
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("price should be Some"));
     assert_eq!(price.input_price, to_nano(30.0));
     assert_eq!(price.output_price, to_nano(60.0));
 
@@ -85,7 +95,7 @@ async fn test_pricing_cost_calculation() -> anyhow::Result<()> {
 /// Test price listing
 #[tokio::test]
 async fn test_pricing_list() -> anyhow::Result<()> {
-    let (_db, _pool, db_url) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
 
     // Seed a price so the list is non-empty
     let seed = PriceInput {
@@ -144,7 +154,7 @@ async fn test_pricing_list() -> anyhow::Result<()> {
 /// Test price delete and recreate
 #[tokio::test]
 async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
-    let (_db, _pool, db_url) = setup_db().await?;
+    let (_db, _pool, _db_url) = setup_db().await?;
 
     // Create a test model
     let input = PriceInput {
@@ -229,7 +239,7 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
     let price =
         BillingPriceModel::get(&_db, "test-delete-model", "USD", Some("international")).await?;
     assert!(price.is_some());
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("price should be Some"));
     assert_eq!(price.input_price, to_nano(50.0));
     assert_eq!(price.output_price, to_nano(100.0));
 
@@ -241,7 +251,7 @@ async fn test_pricing_delete_and_recreate() -> anyhow::Result<()> {
 /// The second upsert should overwrite the first.
 #[tokio::test]
 async fn test_upsert_idempotency() -> anyhow::Result<()> {
-    let (db, _pool, db_url) = setup_db().await?;
+    let (db, _pool, _db_url) = setup_db().await?;
 
     let input = PriceInput {
         model: "idempotency-test-model".to_string(),
@@ -301,7 +311,7 @@ async fn test_upsert_idempotency() -> anyhow::Result<()> {
     // Price should reflect the second upsert
     let price = BillingPriceModel::get(&db, "idempotency-test-model", "USD", None).await?;
     assert!(price.is_some());
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("price should be Some"));
     assert_eq!(
         price.input_price,
         to_nano(6.0),

@@ -5,9 +5,11 @@ use crate::balancer::RoundRobinBalancer;
 use crate::channel_state::ChannelStateTracker;
 use crate::circuit_breaker::CircuitBreaker;
 use crate::config::RouterConfig;
+use crate::exchange_rate::ExchangeRateService;
 use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
 use crate::price_sync::SyncResult;
+use crate::scheduler::SchedulerPolicyMap;
 use burncloud_database::Database;
 use burncloud_database_router::RouterLog;
 use burncloud_service_billing::{CostCalculator, PriceCache};
@@ -33,4 +35,6 @@ pub struct AppState {
     /// Sends force-sync requests to the background price sync task.
     /// The task responds via the enclosed oneshot sender.
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
+    pub exchange_rate_service: Arc<ExchangeRateService>,
+    pub scheduler_policies: Arc<RwLock<SchedulerPolicyMap>>,
 }

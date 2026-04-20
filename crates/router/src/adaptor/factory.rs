@@ -318,7 +318,7 @@ impl DynamicAdaptorFactory {
                 Arc::from(AdaptorFactory::get_adaptor(channel_type))
             }
             Err(e) => {
-                eprintln!(
+                tracing::warn!(
                     "Failed to load dynamic adaptor: {}, falling back to static",
                     e
                 );
@@ -337,7 +337,7 @@ impl DynamicAdaptorFactory {
             Ok(Some(adaptor)) => adaptor,
             Ok(None) => Arc::from(AdaptorFactory::get_adaptor(channel_type)),
             Err(e) => {
-                eprintln!(
+                tracing::warn!(
                     "Failed to load default adaptor: {}, falling back to static",
                     e
                 );

@@ -391,28 +391,51 @@ pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Resu
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_parse_channel_type() {
-        assert_eq!(parse_channel_type("openai").unwrap(), ChannelType::OpenAI);
-        assert_eq!(parse_channel_type("OpenAI").unwrap(), ChannelType::OpenAI);
-        assert_eq!(parse_channel_type("OPENAI").unwrap(), ChannelType::OpenAI);
-        assert_eq!(parse_channel_type("azure").unwrap(), ChannelType::Azure);
         assert_eq!(
-            parse_channel_type("anthropic").unwrap(),
+            parse_channel_type("openai").unwrap_or_else(|e| panic!("openai should parse: {e}")),
+            ChannelType::OpenAI
+        );
+        assert_eq!(
+            parse_channel_type("OpenAI").unwrap_or_else(|e| panic!("OpenAI should parse: {e}")),
+            ChannelType::OpenAI
+        );
+        assert_eq!(
+            parse_channel_type("OPENAI").unwrap_or_else(|e| panic!("OPENAI should parse: {e}")),
+            ChannelType::OpenAI
+        );
+        assert_eq!(
+            parse_channel_type("azure").unwrap_or_else(|e| panic!("azure should parse: {e}")),
+            ChannelType::Azure
+        );
+        assert_eq!(
+            parse_channel_type("anthropic")
+                .unwrap_or_else(|e| panic!("anthropic should parse: {e}")),
             ChannelType::Anthropic
         );
-        assert_eq!(parse_channel_type("gemini").unwrap(), ChannelType::Gemini);
-        assert_eq!(parse_channel_type("aws").unwrap(), ChannelType::Aws);
         assert_eq!(
-            parse_channel_type("vertexai").unwrap(),
+            parse_channel_type("gemini").unwrap_or_else(|e| panic!("gemini should parse: {e}")),
+            ChannelType::Gemini
+        );
+        assert_eq!(
+            parse_channel_type("aws").unwrap_or_else(|e| panic!("aws should parse: {e}")),
+            ChannelType::Aws
+        );
+        assert_eq!(
+            parse_channel_type("vertexai").unwrap_or_else(|e| panic!("vertexai should parse: {e}")),
             ChannelType::VertexAi
         );
-        assert_eq!(parse_channel_type("vertex").unwrap(), ChannelType::VertexAi);
         assert_eq!(
-            parse_channel_type("deepseek").unwrap(),
+            parse_channel_type("vertex").unwrap_or_else(|e| panic!("vertex should parse: {e}")),
+            ChannelType::VertexAi
+        );
+        assert_eq!(
+            parse_channel_type("deepseek").unwrap_or_else(|e| panic!("deepseek should parse: {e}")),
             ChannelType::DeepSeek
         );
         assert!(parse_channel_type("invalid").is_err());

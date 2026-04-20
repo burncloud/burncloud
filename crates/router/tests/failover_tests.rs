@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
+
 mod common;
 
 use burncloud_database::sqlx;
@@ -6,13 +15,13 @@ use reqwest::Client;
 
 #[tokio::test]
 async fn test_failover() -> anyhow::Result<()> {
-    let (_db, pool, db_url) = setup_db().await?;
+    let (_db, pool, _db_url) = setup_db().await?;
 
     // Start Mock Upstream for Alive Node
     let mock_port = 3023;
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
@@ -64,7 +73,7 @@ async fn test_failover() -> anyhow::Result<()> {
 
     // 4. Start Server
     let port = 3015;
-    start_test_server(port, &db_url).await;
+    start_test_server(port, &_db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}{}", port, match_path);

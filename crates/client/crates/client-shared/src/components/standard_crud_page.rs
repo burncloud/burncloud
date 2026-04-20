@@ -1,8 +1,12 @@
+// Generic CRUD page driven by JSON schema — Value required for schema, form data, and table rows.
+#![allow(clippy::disallowed_types)]
+
 use crate::components::{
     ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,
 };
 use crate::use_toast;
 use dioxus::prelude::*;
+#[allow(clippy::disallowed_types)]
 use serde_json::{json, Value};
 
 /// 通用的 CRUD 页面容器
@@ -17,7 +21,7 @@ pub fn StandardCrudPage(schema: Value, api_endpoint: String) -> Element {
     let mut show_form = use_signal(|| false);
     let mut form_mode = use_signal(|| FormMode::Create);
     let mut form_data = use_signal(|| json!({}));
-    let items = use_signal(|| Vec::<Value>::new());
+    let items = use_signal(Vec::<Value>::new);
     let mut loading = use_signal(|| true);
     let toast = use_toast();
 

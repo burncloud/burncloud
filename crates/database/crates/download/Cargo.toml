@@ -1,0 +1,18 @@
+[package]
+publish.workspace = true
+name = "burncloud-database-download"
+version = "0.1.0"
+edition = "2021"
+description = "Database persistence for download module"
+authors = ["BurnCloud Team"]
+license = "MIT"
+
+[dependencies]
+burncloud-database.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+sqlx.workspace = true
+
+[lints]
+workspace = true

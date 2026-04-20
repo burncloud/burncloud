@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
+
 mod common;
 
 use burncloud_common::price_u64::{dollars_to_nano, nano_to_dollars};
@@ -73,7 +82,7 @@ async fn test_e2e_billing_flow() -> anyhow::Result<()> {
     // 4. Test: Get pricing
     let price = BillingPriceModel::get(&_db, "gpt-4o-mini-e2e", "USD", None).await?;
     assert!(price.is_some(), "Price should be found");
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("Price should exist for gpt-4o-mini-e2e"));
 
     // Convert i64 nanodollars to dollars for display (prices should always be positive)
     let input_dollars = nano_to_dollars(price.input_price);

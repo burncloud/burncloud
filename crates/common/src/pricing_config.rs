@@ -720,12 +720,13 @@ pub enum ValidationError {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     /// Helper function to convert dollars to nanodollars as i64
     fn to_nano(price: f64) -> i64 {
-        dollars_to_nano(price) as i64
+        dollars_to_nano(price)
     }
 
     #[test]
@@ -775,8 +776,11 @@ mod tests {
             .models
             .insert("gpt-4-turbo".to_string(), model_pricing);
 
-        let json = config.to_json().unwrap();
-        let parsed = PricingConfig::from_json(&json).unwrap();
+        let json = config
+            .to_json()
+            .unwrap_or_else(|e| panic!("Failed to serialize pricing config: {e}"));
+        let parsed = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse pricing config: {e}"));
 
         assert_eq!(parsed.models.len(), 1);
         assert!(parsed.models.contains_key("gpt-4-turbo"));
@@ -813,7 +817,9 @@ mod tests {
             },
         );
 
-        let warnings = config.validate().unwrap();
+        let warnings = config
+            .validate()
+            .unwrap_or_else(|e| panic!("Validation failed: {e}"));
         assert!(warnings.is_empty());
     }
 
@@ -865,7 +871,9 @@ mod tests {
             },
         );
 
-        let warnings = config.validate().unwrap();
+        let warnings = config
+            .validate()
+            .unwrap_or_else(|e| panic!("Validation failed: {e}"));
         // Should have no warnings for valid tier configuration
         assert!(warnings.is_empty());
     }
@@ -955,12 +963,20 @@ mod tests {
         // Test get_pricing
         let p = config.get_pricing("claude-3", "USD");
         assert!(p.is_some());
-        assert_eq!(p.unwrap().input_price, to_nano(10.0));
+        assert_eq!(
+            p.unwrap_or_else(|| panic!("pricing for claude-3/USD must exist"))
+                .input_price,
+            to_nano(10.0)
+        );
 
         // Test get_cache_pricing
         let c = config.get_cache_pricing("claude-3", "USD");
         assert!(c.is_some());
-        assert_eq!(c.unwrap().cache_read_input_price, to_nano(1.0));
+        assert_eq!(
+            c.unwrap_or_else(|| panic!("cache pricing for claude-3/USD must exist"))
+                .cache_read_input_price,
+            to_nano(1.0)
+        );
 
         // Test non-existent model
         assert!(config.get_pricing("nonexistent", "USD").is_none());
@@ -993,8 +1009,11 @@ mod tests {
     #[test]
     fn test_v7_text_only() {
         let json = v7(r#"{"gemini-flash":{"USD":{"text":{"in":0.075,"out":0.30}}}}"#);
-        let config = PricingConfig::from_json(&json).unwrap();
-        let pricing = config.get_pricing("gemini-flash", "USD").unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
+        let pricing = config
+            .get_pricing("gemini-flash", "USD")
+            .unwrap_or_else(|| panic!("pricing for gemini-flash/USD must exist"));
         assert_eq!(pricing.input_price, to_nano(0.075));
         assert_eq!(pricing.output_price, to_nano(0.30));
         assert!(pricing.image_output_price.is_none());
@@ -1006,12 +1025,18 @@ mod tests {
         let json = v7(
             r#"{"my-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75},"batch":{"in":1.5,"out":7.5}}}}"#,
         );
-        let config = PricingConfig::from_json(&json).unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
         assert!(config.get_pricing("my-model", "USD").is_some());
-        let cache = config.get_cache_pricing("my-model", "USD").unwrap();
+        let cache = config
+            .get_cache_pricing("my-model", "USD")
+            .unwrap_or_else(|| panic!("cache pricing for my-model/USD must exist"));
         assert_eq!(cache.cache_read_input_price, to_nano(0.75));
-        let batch =
-            config.models["my-model"].batch_pricing.as_ref().unwrap()["USD"].batch_input_price;
+        let batch = config.models["my-model"]
+            .batch_pricing
+            .as_ref()
+            .unwrap_or_else(|| panic!("batch pricing for my-model must exist"))["USD"]
+            .batch_input_price;
         assert_eq!(batch, to_nano(1.5));
     }
 
@@ -1020,8 +1045,11 @@ mod tests {
         let json = v7(
             r#"{"gemini-pro":{"USD":{"text":{"in":1.25,"out":10.0},"tiered":[{"tier_start":0,"tier_end":200000,"in":1.25,"out":10.0},{"tier_start":200000,"in":2.5,"out":15.0}]}}}"#,
         );
-        let config = PricingConfig::from_json(&json).unwrap();
-        let tiers = config.get_tiered_pricing("gemini-pro", "USD").unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
+        let tiers = config
+            .get_tiered_pricing("gemini-pro", "USD")
+            .unwrap_or_else(|| panic!("tiered pricing for gemini-pro/USD must exist"));
         assert_eq!(tiers.len(), 2);
         assert_eq!(tiers[0].tier_start, 0);
         assert_eq!(tiers[0].tier_end, Some(200000));
@@ -1033,8 +1061,11 @@ mod tests {
     fn test_v7_tts_model() {
         // TTS model: text.in present, text.out absent → output_price = 0
         let json = v7(r#"{"tts-model":{"USD":{"text":{"in":15.0},"audio":{"out":10.0}}}}"#);
-        let config = PricingConfig::from_json(&json).unwrap();
-        let pricing = config.get_pricing("tts-model", "USD").unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
+        let pricing = config
+            .get_pricing("tts-model", "USD")
+            .unwrap_or_else(|| panic!("pricing for tts-model/USD must exist"));
         assert_eq!(pricing.input_price, to_nano(15.0));
         assert_eq!(pricing.output_price, 0); // text.out missing → default 0
         assert_eq!(pricing.audio_output_price, Some(to_nano(10.0)));
@@ -1044,8 +1075,11 @@ mod tests {
     fn test_v7_image_model() {
         let json =
             v7(r#"{"image-model":{"USD":{"text":{"in":0.0,"out":0.0},"image":{"out":120.0}}}}"#);
-        let config = PricingConfig::from_json(&json).unwrap();
-        let pricing = config.get_pricing("image-model", "USD").unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
+        let pricing = config
+            .get_pricing("image-model", "USD")
+            .unwrap_or_else(|| panic!("pricing for image-model/USD must exist"));
         assert_eq!(pricing.image_output_price, Some(to_nano(120.0)));
         assert!(pricing.audio_output_price.is_none());
     }
@@ -1055,11 +1089,15 @@ mod tests {
         let json = v7(
             r#"{"model":{"USD":{"text":{"in":3.0,"out":15.0}},"CNY":{"text":{"in":21.0,"out":105.0}}}}"#,
         );
-        let config = PricingConfig::from_json(&json).unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
         assert!(config.get_pricing("model", "USD").is_some());
         assert!(config.get_pricing("model", "CNY").is_some());
         assert_eq!(
-            config.get_pricing("model", "CNY").unwrap().input_price,
+            config
+                .get_pricing("model", "CNY")
+                .unwrap_or_else(|| panic!("pricing for model/CNY must exist"))
+                .input_price,
             to_nano(21.0)
         );
     }
@@ -1076,8 +1114,11 @@ mod tests {
                 }
             }
         }"#;
-        let config = PricingConfig::from_json(json).unwrap();
-        let pricing = config.get_pricing("gpt-4", "USD").unwrap();
+        let config = PricingConfig::from_json(json)
+            .unwrap_or_else(|e| panic!("Failed to parse v1 config: {e}"));
+        let pricing = config
+            .get_pricing("gpt-4", "USD")
+            .unwrap_or_else(|| panic!("pricing for gpt-4/USD must exist"));
         assert_eq!(pricing.input_price, to_nano(10.0));
         assert_eq!(pricing.output_price, to_nano(30.0));
     }
@@ -1100,14 +1141,18 @@ mod tests {
         let json = v7(
             r#"{"img-model":{"USD":{"text":{"in":0.0,"out":0.0},"batch":{"in":5.0,"out":30.0,"image_out":60.0}}}}"#,
         );
-        let config = PricingConfig::from_json(&json).unwrap();
-        let batch =
-            config.models["img-model"].batch_pricing.as_ref().unwrap()["USD"].batch_input_price;
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
+        let batch = config.models["img-model"]
+            .batch_pricing
+            .as_ref()
+            .unwrap_or_else(|| panic!("batch pricing for img-model must exist"))["USD"]
+            .batch_input_price;
         assert_eq!(batch, to_nano(5.0));
         // image_output_price on CurrencyPricing is None (not from batch.image_out)
         assert!(config
             .get_pricing("img-model", "USD")
-            .unwrap()
+            .unwrap_or_else(|| panic!("pricing for img-model/USD must exist"))
             .image_output_price
             .is_none());
     }
@@ -1116,7 +1161,8 @@ mod tests {
     fn test_v7_text_none_with_cache() {
         // text=None → skip pricing AND cache for that currency
         let json = v7(r#"{"no-text-model":{"USD":{"cache":{"read":1.0}}}}"#);
-        let config = PricingConfig::from_json(&json).unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
         // pricing entry must be absent (skipped)
         assert!(config.get_pricing("no-text-model", "USD").is_none());
         // cache must also be absent (skipped with the whole currency block)
@@ -1138,10 +1184,11 @@ mod tests {
     fn test_v8_music_per() {
         // lyria-3: music.per = 0.08 USD/request → 80_000_000 nanodollars/request
         let json = v8(r#"{"lyria-3":{"USD":{"text":{"in":0.0,"out":0.0},"music":{"per":0.08}}}}"#);
-        let config = PricingConfig::from_json(&json).unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v8 config: {e}"));
         let pricing = config
             .get_pricing("lyria-3", "USD")
-            .expect("lyria-3 pricing must exist");
+            .unwrap_or_else(|| panic!("lyria-3 pricing must exist"));
         assert_eq!(
             pricing.music_price,
             Some(to_nano(0.08)),
@@ -1156,10 +1203,11 @@ mod tests {
         let json = v8(
             r#"{"cached-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75,"write":1.25}}}}"#,
         );
-        let config = PricingConfig::from_json(&json).unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v8 config: {e}"));
         let cache = config
             .get_cache_pricing("cached-model", "USD")
-            .expect("cache pricing must exist");
+            .unwrap_or_else(|| panic!("cache pricing must exist"));
         assert_eq!(cache.cache_read_input_price, to_nano(0.75));
         assert_eq!(
             cache.cache_creation_input_price,
@@ -1173,11 +1221,12 @@ mod tests {
         // video.sec present → should parse without error, video field is dead_code
         let json =
             v8(r#"{"video-model":{"USD":{"text":{"in":0.0,"out":0.0},"video":{"sec":0.025}}}}"#);
-        let config = PricingConfig::from_json(&json).unwrap();
+        let config = PricingConfig::from_json(&json)
+            .unwrap_or_else(|e| panic!("Failed to parse v8 config: {e}"));
         // video field is not yet stored, but parse must succeed
         let pricing = config
             .get_pricing("video-model", "USD")
-            .expect("pricing must exist");
+            .unwrap_or_else(|| panic!("pricing must exist"));
         assert_eq!(pricing.input_price, to_nano(0.0));
     }
 }

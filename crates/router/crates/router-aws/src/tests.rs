@@ -1,10 +1,12 @@
 #[cfg(test)]
+#[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use crate::{aws_uri_encode, AwsConfig}; // Absolute path within crate
 
     #[test]
     fn test_aws_config_parsing() {
-        let config = AwsConfig::from_colon_string("AK:SK:us-east-1").unwrap();
+        let config = AwsConfig::from_colon_string("AK:SK:us-east-1")
+            .unwrap_or_else(|e| panic!("failed to parse valid AwsConfig: {e}"));
         assert_eq!(config.access_key, "AK");
         assert_eq!(config.secret_key, "SK");
         assert_eq!(config.region, "us-east-1");

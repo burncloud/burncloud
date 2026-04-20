@@ -91,13 +91,13 @@ async fn create_user(
             })
             .into_response(),
             Err(e) => {
-                log::error!("JWT generation failed: {}", e);
+                tracing::error!("JWT generation failed: {}", e);
                 err("Failed to generate authentication token").into_response()
             }
         },
         Err(UserServiceError::UserAlreadyExists) => err("Username already exists").into_response(),
         Err(e) => {
-            log::error!("Registration error: {}", e);
+            tracing::error!("Registration error: {}", e);
             err("Registration failed").into_response()
         }
     }
@@ -127,7 +127,7 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
         Err(UserServiceError::UserNotFound) => err("User not found").into_response(),
         Err(UserServiceError::InvalidCredentials) => err("Invalid credentials").into_response(),
         Err(e) => {
-            log::error!("Login error: {}", e);
+            tracing::error!("Login error: {}", e);
             err("Login failed").into_response()
         }
     }

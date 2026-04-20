@@ -57,6 +57,8 @@ pub struct Upstream {
     pub header_override: Option<String>,
     #[serde(default)]
     pub api_version: Option<String>,
+    #[serde(default)]
+    pub pricing_region: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

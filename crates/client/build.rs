@@ -98,20 +98,25 @@ fn download_tailwind(cli: &std::path::Path, cli_name: &str) -> Result<(), String
     }
 }
 
+#[cfg(target_os = "windows")]
+fn embed_windows_icon() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let rc_file = manifest_dir.join("assets/burncloud.rc");
+    let ico_file = manifest_dir.join("assets/favicon.ico");
+
+    println!("cargo:rerun-if-changed=assets/burncloud.rc");
+    println!("cargo:rerun-if-changed=assets/favicon.ico");
+
+    let mut res = winres::WindowsResource::new();
+    res.set_icon_with_id(&ico_file.display().to_string(), "1");
+    res.set_resource_file(&rc_file.display().to_string());
+    res.compile().expect("Failed to compile Windows resources");
+}
+
 fn main() {
-    // Embed icon resource into Windows executable
+    // Embed icon into Windows executable
     #[cfg(target_os = "windows")]
-    {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let ico_path = manifest_dir.join("assets/favicon.ico");
-        if ico_path.exists() {
-            let mut res = winres::WindowsResource::new();
-            res.set_icon(&ico_path.to_string_lossy());
-            if let Err(e) = res.compile() {
-                println!("cargo:warning=Failed to compile Windows icon resource: {e}");
-            }
-        }
-    }
+    embed_windows_icon();
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let config = manifest_dir.join("tailwind.config.js");

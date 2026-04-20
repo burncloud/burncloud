@@ -750,6 +750,7 @@ impl BundleVerifier {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -780,8 +781,10 @@ mod tests {
             files: vec![],
         };
 
-        let json = serde_json::to_string(&manifest).unwrap();
-        let deserialized: BundleManifest = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&manifest)
+            .unwrap_or_else(|e| panic!("failed to serialize manifest: {e}"));
+        let deserialized: BundleManifest = serde_json::from_str(&json)
+            .unwrap_or_else(|e| panic!("failed to deserialize manifest: {e}"));
 
         assert_eq!(manifest.version, deserialized.version);
         assert_eq!(manifest.software.id, deserialized.software.id);

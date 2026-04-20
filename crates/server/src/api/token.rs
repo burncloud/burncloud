@@ -47,14 +47,14 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn list_tokens(State(state): State<AppState>) -> impl IntoResponse {
-    log::info!("[API] list_tokens request received");
+    tracing::info!("[API] list_tokens request received");
     match TokenService::list(&state.db).await {
         Ok(tokens) => {
-            log::info!("[API] list_tokens success: found {} tokens", tokens.len());
+            tracing::info!("[API] list_tokens success: found {} tokens", tokens.len());
             Json(tokens).into_response()
         }
         Err(e) => {
-            log::error!("[API] list_tokens error: {}", e);
+            tracing::error!("[API] list_tokens error: {}", e);
             token_err(e).into_response()
         }
     }
@@ -64,7 +64,7 @@ async fn create_token(
     State(state): State<AppState>,
     Json(payload): Json<CreateTokenRequest>,
 ) -> impl IntoResponse {
-    log::info!(
+    tracing::info!(
         "[API] create_token request: user_id={}, quota={:?}",
         payload.user_id,
         payload.quota_limit
@@ -84,7 +84,7 @@ async fn create_token(
 
     match TokenService::create(&state.db, &db_token).await {
         Ok(_) => {
-            log::info!("[API] create_token success: {}", token_str);
+            tracing::info!("[API] create_token success: {}", token_str);
             Json(TokenOpResult {
                 status: "created",
                 token: token_str,
@@ -92,7 +92,7 @@ async fn create_token(
             .into_response()
         }
         Err(e) => {
-            log::error!("[API] create_token error: {}", e);
+            tracing::error!("[API] create_token error: {}", e);
             token_err(e).into_response()
         }
     }
@@ -103,14 +103,14 @@ async fn update_token(
     Path(token): Path<String>,
     Json(payload): Json<UpdateTokenRequest>,
 ) -> impl IntoResponse {
-    log::info!(
+    tracing::info!(
         "[API] update_token request: {} -> {}",
         token,
         payload.status
     );
     match TokenService::update_status(&state.db, &token, &payload.status).await {
         Ok(_) => {
-            log::info!("[API] update_token success");
+            tracing::info!("[API] update_token success");
             Json(TokenOpResult {
                 status: "updated",
                 token,
@@ -118,7 +118,7 @@ async fn update_token(
             .into_response()
         }
         Err(e) => {
-            log::error!("[API] update_token error: {}", e);
+            tracing::error!("[API] update_token error: {}", e);
             token_err(e).into_response()
         }
     }
@@ -128,10 +128,10 @@ async fn delete_token(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> impl IntoResponse {
-    log::info!("[API] delete_token request: {}", token);
+    tracing::info!("[API] delete_token request: {}", token);
     match TokenService::delete(&state.db, &token).await {
         Ok(_) => {
-            log::info!("[API] delete_token success");
+            tracing::info!("[API] delete_token success");
             Json(TokenOpResult {
                 status: "deleted",
                 token,
@@ -139,7 +139,7 @@ async fn delete_token(
             .into_response()
         }
         Err(e) => {
-            log::error!("[API] delete_token error: {}", e);
+            tracing::error!("[API] delete_token error: {}", e);
             token_err(e).into_response()
         }
     }

@@ -120,6 +120,14 @@ impl StreamingTokenCounter {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
 mod tests {
     use super::*;
     use std::sync::Arc;
@@ -162,7 +170,9 @@ mod tests {
         }
 
         for handle in handles {
-            handle.join().unwrap();
+            handle
+                .join()
+                .unwrap_or_else(|e| panic!("thread panicked: {e:?}"));
         }
 
         assert_eq!(counter.get_usage(), (0, 1000));

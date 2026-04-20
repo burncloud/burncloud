@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
 use super::*;
 
 /// Helper: eval a JS expression with retry, waiting for a non-empty result.
@@ -26,6 +27,7 @@ fn eval_with_retry(
 
 /// Verify that the primary color CSS variable is set correctly.
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_primary_color_token() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -56,6 +58,7 @@ async fn test_primary_color_token() {
 
 /// Verify no Fluent blue (#0078d4) remains in the design system.
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_no_fluent_blue() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -85,6 +88,7 @@ async fn test_no_fluent_blue() {
 
 /// Verify card components use the correct design tokens.
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_card_styles() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -120,6 +124,7 @@ async fn test_card_styles() {
 
 /// Verify button components render with correct variants.
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_button_styles() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;

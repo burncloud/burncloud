@@ -89,7 +89,7 @@ impl UserService {
 
             #[cfg(debug_assertions)]
             {
-                log::warn!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
+                tracing::warn!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
                 "default-secret-key-change-in-production".to_string()
             }
         });
@@ -160,7 +160,7 @@ impl UserService {
 
         // Assign default role - log warning if it fails but don't fail registration
         if let Err(e) = UserDatabase::assign_role(db, &user.id, "user").await {
-            log::warn!(
+            tracing::warn!(
                 "Warning: Failed to assign default role to user {}: {}",
                 user.id,
                 e
@@ -280,16 +280,9 @@ impl UserService {
             .await
             .map_err(UserServiceError::DatabaseError)?;
 
-        // Return current balance
-        let user = UserDatabase::get_user_by_username(db, user_id).await?;
-        let balance = user
-            .map(|u| {
-                if currency == "CNY" {
-                    u.balance_cny
-                } else {
-                    u.balance_usd
-                }
-            })
+        // create_recharge already updates the balance; read it back
+        let balance = UserDatabase::update_balance(db, user_id, 0, Some(currency))
+            .await
             .unwrap_or(0);
         Ok(balance)
     }
@@ -328,6 +321,7 @@ impl Default for UserService {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use burncloud_database::create_default_database;
@@ -354,7 +348,11 @@ mod tests {
         // Verify user exists
         let user = UserDatabase::get_user_by_username(&db, &username).await?;
         assert!(user.is_some());
-        assert_eq!(user.unwrap().username, username);
+        assert_eq!(
+            user.unwrap_or_else(|| panic!("user should exist for {username}"))
+                .username,
+            username
+        );
 
         Ok(())
     }
@@ -377,11 +375,10 @@ mod tests {
             .register_user(&db, &username, "password123", None)
             .await;
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::UserAlreadyExists
-        ));
+        let Err(e) = result else {
+            panic!("duplicate registration should fail");
+        };
+        assert!(matches!(e, UserServiceError::UserAlreadyExists));
 
         Ok(())
     }
@@ -426,11 +423,10 @@ mod tests {
         // Login with wrong password should fail
         let result = service.login_user(&db, &username, "wrongpassword").await;
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::InvalidCredentials
-        ));
+        let Err(e) = result else {
+            panic!("wrong password login should fail");
+        };
+        assert!(matches!(e, UserServiceError::InvalidCredentials));
 
         Ok(())
     }
@@ -445,11 +441,10 @@ mod tests {
         // Login non-existent user should fail
         let result = service.login_user(&db, "nonexistent", "password").await;
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::UserNotFound
-        ));
+        let Err(e) = result else {
+            panic!("nonexistent user login should fail");
+        };
+        assert!(matches!(e, UserServiceError::UserNotFound));
 
         Ok(())
     }
@@ -458,7 +453,9 @@ mod tests {
     fn test_generate_token() {
         let service = UserService::with_secret("test-secret".to_string());
 
-        let token = service.generate_token("user123", "testuser").unwrap();
+        let token = service
+            .generate_token("user123", "testuser")
+            .unwrap_or_else(|e| panic!("token generation should succeed: {e}"));
 
         assert!(!token.token.is_empty());
         assert_eq!(token.user_id, "user123");
@@ -470,9 +467,13 @@ mod tests {
     fn test_validate_token_success() {
         let service = UserService::with_secret("test-secret".to_string());
 
-        let token = service.generate_token("user123", "testuser").unwrap();
+        let token = service
+            .generate_token("user123", "testuser")
+            .unwrap_or_else(|e| panic!("token generation should succeed: {e}"));
 
-        let (user_id, username) = service.validate_token(&token.token).unwrap();
+        let (user_id, username) = service
+            .validate_token(&token.token)
+            .unwrap_or_else(|e| panic!("token validation should succeed: {e}"));
 
         assert_eq!(user_id, "user123");
         assert_eq!(username, "testuser");
@@ -484,11 +485,10 @@ mod tests {
 
         let result = service.validate_token("invalid.token.here");
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::TokenValidationError(_)
-        ));
+        let Err(e) = result else {
+            panic!("invalid token validation should fail");
+        };
+        assert!(matches!(e, UserServiceError::TokenValidationError(_)));
     }
 
     #[test]
@@ -496,15 +496,16 @@ mod tests {
         let service1 = UserService::with_secret("secret1".to_string());
         let service2 = UserService::with_secret("secret2".to_string());
 
-        let token = service1.generate_token("user123", "testuser").unwrap();
+        let token = service1
+            .generate_token("user123", "testuser")
+            .unwrap_or_else(|e| panic!("token generation should succeed: {e}"));
 
         // Validating with a different secret should fail
         let result = service2.validate_token(&token.token);
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            UserServiceError::TokenValidationError(_)
-        ));
+        let Err(e) = result else {
+            panic!("wrong-secret validation should fail");
+        };
+        assert!(matches!(e, UserServiceError::TokenValidationError(_)));
     }
 }

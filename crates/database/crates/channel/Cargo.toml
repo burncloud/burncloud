@@ -11,7 +11,7 @@ burncloud-common.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true
-log.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true

@@ -699,6 +699,7 @@ impl Price {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod currency_tests {
     use super::*;
 
@@ -730,27 +731,43 @@ mod currency_tests {
 
     #[test]
     fn test_currency_from_str() {
-        assert_eq!(Currency::from_str("USD").unwrap(), Currency::USD);
-        assert_eq!(Currency::from_str("usd").unwrap(), Currency::USD);
-        assert_eq!(Currency::from_str("CNY").unwrap(), Currency::CNY);
-        assert_eq!(Currency::from_str("eur").unwrap(), Currency::EUR);
+        assert_eq!(
+            Currency::from_str("USD").unwrap_or_else(|e| panic!("Failed to parse currency: {e}")),
+            Currency::USD
+        );
+        assert_eq!(
+            Currency::from_str("usd").unwrap_or_else(|e| panic!("Failed to parse currency: {e}")),
+            Currency::USD
+        );
+        assert_eq!(
+            Currency::from_str("CNY").unwrap_or_else(|e| panic!("Failed to parse currency: {e}")),
+            Currency::CNY
+        );
+        assert_eq!(
+            Currency::from_str("eur").unwrap_or_else(|e| panic!("Failed to parse currency: {e}")),
+            Currency::EUR
+        );
         assert!(Currency::from_str("GBP").is_err());
     }
 
     #[test]
     fn test_currency_serde() {
         // Test serialization
-        let json = serde_json::to_string(&Currency::USD).unwrap();
+        let json = serde_json::to_string(&Currency::USD)
+            .unwrap_or_else(|e| panic!("Failed to serialize currency: {e}"));
         assert_eq!(json, "\"usd\"");
 
-        let json = serde_json::to_string(&Currency::CNY).unwrap();
+        let json = serde_json::to_string(&Currency::CNY)
+            .unwrap_or_else(|e| panic!("Failed to serialize currency: {e}"));
         assert_eq!(json, "\"cny\"");
 
         // Test deserialization (lowercase)
-        let currency: Currency = serde_json::from_str("\"usd\"").unwrap();
+        let currency: Currency = serde_json::from_str("\"usd\"")
+            .unwrap_or_else(|e| panic!("Failed to deserialize currency: {e}"));
         assert_eq!(currency, Currency::USD);
 
-        let currency: Currency = serde_json::from_str("\"eur\"").unwrap();
+        let currency: Currency = serde_json::from_str("\"eur\"")
+            .unwrap_or_else(|e| panic!("Failed to deserialize currency: {e}"));
         assert_eq!(currency, Currency::EUR);
     }
 
@@ -768,7 +785,8 @@ mod currency_tests {
         assert_eq!(price.output_price, 6_000_000);
 
         // Test serialization
-        let json = serde_json::to_string(&price).unwrap();
+        let json = serde_json::to_string(&price)
+            .unwrap_or_else(|e| panic!("Failed to serialize price: {e}"));
         assert!(json.contains("\"currency\":\"cny\""));
     }
 }

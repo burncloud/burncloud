@@ -144,6 +144,7 @@ pub fn calculate_cost_safe(tokens: u64, price_per_million_nano: i64) -> i64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -276,10 +277,14 @@ mod tests {
 
         // Rounding behavior
         // 0.000_000_0015 should round to 2
-        assert_eq!(dollars_to_nano(0.000_000_0015), 2);
+        #[allow(clippy::inconsistent_digit_grouping)]
+        let val1 = 0.000_000_0015;
+        assert_eq!(dollars_to_nano(val1), 2);
 
         // 0.000_000_0014 should round to 1
-        assert_eq!(dollars_to_nano(0.000_000_0014), 1);
+        #[allow(clippy::inconsistent_digit_grouping)]
+        let val2 = 0.000_000_0014;
+        assert_eq!(dollars_to_nano(val2), 1);
     }
 
     #[test]

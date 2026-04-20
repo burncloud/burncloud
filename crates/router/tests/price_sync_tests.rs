@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
+
 mod common;
 
 use burncloud_common::dollars_to_nano;
@@ -16,7 +25,7 @@ use std::sync::Arc;
 
 /// Helper to convert dollars to nanodollars as i64
 fn to_nano(price: f64) -> i64 {
-    dollars_to_nano(price) as i64
+    dollars_to_nano(price)
 }
 
 /// Test that pricing config with cache pricing is correctly applied
@@ -64,16 +73,51 @@ async fn test_advanced_pricing_sync() -> anyhow::Result<()> {
         BillingPriceModel::get(&_db, "test-cache-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
-    let stored = stored.unwrap();
+    let stored = stored.unwrap_or_else(|| panic!("Price should exist for test-cache-model"));
     assert_eq!(stored.input_price, to_nano(3.0));
     assert_eq!(stored.output_price, to_nano(15.0));
-    assert_eq!(stored.cache_read_input_price.unwrap(), to_nano(0.30));
-    assert_eq!(stored.cache_creation_input_price.unwrap(), to_nano(3.75));
-    assert_eq!(stored.batch_input_price.unwrap(), to_nano(1.5));
-    assert_eq!(stored.batch_output_price.unwrap(), to_nano(7.5));
-    assert_eq!(stored.priority_input_price.unwrap(), to_nano(5.1));
-    assert_eq!(stored.priority_output_price.unwrap(), to_nano(25.5));
-    assert_eq!(stored.audio_input_price.unwrap(), to_nano(21.0));
+    assert_eq!(
+        stored
+            .cache_read_input_price
+            .unwrap_or_else(|| panic!("cache_read_input_price should exist")),
+        to_nano(0.30)
+    );
+    assert_eq!(
+        stored
+            .cache_creation_input_price
+            .unwrap_or_else(|| panic!("cache_creation_input_price should exist")),
+        to_nano(3.75)
+    );
+    assert_eq!(
+        stored
+            .batch_input_price
+            .unwrap_or_else(|| panic!("batch_input_price should exist")),
+        to_nano(1.5)
+    );
+    assert_eq!(
+        stored
+            .batch_output_price
+            .unwrap_or_else(|| panic!("batch_output_price should exist")),
+        to_nano(7.5)
+    );
+    assert_eq!(
+        stored
+            .priority_input_price
+            .unwrap_or_else(|| panic!("priority_input_price should exist")),
+        to_nano(5.1)
+    );
+    assert_eq!(
+        stored
+            .priority_output_price
+            .unwrap_or_else(|| panic!("priority_output_price should exist")),
+        to_nano(25.5)
+    );
+    assert_eq!(
+        stored
+            .audio_input_price
+            .unwrap_or_else(|| panic!("audio_input_price should exist")),
+        to_nano(21.0)
+    );
 
     Ok(())
 }
@@ -123,7 +167,7 @@ async fn test_basic_pricing_sync() -> anyhow::Result<()> {
         BillingPriceModel::get(&_db, "test-basic-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
-    let stored = stored.unwrap();
+    let stored = stored.unwrap_or_else(|| panic!("Price should exist for test-basic-model"));
     assert_eq!(stored.input_price, to_nano(1.0));
     assert_eq!(stored.output_price, to_nano(3.0));
     // Advanced fields should be NULL
@@ -209,11 +253,21 @@ async fn test_pricing_update() -> anyhow::Result<()> {
         BillingPriceModel::get(&_db, "test-update-model", "USD", Some("international")).await?;
     assert!(stored.is_some(), "Price should be stored");
 
-    let stored = stored.unwrap();
+    let stored = stored.unwrap_or_else(|| panic!("Price should exist for test-update-model"));
     assert_eq!(stored.input_price, to_nano(2.0));
     assert_eq!(stored.output_price, to_nano(6.0));
-    assert_eq!(stored.cache_read_input_price.unwrap(), to_nano(0.20));
-    assert_eq!(stored.cache_creation_input_price.unwrap(), to_nano(2.0));
+    assert_eq!(
+        stored
+            .cache_read_input_price
+            .unwrap_or_else(|| panic!("cache_read_input_price should exist")),
+        to_nano(0.20)
+    );
+    assert_eq!(
+        stored
+            .cache_creation_input_price
+            .unwrap_or_else(|| panic!("cache_creation_input_price should exist")),
+        to_nano(2.0)
+    );
 
     Ok(())
 }
@@ -344,7 +398,7 @@ async fn test_pricing_config_import() -> anyhow::Result<()> {
     let stored = BillingPriceModel::get(&db, "test-import-model", "USD", None).await?;
     assert!(stored.is_some(), "Imported model should be stored");
 
-    let stored = stored.unwrap();
+    let stored = stored.unwrap_or_else(|| panic!("Price should exist for test-import-model"));
     assert_eq!(stored.input_price, to_nano(5.0));
     assert_eq!(stored.output_price, to_nano(15.0));
 
@@ -385,7 +439,12 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
         "Forced sync failure with existing DB prices must return Ok, got: {:?}",
         result.err()
     );
-    assert_eq!(result.unwrap().source, "db_fallback");
+    assert_eq!(
+        result
+            .unwrap_or_else(|e| panic!("result should be Ok: {e}"))
+            .source,
+        "db_fallback"
+    );
 
     // The pre-existing price must still be in the DB
     let price = BillingPriceModel::get(&db, "sync-failure-test-model", "USD", None).await?;
@@ -393,7 +452,7 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
         price.is_some(),
         "Pre-existing price must survive a failed sync"
     );
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("Price should exist for sync-failure-test-model"));
     assert_eq!(price.input_price, to_nano(5.0));
 
     Ok(())
@@ -565,7 +624,7 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
     // Verify initial price
     let stored = BillingPriceModel::get(&db, model_name, "USD", Some("international"))
         .await?
-        .unwrap();
+        .unwrap_or_else(|| panic!("Price should exist for {model_name}"));
     assert_eq!(stored.input_price, to_nano(10.0));
     assert_eq!(stored.source, Some("remote".to_string()));
 
@@ -584,7 +643,7 @@ async fn test_data_source_priority() -> anyhow::Result<()> {
     // Verify the update
     let stored = BillingPriceModel::get(&db, model_name, "USD", Some("international"))
         .await?
-        .unwrap();
+        .unwrap_or_else(|| panic!("Price should exist for {model_name} after update"));
     assert_eq!(stored.input_price, to_nano(5.0));
     assert_eq!(stored.source, Some("local".to_string()));
 

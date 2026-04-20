@@ -51,7 +51,7 @@ async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!("Migrating prices_v2 to billing_prices table...");
+    tracing::info!("Migrating prices_v2 to billing_prices table...");
 
     // Check for existing billing_prices (canonical, created by rename.rs from old prices).
     // Also check for legacy prices table on installs where rename.rs hasn't run yet.
@@ -100,7 +100,7 @@ async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
         let _ = sqlx::query("ALTER TABLE billing_prices RENAME TO prices_deprecated")
             .execute(pool)
             .await;
-        println!("  Saved existing 'billing_prices' as 'prices_deprecated'");
+        tracing::info!("  Saved existing 'billing_prices' as 'prices_deprecated'");
     } else if old_prices_exists {
         // Very old install: rename.rs hasn't run yet and prices still has the old name.
         let _ = sqlx::query("DROP TABLE IF EXISTS prices_deprecated")
@@ -109,7 +109,7 @@ async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
         let _ = sqlx::query("ALTER TABLE prices RENAME TO prices_deprecated")
             .execute(pool)
             .await;
-        println!("  Renamed old 'prices' table to 'prices_deprecated'");
+        tracing::info!("  Renamed old 'prices' table to 'prices_deprecated'");
     }
 
     let _ = sqlx::query("ALTER TABLE prices_v2 RENAME TO billing_prices")
@@ -124,7 +124,7 @@ async fn migrate_prices_v2(pool: &AnyPool, kind: &str) -> Result<()> {
     )
     .execute(pool)
     .await;
-    println!("  Renamed 'prices_v2' to 'billing_prices'");
+    tracing::info!("  Renamed 'prices_v2' to 'billing_prices'");
     Ok(())
 }
 
@@ -144,7 +144,7 @@ async fn cleanup_temp_tables(pool: &AnyPool, kind: &str) -> Result<()> {
                 let _ = sqlx::query(&format!("DROP TABLE {table}"))
                     .execute(pool)
                     .await;
-                println!("  Dropped temporary table '{table}'");
+                tracing::info!("  Dropped temporary table '{table}'");
             }
         } else {
             let _ = sqlx::query(&format!("DROP TABLE IF EXISTS {table}"))
@@ -248,7 +248,7 @@ async fn migrate_prices_deprecated(pool: &AnyPool, kind: &str) -> Result<()> {
         .bind(now)
         .execute(pool)
         .await;
-    println!("  Migrated data from prices_deprecated to billing_prices");
+    tracing::info!("  Migrated data from prices_deprecated to billing_prices");
     Ok(())
 }
 
@@ -271,7 +271,7 @@ async fn fix_real_prices(pool: &AnyPool, kind: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!(
+    tracing::info!(
         "Fixing {real_count} rows with REAL-typed prices (converting dollars to nanodollars)..."
     );
     let price_cols = price_column_names();
@@ -289,7 +289,7 @@ async fn fix_real_prices(pool: &AnyPool, kind: &str) -> Result<()> {
     let update_sql =
         format!("UPDATE billing_prices SET {set_clauses} WHERE typeof(input_price) = 'real'");
     let _ = sqlx::query(&update_sql).execute(pool).await;
-    println!("  Converted dollar-format prices to nanodollar format");
+    tracing::info!("  Converted dollar-format prices to nanodollar format");
     Ok(())
 }
 
@@ -314,7 +314,7 @@ async fn fix_small_int_prices(pool: &AnyPool, kind: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!(
+    tracing::info!(
         "Fixing {small_int_count} rows with small-integer prices \
          (old USD dollar format -> nanodollars)..."
     );
@@ -335,7 +335,7 @@ async fn fix_small_int_prices(pool: &AnyPool, kind: &str) -> Result<()> {
          OR (output_price > 0 AND output_price < 10000)"
     );
     let _ = sqlx::query(&update_sql).execute(pool).await;
-    println!("  Converted small-integer USD prices to nanodollar format");
+    tracing::info!("  Converted small-integer USD prices to nanodollar format");
     Ok(())
 }
 
@@ -371,7 +371,7 @@ async fn normalise_regions(pool: &AnyPool) -> Result<()> {
     if let Ok(r) = dedup_result {
         let removed = r.rows_affected();
         if removed > 0 {
-            println!("  Removed {removed} duplicate price rows");
+            tracing::info!("  Removed {removed} duplicate price rows");
         }
     }
     Ok(())

@@ -17,7 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         github_owner: "burncloud".to_string(),
         github_repo: "burncloud".to_string(),
         bin_name: "burncloud".to_string(),
-        ..UpdateConfig::default()
     };
 
     let updater = AutoUpdater::new(config);

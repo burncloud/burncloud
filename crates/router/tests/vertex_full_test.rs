@@ -1,3 +1,13 @@
+// serde_json::Value is required for dynamic JSON parsing in vertex full test
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
+
 mod common;
 use burncloud_database::sqlx;
 use common::{setup_db, start_test_server};
@@ -196,9 +206,9 @@ Apfww82b16AoK7qgtPcI8g==
     let ct = stream_resp
         .headers()
         .get("content-type")
-        .unwrap()
+        .unwrap_or_else(|| panic!("Expected content-type header"))
         .to_str()
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Failed to parse content-type header: {e}"));
     assert!(ct.contains("text/event-stream"));
 
     let bytes = stream_resp.bytes().await?;

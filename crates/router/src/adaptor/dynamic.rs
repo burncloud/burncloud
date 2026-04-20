@@ -6,7 +6,7 @@
 //! This module provides a dynamic adaptor that can be configured at runtime
 //! through protocol configurations stored in the database.
 
-use crate::adaptor::factory::ChannelAdaptor;
+use crate::adaptor::{factory::ChannelAdaptor, generate_chat_id};
 use crate::adaptor::mapping::{apply_mapping, extract_value, RequestMapping, ResponseMapping};
 use async_trait::async_trait;
 use burncloud_common::types::OpenAIChatRequest;
@@ -63,7 +63,7 @@ impl DynamicAdaptor {
         let endpoint = endpoint.replace("{model}", model);
 
         // Combine with base URL
-        format!("{}{}", base_url.trim_end_matches('/'), endpoint)
+        format!("{}{endpoint}", base_url.trim_end_matches('/'))
     }
 
     /// Parse request mapping from JSON string
@@ -138,7 +138,7 @@ impl ChannelAdaptor for DynamicAdaptor {
 
         // Build OpenAI-format response
         Some(serde_json::json!({
-            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+            "id": generate_chat_id(),
             "object": "chat.completion",
             "created": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -175,6 +175,14 @@ impl ChannelAdaptor for DynamicAdaptor {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
 mod tests {
     use super::*;
 
@@ -225,7 +233,8 @@ mod tests {
         let mapping = DynamicAdaptor::parse_request_mapping(json);
 
         assert!(mapping.is_some());
-        let mapping = mapping.unwrap();
+        let mapping =
+            mapping.unwrap_or_else(|| panic!("request mapping should parse successfully"));
         assert_eq!(
             mapping.field_map.get("input"),
             Some(&"messages".to_string())
@@ -242,7 +251,8 @@ mod tests {
         let mapping = DynamicAdaptor::parse_response_mapping(json);
 
         assert!(mapping.is_some());
-        let mapping = mapping.unwrap();
+        let mapping =
+            mapping.unwrap_or_else(|| panic!("response mapping should parse successfully"));
         assert_eq!(
             mapping.content_path,
             Some("choices[0].message.content".to_string())
@@ -269,7 +279,7 @@ mod tests {
         let converted = adaptor.convert_request(&req);
         assert!(converted.is_some());
 
-        let json = converted.unwrap();
+        let json = converted.unwrap_or_else(|| panic!("converted request should be Some"));
         assert_eq!(json.get("model").and_then(|v| v.as_str()), Some("gpt-4"));
     }
 
@@ -297,7 +307,7 @@ mod tests {
         let converted = adaptor.convert_request(&req);
         assert!(converted.is_some());
 
-        let json = converted.unwrap();
+        let json = converted.unwrap_or_else(|| panic!("converted request should be Some"));
         // model should be renamed to deployment_id
         assert!(json.get("model").is_none());
         assert_eq!(
@@ -358,7 +368,7 @@ mod tests {
         let converted = adaptor.convert_response(resp, "test");
         assert!(converted.is_some());
 
-        let json = converted.unwrap();
+        let json = converted.unwrap_or_else(|| panic!("converted response should be Some"));
         assert_eq!(
             json.get("choices")
                 .and_then(|c| c.get(0))
