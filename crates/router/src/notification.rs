@@ -10,6 +10,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Rate limiter window for notification deduplication (1 hour).
+const RATE_LIMIT_WINDOW_SECS: u64 = 3600;
+
 /// Notification type enumeration
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -177,7 +180,7 @@ impl NotificationService {
         // Check rate limit
         let key = format!("{:?}", notification.notification_type);
         let now = std::time::Instant::now();
-        let hour_ago = std::time::Duration::from_secs(3600);
+        let hour_ago = std::time::Duration::from_secs(RATE_LIMIT_WINDOW_SECS);
 
         if let Some((count, last_reset)) = self.rate_limiter.get_mut(&key) {
             if now.duration_since(*last_reset) > hour_ago {
@@ -203,7 +206,7 @@ impl NotificationService {
         }
 
         // Log the notification
-        println!(
+        tracing::info!(
             "[Notification] [{:?}] {:?}: {} - {}",
             notification.priority,
             notification.notification_type,
@@ -248,7 +251,7 @@ impl NotificationService {
         let notification = Notification::new(
             NotificationType::NewModel,
             Priority::Medium,
-            format!("New Model Discovered: {}", model),
+            format!("New Model Discovered: {model}"),
             format!(
                 "A new model '{}' was discovered on channel '{}' (ID: {}). \
                  Please configure pricing if not already set.",
@@ -267,7 +270,7 @@ impl NotificationService {
         let notification = Notification::new(
             NotificationType::PriceMissing,
             Priority::High,
-            format!("Price Missing for Model: {}", model),
+            format!("Price Missing for Model: {model}"),
             format!(
                 "Model '{}' is being requested but has no price configuration. \
                  Please add pricing information to enable quota tracking.",
@@ -296,7 +299,7 @@ impl NotificationService {
         let notification = Notification::new(
             NotificationType::ChannelError,
             priority,
-            format!("Channel Error: {} - {}", channel_name, error_type),
+            format!("Channel Error: {channel_name} - {error_type}"),
             format!(
                 "Channel '{}' (ID: {}) encountered an error: {} - {}",
                 channel_name, channel_id, error_type, error_message
@@ -319,7 +322,7 @@ impl NotificationService {
         let notification = Notification::new(
             NotificationType::AuthFailed,
             Priority::Critical,
-            format!("Authentication Failed: {}", channel_name),
+            format!("Authentication Failed: {channel_name}"),
             format!(
                 "Channel '{}' (ID: {}) authentication failed: {}. \
                  The channel has been disabled until the API key is updated.",
@@ -341,7 +344,7 @@ impl NotificationService {
         let notification = Notification::new(
             NotificationType::BalanceExhausted,
             Priority::Critical,
-            format!("Balance Exhausted: {}", channel_name),
+            format!("Balance Exhausted: {channel_name}"),
             format!(
                 "Channel '{}' (ID: {}) has exhausted its balance. \
                  Please add credits to restore service.",
@@ -365,7 +368,7 @@ impl NotificationService {
         let notification = Notification::new(
             NotificationType::ApiVersionDeprecated,
             Priority::High,
-            format!("API Version Deprecated: {}", channel_name),
+            format!("API Version Deprecated: {channel_name}"),
             format!(
                 "Channel '{}' (ID: {}) is using deprecated API version '{}'. \
                  New version '{}' is available. Consider updating the channel configuration.",
@@ -503,7 +506,8 @@ mod tests {
             "Test message",
         );
 
-        let json = serde_json::to_string(&notification).unwrap();
+        let json = serde_json::to_string(&notification)
+            .unwrap_or_else(|e| panic!("failed to serialize notification: {e}"));
         assert!(json.contains("channel_error"));
         assert!(json.contains("high"));
         assert!(json.contains("Test"));

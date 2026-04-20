@@ -1,10 +1,4 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::disallowed_types,
-    clippy::let_and_return,
-    clippy::redundant_pattern_matching
-)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
 //! Integration tests for u64 nanodollar pricing precision migration
 //!
 //! These tests validate the end-to-end behavior of the pricing system

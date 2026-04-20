@@ -249,9 +249,18 @@ mod tests {
         use burncloud_common::Currency;
         use std::str::FromStr;
 
-        assert_eq!(Currency::from_str("USD").unwrap(), Currency::USD);
-        assert_eq!(Currency::from_str("CNY").unwrap(), Currency::CNY);
-        assert_eq!(Currency::from_str("EUR").unwrap(), Currency::EUR);
+        assert_eq!(
+            Currency::from_str("USD").unwrap_or_else(|e| panic!("USD should parse: {e}")),
+            Currency::USD
+        );
+        assert_eq!(
+            Currency::from_str("CNY").unwrap_or_else(|e| panic!("CNY should parse: {e}")),
+            Currency::CNY
+        );
+        assert_eq!(
+            Currency::from_str("EUR").unwrap_or_else(|e| panic!("EUR should parse: {e}")),
+            Currency::EUR
+        );
         assert!(Currency::from_str("GBP").is_err());
     }
 }

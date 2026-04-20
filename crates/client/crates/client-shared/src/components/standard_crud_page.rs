@@ -1,3 +1,6 @@
+// Generic CRUD page driven by JSON schema — Value required for schema, form data, and table rows.
+#![allow(clippy::disallowed_types)]
+
 use crate::components::{
     ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,
 };

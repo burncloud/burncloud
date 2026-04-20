@@ -10,8 +10,15 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+/// Read-only snapshot of adaptive rate limit state for scheduling decisions.
+#[derive(Debug, Clone, Default)]
+pub struct AdaptiveSnapshot {
+    pub current_limit: u32,
+    pub state: RateLimitState,
+}
+
 /// Represents the state of the adaptive rate limit state machine.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub enum RateLimitState {
     /// Initial state - learning the actual rate limits
     #[default]
@@ -21,6 +28,13 @@ pub enum RateLimitState {
     /// Cooldown state - recovering from rate limit errors
     Cooldown,
 }
+
+/// Default initial RPM limit for channels without adaptive rate limit data.
+/// Single source of truth — referenced by AdaptiveLimitConfig::default() and scheduler.
+pub const DEFAULT_INITIAL_LIMIT: u32 = 10;
+
+/// Multiplier applied to current limit on rate-limit events (20% reduction).
+const RATE_LIMIT_REDUCTION_RATIO: f64 = 0.8;
 
 /// Configuration for the adaptive rate limiter.
 #[derive(Debug, Clone)]
@@ -46,14 +60,14 @@ pub struct AdaptiveLimitConfig {
 impl Default for AdaptiveLimitConfig {
     fn default() -> Self {
         Self {
-            learning_duration: 10, // Learn over 10 requests
-            initial_limit: 10,     // Start conservatively
-            adjustment_step: 5,    // Adjust by 5 requests at a time
-            success_threshold: 5,  // 5 successes to increase
-            failure_threshold: 2,  // 2 failures to cooldown
+            learning_duration: 10,
+            initial_limit: DEFAULT_INITIAL_LIMIT,
+            adjustment_step: 5,
+            success_threshold: 5,
+            failure_threshold: 2,
             cooldown_duration: Duration::from_secs(30),
-            recovery_ratio: 0.5, // Reduce to 50% after cooldown
-            max_limit: 1000,     // Cap at 1000 requests
+            recovery_ratio: 0.5,
+            max_limit: 1000,
         }
     }
 }
@@ -144,7 +158,7 @@ impl AdaptiveRateLimit {
                 // Check if we should transition to Stable
                 if self.request_count >= self.config.learning_duration {
                     self.state = RateLimitState::Stable;
-                    println!(
+                    tracing::info!(
                         "AdaptiveLimit: Transitioned to Stable after {} requests",
                         self.request_count
                     );
@@ -202,11 +216,11 @@ impl AdaptiveRateLimit {
         }
 
         // Reduce current limit by 20% (keep 80%)
-        let new_limit = (self.current_limit as f64 * 0.8).ceil() as u32;
+        let new_limit = (self.current_limit as f64 * RATE_LIMIT_REDUCTION_RATIO).ceil() as u32;
         self.current_limit = new_limit.max(1); // Ensure at least 1
         self.last_adjusted_at = Some(now);
 
-        println!(
+        tracing::warn!(
             "AdaptiveLimit: Reduced limit to {} after rate limit error",
             self.current_limit
         );
@@ -259,11 +273,19 @@ impl AdaptiveRateLimit {
         &self.state
     }
 
+    /// Take a point-in-time snapshot for scheduling decisions.
+    pub fn snapshot(&self) -> AdaptiveSnapshot {
+        AdaptiveSnapshot {
+            current_limit: self.current_limit,
+            state: self.state,
+        }
+    }
+
     /// Enter cooldown state.
     fn enter_cooldown(&mut self, now: Instant) {
         self.state = RateLimitState::Cooldown;
         self.cooldown_until = Some(now + self.config.cooldown_duration);
-        println!(
+        tracing::warn!(
             "AdaptiveLimit: Entering Cooldown for {}s",
             self.config.cooldown_duration.as_secs()
         );
@@ -286,7 +308,7 @@ impl AdaptiveRateLimit {
         self.success_streak = 0;
         self.last_adjusted_at = Some(now);
 
-        println!(
+        tracing::info!(
             "AdaptiveLimit: Recovered from Cooldown, new limit: {}",
             self.current_limit
         );
@@ -306,7 +328,7 @@ impl AdaptiveRateLimit {
             self.last_adjusted_at = Some(now);
             self.success_streak = 0; // Reset streak after adjustment
 
-            println!("AdaptiveLimit: Increased limit to {}", self.current_limit);
+            tracing::debug!("AdaptiveLimit: Increased limit to {}", self.current_limit);
         }
     }
 }
@@ -348,7 +370,7 @@ mod tests {
         assert!(limiter.current_limit < initial_limit);
         assert_eq!(
             limiter.current_limit,
-            (initial_limit as f64 * 0.8).ceil() as u32
+            (initial_limit as f64 * RATE_LIMIT_REDUCTION_RATIO).ceil() as u32
         );
     }
 
@@ -391,7 +413,7 @@ mod tests {
 
         assert_eq!(limiter.state, RateLimitState::Learning);
         // Limit should be reduced by recovery_ratio (50%)
-        assert!(limiter.current_limit <= (initial_limit as f64 * 0.8 * 0.5).ceil() as u32);
+        assert!(limiter.current_limit <= (initial_limit as f64 * RATE_LIMIT_REDUCTION_RATIO * 0.5).ceil() as u32);
     }
 
     #[test]

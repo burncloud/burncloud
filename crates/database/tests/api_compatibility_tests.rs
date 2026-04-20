@@ -10,8 +10,7 @@ async fn test_database_creation_methods() {
 
     // Method 1: Database::new() - creates initialized database with default path
     let db_result = Database::new().await;
-    if db_result.is_ok() {
-        let db = db_result.unwrap();
+    if let Ok(db) = db_result {
         assert!(
             db.get_connection().is_ok(),
             "Default database should be initialized"
@@ -22,8 +21,7 @@ async fn test_database_creation_methods() {
     // Method 2: Using default database (custom paths no longer supported through new_with_path)
     // Testing with default database instead
     let default_db_result = Database::new().await;
-    if default_db_result.is_ok() {
-        let explicit_db = default_db_result.unwrap();
+    if let Ok(explicit_db) = default_db_result {
         assert!(
             explicit_db.get_connection().is_ok(),
             "Default database should be initialized"
@@ -199,8 +197,7 @@ async fn test_backward_compatibility() {
     // Pattern 1: Using default database (custom paths no longer supported)
     // Test with default database instead
     let default_db_result = Database::new().await;
-    if default_db_result.is_ok() {
-        let path_db = default_db_result.unwrap();
+    if let Ok(path_db) = default_db_result {
         // Should work as before
         let result = path_db
             .execute_query("CREATE TABLE test (id INTEGER)")

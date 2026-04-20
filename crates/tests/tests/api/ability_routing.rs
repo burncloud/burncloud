@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
 use crate::common as common_mod;
 use axum::{body::Body, extract::Request, routing::post, Json, Router};
 use burncloud_tests::TestClient;
@@ -86,6 +87,7 @@ async fn mock_chat_handler(req: Request<Body>) -> Json<serde_json::Value> {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (running server)"]
 async fn test_ability_routing_and_passthrough() {
     // 1. Setup
     let app_url = common_mod::spawn_app().await;

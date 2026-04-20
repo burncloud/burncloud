@@ -432,7 +432,10 @@ mod tests {
 
         let usage = extract_usage(&json, "usage");
         assert!(usage.is_some());
-        assert_eq!(usage.unwrap()["total_tokens"], 30);
+        assert_eq!(
+            usage.unwrap_or_else(|| panic!("usage should be Some"))["total_tokens"],
+            30
+        );
     }
 
     #[test]
@@ -454,8 +457,10 @@ mod tests {
             .add_field_mapping("input", "messages")
             .add_rename("model", "deployment_id");
 
-        let json = serde_json::to_string(&mapping).unwrap();
-        let parsed: RequestMapping = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&mapping)
+            .unwrap_or_else(|e| panic!("failed to serialize request mapping: {e}"));
+        let parsed: RequestMapping = serde_json::from_str(&json)
+            .unwrap_or_else(|e| panic!("failed to deserialize request mapping: {e}"));
 
         assert_eq!(parsed.field_map.get("input"), Some(&"messages".to_string()));
         assert_eq!(
@@ -468,8 +473,10 @@ mod tests {
     fn test_response_mapping_serialization() {
         let mapping = ResponseMapping::new().content_path("choices[0].message.content");
 
-        let json = serde_json::to_string(&mapping).unwrap();
-        let parsed: ResponseMapping = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&mapping)
+            .unwrap_or_else(|e| panic!("failed to serialize response mapping: {e}"));
+        let parsed: ResponseMapping = serde_json::from_str(&json)
+            .unwrap_or_else(|e| panic!("failed to deserialize response mapping: {e}"));
 
         assert_eq!(
             parsed.content_path,

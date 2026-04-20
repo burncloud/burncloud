@@ -1,4 +1,5 @@
 pub mod api;
+pub mod logging;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::Router;
@@ -13,6 +14,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -53,6 +55,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
 
     let app = app
         .fallback_service(router_app)
+        .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 
     Ok(app)
@@ -67,11 +70,11 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     let app = create_app(db, enable_liveview).await?;
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    log::info!("Unified Gateway listening on {}", addr);
+    tracing::info!("Unified Gateway listening on {}", addr);
     if enable_liveview {
-        log::info!("- Dashboard: http://{}:{}/", host, port);
+        tracing::info!("- Dashboard: http://{}:{}/", host, port);
     }
-    log::info!("- LLM API:   http://{}:{}/v1/...", host, port);
+    tracing::info!("- LLM API:   http://{}:{}/v1/...", host, port);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

@@ -1,3 +1,4 @@
+// serde_json::Value is required for dynamic JSON parsing in boundary tests
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -61,7 +62,7 @@ async fn test_expired_token_returns_401_boundary() -> anyhow::Result<()> {
     // Create expired token (expired_time in the past)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_else(|e| panic!("System time before epoch: {e}"))
         .as_secs() as i64;
 
     sqlx::query(

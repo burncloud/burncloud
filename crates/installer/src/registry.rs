@@ -328,19 +328,35 @@ mod tests {
     fn test_get_software() {
         let software = get_software("openclaw");
         assert!(software.is_some());
-        assert_eq!(software.unwrap().id, "openclaw");
+        assert_eq!(
+            software
+                .unwrap_or_else(|| panic!("openclaw should exist"))
+                .id,
+            "openclaw"
+        );
 
         let software = get_software("cherry-studio");
         assert!(software.is_some());
-        assert_eq!(software.unwrap().id, "cherry-studio");
+        assert_eq!(
+            software
+                .unwrap_or_else(|| panic!("cherry-studio should exist"))
+                .id,
+            "cherry-studio"
+        );
 
         let software = get_software("fnm");
         assert!(software.is_some());
-        assert_eq!(software.unwrap().id, "fnm");
+        assert_eq!(
+            software.unwrap_or_else(|| panic!("fnm should exist")).id,
+            "fnm"
+        );
 
         let software = get_software("git");
         assert!(software.is_some());
-        assert_eq!(software.unwrap().id, "git");
+        assert_eq!(
+            software.unwrap_or_else(|| panic!("git should exist")).id,
+            "git"
+        );
     }
 
     #[test]
@@ -351,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_openclaw_definition() {
-        let software = get_software("openclaw").unwrap();
+        let software = get_software("openclaw").unwrap_or_else(|| panic!("openclaw should exist"));
         assert_eq!(software.name, "OpenClaw");
         assert!(!software.dependencies.is_empty());
         assert!(software.homepage.is_some());
@@ -372,7 +388,8 @@ mod tests {
 
     #[test]
     fn test_cherry_studio_definition() {
-        let software = get_software("cherry-studio").unwrap();
+        let software =
+            get_software("cherry-studio").unwrap_or_else(|| panic!("cherry-studio should exist"));
         assert_eq!(software.name, "Cherry Studio");
         assert!(software.homepage.is_some());
 
@@ -387,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_fnm_definition() {
-        let software = get_software("fnm").unwrap();
+        let software = get_software("fnm").unwrap_or_else(|| panic!("fnm should exist"));
         assert_eq!(software.name, "fnm (Fast Node Manager)");
         assert!(software.homepage.is_some());
 
@@ -412,7 +429,7 @@ mod tests {
 
     #[test]
     fn test_git_definition() {
-        let software = get_software("git").unwrap();
+        let software = get_software("git").unwrap_or_else(|| panic!("git should exist"));
         assert_eq!(software.name, "Git");
         assert!(software.homepage.is_some());
 

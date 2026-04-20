@@ -10,14 +10,14 @@ use tempfile::NamedTempFile;
 
 /// Create an isolated `SettingDatabase` backed by a fresh SQLite temp file.
 async fn create_test_setting_db() -> (SettingDatabase, NamedTempFile) {
-    let tmp = NamedTempFile::new().expect("failed to create temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
     let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
     let db = create_database_with_url(&url)
         .await
-        .expect("failed to connect to test database");
+        .unwrap_or_else(|e| panic!("failed to connect to test database: {e}"));
     let setting_db = SettingDatabase::new_with_db(db)
         .await
-        .expect("failed to initialise SettingDatabase");
+        .unwrap_or_else(|e| panic!("failed to initialise SettingDatabase: {e}"));
     (setting_db, tmp)
 }
 
@@ -29,9 +29,14 @@ async fn create_test_setting_db() -> (SettingDatabase, NamedTempFile) {
 async fn test_set_and_get_value() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    sdb.set("theme", "dark").await.expect("set failed");
+    sdb.set("theme", "dark")
+        .await
+        .unwrap_or_else(|e| panic!("set failed: {e}"));
 
-    let value = sdb.get("theme").await.expect("get failed");
+    let value = sdb
+        .get("theme")
+        .await
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
     assert_eq!(value, Some("dark".to_string()));
 }
 
@@ -39,7 +44,10 @@ async fn test_set_and_get_value() {
 async fn test_get_missing_key_returns_none() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    let value = sdb.get("no-such-key").await.expect("get failed");
+    let value = sdb
+        .get("no-such-key")
+        .await
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
     assert!(value.is_none());
 }
 
@@ -47,10 +55,17 @@ async fn test_get_missing_key_returns_none() {
 async fn test_set_overwrites_existing_value() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    sdb.set("lang", "en").await.unwrap();
-    sdb.set("lang", "zh").await.expect("overwrite failed");
+    sdb.set("lang", "en")
+        .await
+        .unwrap_or_else(|e| panic!("set en failed: {e}"));
+    sdb.set("lang", "zh")
+        .await
+        .unwrap_or_else(|e| panic!("overwrite failed: {e}"));
 
-    let value = sdb.get("lang").await.unwrap();
+    let value = sdb
+        .get("lang")
+        .await
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
     assert_eq!(value, Some("zh".to_string()));
 }
 
@@ -62,10 +77,17 @@ async fn test_set_overwrites_existing_value() {
 async fn test_delete_existing_key() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    sdb.set("to-delete", "value").await.unwrap();
-    sdb.delete("to-delete").await.expect("delete failed");
+    sdb.set("to-delete", "value")
+        .await
+        .unwrap_or_else(|e| panic!("set failed: {e}"));
+    sdb.delete("to-delete")
+        .await
+        .unwrap_or_else(|e| panic!("delete failed: {e}"));
 
-    let value = sdb.get("to-delete").await.unwrap();
+    let value = sdb
+        .get("to-delete")
+        .await
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
     assert!(value.is_none());
 }
 
@@ -76,7 +98,7 @@ async fn test_delete_nonexistent_key_is_noop() {
     // Should not return an error
     sdb.delete("phantom-key")
         .await
-        .expect("delete of missing key should not fail");
+        .unwrap_or_else(|e| panic!("delete of missing key should not fail: {e}"));
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +109,10 @@ async fn test_delete_nonexistent_key_is_noop() {
 async fn test_list_all_empty() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    let all = sdb.list_all().await.expect("list_all failed");
+    let all = sdb
+        .list_all()
+        .await
+        .unwrap_or_else(|e| panic!("list_all failed: {e}"));
     assert!(all.is_empty());
 }
 
@@ -95,11 +120,20 @@ async fn test_list_all_empty() {
 async fn test_list_all_returns_all_entries() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    sdb.set("alpha", "1").await.unwrap();
-    sdb.set("beta", "2").await.unwrap();
-    sdb.set("gamma", "3").await.unwrap();
+    sdb.set("alpha", "1")
+        .await
+        .unwrap_or_else(|e| panic!("set alpha failed: {e}"));
+    sdb.set("beta", "2")
+        .await
+        .unwrap_or_else(|e| panic!("set beta failed: {e}"));
+    sdb.set("gamma", "3")
+        .await
+        .unwrap_or_else(|e| panic!("set gamma failed: {e}"));
 
-    let all = sdb.list_all().await.expect("list_all failed");
+    let all = sdb
+        .list_all()
+        .await
+        .unwrap_or_else(|e| panic!("list_all failed: {e}"));
     assert_eq!(all.len(), 3);
 
     let names: Vec<&str> = all.iter().map(|s| s.name.as_str()).collect();
@@ -113,11 +147,20 @@ async fn test_list_all_is_ordered_by_name() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
     // Insert out of alphabetical order
-    sdb.set("zz-last", "z").await.unwrap();
-    sdb.set("aa-first", "a").await.unwrap();
-    sdb.set("mm-middle", "m").await.unwrap();
+    sdb.set("zz-last", "z")
+        .await
+        .unwrap_or_else(|e| panic!("set zz-last failed: {e}"));
+    sdb.set("aa-first", "a")
+        .await
+        .unwrap_or_else(|e| panic!("set aa-first failed: {e}"));
+    sdb.set("mm-middle", "m")
+        .await
+        .unwrap_or_else(|e| panic!("set mm-middle failed: {e}"));
 
-    let all = sdb.list_all().await.expect("list_all failed");
+    let all = sdb
+        .list_all()
+        .await
+        .unwrap_or_else(|e| panic!("list_all failed: {e}"));
     assert_eq!(all.len(), 3);
     assert_eq!(all[0].name, "aa-first");
     assert_eq!(all[1].name, "mm-middle");
@@ -134,8 +177,11 @@ async fn test_empty_string_value() {
 
     sdb.set("empty-val", "")
         .await
-        .expect("set empty value failed");
-    let value = sdb.get("empty-val").await.unwrap();
+        .unwrap_or_else(|e| panic!("set empty value failed: {e}"));
+    let value = sdb
+        .get("empty-val")
+        .await
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
     assert_eq!(value, Some("".to_string()));
 }
 
@@ -146,9 +192,12 @@ async fn test_value_with_special_characters() {
     let special = r#"{"key": "value", "emoji": "🔥", "newline": "\n"}"#;
     sdb.set("json-setting", special)
         .await
-        .expect("set special chars failed");
+        .unwrap_or_else(|e| panic!("set special chars failed: {e}"));
 
-    let value = sdb.get("json-setting").await.unwrap();
+    let value = sdb
+        .get("json-setting")
+        .await
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
     assert_eq!(value, Some(special.to_string()));
 }
 
@@ -156,12 +205,19 @@ async fn test_value_with_special_characters() {
 async fn test_set_then_delete_then_set_again() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    sdb.set("cycle", "first").await.unwrap();
-    sdb.delete("cycle").await.unwrap();
+    sdb.set("cycle", "first")
+        .await
+        .unwrap_or_else(|e| panic!("set first failed: {e}"));
+    sdb.delete("cycle")
+        .await
+        .unwrap_or_else(|e| panic!("delete failed: {e}"));
     sdb.set("cycle", "second")
         .await
-        .expect("re-set after delete failed");
+        .unwrap_or_else(|e| panic!("re-set after delete failed: {e}"));
 
-    let value = sdb.get("cycle").await.unwrap();
+    let value = sdb
+        .get("cycle")
+        .await
+        .unwrap_or_else(|e| panic!("get failed: {e}"));
     assert_eq!(value, Some("second".to_string()));
 }

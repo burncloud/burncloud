@@ -1,6 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
 use super::*;
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_sidebar_navigation() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -31,6 +33,7 @@ async fn test_sidebar_navigation() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_sidebar_active_state() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
@@ -50,6 +53,7 @@ async fn test_sidebar_active_state() {
 /// Note: Front-end route guard is not yet implemented, so the page
 /// renders even without auth. This test verifies the page at least loads.
 #[tokio::test]
+#[ignore = "requires external infrastructure (browser/running server)"]
 async fn test_console_page_loads_without_auth() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;

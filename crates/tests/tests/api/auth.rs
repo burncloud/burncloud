@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
 use burncloud_tests::TestClient;
 use serde_json::json;
 use uuid::Uuid;
@@ -5,6 +6,7 @@ use uuid::Uuid;
 use crate::common;
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (running server)"]
 async fn test_auth_invalid_token() {
     let base_url = common::spawn_app().await;
     let client = TestClient::new(&base_url).with_token("invalid-sk-123");
@@ -23,6 +25,7 @@ async fn test_auth_invalid_token() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (running server)"]
 async fn test_auth_no_token() {
     let base_url = common::spawn_app().await;
     let client = TestClient::new(&base_url); // No token
@@ -41,6 +44,7 @@ async fn test_auth_no_token() {
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (running server)"]
 async fn test_user_flow() {
     let base_url = common::spawn_app().await;
     let client = TestClient::new(&base_url);

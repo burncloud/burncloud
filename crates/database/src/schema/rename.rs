@@ -79,7 +79,7 @@ async fn copy_and_drop(pool: &AnyPool, kind: &str, old_table: &str, new_table: &
         .unwrap_or(0);
 
     if new_count == 0 {
-        log::info!("[Rename] Migrating data: {old_table} → {new_table}");
+        tracing::info!("[Rename] Migrating data: {old_table} → {new_table}");
         // INSERT INTO new SELECT * FROM old WHERE EXISTS (old table — already
         // confirmed above); errors are ignored (e.g. schema mismatch on
         // non-standard installs).

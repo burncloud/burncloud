@@ -1,3 +1,4 @@
+// serde_json::Value is required for dynamic JSON parsing in adaptor integration tests
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -27,7 +28,7 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
     }
     let api_key = env_key;
 
-    let (db, pool, db_url) = setup_db().await?;
+    let (_db, pool, db_url) = setup_db().await?;
 
     let id = "gemini-adaptor-test";
     let name = "gemini-pro";
@@ -82,8 +83,12 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
     println!("Adaptor Response: {}", resp_json);
 
     assert_eq!(resp_json["object"], "chat.completion");
-    let choices = resp_json["choices"].as_array().unwrap();
-    let content = choices[0]["message"]["content"].as_str().unwrap();
+    let choices = resp_json["choices"]
+        .as_array()
+        .unwrap_or_else(|| panic!("Expected choices array"));
+    let content = choices[0]["message"]["content"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Expected content in first choice"));
     assert!(content.contains("ADAPTOR_WORKS"));
 
     Ok(())
@@ -101,7 +106,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
         axum::serve(
             listener,
             axum::Router::new().route(
@@ -120,7 +125,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
             ),
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Mock server error: {e}"));
     });
 
     let id = "claude-adaptor-test";
@@ -273,8 +278,8 @@ async fn setup_gemini_25_pro_with_port(
     // Standard tier (<=200K context): $1.25 input / $10 output per 1M tokens
     let price_input = PriceInput {
         model: GEMINI_25_PRO_MODEL.to_string(),
-        input_price: dollars_to_nano(1.25) as i64,
-        output_price: dollars_to_nano(10.0) as i64,
+        input_price: dollars_to_nano(1.25),
+        output_price: dollars_to_nano(10.0),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -357,12 +362,12 @@ async fn test_gemini_25_pro_basic() -> anyhow::Result<()> {
 
     let choices = resp_json["choices"]
         .as_array()
-        .expect("Expected choices array");
+        .unwrap_or_else(|| panic!("Expected choices array"));
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"]
         .as_str()
-        .expect("Expected content in response");
+        .unwrap_or_else(|| panic!("Expected content in response"));
     assert!(
         content.contains("4"),
         "Expected response to contain '4', got: {}",
@@ -430,7 +435,7 @@ async fn test_gemini_25_pro_multimodal() -> anyhow::Result<()> {
         assert_eq!(resp_json["object"], "chat.completion");
         let choices = resp_json["choices"]
             .as_array()
-            .expect("Expected choices array");
+            .unwrap_or_else(|| panic!("Expected choices array"));
         if !choices.is_empty() {
             let content = choices[0]["message"]["content"].as_str().unwrap_or("");
             println!("Multimodal response content: {}", content);
@@ -522,7 +527,7 @@ async fn test_gemini_25_pro_long_context() -> anyhow::Result<()> {
 
     let choices = resp_json["choices"]
         .as_array()
-        .expect("Expected choices array");
+        .unwrap_or_else(|| panic!("Expected choices array"));
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"].as_str().unwrap_or("");
@@ -587,8 +592,8 @@ async fn setup_gemini_25_flash_with_port(
     // Standard tier: $0.075 input / $0.30 output per 1M tokens
     let price_input = PriceInput {
         model: GEMINI_25_FLASH_MODEL.to_string(),
-        input_price: dollars_to_nano(0.075) as i64,
-        output_price: dollars_to_nano(0.30) as i64,
+        input_price: dollars_to_nano(0.075),
+        output_price: dollars_to_nano(0.30),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -674,12 +679,12 @@ async fn test_gemini_25_flash_basic() -> anyhow::Result<()> {
 
     let choices = resp_json["choices"]
         .as_array()
-        .expect("Expected choices array");
+        .unwrap_or_else(|| panic!("Expected choices array"));
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"]
         .as_str()
-        .expect("Expected content in response");
+        .unwrap_or_else(|| panic!("Expected content in response"));
     assert!(
         content.contains("4"),
         "Expected response to contain '4', got: {}",
@@ -861,14 +866,14 @@ async fn test_gemini_25_flash_speed() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
     // Billing test doesn't need actual API calls, so we use setup_db directly
-    let (db, _pool, db_url) = setup_db().await?;
+    let (db, _pool, _db_url) = setup_db().await?;
 
     // Setup pricing for gemini-2.5-flash (nanodollars)
     // Standard tier: $0.075 input / $0.30 output per 1M tokens
     let price_input = PriceInput {
         model: GEMINI_25_FLASH_MODEL.to_string(),
-        input_price: dollars_to_nano(0.075) as i64,
-        output_price: dollars_to_nano(0.30) as i64,
+        input_price: dollars_to_nano(0.075),
+        output_price: dollars_to_nano(0.30),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -906,7 +911,7 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
         "Price should be found for {}",
         GEMINI_25_FLASH_MODEL
     );
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("price should be Some"));
 
     // Convert from nanodollars to dollars for verification
     let input_dollars = price.input_price as f64 / 1_000_000_000.0;
@@ -961,14 +966,14 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
     // Billing test doesn't need actual API calls, so we use setup_db directly
-    let (db, _pool, db_url) = setup_db().await?;
+    let (db, _pool, _db_url) = setup_db().await?;
 
     // Setup pricing for gemini-2.5-pro (nanodollars)
     // Standard tier (<=200K context): $1.25 input / $10 output per 1M tokens
     let price_input = PriceInput {
         model: GEMINI_25_PRO_MODEL.to_string(),
-        input_price: dollars_to_nano(1.25) as i64,
-        output_price: dollars_to_nano(10.0) as i64,
+        input_price: dollars_to_nano(1.25),
+        output_price: dollars_to_nano(10.0),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -1006,7 +1011,7 @@ async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
         "Price should be found for {}",
         GEMINI_25_PRO_MODEL
     );
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("price should be Some"));
 
     // Convert from nanodollars to dollars for verification
     let input_dollars = price.input_price as f64 / 1_000_000_000.0;
@@ -1106,8 +1111,8 @@ async fn setup_gemini_multimodal_with_port(
     // Standard tier: $0.075 input / $0.30 output / $0.50 audio input per 1M tokens
     let price_input = PriceInput {
         model: "gemini-2.5-flash".to_string(),
-        input_price: dollars_to_nano(0.075) as i64,
-        output_price: dollars_to_nano(0.30) as i64,
+        input_price: dollars_to_nano(0.075),
+        output_price: dollars_to_nano(0.30),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -1115,7 +1120,7 @@ async fn setup_gemini_multimodal_with_port(
         batch_output_price: None,
         priority_input_price: None,
         priority_output_price: None,
-        audio_input_price: Some(dollars_to_nano(0.50) as i64), // Audio is typically ~7x text
+        audio_input_price: Some(dollars_to_nano(0.50)), // Audio is typically ~7x text
         audio_output_price: None,
         reasoning_price: None,
         embedding_price: None,
@@ -1204,7 +1209,7 @@ async fn test_gemini_multimodal_image_input() -> anyhow::Result<()> {
 
     let choices = resp_json["choices"]
         .as_array()
-        .expect("Expected choices array");
+        .unwrap_or_else(|| panic!("Expected choices array"));
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"].as_str().unwrap_or("");
@@ -1319,7 +1324,7 @@ startxref
         assert_eq!(resp_json["object"], "chat.completion");
         let choices = resp_json["choices"]
             .as_array()
-            .expect("Expected choices array");
+            .unwrap_or_else(|| panic!("Expected choices array"));
         if !choices.is_empty() {
             let content = choices[0]["message"]["content"].as_str().unwrap_or("");
             println!("PDF understanding response: {}", content);
@@ -1418,7 +1423,7 @@ async fn test_gemini_multimodal_audio_input() -> anyhow::Result<()> {
         assert_eq!(resp_json["object"], "chat.completion");
         let choices = resp_json["choices"]
             .as_array()
-            .expect("Expected choices array");
+            .unwrap_or_else(|| panic!("Expected choices array"));
         if !choices.is_empty() {
             let content = choices[0]["message"]["content"].as_str().unwrap_or("");
             println!("Audio understanding response: {}", content);
@@ -1442,7 +1447,7 @@ async fn test_gemini_multimodal_audio_input() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     // This test verifies audio_input_price is properly stored and retrieved
-    let (db, _pool, db_url) = setup_db().await?;
+    let (db, _pool, _db_url) = setup_db().await?;
 
     let model = "gemini-2.5-flash-audio-test";
 
@@ -1454,8 +1459,8 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
 
     let price_input = PriceInput {
         model: model.to_string(),
-        input_price: dollars_to_nano(text_input_price) as i64,
-        output_price: dollars_to_nano(output_price) as i64,
+        input_price: dollars_to_nano(text_input_price),
+        output_price: dollars_to_nano(output_price),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -1463,7 +1468,7 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
         batch_output_price: None,
         priority_input_price: None,
         priority_output_price: None,
-        audio_input_price: Some(dollars_to_nano(audio_input_price) as i64),
+        audio_input_price: Some(dollars_to_nano(audio_input_price)),
         audio_output_price: None,
         reasoning_price: None,
         embedding_price: None,
@@ -1488,7 +1493,7 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     let price = BillingPriceModel::get(&db, model, "USD", Some("international")).await?;
 
     assert!(price.is_some(), "Price should be found for {}", model);
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("price should be Some"));
 
     // Verify text input price
     let text_input_dollars = price.input_price as f64 / 1_000_000_000.0;
@@ -1505,7 +1510,11 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
         price.audio_input_price.is_some(),
         "audio_input_price should be set"
     );
-    let audio_input_dollars = price.audio_input_price.unwrap() as f64 / 1_000_000_000.0;
+    let audio_input_dollars = price
+        .audio_input_price
+        .unwrap_or_else(|| panic!("audio_input_price should be set"))
+        as f64
+        / 1_000_000_000.0;
     println!("Audio Input Price: ${:.2}/1M tokens", audio_input_dollars);
     assert!(
         (audio_input_dollars - audio_input_price).abs() < 0.01,
@@ -1524,8 +1533,11 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     let text_cost_dollars = text_cost_nano as f64 / 1_000_000_000.0;
 
     // Audio input cost calculation (manual with audio price)
-    let audio_input_cost_nano =
-        (prompt_tokens as i128 * price.audio_input_price.unwrap() as i128) / 1_000_000;
+    let audio_input_cost_nano = (prompt_tokens as i128
+        * price
+            .audio_input_price
+            .unwrap_or_else(|| panic!("audio_input_price should be set")) as i128)
+        / 1_000_000;
     let audio_output_cost_nano =
         (completion_tokens as i128 * price.output_price as i128) / 1_000_000;
     let audio_cost_nano = (audio_input_cost_nano + audio_output_cost_nano) as i64;
@@ -1635,7 +1647,7 @@ async fn test_gemini_multimodal_combined_input() -> anyhow::Result<()> {
 
     let choices = resp_json["choices"]
         .as_array()
-        .expect("Expected choices array");
+        .unwrap_or_else(|| panic!("Expected choices array"));
     assert!(!choices.is_empty(), "Expected at least one choice");
 
     let content = choices[0]["message"]["content"].as_str().unwrap_or("");
@@ -1710,8 +1722,8 @@ async fn setup_gemini_25_flash_image_with_port(
     // Image generation is typically more expensive: $0.10 input / $0.50 output per 1M tokens
     let price_input = PriceInput {
         model: GEMINI_25_FLASH_IMAGE_MODEL.to_string(),
-        input_price: dollars_to_nano(0.10) as i64,
-        output_price: dollars_to_nano(0.50) as i64,
+        input_price: dollars_to_nano(0.10),
+        output_price: dollars_to_nano(0.50),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -1839,12 +1851,12 @@ async fn test_gemini_25_flash_image_generation() -> anyhow::Result<()> {
 
     let candidates = resp_json["candidates"]
         .as_array()
-        .expect("Expected candidates array");
+        .unwrap_or_else(|| panic!("Expected candidates array"));
     assert!(!candidates.is_empty(), "Expected at least one candidate");
 
     let parts = candidates[0]["content"]["parts"]
         .as_array()
-        .expect("Expected parts array");
+        .unwrap_or_else(|| panic!("Expected parts array"));
 
     // Check if response contains image data
     let mut has_image = false;
@@ -2199,13 +2211,13 @@ async fn test_gemini_response_modalities_passthrough() -> anyhow::Result<()> {
 /// Test 5: Verify pricing is correctly configured for image model
 #[tokio::test]
 async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
-    let (db, _pool, db_url) = setup_db().await?;
+    let (db, _pool, _db_url) = setup_db().await?;
 
     // Setup pricing for gemini-2.5-flash-image
     let price_input = PriceInput {
         model: GEMINI_25_FLASH_IMAGE_MODEL.to_string(),
-        input_price: dollars_to_nano(0.10) as i64,
-        output_price: dollars_to_nano(0.50) as i64,
+        input_price: dollars_to_nano(0.10),
+        output_price: dollars_to_nano(0.50),
         currency: "USD".to_string(),
         cache_read_input_price: None,
         cache_creation_input_price: None,
@@ -2248,7 +2260,7 @@ async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
         "Price should be found for {}",
         GEMINI_25_FLASH_IMAGE_MODEL
     );
-    let price = price.unwrap();
+    let price = price.unwrap_or_else(|| panic!("price should be Some"));
 
     let input_dollars = price.input_price as f64 / 1_000_000_000.0;
     let output_dollars = price.output_price as f64 / 1_000_000_000.0;

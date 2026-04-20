@@ -110,7 +110,7 @@ async fn test_connection_pool_exhaustion() {
         for i in 0..num_operations {
             let connection = db
                 .get_connection()
-                .expect("Database should be initialized")
+                .unwrap_or_else(|e| panic!("Database should be initialized: {e}"))
                 .clone();
             let handle = tokio::spawn(async move {
                 // Perform a long-running operation

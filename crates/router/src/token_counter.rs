@@ -170,7 +170,9 @@ mod tests {
         }
 
         for handle in handles {
-            handle.join().unwrap();
+            handle
+                .join()
+                .unwrap_or_else(|e| panic!("thread panicked: {e:?}"));
         }
 
         assert_eq!(counter.get_usage(), (0, 1000));

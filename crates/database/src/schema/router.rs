@@ -42,7 +42,7 @@ pub(super) async fn migrate_router_logs(pool: &AnyPool, kind: &str) -> Result<()
         return Ok(());
     }
 
-    log::info!("[Migration] Migrating router_logs table: DATETIME -> TEXT, REAL -> INTEGER");
+    tracing::info!("[Migration] Migrating router_logs table: DATETIME -> TEXT, REAL -> INTEGER");
 
     let _ = sqlx::query("DROP TABLE IF EXISTS router_logs_new")
         .execute(pool)
@@ -92,6 +92,6 @@ pub(super) async fn migrate_router_logs(pool: &AnyPool, kind: &str) -> Result<()
     .execute(pool)
     .await;
 
-    log::info!("[Migration] router_logs table migration completed successfully");
+    tracing::info!("[Migration] router_logs table migration completed successfully");
     Ok(())
 }

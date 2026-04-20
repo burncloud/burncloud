@@ -1,3 +1,4 @@
+// serde_json::Value is required for dynamic JSON parsing in balancer tests
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -22,7 +23,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     let mock_port = 3022;
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
         .await
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
@@ -111,7 +112,9 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
 
         assert_eq!(resp.status(), 200);
         let json: Value = resp.json().await?;
-        let target_url = json["url"].as_str().unwrap();
+        let target_url = json["url"]
+            .as_str()
+            .unwrap_or_else(|| panic!("Expected url in response"));
 
         println!("Request {} hit: {}", i, target_url);
 

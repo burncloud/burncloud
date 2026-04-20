@@ -494,8 +494,8 @@ mod tests {
     async fn test_preflight_not_found() {
         let cache = PriceCache::empty();
         let calc = CostCalculator::new(cache);
-        let err = calc.preflight("nonexistent-model", None).await.unwrap_err();
-        assert!(matches!(err, BillingError::PriceNotFound(m) if m == "nonexistent-model"));
+        let result = calc.preflight("nonexistent-model", None).await;
+        assert!(matches!(result, Err(BillingError::PriceNotFound(ref m)) if m == "nonexistent-model"));
     }
 
     #[tokio::test]

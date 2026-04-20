@@ -90,7 +90,7 @@ impl InferenceService {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        log::info!("Starting inference: {:?}", cmd);
+        tracing::info!("Starting inference: {:?}", cmd);
 
         match cmd.spawn() {
             Ok(child) => {
@@ -210,14 +210,14 @@ impl InferenceService {
         let _ = RouterDatabase::delete_upstream(db, &upstream_id).await;
         RouterDatabase::create_upstream(db, &upstream).await?;
 
-        log::info!("Registered local upstream: {}", upstream_id);
+        tracing::info!("Registered local upstream: {}", upstream_id);
         Ok(())
     }
 
     async fn unregister_upstream(&self, db: &Database, model_id: &str) -> Result<()> {
         let upstream_id = format!("local-{}", model_id);
         RouterDatabase::delete_upstream(db, &upstream_id).await?;
-        log::info!("Unregistered local upstream: {}", upstream_id);
+        tracing::info!("Unregistered local upstream: {}", upstream_id);
         Ok(())
     }
 
@@ -240,7 +240,7 @@ impl InferenceService {
 
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
-                    log::info!(
+                    tracing::info!(
                         "Health check passed for {} after {} attempts",
                         model_id,
                         attempts

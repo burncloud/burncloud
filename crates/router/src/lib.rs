@@ -16,6 +16,7 @@ pub mod passthrough;
 pub mod price_sync;
 pub mod pricing_loader;
 pub mod response_parser;
+mod scheduler;
 mod state;
 pub mod stream_parser;
 pub mod token_counter;
@@ -52,7 +53,60 @@ use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
+/// Video billing: resolution multiplier for 720p Seedance videos.
+const SEEDANCE_RESOLUTION_WEIGHT_HD: i64 = 2;
+const SEEDANCE_RESOLUTION_WEIGHT_SD: i64 = 1;
+/// Default price sync interval (24 hours).
+const DEFAULT_PRICE_SYNC_INTERVAL_SECS: u64 = 86400;
+/// Video task polling timeout (10 minutes).
+const VIDEO_TASK_TIMEOUT_SECS: u64 = 600;
+/// Router log channel buffer capacity.
+const LOG_CHANNEL_BUFFER: usize = 1000;
+/// Circuit breaker failure threshold before opening.
+const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 5;
+/// Circuit breaker cooldown duration after opening (seconds).
+const CIRCUIT_BREAKER_COOLDOWN_SECS: u64 = 30;
+/// Timeout for price sync trigger requests (seconds).
+const PRICE_SYNC_TRIGGER_TIMEOUT_SECS: u64 = 60;
+/// Default video duration for Veo billing when not specified in request (seconds).
+const VEO_DEFAULT_DURATION_SECS: i64 = 8;
+/// Default video sample count for Veo billing when not specified in request.
+const VEO_DEFAULT_SAMPLE_COUNT: i64 = 1;
+/// Default video duration for Seedance billing when not specified in request (seconds).
+const SEEDANCE_DEFAULT_DURATION_SECS: i64 = 5;
+/// Default resolution for Seedance billing when not specified in request.
+const SEEDANCE_DEFAULT_RESOLUTION: &str = "720p";
+/// Protocol identifier constants for upstream channels.
+const PROTOCOL_OPENAI: &str = "openai";
+const PROTOCOL_CLAUDE: &str = "claude";
+const PROTOCOL_GEMINI: &str = "gemini";
+const PROTOCOL_ZAI: &str = "zai";
+/// SSE stream termination marker sent to clients.
+const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
+
 pub use state::AppState;
+
+/// Build a JSON error response body: `{"error": "<message>"}`.
+fn json_error_body(message: impl std::fmt::Display) -> Body {
+    Body::from(serde_json::json!({"error": message.to_string()}).to_string())
+}
+
+/// Record a channel error in both circuit breaker and channel state tracker.
+fn record_upstream_failure(
+    state: &AppState,
+    upstream: &Upstream,
+    model_name: Option<&str>,
+    failure_type: FailureType,
+    error_msg: &str,
+) {
+    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+    state
+        .circuit_breaker
+        .record_failure_with_type(&upstream.id, failure_type.clone());
+    state
+        .channel_state_tracker
+        .record_error(channel_id, model_name, &failure_type, error_msg);
+}
 
 /// Helper function to build a response safely without panicking.
 /// Falls back to an empty body with the same status if body construction fails.
@@ -67,6 +121,27 @@ fn build_response(status: StatusCode, body: Body) -> Response {
                 .body(Body::empty())
                 .unwrap_or_else(|_| Response::new(Body::empty()))
         })
+}
+
+/// Apply header_override JSON to a request builder.
+fn apply_header_override(
+    req_builder: reqwest::RequestBuilder,
+    override_str: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let Some(override_str) = override_str else {
+        return req_builder;
+    };
+    if let Ok(header_map) =
+        serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
+    {
+        let mut req_builder = req_builder;
+        for (k, v) in header_map {
+            req_builder = req_builder.header(k, v);
+        }
+        req_builder
+    } else {
+        req_builder
+    }
 }
 
 /// Helper function to build a response with a header safely.
@@ -105,6 +180,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             param_override: u.param_override,
             header_override: u.header_override,
             api_version: u.api_version,
+            pricing_region: None,
         })
         .collect();
 
@@ -146,10 +222,10 @@ pub async fn create_router_app(
     let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
-    // Default Limit: 100 burst, 10 requests/second
+    // Rate limiter: 100 burst, 10 requests/second
     let limiter = Arc::new(RateLimiter::new(100.0, 10.0));
-    // Circuit Breaker: 5 failures, 30s cooldown
-    let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30));
+    // Circuit breaker: 5 failure threshold, 30s cooldown
+    let circuit_breaker = Arc::new(CircuitBreaker::new(CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_COOLDOWN_SECS));
     let model_router = Arc::new(ModelRouter::new(db.clone()));
     // Channel State Tracker for health monitoring
     let channel_state_tracker = Arc::new(ChannelStateTracker::new());
@@ -166,13 +242,26 @@ pub async fn create_router_app(
         });
     let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
 
+    // Exchange Rate Service for multi-currency cost calculations
+    let exchange_rate_service = Arc::new(exchange_rate::ExchangeRateService::new(db.clone()));
+    if let Err(e) = exchange_rate_service.load_rates_from_db().await {
+        tracing::warn!("Failed to load exchange rates at startup: {e}");
+    }
+    let exch_clone = exchange_rate_service.clone();
+    tokio::spawn(async move {
+        exch_clone.start_sync_task();
+    });
+
+    // Scheduler policies for multi-channel routing
+    let scheduler_policies = Arc::new(RwLock::new(scheduler::load_scheduler_config()));
+
     // Start background price sync task (every 24 hours)
     // Prices pulled from pricing_data repo (GitHub/Gitee fallback).
     // Price cache is refreshed after each successful sync.
     let interval_secs = std::env::var("PRICE_SYNC_INTERVAL_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(86400);
+        .unwrap_or(DEFAULT_PRICE_SYNC_INTERVAL_SECS);
     let (force_sync_tx, force_sync_rx) =
         tokio::sync::mpsc::channel::<tokio::sync::oneshot::Sender<price_sync::SyncResult>>(4);
     price_sync::start_price_sync_task(
@@ -184,18 +273,18 @@ pub async fn create_router_app(
     );
 
     // Setup Async Logging Channel
-    let (log_tx, mut log_rx) = mpsc::channel::<RouterLog>(1000);
+    let (log_tx, mut log_rx) = mpsc::channel::<RouterLog>(LOG_CHANNEL_BUFFER);
     let db_for_logger = db.clone(); // Clone Arc
 
     // Spawn Logging Task
     tokio::spawn(async move {
-        println!("Logging task started");
+        tracing::info!("Logging task started");
         while let Some(log) = log_rx.recv().await {
             // Need to create a new default database or use the shared one?
             // Since Database struct isn't thread-safe or Clone by default, we rely on Arc<Database>.
             // But RouterDatabase::insert_log takes &Database.
             if let Err(e) = RouterDatabase::insert_log(&db_for_logger, &log).await {
-                eprintln!("Failed to insert log: {}", e);
+                tracing::error!("Failed to insert log: {}", e);
             }
         }
     });
@@ -215,6 +304,8 @@ pub async fn create_router_app(
         price_cache,
         cost_calculator,
         force_sync_tx: force_sync_tx.clone(),
+        exchange_rate_service,
+        scheduler_policies,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -248,11 +339,16 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
         Ok(new_config) => {
             let mut config_write = state.config.write().await;
             *config_write = new_config;
+            // Reload scheduler policies
+            {
+                let mut policies = state.scheduler_policies.write().await;
+                *policies = scheduler::load_scheduler_config();
+            }
             build_response(StatusCode::OK, Body::from("Reloaded"))
         }
         Err(e) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(format!("Reload Failed: {}", e)),
+            Body::from(format!("Reload Failed: {e}")),
         ),
     }
 }
@@ -269,7 +365,7 @@ async fn price_sync_handler(State(state): State<AppState>) -> Response {
             Body::from("Price sync task is not running"),
         );
     }
-    match tokio::time::timeout(std::time::Duration::from_secs(60), reply_rx).await {
+    match tokio::time::timeout(std::time::Duration::from_secs(PRICE_SYNC_TRIGGER_TIMEOUT_SECS), reply_rx).await {
         Ok(Ok(result)) => {
             let body = format!(
                 r#"{{"models_synced":{},"currencies_synced":{},"tiers_synced":{},"errors":{},"source":"{}"}}"#,
@@ -418,7 +514,7 @@ async fn usage_handler(State(state): State<AppState>, headers: axum::http::Heade
         ),
         Err(e) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(serde_json::json!({"error": e.to_string()}).to_string()),
+            json_error_body(&e),
         ),
     }
 }
@@ -458,7 +554,7 @@ async fn usage_models_handler(
         ),
         Err(e) => build_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(serde_json::json!({"error": e.to_string()}).to_string()),
+            json_error_body(&e),
         ),
     }
 }
@@ -491,12 +587,28 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
     let circuit_breaker_status = state.circuit_breaker.get_status_map();
     let channel_states = state.channel_state_tracker.get_all_states();
 
+    // Collect scheduler policies for observability
+    let scheduler_info = {
+        let policies = state.scheduler_policies.read().await;
+        let mut map = std::collections::HashMap::new();
+        for (group, kind) in policies.iter() {
+            map.insert(group.clone(), match kind {
+                scheduler::SchedulerKind::Passthrough => "passthrough".to_string(),
+                scheduler::SchedulerKind::Combined { config } => format!(
+                    "combined(h={:.1},c={:.1},r={:.1})",
+                    config.health_weight, config.cost_weight, config.rpm_weight
+                ),
+            });
+        }
+        map
+    };
+
     // Build comprehensive health report
     let health_report = serde_json::json!({
+        "scheduler_policies": scheduler_info,
         "circuit_breaker": circuit_breaker_status,
         "channels": channel_states.iter().map(|(ch_id, ch_state)| {
-            let models: Vec<_> = ch_state.models.iter().map(|m| {
-                let model_state = m.value();
+            let models: Vec<_> = ch_state.models.values().map(|model_state| {
                 serde_json::json!({
                     "model": model_state.model,
                     "status": format!("{:?}", model_state.status),
@@ -659,7 +771,7 @@ async fn proxy_handler(
         Err(e) => {
             return build_response(
                 StatusCode::BAD_REQUEST,
-                Body::from(format!("Body Read Error: {}", e)),
+                Body::from(format!("Body Read Error: {e}")),
             )
         }
     };
@@ -695,11 +807,11 @@ async fn proxy_handler(
         let dur = v
             .as_ref()
             .and_then(|v| v.get("durationSeconds").and_then(|d| d.as_i64()))
-            .unwrap_or(8);
+            .unwrap_or(VEO_DEFAULT_DURATION_SECS);
         let count = v
             .as_ref()
             .and_then(|v| v.get("sampleCount").and_then(|d| d.as_i64()))
-            .unwrap_or(1);
+            .unwrap_or(VEO_DEFAULT_SAMPLE_COUNT);
         (dur, count)
     };
 
@@ -711,11 +823,11 @@ async fn proxy_handler(
             .as_ref()
             .and_then(|v| v.get("duration").and_then(|d| d.as_i64()))
             .filter(|&d| d > 0) // duration=-1 means model-decided; fall back to default
-            .unwrap_or(5);
+            .unwrap_or(SEEDANCE_DEFAULT_DURATION_SECS);
         let res = v
             .as_ref()
             .and_then(|v| v.get("resolution").and_then(|r| r.as_str()))
-            .unwrap_or("720p")
+            .unwrap_or(SEEDANCE_DEFAULT_RESOLUTION)
             .to_string();
         (dur, res)
     } else {
@@ -796,20 +908,23 @@ async fn proxy_handler(
         };
 
         let base_url = channel.base_url.unwrap_or_default();
-        let upstream_url = format!("{}/v1/videos/{}", base_url.trim_end_matches('/'), task_id);
+        let upstream_url = format!("{}/v1/videos/{task_id}", base_url.trim_end_matches('/'));
 
         let upstream_resp = state
             .client
             .get(&upstream_url)
             .header("Authorization", format!("Bearer {}", channel.key))
-            .timeout(std::time::Duration::from_secs(600))
+            .timeout(std::time::Duration::from_secs(VIDEO_TASK_TIMEOUT_SECS))
             .send()
             .await;
 
         return match upstream_resp {
             Ok(resp) => {
                 let status = resp.status();
-                let resp_bytes = resp.bytes().await.unwrap_or_default();
+                let resp_bytes = resp.bytes().await.unwrap_or_else(|e| {
+                    tracing::warn!("Failed to read response bytes: {}", e);
+                    axum::body::Bytes::new()
+                });
                 build_response_with_header(
                     status,
                     "content-type",
@@ -884,7 +999,7 @@ async fn proxy_handler(
     let usage = inject_video_tokens_if_empty(final_status, usage, veo_tokens, "veo");
 
     // Seedance request-side billing: inject video_tokens from duration × resolution_weight
-    let resolution_weight: i64 = if seedance_resolution == "720p" { 2 } else { 1 };
+    let resolution_weight: i64 = if seedance_resolution == "720p" { SEEDANCE_RESOLUTION_WEIGHT_HD } else { SEEDANCE_RESOLUTION_WEIGHT_SD };
     let seedance_tokens = seedance_duration_secs * resolution_weight;
     let usage = inject_video_tokens_if_empty(final_status, usage, seedance_tokens, "seedance");
 
@@ -1015,8 +1130,10 @@ async fn proxy_logic(
 
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
-    // Track pricing_region from selected channel for billing
-    let mut selected_pricing_region: Option<String> = None;
+    // Track pricing_region from selected channel for billing.
+    // Assigned inside the retry loop (candidates guaranteed non-empty at this point).
+    // Uninitialized: assigned inside the retry loop before any use
+    let mut selected_pricing_region: Option<String>;
 
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
@@ -1027,63 +1144,77 @@ async fn proxy_logic(
         let model_opt = model_ref.or(gemini_path_model.as_deref());
 
         if let Some(model) = model_opt {
-            println!(
+            tracing::debug!(
                 "ProxyLogic: Attempting to route model '{}' for group '{}'",
                 model, user_group
             );
-            // Use state-aware routing to filter out unavailable channels
+
+            // Use scheduler-based routing for multi-channel failover
+            // Clone the policy for this group, then release the lock immediately.
+            // This prevents the lock from being held during SQL queries and async
+            // price lookups in route_with_scheduler, which could starve reload_handler.
+            let scheduler_kind = {
+                let policies = state.scheduler_policies.read().await;
+                policies.get(&user_group.to_lowercase()).cloned()
+            };
+            // Lock released here — before SQL queries in route_with_scheduler
+
             match state
                 .model_router
-                .route_with_state(user_group, model, &state.channel_state_tracker)
+                .route_with_scheduler(
+                    user_group,
+                    model,
+                    &state.channel_state_tracker,
+                    &state.price_cache,
+                    &state.exchange_rate_service,
+                    scheduler_kind.as_ref(),
+                )
                 .await
             {
-                Ok(Some(channel)) => {
-                    println!(
-                        "ModelRouter: Routed {} -> Channel {} (state-filtered)",
-                        model, channel.name
+                Ok(channels) if !channels.is_empty() => {
+                    tracing::debug!(
+                        "ModelRouter: Got {} candidates for {}",
+                        channels.len(),
+                        model
                     );
-                    // Map Channel Type
-                    let channel_type = ChannelType::from(channel.type_);
 
-                    // Map Channel Type to AuthType/Protocol (Still needed for legacy config struct compatibility if used elsewhere)
-                    // But AdaptorFactory will handle logic based on ChannelType.
-                    let (auth_type, protocol) = match channel_type {
-                        ChannelType::OpenAI => (AuthType::Bearer, "openai".to_string()),
-                        ChannelType::Anthropic => (AuthType::Claude, "claude".to_string()),
-                        ChannelType::Gemini | ChannelType::VertexAi => {
-                            (AuthType::GoogleAI, "gemini".to_string())
-                        }
-                        // z.ai uses Anthropic-compatible protocol with Bearer auth
-                        ChannelType::Zai => (AuthType::Bearer, "zai".to_string()),
-                        _ => (AuthType::Bearer, "openai".to_string()),
-                    };
-
-                    // Save pricing_region for billing
-                    selected_pricing_region = channel.pricing_region.clone();
-
-                    candidates.push(Upstream {
-                        id: channel.id.to_string(),
-                        name: channel.name,
-                        base_url: channel.base_url.unwrap_or_default(),
-                        api_key: channel.key,
-                        match_path: "".to_string(),
-                        auth_type,
-                        priority: channel.priority as i32,
-                        protocol, // Ideally we should store ChannelType in Upstream too
-                        param_override: channel.param_override.clone(),
-                        header_override: channel.header_override.clone(),
-                        api_version: channel.api_version.clone(),
-                    });
+                    for channel in channels {
+                        let channel_type = ChannelType::from(channel.type_);
+                        let (auth_type, protocol) = match channel_type {
+                            ChannelType::OpenAI => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
+                            ChannelType::Anthropic => (AuthType::Claude, PROTOCOL_CLAUDE.to_string()),
+                            ChannelType::Gemini | ChannelType::VertexAi => {
+                                (AuthType::GoogleAI, PROTOCOL_GEMINI.to_string())
+                            }
+                            ChannelType::Zai => (AuthType::Bearer, PROTOCOL_ZAI.to_string()),
+                            _ => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
+                        };
+                        let ch_id = channel.id.to_string();
+                        candidates.push(Upstream {
+                            id: ch_id,
+                            name: channel.name,
+                            base_url: channel.base_url.unwrap_or_default(),
+                            api_key: channel.key,
+                            match_path: String::new(),
+                            auth_type,
+                            priority: channel.priority as i32,
+                            protocol,
+                            param_override: channel.param_override.clone(),
+                            header_override: channel.header_override.clone(),
+                            api_version: channel.api_version.clone(),
+                            pricing_region: channel.pricing_region.clone(),
+                        });
+                    }
                 }
-                Ok(None) => {
-                    println!(
-                        "ModelRouter: No route found for {} (Group: {})",
+                Ok(_) => {
+                    tracing::debug!(
+                        "ModelRouter: No candidates for {} (Group: {})",
                         model, user_group
                     );
                 }
                 Err(e) => {
                     // NoAvailableChannelsError - all channels are unavailable
-                    println!("ModelRouter: No available channels for {}: {}", model, e);
+                    tracing::warn!("ModelRouter: No available channels for {}: {}", model, e);
                     return (
                         build_response_with_header(
                             StatusCode::SERVICE_UNAVAILABLE,
@@ -1102,15 +1233,15 @@ async fn proxy_logic(
                 }
             }
         } else {
-            println!("ProxyLogic: No 'model' field in JSON body");
+            tracing::debug!("ProxyLogic: No 'model' field in JSON body");
         }
     } else {
-        println!("ProxyLogic: Failed to parse body as JSON");
+        tracing::debug!("ProxyLogic: Failed to parse body as JSON");
     }
 
     // 2. Path Routing (Fallback)
     if candidates.is_empty() {
-        println!(
+        tracing::debug!(
             "ProxyLogic: Model routing failed/skipped, trying path routing for {}",
             path
         );
@@ -1120,7 +1251,7 @@ async fn proxy_logic(
                 return (
                     build_response(
                         StatusCode::NOT_FOUND,
-                        Body::from(format!("No matching upstream found for path: {}", path)),
+                        Body::from(format!("No matching upstream found for path: {path}")),
                     ),
                     None,
                     StatusCode::NOT_FOUND,
@@ -1201,19 +1332,22 @@ async fn proxy_logic(
     for (attempt, upstream) in candidates.iter().enumerate() {
         last_upstream_id = Some(upstream.id.clone());
 
+        // Update pricing_region for billing to match the actual upstream serving
+        selected_pricing_region = upstream.pricing_region.clone();
+
         // Circuit Breaker Check
         if !state.circuit_breaker.allow_request(&upstream.id) {
-            println!("Skipping upstream {} (Circuit Open)", upstream.name);
-            last_error = "Circuit Breaker Open".to_string();
+            tracing::debug!("Skipping upstream {} (Circuit Open)", upstream.name);
+            last_error = format!("Circuit Breaker Open for {}", upstream.name);
             continue;
         }
 
         // 2. Construct Target URL
         // Note: Some adaptors might override URL, but we set base here.
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
-        let target_url = format!("{}{}{}", upstream.base_url, path, query);
+        let target_url = format!("{}{path}{query}", upstream.base_url);
 
-        println!(
+        tracing::debug!(
             "Proxying {} -> {} (via {}) [Attempt {}] Protocol: {}",
             path,
             target_url,
@@ -1234,7 +1368,7 @@ async fn proxy_logic(
         };
 
         // 3. Parse Request Body early for passthrough detection
-        let body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+        let mut body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(_) => {
                 last_error = "Invalid JSON body".to_string();
@@ -1247,7 +1381,7 @@ async fn proxy_logic(
 
         // Handle Gemini passthrough mode
         if passthrough_decision == PassthroughDecision::Passthrough {
-            println!(
+            tracing::debug!(
                 "Using passthrough mode for Gemini request: path={}, has_contents={}",
                 path,
                 body_json.get("contents").is_some()
@@ -1257,7 +1391,7 @@ async fn proxy_logic(
             let passthrough_url =
                 passthrough::build_gemini_passthrough_url(&upstream.base_url, path, &body_json);
 
-            println!("Passthrough URL: {}", passthrough_url);
+            tracing::debug!("Passthrough URL: {}", passthrough_url);
 
             // Check if streaming
             let is_stream = body_json
@@ -1272,15 +1406,17 @@ async fn proxy_logic(
                 } else {
                     "?"
                 };
-                format!("{}{}alt=sse", passthrough_url, separator)
+                format!("{passthrough_url}{separator}alt=sse")
             } else {
                 passthrough_url.clone()
             };
 
-            println!("Final passthrough URL: {}", final_url);
+            tracing::debug!("Final passthrough URL: {}", final_url);
 
             // Prepare request body - remove 'stream' field for Gemini native API
-            let mut passthrough_body = body_json.clone();
+            // Safe to take ownership: passthrough path always returns or continues,
+            // so body_json is never used after this point in the current iteration.
+            let mut passthrough_body = std::mem::take(&mut body_json);
             if passthrough_body.get("stream").is_some() {
                 if let Some(obj) = passthrough_body.as_object_mut() {
                     obj.remove("stream");
@@ -1288,21 +1424,13 @@ async fn proxy_logic(
             }
 
             // Build passthrough request with final URL
-            let mut req_builder = state
+            let req_builder = state
                 .client
                 .request(method.clone(), &final_url)
                 .header("x-goog-api-key", &upstream.api_key);
 
             // Apply header_override
-            if let Some(ref override_str) = upstream.header_override {
-                if let Ok(header_map) =
-                    serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
-                {
-                    for (k, v) in header_map {
-                        req_builder = req_builder.header(k, v);
-                    }
-                }
-            }
+            let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
 
             let req_builder = req_builder.json(&passthrough_body);
 
@@ -1312,23 +1440,16 @@ async fn proxy_logic(
                     let status = resp.status();
 
                     if status.is_server_error() {
-                        last_error = format!("Upstream returned {}", status);
-                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                        state
-                            .circuit_breaker
-                            .record_failure_with_type(&upstream.id, FailureType::ServerError);
-                        state.channel_state_tracker.record_error(
-                            channel_id,
-                            model_name,
-                            &FailureType::ServerError,
-                            &last_error,
+                        last_error = format!("Upstream returned {status}");
+                        record_upstream_failure(
+                            state, upstream, model_name, FailureType::ServerError, &last_error,
                         );
                         continue;
                     }
 
-                    state.circuit_breaker.record_success(&upstream.id);
-
                     if status.is_success() {
+                        state.circuit_breaker.record_success(&upstream.id);
+
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
                         // Parse rate limit info from response headers for adaptive limiter
@@ -1345,7 +1466,7 @@ async fn proxy_logic(
                         if is_stream {
                             // Stream passthrough - directly forward Gemini SSE format
                             let body_stream = resp.bytes_stream();
-                            let counter_clone = token_counter.clone();
+                            let counter_clone = Arc::clone(&token_counter);
 
                             let parser = get_parser(channel_type);
                             let stream = body_stream.map(move |chunk_result| match chunk_result {
@@ -1390,7 +1511,8 @@ async fn proxy_logic(
                             let resp_bytes = match resp.bytes().await {
                                 Ok(b) => b,
                                 Err(e) => {
-                                    last_error = format!("Failed to read response: {}", e);
+                                    last_error = format!("Failed to read response: {e}");
+                                    tracing::warn!("Passthrough: {} response read failed: {}", upstream.name, e);
                                     continue;
                                 }
                             };
@@ -1425,7 +1547,7 @@ async fn proxy_logic(
                         let body_bytes = match resp.bytes().await {
                             Ok(b) => b,
                             Err(e) => {
-                                last_error = format!("Failed to read error response: {}", e);
+                                last_error = format!("Failed to read error response: {e}");
                                 return (
                                     build_response(status, Body::from(last_error.clone())),
                                     last_upstream_id,
@@ -1437,24 +1559,16 @@ async fn proxy_logic(
                         };
 
                         // Record rate limit errors
-                        if status.as_u16() == 429 {
-                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                model_name,
-                                &FailureType::RateLimited {
+                        if status == StatusCode::TOO_MANY_REQUESTS {
+                            record_upstream_failure(
+                                state, upstream, model_name,
+                                FailureType::RateLimited {
                                     scope: circuit_breaker::RateLimitScope::Unknown,
                                     retry_after: None,
                                 },
                                 "Rate limited",
                             );
-                            state.circuit_breaker.record_failure_with_type(
-                                &upstream.id,
-                                FailureType::RateLimited {
-                                    scope: circuit_breaker::RateLimitScope::Unknown,
-                                    retry_after: None,
-                                },
-                            );
+                            continue;
                         }
 
                         return (
@@ -1472,16 +1586,13 @@ async fn proxy_logic(
                     }
                 }
                 Err(e) => {
-                    last_error = format!("Network Error: {}", e);
-                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                    state
-                        .circuit_breaker
-                        .record_failure_with_type(&upstream.id, FailureType::Timeout);
-                    state.channel_state_tracker.record_error(
-                        channel_id,
-                        model_name,
-                        &FailureType::Timeout,
-                        &last_error,
+                    last_error = format!("Network Error: {e}");
+                    record_upstream_failure(
+                        state, upstream, model_name, FailureType::Timeout, &last_error,
+                    );
+                    tracing::warn!(
+                        "Failover: {} network error: {}, trying next...",
+                        upstream.name, e
                     );
                     continue;
                 }
@@ -1535,11 +1646,7 @@ async fn proxy_logic(
                 Some(body_json)
             };
 
-        if request_body_json.is_none() {
-            last_error = "Failed to prepare request body".to_string();
-            continue;
-        }
-        // SAFETY: We just checked that request_body_json is Some
+        // SAFETY: The two branches above both return Some
         let mut request_body_json = match request_body_json {
             Some(json) => json,
             None => {
@@ -1563,25 +1670,16 @@ async fn proxy_logic(
                     for (k, v) in override_map {
                         body_map.insert(k, v);
                     }
-                    println!("Applied param_override for {}", upstream.name);
+                    tracing::debug!("Applied param_override for {}", upstream.name);
                 }
             }
         }
 
         // 4. Build Request via Adaptor
-        let mut req_builder = state.client.request(method.clone(), &target_url);
+        let req_builder = state.client.request(method.clone(), &target_url);
 
         // Apply header_override
-        if let Some(ref override_str) = upstream.header_override {
-            if let Ok(header_map) =
-                serde_json::from_str::<std::collections::HashMap<String, String>>(override_str)
-            {
-                for (k, v) in header_map {
-                    req_builder = req_builder.header(k, v);
-                }
-                println!("Applied header_override for {}", upstream.name);
-            }
-        }
+        let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
 
         let req_builder = adaptor
             .build_request(
@@ -1601,25 +1699,16 @@ async fn proxy_logic(
                 // Handle different response status codes
                 if status.is_server_error() {
                     // 5xx Server Error
-                    last_error = format!("Upstream returned {}", status);
-                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                    state
-                        .circuit_breaker
-                        .record_failure_with_type(&upstream.id, FailureType::ServerError);
-                    state.channel_state_tracker.record_error(
-                        channel_id,
-                        model_name,
-                        &FailureType::ServerError,
-                        &last_error,
+                    last_error = format!("Upstream returned {status}");
+                    record_upstream_failure(
+                        state, upstream, model_name, FailureType::ServerError, &last_error,
                     );
                     continue;
                 }
 
-                state.circuit_breaker.record_success(&upstream.id);
-
                 if resp.status().is_success() {
+                    state.circuit_breaker.record_success(&upstream.id);
                     let status = resp.status();
-                    let resp_headers = resp.headers().clone();
 
                     // Parse rate limit info from response headers
                     let rate_limit_info = parse_rate_limit_info(
@@ -1642,7 +1731,7 @@ async fn proxy_logic(
                     if rate_limit_info.request_limit.is_some()
                         || rate_limit_info.token_limit.is_some()
                     {
-                        println!(
+                        tracing::debug!(
                             "Rate limit info for {}: requests={:?}, tokens={:?}, remaining={:?}, retry_after={:?}",
                             upstream.name,
                             rate_limit_info.request_limit,
@@ -1662,7 +1751,7 @@ async fn proxy_logic(
                                 Ok(b) => b,
                                 Err(e) => {
                                     last_error =
-                                        format!("Failed to read video gen response: {}", e);
+                                        format!("Failed to read video gen response: {e}");
                                     continue;
                                 }
                             };
@@ -1709,8 +1798,8 @@ async fn proxy_logic(
                     // Handle Streaming for non-OpenAI
                     if is_stream {
                         let body_stream = resp.bytes_stream();
-                        let adaptor_clone = adaptor.clone();
-                        let counter_clone = token_counter.clone();
+                        let adaptor_clone = Arc::clone(&adaptor);
+                        let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
 
                         let stream = body_stream.map(move |chunk_result| match chunk_result {
@@ -1740,7 +1829,7 @@ async fn proxy_logic(
                         });
 
                         let done = futures::stream::once(async {
-                            Ok(axum::body::Bytes::from("data: [DONE]\n\n"))
+                            Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
                         });
                         let final_stream = stream.chain(done);
 
@@ -1766,8 +1855,13 @@ async fn proxy_logic(
 
                     // 6. Handle Response Conversion
                     // Read body to memory to convert
-                    let resp_json: serde_json::Value =
-                        resp.json().await.unwrap_or(serde_json::json!({}));
+                    let resp_json: serde_json::Value = match resp.json().await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!("Failed to parse response JSON from {}: {}", upstream.name, e);
+                            serde_json::json!({})
+                        }
+                    };
 
                     // Extract token usage from non-streaming response for billing
                     {
@@ -1811,12 +1905,11 @@ async fn proxy_logic(
                     );
                 } else {
                     // Handle non-success responses (4xx errors)
-                    let status_code = status.as_u16();
                     let body_bytes = match resp.bytes().await {
                         Ok(b) => b,
                         Err(e) => {
                             // If we can't read the body, return a simple error
-                            last_error = format!("Failed to read response body: {}", e);
+                            last_error = format!("Failed to read response body: {e}");
                             return (
                                 build_response(status, Body::from(last_error.clone())),
                                 last_upstream_id,
@@ -1832,78 +1925,46 @@ async fn proxy_logic(
                     let error_info = parse_error_response(&body_str, &upstream.protocol);
                     let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
 
-                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-
                     // Determine failure type based on status code
-                    let failure_type = match status_code {
-                        401 => {
-                            // Authentication failed - channel-level issue
-                            let ft = FailureType::AuthFailed;
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                None, // Auth failure affects entire channel
-                                &ft,
-                                error_message,
-                            );
-                            ft
-                        }
-                        402 => {
-                            // Payment required - balance exhausted
-                            let ft = FailureType::PaymentRequired;
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                None,
-                                &ft,
-                                error_message,
-                            );
-                            ft
-                        }
-                        429 => {
-                            // Rate limited - extract retry_after from headers or error info
+                    let failure_type = match status {
+                        StatusCode::UNAUTHORIZED => FailureType::AuthFailed,
+                        StatusCode::PAYMENT_REQUIRED => FailureType::PaymentRequired,
+                        StatusCode::TOO_MANY_REQUESTS => {
                             let retry_after = resp_headers
                                 .get("retry-after")
                                 .and_then(|v| v.to_str().ok())
                                 .and_then(|v| v.parse::<u64>().ok());
-
-                            // Determine scope from error response
                             let scope = error_info
                                 .scope
                                 .unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
-
-                            let ft = FailureType::RateLimited { scope, retry_after };
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                model_name,
-                                &ft,
-                                error_message,
-                            );
-                            ft
+                            FailureType::RateLimited { scope, retry_after }
                         }
-                        404 => {
-                            // Model not found
-                            let ft = FailureType::ModelNotFound;
-                            state.channel_state_tracker.record_error(
-                                channel_id,
-                                model_name,
-                                &ft,
-                                error_message,
-                            );
-                            ft
-                        }
-                        _ => {
-                            // Other client errors - treat as server error for retry logic
-                            FailureType::ServerError
-                        }
+                        StatusCode::NOT_FOUND => FailureType::ModelNotFound,
+                        _ => FailureType::ServerError,
                     };
 
-                    // Record failure with circuit breaker
-                    state
-                        .circuit_breaker
-                        .record_failure_with_type(&upstream.id, failure_type);
+                    // Auth/payment failures affect entire channel (model_name=None)
+                    let error_model = match status {
+                        StatusCode::UNAUTHORIZED | StatusCode::PAYMENT_REQUIRED => None,
+                        _ => model_name,
+                    };
+
+                    record_upstream_failure(
+                        state, upstream, error_model, failure_type, error_message,
+                    );
+
+                    // 429: try next ranked candidate (scheduler provides alternatives)
+                    if status == StatusCode::TOO_MANY_REQUESTS {
+                        tracing::warn!(
+                            "Upstream {} rate limited, trying next candidate",
+                            upstream.name
+                        );
+                        continue;
+                    }
 
                     // Check for API version deprecation and auto-update if detected
                     if adaptor::detector::ApiVersionDetector::is_deprecation_error(error_message) {
-                        let channel_id_for_detector = channel_id;
+                        let channel_id_for_detector: i32 = upstream.id.parse().unwrap_or(0);
                         let adaptor_factory_for_detector = state.adaptor_factory.clone();
                         let detector = state.api_version_detector.clone();
                         let error_message_for_detector = error_message.to_string();
@@ -1918,7 +1979,7 @@ async fn proxy_logic(
                                 .await
                             {
                                 Ok(Some(new_version)) => {
-                                    println!(
+                                    tracing::info!(
                                         "API version deprecation detected, updated channel {} to version: {}",
                                         channel_id_for_detector, new_version
                                     );
@@ -1927,16 +1988,16 @@ async fn proxy_logic(
                                     // No deprecation detected or no new version found
                                 }
                                 Err(e) => {
-                                    eprintln!("Failed to detect/update API version: {}", e);
+                                    tracing::error!("Failed to detect/update API version: {}", e);
                                 }
                             }
                         });
                     }
 
                     // Log the error
-                    println!(
+                    tracing::warn!(
                         "Upstream {} returned {}: {}",
-                        upstream.name, status_code, error_message
+                        upstream.name, status.as_u16(), error_message
                     );
 
                     return (
@@ -1954,18 +2015,11 @@ async fn proxy_logic(
                 }
             }
             Err(e) => {
-                last_error = format!("Network Error: {}", e);
-                let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                state
-                    .circuit_breaker
-                    .record_failure_with_type(&upstream.id, FailureType::Timeout);
-                state.channel_state_tracker.record_error(
-                    channel_id,
-                    model_name,
-                    &FailureType::Timeout,
-                    &last_error,
+                last_error = format!("Network Error: {e}");
+                record_upstream_failure(
+                    state, upstream, model_name, FailureType::Timeout, &last_error,
                 );
-                eprintln!(
+                tracing::warn!(
                     "Failover: {} failed with {}, trying next...",
                     upstream.name, e
                 );
@@ -1977,7 +2031,7 @@ async fn proxy_logic(
     (
         build_response(
             StatusCode::BAD_GATEWAY,
-            Body::from(format!("All upstreams failed. Last error: {}", last_error)),
+            Body::from(format!("All upstreams failed. Last error: {last_error}")),
         ),
         None,
         StatusCode::BAD_GATEWAY,

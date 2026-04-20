@@ -12,6 +12,14 @@ use std::sync::Arc;
 use burncloud_common::{rate_to_scaled, scaled_to_rate, Currency};
 use burncloud_database::{sqlx, Database};
 use chrono::{DateTime, Utc};
+
+/// Background sync check interval (1 hour).
+const SYNC_CHECK_INTERVAL_SECS: u64 = 3600;
+/// Hours after which exchange rates are considered stale and should be refreshed.
+const STALE_THRESHOLD_HOURS: i64 = 24;
+/// Timeout for exchange rate API calls.
+#[cfg(feature = "exchange-api")]
+const API_TIMEOUT_SECS: u64 = 5;
 use dashmap::DashMap;
 
 /// Scale factor for exchange rates (10^9 for 9 decimal precision)
@@ -253,7 +261,7 @@ impl ExchangeRateService {
     /// ```
     pub fn start_sync_task(self: Arc<Self>) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Check hourly
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(SYNC_CHECK_INTERVAL_SECS));
 
             loop {
                 interval.tick().await;
@@ -272,7 +280,7 @@ impl ExchangeRateService {
                 let now = Utc::now();
                 let needs_refresh = self.rates.iter().any(|entry| {
                     let age = now.signed_duration_since(entry.updated_at);
-                    age.num_hours() >= 24
+                    age.num_hours() >= STALE_THRESHOLD_HOURS
                 });
 
                 if needs_refresh {
@@ -295,7 +303,7 @@ impl ExchangeRateService {
     #[cfg(feature = "exchange-api")]
     pub async fn fetch_from_api(&self, api_url: &str) -> anyhow::Result<()> {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(API_TIMEOUT_SECS))
             .build()?;
 
         let response = client.get(api_url).send().await?;
@@ -348,13 +356,16 @@ mod tests {
     /// Since ExchangeRateService tests only use in-memory cache, we can use a minimal mock
     fn create_test_service() -> ExchangeRateService {
         // Lock to ensure tests run serially to avoid DB conflicts
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| panic!("failed to acquire test mutex: {e}"));
 
         use burncloud_database::Database;
         use std::sync::Arc;
 
         // Use tokio runtime to create database with unique path
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new()
+            .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"));
         let db = rt.block_on(async {
             // Generate unique database path to avoid conflicts between tests
             let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -370,7 +381,9 @@ mod tests {
                 format!("sqlite://{}?mode=rwc", db_path),
             );
 
-            let db = Database::new().await.unwrap();
+            let db = Database::new()
+                .await
+                .unwrap_or_else(|e| panic!("failed to create test database: {e}"));
             db
         });
         ExchangeRateService::new(Arc::new(db))

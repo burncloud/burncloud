@@ -42,7 +42,7 @@ async fn test_create_default_database_end_to_end() {
 
             let rows: Result<Vec<TestRow>> = db.fetch_all("SELECT id, name FROM test_table").await;
             assert!(rows.is_ok(), "Should be able to fetch data");
-            let rows = rows.unwrap();
+            let rows = rows.unwrap_or_else(|e| panic!("fetch_all failed: {e}"));
             assert_eq!(rows.len(), 1, "Should have exactly one row");
             assert_eq!(
                 rows[0].name, "test_data",

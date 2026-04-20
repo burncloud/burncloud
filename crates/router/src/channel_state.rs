@@ -3,14 +3,29 @@
 //! This module provides functionality for tracking the health and availability
 //! of upstream channels and their models.
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
-// Import FailureType from circuit_breaker module
-use crate::adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit};
+use crate::adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit, AdaptiveSnapshot};
 use crate::circuit_breaker::{FailureType, RateLimitScope};
+
+// Health score penalty factors
+const PENALTY_AUTH_FAILED: f64 = 0.1;
+const PENALTY_BALANCE_LOW: f64 = 0.7;
+const PENALTY_BALANCE_EXHAUSTED: f64 = 0.1;
+const PENALTY_RATE_LIMITED: f64 = 0.3;
+const PENALTY_QUOTA_EXHAUSTED: f64 = 0.1;
+const PENALTY_MODEL_NOT_FOUND: f64 = 0.0;
+const PENALTY_TEMPORARILY_DOWN: f64 = 0.2;
+const LATENCY_SCORE_MIDPOINT_MS: f64 = 100.0;
+
+/// Default retry duration when no retry_after is provided (seconds).
+const DEFAULT_RATE_LIMIT_RETRY_SECS: u64 = 60;
+/// Exponential moving average smoothing factor for latency tracking.
+const LATENCY_EMA_ALPHA: f64 = 0.2;
 
 /// Represents the balance status of a channel's account.
 ///
@@ -127,7 +142,7 @@ pub struct ChannelState {
     /// When the account-level rate limit will expire
     pub account_rate_limit_until: Option<Instant>,
     /// State of individual models within this channel
-    pub models: DashMap<String, ModelState>,
+    pub models: HashMap<String, ModelState>,
 }
 
 impl ChannelState {
@@ -138,7 +153,24 @@ impl ChannelState {
             auth_ok: true, // Assume auth is OK until proven otherwise
             balance_status: BalanceStatus::default(),
             account_rate_limit_until: None,
-            models: DashMap::new(),
+            models: HashMap::new(),
+        }
+    }
+
+    /// Get or create a ModelState for the given model name.
+    /// Uses entry API: single hash lookup for both existing and new entries.
+    fn get_or_create_model(
+        &mut self,
+        model_name: &str,
+        channel_id: i32,
+    ) -> &mut ModelState {
+        use std::collections::hash_map::Entry;
+        match self.models.entry(model_name.to_string()) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => {
+                let key = e.key().clone();
+                e.insert(ModelState::new(key, channel_id))
+            }
         }
     }
 }
@@ -181,11 +213,13 @@ impl ChannelStateTracker {
     /// * `true` if the channel (and model if specified) is available
     /// * `false` if any condition prevents the channel/model from being used
     pub fn is_available(&self, channel_id: i32, model: Option<&str>) -> bool {
-        // Get or create channel state
-        let channel_state = self
-            .channel_states
-            .entry(channel_id)
-            .or_insert_with(|| ChannelState::new(channel_id));
+        let now = Instant::now();
+
+        // Read-only: use get() to avoid write lock + allocation on hot path
+        let channel_state = match self.channel_states.get(&channel_id) {
+            Some(state) => state,
+            None => return true, // Unknown channel = available
+        };
 
         // Check channel-level conditions
         if !channel_state.auth_ok {
@@ -198,7 +232,7 @@ impl ChannelStateTracker {
 
         // Check account-level rate limit
         if let Some(rate_limit_until) = channel_state.account_rate_limit_until {
-            if rate_limit_until > Instant::now() {
+            if rate_limit_until > now {
                 return false;
             }
         }
@@ -222,7 +256,7 @@ impl ChannelStateTracker {
 
             // Check model-level rate limit
             if let Some(rate_limit_until) = model_state.rate_limit_until {
-                if rate_limit_until > Instant::now() {
+                if rate_limit_until > now {
                     return false;
                 }
             }
@@ -266,7 +300,7 @@ impl ChannelStateTracker {
         match failure_type {
             FailureType::AuthFailed => {
                 channel_state.auth_ok = false;
-                channel_state.models.iter_mut().for_each(|mut m| {
+                channel_state.models.iter_mut().for_each(|(_, m)| {
                     m.status = ModelStatus::TemporarilyDown;
                 });
             }
@@ -276,7 +310,7 @@ impl ChannelStateTracker {
             FailureType::RateLimited { scope, retry_after } => {
                 let retry_after_duration = retry_after
                     .map(Duration::from_secs)
-                    .unwrap_or(Duration::from_secs(60)); // Default 60s if not specified
+                    .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
 
                 let retry_until = now + retry_after_duration;
 
@@ -286,12 +320,7 @@ impl ChannelStateTracker {
                     }
                     RateLimitScope::Model => {
                         if let Some(model_name) = model {
-                            let mut model_state = channel_state
-                                .models
-                                .entry(model_name.to_string())
-                                .or_insert_with(|| {
-                                    ModelState::new(model_name.to_string(), channel_id)
-                                });
+                            let model_state = channel_state.get_or_create_model(model_name, channel_id);
                             model_state.status = ModelStatus::RateLimited;
                             model_state.rate_limit_until = Some(retry_until);
                             model_state.last_error = Some(error_message.to_string());
@@ -306,12 +335,7 @@ impl ChannelStateTracker {
                         channel_state.account_rate_limit_until = Some(retry_until);
                         // Also update model-level adaptive limiter if model is specified
                         if let Some(model_name) = model {
-                            let mut model_state = channel_state
-                                .models
-                                .entry(model_name.to_string())
-                                .or_insert_with(|| {
-                                    ModelState::new(model_name.to_string(), channel_id)
-                                });
+                            let model_state = channel_state.get_or_create_model(model_name, channel_id);
                             model_state.adaptive_limit.on_rate_limited(*retry_after);
                         }
                     }
@@ -319,10 +343,7 @@ impl ChannelStateTracker {
             }
             FailureType::ModelNotFound => {
                 if let Some(model_name) = model {
-                    let mut model_state = channel_state
-                        .models
-                        .entry(model_name.to_string())
-                        .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
+                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
                     model_state.status = ModelStatus::ModelNotFound;
                     model_state.last_error = Some(error_message.to_string());
                     model_state.last_error_time = Some(now);
@@ -332,10 +353,7 @@ impl ChannelStateTracker {
             FailureType::ServerError | FailureType::Timeout => {
                 // These are transient errors, just update the model state if available
                 if let Some(model_name) = model {
-                    let mut model_state = channel_state
-                        .models
-                        .entry(model_name.to_string())
-                        .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
+                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
                     model_state.status = ModelStatus::TemporarilyDown;
                     model_state.last_error = Some(error_message.to_string());
                     model_state.last_error_time = Some(now);
@@ -363,7 +381,7 @@ impl ChannelStateTracker {
         upstream_limit: Option<u32>,
     ) {
         // Get or create channel state
-        let channel_state = self
+        let mut channel_state = self
             .channel_states
             .entry(channel_id)
             .or_insert_with(|| ChannelState::new(channel_id));
@@ -375,18 +393,14 @@ impl ChannelStateTracker {
         };
 
         // Update model state
-        let mut model_state = channel_state
-            .models
-            .entry(model_name.to_string())
-            .or_insert_with(|| ModelState::new(model_name.to_string(), channel_id));
+        let model_state = channel_state.get_or_create_model(model_name, channel_id);
 
         // Update success count
         model_state.success_count += 1;
 
         // Update average latency using exponential moving average
-        let alpha = 0.2; // Weight for new value
-        model_state.avg_latency_ms =
-            alpha * latency_ms as f64 + (1.0 - alpha) * model_state.avg_latency_ms;
+        model_state.avg_latency_ms = LATENCY_EMA_ALPHA * latency_ms as f64
+            + (1.0 - LATENCY_EMA_ALPHA) * model_state.avg_latency_ms;
 
         // If the model was temporarily down, restore it to available
         // (successful request indicates the issue is resolved)
@@ -434,7 +448,7 @@ impl ChannelStateTracker {
     /// Calculate a health score for a channel.
     ///
     /// Higher scores indicate healthier channels.
-    /// Considers success rate, average latency, and current status.
+    /// For model-specific scoring, delegates to `get_health_and_adaptive`.
     ///
     /// # Arguments
     /// * `channel_id` - The channel ID to calculate score for
@@ -443,56 +457,27 @@ impl ChannelStateTracker {
     /// # Returns
     /// A health score (higher is better). Default is 1.0 for unknown channels.
     pub fn get_health_score(&self, channel_id: i32, model: Option<&str>) -> f64 {
-        // Get channel state
-        let channel_state = match self.channel_states.get(&channel_id) {
-            Some(state) => state,
-            None => return 1.0, // Unknown channel, neutral score
-        };
-
-        let mut score = 1.0;
-
-        // Penalize if auth is not OK
-        if !channel_state.auth_ok {
-            score *= 0.1;
-        }
-
-        // Penalize based on balance status
-        match channel_state.balance_status {
-            BalanceStatus::Ok => {}
-            BalanceStatus::Low => score *= 0.7,
-            BalanceStatus::Exhausted => score *= 0.1,
-            BalanceStatus::Unknown => {}
-        }
-
-        // If model is specified, factor in model-level stats
-        if let Some(model_name) = model {
-            if let Some(model_state) = channel_state.models.get(model_name) {
-                // Calculate success rate
-                let total = model_state.success_count + model_state.failure_count;
-                if total > 0 {
-                    let success_rate = model_state.success_count as f64 / total as f64;
-                    score *= success_rate;
+        match model {
+            Some(m) => self.get_health_and_adaptive(channel_id, m).0,
+            None => {
+                // Channel-only score (no model)
+                let channel_state = match self.channel_states.get(&channel_id) {
+                    Some(state) => state,
+                    None => return 1.0,
+                };
+                let mut score = 1.0;
+                if !channel_state.auth_ok {
+                    score *= PENALTY_AUTH_FAILED;
                 }
-
-                // Factor in average latency (lower is better)
-                if model_state.avg_latency_ms > 0.0 {
-                    // Normalize: 100ms = 1.0, 1000ms = 0.5, 5000ms = 0.1
-                    let latency_factor = 100.0 / (100.0 + model_state.avg_latency_ms);
-                    score *= latency_factor;
+                match channel_state.balance_status {
+                    BalanceStatus::Ok => {}
+                    BalanceStatus::Low => score *= PENALTY_BALANCE_LOW,
+                    BalanceStatus::Exhausted => score *= PENALTY_BALANCE_EXHAUSTED,
+                    BalanceStatus::Unknown => {}
                 }
-
-                // Penalize based on model status
-                match model_state.status {
-                    ModelStatus::Available => {}
-                    ModelStatus::RateLimited => score *= 0.3,
-                    ModelStatus::QuotaExhausted => score *= 0.1,
-                    ModelStatus::ModelNotFound => score *= 0.0,
-                    ModelStatus::TemporarilyDown => score *= 0.2,
-                }
+                score
             }
         }
-
-        score
     }
 
     /// Get all channel states for monitoring/health reporting.
@@ -502,6 +487,72 @@ impl ChannelStateTracker {
         self.channel_states
             .iter()
             .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect()
+    }
+
+    /// Combined lookup: health score + adaptive snapshot in a single DashMap get.
+    ///
+    /// Returns (health_score, Some(snapshot)) on success,
+    /// (1.0, None) for unknown channels, or (computed_score, cold_start_snapshot) for unknown models.
+    pub fn get_health_and_adaptive(&self, channel_id: i32, model: &str) -> (f64, AdaptiveSnapshot) {
+        let cold_start = AdaptiveSnapshot {
+            current_limit: crate::adaptive_limit::DEFAULT_INITIAL_LIMIT,
+            state: crate::adaptive_limit::RateLimitState::Learning,
+        };
+
+        let channel_state = match self.channel_states.get(&channel_id) {
+            Some(state) => state,
+            None => return (1.0, cold_start),
+        };
+
+        let mut score = 1.0;
+
+        if !channel_state.auth_ok {
+            score *= 0.1;
+        }
+
+        match channel_state.balance_status {
+            BalanceStatus::Ok => {}
+            BalanceStatus::Low => score *= 0.7,
+            BalanceStatus::Exhausted => score *= 0.1,
+            BalanceStatus::Unknown => {}
+        }
+
+        let model_state = match channel_state.models.get(model) {
+            Some(ms) => ms,
+            None => return (score, cold_start),
+        };
+
+        let total = model_state.success_count + model_state.failure_count;
+        if total > 0 {
+            score *= model_state.success_count as f64 / total as f64;
+        }
+
+        if model_state.avg_latency_ms > 0.0 {
+            score *= LATENCY_SCORE_MIDPOINT_MS / (LATENCY_SCORE_MIDPOINT_MS + model_state.avg_latency_ms);
+        }
+
+        match model_state.status {
+            ModelStatus::Available => {}
+            ModelStatus::RateLimited => score *= PENALTY_RATE_LIMITED,
+            ModelStatus::QuotaExhausted => score *= PENALTY_QUOTA_EXHAUSTED,
+            ModelStatus::ModelNotFound => score *= PENALTY_MODEL_NOT_FOUND,
+            ModelStatus::TemporarilyDown => score *= PENALTY_TEMPORARILY_DOWN,
+        }
+
+        (score, model_state.adaptive_limit.snapshot())
+    }
+
+    /// Get health scores for a batch of channels.
+    #[cfg(test)]
+    pub fn get_all_health_scores(
+        &self,
+        channel_ids: &[i32],
+        model: Option<&str>,
+    ) -> std::collections::HashMap<i32, f64> {
+        channel_ids
+            .iter()
+            .map(|&id| (id, self.get_health_score(id, model)))
             .collect()
     }
 }

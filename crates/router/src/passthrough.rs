@@ -115,7 +115,7 @@ pub fn build_gemini_passthrough_url(base_url: &str, path: &str, body: &Value) ->
 
     // If path is already a Gemini native path, use it directly
     if is_gemini_native_path(path) {
-        return format!("{}{}", clean_base, path);
+        return format!("{clean_base}{path}");
     }
 
     // Otherwise, construct URL from model name in body
@@ -136,7 +136,7 @@ pub fn build_gemini_passthrough_url(base_url: &str, path: &str, body: &Value) ->
         "generateContent"
     };
 
-    format!("{}/v1beta/models/{}:{}", clean_base, model, method)
+    format!("{clean_base}/v1beta/models/{model}:{method}")
 }
 
 /// Extracts the model name from a Gemini native path.

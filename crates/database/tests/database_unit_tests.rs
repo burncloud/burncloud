@@ -12,8 +12,7 @@ async fn test_database_new() {
     let db_result = Database::new().await;
     // Note: This might fail in some environments due to SQLite configuration,
     // but the path resolution and API structure are correct
-    if db_result.is_ok() {
-        let db = db_result.unwrap();
+    if let Ok(db) = db_result {
         // The database should be initialized and have a connection (test via connection method)
         assert!(db.get_connection().is_ok());
         let _ = db.close().await;
@@ -30,8 +29,7 @@ async fn test_create_default_database() {
     let db_result = create_default_database().await;
     // Note: This might fail in some environments due to SQLite configuration,
     // but the path resolution and API structure are correct
-    if db_result.is_ok() {
-        let db = db_result.unwrap();
+    if let Ok(db) = db_result {
         let _ = db.close().await;
     }
 }
@@ -41,7 +39,7 @@ fn test_get_default_database_path() {
     let path_result = get_default_database_path();
     assert!(path_result.is_ok());
 
-    let path = path_result.unwrap();
+    let path = path_result.unwrap_or_else(|e| panic!("get_default_database_path failed: {e}"));
     println!("Default database path: {}", path.display());
     assert!(path.to_string_lossy().contains("data.db"));
 
@@ -64,8 +62,7 @@ fn test_is_windows() {
 async fn test_api_consistency() {
     // Test that Database::new() creates an initialized database
     let db_result = Database::new().await;
-    if db_result.is_ok() {
-        let db = db_result.unwrap();
+    if let Ok(db) = db_result {
         // Should be initialized and have a connection (test via connection method)
         assert!(db.get_connection().is_ok());
         // Note: We can't test database_path directly as it's private

@@ -6,9 +6,12 @@
 //! z.ai uses an Anthropic-compatible API with Bearer authentication.
 //! This adaptor combines Anthropic protocol conversion with Bearer auth.
 
-use super::current_unix_timestamp;
+use super::{current_unix_timestamp, generate_chat_id};
 use burncloud_common::types::OpenAIChatRequest;
 use serde_json::{json, Value};
+
+/// SSE stream termination marker.
+const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 
 pub struct ZaiAdaptor;
 
@@ -121,14 +124,14 @@ impl ZaiAdaptor {
             // Process data lines
             if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
-                    return Some("data: [DONE]\n\n".to_string());
+                    return Some(SSE_DONE_MARKER.to_string());
                 }
 
                 // Check if this is a stop event based on event: line or data content
                 if current_event == Some("message_stop")
                     || current_event == Some("content_block_stop")
                 {
-                    return Some("data: [DONE]\n\n".to_string());
+                    return Some(SSE_DONE_MARKER.to_string());
                 }
 
                 if let Ok(json) = serde_json::from_str::<Value>(data) {
@@ -148,7 +151,7 @@ impl ZaiAdaptor {
                                 return Some(format!(
                                     "data: {}\n\n",
                                     json!({
-                                        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                                        "id": generate_chat_id(),
                                         "object": "chat.completion.chunk",
                                         "created": current_unix_timestamp(),
                                         "model": model,
@@ -161,7 +164,7 @@ impl ZaiAdaptor {
                                 ));
                             }
                             "message_stop" | "content_block_stop" => {
-                                return Some("data: [DONE]\n\n".to_string());
+                                return Some(SSE_DONE_MARKER.to_string());
                             }
                             // Skip other event types (message_start, content_block_start, etc.)
                             _ => {}
@@ -213,7 +216,9 @@ mod tests {
         assert_eq!(zai_req["model"], "glm-5");
         assert_eq!(zai_req["system"], "Be helpful");
         assert_eq!(zai_req["max_tokens"], 100);
-        let messages = zai_req["messages"].as_array().unwrap();
+        let messages = zai_req["messages"]
+            .as_array()
+            .unwrap_or_else(|| panic!("messages should be an array"));
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
     }
@@ -272,7 +277,7 @@ mod tests {
         let result = ZaiAdaptor::convert_stream_chunk(chunk, "glm-5");
 
         assert!(result.is_some());
-        let output = result.unwrap();
+        let output = result.unwrap_or_else(|| panic!("stream chunk conversion should return Some"));
         assert!(output.starts_with("data: "));
         assert!(output.contains("\"delta\":{\"content\":\"Hello\"}"));
     }
@@ -284,7 +289,7 @@ mod tests {
         let result = ZaiAdaptor::convert_stream_chunk(chunk, "glm-5");
 
         assert!(result.is_some());
-        let output = result.unwrap();
+        let output = result.unwrap_or_else(|| panic!("stream chunk conversion should return Some"));
         assert!(output.contains("\"delta\":{\"content\":\"World\"}"));
     }
 
@@ -293,7 +298,7 @@ mod tests {
         let chunk = "event: message_stop\ndata: {}\n";
         let result = ZaiAdaptor::convert_stream_chunk(chunk, "glm-5");
 
-        assert_eq!(result, Some("data: [DONE]\n\n".to_string()));
+        assert_eq!(result, Some(SSE_DONE_MARKER.to_string()));
     }
 
     #[test]

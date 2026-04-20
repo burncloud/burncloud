@@ -17,6 +17,13 @@ use burncloud_common::Currency;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+// Price ratio defaults for cache/batch/priority tiers
+const CACHE_READ_DIVISOR: i64 = 10;         // 10% of input price
+const CACHE_CREATION_DIVISOR: i64 = 4;      // 125% of input price (1 + 1/4)
+const BATCH_DISCOUNT_DIVISOR: i64 = 2;      // 50% of standard price
+const PRIORITY_NUMERATOR: i128 = 17;        // 170% of standard price (17/10)
+const PRIORITY_DENOMINATOR: i128 = 10;
+
 /// Errors that can occur during billing calculations
 #[derive(Debug, Error)]
 pub enum BillingError {
@@ -145,7 +152,7 @@ fn format_cost_nano(amount_nano: i64, currency: &str) -> String {
         "EUR" => "€",
         _ => "",
     };
-    format!("{}{:.6}", symbol, amount)
+    format!("{symbol}{amount:.6}")
 }
 
 /// Multi-currency pricing information
@@ -514,7 +521,7 @@ pub fn calculate_cache_cost_nano(usage: &TokenUsage, pricing: &AdvancedPricing) 
     // Cache read tokens (10% of standard price)
     if usage.cache_read_tokens > 0 {
         // Default cache read price is 10% of input price
-        let cache_price = pricing.cache_read_price.unwrap_or(pricing.input_price / 10);
+        let cache_price = pricing.cache_read_price.unwrap_or(pricing.input_price / CACHE_READ_DIVISOR);
         total_cost += (usage.cache_read_tokens as i128 * cache_price as i128) / 1_000_000;
     }
 
@@ -523,7 +530,7 @@ pub fn calculate_cache_cost_nano(usage: &TokenUsage, pricing: &AdvancedPricing) 
         // Default cache creation price is 125% of input price
         let cache_creation_price = pricing
             .cache_creation_price
-            .unwrap_or(pricing.input_price + pricing.input_price / 4);
+            .unwrap_or(pricing.input_price + pricing.input_price / CACHE_CREATION_DIVISOR);
         total_cost +=
             (usage.cache_creation_tokens as i128 * cache_creation_price as i128) / 1_000_000;
     }
@@ -554,10 +561,10 @@ pub fn calculate_batch_cost_nano(
     pricing: &AdvancedPricing,
 ) -> i64 {
     // Default batch price is 50% of standard price
-    let input_price = pricing.batch_input_price.unwrap_or(pricing.input_price / 2);
+    let input_price = pricing.batch_input_price.unwrap_or(pricing.input_price / BATCH_DISCOUNT_DIVISOR);
     let output_price = pricing
         .batch_output_price
-        .unwrap_or(pricing.output_price / 2);
+        .unwrap_or(pricing.output_price / BATCH_DISCOUNT_DIVISOR);
 
     let input_cost = (prompt_tokens as i128 * input_price as i128) / 1_000_000;
     let output_cost = (completion_tokens as i128 * output_price as i128) / 1_000_000;
@@ -585,13 +592,12 @@ pub fn calculate_priority_cost_nano(
     pricing: &AdvancedPricing,
 ) -> i64 {
     // Default priority price is 170% of standard price
-    // Use 170/100 = 17/10 for integer math
     let input_price = pricing
         .priority_input_price
-        .unwrap_or((pricing.input_price as i128 * 17 / 10) as i64);
+        .unwrap_or((pricing.input_price as i128 * PRIORITY_NUMERATOR / PRIORITY_DENOMINATOR) as i64);
     let output_price = pricing
         .priority_output_price
-        .unwrap_or((pricing.output_price as i128 * 17 / 10) as i64);
+        .unwrap_or((pricing.output_price as i128 * PRIORITY_NUMERATOR / PRIORITY_DENOMINATOR) as i64);
 
     let input_cost = (prompt_tokens as i128 * input_price as i128) / 1_000_000;
     let output_cost = (completion_tokens as i128 * output_price as i128) / 1_000_000;
@@ -624,7 +630,7 @@ mod tests {
 
     /// Helper to convert dollars to nanodollars as i64
     fn to_nano(price: f64) -> i64 {
-        dollars_to_nano(price) as i64
+        dollars_to_nano(price)
     }
 
     fn create_test_tier(
@@ -672,7 +678,8 @@ mod tests {
         let tiers = vec![create_test_tier(0, None, 1.0, 4.0)];
 
         // 100K tokens at $1/1M = $0.1
-        let cost = calculate_tiered_cost(100_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(100_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!((cost - 0.1).abs() < 0.000001);
     }
 
@@ -693,7 +700,8 @@ mod tests {
         // Tier 2: 96K × $2.4/1M = $0.2304
         // Tier 3: 22K × $3.0/1M = $0.066
         // Total: $0.3348
-        let cost = calculate_tiered_cost(150_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(150_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!(
             (cost - 0.3348).abs() < 0.000001,
             "Expected $0.3348, got ${}",
@@ -714,7 +722,8 @@ mod tests {
         // Tier 2: 96K × $2.0/1M = $0.192
         // Beyond: 72K × $2.0/1M = $0.144
         // Total: $0.368
-        let cost = calculate_tiered_cost(200_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(200_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!(
             (cost - 0.368).abs() < 0.000001,
             "Expected $0.368, got ${}",
@@ -734,7 +743,8 @@ mod tests {
         // Tier 1: 32K × $1.0/1M = $0.032
         // Tier 2: 96K × $2.0/1M = $0.192
         // Total: $0.224
-        let cost = calculate_tiered_cost(128_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(128_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!(
             (cost - 0.224).abs() < 0.000001,
             "Expected $0.224, got ${}",
@@ -745,7 +755,8 @@ mod tests {
     #[test]
     fn test_zero_tokens() {
         let tiers = vec![create_test_tier(0, None, 1.0, 4.0)];
-        let cost = calculate_tiered_cost(0, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost(0, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert_eq!(cost, 0.0);
     }
 
@@ -766,7 +777,8 @@ mod tests {
         ];
 
         // Test CN region pricing (lower prices)
-        let cn_cost = calculate_tiered_cost(50_000, &tiers, Some("cn")).unwrap();
+        let cn_cost = calculate_tiered_cost(50_000, &tiers, Some("cn"))
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
 
         // CN: 32K × $0.359/1M + 18K × $0.574/1M
         // = $0.011488 + $0.010332 = $0.02182
@@ -779,7 +791,8 @@ mod tests {
         );
 
         // Test international region pricing
-        let intl_cost = calculate_tiered_cost(50_000, &tiers, Some("international")).unwrap();
+        let intl_cost = calculate_tiered_cost(50_000, &tiers, Some("international"))
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
 
         // International: 32K × $1.2/1M + 18K × $2.4/1M
         // = $0.0384 + $0.0432 = $0.0816
@@ -801,7 +814,8 @@ mod tests {
         let tiers = vec![create_test_tier(0, None, 1.0, 4.0)];
 
         // Request with region that doesn't exist should use universal
-        let cost = calculate_tiered_cost(100_000, &tiers, Some("nonexistent")).unwrap();
+        let cost = calculate_tiered_cost(100_000, &tiers, Some("nonexistent"))
+            .unwrap_or_else(|e| panic!("tiered cost calculation failed: {e}"));
         assert!((cost - 0.1).abs() < 0.000001);
     }
 
@@ -921,7 +935,14 @@ mod tests {
         let result_cny = CostResult::with_local(1.0, "CNY", 7.2);
         assert_eq!(result_cny.display, "¥7.200000");
         assert!((result_cny.usd_amount() - 1.0).abs() < 0.000001);
-        assert!((result_cny.local_amount().unwrap() - 7.2).abs() < 0.000001);
+        assert!(
+            (result_cny
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 7.2)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -935,7 +956,8 @@ mod tests {
         // Input: 32K × $1.2 + 18K × $2.4 = $0.0384 + $0.0432 = $0.0816
         // Output: 10K × $6.0 = $0.06 (using first tier output price)
         // Wait, output should also be tiered based on prompt tokens
-        let cost = calculate_tiered_cost_full(50_000, 10_000, &tiers, None).unwrap();
+        let cost = calculate_tiered_cost_full(50_000, 10_000, &tiers, None)
+            .unwrap_or_else(|e| panic!("tiered cost full calculation failed: {e}"));
 
         // For now, output is calculated at first tier price
         // This test verifies the function works
@@ -975,7 +997,14 @@ mod tests {
 
         // CNY: 1M × ¥0.359 + 0.5M × ¥1.434 = ¥0.359 + ¥0.717 = ¥1.076
         let expected_cny = 0.359 + 0.717;
-        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_cny)
+                .abs()
+                < 0.000001
+        );
         assert_eq!(result.local_currency, "CNY");
     }
 
@@ -1005,7 +1034,14 @@ mod tests {
         assert!((result.usd_amount() - 1.0).abs() < 0.000001);
 
         // CNY via exchange rate: $1.0 × 7.2 = ¥7.2
-        assert!((result.local_amount().unwrap() - 7.2).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 7.2)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1044,7 +1080,14 @@ mod tests {
         assert!((result.usd_amount() - 20.0).abs() < 0.000001);
 
         // CNY batch: ¥35 + ¥105 = ¥140
-        assert!((result.local_amount().unwrap() - 140.0).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 140.0)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1077,7 +1120,14 @@ mod tests {
 
         // With exchange rate, local amount should be USD × rate
         let expected_local = result.usd_amount() * 7.2;
-        assert!((result.local_amount().unwrap() - expected_local).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_local)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1118,7 +1168,14 @@ mod tests {
 
         // CNY priority: ¥119 + ¥178.5 = ¥297.5
         let expected_cny = 1.0 * 119.0 + 0.5 * 357.0;
-        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_cny)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]
@@ -1181,7 +1238,14 @@ mod tests {
         assert!((result.usd_amount() - 20.0).abs() < 0.000001);
 
         // EUR: 0.5 × €9.3 + 0.5 × €27.9 = €4.65 + €13.95 = €18.6
-        assert!((result.local_amount().unwrap() - 18.6).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - 18.6)
+                .abs()
+                < 0.000001
+        );
         assert_eq!(result.local_currency, "EUR");
     }
 
@@ -1222,7 +1286,14 @@ mod tests {
 
         // CNY: (50K × ¥7 + 10K × ¥28 + 10K × ¥49) / 1M = ¥0.35 + ¥0.28 + ¥0.49 = ¥1.12
         let expected_cny = 0.35 + 0.28 + 0.49;
-        assert!((result.local_amount().unwrap() - expected_cny).abs() < 0.000001);
+        assert!(
+            (result
+                .local_amount()
+                .unwrap_or_else(|| panic!("local_amount should be Some"))
+                - expected_cny)
+                .abs()
+                < 0.000001
+        );
     }
 
     #[test]

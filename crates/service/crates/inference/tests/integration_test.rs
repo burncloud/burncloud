@@ -17,7 +17,12 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
     mock_bin.push("tests");
     mock_bin.push("mock_server.bat");
 
-    env::set_var("BURNCLOUD_LLAMA_BIN", mock_bin.to_str().unwrap());
+    env::set_var(
+        "BURNCLOUD_LLAMA_BIN",
+        mock_bin
+            .to_str()
+            .unwrap_or_else(|| panic!("mock_bin path is not valid UTF-8")),
+    );
 
     // 初始化数据库 (使用内存或临时文件，这里 create_default_database 使用默认位置，
     // 在测试环境中可能需要注意隔离，但为了验证 create_upstream 逻辑，我们直接用它)
@@ -56,7 +61,7 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
     let upstream = RouterDatabase::get_upstream(&db, &upstream_id).await?;
 
     assert!(upstream.is_some(), "Upstream should be registered in DB");
-    let u = upstream.unwrap();
+    let u = upstream.unwrap_or_else(|| panic!("upstream should exist after is_some() check"));
     assert_eq!(u.base_url, format!("http://127.0.0.1:{}", port));
     assert_eq!(u.match_path, "/v1/chat/completions");
     println!(">>> Database registration verified: {:?}", u);

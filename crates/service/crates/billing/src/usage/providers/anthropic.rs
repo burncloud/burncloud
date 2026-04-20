@@ -118,7 +118,7 @@ mod tests {
     fn test_parse_response_basic() {
         let parser = AnthropicParser;
         let resp = json!({"usage": {"input_tokens": 50, "output_tokens": 75}});
-        let u = parser.parse_response(&resp).unwrap();
+        let u = parser.parse_response(&resp).unwrap_or_else(|e| panic!("parse_response failed: {e}"));
         assert_eq!(u.input_tokens, 50);
         assert_eq!(u.output_tokens, 75);
     }
@@ -134,7 +134,7 @@ mod tests {
                 "cache_creation_input_tokens": 20
             }
         });
-        let u = parser.parse_response(&resp).unwrap();
+        let u = parser.parse_response(&resp).unwrap_or_else(|e| panic!("parse_response failed: {e}"));
         assert_eq!(u.input_tokens, 100);
         assert_eq!(u.cache_read_tokens, 30);
         assert_eq!(u.cache_write_tokens, 20);
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_parse_response_missing_usage() {
         let parser = AnthropicParser;
-        let u = parser.parse_response(&json!({"content": []})).unwrap();
+        let u = parser.parse_response(&json!({"content": []})).unwrap_or_else(|e| panic!("parse_response failed: {e}"));
         assert!(u.is_empty());
     }
 
@@ -151,7 +151,7 @@ mod tests {
     fn test_parse_streaming_message_start() {
         let parser = AnthropicParser;
         let line = r#"data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":50}}}"#;
-        let u = parser.parse_streaming_chunk(line).unwrap().unwrap();
+        let u = parser.parse_streaming_chunk(line).unwrap_or_else(|e| panic!("parse_streaming_chunk failed: {e}")).unwrap_or_else(|| panic!("expected Some(usage) for message_start"));
         assert_eq!(u.input_tokens, 50);
         assert_eq!(u.output_tokens, 0);
     }
@@ -160,7 +160,7 @@ mod tests {
     fn test_parse_streaming_message_delta() {
         let parser = AnthropicParser;
         let line = r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":75}}"#;
-        let u = parser.parse_streaming_chunk(line).unwrap().unwrap();
+        let u = parser.parse_streaming_chunk(line).unwrap_or_else(|e| panic!("parse_streaming_chunk failed: {e}")).unwrap_or_else(|| panic!("expected Some(usage) for message_delta"));
         assert_eq!(u.output_tokens, 75);
     }
 
@@ -169,7 +169,7 @@ mod tests {
         let parser = AnthropicParser;
         // message_start without usage block → None
         let line = r#"data: {"type":"message_start","message":{"id":"msg_1"}}"#;
-        assert!(parser.parse_streaming_chunk(line).unwrap().is_none());
+        assert!(parser.parse_streaming_chunk(line).unwrap_or_else(|e| panic!("parse_streaming_chunk failed: {e}")).is_none());
     }
 
     #[test]
@@ -177,14 +177,14 @@ mod tests {
         let parser = AnthropicParser;
         let line =
             r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}"#;
-        assert!(parser.parse_streaming_chunk(line).unwrap().is_none());
+        assert!(parser.parse_streaming_chunk(line).unwrap_or_else(|e| panic!("parse_streaming_chunk failed: {e}")).is_none());
     }
 
     #[test]
     fn test_parse_streaming_cache_in_message_start() {
         let parser = AnthropicParser;
         let line = r#"data: {"type":"message_start","message":{"usage":{"input_tokens":100,"cache_read_input_tokens":50,"cache_creation_input_tokens":20}}}"#;
-        let u = parser.parse_streaming_chunk(line).unwrap().unwrap();
+        let u = parser.parse_streaming_chunk(line).unwrap_or_else(|e| panic!("parse_streaming_chunk failed: {e}")).unwrap_or_else(|| panic!("expected Some(usage) for message_start with cache"));
         assert_eq!(u.input_tokens, 100);
         assert_eq!(u.cache_read_tokens, 50);
         assert_eq!(u.cache_write_tokens, 20);

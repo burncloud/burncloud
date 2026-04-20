@@ -57,7 +57,7 @@ async fn test_concurrent_database_access() {
         for i in 0..num_tasks {
             let connection = db
                 .get_connection()
-                .expect("Database should be initialized")
+                .unwrap_or_else(|e| panic!("Database should be initialized: {e}"))
                 .clone();
             let handle = tokio::spawn(async move {
                 let timestamp = chrono::Utc::now().to_rfc3339();

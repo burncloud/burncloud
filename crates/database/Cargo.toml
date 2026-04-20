@@ -21,6 +21,7 @@ thiserror.workspace = true
 chrono.workspace = true
 dirs.workspace = true
 log.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -31,14 +31,14 @@ use tempfile::NamedTempFile;
 /// are required: the former creates `router_logs` with all columns, the latter creates
 /// `router_tokens` which `RouterLogModel::insert` updates for quota deduction.
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
-    let tmp = NamedTempFile::new().expect("failed to create temp file");
+    let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
     let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
     let db = create_database_with_url(&url)
         .await
-        .expect("failed to initialize test database");
+        .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));
     RouterDatabase::init(&db)
         .await
-        .expect("failed to initialize router tables");
+        .unwrap_or_else(|e| panic!("failed to initialize router tables: {e}"));
     (db, tmp)
 }
 
@@ -46,7 +46,7 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
 async fn find_log(db: &burncloud_database::Database, request_id: &str) -> RouterLog {
     let rows = RouterLogModel::get(db, 100, 0)
         .await
-        .expect("RouterLogModel::get failed");
+        .unwrap_or_else(|e| panic!("RouterLogModel::get failed: {e}"));
     rows.into_iter()
         .find(|r| r.request_id == request_id)
         .unwrap_or_else(|| panic!("log with request_id={request_id} not found"))
@@ -103,7 +103,7 @@ async fn test_cost_breakdown_roundtrip() {
 
     RouterLogModel::insert(&db, &log)
         .await
-        .expect("insert failed");
+        .unwrap_or_else(|e| panic!("insert failed: {e}"));
 
     let row = find_log(&db, &request_id).await;
 
@@ -174,7 +174,7 @@ async fn test_large_cost_no_truncation() {
 
     RouterLogModel::insert(&db, &log)
         .await
-        .expect("insert failed");
+        .unwrap_or_else(|e| panic!("insert failed: {e}"));
 
     let row = find_log(&db, &request_id).await;
 
@@ -235,7 +235,7 @@ async fn test_zero_values_read_as_zero_not_null() {
 
     RouterLogModel::insert(&db, &log)
         .await
-        .expect("insert failed");
+        .unwrap_or_else(|e| panic!("insert failed: {e}"));
 
     let row = find_log(&db, &request_id).await;
 

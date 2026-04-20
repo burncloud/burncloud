@@ -72,10 +72,14 @@ let user = get_user(db, id).await.expect("should exist");
 
 ### 6. 新代码禁止 `println!` / `eprintln!`
 
-新代码统一使用 `log::` 宏。存量代码（如 `auth.rs`）按优先级迁移，不强制立即重写。
+新代码使用 `log::*!` 或 `tracing::*!` 宏均可，两者通过 `tracing-log` bridge 统一输出到 `tracing-subscriber`。新代码优先使用 `tracing::*!`（支持 span 和结构化字段），存量 `log::*!` 代码无需迁移。
 
 ```rust
-// ✓ 正确（新代码）
+// ✓ 正确（新代码，优先）
+tracing::warn!(user_id = %id, "JWT generation failed: {}", e);
+tracing::error!("Registration error: {}", e);
+
+// ✓ 正确（存量代码，无需迁移）
 log::warn!("JWT generation failed: {}", e);
 log::error!("Registration error: {}", e);
 

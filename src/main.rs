@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::env;
 use std::path::Path;
 
+mod cli;
+
 fn main() -> Result<()> {
     // Load .env file if present
     dotenvy::dotenv().ok();
@@ -9,8 +11,8 @@ fn main() -> Result<()> {
     // Auto-generate MASTER_KEY if missing
     ensure_master_key();
 
-    // 初始化日志
-    env_logger::init();
+    // 初始化日志（tracing-subscriber + 文件输出）
+    let _logging_guards = burncloud_server::logging::init_logging();
 
     let args: Vec<String> = env::args().collect();
 
@@ -72,7 +74,7 @@ fn main() -> Result<()> {
         }
         [] => {
             // 空参数数组 (理论上不应该发生)
-            burncloud_cli::show_help();
+            crate::cli::commands::show_help();
         }
     }
 
@@ -161,5 +163,5 @@ async fn run_async_code() -> Result<()> {
 
 #[tokio::main]
 async fn run_async_cli(args: &[String]) -> Result<()> {
-    burncloud_cli::handle_command(args).await
+    crate::cli::commands::handle_command(args).await
 }

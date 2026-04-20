@@ -32,7 +32,7 @@ pub enum GlassVariant {
 ///     GlassCard {
 ///         variant: GlassVariant::Light,
 ///         class: "p-10 max-w-md",
-///         
+///
 ///         h1 { "Welcome" }
 ///         p { "This is inside a glass card" }
 ///     }

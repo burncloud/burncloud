@@ -27,5 +27,15 @@ chrono = { workspace = true }
 name = "local_nodejs_test"
 path = "tests/installer/local_nodejs_test.rs"
 
+[[test]]
+name = "logging_test"
+path = "tests/logging_test.rs"
+
+[dev-dependencies]
+burncloud-server.workspace = true
+tracing.workspace = true
+log.workspace = true
+tempfile.workspace = true
+
 [lints]
 workspace = true

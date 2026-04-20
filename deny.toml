@@ -122,7 +122,7 @@ skip-tree = [
 crate = "burncloud-database-model"
 wrappers = [
     "burncloud-service-models",
-    "burncloud-cli",
+    "burncloud",
     "burncloud-router",
 ]
 reason = "Model metadata must not be imported directly by server; use service layer"
@@ -132,7 +132,7 @@ reason = "Model metadata must not be imported directly by server; use service la
 crate = "burncloud-database-billing"
 wrappers = [
     "burncloud-service-billing",
-    "burncloud-cli",
+    "burncloud",
     "burncloud-router",
 ]
 reason = "Billing DB access must go through burncloud-service-billing"
@@ -142,7 +142,7 @@ reason = "Billing DB access must go through burncloud-service-billing"
 crate = "burncloud-database-channel"
 wrappers = [
     "burncloud-service-channel",
-    "burncloud-cli",
+    "burncloud",
     "burncloud-router",
 ]
 reason = "Channel DB access must go through burncloud-service-channel"
@@ -152,7 +152,7 @@ reason = "Channel DB access must go through burncloud-service-channel"
 crate = "burncloud-database-sys"
 wrappers = [
     "burncloud-service-setting",
-    "burncloud-cli",
+    "burncloud",
     "burncloud-download",
 ]
 reason = "Sys DB access must go through service layer (or download/cli for their tables)"
