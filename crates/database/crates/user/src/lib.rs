@@ -126,7 +126,7 @@ impl UserDatabase {
         };
 
         sqlx::query(user_roles_sql).execute(conn.pool()).await?;
-        println!("UserDatabase: tables created/verified.");
+        tracing::info!("UserDatabase: tables created/verified.");
 
         sqlx::query(user_role_bindings_sql)
             .execute(conn.pool())
@@ -194,13 +194,13 @@ impl UserDatabase {
             .get(0);
 
         if role_count == 0 {
-            println!("UserDatabase: inserting default roles...");
+            tracing::info!("UserDatabase: inserting default roles...");
             let _ = sqlx::query("INSERT OR IGNORE INTO user_roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')")
                 .execute(conn.pool())
                 .await;
         }
 
-        println!("UserDatabase: init complete.");
+        tracing::info!("UserDatabase: init complete.");
         Ok(())
     }
 
@@ -286,7 +286,7 @@ impl UserDatabase {
                 .await;
 
             if let Err(e) = res {
-                println!("Role assignment skipped (maybe already exists): {}", e);
+                tracing::warn!("Role assignment skipped (maybe already exists): {}", e);
             }
         }
         Ok(())

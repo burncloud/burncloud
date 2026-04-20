@@ -2,7 +2,7 @@
 pub use burncloud_service_group as group;
 pub use burncloud_service_inference as inference;
 pub use burncloud_service_ip as ip;
-pub use burncloud_service_models as models;
+// pub use burncloud_service_models as models;  // TEMP: broken dep chain
 pub use burncloud_service_monitor as monitor;
 pub use burncloud_service_router_log as router_log;
 pub use burncloud_service_token as token;
