@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::let_and_return, clippy::redundant_pattern_matching)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching
+)]
 
 //! Aliyun ECS API Client
 //!

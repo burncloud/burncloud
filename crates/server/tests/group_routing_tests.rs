@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::let_and_return, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::let_and_return,
+    clippy::disallowed_types
+)]
 
 use axum::{body::Body, extract::State, response::Response, routing::post, Router};
 use reqwest::Client;

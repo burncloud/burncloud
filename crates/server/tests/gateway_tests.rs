@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::let_and_return, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::let_and_return,
+    clippy::disallowed_types
+)]
 
 use reqwest::Client;
 use std::time::Duration;

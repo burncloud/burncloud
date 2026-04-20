@@ -6,17 +6,17 @@
 /// on this trait, not on the concrete database crate.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use burncloud_common::CrudRepository;
 ///
 /// pub struct UserRepository { /* ... */ }
 ///
 /// #[async_trait::async_trait]
-/// impl CrudRepository<DbUser, String, DatabaseError> for UserRepository {
-///     async fn find_by_id(&self, id: &String) -> Result<Option<DbUser>, DatabaseError> { todo!() }
-///     async fn list(&self) -> Result<Vec<DbUser>, DatabaseError> { todo!() }
-///     async fn create(&self, input: &DbUser) -> Result<DbUser, DatabaseError> { todo!() }
-///     async fn update(&self, id: &String, input: &DbUser) -> Result<bool, DatabaseError> { todo!() }
+/// impl CrudRepository<UserAccount, String, DatabaseError> for UserRepository {
+///     async fn find_by_id(&self, id: &String) -> Result<Option<UserAccount>, DatabaseError> { todo!() }
+///     async fn list(&self) -> Result<Vec<UserAccount>, DatabaseError> { todo!() }
+///     async fn create(&self, input: &UserAccount) -> Result<UserAccount, DatabaseError> { todo!() }
+///     async fn update(&self, id: &String, input: &UserAccount) -> Result<bool, DatabaseError> { todo!() }
 ///     async fn delete(&self, id: &String) -> Result<bool, DatabaseError> { todo!() }
 /// }
 /// ```

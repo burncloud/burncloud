@@ -95,6 +95,9 @@ async fn test_ability_routing_and_passthrough() {
 
     let unique_model = format!("mock-model-{}", Uuid::new_v4());
 
+    // 1b. Insert mock price so the router's preflight billing check passes
+    common_mod::insert_mock_price(&unique_model).await;
+
     // 2. Create Channels
     // Channel A: Priority 200 (Higher than default 100)
     // We use type=1 (OpenAI) so that we can test "openai" protocol passthrough behavior too (if we wanted)

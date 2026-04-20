@@ -109,7 +109,10 @@ mod tests {
         assert_eq!(retrieved, Some(val.to_string()));
 
         assert!(service.del(key).await.is_ok());
-        let retrieved_after = service.get(key).await.expect("get after del should succeed");
+        let retrieved_after = service
+            .get(key)
+            .await
+            .expect("get after del should succeed");
         assert_eq!(retrieved_after, None);
     }
 }

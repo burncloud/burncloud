@@ -221,9 +221,11 @@ pub async fn create_router_app(
 
     let reload_path = format!("{}/reload", INTERNAL_PREFIX);
     let health_path = format!("{}/health", INTERNAL_PREFIX);
+    let price_sync_path = format!("{}/prices/sync", INTERNAL_PREFIX);
     let app = Router::new()
         .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
+        .route(&price_sync_path, post(price_sync_handler))
         .route("/v1/models", axum::routing::get(models_handler))
         .route("/api/v1/usage", axum::routing::get(usage_handler))
         .route(
@@ -257,7 +259,6 @@ async fn reload_handler(State(state): State<AppState>) -> Response {
 ///
 /// Triggers an immediate forced price sync. Waits up to 60 seconds for completion.
 /// Internal-only; no auth required (server is assumed behind firewall).
-#[allow(dead_code)]
 async fn price_sync_handler(State(state): State<AppState>) -> Response {
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if state.force_sync_tx.send(reply_tx).await.is_err() {
@@ -2024,7 +2025,15 @@ fn handle_response_with_token_parsing(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::unnecessary_cast, clippy::let_and_return, clippy::redundant_pattern_matching, clippy::identity_op)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::unnecessary_cast,
+    clippy::let_and_return,
+    clippy::redundant_pattern_matching,
+    clippy::identity_op
+)]
 mod tests {
     use super::inject_video_tokens_if_empty;
     use axum::http::StatusCode;
