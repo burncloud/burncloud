@@ -6,41 +6,41 @@ use clap::{Arg, Command};
 use log::{error, info};
 use std::io::{self, Write};
 
-use crate::bundle::handle_bundle_command;
-use crate::channel::handle_channel_command;
-use crate::currency::handle_currency_command;
-use crate::group::handle_group_command;
-use crate::install::handle_install_command;
-use crate::log::handle_log_command;
-use crate::monitor::handle_monitor_command;
-use crate::price::{handle_price_command, handle_tiered_command};
-use crate::protocol::handle_protocol_command;
-use crate::token::handle_token_command;
-use crate::user::handle_user_command;
+use super::bundle::handle_bundle_command;
+use super::channel::handle_channel_command;
+use super::currency::handle_currency_command;
+use super::group::handle_group_command;
+use super::install::handle_install_command;
+use super::log::handle_log_command;
+use super::monitor::handle_monitor_command;
+use super::price::{handle_price_command, handle_tiered_command};
+use super::protocol::handle_protocol_command;
+use super::token::handle_token_command;
+use super::user::handle_user_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
         .version("0.1.0")
-        .about("AI模型部署和管理平台")
+        .about("AI model deployment and management platform")
         .subcommand_required(false)
         .subcommand(
             Command::new("pull")
-                .about("下载模型")
-                .arg(Arg::new("model").required(true).help("模型名称")),
+                .about("Download a model")
+                .arg(Arg::new("model").required(true).help("Model name")),
         )
         .subcommand(
             Command::new("run")
-                .about("运行模型")
-                .arg(Arg::new("model").required(true).help("模型名称"))
-                .arg(Arg::new("prompt").help("输入提示")),
+                .about("Run a model")
+                .arg(Arg::new("model").required(true).help("Model name"))
+                .arg(Arg::new("prompt").help("Input prompt")),
         )
-        .subcommand(Command::new("list").about("列出已下载的模型"))
-        .subcommand(Command::new("server").about("启动服务器模式"))
+        .subcommand(Command::new("list").about("List downloaded models"))
+        .subcommand(Command::new("server").about("Start server mode"))
         .subcommand(
-            Command::new("update").about("检查并更新应用程序").arg(
+            Command::new("update").about("Check and update the application").arg(
                 Arg::new("check-only")
                     .long("check-only")
-                    .help("仅检查更新，不执行更新")
+                    .help("Check for updates only, do not update")
                     .action(clap::ArgAction::SetTrue),
             ),
         )
@@ -1132,7 +1132,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
             let prompt = sub_m.get_one::<String>("prompt");
 
             if prompt.is_none() {
-                println!("进入交互模式，输入 'exit' 退出:");
+                println!("Entering interactive mode, type 'exit' to quit:");
                 loop {
                     print!("> ");
                     io::stdout().flush()?;
@@ -1160,9 +1160,9 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("list", _)) => {
             let models = model_manager.list_models();
             if models.is_empty() {
-                println!("没有找到已下载的模型");
+                println!("No downloaded models found");
             } else {
-                println!("已下载的模型:");
+                println!("Downloaded models:");
                 for model in models {
                     println!("  {} ({}MB)", model.name, model.size / 1024 / 1024);
                 }
@@ -1174,7 +1174,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
             match res {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => return Err(e),
-                Err(e) => return Err(anyhow::anyhow!(format!("更新线程失败: {:?}", e))),
+                Err(e) => return Err(anyhow::anyhow!(format!("Update thread failed: {:?}", e))),
             }
         }
         Some(("install", sub_m)) => {
@@ -1241,47 +1241,47 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// 处理更新命令（使用同步版本避免运行时冲突）
+/// Handle update command (uses sync version to avoid runtime conflicts)
 fn handle_update_command(check_only: bool) -> Result<()> {
-    info!("初始化自动更新器...");
+    info!("Initializing auto-updater...");
 
     let updater = AutoUpdater::with_default_config();
 
     if check_only {
-        println!("检查更新中...");
+        println!("Checking for updates...");
         match updater.sync_check_for_updates() {
             Ok(true) => {
-                println!("✅ 发现新版本可用！");
-                println!("运行 'burncloud update' 来更新到最新版本");
+                println!("✅ New version available!");
+                println!("Run 'burncloud update' to update to the latest version");
             }
             Ok(false) => {
-                println!("✅ 已是最新版本");
+                println!("✅ Already up to date");
             }
             Err(e) => {
-                error!("检查更新失败: {}", e);
-                println!("❌ 检查更新失败: {}", e);
+                error!("Update check failed: {}", e);
+                println!("❌ Update check failed: {}", e);
                 let (github_url, gitee_url) = updater.get_download_links();
-                println!("你可以手动从以下地址下载最新版本:");
+                println!("You can manually download the latest version from:");
                 println!("  GitHub: {}", github_url);
                 println!("  Gitee:  {}", gitee_url);
-                return Err(anyhow::anyhow!("检查更新失败: {}", e));
+                return Err(anyhow::anyhow!("Update check failed: {}", e));
             }
         }
     } else {
-        println!("正在更新 BurnCloud...");
+        println!("Updating BurnCloud...");
         match updater.sync_update() {
             Ok(_) => {
-                println!("✅ 更新成功！");
-                println!("请重新启动应用程序以使用新版本");
+                println!("✅ Update successful!");
+                println!("Please restart the application to use the new version");
             }
             Err(e) => {
-                error!("更新失败: {}", e);
-                println!("❌ 更新失败: {}", e);
+                error!("Update failed: {}", e);
+                println!("❌ Update failed: {}", e);
                 let (github_url, gitee_url) = updater.get_download_links();
-                println!("你可以手动从以下地址下载最新版本:");
+                println!("You can manually download the latest version from:");
                 println!("  GitHub: {}", github_url);
                 println!("  Gitee:  {}", gitee_url);
-                return Err(anyhow::anyhow!("更新失败: {}", e));
+                return Err(anyhow::anyhow!("Update failed: {}", e));
             }
         }
     }
@@ -1290,38 +1290,38 @@ fn handle_update_command(check_only: bool) -> Result<()> {
 }
 
 pub fn show_help() {
-    println!("BurnCloud - AI模型部署和管理平台");
+    println!("BurnCloud - AI model deployment and management platform");
     println!();
-    println!("用法:");
-    println!("  burncloud                     - 启动GUI (Windows) / 显示帮助 (Linux)");
-    println!("  burncloud client              - 启动GUI客户端");
-    println!("  burncloud server              - 启动服务器");
-    println!("  burncloud code                - 编程模式");
-    println!("  burncloud pull <model>        - 下载模型");
-    println!("  burncloud run <model>         - 运行模型");
-    println!("  burncloud list                - 列出模型");
-    println!("  burncloud update              - 更新应用程序");
-    println!("  burncloud update --check-only - 仅检查更新");
+    println!("Usage:");
+    println!("  burncloud                     - Start GUI (Windows) / Show help (Linux)");
+    println!("  burncloud client              - Start GUI client");
+    println!("  burncloud server              - Start server");
+    println!("  burncloud code                - Programming mode");
+    println!("  burncloud pull <model>        - Download model");
+    println!("  burncloud run <model>         - Run model");
+    println!("  burncloud list                - List models");
+    println!("  burncloud update              - Update application");
+    println!("  burncloud update --check-only - Check for updates only");
     println!();
-    println!("软件安装:");
-    println!("  burncloud install --list              - 列出可安装软件");
-    println!("  burncloud install <software>          - 安装软件");
-    println!("  burncloud install <software> --status - 查看安装状态");
-    println!("  burncloud install <software> --auto-deps - 自动安装依赖");
+    println!("Software Installation:");
+    println!("  burncloud install --list              - List available software");
+    println!("  burncloud install <software>          - Install software");
+    println!("  burncloud install <software> --status - View installation status");
+    println!("  burncloud install <software> --auto-deps - Auto-install dependencies");
     println!();
-    println!("离线安装包:");
-    println!("  burncloud bundle create <software> -o <dir> - 创建离线安装包");
-    println!("  burncloud bundle verify <bundle-dir>         - 验证离线包");
-    println!("  burncloud install <software> --bundle <dir>  - 从离线包安装");
+    println!("Offline Bundles:");
+    println!("  burncloud bundle create <software> -o <dir> - Create offline bundle");
+    println!("  burncloud bundle verify <bundle-dir>         - Verify bundle");
+    println!("  burncloud install <software> --bundle <dir>  - Install from bundle");
     println!();
-    println!("定价管理:");
-    println!("  burncloud price list          - 列出模型价格");
-    println!("  burncloud price set           - 设置模型价格");
-    println!("  burncloud tiered list-tiers   - 列出阶梯定价");
-    println!("  burncloud tiered add-tier     - 添加阶梯定价");
-    println!("  burncloud tiered import-tiered - 导入阶梯定价JSON");
+    println!("Pricing Management:");
+    println!("  burncloud price list          - List model prices");
+    println!("  burncloud price set           - Set model price");
+    println!("  burncloud tiered list-tiers   - List tiered pricing");
+    println!("  burncloud tiered add-tier     - Add tiered pricing");
+    println!("  burncloud tiered import-tiered - Import tiered pricing JSON");
     println!();
-    println!("示例:");
+    println!("Examples:");
     println!("  burncloud client");
     println!("  burncloud pull llama3.2");
     println!("  burncloud run gemma3");

@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/auto-update",
-    "crates/cli",
     "crates/client",
     "crates/installer",
     "crates/client/crates/client-api",
@@ -148,7 +147,6 @@ redis = { version = "0.27", features = ["tokio-comp"] }
 
 # Internal crates
 burncloud-auto-update = { path = "crates/auto-update" }
-burncloud-cli = { path = "crates/cli" }
 burncloud-client = { path = "crates/client", default-features = false }
 burncloud-client-api = { path = "crates/client/crates/client-api" }
 burncloud-client-dashboard = { path = "crates/client/crates/client-dashboard" }
@@ -223,7 +221,6 @@ path = "src/main.rs"
 
 [dependencies]
 burncloud-common.workspace = true
-burncloud-cli.workspace = true
 burncloud-server.workspace = true
 burncloud-code.workspace = true
 burncloud-client = { workspace = true, default-features = false, features = ["liveview", "desktop"] }
@@ -233,3 +230,22 @@ anyhow.workspace = true
 dotenvy.workspace = true
 rand.workspace = true
 hex.workspace = true
+
+# CLI dependencies (migrated from crates/cli)
+burncloud-core.workspace = true
+burncloud-auto-update.workspace = true
+burncloud-database.workspace = true
+burncloud-database-models.workspace = true
+burncloud-database-user.workspace = true
+burncloud-database-router.workspace = true
+burncloud-installer.workspace = true
+burncloud-database-installer.workspace = true
+bcrypt.workspace = true
+uuid.workspace = true
+clap.workspace = true
+log.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dirs.workspace = true
+chrono.workspace = true
