@@ -3,6 +3,7 @@
 
 mod adaptive_limit;
 mod adaptor;
+pub mod affinity;
 mod balancer;
 pub mod billing;
 mod channel_state;
@@ -12,9 +13,11 @@ pub mod exchange_rate;
 mod limiter;
 mod model_router;
 pub mod notification;
+pub mod order_type;
 pub mod passthrough;
 pub mod price_sync;
 pub mod pricing_loader;
+pub mod rate_budget;
 pub mod response_parser;
 mod scheduler;
 mod state;
