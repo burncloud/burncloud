@@ -13,12 +13,13 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::str::FromStr;
 
-use burncloud_common::types::Channel;
+use burncloud_common::types::{Channel, TrafficColor};
 use burncloud_service_billing::PriceCache;
 use serde::{Deserialize, Serialize};
 
 use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
+use crate::order_type::OrderType;
 
 pub use combined::CombinedScheduler;
 #[cfg(test)]
@@ -41,10 +42,44 @@ pub struct CandidateFactors {
 }
 
 /// Read-only context assembled per scheduling decision.
+///
+/// Contains **candidate-dimension** snapshots only (one entry per channel).
+/// Request-dimension fields (user_id, color, order_type) live in
+/// [`SchedulingRequest`] and are NOT visible to scoring strategies — the
+/// DiffServ principle: schedulers stay color-agnostic, the L2 Shaper is the
+/// only layer that consumes color (audit decision D6 / E-D1 / E-D2).
 #[derive(Debug, Clone, Default)]
 pub struct SchedulingContext {
     /// Per-candidate pre-computed factors (health, cost, rpm).
     pub factors: HashMap<i32, CandidateFactors>,
+}
+
+/// Per-request metadata flowing from Server → Router.
+///
+/// Carries the L1 Classifier output (color + order type) and the user
+/// identity used for L3 Affinity (HRW key). Scorers (L4) never see this
+/// struct — they only get [`SchedulingContext`].
+#[derive(Debug, Clone, Default)]
+pub struct SchedulingRequest {
+    /// User identifier — affinity key for L3 (HRW). `None` disables affinity.
+    pub user_id: Option<String>,
+    /// DiffServ color classification (L1 → L2 Shaper).
+    pub color: TrafficColor,
+    /// Order Type (Budget / Value / Enterprise) — L1 → L3 candidate filter.
+    pub order_type: OrderType,
+    /// Optional conversation/session id; if present, takes precedence over
+    /// `user_id` as the affinity key (preserves KV cache across same-conversation
+    /// turns even when shared across users — see Part 4 取舍 5).
+    pub session_id: Option<String>,
+}
+
+impl SchedulingRequest {
+    /// Returns the affinity key — session_id when present, else user_id.
+    pub fn affinity_key(&self) -> Option<&str> {
+        self.session_id
+            .as_deref()
+            .or(self.user_id.as_deref())
+    }
 }
 
 /// Trait for channel scheduling strategies.
@@ -306,9 +341,9 @@ pub async fn build_context(
         };
 
         let rpm = match adaptive.state {
-            crate::adaptive_limit::RateLimitState::Stable => adaptive.current_limit as f64,
-            crate::adaptive_limit::RateLimitState::Learning => RPM_FACTOR_LEARNING,
-            crate::adaptive_limit::RateLimitState::Cooldown => RPM_FACTOR_COOLDOWN,
+            crate::aimd_limiter::RateLimitState::Stable => adaptive.current_limit as f64,
+            crate::aimd_limiter::RateLimitState::Learning => RPM_FACTOR_LEARNING,
+            crate::aimd_limiter::RateLimitState::Cooldown => RPM_FACTOR_COOLDOWN,
         };
 
         factors.insert(ch.id, CandidateFactors {

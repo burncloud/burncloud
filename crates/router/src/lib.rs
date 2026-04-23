@@ -1,7 +1,7 @@
 // Router core — LLM request/response handling — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
-mod adaptive_limit;
+mod aimd_limiter;
 mod adaptor;
 pub mod affinity;
 mod balancer;
@@ -258,6 +258,14 @@ pub async fn create_router_app(
     // Scheduler policies for multi-channel routing
     let scheduler_policies = Arc::new(RwLock::new(scheduler::load_scheduler_config()));
 
+    // L3 Affinity flow cache (HRW + dual TTL: 5min sticky / 30min hard).
+    let affinity_cache = Arc::new(affinity::AffinityCache::default());
+
+    // L2 Shaper budget. MVP: in-memory, single-instance. Channels are
+    // configured lazily via channel_providers reload (rpm_cap / tpm_cap /
+    // reservation columns added in migration 0011).
+    let rate_budget = Arc::new(rate_budget::InMemoryBudget::new());
+
     // Start background price sync task (every 24 hours)
     // Prices pulled from pricing_data repo (GitHub/Gitee fallback).
     // Price cache is refreshed after each successful sync.
@@ -309,6 +317,8 @@ pub async fn create_router_app(
         force_sync_tx: force_sync_tx.clone(),
         exchange_rate_service,
         scheduler_policies,
+        affinity_cache,
+        rate_budget,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -1162,16 +1172,26 @@ async fn proxy_logic(
             };
             // Lock released here — before SQL queries in route_with_scheduler
 
+            // L1 Classifier: build the per-request SchedulingRequest (color +
+            // order_type). MVP defaults: TrafficColor::Yellow, OrderType::Value
+            // with no price cap. Per audit decision E-D3 the color is resolved
+            // by service-user, but the call is wired here so the router stays
+            // color-agnostic; full integration lands when the user_id is
+            // available pre-routing.
+            let sched_request = scheduler::SchedulingRequest::default();
+
             match state
                 .model_router
-                .route_with_scheduler(
-                    user_group,
+                .route_with_scheduler(model_router::RouteInputs {
+                    group: user_group,
                     model,
-                    &state.channel_state_tracker,
-                    &state.price_cache,
-                    &state.exchange_rate_service,
-                    scheduler_kind.as_ref(),
-                )
+                    state_tracker: &state.channel_state_tracker,
+                    price_cache: &state.price_cache,
+                    exchange_rate: &state.exchange_rate_service,
+                    scheduler_kind: scheduler_kind.as_ref(),
+                    request: &sched_request,
+                    affinity_cache: Some(state.affinity_cache.as_ref()),
+                })
                 .await
             {
                 Ok(channels) if !channels.is_empty() => {
@@ -1218,16 +1238,37 @@ async fn proxy_logic(
                 Err(e) => {
                     // NoAvailableChannelsError - all channels are unavailable
                     tracing::warn!("ModelRouter: No available channels for {}: {}", model, e);
+                    // 503 response contract (audit decision D12): clients must
+                    // be able to distinguish a local Shaper / OrderType reject
+                    // from an upstream 5xx. We attach two headers:
+                    //   - X-Rejected-By: which router layer dropped the request
+                    //   - Retry-After: seconds the client should back off
+                    // Future Shaper rejections add `X-Rejected-By: shaper`
+                    // from inside the Shaper path; here we emit `order_type`
+                    // or `scheduler`.
+                    let rejected_by = if e.reason.contains("OrderType") {
+                        "order_type"
+                    } else {
+                        "scheduler"
+                    };
+                    let body = Body::from(format!(
+                        r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels","rejected_by":"{}"}}}}"#,
+                        e, rejected_by
+                    ));
+                    let response = Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .header("content-type", "application/json")
+                        .header("X-Rejected-By", rejected_by)
+                        .header("Retry-After", "60")
+                        .body(body)
+                        .unwrap_or_else(|_| {
+                            Response::builder()
+                                .status(StatusCode::SERVICE_UNAVAILABLE)
+                                .body(Body::empty())
+                                .unwrap_or_else(|_| Response::new(Body::empty()))
+                        });
                     return (
-                        build_response_with_header(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "content-type",
-                            "application/json",
-                            Body::from(format!(
-                                r#"{{"error":{{"message":"{}","type":"service_unavailable","code":"no_available_channels"}}}}"#,
-                                e
-                            )),
-                        ),
+                        response,
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
                         None,

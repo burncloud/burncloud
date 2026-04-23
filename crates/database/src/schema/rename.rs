@@ -28,7 +28,7 @@
 //! the FK `recharges.user_id → users.id` is removed before `users` is dropped.
 
 use crate::Result;
-use sqlx::AnyPool;
+use sqlx::{AnyPool, Row};
 
 /// Run all table rename data migrations in conflict-safe order.
 pub(super) async fn migrate_table_renames(pool: &AnyPool, kind: &str) -> Result<()> {
@@ -64,9 +64,16 @@ pub(super) async fn migrate_table_renames(pool: &AnyPool, kind: &str) -> Result<
 /// - `new_table` already contains rows (copy already ran; skip to avoid
 ///   duplicates, but still drop the old table if it remains).
 ///
+/// ## Column mismatch handling
+///
+/// Later migrations (e.g. `0011`) may add columns to the new table after it is
+/// created by `0010_rename_tables`. Using `INSERT INTO new SELECT * FROM old`
+/// would fail with a column-count mismatch in that situation and silently lose
+/// the old rows. Instead, we introspect both tables, intersect their column
+/// lists, and build an explicit `INSERT INTO new (cols) SELECT cols FROM old`.
+///
 /// The DROP uses `CASCADE` on PostgreSQL to release any FK constraints that
-/// still point at the old table name.  All errors are ignored so that a
-/// partial failure does not abort the wider database initialisation.
+/// still point at the old table name.
 async fn copy_and_drop(pool: &AnyPool, kind: &str, old_table: &str, new_table: &str) {
     if !table_exists(pool, kind, old_table).await {
         return;
@@ -80,14 +87,33 @@ async fn copy_and_drop(pool: &AnyPool, kind: &str, old_table: &str, new_table: &
 
     if new_count == 0 {
         tracing::info!("[Rename] Migrating data: {old_table} → {new_table}");
-        // INSERT INTO new SELECT * FROM old WHERE EXISTS (old table — already
-        // confirmed above); errors are ignored (e.g. schema mismatch on
-        // non-standard installs).
-        let _ = sqlx::query(&format!(
-            "INSERT INTO {new_table} SELECT * FROM {old_table}"
-        ))
-        .execute(pool)
-        .await;
+
+        // Intersect source and destination columns so that adding columns to
+        // the new table in later migrations does not break the copy.
+        let old_cols = column_names(pool, kind, old_table).await;
+        let new_cols = column_names(pool, kind, new_table).await;
+        let shared: Vec<String> = old_cols
+            .iter()
+            .filter(|c| new_cols.iter().any(|n| n.eq_ignore_ascii_case(c)))
+            .cloned()
+            .collect();
+
+        if shared.is_empty() {
+            tracing::warn!(
+                "[Rename] No shared columns between {old_table} and {new_table}; skipping copy"
+            );
+        } else {
+            let col_list = shared
+                .iter()
+                .map(|c| quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let insert_sql =
+                format!("INSERT INTO {new_table} ({col_list}) SELECT {col_list} FROM {old_table}");
+            if let Err(e) = sqlx::query(&insert_sql).execute(pool).await {
+                tracing::warn!("[Rename] Copy {old_table} → {new_table} failed: {e}");
+            }
+        }
     }
 
     // Drop the old table.  PostgreSQL needs CASCADE to remove dependent FK
@@ -119,4 +145,44 @@ async fn table_exists(pool: &AnyPool, kind: &str, table_name: &str) -> bool {
         .unwrap_or(0)
     };
     count > 0
+}
+
+/// Return the column names of `table_name`, in declaration order.
+///
+/// Returns an empty vector on error so the caller can decide to skip.
+async fn column_names(pool: &AnyPool, kind: &str, table_name: &str) -> Vec<String> {
+    if kind == "sqlite" {
+        // `PRAGMA table_info` returns rows with columns (cid, name, type,
+        // notnull, dflt_value, pk). SQLite does not allow binding the table
+        // name, so splice it in after stripping any quoting characters to
+        // prevent injection.
+        let safe = table_name.replace(['"', '\'', '`', ';'], "");
+        let rows = match sqlx::query(&format!("PRAGMA table_info({safe})"))
+            .fetch_all(pool)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(_) => return Vec::new(),
+        };
+        rows.into_iter()
+            .filter_map(|r| r.try_get::<String, _>("name").ok())
+            .collect()
+    } else {
+        sqlx::query_scalar(
+            "SELECT column_name FROM information_schema.columns \
+             WHERE table_schema = 'public' AND table_name = $1 \
+             ORDER BY ordinal_position",
+        )
+        .bind(table_name)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+    }
+}
+
+/// Quote a column identifier for use in `INSERT INTO … (cols) SELECT cols FROM …`.
+/// Uses double quotes (ANSI standard); both SQLite and PostgreSQL accept them.
+fn quote_ident(ident: &str) -> String {
+    let escaped = ident.replace('"', "\"\"");
+    format!("\"{escaped}\"")
 }

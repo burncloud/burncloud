@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::adaptive_limit::{AdaptiveLimitConfig, AdaptiveRateLimit, AdaptiveSnapshot};
+use crate::aimd_limiter::{AimdConfig, AimdController, AimdSnapshot};
 use crate::circuit_breaker::{FailureType, RateLimitScope};
 
 // Health score penalty factors
@@ -88,7 +88,7 @@ pub struct ModelState {
     /// Average latency in milliseconds
     pub avg_latency_ms: f64,
     /// Adaptive rate limiter (learns and adjusts to upstream limits)
-    pub adaptive_limit: AdaptiveRateLimit,
+    pub adaptive_limit: AimdController,
 }
 
 impl ModelState {
@@ -104,13 +104,13 @@ impl ModelState {
             success_count: 0,
             failure_count: 0,
             avg_latency_ms: 0.0,
-            adaptive_limit: AdaptiveRateLimit::with_defaults(),
+            adaptive_limit: AimdController::with_defaults(),
         }
     }
 
     /// Create a new ModelState with custom adaptive limit config
     #[allow(dead_code)]
-    pub fn with_config(model: String, channel_id: i32, config: AdaptiveLimitConfig) -> Self {
+    pub fn with_config(model: String, channel_id: i32, config: AimdConfig) -> Self {
         Self {
             model,
             channel_id,
@@ -121,7 +121,7 @@ impl ModelState {
             success_count: 0,
             failure_count: 0,
             avg_latency_ms: 0.0,
-            adaptive_limit: AdaptiveRateLimit::new(config),
+            adaptive_limit: AimdController::new(config),
         }
     }
 }
@@ -494,10 +494,10 @@ impl ChannelStateTracker {
     ///
     /// Returns (health_score, Some(snapshot)) on success,
     /// (1.0, None) for unknown channels, or (computed_score, cold_start_snapshot) for unknown models.
-    pub fn get_health_and_adaptive(&self, channel_id: i32, model: &str) -> (f64, AdaptiveSnapshot) {
-        let cold_start = AdaptiveSnapshot {
-            current_limit: crate::adaptive_limit::DEFAULT_INITIAL_LIMIT,
-            state: crate::adaptive_limit::RateLimitState::Learning,
+    pub fn get_health_and_adaptive(&self, channel_id: i32, model: &str) -> (f64, AimdSnapshot) {
+        let cold_start = AimdSnapshot {
+            current_limit: crate::aimd_limiter::DEFAULT_INITIAL_LIMIT,
+            state: crate::aimd_limiter::RateLimitState::Learning,
         };
 
         let channel_state = match self.channel_states.get(&channel_id) {

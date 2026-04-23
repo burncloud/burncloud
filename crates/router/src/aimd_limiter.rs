@@ -1,7 +1,11 @@
-//! Adaptive Rate Limit Module
+//! AIMD Rate Limiter Module
 //!
-//! This module provides functionality for dynamically learning and adapting to
-//! upstream API rate limits. It implements a state machine that:
+//! Implements an AIMD (Additive Increase / Multiplicative Decrease) controller
+//! for dynamically learning and adapting to upstream API rate limits.
+//! See `docs/code/GLOSSARY.md` § "拥塞适应（TCP 家族）" for the industrial
+//! terminology mapping (AIMD ≈ TCP congestion control).
+//!
+//! State machine:
 //! - Learns the actual rate limits from response headers
 //! - Adjusts request rates based on success/failure patterns
 //! - Manages cooldown periods when rate limited
@@ -12,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 /// Read-only snapshot of adaptive rate limit state for scheduling decisions.
 #[derive(Debug, Clone, Default)]
-pub struct AdaptiveSnapshot {
+pub struct AimdSnapshot {
     pub current_limit: u32,
     pub state: RateLimitState,
 }
@@ -30,7 +34,7 @@ pub enum RateLimitState {
 }
 
 /// Default initial RPM limit for channels without adaptive rate limit data.
-/// Single source of truth — referenced by AdaptiveLimitConfig::default() and scheduler.
+/// Single source of truth — referenced by AimdConfig::default() and scheduler.
 pub const DEFAULT_INITIAL_LIMIT: u32 = 10;
 
 /// Multiplier applied to current limit on rate-limit events (20% reduction).
@@ -38,7 +42,7 @@ const RATE_LIMIT_REDUCTION_RATIO: f64 = 0.8;
 
 /// Configuration for the adaptive rate limiter.
 #[derive(Debug, Clone)]
-pub struct AdaptiveLimitConfig {
+pub struct AimdConfig {
     /// Duration in requests before transitioning from Learning to Stable
     pub learning_duration: u32,
     /// Initial request limit (conservative starting point)
@@ -57,7 +61,7 @@ pub struct AdaptiveLimitConfig {
     pub max_limit: u32,
 }
 
-impl Default for AdaptiveLimitConfig {
+impl Default for AimdConfig {
     fn default() -> Self {
         Self {
             learning_duration: 10,
@@ -77,7 +81,7 @@ impl Default for AdaptiveLimitConfig {
 /// This struct maintains state for a single upstream endpoint or model,
 /// tracking learned limits and adjusting based on success/failure patterns.
 #[derive(Debug, Clone)]
-pub struct AdaptiveRateLimit {
+pub struct AimdController {
     /// The rate limit learned from upstream response headers
     pub learned_limit: Option<u32>,
     /// The current effective limit being used
@@ -95,14 +99,14 @@ pub struct AdaptiveRateLimit {
     /// When the limit was last adjusted
     pub last_adjusted_at: Option<Instant>,
     /// Configuration
-    config: AdaptiveLimitConfig,
+    config: AimdConfig,
     /// Number of requests processed (used for learning duration)
     request_count: u32,
 }
 
-impl AdaptiveRateLimit {
-    /// Create a new AdaptiveRateLimit with the given configuration.
-    pub fn new(config: AdaptiveLimitConfig) -> Self {
+impl AimdController {
+    /// Create a new AimdController with the given configuration.
+    pub fn new(config: AimdConfig) -> Self {
         Self {
             learned_limit: None,
             current_limit: config.initial_limit,
@@ -117,9 +121,9 @@ impl AdaptiveRateLimit {
         }
     }
 
-    /// Create a new AdaptiveRateLimit with default configuration.
+    /// Create a new AimdController with default configuration.
     pub fn with_defaults() -> Self {
-        Self::new(AdaptiveLimitConfig::default())
+        Self::new(AimdConfig::default())
     }
 
     /// Called when a request succeeds.
@@ -274,8 +278,8 @@ impl AdaptiveRateLimit {
     }
 
     /// Take a point-in-time snapshot for scheduling decisions.
-    pub fn snapshot(&self) -> AdaptiveSnapshot {
-        AdaptiveSnapshot {
+    pub fn snapshot(&self) -> AimdSnapshot {
+        AimdSnapshot {
             current_limit: self.current_limit,
             state: self.state,
         }
@@ -339,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_initial_state() {
-        let limiter = AdaptiveRateLimit::with_defaults();
+        let limiter = AimdController::with_defaults();
         assert_eq!(limiter.state, RateLimitState::Learning);
         assert_eq!(limiter.current_limit, 10); // default initial_limit
         assert!(limiter.check_available());
@@ -347,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_learning_to_stable_transition() {
-        let mut limiter = AdaptiveRateLimit::new(AdaptiveLimitConfig {
+        let mut limiter = AimdController::new(AimdConfig {
             learning_duration: 5,
             ..Default::default()
         });
@@ -362,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_rate_limited_reduces_limit() {
-        let mut limiter = AdaptiveRateLimit::with_defaults();
+        let mut limiter = AimdController::with_defaults();
         let initial_limit = limiter.current_limit;
 
         limiter.on_rate_limited(None);
@@ -376,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_cooldown_state() {
-        let mut limiter = AdaptiveRateLimit::new(AdaptiveLimitConfig {
+        let mut limiter = AimdController::new(AimdConfig {
             failure_threshold: 1,
             cooldown_duration: Duration::from_secs(1),
             ..Default::default()
@@ -391,7 +395,7 @@ mod tests {
 
     #[test]
     fn test_recovery_from_cooldown() {
-        let mut limiter = AdaptiveRateLimit::new(AdaptiveLimitConfig {
+        let mut limiter = AimdController::new(AimdConfig {
             failure_threshold: 1,
             cooldown_duration: Duration::from_millis(10),
             ..Default::default()
@@ -418,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_learn_upstream_limit() {
-        let mut limiter = AdaptiveRateLimit::with_defaults();
+        let mut limiter = AimdController::with_defaults();
 
         limiter.on_success(Some(100));
 
@@ -428,7 +432,7 @@ mod tests {
 
     #[test]
     fn test_success_streak_increases_limit() {
-        let mut limiter = AdaptiveRateLimit::new(AdaptiveLimitConfig {
+        let mut limiter = AimdController::new(AimdConfig {
             success_threshold: 3,
             adjustment_step: 5,
             learning_duration: 100, // Stay in Learning
@@ -447,7 +451,7 @@ mod tests {
 
     #[test]
     fn test_rate_limit_expiry() {
-        let mut limiter = AdaptiveRateLimit::with_defaults();
+        let mut limiter = AimdController::with_defaults();
 
         // Set rate limit for 10ms
         limiter.on_rate_limited(Some(0)); // 0 seconds
