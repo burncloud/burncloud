@@ -41,7 +41,7 @@ src/
 ├── circuit_breaker.rs  — 熔断器
 ├── limiter.rs          — 令牌桶限流
 ├── channel_state.rs    — Channel 健康追踪
-├── adaptive_limit.rs   — 自适应限流
+├── aimd_limiter.rs    — AIMD 自适应限流（Additive Increase / Multiplicative Decrease）
 ├── exchange_rate.rs    — 汇率处理
 ├── adaptor/            — 协议适配器(OpenAI, Claude, Gemini, Vertex, ZAI, Dynamic)
 ├── balancer/           — Round-Robin 负载均衡

@@ -3,6 +3,7 @@
 //! User service layer providing register, login, and token management functionality.
 
 use bcrypt::{hash, verify, DEFAULT_COST};
+use burncloud_common::TrafficColor;
 use burncloud_database::Database;
 use burncloud_database_user::UserDatabase;
 
@@ -114,6 +115,27 @@ impl UserService {
             jwt_secret,
             token_expiration_hours,
         }
+    }
+
+    /// Resolve a user's DiffServ traffic color for the L1 Classifier in the
+    /// router data plane.
+    ///
+    /// Server layer calls this and injects the result into `SchedulingRequest`
+    /// — the router crate stays color-agnostic (audit decision E-D3).
+    ///
+    /// **MVP behavior** (audit decision D10): every user maps to `Yellow`
+    /// (Assured tier). Trader Class differentiation is deferred until customer
+    /// segmentation data is available — see
+    /// `docs/design/channel-scheduler-hqos.md` § Strategic Vision.
+    ///
+    /// `_db` and `_user_id` are placeholders for the future implementation
+    /// that will read user role / billing tier / customer agreement.
+    pub async fn resolve_traffic_class(
+        &self,
+        _db: &Database,
+        _user_id: &str,
+    ) -> Result<TrafficColor> {
+        Ok(TrafficColor::Yellow)
     }
 
     /// Register a new user

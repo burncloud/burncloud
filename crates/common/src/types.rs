@@ -67,6 +67,41 @@ impl FromStr for Currency {
     }
 }
 
+/// DiffServ-style three-color traffic class for the L2 Shaper.
+///
+/// `Green` / `Yellow` / `Red` map to 3-tier reservation buckets per channel.
+/// Higher-priority colors are preferred; lower-priority colors may borrow
+/// idle capacity upward. See `crates/router/src/rate_budget.rs` and
+/// `docs/code/GLOSSARY.md` § 2.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TrafficColor {
+    /// Highest priority — matches Enterprise order type / reserved capacity.
+    Green,
+    /// Default priority — matches Value order type.
+    #[default]
+    Yellow,
+    /// Lowest priority — matches Budget / best-effort traffic.
+    Red,
+}
+
+impl TrafficColor {
+    /// Static label for `router_logs.traffic_color` (single-character DB value).
+    pub fn as_char(&self) -> char {
+        match self {
+            TrafficColor::Green => 'G',
+            TrafficColor::Yellow => 'Y',
+            TrafficColor::Red => 'R',
+        }
+    }
+}
+
+impl fmt::Display for TrafficColor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_char())
+    }
+}
+
 /// Multi-currency price information
 /// Prices are stored as i64 nanodollars (9 decimal precision)
 /// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility

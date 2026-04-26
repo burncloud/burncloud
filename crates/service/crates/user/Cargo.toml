@@ -6,6 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+burncloud-common.workspace = true
 burncloud-database-user.workspace = true
 burncloud-database.workspace = true
 bcrypt.workspace = true

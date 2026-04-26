@@ -1,30 +1,39 @@
+use std::str::FromStr;
+
 use anyhow::Result;
 use burncloud_common::types::Channel;
+use burncloud_database::placeholder::{ph, phs};
 use burncloud_database::sqlx;
 use burncloud_database::Database;
 
+use crate::affinity::{self, AffinityCache};
 use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
-use crate::scheduler::{self, CombinedScheduler, SchedulerKind};
+use crate::scheduler::{self, CombinedScheduler, SchedulerKind, SchedulingRequest};
 
 /// Error returned when no channels are available for a model.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("No available channels for model '{model}': {reason}")]
 pub struct NoAvailableChannelsError {
     pub model: String,
     pub reason: String,
 }
 
-impl std::fmt::Display for NoAvailableChannelsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "No available channels for model '{}': {}",
-            self.model, self.reason
-        )
-    }
+/// Aggregated inputs for [`ModelRouter::route_with_scheduler`].
+///
+/// Bundling request + services into one struct avoids parameter-list bloat
+/// (clippy::too_many_arguments) as the scheduler pipeline grows (audit Part 4
+/// 取舍 6 — `SchedulingContext` 字段膨胀预警).
+pub struct RouteInputs<'a> {
+    pub group: &'a str,
+    pub model: &'a str,
+    pub state_tracker: &'a ChannelStateTracker,
+    pub price_cache: &'a burncloud_service_billing::PriceCache,
+    pub exchange_rate: &'a ExchangeRateService,
+    pub scheduler_kind: Option<&'a SchedulerKind>,
+    pub request: &'a SchedulingRequest,
+    pub affinity_cache: Option<&'a AffinityCache>,
 }
-
-impl std::error::Error for NoAvailableChannelsError {}
 
 pub struct ModelRouter {
     db: std::sync::Arc<Database>,
@@ -46,29 +55,21 @@ impl ModelRouter {
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
         // 1. Get max priority
-        let query = if is_postgres {
-            format!(
-                r#"
+        // Boolean literal differs by dialect: PG `true` vs SQLite `1`.
+        let enabled_lit = if is_postgres { "true" } else { "1" };
+        let query = format!(
+            r#"
                 SELECT priority
                 FROM channel_abilities
-                WHERE {} = $1 AND model = $2 AND enabled = true
+                WHERE {col} = {p1} AND model = {p2} AND enabled = {enabled_lit}
                 ORDER BY priority DESC
                 LIMIT 1
-                "#,
-                group_col
-            )
-        } else {
-            format!(
-                r#"
-                SELECT priority
-                FROM channel_abilities
-                WHERE {} = ? AND model = ? AND enabled = 1
-                ORDER BY priority DESC
-                LIMIT 1
-                "#,
-                group_col
-            )
-        };
+            "#,
+            col = group_col,
+            p1 = ph(is_postgres, 1),
+            p2 = ph(is_postgres, 2),
+            enabled_lit = enabled_lit,
+        );
 
         let max_priority: Option<i64> = sqlx::query_scalar(&query)
             .bind(group)
@@ -82,25 +83,18 @@ impl ModelRouter {
         };
 
         // 2. Get all candidate channel IDs with weights
-        let query_candidates = if is_postgres {
-            format!(
-                r#"
+        let query_candidates = format!(
+            r#"
                 SELECT channel_id, weight
                 FROM channel_abilities
-                WHERE {} = $1 AND model = $2 AND enabled = true AND priority = $3
-                "#,
-                group_col
-            )
-        } else {
-            format!(
-                r#"
-                SELECT channel_id, weight
-                FROM channel_abilities
-                WHERE {} = ? AND model = ? AND enabled = 1 AND priority = ?
-                "#,
-                group_col
-            )
-        };
+                WHERE {col} = {p1} AND model = {p2} AND enabled = {enabled_lit} AND priority = {p3}
+            "#,
+            col = group_col,
+            p1 = ph(is_postgres, 1),
+            p2 = ph(is_postgres, 2),
+            p3 = ph(is_postgres, 3),
+            enabled_lit = enabled_lit,
+        );
 
         let candidates: Vec<(i32, i32)> = sqlx::query_as::<_, (i32, i64)>(&query_candidates)
             .bind(group)
@@ -118,14 +112,10 @@ impl ModelRouter {
 
         // 3. Fetch Channel Details for all candidates
         let channel_ids: Vec<i32> = candidates.iter().map(|(id, _)| *id).collect();
-        let placeholders: String = channel_ids
-            .iter()
-            .map(|_| if is_postgres { "$" } else { "?" })
-            .enumerate()
-            .map(|(i, prefix)| format!("{prefix}{}", i + 1))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let placeholders = phs(is_postgres, channel_ids.len());
 
+        // Identifier-quoting differs by dialect (`type as "type_"`, "group" vs `group`)
+        // so the SELECT list is dialect-specific. Placeholders go through phs().
         let channel_query = if is_postgres {
             format!(
                 r#"
@@ -170,23 +160,37 @@ impl ModelRouter {
         Ok(result)
     }
 
-    /// Route with multi-factor scheduler, returning ranked candidates (top-5).
+    /// Route with the multi-factor scheduler, returning ranked candidates (top-5).
     ///
-    /// Uses PassthroughScheduler for groups without explicit policy.
-    /// Returns at most 5 channels to limit failover attempts.
+    /// Pipeline (audit decisions D6 / D7 / E-D1):
+    ///
+    /// ```text
+    ///   get_candidates → availability filter → OrderType filter → Affinity (HRW + cache)
+    ///     → Scorer (CombinedScheduler) → top-5 failover list
+    /// ```
+    ///
+    /// The OrderType filter runs **before** Affinity so a Budget client never
+    /// gets pinned to an expensive channel by historical affinity.
     ///
     /// Returns:
     /// - `Ok(vec)` with ranked channels (may be empty if model has no configuration)
-    /// - `Err(NoAvailableChannelsError)` if channels exist but all are unavailable
+    /// - `Err(NoAvailableChannelsError)` if channels exist but all are unavailable,
+    ///   **or** if `OrderType::Budget` filtered them all out (caller maps to 503).
     pub async fn route_with_scheduler(
         &self,
-        group: &str,
-        model: &str,
-        state_tracker: &ChannelStateTracker,
-        price_cache: &burncloud_service_billing::PriceCache,
-        exchange_rate: &ExchangeRateService,
-        scheduler_kind: Option<&SchedulerKind>,
+        inputs: RouteInputs<'_>,
     ) -> std::result::Result<Vec<Channel>, NoAvailableChannelsError> {
+        let RouteInputs {
+            group,
+            model,
+            state_tracker,
+            price_cache,
+            exchange_rate,
+            scheduler_kind,
+            request,
+            affinity_cache,
+        } = inputs;
+
         let candidates = self.get_candidates(group, model).await.map_err(|e| {
             NoAvailableChannelsError {
                 model: model.to_string(),
@@ -198,7 +202,7 @@ impl ModelRouter {
             return Ok(Vec::new());
         }
 
-        // Filter by availability
+        // L0: Filter by availability
         let available: Vec<_> = candidates
             .into_iter()
             .filter(|(ch, _)| state_tracker.is_available(ch.id, Some(model)))
@@ -212,25 +216,98 @@ impl ModelRouter {
             });
         }
 
-        // Pick scheduler for this group
-        let ranked = match scheduler_kind {
+        // L1.5: OrderType filter (Budget drops expensive channels here).
+        // Pre-resolve per-channel prices to USD so the OrderType closure stays
+        // sync. Honors `pricing_region`.
+        let mut price_map: std::collections::HashMap<i32, i64> =
+            std::collections::HashMap::with_capacity(available.len());
+        for (ch, _) in &available {
+            let region = ch.pricing_region.as_deref();
+            if let Some(price) = price_cache
+                .get(model, region.filter(|r| !r.is_empty()))
+                .await
+            {
+                let raw = price.input_price.saturating_add(price.output_price);
+                let nano = match burncloud_common::Currency::from_str(&price.currency) {
+                    Ok(curr) if curr != burncloud_common::Currency::USD => {
+                        let usd = exchange_rate.convert(
+                            raw as f64,
+                            curr,
+                            burncloud_common::Currency::USD,
+                        );
+                        usd as i64
+                    }
+                    _ => raw,
+                };
+                price_map.insert(ch.id, nano);
+            }
+        }
+        let price_of = |ch: &Channel| -> Option<i64> { price_map.get(&ch.id).copied() };
+
+        let filtered = request.order_type.filter_candidates(available, price_of);
+        if filtered.is_empty() {
+            return Err(NoAvailableChannelsError {
+                model: model.to_string(),
+                reason: format!(
+                    "OrderType {} filtered out all candidates (no channel meets price constraint)",
+                    request.order_type.as_label()
+                ),
+            });
+        }
+
+        // L3: Affinity (Fast Path) — if cache hit and channel is in the
+        // filtered set, promote it to the head of the ranked list. Affinity
+        // does NOT replace ranking — it provides a strong hint that the
+        // failover loop will still fall through if the affined channel fails.
+        let affinity_pick: Option<i32> = match (affinity_cache, request.affinity_key()) {
+            (Some(cache), Some(key)) => cache.lookup(key, model).or_else(|| {
+                // Sticky TTL miss: fall through to HRW so we can refresh.
+                affinity::pick_hrw(key, &filtered, |id| {
+                    state_tracker.get_health_score(id, Some(model))
+                })
+            }),
+            _ => None,
+        };
+
+        // L4: Scorer (Combined) — ranks the (filtered) candidate set.
+        let mut ranked = match scheduler_kind {
             Some(SchedulerKind::Combined { config }) => {
                 let combined = CombinedScheduler::new(config.clone());
                 let ctx = scheduler::build_context(
                     model,
-                    &available,
+                    &filtered,
                     state_tracker,
                     price_cache,
                     exchange_rate,
                 )
                 .await;
-                scheduler::rank_candidates(available, &ctx, &combined)
+                scheduler::rank_candidates(filtered, &ctx, &combined)
             }
             _ => {
                 // Passthrough fast path — no context building needed
-                scheduler::rank_passthrough(available)
+                scheduler::rank_passthrough(filtered)
             }
         };
+
+        // Apply affinity preference: if `affinity_pick` is in `ranked`, hoist
+        // it to the front and refresh the cache (stickiness reset).
+        if let (Some(picked), Some(cache), Some(key)) =
+            (affinity_pick, affinity_cache, request.affinity_key())
+        {
+            if let Some(pos) = ranked.iter().position(|(ch, _)| ch.id == picked) {
+                if pos != 0 {
+                    let entry = ranked.remove(pos);
+                    ranked.insert(0, entry);
+                }
+                cache.insert(key, model, picked);
+                tracing::debug!(
+                    user = key,
+                    model,
+                    channel = picked,
+                    "affinity_hit"
+                );
+            }
+        }
 
         // Limit to top-5 candidates
         let channels: Vec<Channel> = ranked

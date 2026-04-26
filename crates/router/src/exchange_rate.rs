@@ -10,6 +10,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use burncloud_common::{rate_to_scaled, scaled_to_rate, Currency};
+use burncloud_database::placeholder::adapt_sql;
 use burncloud_database::{sqlx, Database};
 use chrono::{DateTime, Utc};
 
@@ -185,28 +186,21 @@ impl ExchangeRateService {
             .unwrap_or_default()
             .as_secs() as i64;
 
-        let sql = match self.db.kind().as_str() {
-            "postgres" => {
-                r#"
-                INSERT INTO billing_exchange_rates (from_currency, to_currency, rate, updated_at)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT(from_currency, to_currency) DO UPDATE SET
-                    rate = EXCLUDED.rate,
-                    updated_at = EXCLUDED.updated_at
-            "#
-            }
-            _ => {
-                r#"
+        // Single template adapted per dialect.
+        // EXCLUDED keyword is case-insensitive in both SQLite and PostgreSQL.
+        let is_postgres = self.db.kind() == "postgres";
+        let sql = adapt_sql(
+            is_postgres,
+            r#"
                 INSERT INTO billing_exchange_rates (from_currency, to_currency, rate, updated_at)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(from_currency, to_currency) DO UPDATE SET
-                    rate = excluded.rate,
-                    updated_at = excluded.updated_at
-            "#
-            }
-        };
+                    rate = EXCLUDED.rate,
+                    updated_at = EXCLUDED.updated_at
+            "#,
+        );
 
-        sqlx::query(sql)
+        sqlx::query(&sql)
             .bind(from.code())
             .bind(to.code())
             .bind(rate_nano) // Store as BIGINT (scaled i64)

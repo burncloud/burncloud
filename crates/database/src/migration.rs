@@ -69,6 +69,10 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
         version: "0010_rename_tables",
         sql: include_str!("../migrations/sqlite/0010_rename_tables.sql"),
     },
+    Migration {
+        version: "0011_alter_router_mvp_columns",
+        sql: include_str!("../migrations/sqlite/0011_alter_router_mvp_columns.sql"),
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -115,6 +119,10 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
     Migration {
         version: "0010_rename_tables",
         sql: include_str!("../migrations/postgres/0010_rename_tables.sql"),
+    },
+    Migration {
+        version: "0011_alter_router_mvp_columns",
+        sql: include_str!("../migrations/postgres/0011_alter_router_mvp_columns.sql"),
     },
 ];
 

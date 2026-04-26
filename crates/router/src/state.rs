@@ -1,6 +1,7 @@
 //! Application state for the router
 
 use crate::adaptor;
+use crate::affinity::AffinityCache;
 use crate::balancer::RoundRobinBalancer;
 use crate::channel_state::ChannelStateTracker;
 use crate::circuit_breaker::CircuitBreaker;
@@ -9,6 +10,7 @@ use crate::exchange_rate::ExchangeRateService;
 use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
 use crate::price_sync::SyncResult;
+use crate::rate_budget::InMemoryBudget;
 use crate::scheduler::SchedulerPolicyMap;
 use burncloud_database::Database;
 use burncloud_database_router::RouterLog;
@@ -37,4 +39,9 @@ pub struct AppState {
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
     pub exchange_rate_service: Arc<ExchangeRateService>,
     pub scheduler_policies: Arc<RwLock<SchedulerPolicyMap>>,
+    /// L3 Affinity flow cache (HRW + dual TTL). MVP: shared across all groups.
+    pub affinity_cache: Arc<AffinityCache>,
+    /// L2 Shaper budget backend. MVP: in-memory, single-instance.
+    /// Phase 4 swaps in a Redis-backed impl behind the same `BudgetBackend` trait.
+    pub rate_budget: Arc<InMemoryBudget>,
 }

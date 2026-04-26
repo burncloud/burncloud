@@ -2,7 +2,7 @@ pub mod api;
 pub mod logging;
 pub use api::auth::{auth_middleware, Claims};
 
-use axum::Router;
+use axum::{routing::get, Router};
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
@@ -42,7 +42,12 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     // 1. Management API Router
     let api_router = api::routes(state.clone());
 
-    let mut app = Router::new().merge(api_router);
+    // Top-level liveness probe (unauthenticated, used by deploy validators and
+    // external uptime monitors). The richer report lives at
+    // `/console/internal/health`.
+    let mut app = Router::new()
+        .route("/health", get(|| async { "ok" }))
+        .merge(api_router);
 
     if enable_liveview {
         // 2. LiveView Router

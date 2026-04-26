@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use burncloud_common::PricingConfig;
 use burncloud_common::types::Price;
+use burncloud_database::placeholder::adapt_sql;
 use burncloud_database::{sqlx, Database};
 use burncloud_database_billing::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
@@ -683,11 +684,13 @@ impl PriceSyncService {
                     })
                     .unwrap_or((None, None, false, false));
 
-            // Build the SQL
-            let sql = if is_postgres {
+            // Build the SQL — single template adapted per dialect.
+            // EXCLUDED keyword is case-insensitive in both SQLite and PostgreSQL.
+            let sql = adapt_sql(
+                is_postgres,
                 r#"
                 INSERT INTO model_capabilities (model, context_window, max_output_tokens, supports_vision, supports_function_calling, input_price, output_price, synced_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(model) DO UPDATE SET
                     context_window = EXCLUDED.context_window,
                     max_output_tokens = EXCLUDED.max_output_tokens,
@@ -696,23 +699,10 @@ impl PriceSyncService {
                     input_price = EXCLUDED.input_price,
                     output_price = EXCLUDED.output_price,
                     synced_at = EXCLUDED.synced_at
-                "#
-            } else {
-                r#"
-                INSERT INTO model_capabilities (model, context_window, max_output_tokens, supports_vision, supports_function_calling, input_price, output_price, synced_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(model) DO UPDATE SET
-                    context_window = excluded.context_window,
-                    max_output_tokens = excluded.max_output_tokens,
-                    supports_vision = excluded.supports_vision,
-                    supports_function_calling = excluded.supports_function_calling,
-                    input_price = excluded.input_price,
-                    output_price = excluded.output_price,
-                    synced_at = excluded.synced_at
-                "#
-            };
+                "#,
+            );
 
-            let result = sqlx::query(sql)
+            let result = sqlx::query(&sql)
                 .bind(model_name)
                 .bind(context_window)
                 .bind(max_output_tokens)

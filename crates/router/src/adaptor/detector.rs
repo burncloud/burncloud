@@ -1,3 +1,4 @@
+use burncloud_database::placeholder::adapt_sql;
 use burncloud_database::{sqlx, Database};
 use regex::Regex;
 use std::sync::Arc;
@@ -108,16 +109,14 @@ impl ApiVersionDetector {
         new_version: &str,
     ) -> anyhow::Result<()> {
         let conn = self.db.get_connection()?;
-        let db_kind = self.db.kind();
+        let is_postgres = self.db.kind() == "postgres";
 
-        // Use appropriate syntax for the database type
-        let sql = match db_kind.as_str() {
-            "sqlite" => "UPDATE channel_providers SET api_version = ? WHERE id = ?",
-            "postgres" => "UPDATE channel_providers SET api_version = $1 WHERE id = $2",
-            _ => "UPDATE channel_providers SET api_version = ? WHERE id = ?",
-        };
+        let sql = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET api_version = ? WHERE id = ?",
+        );
 
-        sqlx::query(sql)
+        sqlx::query(&sql)
             .bind(new_version)
             .bind(channel_id)
             .execute(conn.pool())

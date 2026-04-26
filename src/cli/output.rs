@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use burncloud_common::ModelInfo;
 
 pub fn format_model_list(models: &[&ModelInfo]) {
