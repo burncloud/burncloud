@@ -25,6 +25,7 @@ burncloud-database-channel = { workspace = true }
 burncloud-database-model = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-service-billing = { workspace = true }
+burncloud-service-user = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 jsonwebtoken = { workspace = true }
 once_cell = { workspace = true }

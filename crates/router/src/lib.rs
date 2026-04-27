@@ -34,11 +34,13 @@ use axum::{
 };
 use balancer::RoundRobinBalancer;
 use burncloud_common::types::OpenAIChatRequest;
+use burncloud_common::TrafficColor;
 use burncloud_database::Database;
 use burncloud_database_channel::ChannelProviderModel;
 use burncloud_database_router::{
     RouterDatabase, RouterLog, RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel,
 };
+use burncloud_service_user::UserService;
 use burncloud_service_billing::{
     get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
 };
@@ -49,6 +51,7 @@ use futures::stream::StreamExt;
 use http_body_util::BodyExt;
 use limiter::RateLimiter;
 use model_router::ModelRouter;
+use order_type::OrderType;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Instant;
@@ -87,6 +90,7 @@ const PROTOCOL_ZAI: &str = "zai";
 /// SSE stream termination marker sent to clients.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 
+pub use scheduler::SchedulingRequest;
 pub use state::AppState;
 
 /// Build a JSON error response body: `{"error": "<message>"}`.
@@ -479,7 +483,7 @@ async fn extract_token_user(
         })?;
 
     match RouterDatabase::validate_token_and_get_info(&state.db, &token).await {
-        Ok(Some(info)) => Ok(info.0.to_string()),
+        Ok(Some(info)) => Ok(info.user_id),
         Ok(None) => {
             // Fall back to legacy token table
             match RouterDatabase::validate_token_detailed(&state.db, &token).await {
@@ -685,7 +689,7 @@ async fn proxy_handler(
     };
 
     // Check against DB
-    let (user_id, user_group, quota_limit, used_quota) =
+    let (user_id, user_group, quota_limit, used_quota, order_type_str, price_cap) =
         match RouterDatabase::validate_token_and_get_info(&state.db, &user_token).await {
             Ok(Some(info)) => {
                 // Update accessed_time non-blocking
@@ -694,7 +698,14 @@ async fn proxy_handler(
                 tokio::spawn(async move {
                     let _ = RouterDatabase::update_token_accessed_time(&db, &token).await;
                 });
-                (info.0.to_string(), info.1, info.2, info.3)
+                (
+                    info.user_id,
+                    info.group,
+                    info.remain_quota,
+                    info.used_quota,
+                    info.order_type,
+                    info.price_cap,
+                )
             }
             Ok(None) => {
                 // Fallback to old token table logic with detailed validation
@@ -711,6 +722,8 @@ async fn proxy_handler(
                             "default".to_string(),
                             t.quota_limit,
                             t.used_quota,
+                            None,
+                            None,
                         )
                     }
                     Ok(RouterTokenValidationResult::Expired) => {
@@ -970,7 +983,10 @@ async fn proxy_handler(
         headers,
         body_bytes,
         &path,
+        &user_id,
         &user_group,
+        order_type_str.as_deref(),
+        price_cap,
         token_counter.clone(),
         model_name.as_deref(),
         start_time,
@@ -1128,7 +1144,10 @@ async fn proxy_logic(
     _headers: HeaderMap,
     body_bytes: axum::body::Bytes,
     path: &str,
+    user_id: &str,
     user_group: &str,
+    order_type_str: Option<&str>,
+    price_cap: Option<i64>,
     token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
@@ -1157,11 +1176,6 @@ async fn proxy_logic(
         let model_opt = model_ref.or(gemini_path_model.as_deref());
 
         if let Some(model) = model_opt {
-            tracing::debug!(
-                "ProxyLogic: Attempting to route model '{}' for group '{}'",
-                model, user_group
-            );
-
             // Use scheduler-based routing for multi-channel failover
             // Clone the policy for this group, then release the lock immediately.
             // This prevents the lock from being held during SQL queries and async
@@ -1172,13 +1186,35 @@ async fn proxy_logic(
             };
             // Lock released here — before SQL queries in route_with_scheduler
 
-            // L1 Classifier: build the per-request SchedulingRequest (color +
-            // order_type). MVP defaults: TrafficColor::Yellow, OrderType::Value
-            // with no price cap. Per audit decision E-D3 the color is resolved
-            // by service-user, but the call is wired here so the router stays
-            // color-agnostic; full integration lands when the user_id is
-            // available pre-routing.
-            let sched_request = scheduler::SchedulingRequest::default();
+            // L1 Classifier: resolve color via service-user (audit decision
+            // E-D3 — router stays color-agnostic), build OrderType from the
+            // token's router_tokens columns, and carry user_id into the
+            // request so L3 Affinity (HRW) gets a real stickiness key.
+            // session_id stays None until conversation tracking lands.
+            let color = UserService::resolve_traffic_class(&state.db, user_id)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "L1 Classifier: resolve_traffic_class failed for user_id={}: {} — falling back to TrafficColor::Yellow",
+                        user_id, e
+                    );
+                    TrafficColor::Yellow
+                });
+            let order_type = OrderType::from_db_row(order_type_str, price_cap);
+            let sched_request = scheduler::SchedulingRequest {
+                user_id: Some(user_id.to_string()),
+                color,
+                order_type,
+                session_id: None,
+            };
+
+            tracing::debug!(
+                "ProxyLogic: Attempting to route model '{}' for group '{}' (color={:?}, order_type={})",
+                model,
+                user_group,
+                sched_request.color,
+                sched_request.order_type.as_label()
+            );
 
             match state
                 .model_router

@@ -33,6 +33,34 @@ pub use token::{
 };
 pub use upstream::{RouterUpstream, RouterUpstreamModel, RouterUpstreamRepository};
 
+/// Result of [`RouterDatabase::validate_token_and_get_info`].
+///
+/// Carries user identity, quota state, and the L1 Classifier inputs
+/// (`order_type` / `price_cap`) needed by `proxy_logic` to construct a real
+/// `SchedulingRequest`.
+///
+/// `order_type` and `price_cap` are `Option` because:
+/// - `user_api_keys` (the primary token table) does not store them; the values
+///   live in `router_tokens` and are pulled via `LEFT JOIN`. Tokens that don't
+///   have a matching `router_tokens` row read as `None`.
+/// - `price_cap_nanodollars` is also nullable inside `router_tokens` itself
+///   (per migration 0011 — only `order_type` carries a default).
+///
+/// Callers should fall back to `OrderType::default()` when either is `None`.
+#[derive(Debug, Clone)]
+pub struct TokenValidationInfo {
+    pub user_id: String,
+    pub group: String,
+    pub remain_quota: i64,
+    pub used_quota: i64,
+    pub order_type: Option<String>,
+    pub price_cap: Option<i64>,
+}
+
+/// Tuple shape of the SELECT inside [`RouterDatabase::validate_token_and_get_info`].
+/// Aliased so the row type does not trip `clippy::type_complexity`.
+type TokenValidationRow = (String, String, i64, i64, Option<String>, Option<i64>);
+
 /// Router database operations
 pub struct RouterDatabase;
 
@@ -282,11 +310,19 @@ impl RouterDatabase {
         RouterTokenModel::deduct_quota(db, token, cost).await
     }
 
-    /// Validates a token and returns (user_id, group, token_quota_limit, token_used_quota)
+    /// Validates a token and returns the [`TokenValidationInfo`] payload
+    /// (user identity, quota state, and L1 Classifier inputs) when the token
+    /// is active. Returns `Ok(None)` on no match — the proxy entrypoint then
+    /// falls back to the legacy `validate_token_detailed` path.
+    ///
+    /// `order_type` and `price_cap_nanodollars` come from `router_tokens` via
+    /// `LEFT JOIN` on the token string. Tokens that exist only in
+    /// `user_api_keys` (no matching `router_tokens` row) get `None` for both
+    /// fields and the L1 Classifier falls back to `OrderType::default()`.
     pub async fn validate_token_and_get_info(
         db: &Database,
         token: &str,
-    ) -> Result<Option<(String, String, i64, i64)>> {
+    ) -> Result<Option<TokenValidationInfo>> {
         let conn = db.get_connection()?;
         let group_col = if db.kind() == "postgres" {
             "\"group\""
@@ -298,21 +334,35 @@ impl RouterDatabase {
 
         let query = format!(
             r#"
-            SELECT u.id, u.{}, t.remain_quota, t.used_quota
+            SELECT u.id, u.{}, t.remain_quota, t.used_quota,
+                   rt.order_type, rt.price_cap_nanodollars
             FROM user_api_keys t
             JOIN user_accounts u ON t.user_id = u.id
+            LEFT JOIN router_tokens rt ON rt.token = t.key
             WHERE t.key = {} AND t.status = 1 AND u.status = 1
             "#,
             group_col, placeholder
         );
 
-        // Use query_as to map to a tuple
-        let result: Option<(String, String, i64, i64)> = sqlx::query_as(&query)
+        let row: Option<TokenValidationRow> = sqlx::query_as(&query)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
 
-        Ok(result)
+        Ok(
+            row.map(
+                |(user_id, group, remain_quota, used_quota, order_type, price_cap)| {
+                    TokenValidationInfo {
+                        user_id,
+                        group,
+                        remain_quota,
+                        used_quota,
+                        order_type,
+                        price_cap,
+                    }
+                },
+            ),
+        )
     }
 
     // ============== Group delegations ==============
