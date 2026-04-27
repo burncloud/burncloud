@@ -158,6 +158,31 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("pricing-region")
                                 .long("pricing-region")
                                 .help("Pricing region for this channel (cn, international, or omit for universal)"),
+                        )
+                        .arg(
+                            Arg::new("rpm-cap")
+                                .long("rpm-cap")
+                                .help("L2 Shaper RPM cap (requests per minute, omit for fail-open)"),
+                        )
+                        .arg(
+                            Arg::new("tpm-cap")
+                                .long("tpm-cap")
+                                .help("L2 Shaper TPM cap (tokens per minute, omit for fail-open)"),
+                        )
+                        .arg(
+                            Arg::new("reservation-green")
+                                .long("reservation-green")
+                                .help("L2 Shaper green reservation share (0.0-1.0)"),
+                        )
+                        .arg(
+                            Arg::new("reservation-yellow")
+                                .long("reservation-yellow")
+                                .help("L2 Shaper yellow reservation share (0.0-1.0)"),
+                        )
+                        .arg(
+                            Arg::new("reservation-red")
+                                .long("reservation-red")
+                                .help("L2 Shaper red reservation share (0.0-1.0)"),
                         ),
                 )
                 .subcommand(
@@ -243,6 +268,31 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("pricing-region")
                                 .long("pricing-region")
                                 .help("Pricing region for this channel (cn, international, or omit for universal)"),
+                        )
+                        .arg(
+                            Arg::new("rpm-cap")
+                                .long("rpm-cap")
+                                .help("L2 Shaper RPM cap (requests per minute)"),
+                        )
+                        .arg(
+                            Arg::new("tpm-cap")
+                                .long("tpm-cap")
+                                .help("L2 Shaper TPM cap (tokens per minute)"),
+                        )
+                        .arg(
+                            Arg::new("reservation-green")
+                                .long("reservation-green")
+                                .help("L2 Shaper green reservation share (0.0-1.0)"),
+                        )
+                        .arg(
+                            Arg::new("reservation-yellow")
+                                .long("reservation-yellow")
+                                .help("L2 Shaper yellow reservation share (0.0-1.0)"),
+                        )
+                        .arg(
+                            Arg::new("reservation-red")
+                                .long("reservation-red")
+                                .help("L2 Shaper red reservation share (0.0-1.0)"),
                         ),
                 ),
         )

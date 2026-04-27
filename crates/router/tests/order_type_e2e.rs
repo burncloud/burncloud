@@ -54,6 +54,11 @@ fn channel(id: i32, weight: i32) -> (Channel, i32) {
             remark: None,
             api_version: None,
             pricing_region: None,
+            rpm_cap: None,
+            tpm_cap: None,
+            reservation_green: None,
+            reservation_yellow: None,
+            reservation_red: None,
         },
         weight,
     )

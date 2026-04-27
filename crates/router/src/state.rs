@@ -16,6 +16,7 @@ use burncloud_database::Database;
 use burncloud_database_router::RouterLog;
 use burncloud_service_billing::{CostCalculator, PriceCache};
 use reqwest::Client;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, RwLock};
 
@@ -44,4 +45,9 @@ pub struct AppState {
     /// L2 Shaper budget backend. MVP: in-memory, single-instance.
     /// Phase 4 swaps in a Redis-backed impl behind the same `BudgetBackend` trait.
     pub rate_budget: Arc<InMemoryBudget>,
+    /// L2 Shaper fail-open counter — incremented every time the failover loop
+    /// admits a request through an *unconfigured* channel (rpm_cap = NULL).
+    /// Exposed via `/router/status` so admins can spot silently-permissive
+    /// channels (audit FM2 — fail-open silent failure).
+    pub fail_open_count: Arc<AtomicU64>,
 }

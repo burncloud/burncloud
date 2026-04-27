@@ -47,6 +47,8 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
         video_cost: 0,
         reasoning_cost: 0,
         embedding_cost: 0,
+        layer_decision: None,
+        traffic_color: None,
         created_at: None,
     };
 

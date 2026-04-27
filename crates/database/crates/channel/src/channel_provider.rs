@@ -18,23 +18,23 @@ impl ChannelProviderModel {
         let sql = if is_postgres {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
                 VALUES ({})
                 RETURNING id
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 14)
+                phs(is_postgres, 19)
             )
         } else {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
                 VALUES ({})
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 14)
+                phs(is_postgres, 19)
             )
         };
 
@@ -58,7 +58,12 @@ impl ChannelProviderModel {
             .bind(&channel.param_override)
             .bind(&channel.header_override)
             .bind(&channel.api_version)
-            .bind(&channel.pricing_region);
+            .bind(&channel.pricing_region)
+            .bind(channel.rpm_cap)
+            .bind(channel.tpm_cap)
+            .bind(channel.reservation_green)
+            .bind(channel.reservation_yellow)
+            .bind(channel.reservation_red);
 
         let id = if db.kind() == "postgres" {
             let row = query.fetch_one(&mut *tx).await?;
@@ -94,7 +99,7 @@ impl ChannelProviderModel {
             &format!(
                 r#"
             UPDATE channel_providers
-            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?
+            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?, rpm_cap = ?, tpm_cap = ?, reservation_green = ?, reservation_yellow = ?, reservation_red = ?
             WHERE id = ?
             "#,
                 type_col, group_col
@@ -115,6 +120,11 @@ impl ChannelProviderModel {
             .bind(&channel.header_override)
             .bind(&channel.api_version)
             .bind(&channel.pricing_region)
+            .bind(channel.rpm_cap)
+            .bind(channel.tpm_cap)
+            .bind(channel.reservation_green)
+            .bind(channel.reservation_yellow)
+            .bind(channel.reservation_red)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -152,7 +162,8 @@ impl ChannelProviderModel {
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version, pricing_region
+                    header_override, remark, api_version, pricing_region,
+                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
                 FROM channel_providers WHERE id = {}
             "#,
                 ph(is_postgres, 1)
@@ -164,7 +175,8 @@ impl ChannelProviderModel {
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version, pricing_region
+                    header_override, remark, api_version, pricing_region,
+                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
                 FROM channel_providers WHERE id = {}
             "#,
                 ph(is_postgres, 1)
@@ -189,7 +201,8 @@ impl ChannelProviderModel {
                     id, type as "type_", key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version, pricing_region
+                    header_override, remark, api_version, pricing_region,
+                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
                 FROM channel_providers ORDER BY id DESC LIMIT {} OFFSET {}
             "#,
                 ph(is_postgres, 1),
@@ -202,7 +215,8 @@ impl ChannelProviderModel {
                     id, type as type_, key, status, name, weight, created_time, test_time,
                     response_time, base_url, models, `group`, used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version, pricing_region
+                    header_override, remark, api_version, pricing_region,
+                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
                 FROM channel_providers ORDER BY id DESC LIMIT {} OFFSET {}
             "#,
                 ph(is_postgres, 1),

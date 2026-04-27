@@ -53,6 +53,7 @@ use limiter::RateLimiter;
 use model_router::ModelRouter;
 use order_type::OrderType;
 use reqwest::Client;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{mpsc, RwLock};
@@ -220,6 +221,95 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
     Ok(RouterConfig { upstreams, groups })
 }
 
+/// Startup helper: load every channel's L2 Shaper config (rpm_cap / tpm_cap /
+/// reservation triple) from `channel_providers` and feed it into
+/// [`rate_budget::InMemoryBudget`]. Channels with `rpm_cap = NULL` (or zero)
+/// stay unconfigured — they'll fail-open at request time, and that count is
+/// surfaced via `tracing::warn!` here and `fail_open_count` at runtime.
+///
+/// **Fail-open on error.** A DB outage or query failure is logged and ignored:
+/// the router must boot even if the shaper config can't be loaded. Subsequent
+/// `try_consume` calls all hit unconfigured-channel fail-open until the next
+/// reload.
+async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMemoryBudget) {
+    let conn = match db.get_connection() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "rate_budget: failed to acquire DB connection at startup — all channels will fail-open"
+            );
+            return;
+        }
+    };
+    let pool = conn.pool();
+
+    type ChannelCapRow = (
+        i32,
+        Option<i32>,
+        Option<i64>,
+        Option<f64>,
+        Option<f64>,
+        Option<f64>,
+    );
+    let rows: Vec<ChannelCapRow> =
+        match burncloud_database::sqlx::query_as(
+            "SELECT id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red \
+             FROM channel_providers",
+        )
+        .fetch_all(pool)
+        .await
+        {
+            Ok(rs) => rs,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "rate_budget: failed to query channel_providers at startup — all channels will fail-open"
+                );
+                return;
+            }
+        };
+
+    let mut configured_count: usize = 0;
+    let mut unconfigured_count: usize = 0;
+    let mut sample_unconfigured_ids: Vec<i32> = Vec::new();
+
+    for (id, rpm_cap, tpm_cap, res_g, res_y, res_r) in rows {
+        match (rpm_cap, tpm_cap) {
+            (Some(rpm), Some(tpm)) if rpm > 0 && tpm > 0 => {
+                // Per-color shares: NULL → migration default (0.4/0.4/0.2).
+                // `configure` itself validates sum-to-1.0 and falls back to
+                // default if invalid (FM8 fix in subtask 4).
+                let reservation = rate_budget::ChannelReservation {
+                    green: res_g.unwrap_or(0.4),
+                    yellow: res_y.unwrap_or(0.4),
+                    red: res_r.unwrap_or(0.2),
+                };
+                budget.configure(id, rpm as u32, tpm as u64, reservation);
+                configured_count += 1;
+            }
+            _ => {
+                unconfigured_count += 1;
+                if sample_unconfigured_ids.len() < 5 {
+                    sample_unconfigured_ids.push(id);
+                }
+            }
+        }
+    }
+
+    tracing::info!(
+        configured_count,
+        "rate_budget: loaded channel cap configs from channel_providers"
+    );
+    if unconfigured_count > 0 {
+        tracing::warn!(
+            unconfigured_count,
+            sample_ids = ?sample_unconfigured_ids,
+            "rate_budget: N channels lack rpm_cap, fail-open"
+        );
+    }
+}
+
 pub async fn create_router_app(
     db: Arc<Database>,
 ) -> anyhow::Result<(
@@ -269,6 +359,13 @@ pub async fn create_router_app(
     // configured lazily via channel_providers reload (rpm_cap / tpm_cap /
     // reservation columns added in migration 0011).
     let rate_budget = Arc::new(rate_budget::InMemoryBudget::new());
+    // Eager-load every channel's cap from DB at startup. DB failures here
+    // are logged and ignored — router must boot even if shaper config is
+    // unavailable. Channels with rpm_cap = NULL stay unconfigured (fail-open).
+    configure_rate_budget_from_db(&db, rate_budget.as_ref()).await;
+    // Counter for fail-open admissions (unconfigured channels). Surfaced
+    // via /router/status so admins notice silently-permissive channels.
+    let fail_open_count = Arc::new(AtomicU64::new(0));
 
     // Start background price sync task (every 24 hours)
     // Prices pulled from pricing_data repo (GitHub/Gitee fallback).
@@ -323,6 +420,7 @@ pub async fn create_router_app(
         scheduler_policies,
         affinity_cache,
         rate_budget,
+        fail_open_count,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -620,6 +718,35 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
         map
     };
 
+    // L2 Shaper observability (issue #151): per-channel budget snapshots +
+    // fail-open counter so admins can spot silently-permissive channels and
+    // verify the three-color buckets are draining as expected.
+    // Iterates `channel_states` (the known-channel set tracked by the
+    // channel_state_tracker) and calls the public `BudgetBackend::snapshot`
+    // API. Channels with `rpm_cap = NULL` (unconfigured) return `None` and
+    // are filtered out — the `fail_open_count` field surfaces their volume.
+    let budget_snapshots: Vec<serde_json::Value> = channel_states
+        .iter()
+        .filter_map(|(ch_id, _)| {
+            state.rate_budget.snapshot(*ch_id).map(|snap| {
+                serde_json::json!({
+                    "channel_id": ch_id,
+                    "rpm_cap": snap.rpm_cap,
+                    "rpm_remaining_green": snap.rpm_remaining_green,
+                    "rpm_remaining_yellow": snap.rpm_remaining_yellow,
+                    "rpm_remaining_red": snap.rpm_remaining_red,
+                    "tpm_cap": snap.tpm_cap,
+                    "tpm_remaining_green": snap.tpm_remaining_green,
+                    "tpm_remaining_yellow": snap.tpm_remaining_yellow,
+                    "tpm_remaining_red": snap.tpm_remaining_red,
+                })
+            })
+        })
+        .collect();
+    let fail_open_count = state
+        .fail_open_count
+        .load(std::sync::atomic::Ordering::Relaxed);
+
     // Build comprehensive health report
     let health_report = serde_json::json!({
         "scheduler_policies": scheduler_info,
@@ -646,7 +773,9 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
                 "balance_status": format!("{:?}", ch_state.balance_status),
                 "models": models,
             }))
-        }).collect::<std::collections::HashMap<_, _>>()
+        }).collect::<std::collections::HashMap<_, _>>(),
+        "budget_snapshots": budget_snapshots,
+        "fail_open_count": fail_open_count,
     });
 
     let json = serde_json::to_string(&health_report).unwrap_or_else(|_| "{}".to_string());
@@ -976,7 +1105,14 @@ async fn proxy_handler(
     let token_counter = Arc::new(UnifiedTokenCounter::new());
 
     // Perform Proxy Logic
-    let (response, upstream_id, final_status, pricing_region, video_task_id) = proxy_logic(
+    let (
+        response,
+        upstream_id,
+        final_status,
+        pricing_region,
+        video_task_id,
+        shaper_outcome,
+    ) = proxy_logic(
         &state,
         method,
         uri,
@@ -1072,6 +1208,13 @@ async fn proxy_handler(
         tracing::warn!(cost, %request_id, "cost > 0 but model unknown — reconciliation data degraded");
     }
 
+    // L6 Observability (issue #151): split shaper_outcome into the two
+    // RouterLog columns. None for pre-routing errors / path-routed flows.
+    let (layer_decision, traffic_color) = match shaper_outcome {
+        Some((lbl, col)) => (Some(lbl), Some(col)),
+        None => (None, None),
+    };
+
     // Async Log
     let log = RouterLog {
         id: 0, // Auto-generated by database
@@ -1105,6 +1248,8 @@ async fn proxy_handler(
         video_cost: cost_breakdown.video_cost,
         reasoning_cost: cost_breakdown.reasoning_cost,
         embedding_cost: cost_breakdown.embedding_cost,
+        layer_decision,
+        traffic_color,
         created_at: None, // Auto-generated by database
     };
 
@@ -1134,7 +1279,27 @@ async fn proxy_handler(
 use burncloud_common::types::ChannelType;
 use circuit_breaker::FailureType;
 use passthrough::{should_passthrough, PassthroughDecision};
+use rate_budget::{BudgetBackend, BudgetGuard, ConsumeOutcome};
 use response_parser::{parse_error_response, parse_rate_limit_info};
+
+/// Per-failover-loop bookkeeping for the L2 Shaper integration (issue #151).
+///
+/// Bundling `color`, `est_tpm`, `outcome`, and `rejected_count` into one
+/// struct keeps the loop body free of orphan `mut` locals (audit Eng E-4).
+struct ShaperContext {
+    /// Traffic color resolved by the L1 Classifier (or `Yellow` for path-routed).
+    color: TrafficColor,
+    /// Estimated TPM for this request: `body.max_tokens` or 4096 fallback.
+    est_tpm: u64,
+    /// Most recent iteration's shaper outcome label
+    /// (`shaper_own` / `shaper_borrow` / `shaper_unconfigured`). Set on admit;
+    /// used by the success-return path for `RouterLog.layer_decision`.
+    outcome: Option<&'static str>,
+    /// Count of candidates the L2 Shaper actively `Rejected`. When this equals
+    /// `candidates.len()` after the loop, the function returns 503 +
+    /// `X-Rejected-By: shaper` (audit decision D12).
+    rejected_count: u32,
+}
 
 #[allow(clippy::too_many_arguments)]
 async fn proxy_logic(
@@ -1157,6 +1322,9 @@ async fn proxy_logic(
     StatusCode,
     Option<String>,
     Option<String>,
+    // L2 Shaper outcome: (layer_decision, traffic_color) for RouterLog.
+    // None when the request never reached the shaper (early routing error).
+    Option<(String, String)>,
 ) {
     let config = state.config.read().await;
 
@@ -1166,6 +1334,18 @@ async fn proxy_logic(
     // Assigned inside the retry loop (candidates guaranteed non-empty at this point).
     // Uninitialized: assigned inside the retry loop before any use
     let mut selected_pricing_region: Option<String>;
+
+    // L2 Shaper: pre-compute est_tpm from `max_tokens` in the request body.
+    // TODO(phase 2.5 #151): per-adaptor est_tpm refinement — 4096 may grossly
+    //   underestimate Anthropic (200k+ caps) or overestimate small embedding
+    //   requests. Refine using adaptor-specific defaults + historical regression.
+    let est_tpm: u64 = serde_json::from_slice::<serde_json::Value>(&body_bytes)
+        .ok()
+        .and_then(|v| v.get("max_tokens").and_then(|m| m.as_u64()))
+        .unwrap_or(4096);
+    // Default color for path-routed (non-model) requests; overwritten when
+    // the L1 Classifier (issue #150) resolves a real color from the user.
+    let mut shaper_color: TrafficColor = TrafficColor::Yellow;
 
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
@@ -1201,6 +1381,8 @@ async fn proxy_logic(
                     TrafficColor::Yellow
                 });
             let order_type = OrderType::from_db_row(order_type_str, price_cap);
+            // Capture for L2 Shaper before sched_request consumes the value.
+            shaper_color = color;
             let sched_request = scheduler::SchedulingRequest {
                 user_id: Some(user_id.to_string()),
                 color,
@@ -1309,6 +1491,7 @@ async fn proxy_logic(
                         StatusCode::SERVICE_UNAVAILABLE,
                         None,
                         None,
+                        None,
                     );
                 }
             }
@@ -1337,6 +1520,7 @@ async fn proxy_logic(
                     StatusCode::NOT_FOUND,
                     None,
                     None,
+                    None,
                 );
             }
         };
@@ -1352,6 +1536,7 @@ async fn proxy_logic(
                         ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
+                        None,
                         None,
                         None,
                     );
@@ -1379,6 +1564,7 @@ async fn proxy_logic(
             StatusCode::INTERNAL_SERVER_ERROR,
             None,
             None,
+            None,
         );
     }
 
@@ -1401,6 +1587,7 @@ async fn proxy_logic(
                 StatusCode::BAD_REQUEST,
                 None,
                 None,
+                None,
             );
         }
     }
@@ -1409,16 +1596,67 @@ async fn proxy_logic(
     #[allow(unused_assignments)]
     let mut last_upstream_id = None;
 
+    // L2 Shaper bookkeeping (issue #151) shared across the failover loop.
+    let mut shaper_ctx = ShaperContext {
+        color: shaper_color,
+        est_tpm,
+        outcome: None,
+        rejected_count: 0,
+    };
+    let total_candidates = candidates.len();
+
     for (attempt, upstream) in candidates.iter().enumerate() {
         last_upstream_id = Some(upstream.id.clone());
 
         // Update pricing_region for billing to match the actual upstream serving
         selected_pricing_region = upstream.pricing_region.clone();
 
+        // L2 Shaper Check (issue #151) — runs BEFORE the circuit breaker so
+        // a locally-overloaded channel is rejected without consuming a CB slot.
+        // Unconfigured channels (rpm_cap = NULL) bypass the bucket via
+        // `is_configured` (audit Eng E-N1), counted via fail_open_count for
+        // /router/status visibility (FM2). On admit, a `BudgetGuard` is held
+        // for the rest of the iteration: success → `commit(est_tpm)`; any
+        // continue / panic / cancel → `Drop` refunds full est_tpm (audit FM4).
+        let channel_id_i32: i32 = upstream.id.parse().unwrap_or(0);
+        let mut budget_guard: Option<BudgetGuard<'_>> = None;
+        let iter_label: &'static str = if !state.rate_budget.is_configured(channel_id_i32) {
+            state
+                .fail_open_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            "shaper_unconfigured"
+        } else {
+            let outcome = state.rate_budget.try_consume(
+                channel_id_i32,
+                shaper_ctx.color,
+                shaper_ctx.est_tpm,
+            );
+            if outcome == ConsumeOutcome::Rejected {
+                shaper_ctx.rejected_count += 1;
+                tracing::debug!(
+                    channel_id = channel_id_i32,
+                    color = ?shaper_ctx.color,
+                    est_tpm = shaper_ctx.est_tpm,
+                    "L2 Shaper rejected candidate {}, trying next", upstream.name
+                );
+                continue;
+            }
+            budget_guard = Some(BudgetGuard::new(
+                state.rate_budget.as_ref(),
+                channel_id_i32,
+                shaper_ctx.color,
+                shaper_ctx.est_tpm,
+            ));
+            outcome.as_label()
+        };
+        shaper_ctx.outcome = Some(iter_label);
+
         // Circuit Breaker Check
         if !state.circuit_breaker.allow_request(&upstream.id) {
             tracing::debug!("Skipping upstream {} (Circuit Open)", upstream.name);
             last_error = format!("Circuit Breaker Open for {}", upstream.name);
+            // budget_guard drops here → full est_tpm refund (request never
+            // reached upstream, so the reservation is returned to the bucket).
             continue;
         }
 
@@ -1568,6 +1806,13 @@ async fn proxy_logic(
                                 Err(e) => Err(std::io::Error::other(e)),
                             });
 
+                            // L2 Shaper success: upstream accepted the request.
+                            // commit(est_tpm) refunds 0 and marks committed so
+                            // Drop is a no-op. The bucket retains est_tpm of
+                            // consumption (pessimistic — phase 2.5 may refine).
+                            if let Some(g) = budget_guard.take() {
+                                g.commit(shaper_ctx.est_tpm);
+                            }
                             return (
                                 Response::builder()
                                     .status(status)
@@ -1585,6 +1830,10 @@ async fn proxy_logic(
                                 status,
                                 selected_pricing_region.clone(),
                                 None,
+                                Some((
+                                    iter_label.to_string(),
+                                    shaper_ctx.color.as_char().to_string(),
+                                )),
                             );
                         } else {
                             // Non-streaming passthrough
@@ -1609,6 +1858,10 @@ async fn proxy_logic(
                                 token_counter.set_from_usage(&resp_usage);
                             }
 
+                            // L2 Shaper success — see streaming branch above.
+                            if let Some(g) = budget_guard.take() {
+                                g.commit(shaper_ctx.est_tpm);
+                            }
                             return (
                                 build_response_with_header(
                                     status,
@@ -1620,6 +1873,10 @@ async fn proxy_logic(
                                 status,
                                 selected_pricing_region.clone(),
                                 None,
+                                Some((
+                                    iter_label.to_string(),
+                                    shaper_ctx.color.as_char().to_string(),
+                                )),
                             );
                         }
                     } else {
@@ -1628,12 +1885,19 @@ async fn proxy_logic(
                             Ok(b) => b,
                             Err(e) => {
                                 last_error = format!("Failed to read error response: {e}");
+                                // 4xx body-read failure: request DID reach
+                                // upstream but actual usage = 0. Let
+                                // budget_guard drop → full est_tpm refund.
                                 return (
                                     build_response(status, Body::from(last_error.clone())),
                                     last_upstream_id,
                                     status,
                                     selected_pricing_region.clone(),
                                     None,
+                                    Some((
+                                        iter_label.to_string(),
+                                        shaper_ctx.color.as_char().to_string(),
+                                    )),
                                 );
                             }
                         };
@@ -1651,6 +1915,8 @@ async fn proxy_logic(
                             continue;
                         }
 
+                        // 4xx response: actual usage = 0. budget_guard drops
+                        // on return → full est_tpm refund (no commit).
                         return (
                             build_response_with_header(
                                 status,
@@ -1662,6 +1928,10 @@ async fn proxy_logic(
                             status,
                             selected_pricing_region.clone(),
                             None,
+                            Some((
+                                iter_label.to_string(),
+                                shaper_ctx.color.as_char().to_string(),
+                            )),
                         );
                     }
                 }
@@ -1853,6 +2123,10 @@ async fn proxy_logic(
                                 );
                                 token_counter.set_from_usage(&resp_usage);
                             }
+                            // L2 Shaper success — see Gemini stream branch above.
+                            if let Some(g) = budget_guard.take() {
+                                g.commit(shaper_ctx.est_tpm);
+                            }
                             return (
                                 build_response_with_header(
                                     status,
@@ -1864,7 +2138,15 @@ async fn proxy_logic(
                                 status,
                                 selected_pricing_region.clone(),
                                 task_id,
+                                Some((
+                                    iter_label.to_string(),
+                                    shaper_ctx.color.as_char().to_string(),
+                                )),
                             );
+                        }
+                        // L2 Shaper success: OpenAI default success path.
+                        if let Some(g) = budget_guard.take() {
+                            g.commit(shaper_ctx.est_tpm);
                         }
                         return (
                             handle_response_with_token_parsing(resp, &token_counter, channel_type),
@@ -1872,6 +2154,10 @@ async fn proxy_logic(
                             status,
                             selected_pricing_region.clone(),
                             None,
+                            Some((
+                                iter_label.to_string(),
+                                shaper_ctx.color.as_char().to_string(),
+                            )),
                         );
                     }
 
@@ -1913,6 +2199,10 @@ async fn proxy_logic(
                         });
                         let final_stream = stream.chain(done);
 
+                        // L2 Shaper success — non-OpenAI streaming.
+                        if let Some(g) = budget_guard.take() {
+                            g.commit(shaper_ctx.est_tpm);
+                        }
                         return (
                             Response::builder()
                                 .status(status)
@@ -1930,6 +2220,10 @@ async fn proxy_logic(
                             status,
                             selected_pricing_region.clone(),
                             None,
+                            Some((
+                                iter_label.to_string(),
+                                shaper_ctx.color.as_char().to_string(),
+                            )),
                         );
                     }
 
@@ -1971,6 +2265,10 @@ async fn proxy_logic(
                         serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string())
                     };
 
+                    // L2 Shaper success — non-OpenAI non-streaming.
+                    if let Some(g) = budget_guard.take() {
+                        g.commit(shaper_ctx.est_tpm);
+                    }
                     return (
                         build_response_with_header(
                             status,
@@ -1982,6 +2280,10 @@ async fn proxy_logic(
                         status,
                         selected_pricing_region.clone(),
                         None,
+                        Some((
+                            iter_label.to_string(),
+                            shaper_ctx.color.as_char().to_string(),
+                        )),
                     );
                 } else {
                     // Handle non-success responses (4xx errors)
@@ -1990,12 +2292,19 @@ async fn proxy_logic(
                         Err(e) => {
                             // If we can't read the body, return a simple error
                             last_error = format!("Failed to read response body: {e}");
+                            // 4xx body-read failure: budget_guard drops here
+                            // → full est_tpm refund (request reached upstream
+                            // but no actual usage was billed).
                             return (
                                 build_response(status, Body::from(last_error.clone())),
                                 last_upstream_id,
                                 status,
                                 selected_pricing_region.clone(),
                                 None,
+                                Some((
+                                    iter_label.to_string(),
+                                    shaper_ctx.color.as_char().to_string(),
+                                )),
                             );
                         }
                     };
@@ -2080,6 +2389,9 @@ async fn proxy_logic(
                         upstream.name, status.as_u16(), error_message
                     );
 
+                    // 4xx response from non-OpenAI: budget_guard drops on
+                    // return → full est_tpm refund (request reached upstream
+                    // but no actual usage was billed).
                     return (
                         build_response_with_header(
                             status,
@@ -2091,6 +2403,10 @@ async fn proxy_logic(
                         status,
                         selected_pricing_region.clone(),
                         None,
+                        Some((
+                            iter_label.to_string(),
+                            shaper_ctx.color.as_char().to_string(),
+                        )),
                     );
                 }
             }
@@ -2108,6 +2424,39 @@ async fn proxy_logic(
         }
     }
 
+    // After-loop branch: every candidate was rejected by the L2 Shaper
+    // (no CB skip, no upstream failure). Return 503 + X-Rejected-By: shaper
+    // per audit decision D12 — clients can distinguish a local shaper reject
+    // from upstream 5xx and back off via Retry-After.
+    if shaper_ctx.rejected_count > 0 && shaper_ctx.rejected_count as usize == total_candidates {
+        let body = Body::from(
+            r#"{"error":{"message":"All candidate channels rejected by rate budget shaper","type":"service_unavailable","code":"rate_budget_exhausted","rejected_by":"shaper"}}"#
+        );
+        let response = Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .header("content-type", "application/json")
+            .header("X-Rejected-By", "shaper")
+            .header("Retry-After", "60")
+            .body(body)
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .body(Body::empty())
+                    .unwrap_or_else(|_| Response::new(Body::empty()))
+            });
+        return (
+            response,
+            None,
+            StatusCode::SERVICE_UNAVAILABLE,
+            None,
+            None,
+            Some((
+                "shaper_reject".to_string(),
+                shaper_ctx.color.as_char().to_string(),
+            )),
+        );
+    }
+
     (
         build_response(
             StatusCode::BAD_GATEWAY,
@@ -2117,6 +2466,11 @@ async fn proxy_logic(
         StatusCode::BAD_GATEWAY,
         None,
         None,
+        // Mixed shaper-reject + upstream-failure: emit shaper context so
+        // RouterLog still records the color/last-iter outcome if any.
+        shaper_ctx.outcome.map(|lbl| {
+            (lbl.to_string(), shaper_ctx.color.as_char().to_string())
+        }),
     )
 }
 

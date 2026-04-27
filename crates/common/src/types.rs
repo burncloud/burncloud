@@ -356,7 +356,13 @@ pub struct Channel {
     pub remark: Option<String>,
     pub api_version: Option<String>, // API version for protocol adaptation
     pub pricing_region: Option<String>, // Pricing region: 'cn', 'international', or NULL for universal
-                                        // ChannelInfo fields from New API are flattened or handled separately in logic
+    // L2 Shaper inputs (migration 0011). NULL → shaper fail-open for this channel.
+    pub rpm_cap: Option<i32>,
+    pub tpm_cap: Option<i64>,
+    pub reservation_green: Option<f64>,
+    pub reservation_yellow: Option<f64>,
+    pub reservation_red: Option<f64>,
+    // ChannelInfo fields from New API are flattened or handled separately in logic
 }
 
 /// Recharge record. Amount is stored as i64 nanodollars (9 decimal precision).
