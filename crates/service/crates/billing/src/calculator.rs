@@ -89,9 +89,12 @@ impl CostCalculator {
     ///
     /// `opts.region` selects the region-specific price (e.g. `"international"`, `"cn"`).
     /// `opts.voice_id` is used for TTS models that have per-voice pricing.
-    /// When voice_id is found, audio_output_tokens are billed at the per-voice rate
-    /// via voice_cost; audio_cost covers only audio_input_tokens. When voice_id is
-    /// absent or not found, audio_cost covers both input and output tokens.
+    /// Three paths:
+    ///   1. voice_id found in voices_pricing → audio_cost covers audio_input_tokens;
+    ///      voice_cost covers audio_output_tokens at the per-voice rate.
+    ///   2. voice_id provided but not found → audio_cost covers both input and output
+    ///      tokens at audio_*_price; voice_cost = 0.
+    ///   3. voice_id is None → same as path 2.
     pub async fn calculate_with_voice(
         &self,
         model: &str,
@@ -249,9 +252,10 @@ fn compute_breakdown(
     ));
     let audio_output_price = price.audio_output_price.unwrap_or(effective_output_price);
 
-    // When voice_id is provided and found in voices_pricing, audio_output_tokens
-    // are billed via voice_cost (below) — exclude them from audio_cost to avoid
-    // double-counting. Otherwise, audio_cost covers both input and output.
+    // Voice pricing has three paths:
+    //   1. voice_id found in voices_pricing → audio_cost = input only; voice_cost = output at per-voice rate
+    //   2. voice_id provided but not found  → audio_cost = input + output at audio_*_price; voice_cost = 0
+    //   3. voice_id is None                 → audio_cost = input + output at audio_*_price; voice_cost = 0
     let voice_price_found = voice_id
         .and_then(|vid| lookup_voice_price(&price.voices_pricing, vid))
         .filter(|_| usage.audio_output_tokens > 0);
@@ -263,8 +267,9 @@ fn compute_breakdown(
         "audio_input",
     )
     .saturating_add(if voice_price_found.is_some() {
-        0 // audio_output_tokens billed via voice_cost
+        0 // Path 1: audio_output_tokens billed via voice_cost below
     } else {
+        // Paths 2 & 3: no per-voice price — audio_cost covers both input and output
         nano(
             usage.audio_output_tokens,
             audio_output_price,
@@ -274,12 +279,12 @@ fn compute_breakdown(
     });
 
     // --- Voice-specific cost (TTS) ---
-    // When voice_id is found, voice_cost covers audio_output_tokens at the
-    // per-voice rate. When voice_id is not found, audio_cost already includes
-    // audio_output_tokens at audio_output_price, so voice_cost = 0.
     let voice_cost = if let Some(voice_price) = voice_price_found {
+        // Path 1: voice_id found → bill audio_output_tokens at per-voice rate
         nano(usage.audio_output_tokens, voice_price, request_id, "voice")
     } else {
+        // Paths 2 & 3: voice_id not found or None → audio_cost already includes
+        // audio_output_tokens at audio_output_price; voice_cost = 0
         0
     };
 
