@@ -11,7 +11,7 @@ mod circuit_breaker;
 mod config;
 pub mod exchange_rate;
 mod limiter;
-mod model_router;
+pub mod model_router;
 pub mod notification;
 pub mod order_type;
 pub mod passthrough;
@@ -1112,6 +1112,7 @@ async fn proxy_handler(
         pricing_region,
         video_task_id,
         shaper_outcome,
+        routing_decision,
     ) = proxy_logic(
         &state,
         method,
@@ -1208,11 +1209,26 @@ async fn proxy_handler(
         tracing::warn!(cost, %request_id, "cost > 0 but model unknown — reconciliation data degraded");
     }
 
-    // L6 Observability (issue #151): split shaper_outcome into the two
-    // RouterLog columns. None for pre-routing errors / path-routed flows.
-    let (layer_decision, traffic_color) = match shaper_outcome {
-        Some((lbl, col)) => (Some(lbl), Some(col)),
-        None => (None, None),
+    // L6 Observability: compute layer_decision via priority chain (issue #152).
+    // Priority: failover_N > affinity_hit/scorer_picked > shaper_own/shaper_borrow/
+    // shaper_unconfigured > shaper_reject. Decision D9: do NOT change
+    // ShaperContext.outcome semantics; override at RouterLog construction point.
+    let (layer_decision, traffic_color) = {
+        let shaper_label = shaper_outcome.as_ref().map(|(lbl, _)| lbl.as_str());
+        let sched_label = routing_decision.as_ref().map(|d| d.to_label());
+
+        // Priority chain: scheduler decision (failover_N / affinity_hit /
+        // scorer_picked) overrides shaper outcome when both are present.
+        let layer = match (sched_label, shaper_label) {
+            (Some(s), _) => s, // Scheduler decision wins (highest priority)
+            (None, Some(sh)) => sh.to_string(), // Shaper outcome only
+            (None, None) => String::new(), // No decision (pre-routing error)
+        };
+        let color = shaper_outcome
+            .as_ref()
+            .map(|(_, c)| c.clone())
+            .unwrap_or_default();
+        (if layer.is_empty() { None } else { Some(layer) }, if color.is_empty() { None } else { Some(color) })
     };
 
     // Async Log
@@ -1325,11 +1341,17 @@ async fn proxy_logic(
     // L2 Shaper outcome: (layer_decision, traffic_color) for RouterLog.
     // None when the request never reached the shaper (early routing error).
     Option<(String, String)>,
+    // L6 Observability: routing decision from route_with_scheduler.
+    // Used by the priority chain to compute layer_decision for RouterLog.
+    Option<model_router::RoutingDecision>,
 ) {
     let config = state.config.read().await;
 
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
+    // L6 Observability: routing decision from route_with_scheduler.
+    // Used by the priority chain to compute layer_decision for RouterLog.
+    let mut sched_routing_decision: Option<model_router::RoutingDecision> = None;
     // Track pricing_region from selected channel for billing.
     // Assigned inside the retry loop (candidates guaranteed non-empty at this point).
     // Uninitialized: assigned inside the retry loop before any use
@@ -1412,12 +1434,17 @@ async fn proxy_logic(
                 })
                 .await
             {
-                Ok(channels) if !channels.is_empty() => {
+                Ok((channels, routing_decision)) if !channels.is_empty() => {
                     tracing::debug!(
                         "ModelRouter: Got {} candidates for {}",
                         channels.len(),
                         model
                     );
+
+                    // Store routing_decision for L6 Observability priority chain.
+                    // Will be overridden by Failover{attempt} if failover loop
+                    // advances past attempt 0.
+                    sched_routing_decision = routing_decision;
 
                     for channel in channels {
                         let channel_type = ChannelType::from(channel.type_);
@@ -1492,6 +1519,7 @@ async fn proxy_logic(
                         None,
                         None,
                         None,
+                        None,
                     );
                 }
             }
@@ -1521,6 +1549,7 @@ async fn proxy_logic(
                     None,
                     None,
                     None,
+                    None,
                 );
             }
         };
@@ -1536,6 +1565,7 @@ async fn proxy_logic(
                         ),
                         None,
                         StatusCode::SERVICE_UNAVAILABLE,
+                        None,
                         None,
                         None,
                         None,
@@ -1565,6 +1595,7 @@ async fn proxy_logic(
             None,
             None,
             None,
+            None,
         );
     }
 
@@ -1588,6 +1619,7 @@ async fn proxy_logic(
                 None,
                 None,
                 None,
+                None,
             );
         }
     }
@@ -1606,6 +1638,10 @@ async fn proxy_logic(
     let total_candidates = candidates.len();
 
     for (attempt, upstream) in candidates.iter().enumerate() {
+        // L5 Failover: override routing decision when attempt > 0.
+        if attempt > 0 {
+            sched_routing_decision = Some(model_router::RoutingDecision::Failover { attempt: attempt as u32 + 1 });
+        }
         last_upstream_id = Some(upstream.id.clone());
 
         // Update pricing_region for billing to match the actual upstream serving
@@ -1834,6 +1870,7 @@ async fn proxy_logic(
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
+                                sched_routing_decision.clone(),
                             );
                         } else {
                             // Non-streaming passthrough
@@ -1877,6 +1914,7 @@ async fn proxy_logic(
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
+                                sched_routing_decision.clone(),
                             );
                         }
                     } else {
@@ -1898,6 +1936,7 @@ async fn proxy_logic(
                                         iter_label.to_string(),
                                         shaper_ctx.color.as_char().to_string(),
                                     )),
+                                    sched_routing_decision.clone(),
                                 );
                             }
                         };
@@ -1932,6 +1971,7 @@ async fn proxy_logic(
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
                             )),
+                            sched_routing_decision.clone(),
                         );
                     }
                 }
@@ -2142,6 +2182,7 @@ async fn proxy_logic(
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
+                                sched_routing_decision.clone(),
                             );
                         }
                         // L2 Shaper success: OpenAI default success path.
@@ -2158,6 +2199,7 @@ async fn proxy_logic(
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
                             )),
+                            sched_routing_decision.clone(),
                         );
                     }
 
@@ -2224,6 +2266,7 @@ async fn proxy_logic(
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
                             )),
+                            sched_routing_decision.clone(),
                         );
                     }
 
@@ -2284,6 +2327,7 @@ async fn proxy_logic(
                             iter_label.to_string(),
                             shaper_ctx.color.as_char().to_string(),
                         )),
+                        sched_routing_decision.clone(),
                     );
                 } else {
                     // Handle non-success responses (4xx errors)
@@ -2305,6 +2349,7 @@ async fn proxy_logic(
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
+                                sched_routing_decision.clone(),
                             );
                         }
                     };
@@ -2407,6 +2452,7 @@ async fn proxy_logic(
                             iter_label.to_string(),
                             shaper_ctx.color.as_char().to_string(),
                         )),
+                        sched_routing_decision.clone(),
                     );
                 }
             }
@@ -2454,6 +2500,7 @@ async fn proxy_logic(
                 "shaper_reject".to_string(),
                 shaper_ctx.color.as_char().to_string(),
             )),
+            sched_routing_decision.clone(),
         );
     }
 
@@ -2471,6 +2518,7 @@ async fn proxy_logic(
         shaper_ctx.outcome.map(|lbl| {
             (lbl.to_string(), shaper_ctx.color.as_char().to_string())
         }),
+        sched_routing_decision.clone(),
     )
 }
 
