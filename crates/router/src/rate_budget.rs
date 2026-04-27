@@ -135,6 +135,82 @@ pub trait BudgetBackend: Send + Sync {
     fn snapshot(&self, channel_id: i32) -> Option<BudgetSnapshot>;
 }
 
+/// RAII guard that ensures the TPM reservation taken by [`BudgetBackend::try_consume`]
+/// is returned even if the request never reaches `commit` — i.e. on client
+/// cancellation, upstream timeout, or panic during the proxy `.await`.
+///
+/// **Lifecycle:**
+/// - `BudgetGuard::new(...)` records the `(channel_id, color, est_tpm)` triple
+///   right after a successful `try_consume` (caller already holds the bucket).
+/// - On the happy path, the caller calls `guard.commit(actual_tpm)`. If the
+///   actual TPM was less than the estimate, the over-estimate
+///   (`est - actual`) is refunded. The `committed=true` flag stops `Drop`
+///   from double-refunding.
+/// - On any other path (early `return`, `?` propagation, panic, async cancel),
+///   `Drop::drop` runs with `committed=false` and refunds the full `est_tpm`,
+///   so the bucket is never permanently held by a request that didn't run.
+///
+/// **Why `commit(self)` takes self by value:** Once committed, the guard is
+/// consumed at the type-system level. There is no way to call `commit` twice
+/// or to `commit` and then drop with extra refund — the borrow checker
+/// rejects it. This is the audit-flagged FM4 fix (Plan-易漏 client cancel).
+///
+/// The guard is `Send + Sync` so it may be held across `.await` points in
+/// the failover loop without any wrapping.
+pub struct BudgetGuard<'a> {
+    backend: &'a (dyn BudgetBackend + Send + Sync),
+    channel_id: i32,
+    color: TrafficColor,
+    est_tpm: u64,
+    committed: bool,
+}
+
+impl<'a> BudgetGuard<'a> {
+    /// Wrap a freshly-consumed reservation. Call after `try_consume` returned
+    /// `OwnBucket` or `Borrowed` (do NOT call after `Rejected`).
+    pub fn new(
+        backend: &'a (dyn BudgetBackend + Send + Sync),
+        channel_id: i32,
+        color: TrafficColor,
+        est_tpm: u64,
+    ) -> Self {
+        Self {
+            backend,
+            channel_id,
+            color,
+            est_tpm,
+            committed: false,
+        }
+    }
+
+    /// Commit the reservation with the actual TPM consumed. If the actual was
+    /// smaller than the estimate, refund the difference. Marks the guard as
+    /// committed so `Drop` is a no-op.
+    ///
+    /// Takes `self` by value — the guard is consumed and cannot be reused.
+    pub fn commit(mut self, actual_tpm: u64) {
+        let to_refund = self.est_tpm.saturating_sub(actual_tpm);
+        if to_refund > 0 {
+            self.backend
+                .refund(self.channel_id, self.color, to_refund);
+        }
+        self.committed = true;
+        // self drops here — Drop sees `committed = true` and skips full refund.
+    }
+}
+
+impl<'a> Drop for BudgetGuard<'a> {
+    fn drop(&mut self) {
+        if !self.committed && self.est_tpm > 0 {
+            // Cancel / panic / early-return path: nothing was committed by the
+            // caller, so refund the full estimate. Otherwise `est_tpm` would
+            // be permanently held by a request the upstream never finished.
+            self.backend
+                .refund(self.channel_id, self.color, self.est_tpm);
+        }
+    }
+}
+
 /// Single-instance in-memory bucket. Refills linearly toward the cap once per
 /// minute (RPM is a per-minute window — the simplest correct semantic).
 ///
@@ -159,6 +235,12 @@ impl InMemoryBudget {
 
     /// Configure (or update) the per-channel cap + reservation policy.
     /// Call this when `channel_providers` is loaded / refreshed.
+    ///
+    /// Invalid reservation (sum != 1.0 ± 0.01) → fallback to
+    /// [`ChannelReservation::default`] (0.4/0.4/0.2) with a warning. Prior
+    /// behavior was a debug-only `debug_assert!`, which silently passed in
+    /// release mode and let bad DB rows produce skewed buckets in prod
+    /// (audit FM8 — release-mode silent acceptance).
     pub fn configure(
         &self,
         channel_id: i32,
@@ -166,7 +248,18 @@ impl InMemoryBudget {
         tpm_cap: u64,
         reservation: ChannelReservation,
     ) {
-        debug_assert!(reservation.is_valid(), "invalid reservation: {:?}", reservation);
+        let reservation = if reservation.is_valid() {
+            reservation
+        } else {
+            tracing::warn!(
+                channel_id,
+                green = reservation.green,
+                yellow = reservation.yellow,
+                red = reservation.red,
+                "rate_budget: invalid reservation (sum != 1.0), falling back to default 0.4/0.4/0.2"
+            );
+            ChannelReservation::default()
+        };
         let buckets = ChannelBuckets::new(rpm_cap, tpm_cap, reservation);
         self.channels.insert(channel_id, Mutex::new(buckets));
     }

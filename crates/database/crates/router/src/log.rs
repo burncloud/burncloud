@@ -62,6 +62,13 @@ pub struct RouterLog {
     pub reasoning_cost: i64,
     #[sqlx(default)]
     pub embedding_cost: i64,
+    // L6 Observability fields (migration 0011): which router layer made the
+    // decision and what color was attached. Used by Grafana for affinity_hit /
+    // shaper_reject / scorer_picked / failover_N reporting.
+    #[sqlx(default)]
+    pub layer_decision: Option<String>,
+    #[sqlx(default)]
+    pub traffic_color: Option<String>,
     pub created_at: Option<String>,
 }
 
@@ -104,10 +111,11 @@ impl RouterLogModel {
              model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens,
              cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens,
              input_cost, output_cost, cache_read_cost, cache_write_cost,
-             audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost)
+             audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost,
+             layer_decision, traffic_color)
             VALUES ({})
             "#,
-            phs(is_postgres, 28)
+            phs(is_postgres, 30)
         );
 
         sqlx::query(&sql)
@@ -139,6 +147,8 @@ impl RouterLogModel {
             .bind(log.video_cost)
             .bind(log.reasoning_cost)
             .bind(log.embedding_cost)
+            .bind(&log.layer_decision)
+            .bind(&log.traffic_color)
             .execute(conn.pool())
             .await?;
 

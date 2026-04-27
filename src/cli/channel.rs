@@ -142,6 +142,43 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
     // Get pricing region (optional)
     let pricing_region = args.get_one::<String>("pricing-region").cloned();
 
+    // L2 Shaper config (optional; omit for fail-open).
+    let rpm_cap = match args.get_one::<String>("rpm-cap") {
+        Some(s) => Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid rpm-cap value '{}': {}", s, e))?,
+        ),
+        None => None,
+    };
+    let tpm_cap = match args.get_one::<String>("tpm-cap") {
+        Some(s) => Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid tpm-cap value '{}': {}", s, e))?,
+        ),
+        None => None,
+    };
+    let reservation_green = match args.get_one::<String>("reservation-green") {
+        Some(s) => Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid reservation-green value '{}': {}", s, e))?,
+        ),
+        None => None,
+    };
+    let reservation_yellow = match args.get_one::<String>("reservation-yellow") {
+        Some(s) => Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid reservation-yellow value '{}': {}", s, e))?,
+        ),
+        None => None,
+    };
+    let reservation_red = match args.get_one::<String>("reservation-red") {
+        Some(s) => Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid reservation-red value '{}': {}", s, e))?,
+        ),
+        None => None,
+    };
+
     // Build Channel struct
     let mut channel = Channel {
         id: 0,
@@ -168,6 +205,11 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         remark: None,
         api_version: Some("default".to_string()),
         pricing_region,
+        rpm_cap,
+        tpm_cap,
+        reservation_green,
+        reservation_yellow,
+        reservation_red,
     };
 
     // Save to database
@@ -325,6 +367,38 @@ pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> 
 
     if let Some(pricing_region) = args.get_one::<String>("pricing-region") {
         channel.pricing_region = Some(pricing_region.clone());
+    }
+
+    // L2 Shaper config (optional; only update if provided).
+    if let Some(s) = args.get_one::<String>("rpm-cap") {
+        channel.rpm_cap = Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid rpm-cap value '{}': {}", s, e))?,
+        );
+    }
+    if let Some(s) = args.get_one::<String>("tpm-cap") {
+        channel.tpm_cap = Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid tpm-cap value '{}': {}", s, e))?,
+        );
+    }
+    if let Some(s) = args.get_one::<String>("reservation-green") {
+        channel.reservation_green = Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid reservation-green value '{}': {}", s, e))?,
+        );
+    }
+    if let Some(s) = args.get_one::<String>("reservation-yellow") {
+        channel.reservation_yellow = Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid reservation-yellow value '{}': {}", s, e))?,
+        );
+    }
+    if let Some(s) = args.get_one::<String>("reservation-red") {
+        channel.reservation_red = Some(
+            s.parse()
+                .map_err(|e| anyhow!("Invalid reservation-red value '{}': {}", s, e))?,
+        );
     }
 
     // Save updates

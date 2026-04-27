@@ -36,6 +36,17 @@ pub struct ChannelDto {
     pub param_override: Option<String>,
     pub header_override: Option<String>,
     pub api_version: Option<String>,
+    // L2 Shaper config (issue #151). Omit to leave channel fail-open.
+    #[serde(default)]
+    pub rpm_cap: Option<i32>,
+    #[serde(default)]
+    pub tpm_cap: Option<i64>,
+    #[serde(default)]
+    pub reservation_green: Option<f64>,
+    #[serde(default)]
+    pub reservation_yellow: Option<f64>,
+    #[serde(default)]
+    pub reservation_red: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -82,6 +93,11 @@ impl ChannelDto {
             remark: None,
             api_version: self.api_version,
             pricing_region: None,
+            rpm_cap: self.rpm_cap,
+            tpm_cap: self.tpm_cap,
+            reservation_green: self.reservation_green,
+            reservation_yellow: self.reservation_yellow,
+            reservation_red: self.reservation_red,
         }
     }
 }

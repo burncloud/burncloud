@@ -86,6 +86,8 @@ fn make_log(request_id: &str) -> RouterLog {
         video_cost: 500_000,
         reasoning_cost: 1_500_000,
         embedding_cost: 3_000_000,
+        layer_decision: None,
+        traffic_color: None,
         created_at: None,
     }
 }
@@ -230,6 +232,8 @@ async fn test_zero_values_read_as_zero_not_null() {
         video_cost: 0,
         reasoning_cost: 0,
         embedding_cost: 250_000, // only embedding_cost is non-zero
+        layer_decision: None,
+        traffic_color: None,
         created_at: None,
     };
 

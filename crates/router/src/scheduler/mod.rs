@@ -388,6 +388,11 @@ pub mod tests {
                 remark: None,
                 api_version: None,
                 pricing_region: None,
+                rpm_cap: None,
+                tpm_cap: None,
+                reservation_green: None,
+                reservation_yellow: None,
+                reservation_red: None,
             },
             weight,
         )
