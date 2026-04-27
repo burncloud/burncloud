@@ -144,7 +144,7 @@ pub fn lookup_voice_price(voices_json: &Option<String>, voice_id: &str) -> Optio
 
 /// Compute a [`CostBreakdown`] from usage and a [`Price`] entry.
 ///
-/// Priority order (matches existing billing.rs logic):
+/// Priority order:
 ///   embedding > cache/audio/image/video > priority > batch > standard
 fn compute_breakdown(
     usage: &UnifiedUsage,
@@ -252,10 +252,10 @@ fn compute_breakdown(
     ));
     let audio_output_price = price.audio_output_price.unwrap_or(effective_output_price);
 
-    // Voice pricing has three paths:
-    //   1. voice_id found in voices_pricing → audio_cost = input only; voice_cost = output at per-voice rate
-    //   2. voice_id provided but not found  → audio_cost = input + output at audio_*_price; voice_cost = 0
-    //   3. voice_id is None                 → audio_cost = input + output at audio_*_price; voice_cost = 0
+    // Voice pricing: voice_price_found = voice_id matched in voices_pricing AND audio_output_tokens > 0.
+    //   voice_price_found = Some(_) → audio_cost = input only; voice_cost = output at per-voice rate
+    //   voice_price_found = None    → audio_cost = input + output at audio_*_price; voice_cost = 0
+    //   (None covers: voice_id absent, voice_id not in pricing, or no audio_output_tokens)
     let voice_price_found = voice_id
         .and_then(|vid| lookup_voice_price(&price.voices_pricing, vid))
         .filter(|_| usage.audio_output_tokens > 0);
@@ -267,9 +267,10 @@ fn compute_breakdown(
         "audio_input",
     )
     .saturating_add(if voice_price_found.is_some() {
-        0 // Path 1: audio_output_tokens billed via voice_cost below
+        // voice_price_found: audio_output_tokens billed via voice_cost below
+        0
     } else {
-        // Paths 2 & 3: no per-voice price — audio_cost covers both input and output
+        // voice_price_found is None: audio_cost covers both input and output
         nano(
             usage.audio_output_tokens,
             audio_output_price,
@@ -280,11 +281,11 @@ fn compute_breakdown(
 
     // --- Voice-specific cost (TTS) ---
     let voice_cost = if let Some(voice_price) = voice_price_found {
-        // Path 1: voice_id found → bill audio_output_tokens at per-voice rate
+        // voice_price_found: bill audio_output_tokens at per-voice rate
         nano(usage.audio_output_tokens, voice_price, request_id, "voice")
     } else {
-        // Paths 2 & 3: voice_id not found or None → audio_cost already includes
-        // audio_output_tokens at audio_output_price; voice_cost = 0
+        // voice_price_found is None: audio_cost already includes audio_output_tokens
+        // at audio_output_price (or audio_output_tokens is 0); voice_cost = 0
         0
     };
 

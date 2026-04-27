@@ -35,7 +35,6 @@ src/
 ├── state.rs            — AppState 定义
 ├── config.rs           — RouterConfig, Upstream, Group, AuthType
 ├── model_router.rs     — 模型路由
-├── billing.rs          — 高级定价计算
 ├── token_counter.rs    — 流式 Token 计数
 ├── price_sync.rs       — 多源价格同步
 ├── circuit_breaker.rs  — 熔断器
