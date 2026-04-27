@@ -252,10 +252,13 @@ fn compute_breakdown(
     ));
     let audio_output_price = price.audio_output_price.unwrap_or(effective_output_price);
 
-    // Voice pricing: voice_price_found = voice_id matched in voices_pricing AND audio_output_tokens > 0.
-    //   voice_price_found = Some(_) → audio_cost = input only; voice_cost = output at per-voice rate
-    //   voice_price_found = None    → audio_cost = input + output at audio_*_price; voice_cost = 0
-    //   (None covers: voice_id absent, voice_id not in pricing, or no audio_output_tokens)
+    // Voice pricing — three paths (see calculate_with_voice doc comment):
+    //   Path 1: voice_id found in voices_pricing AND audio_output_tokens > 0
+    //           → audio_cost = input only; voice_cost = output at per-voice rate
+    //   Path 2: voice_id provided but not found in voices_pricing
+    //           → audio_cost = input + output at audio_*_price; voice_cost = 0
+    //   Path 3: voice_id is None
+    //           → same as path 2: audio_cost = input + output; voice_cost = 0
     let voice_price_found = voice_id
         .and_then(|vid| lookup_voice_price(&price.voices_pricing, vid))
         .filter(|_| usage.audio_output_tokens > 0);
@@ -267,10 +270,10 @@ fn compute_breakdown(
         "audio_input",
     )
     .saturating_add(if voice_price_found.is_some() {
-        // voice_price_found: audio_output_tokens billed via voice_cost below
+        // Path 1: output tokens billed via voice_cost below
         0
     } else {
-        // voice_price_found is None: audio_cost covers both input and output
+        // Path 2/3: audio_cost covers both input and output tokens
         nano(
             usage.audio_output_tokens,
             audio_output_price,
@@ -281,11 +284,10 @@ fn compute_breakdown(
 
     // --- Voice-specific cost (TTS) ---
     let voice_cost = if let Some(voice_price) = voice_price_found {
-        // voice_price_found: bill audio_output_tokens at per-voice rate
+        // Path 1: bill audio_output_tokens at per-voice rate
         nano(usage.audio_output_tokens, voice_price, request_id, "voice")
     } else {
-        // voice_price_found is None: audio_cost already includes audio_output_tokens
-        // at audio_output_price (or audio_output_tokens is 0); voice_cost = 0
+        // Path 2/3: audio_cost already includes output tokens; voice_cost = 0
         0
     };
 
