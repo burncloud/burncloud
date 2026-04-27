@@ -164,6 +164,12 @@ fn compute_breakdown(
     };
 
     // --- Standard input / output ---
+    if is_priority && is_batch {
+        tracing::warn!(
+            request_id = %request_id,
+            "both is_priority and is_batch set — using priority rate"
+        );
+    }
     let (effective_input_price, effective_output_price) = if is_priority {
         (
             price.priority_input_price.unwrap_or(saturating_mul_percent(
@@ -312,7 +318,16 @@ fn compute_breakdown(
 /// Compute `tokens * price_per_million / 1_000_000` in nanodollars.
 /// Uses i128 intermediates to prevent overflow; caps at i64::MAX with a warn.
 fn nano(tokens: i64, price_per_million: i64, request_id: &str, field: &str) -> i64 {
-    if tokens <= 0 || price_per_million <= 0 {
+    if tokens < 0 {
+        tracing::warn!(
+            request_id = %request_id,
+            field = %field,
+            tokens = tokens,
+            "negative token count in cost calculation — upstream usage parse anomaly, treating as 0"
+        );
+        return 0;
+    }
+    if tokens == 0 || price_per_million <= 0 {
         return 0;
     }
     let result = tokens as i128 * price_per_million as i128 / 1_000_000;

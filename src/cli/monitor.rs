@@ -4,7 +4,7 @@
 //! - status: Show system status and metrics
 
 use anyhow::Result;
-use burncloud_database::{sqlx, Database};
+use burncloud_database::{ph, sqlx, Database};
 use burncloud_database_channel::ChannelProviderModel;
 use clap::ArgMatches;
 use serde::Serialize;
@@ -91,25 +91,23 @@ async fn get_today_stats(db: &Database) -> Result<(i64, i64, i64)> {
     // Get start of today (midnight UTC)
     let today_start = now - (now % 86400);
 
-    let sql = if is_postgres {
-        r#"
-        SELECT
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens + completion_tokens), 0) as tokens,
-            COALESCE(SUM(cost), 0) as revenue
-        FROM router_logs
-        WHERE created_at IS NOT NULL AND CAST(created_at AS BIGINT) >= $1
-        "#
+    let time_filter = if is_postgres {
+        format!("EXTRACT(EPOCH FROM created_at)::BIGINT >= {}", ph(is_postgres, 1))
     } else {
+        "strftime('%s', created_at) >= CAST(? AS TEXT)".to_string()
+    };
+
+    let sql = format!(
         r#"
         SELECT
             COUNT(*) as requests,
             COALESCE(SUM(prompt_tokens + completion_tokens), 0) as tokens,
             COALESCE(SUM(cost), 0) as revenue
         FROM router_logs
-        WHERE created_at IS NOT NULL AND CAST(created_at AS INTEGER) >= ?
-        "#
-    };
+        WHERE created_at IS NOT NULL AND {}
+        "#,
+        time_filter
+    );
 
     let row: (Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(sql)
         .bind(today_start.to_string())
