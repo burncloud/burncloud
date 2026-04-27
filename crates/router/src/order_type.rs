@@ -58,6 +58,43 @@ impl Default for OrderType {
 }
 
 impl OrderType {
+    /// Build an `OrderType` from raw `router_tokens` columns.
+    ///
+    /// Centralizes the `(order_type VARCHAR(16), price_cap_nanodollars BIGINT)`
+    /// → `OrderType` mapping so `proxy_logic`, future admin UI, and the cli
+    /// configuration tool all share one definition (P4 — DRY).
+    ///
+    /// # Variant rules
+    ///
+    /// | DB row                                | Result                                    |
+    /// |---------------------------------------|-------------------------------------------|
+    /// | `("budget", Some(cap))`               | `Budget { max_price_nanodollars: cap }`   |
+    /// | `("budget", None)`                    | `OrderType::default()` (Value)            |
+    /// | `("enterprise", _)`                   | `Enterprise { redundancy: 1 }` (MVP — no hedging) |
+    /// | `("value", _)` / unknown / `(None, _)`| `OrderType::default()` (Value)            |
+    ///
+    /// **`"budget"` without a `price_cap` is intentionally NOT promoted to
+    /// `Budget { max_price_nanodollars: i64::MAX }`** — that would be a
+    /// no-op filter dressed as a hard cap, and the resulting log line would
+    /// claim Budget enforcement that never happens. Falling back to the
+    /// honest `Value` default keeps `OrderType::as_label()` truthful for
+    /// observability (`router_logs.layer_decision`).
+    ///
+    /// **Enterprise `redundancy=1`** is the MVP placeholder — hedging is
+    /// deferred to a dedicated FU. Until then `Enterprise` behaves identically
+    /// to `Value` at filter / dispatch time but stays distinguishable in logs.
+    pub fn from_db_row(order_type: Option<&str>, price_cap: Option<i64>) -> Self {
+        match (order_type, price_cap) {
+            (Some("budget"), Some(cap)) => OrderType::Budget {
+                max_price_nanodollars: cap,
+            },
+            (Some("enterprise"), _) => OrderType::Enterprise { redundancy: 1 },
+            // ("budget", None) — contradictory config, fall back to honest default.
+            // ("value", _) | (Some(_unknown), _) | (None, _) — explicit Value default.
+            _ => OrderType::default(),
+        }
+    }
+
     /// Static label for logs / `router_logs.layer_decision` fields.
     pub fn as_label(&self) -> &'static str {
         match self {

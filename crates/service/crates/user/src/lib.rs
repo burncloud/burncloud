@@ -120,8 +120,16 @@ impl UserService {
     /// Resolve a user's DiffServ traffic color for the L1 Classifier in the
     /// router data plane.
     ///
-    /// Server layer calls this and injects the result into `SchedulingRequest`
-    /// — the router crate stays color-agnostic (audit decision E-D3).
+    /// Router's `proxy_logic` hot path calls this and injects the result into
+    /// `SchedulingRequest` — the router crate stays color-agnostic (audit
+    /// decision E-D3).
+    ///
+    /// **Associated function (no `&self`)** — follows CLAUDE.md "Service 模式 B
+    /// (stateless, pure operation wrapper)" so the hot path can invoke it as
+    /// `UserService::resolve_traffic_class(&db, &user_id).await` without
+    /// constructing a `UserService`. This avoids `UserService::new()` reading
+    /// `JWT_SECRET` (irrelevant to color resolution) and panicking on every
+    /// request in release builds when that env var is missing.
     ///
     /// **MVP behavior** (audit decision D10): every user maps to `Yellow`
     /// (Assured tier). Trader Class differentiation is deferred until customer
@@ -131,7 +139,6 @@ impl UserService {
     /// `_db` and `_user_id` are placeholders for the future implementation
     /// that will read user role / billing tier / customer agreement.
     pub async fn resolve_traffic_class(
-        &self,
         _db: &Database,
         _user_id: &str,
     ) -> Result<TrafficColor> {
