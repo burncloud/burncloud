@@ -22,7 +22,6 @@ burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
 burncloud-database-billing = { workspace = true }
 burncloud-database-channel = { workspace = true }
-burncloud-database-model = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-service-billing = { workspace = true }
 burncloud-service-user = { workspace = true }
@@ -34,7 +33,6 @@ chrono = { workspace = true }
 axum = { workspace = true, features = ["macros"] }
 tower-http = { workspace = true, features = ["trace", "cors"] }
 tracing.workspace = true
-rand.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 regex.workspace = true

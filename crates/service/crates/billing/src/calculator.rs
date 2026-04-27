@@ -92,7 +92,7 @@ impl CostCalculator {
     /// Three paths:
     ///   1. voice_id found in voices_pricing AND audio_output_tokens > 0
     ///      → audio_cost covers audio_input_tokens;
-    ///        voice_cost covers audio_output_tokens at the per-voice rate.
+    ///      voice_cost covers audio_output_tokens at the per-voice rate.
     ///   2. voice_id provided but not found (or no audio_output_tokens)
     ///      → audio_cost covers both input and output at audio_*_price; voice_cost = 0.
     ///   3. voice_id is None → same as path 2.
@@ -847,5 +847,72 @@ mod tests {
         let result_intl = calc.calculate_with_voice("gpt-4o", &usage, "req-2", opts).await.unwrap();
         assert_eq!(result_intl.breakdown.input_cost, 7_000);
         assert_eq!(result_intl.breakdown.output_cost, 21_000);
+    }
+
+    // --- voice_id integration via CostCalculator (end-to-end) ---
+
+    #[tokio::test]
+    async fn test_calculate_with_voice_found_no_double_billing() {
+        // End-to-end: voice_id found → audio_cost = input only, voice_cost = output at voice rate
+        let cache = PriceCache::empty();
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some(r#"{"alloy":5000000}"#.to_string());
+        {
+            let mut guard = cache.inner.write().await;
+            guard.insert(("tts-1".to_string(), String::new()), price);
+        }
+        let calc = CostCalculator::new(cache);
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let opts = RequestOptions {
+            is_batch: false,
+            is_priority: false,
+            region: None,
+            voice_id: Some("alloy"),
+        };
+        let result = calc.calculate_with_voice("tts-1", &usage, "req-e2e-voice", opts).await.unwrap();
+
+        assert_eq!(result.breakdown.audio_cost, 2_000_000, "audio_cost should be input only");
+        assert_eq!(result.breakdown.voice_cost, 5_000_000, "voice_cost should cover output at per-voice rate");
+        // 2M + 5M = 7M, NOT 2M + 3M + 5M = 10M (double-counting)
+        assert_eq!(result.usd_amount_nano, 7_000_000, "total must not double-count audio_output_tokens");
+    }
+
+    #[tokio::test]
+    async fn test_calculate_with_voice_not_found_fallback() {
+        // End-to-end: voice_id not found → audio_cost covers input + output, voice_cost = 0
+        let cache = PriceCache::empty();
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some(r#"{"alloy":5000000}"#.to_string());
+        {
+            let mut guard = cache.inner.write().await;
+            guard.insert(("tts-1".to_string(), String::new()), price);
+        }
+        let calc = CostCalculator::new(cache);
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let opts = RequestOptions {
+            is_batch: false,
+            is_priority: false,
+            region: None,
+            voice_id: Some("unknown_voice"),
+        };
+        let result = calc.calculate_with_voice("tts-1", &usage, "req-e2e-fallback", opts).await.unwrap();
+
+        assert_eq!(result.breakdown.audio_cost, 5_000_000, "audio_cost should cover input + output");
+        assert_eq!(result.breakdown.voice_cost, 0, "voice_cost should be 0 when voice_id not found");
+        assert_eq!(result.usd_amount_nano, 5_000_000, "total = audio_cost only, no double-counting");
     }
 }
