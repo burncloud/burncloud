@@ -5,7 +5,6 @@ mod aimd_limiter;
 mod adaptor;
 pub mod affinity;
 mod balancer;
-pub mod billing;
 mod channel_state;
 mod circuit_breaker;
 mod config;
