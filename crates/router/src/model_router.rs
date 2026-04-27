@@ -27,6 +27,10 @@ pub enum RoutingDecision {
 
 impl RoutingDecision {
     /// Static label for non-dynamic variants (no heap allocation).
+    ///
+    /// **Note:** For `Failover { attempt }` this returns the truncated `"failover"`
+    /// without the attempt number. Use [`to_label()`](Self::to_label) for the
+    /// full label (e.g. `"failover_2"`) when writing to `router_logs.layer_decision`.
     pub fn as_label(&self) -> &'static str {
         match self {
             Self::AffinityHit => "affinity_hit",

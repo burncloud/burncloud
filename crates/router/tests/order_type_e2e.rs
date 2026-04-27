@@ -18,7 +18,7 @@ mod common;
 
 use burncloud_common::types::Channel;
 use burncloud_common::TrafficColor;
-use burncloud_database_router::RouterDatabase;
+use burncloud_database_router::{RouterDatabase, RouterLog};
 use burncloud_router::affinity::pick_hrw;
 use burncloud_router::order_type::OrderType;
 use burncloud_router::SchedulingRequest;
@@ -224,16 +224,18 @@ async fn t5_user_id_drives_affinity_stickiness() {
     }
 }
 
-/// T5b — `RoutingDecision` produced by `route_with_scheduler` yields a
-/// non-NULL `layer_decision` in `RouterLog`. Validates the L6 Observability
-/// contract: every successful scheduler routing must record which layer made
-/// the decision. The `RoutingDecision` enum (AffinityHit / ScorerPicked /
-/// Failover{attempt}) always produces a non-empty `to_label()`.
+/// T5b — Database round-trip for `layer_decision` and `traffic_color`:
+/// INSERT a `RouterLog` with `layer_decision='affinity_hit'` and
+/// `traffic_color='Y'`, then SELECT it back and assert both columns
+/// survive. Also validates that `RoutingDecision` enum labels and
+/// `TrafficColor` chars are non-empty (the values written to the DB
+/// must come from valid enum outputs).
 #[tokio::test]
-async fn t5b_routing_decision_yields_non_null_layer_decision() {
+async fn t5b_layer_decision_and_traffic_color_db_roundtrip() -> anyhow::Result<()> {
     use burncloud_router::model_router::RoutingDecision;
 
-    // Verify all RoutingDecision variants produce non-empty labels.
+    // Part A: Enum contract — all RoutingDecision variants produce non-empty
+    // labels and TrafficColor chars are non-empty.
     let decisions = [
         RoutingDecision::AffinityHit,
         RoutingDecision::ScorerPicked,
@@ -248,8 +250,6 @@ async fn t5b_routing_decision_yields_non_null_layer_decision() {
             d
         );
     }
-
-    // Verify specific labels match the L6 Observability contract.
     assert_eq!(RoutingDecision::AffinityHit.to_label(), "affinity_hit");
     assert_eq!(RoutingDecision::ScorerPicked.to_label(), "scorer_picked");
     assert_eq!(
@@ -260,4 +260,272 @@ async fn t5b_routing_decision_yields_non_null_layer_decision() {
         RoutingDecision::Failover { attempt: 3 }.to_label(),
         "failover_3"
     );
+    assert_ne!(
+        TrafficColor::Yellow.as_char(),
+        '\0',
+        "TrafficColor::Yellow must produce a non-empty char for traffic_color column"
+    );
+    assert_eq!(TrafficColor::Yellow.as_char(), 'Y');
+
+    // Part B: Database round-trip — INSERT a RouterLog with
+    // layer_decision='affinity_hit' and traffic_color='Y', then SELECT it
+    // back and assert both columns survive the round-trip.
+    let (db, pool, _url) = setup_db().await?;
+    common::ensure_l6_observability_columns(&pool).await?;
+
+    let log = RouterLog {
+        id: 0,
+        request_id: "req-t5b".to_string(),
+        user_id: Some("u-t5b".to_string()),
+        path: "/v1/chat/completions".to_string(),
+        upstream_id: Some("ch-1".to_string()),
+        status_code: 200,
+        latency_ms: 42,
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        cost: 1000,
+        model: Some("gpt-4".to_string()),
+        cache_read_tokens: 0,
+        reasoning_tokens: 0,
+        pricing_region: None,
+        video_tokens: 0,
+        cache_write_tokens: 0,
+        audio_input_tokens: 0,
+        audio_output_tokens: 0,
+        image_tokens: 0,
+        embedding_tokens: 0,
+        input_cost: 0,
+        output_cost: 0,
+        cache_read_cost: 0,
+        cache_write_cost: 0,
+        audio_cost: 0,
+        image_cost: 0,
+        video_cost: 0,
+        reasoning_cost: 0,
+        embedding_cost: 0,
+        layer_decision: Some("affinity_hit".to_string()),
+        traffic_color: Some("Y".to_string()),
+        created_at: None,
+    };
+    RouterDatabase::insert_log(&db, &log).await?;
+
+    let rows = RouterDatabase::get_logs(&db, 1, 0).await?;
+    assert!(!rows.is_empty(), "should get at least 1 row back");
+    let row = &rows[0];
+    assert_eq!(
+        row.layer_decision.as_deref(),
+        Some("affinity_hit"),
+        "layer_decision must round-trip as 'affinity_hit'"
+    );
+    assert!(
+        row.traffic_color.is_some(),
+        "traffic_color must be present (not NULL) after round-trip"
+    );
+    assert_eq!(
+        row.traffic_color.as_deref(),
+        Some("Y"),
+        "traffic_color must round-trip as 'Y'"
+    );
+
+    Ok(())
+}
+
+/// T5c — E2E affinity observability: call `route_with_scheduler` twice with the
+/// same `user_id` + `model`, verify that the second call returns
+/// `RoutingDecision::AffinityHit`, then construct a `RouterLog` using the
+/// decision's `to_label()` and `SchedulingRequest.color.as_char()` as
+/// `layer_decision` / `traffic_color`, INSERT it, and SELECT it back —
+/// proving the production code path produces the correct observability values.
+#[tokio::test]
+async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
+    use burncloud_router::affinity::AffinityCache;
+    use burncloud_router::channel_state::ChannelStateTracker;
+    use burncloud_router::exchange_rate::ExchangeRateService;
+    use burncloud_router::model_router::{ModelRouter, RouteInputs, RoutingDecision};
+    use burncloud_router::SchedulingRequest;
+    use burncloud_database::sqlx;
+    use burncloud_service_billing::PriceCache;
+
+    let (db, pool, _url) = setup_db().await?;
+    common::ensure_l6_observability_columns(&pool).await?;
+
+    // Seed channel_providers + channel_abilities so route_with_scheduler
+    // can find candidates for the model.
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS channel_providers \
+         (id INTEGER PRIMARY KEY, type INTEGER DEFAULT 0, key TEXT NOT NULL, \
+          status INTEGER DEFAULT 1, name TEXT, weight INTEGER DEFAULT 0, \
+          created_time INTEGER, test_time INTEGER, response_time INTEGER, \
+          base_url TEXT DEFAULT '', models TEXT, `group` TEXT DEFAULT 'default', \
+          used_quota INTEGER DEFAULT 0, model_mapping TEXT, priority INTEGER DEFAULT 0, \
+          auto_ban INTEGER DEFAULT 1, other_info TEXT, tag TEXT, setting TEXT, \
+          param_override TEXT, header_override TEXT, remark TEXT, \
+          api_version VARCHAR(32) DEFAULT 'default', \
+          pricing_region VARCHAR(32) DEFAULT 'international')",
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS channel_abilities \
+         (`group` VARCHAR(64) NOT NULL, model VARCHAR(255) NOT NULL, \
+          channel_id INTEGER NOT NULL, enabled INTEGER DEFAULT 1, \
+          priority INTEGER DEFAULT 0, weight INTEGER DEFAULT 0, \
+          PRIMARY KEY (`group`, model, channel_id))",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Insert two channels for the test model.
+    for ch_id in [1, 2] {
+        sqlx::query(
+            "INSERT INTO channel_providers \
+             (id, type, key, status, name, weight, base_url, models, `group`, \
+              used_quota, priority, auto_ban, pricing_region) \
+             VALUES (?, 1, 'k', 1, ?, 1, ?, ?, 'default', 0, 0, 0, 'international')",
+        )
+        .bind(ch_id)
+        .bind(format!("ch-{ch_id}"))
+        .bind(format!("http://127.0.0.1:1{ch_id}"))
+        .bind("test-model")
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO channel_abilities \
+             (`group`, model, channel_id, enabled, priority, weight) \
+             VALUES ('default', 'test-model', ?, 1, 0, 1)",
+        )
+        .bind(ch_id)
+        .execute(&pool)
+        .await?;
+    }
+
+    let db_arc = std::sync::Arc::new(db);
+    let model_router = ModelRouter::new(db_arc.clone());
+    let affinity_cache = AffinityCache::default();
+    let state_tracker = ChannelStateTracker::new();
+    let price_cache = PriceCache::empty();
+    let exchange_rate = ExchangeRateService::new(db_arc.clone());
+
+    let sched_req = SchedulingRequest {
+        user_id: Some("u-affinity-e2e".into()),
+        color: TrafficColor::Yellow,
+        order_type: OrderType::default(),
+        session_id: None,
+    };
+
+    // First call: populates the affinity cache via HRW.
+    let inputs1 = RouteInputs {
+        group: "default",
+        model: "test-model",
+        state_tracker: &state_tracker,
+        price_cache: &price_cache,
+        exchange_rate: &exchange_rate,
+        scheduler_kind: None,
+        request: &sched_req,
+        affinity_cache: Some(&affinity_cache),
+    };
+    let (channels1, decision1) = model_router.route_with_scheduler(inputs1).await?;
+    assert!(!channels1.is_empty(), "first call should return candidates");
+    // Both first and second calls produce AffinityHit because HRW/cache
+    // lookup always returns a channel that gets hoisted.
+    assert_eq!(
+        decision1,
+        Some(RoutingDecision::AffinityHit),
+        "first call should produce AffinityHit (HRW pick hoisted)"
+    );
+
+    // Second call: cache hit — same user_id + model, affinity cache now
+    // populated from the first call's insert.
+    let inputs2 = RouteInputs {
+        group: "default",
+        model: "test-model",
+        state_tracker: &state_tracker,
+        price_cache: &price_cache,
+        exchange_rate: &exchange_rate,
+        scheduler_kind: None,
+        request: &sched_req,
+        affinity_cache: Some(&affinity_cache),
+    };
+    let (channels2, decision2) = model_router.route_with_scheduler(inputs2).await?;
+    assert!(!channels2.is_empty(), "second call should return candidates");
+    assert_eq!(
+        decision2,
+        Some(RoutingDecision::AffinityHit),
+        "second call should produce AffinityHit (cache hit hoisted)"
+    );
+
+    // Now construct a RouterLog using the production code path's values:
+    // layer_decision from RoutingDecision::to_label(), traffic_color from
+    // SchedulingRequest.color.as_char().
+    let layer_decision = decision2.map(|d| d.to_label());
+    let traffic_color = Some(sched_req.color.as_char().to_string());
+
+    assert_eq!(
+        layer_decision.as_deref(),
+        Some("affinity_hit"),
+        "layer_decision from e2e routing must be 'affinity_hit'"
+    );
+    assert!(
+        traffic_color.is_some(),
+        "traffic_color from e2e routing must be non-NULL"
+    );
+
+    // INSERT the RouterLog with the e2e-derived values and SELECT it back.
+    let log = RouterLog {
+        id: 0,
+        request_id: "req-t5c".to_string(),
+        user_id: Some("u-affinity-e2e".to_string()),
+        path: "/v1/chat/completions".to_string(),
+        upstream_id: Some(channels2[0].id.to_string()),
+        status_code: 200,
+        latency_ms: 42,
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        cost: 1000,
+        model: Some("test-model".to_string()),
+        cache_read_tokens: 0,
+        reasoning_tokens: 0,
+        pricing_region: None,
+        video_tokens: 0,
+        cache_write_tokens: 0,
+        audio_input_tokens: 0,
+        audio_output_tokens: 0,
+        image_tokens: 0,
+        embedding_tokens: 0,
+        input_cost: 0,
+        output_cost: 0,
+        cache_read_cost: 0,
+        cache_write_cost: 0,
+        audio_cost: 0,
+        image_cost: 0,
+        video_cost: 0,
+        reasoning_cost: 0,
+        embedding_cost: 0,
+        layer_decision,
+        traffic_color,
+        created_at: None,
+    };
+    RouterDatabase::insert_log(&db_arc, &log).await?;
+
+    let rows = RouterDatabase::get_logs(&db_arc, 1, 0).await?;
+    assert!(!rows.is_empty(), "should get at least 1 row back");
+    let row = &rows[0];
+    assert_eq!(
+        row.layer_decision.as_deref(),
+        Some("affinity_hit"),
+        "e2e layer_decision must round-trip as 'affinity_hit'"
+    );
+    assert!(
+        row.traffic_color.is_some(),
+        "e2e traffic_color must be present (not NULL) after round-trip"
+    );
+    assert_eq!(
+        row.traffic_color.as_deref(),
+        Some("Y"),
+        "e2e traffic_color must round-trip as 'Y'"
+    );
+
+    Ok(())
 }
