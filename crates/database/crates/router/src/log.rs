@@ -307,7 +307,7 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
         time_filter
     );
 
-    let row: (Option<i64>, Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(sql)
+    let row: (Option<i64>, Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(&sql)
         .bind(user_id)
         .bind(threshold.to_string())
         .fetch_one(conn.pool())
@@ -498,7 +498,7 @@ pub async fn get_billing_summary(
     if date_cast_end {
         null_query = null_query.bind(end.unwrap_or(""));
     }
-    let pre_migration_requests: i64 = null_query.fetch_one(conn.pool()).await.unwrap_or(0);
+    let pre_migration_requests: i64 = null_query.fetch_one(conn.pool()).await?;
 
     // Main query: GROUP BY model (exclude NULL model rows from model breakdown)
     let main_sql = format!(

@@ -239,7 +239,7 @@ impl PriceSyncService {
 
         for (model_name, model_pricing) in &config.models {
             // Extract model_type from metadata
-            let model_type: Option<String> = model_pricing.metadata.as_ref().and(None);
+            let model_type: Option<String> = model_pricing.metadata.as_ref().and_then(|m| m.provider.clone());
 
             // Convert extended pricing configs to JSON strings
             let voices_pricing_json = model_pricing.voices_pricing.as_ref().and_then(|vp| {

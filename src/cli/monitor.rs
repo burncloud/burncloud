@@ -109,7 +109,7 @@ async fn get_today_stats(db: &Database) -> Result<(i64, i64, i64)> {
         time_filter
     );
 
-    let row: (Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(sql)
+    let row: (Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(&sql)
         .bind(today_start.to_string())
         .fetch_one(conn.pool())
         .await?;

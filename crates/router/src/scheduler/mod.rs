@@ -294,7 +294,7 @@ pub fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Channel, i3
     if candidates.len() <= 1 {
         return candidates;
     }
-    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.1));
     candidates
 }
 

@@ -314,7 +314,7 @@ pub fn calculate_tiered_cost_nano(
 
     // Validate and sort tiers
     let mut sorted_tiers: Vec<&TieredPrice> = filtered_tiers;
-    sorted_tiers.sort_by(|a, b| a.tier_start.cmp(&b.tier_start));
+    sorted_tiers.sort_by_key(|a| a.tier_start);
 
     // Validate tier configuration
     for tier in &sorted_tiers {
@@ -423,7 +423,7 @@ pub fn calculate_tiered_cost_full_nano(
     }
 
     let mut sorted_tiers: Vec<&TieredPrice> = filtered_tiers;
-    sorted_tiers.sort_by(|a, b| a.tier_start.cmp(&b.tier_start));
+    sorted_tiers.sort_by_key(|a| a.tier_start);
 
     let tokens_i64 = completion_tokens as i64;
     let mut output_cost: i128 = 0;
