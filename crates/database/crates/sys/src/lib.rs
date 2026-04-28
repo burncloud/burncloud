@@ -11,7 +11,7 @@ pub mod download;
 
 // Re-export primary types for convenience
 pub use setting::{SettingDatabase, SysSetting};
-pub use installer::{InstallerDB, SysInstallation};
+pub use installer::InstallerDB;
 pub use download::{DownloadDB, SysDownload};
 
 // Re-export shared DatabaseError for consumers

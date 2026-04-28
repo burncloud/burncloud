@@ -9,8 +9,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use burncloud_common::{rate_to_scaled, scaled_to_rate, Currency};
-use burncloud_database::placeholder::adapt_sql;
+use burncloud_common::{scaled_to_rate, Currency};
 use burncloud_database::{sqlx, Database};
 use chrono::{DateTime, Utc};
 
@@ -23,13 +22,10 @@ const STALE_THRESHOLD_HOURS: i64 = 24;
 const API_TIMEOUT_SECS: u64 = 5;
 use dashmap::DashMap;
 
-/// Scale factor for exchange rates (10^9 for 9 decimal precision)
-const RATE_SCALE: i64 = 1_000_000_000;
-
 /// Exchange rate entry with timestamp
 /// Rate is stored as scaled i64 (rate * 10^9) for precision
 #[derive(Debug, Clone)]
-pub struct CachedRate {
+pub(crate) struct CachedRate {
     /// Exchange rate as scaled i64 (actual_rate * 10^9)
     pub rate_nano: i64,
     pub updated_at: DateTime<Utc>,
@@ -42,7 +38,8 @@ impl CachedRate {
     }
 
     /// Create a new CachedRate from f64 rate
-    pub fn from_rate(rate: f64) -> Self {
+    #[cfg(test)]
+    pub(crate) fn from_rate(rate: f64) -> Self {
         Self {
             rate_nano: rate_to_scaled(rate),
             updated_at: Utc::now(),
@@ -103,29 +100,10 @@ impl ExchangeRateService {
         self.rates.get(&(from, to)).map(|r| r.rate())
     }
 
-    /// Get the exchange rate as scaled i64 (rate * 10^9)
-    pub fn get_rate_nano(&self, from: Currency, to: Currency) -> Option<i64> {
-        if from == to {
-            return Some(RATE_SCALE);
-        }
-
-        self.rates.get(&(from, to)).map(|r| r.rate_nano)
-    }
-
     /// Set an exchange rate in the cache (f64 input)
-    pub fn set_rate(&self, from: Currency, to: Currency, rate: f64) {
+    #[cfg(test)]
+    pub(crate) fn set_rate(&self, from: Currency, to: Currency, rate: f64) {
         self.rates.insert((from, to), CachedRate::from_rate(rate));
-    }
-
-    /// Set an exchange rate in the cache (i64 scaled input)
-    pub fn set_rate_nano(&self, from: Currency, to: Currency, rate_nano: i64) {
-        self.rates.insert(
-            (from, to),
-            CachedRate {
-                rate_nano,
-                updated_at: Utc::now(),
-            },
-        );
     }
 
     /// Load exchange rates from the database into cache
@@ -162,64 +140,6 @@ impl ExchangeRateService {
         Ok(count)
     }
 
-    /// Save an exchange rate to the database (f64 input)
-    pub async fn save_rate_to_db(
-        &self,
-        from: Currency,
-        to: Currency,
-        rate: f64,
-    ) -> anyhow::Result<()> {
-        let rate_nano = rate_to_scaled(rate);
-        self.save_rate_to_db_nano(from, to, rate_nano).await
-    }
-
-    /// Save an exchange rate to the database (i64 scaled input)
-    pub async fn save_rate_to_db_nano(
-        &self,
-        from: Currency,
-        to: Currency,
-        rate_nano: i64,
-    ) -> anyhow::Result<()> {
-        let conn = self.db.get_connection()?;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-
-        // Single template adapted per dialect.
-        // EXCLUDED keyword is case-insensitive in both SQLite and PostgreSQL.
-        let is_postgres = self.db.kind() == "postgres";
-        let sql = adapt_sql(
-            is_postgres,
-            r#"
-                INSERT INTO billing_exchange_rates (from_currency, to_currency, rate, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(from_currency, to_currency) DO UPDATE SET
-                    rate = EXCLUDED.rate,
-                    updated_at = EXCLUDED.updated_at
-            "#,
-        );
-
-        sqlx::query(&sql)
-            .bind(from.code())
-            .bind(to.code())
-            .bind(rate_nano) // Store as BIGINT (scaled i64)
-            .bind(now)
-            .execute(conn.pool())
-            .await?;
-
-        // Update cache
-        self.set_rate_nano(from, to, rate_nano);
-
-        tracing::info!(
-            "Saved exchange rate {} -> {}: {}",
-            from,
-            to,
-            scaled_to_rate(rate_nano)
-        );
-        Ok(())
-    }
-
     /// Get all cached exchange rates
     pub fn list_rates(&self) -> Vec<(Currency, Currency, f64, DateTime<Utc>)> {
         self.rates
@@ -237,7 +157,8 @@ impl ExchangeRateService {
     }
 
     /// Get the last update time for a specific rate
-    pub fn get_last_updated(&self, from: Currency, to: Currency) -> Option<DateTime<Utc>> {
+    #[cfg(test)]
+    pub(crate) fn get_last_updated(&self, from: Currency, to: Currency) -> Option<DateTime<Utc>> {
         self.rates.get(&(from, to)).map(|r| r.updated_at)
     }
 

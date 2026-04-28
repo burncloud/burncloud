@@ -18,9 +18,7 @@ members = [
     "crates/client/crates/client-connect",
     "crates/client/crates/client-playground",
     "crates/client/crates/client-register",
-    "crates/code",
     "crates/common",
-    "crates/core",
     "crates/database",
     "crates/database/crates/billing",
     "crates/database/crates/channel",
@@ -39,7 +37,6 @@ members = [
     "crates/service/crates/monitor",
     "crates/service/crates/setting",
     "crates/service/crates/inference",
-    "crates/service/crates/redis",
     "crates/service/crates/user",
     "crates/service/crates/upstream",
     "crates/service/crates/token",
@@ -137,7 +134,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tracing-log = "0.2"
-redis = { version = "0.27", features = ["tokio-comp"] }
 
 # Internal crates
 burncloud-auto-update = { path = "crates/auto-update" }
@@ -157,9 +153,7 @@ burncloud-client-log = { path = "crates/client/crates/client-log" }
 burncloud-client-connect = { path = "crates/client/crates/client-connect" }
 burncloud-client-playground = { path = "crates/client/crates/client-playground" }
 burncloud-client-register = { path = "crates/client/crates/client-register" }
-burncloud-code = { path = "crates/code" }
 burncloud-common = { path = "crates/common" }
-burncloud-core = { path = "crates/core" }
 burncloud-database = { path = "crates/database" }
 burncloud-database-billing = { path = "crates/database/crates/billing" }
 burncloud-database-channel = { path = "crates/database/crates/channel" }
@@ -179,7 +173,6 @@ burncloud-service-models = { path = "crates/service/crates/models" }
 burncloud-service-monitor = { path = "crates/service/crates/monitor" }
 burncloud-service-setting = { path = "crates/service/crates/setting" }
 burncloud-service-inference = { path = "crates/service/crates/inference" }
-burncloud-service-redis = { path = "crates/service/crates/redis" }
 burncloud-service-user = { path = "crates/service/crates/user" }
 burncloud-service-upstream = { path = "crates/service/crates/upstream" }
 burncloud-service-token = { path = "crates/service/crates/token" }
@@ -210,7 +203,6 @@ path = "src/main.rs"
 [dependencies]
 burncloud-common.workspace = true
 burncloud-server.workspace = true
-burncloud-code.workspace = true
 burncloud-client = { workspace = true, default-features = false, features = ["liveview", "desktop"] }
 
 tokio.workspace = true
@@ -219,8 +211,6 @@ dotenvy.workspace = true
 rand.workspace = true
 hex.workspace = true
 
-# CLI dependencies (migrated from crates/cli)
-burncloud-core.workspace = true
 burncloud-auto-update.workspace = true
 burncloud-database.workspace = true
 burncloud-database-billing.workspace = true
