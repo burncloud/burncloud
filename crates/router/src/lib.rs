@@ -6,12 +6,12 @@ mod adaptor;
 pub mod affinity;
 mod balancer;
 pub mod billing;
-mod channel_state;
+pub mod channel_state;
 mod circuit_breaker;
 mod config;
 pub mod exchange_rate;
 mod limiter;
-mod model_router;
+pub mod model_router;
 pub mod notification;
 pub mod order_type;
 pub mod passthrough;
@@ -93,6 +93,28 @@ const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 
 pub use scheduler::SchedulingRequest;
 pub use state::AppState;
+
+/// Named return type for [`proxy_logic`] — replaces the previous 8-tuple.
+///
+/// Each field is self-documenting; adding a new field only requires updating
+/// this struct + the `RouterLog` construction site, not every return point.
+struct ProxyResult {
+    response: Response,
+    upstream_id: Option<String>,
+    final_status: StatusCode,
+    pricing_region: Option<String>,
+    video_task_id: Option<String>,
+    /// L2 Shaper outcome: `(layer_decision, traffic_color)` for RouterLog.
+    /// `None` when the request never reached the shaper (early routing error).
+    shaper_outcome: Option<(String, String)>,
+    /// L6 Observability: routing decision from `route_with_scheduler`.
+    /// Used by the priority chain to compute `layer_decision` for RouterLog.
+    routing_decision: Option<model_router::RoutingDecision>,
+    /// L6 Observability: `SchedulingRequest.color` for `traffic_color` fallback.
+    /// When `shaper_outcome` is `None` (no Shaper processing), `traffic_color`
+    /// falls back to this value per the checklist requirement.
+    sched_request_color: TrafficColor,
+}
 
 /// Build a JSON error response body: `{"error": "<message>"}`.
 fn json_error_body(message: impl std::fmt::Display) -> Body {
@@ -1105,14 +1127,7 @@ async fn proxy_handler(
     let token_counter = Arc::new(UnifiedTokenCounter::new());
 
     // Perform Proxy Logic
-    let (
-        response,
-        upstream_id,
-        final_status,
-        pricing_region,
-        video_task_id,
-        shaper_outcome,
-    ) = proxy_logic(
+    let result = proxy_logic(
         &state,
         method,
         uri,
@@ -1130,8 +1145,8 @@ async fn proxy_handler(
     .await;
 
     // Save video task mapping asynchronously (fire-and-forget)
-    if let Some(task_id) = video_task_id {
-        if let Some(ch_id) = upstream_id.as_ref().and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(task_id) = result.video_task_id {
+        if let Some(ch_id) = result.upstream_id.as_ref().and_then(|s| s.parse::<i32>().ok()) {
             let db = state.db.clone();
             let task = RouterVideoTask {
                 task_id,
@@ -1161,12 +1176,12 @@ async fn proxy_handler(
     } else {
         0
     };
-    let usage = inject_video_tokens_if_empty(final_status, usage, veo_tokens, "veo");
+    let usage = inject_video_tokens_if_empty(result.final_status, usage, veo_tokens, "veo");
 
     // Seedance request-side billing: inject video_tokens from duration × resolution_weight
     let resolution_weight: i64 = if seedance_resolution == "720p" { SEEDANCE_RESOLUTION_WEIGHT_HD } else { SEEDANCE_RESOLUTION_WEIGHT_SD };
     let seedance_tokens = seedance_duration_secs * resolution_weight;
-    let usage = inject_video_tokens_if_empty(final_status, usage, seedance_tokens, "seedance");
+    let usage = inject_video_tokens_if_empty(result.final_status, usage, seedance_tokens, "seedance");
 
     // Calculate cost using CostCalculator (nanodollars)
     let (cost, cost_breakdown) = if !usage.is_empty() {
@@ -1179,7 +1194,7 @@ async fn proxy_handler(
                     &request_id,
                     is_batch_request,
                     is_priority_request,
-                    pricing_region.as_deref(),
+                    result.pricing_region.as_deref(),
                 )
                 .await
             {
@@ -1208,12 +1223,28 @@ async fn proxy_handler(
         tracing::warn!(cost, %request_id, "cost > 0 but model unknown — reconciliation data degraded");
     }
 
-    // L6 Observability (issue #151): split shaper_outcome into the two
-    // RouterLog columns. None for pre-routing errors / path-routed flows.
-    let (layer_decision, traffic_color) = match shaper_outcome {
-        Some((lbl, col)) => (Some(lbl), Some(col)),
-        None => (None, None),
+    // L6 Observability: compute layer_decision via priority chain (issue #152).
+    // Priority: failover_N > affinity_hit/scorer_picked > shaper_own/shaper_borrow/
+    // shaper_unconfigured > shaper_reject. Decision D9: do NOT change
+    // ShaperContext.outcome semantics; override at RouterLog construction point.
+    // Priority chain: scheduler decision (failover_N / affinity_hit /
+    // scorer_picked) overrides shaper outcome when both are present.
+    let layer_decision = {
+        let sched_label = result.routing_decision.as_ref().map(|d| d.to_label());
+        let shaper_label = result.shaper_outcome.as_ref().map(|(lbl, _)| lbl.as_str());
+        match (sched_label, shaper_label) {
+            (Some(s), _) => Some(s), // Scheduler decision wins (highest priority)
+            (None, Some(sh)) => Some(sh.to_string()), // Shaper outcome only
+            (None, None) => None, // No decision (pre-routing error)
+        }
     };
+    // traffic_color: prefer shaper_outcome color (final color after Shaper
+    // processing). When Shaper is inactive (no shaper_outcome), fall back
+    // to SchedulingRequest.color per the L6 Observability checklist.
+    let traffic_color = result.shaper_outcome
+        .as_ref()
+        .map(|(_, c)| c.clone())
+        .or_else(|| Some(result.sched_request_color.as_char().to_string()));
 
     // Async Log
     let log = RouterLog {
@@ -1221,8 +1252,8 @@ async fn proxy_handler(
         request_id,
         user_id: Some(user_id.clone()),
         path,
-        upstream_id,
-        status_code: final_status.as_u16() as i32,
+        upstream_id: result.upstream_id,
+        status_code: result.final_status.as_u16() as i32,
         latency_ms: start_time.elapsed().as_millis() as i64,
         prompt_tokens: usage.input_tokens as i32,
         completion_tokens: usage.output_tokens as i32,
@@ -1230,7 +1261,7 @@ async fn proxy_handler(
         model: model_name.clone(),
         cache_read_tokens: usage.cache_read_tokens as i32,
         reasoning_tokens: usage.reasoning_tokens as i32,
-        pricing_region,
+        pricing_region: result.pricing_region,
         video_tokens: usage.video_tokens as i32,
         cache_write_tokens: usage.cache_write_tokens as i32,
         audio_input_tokens: usage.audio_input_tokens as i32,
@@ -1273,7 +1304,7 @@ async fn proxy_handler(
         });
     }
 
-    response
+    result.response
 }
 
 use burncloud_common::types::ChannelType;
@@ -1316,20 +1347,14 @@ async fn proxy_logic(
     token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
-) -> (
-    Response,
-    Option<String>,
-    StatusCode,
-    Option<String>,
-    Option<String>,
-    // L2 Shaper outcome: (layer_decision, traffic_color) for RouterLog.
-    // None when the request never reached the shaper (early routing error).
-    Option<(String, String)>,
-) {
+) -> ProxyResult {
     let config = state.config.read().await;
 
     // 1. Model Routing (Priority)
     let mut candidates: Vec<Upstream> = Vec::new();
+    // L6 Observability: routing decision from route_with_scheduler.
+    // Used by the priority chain to compute layer_decision for RouterLog.
+    let mut sched_routing_decision: Option<model_router::RoutingDecision> = None;
     // Track pricing_region from selected channel for billing.
     // Assigned inside the retry loop (candidates guaranteed non-empty at this point).
     // Uninitialized: assigned inside the retry loop before any use
@@ -1412,12 +1437,17 @@ async fn proxy_logic(
                 })
                 .await
             {
-                Ok(channels) if !channels.is_empty() => {
+                Ok((channels, routing_decision)) if !channels.is_empty() => {
                     tracing::debug!(
                         "ModelRouter: Got {} candidates for {}",
                         channels.len(),
                         model
                     );
+
+                    // Store routing_decision for L6 Observability priority chain.
+                    // Will be overridden by Failover{attempt} if failover loop
+                    // advances past attempt 0.
+                    sched_routing_decision = routing_decision;
 
                     for channel in channels {
                         let channel_type = ChannelType::from(channel.type_);
@@ -1485,14 +1515,16 @@ async fn proxy_logic(
                                 .body(Body::empty())
                                 .unwrap_or_else(|_| Response::new(Body::empty()))
                         });
-                    return (
+                    return ProxyResult {
                         response,
-                        None,
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        None,
-                        None,
-                        None,
-                    );
+                        upstream_id: None,
+                        final_status: StatusCode::SERVICE_UNAVAILABLE,
+                        pricing_region: None,
+                        video_task_id: None,
+                        shaper_outcome: None,
+                        routing_decision: None,
+                        sched_request_color: shaper_color,
+                    };
                 }
             }
         } else {
@@ -1511,17 +1543,19 @@ async fn proxy_logic(
         let route = match config.find_route(path) {
             Some(r) => r,
             None => {
-                return (
-                    build_response(
+                return ProxyResult {
+                    response: build_response(
                         StatusCode::NOT_FOUND,
                         Body::from(format!("No matching upstream found for path: {path}")),
                     ),
-                    None,
-                    StatusCode::NOT_FOUND,
-                    None,
-                    None,
-                    None,
-                );
+                    upstream_id: None,
+                    final_status: StatusCode::NOT_FOUND,
+                    pricing_region: None,
+                    video_task_id: None,
+                    shaper_outcome: None,
+                    routing_decision: None,
+                    sched_request_color: shaper_color,
+                };
             }
         };
 
@@ -1529,17 +1563,19 @@ async fn proxy_logic(
             RouteTarget::Upstream(u) => candidates.push(u.clone()),
             RouteTarget::Group(g) => {
                 if g.members.is_empty() {
-                    return (
-                        build_response(
+                    return ProxyResult {
+                        response: build_response(
                             StatusCode::SERVICE_UNAVAILABLE,
                             Body::from(format!("Group '{}' has no healthy members", g.name)),
                         ),
-                        None,
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        None,
-                        None,
-                        None,
-                    );
+                        upstream_id: None,
+                        final_status: StatusCode::SERVICE_UNAVAILABLE,
+                        pricing_region: None,
+                        video_task_id: None,
+                        shaper_outcome: None,
+                        routing_decision: None,
+                        sched_request_color: shaper_color,
+                    };
                 }
 
                 let start_idx = state.balancer.next_index(&g.id, g.members.len());
@@ -1555,17 +1591,19 @@ async fn proxy_logic(
     }
 
     if candidates.is_empty() {
-        return (
-            build_response(
+        return ProxyResult {
+            response: build_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Body::from("Configuration Error: No upstreams available"),
             ),
-            None,
-            StatusCode::INTERNAL_SERVER_ERROR,
-            None,
-            None,
-            None,
-        );
+            upstream_id: None,
+            final_status: StatusCode::INTERNAL_SERVER_ERROR,
+            pricing_region: None,
+            video_task_id: None,
+            shaper_outcome: None,
+            routing_decision: None,
+            sched_request_color: shaper_color,
+        };
     }
 
     // Preflight billing check: reject requests for models with no price configured.
@@ -1573,8 +1611,8 @@ async fn proxy_logic(
     if let Some(model) = model_name {
         if let Err(e) = state.cost_calculator.preflight(model, None).await {
             tracing::warn!(model = %model, "Preflight billing check failed — rejecting request: {e}");
-            return (
-                build_response_with_header(
+            return ProxyResult {
+                response: build_response_with_header(
                     StatusCode::BAD_REQUEST,
                     "content-type",
                     "application/json",
@@ -1583,12 +1621,14 @@ async fn proxy_logic(
                         model
                     )),
                 ),
-                None,
-                StatusCode::BAD_REQUEST,
-                None,
-                None,
-                None,
-            );
+                upstream_id: None,
+                final_status: StatusCode::BAD_REQUEST,
+                pricing_region: None,
+                video_task_id: None,
+                shaper_outcome: None,
+                routing_decision: None,
+                sched_request_color: shaper_color,
+            };
         }
     }
 
@@ -1606,6 +1646,10 @@ async fn proxy_logic(
     let total_candidates = candidates.len();
 
     for (attempt, upstream) in candidates.iter().enumerate() {
+        // L5 Failover: override routing decision when attempt > 0.
+        if attempt > 0 {
+            sched_routing_decision = Some(model_router::RoutingDecision::Failover { attempt: attempt as u32 });
+        }
         last_upstream_id = Some(upstream.id.clone());
 
         // Update pricing_region for billing to match the actual upstream serving
@@ -1813,8 +1857,8 @@ async fn proxy_logic(
                             if let Some(g) = budget_guard.take() {
                                 g.commit(shaper_ctx.est_tpm);
                             }
-                            return (
-                                Response::builder()
+                            return ProxyResult {
+                                response: Response::builder()
                                     .status(status)
                                     .header("content-type", "text/event-stream")
                                     .header("cache-control", "no-cache")
@@ -1826,15 +1870,17 @@ async fn proxy_logic(
                                             Body::from("Failed to build streaming response"),
                                         )
                                     }),
-                                last_upstream_id,
-                                status,
-                                selected_pricing_region.clone(),
-                                None,
-                                Some((
+                                upstream_id: last_upstream_id,
+                                final_status: status,
+                                pricing_region: selected_pricing_region.clone(),
+                                video_task_id: None,
+                                shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
-                            );
+                                routing_decision: sched_routing_decision.clone(),
+                                sched_request_color: shaper_color,
+                            };
                         } else {
                             // Non-streaming passthrough
                             let resp_bytes = match resp.bytes().await {
@@ -1862,22 +1908,24 @@ async fn proxy_logic(
                             if let Some(g) = budget_guard.take() {
                                 g.commit(shaper_ctx.est_tpm);
                             }
-                            return (
-                                build_response_with_header(
+                            return ProxyResult {
+                                response: build_response_with_header(
                                     status,
                                     "content-type",
                                     "application/json",
                                     Body::from(resp_bytes),
                                 ),
-                                last_upstream_id,
-                                status,
-                                selected_pricing_region.clone(),
-                                None,
-                                Some((
+                                upstream_id: last_upstream_id,
+                                final_status: status,
+                                pricing_region: selected_pricing_region.clone(),
+                                video_task_id: None,
+                                shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
-                            );
+                                routing_decision: sched_routing_decision.clone(),
+                                sched_request_color: shaper_color,
+                            };
                         }
                     } else {
                         // Non-success status (4xx)
@@ -1888,17 +1936,19 @@ async fn proxy_logic(
                                 // 4xx body-read failure: request DID reach
                                 // upstream but actual usage = 0. Let
                                 // budget_guard drop → full est_tpm refund.
-                                return (
-                                    build_response(status, Body::from(last_error.clone())),
-                                    last_upstream_id,
-                                    status,
-                                    selected_pricing_region.clone(),
-                                    None,
-                                    Some((
+                                return ProxyResult {
+                                    response: build_response(status, Body::from(last_error.clone())),
+                                    upstream_id: last_upstream_id,
+                                    final_status: status,
+                                    pricing_region: selected_pricing_region.clone(),
+                                    video_task_id: None,
+                                    shaper_outcome: Some((
                                         iter_label.to_string(),
                                         shaper_ctx.color.as_char().to_string(),
                                     )),
-                                );
+                                    routing_decision: sched_routing_decision.clone(),
+                                    sched_request_color: shaper_color,
+                                };
                             }
                         };
 
@@ -1917,22 +1967,24 @@ async fn proxy_logic(
 
                         // 4xx response: actual usage = 0. budget_guard drops
                         // on return → full est_tpm refund (no commit).
-                        return (
-                            build_response_with_header(
+                        return ProxyResult {
+                            response: build_response_with_header(
                                 status,
                                 "content-type",
                                 "application/json",
                                 Body::from(body_bytes),
                             ),
-                            last_upstream_id,
-                            status,
-                            selected_pricing_region.clone(),
-                            None,
-                            Some((
+                            upstream_id: last_upstream_id,
+                            final_status: status,
+                            pricing_region: selected_pricing_region.clone(),
+                            video_task_id: None,
+                            shaper_outcome: Some((
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
                             )),
-                        );
+                            routing_decision: sched_routing_decision.clone(),
+                            sched_request_color: shaper_color,
+                        };
                     }
                 }
                 Err(e) => {
@@ -2127,38 +2179,42 @@ async fn proxy_logic(
                             if let Some(g) = budget_guard.take() {
                                 g.commit(shaper_ctx.est_tpm);
                             }
-                            return (
-                                build_response_with_header(
+                            return ProxyResult {
+                                response: build_response_with_header(
                                     status,
                                     "content-type",
                                     "application/json",
                                     Body::from(resp_bytes),
                                 ),
-                                last_upstream_id,
-                                status,
-                                selected_pricing_region.clone(),
-                                task_id,
-                                Some((
+                                upstream_id: last_upstream_id,
+                                final_status: status,
+                                pricing_region: selected_pricing_region.clone(),
+                                video_task_id: task_id,
+                                shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
-                            );
+                                routing_decision: sched_routing_decision.clone(),
+                                sched_request_color: shaper_color,
+                            };
                         }
                         // L2 Shaper success: OpenAI default success path.
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
                         }
-                        return (
-                            handle_response_with_token_parsing(resp, &token_counter, channel_type),
-                            last_upstream_id,
-                            status,
-                            selected_pricing_region.clone(),
-                            None,
-                            Some((
+                        return ProxyResult {
+                            response: handle_response_with_token_parsing(resp, &token_counter, channel_type),
+                            upstream_id: last_upstream_id,
+                            final_status: status,
+                            pricing_region: selected_pricing_region.clone(),
+                            video_task_id: None,
+                            shaper_outcome: Some((
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
                             )),
-                        );
+                            routing_decision: sched_routing_decision.clone(),
+                            sched_request_color: shaper_color,
+                        };
                     }
 
                     // Handle Streaming for non-OpenAI
@@ -2203,8 +2259,8 @@ async fn proxy_logic(
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
                         }
-                        return (
-                            Response::builder()
+                        return ProxyResult {
+                            response: Response::builder()
                                 .status(status)
                                 .header("content-type", "text/event-stream")
                                 .header("cache-control", "no-cache")
@@ -2216,15 +2272,17 @@ async fn proxy_logic(
                                         Body::from("Failed to build streaming response"),
                                     )
                                 }),
-                            last_upstream_id,
-                            status,
-                            selected_pricing_region.clone(),
-                            None,
-                            Some((
+                            upstream_id: last_upstream_id,
+                            final_status: status,
+                            pricing_region: selected_pricing_region.clone(),
+                            video_task_id: None,
+                            shaper_outcome: Some((
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
                             )),
-                        );
+                            routing_decision: sched_routing_decision.clone(),
+                            sched_request_color: shaper_color,
+                        };
                     }
 
                     // 6. Handle Response Conversion
@@ -2269,22 +2327,24 @@ async fn proxy_logic(
                     if let Some(g) = budget_guard.take() {
                         g.commit(shaper_ctx.est_tpm);
                     }
-                    return (
-                        build_response_with_header(
+                    return ProxyResult {
+                        response: build_response_with_header(
                             status,
                             "content-type",
                             "application/json",
                             Body::from(response_body),
                         ),
-                        last_upstream_id,
-                        status,
-                        selected_pricing_region.clone(),
-                        None,
-                        Some((
+                        upstream_id: last_upstream_id,
+                        final_status: status,
+                        pricing_region: selected_pricing_region.clone(),
+                        video_task_id: None,
+                        shaper_outcome: Some((
                             iter_label.to_string(),
                             shaper_ctx.color.as_char().to_string(),
                         )),
-                    );
+                        routing_decision: sched_routing_decision.clone(),
+                        sched_request_color: shaper_color,
+                    };
                 } else {
                     // Handle non-success responses (4xx errors)
                     let body_bytes = match resp.bytes().await {
@@ -2295,17 +2355,19 @@ async fn proxy_logic(
                             // 4xx body-read failure: budget_guard drops here
                             // → full est_tpm refund (request reached upstream
                             // but no actual usage was billed).
-                            return (
-                                build_response(status, Body::from(last_error.clone())),
-                                last_upstream_id,
-                                status,
-                                selected_pricing_region.clone(),
-                                None,
-                                Some((
+                            return ProxyResult {
+                                response: build_response(status, Body::from(last_error.clone())),
+                                upstream_id: last_upstream_id,
+                                final_status: status,
+                                pricing_region: selected_pricing_region.clone(),
+                                video_task_id: None,
+                                shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
                                 )),
-                            );
+                                routing_decision: sched_routing_decision.clone(),
+                                sched_request_color: shaper_color,
+                            };
                         }
                     };
                     let body_str = String::from_utf8_lossy(&body_bytes);
@@ -2392,22 +2454,24 @@ async fn proxy_logic(
                     // 4xx response from non-OpenAI: budget_guard drops on
                     // return → full est_tpm refund (request reached upstream
                     // but no actual usage was billed).
-                    return (
-                        build_response_with_header(
+                    return ProxyResult {
+                        response: build_response_with_header(
                             status,
                             "content-type",
                             "application/json",
                             Body::from(body_bytes),
                         ),
-                        last_upstream_id,
-                        status,
-                        selected_pricing_region.clone(),
-                        None,
-                        Some((
+                        upstream_id: last_upstream_id,
+                        final_status: status,
+                        pricing_region: selected_pricing_region.clone(),
+                        video_task_id: None,
+                        shaper_outcome: Some((
                             iter_label.to_string(),
                             shaper_ctx.color.as_char().to_string(),
                         )),
-                    );
+                        routing_decision: sched_routing_decision.clone(),
+                        sched_request_color: shaper_color,
+                    };
                 }
             }
             Err(e) => {
@@ -2444,34 +2508,38 @@ async fn proxy_logic(
                     .body(Body::empty())
                     .unwrap_or_else(|_| Response::new(Body::empty()))
             });
-        return (
+        return ProxyResult {
             response,
-            None,
-            StatusCode::SERVICE_UNAVAILABLE,
-            None,
-            None,
-            Some((
+            upstream_id: None,
+            final_status: StatusCode::SERVICE_UNAVAILABLE,
+            pricing_region: None,
+            video_task_id: None,
+            shaper_outcome: Some((
                 "shaper_reject".to_string(),
                 shaper_ctx.color.as_char().to_string(),
             )),
-        );
+            routing_decision: sched_routing_decision.clone(),
+            sched_request_color: shaper_color,
+        };
     }
 
-    (
-        build_response(
+    ProxyResult {
+        response: build_response(
             StatusCode::BAD_GATEWAY,
             Body::from(format!("All upstreams failed. Last error: {last_error}")),
         ),
-        None,
-        StatusCode::BAD_GATEWAY,
-        None,
-        None,
+        upstream_id: None,
+        final_status: StatusCode::BAD_GATEWAY,
+        pricing_region: None,
+        video_task_id: None,
         // Mixed shaper-reject + upstream-failure: emit shaper context so
         // RouterLog still records the color/last-iter outcome if any.
-        shaper_ctx.outcome.map(|lbl| {
+        shaper_outcome: shaper_ctx.outcome.map(|lbl| {
             (lbl.to_string(), shaper_ctx.color.as_char().to_string())
         }),
-    )
+        routing_decision: sched_routing_decision.clone(),
+        sched_request_color: shaper_color,
+    }
 }
 
 /// Handle streaming response with token parsing for OpenAI protocol
