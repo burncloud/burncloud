@@ -2,8 +2,6 @@
 //!
 //! The spec-aligned entity layout is split across per-entity files:
 //! - `user_account.rs`: `UserAccount`, `UserAccountInput`
-//! - `user_role.rs`: `UserRole`
-//! - `user_role_binding.rs`: `UserRoleBinding`
 //! - `user_recharge.rs`: `UserRecharge`
 //! - `user_api_key.rs`: `UserApiKey`, `UserApiKeyModel`, `UserApiKeyInput`, `UserApiKeyUpdateInput`
 //!

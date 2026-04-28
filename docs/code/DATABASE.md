@@ -36,8 +36,8 @@ channel_abilities   →  channel_ability.rs    →  ChannelAbility / ChannelAbil
 | 实体 | SQL 表名 | .rs 文件名 | 行类型 | 操作类型 | 输入类型 |
 |------|---------|----------|--------|---------|---------|
 | 用户账户 | `user_accounts` | `user_account.rs` | `UserAccount` | `UserAccountModel` | `UserAccountInput` |
-| 角色定义 | `user_roles` | `user_role.rs` | `UserRole` | — | — |
-| 用户-角色绑定 | `user_role_bindings` | `user_role_binding.rs` | `UserRoleBinding` | — | — |
+| 角色定义 | `user_roles` | (inline in lib.rs) | (internal) | — | — |
+| 用户-角色绑定 | `user_role_bindings` | (inline in lib.rs) | (internal) | — | — |
 | 充值记录 | `user_recharges` | `user_recharge.rs` | `UserRecharge` | — | — |
 | 应用层 API Key | `user_api_keys` | `user_api_key.rs` | `UserApiKey` | `UserApiKeyModel` | `UserApiKeyInput`, `UserApiKeyUpdateInput` |
 
@@ -81,7 +81,7 @@ channel_abilities   →  channel_ability.rs    →  ChannelAbility / ChannelAbil
 | 实体 | SQL 表名 | .rs 文件名 | 行类型 | 控制器 |
 |------|---------|----------|--------|-------|
 | 系统设置 | `sys_settings` | lib.rs (setting) | `SysSetting` | `SettingDatabase` |
-| 软件安装记录 | `sys_installations` | lib.rs (installer) | `SysInstallation` | `InstallerDB` |
+| 软件安装记录 | `sys_installations` | `installer.rs` | `SysInstallation` | `InstallerDB` |
 | 下载任务 | `sys_downloads` | lib.rs (download) | `SysDownload` | `DownloadDB` |
 
 ## 类型后缀规则
