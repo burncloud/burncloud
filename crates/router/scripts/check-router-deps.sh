@@ -53,15 +53,10 @@ if ! echo "$CARGO_METADATA" | jq -e '.packages[] | select(.name == "burncloud-ro
   exit 1
 fi
 
-DEPS_JSON=$(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name')
-
-# ── Find all burncloud-service-* dependencies ──
 SERVICE_DEPS=()
-mapfile -t deps_list < <(echo "$DEPS_JSON")
-for dep in "${deps_list[@]}"; do
-  if [[ "$dep" == burncloud-service-* ]]; then
-    SERVICE_DEPS+=("$dep")
-  fi
+# 使用简单的循环以兼容 Bash 3.2 (macOS 默认版本)
+for dep in $(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name | select(startswith("burncloud-service-"))'); do
+  SERVICE_DEPS+=("$dep")
 done
 
 # ── Check each service dep against the whitelist ──
