@@ -1,91 +1,95 @@
-// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
-#![allow(clippy::disallowed_types)]
-
-use burncloud_client_shared::components::SchemaTable;
-use burncloud_client_shared::schema::recharge_schema;
-use burncloud_client_shared::services::usage_service::UsageService;
+use burncloud_client_shared::components::{
+    PageHeader, StatKpi, StatusPill, ColumnDef, PageTable,
+    SkeletonCard, SkeletonVariant,
+};
+use burncloud_client_shared::services::user_service::UserService;
 use dioxus::prelude::*;
+
+fn format_balance(nano: i64) -> String {
+    format!("{:.2}", nano as f64 / 1_000_000_000.0)
+}
+
+fn status_label(status: i32) -> String {
+    if status == 1 { "active".to_string() } else { "disabled".to_string() }
+}
 
 #[component]
 pub fn BillingPage() -> Element {
-    let recharges =
-        use_resource(move || async move { UsageService::list_recharges("demo-user").await });
+    let users = use_resource(move || async move {
+        UserService::list().await.unwrap_or_default()
+    });
 
-    // Mock Data for "Left Brain" Finance View
-    let total_spend = "¥ 12,450.00";
-    let balance = "¥ 5,230.00";
-    let projected = "¥ 18,000.00";
+    let user_list = users.read().clone().unwrap_or_default();
+    let loading = users.read().is_none();
+    let total_balance: f64 = user_list.iter()
+        .map(|u| u.balance_cny as f64 / 1_000_000_000.0)
+        .sum();
+    let _total_recharge: f64 = 0.0; // Not available from UserService
+    let _total_consumption: f64 = 0.0; // Not available from UserService
 
-    let schema = recharge_schema();
-
-    // Convert recharges to serde_json::Value for SchemaTable
-    let table_data: Vec<serde_json::Value> = match recharges.read().as_ref() {
-        Some(Ok(list)) => list
-            .iter()
-            .map(|item| {
-                serde_json::json!({
-                    "id": format!("RECH-{}", item.id),
-                    "created_at": item.created_at.as_deref().unwrap_or("-"),
-                    "description": item.description.as_deref().unwrap_or("账户充值"),
-                    "amount": item.amount,
-                    "status": "success"
-                })
-            })
-            .collect(),
-        _ => vec![],
-    };
-
-    let loading = recharges.read().is_none();
+    let columns = vec![
+        ColumnDef { key: "id".to_string(), label: "ID".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "name".to_string(), label: "User".to_string(), width: None },
+        ColumnDef { key: "balance_cny".to_string(), label: "Balance (CNY)".to_string(), width: Some("140px".to_string()) },
+        ColumnDef { key: "balance_usd".to_string(), label: "Balance (USD)".to_string(), width: Some("140px".to_string()) },
+        ColumnDef { key: "status".to_string(), label: "Status".to_string(), width: Some("120px".to_string()) },
+    ];
 
     rsx! {
-        div { class: "flex flex-col h-full gap-xl",
-            // Header
-            div { class: "flex justify-between items-end",
-                div {
-                    h1 { class: "text-title font-semibold text-primary mb-xs tracking-tight", "财务中心" }
-                    p { class: "text-caption text-secondary font-medium", "管理您的账户余额、充值记录与收支统计" }
+        PageHeader {
+            title: "财务中心",
+            subtitle: Some("管理您的账户余额、充值记录与收支统计".to_string()),
+        }
+
+        div { class: "page-content",
+            // Stats
+            div { class: "stats-grid cols-4",
+                StatKpi {
+                    label: "总余额 (CNY)",
+                    value: "¥{total_balance:.2}",
+                    large: Some(true),
                 }
-                button { class: "btn btn-primary btn-sm px-lg shadow-sm text-white", "充值余额" }
+                StatKpi {
+                    label: "总余额 (USD)",
+                    value: "${total_balance:.2}",
+                }
+                StatKpi {
+                    label: "活跃用户",
+                    value: "{user_list.iter().filter(|u| u.status == 1).count()}",
+                }
+                StatKpi {
+                    label: "总用户",
+                    value: "{user_list.len()}",
+                }
             }
 
-            // Financial Overview Cards
-            div { class: "grid grid-cols-3 gap-lg",
-                div { class: "p-lg bc-card-solid flex flex-col gap-sm",
-                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "本月支出" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-4xl font-bold text-primary tracking-tight", "{total_spend}" }
-                        span { class: "text-xs font-medium px-sm py-0.5 rounded",
-                            style: "color: var(--bc-danger); background: var(--bc-danger-light);",
-                            "+15%"
+            // Table
+            if loading {
+                SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                SkeletonCard { variant: Some(SkeletonVariant::Row) }
+            } else {
+                PageTable {
+                columns: columns,
+                for user in &user_list {
+                    tr {
+                        key: "{user.id}",
+                        td { class: "mono", "{user.id}" }
+                        td { "{user.username}" }
+                        td { class: "mono", style: "font-size:13px; color:var(--bc-success); font-weight:600",
+                            "¥{format_balance(user.balance_cny)}"
+                        }
+                        td { class: "mono", style: "font-size:13px",
+                            "${format_balance(user.balance_usd)}"
+                        }
+                        td {
+                            StatusPill {
+                                value: status_label(user.status)
+                            }
                         }
                     }
                 }
-                div { class: "p-lg bc-card-solid flex flex-col gap-sm",
-                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "账户余额" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-4xl font-bold text-primary tracking-tight", "{balance}" }
-                    }
-                }
-                div { class: "p-lg bc-card-solid flex flex-col gap-sm",
-                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "预估下月" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-4xl font-bold text-secondary tracking-tight", "{projected}" }
-                    }
-                }
             }
-
-            // Transaction History via SchemaTable
-            div { class: "flex flex-col gap-md",
-                h3 { class: "text-caption font-medium text-secondary border-b pb-sm", "充值记录" }
-
-                div { class: "overflow-x-auto bc-card-solid",
-                    SchemaTable {
-                        schema: schema.clone(),
-                        data: table_data,
-                        loading: loading,
-                        on_row_click: move |_| {},
-                    }
-                }
             }
         }
     }

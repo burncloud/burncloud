@@ -56,6 +56,7 @@ pub fn LoginPage() -> Element {
                             })
                             .unwrap_or_default(),
                         ),
+                        theme: None,
                     };
                     new_state.save();
 

@@ -1,149 +1,185 @@
-use burncloud_client_shared::i18n::use_i18n;
-use burncloud_client_shared::log_service::LogService;
-use burncloud_client_shared::monitor_service::MonitorService;
-use burncloud_client_shared::usage_service::UsageService;
+use burncloud_client_shared::components::{
+    PageHeader, StatKpi, Sparkline, StatusPill, ColumnDef, PageTable, EmptyState,
+    SkeletonCard, SkeletonVariant, ErrorBanner,
+};
+use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
+use burncloud_client_shared::services::log_service::LogService;
+use burncloud_client_shared::services::monitor_service::MonitorService;
+use burncloud_client_shared::services::usage_service::UsageService;
 use dioxus::prelude::*;
+
+fn channel_status(ch: &Channel) -> String {
+    if ch.status == 1 { "active".to_string() } else { "down".to_string() }
+}
 
 #[component]
 pub fn Dashboard() -> Element {
-    let i18n = use_i18n();
-    let _lang = i18n.language.read();
+    let metrics = use_resource(move || async move {
+        MonitorService::get_system_metrics().await
+    });
 
-    let logs = use_resource(move || async move { LogService::list(5).await.ok() });
+    let channels = use_resource(move || async move {
+        ChannelService::list(0, 50).await
+    });
 
-    let usage =
-        use_resource(move || async move { UsageService::get_user_usage("demo-user").await.ok() });
+    let usage = use_resource(move || async move {
+        UsageService::get_user_usage("demo-user").await
+    });
 
-    let monitor =
-        use_resource(move || async move { MonitorService::get_system_metrics().await.ok() });
+    let recent_logs = use_resource(move || async move {
+        LogService::list(10).await
+    });
 
-    let _logs_data = logs.read().clone();
-    let _usage_data = usage.read().clone();
-    let _monitor_data = monitor.read().clone();
+    let m = metrics.read().clone();
+    let ch_res = channels.read().clone();
+    let u = usage.read().clone();
+
+    let loading = m.is_none() && ch_res.is_none();
+    let metrics_error = m.as_ref()
+        .and_then(|r| r.clone().err().map(|e| e.to_string()))
+        .or_else(|| u.as_ref().and_then(|r| r.clone().err().map(|e| e.to_string())));
+    let ch_list = ch_res.and_then(|r| r.ok()).unwrap_or_default();
+
+    // System metrics
+    let (cpu_pct, mem_pct) = match &m {
+        Some(Ok(data)) => (data.cpu.usage_percent as f64, data.memory.usage_percent as f64),
+        _ => (0.0, 0.0),
+    };
+
+    // Usage data
+    let total_tokens = match &u {
+        Some(Ok(data)) => data.total_tokens,
+        _ => 0,
+    };
+
+    // Channel health stats
+    let active_channels = ch_list.iter().filter(|c| c.status == 1).count();
+    let total_channels = ch_list.len();
+
+    let cpu_data = vec![45.0, 52.0, 48.0, 61.0, 55.0, 43.0, 50.0];
+    let req_data = vec![1200.0, 980.0, 1350.0, 1100.0, 1420.0, 1250.0, 1180.0];
+
+    let channel_columns = vec![
+        ColumnDef { key: "name".to_string(), label: "Channel".to_string(), width: None },
+        ColumnDef { key: "type".to_string(), label: "Provider".to_string(), width: Some("120px".to_string()) },
+        ColumnDef { key: "status".to_string(), label: "Status".to_string(), width: Some("100px".to_string()) },
+        ColumnDef { key: "weight".to_string(), label: "Weight".to_string(), width: Some("80px".to_string()) },
+    ];
+
+    let log_list = recent_logs.read().clone().and_then(|r| r.ok()).unwrap_or_default();
 
     rsx! {
-        div { class: "h-full flex flex-col max-w-6xl mx-auto animate-in select-none",
+        PageHeader {
+            title: "仪表盘",
+            subtitle: Some("过去 24 小时 · 网关聚合视图".to_string()),
+        }
 
-            // 1. Enterprise Header
-            div { class: "flex items-end justify-between mb-xxxl",
-                div {
-                    h1 { class: "text-4xl font-bold tracking-tight text-primary",
-                        "企业控制台"
+        div { class: "page-content",
+            if let Some(err) = metrics_error {
+                ErrorBanner {
+                    message: err,
+                    on_retry: None,
+                }
+            }
+
+            // KPI row
+            div { class: "stats-grid cols-4",
+                if loading {
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                } else {
+                    StatKpi {
+                        label: "活跃渠道",
+                        value: "{active_channels}",
+                        chart: rsx! { Sparkline { data: req_data.clone(), tone: None } }
                     }
-                    div { class: "flex items-center gap-sm mt-md pl-xs",
-                        div { class: "w-2 h-2 rounded-full animate-pulse-soft",
-                            style: "background: var(--bc-success); box-shadow: 0 0 8px rgba(52, 199, 89, 0.6);"
-                        }
-                        span { class: "text-caption font-medium tracking-wide text-tertiary uppercase", "实时交易流" }
+                    StatKpi {
+                        label: "总 Token 消耗",
+                        value: "{total_tokens}",
+                    }
+                    StatKpi {
+                        label: "CPU 使用率",
+                        value: "{cpu_pct:.0}%",
+                        chart: rsx! { Sparkline { data: cpu_data.clone(), tone: Some("danger".to_string()) } }
+                    }
+                    StatKpi {
+                        label: "内存使用率",
+                        value: "{mem_pct:.0}%",
                     }
                 }
             }
 
-            // 2. Main Content Grid
-            div { class: "grid grid-cols-1 lg:grid-cols-3 gap-xxxl h-full",
-
-                // Left Column: Financials & Infrastructure (Spans 2 columns)
-                div { class: "lg:col-span-2 flex flex-col gap-xxxl",
-
-                    // Financial Hero Section - The "Money"
-                    div { class: "grid grid-cols-2 gap-xxxl pb-xxl border-b",
-                        div {
-                            div { class: "text-xxs uppercase tracking-[0.2em] font-bold text-tertiary mb-sm", "今日流水 (USD)" }
-                            div { class: "text-5xl font-bold tabular-nums tracking-tighter text-primary", "$128,432.00" }
-                            div { class: "text-caption font-medium mt-sm flex items-center gap-xs",
-                                style: "color: var(--bc-success);",
-                                span { "▲ 12.4%" }
-                                span { class: "text-tertiary", "vs yesterday" }
-                            }
-                        }
-                        div {
-                            div { class: "text-xxs uppercase tracking-[0.2em] font-bold text-tertiary mb-sm", "预计营收 (USD)" }
-                            div { class: "text-5xl font-bold tracking-tighter", style: "color: var(--bc-success);", "$160,540.00" }
-                            div { class: "text-caption font-medium text-tertiary mt-sm", "净利率: 20.0%" }
+            // 2-column grid: channel health + live logs
+            div { style: "display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:24px",
+                // Channel health
+                div {
+                    div { class: "section-h",
+                        div { class: "lead",
+                            span { class: "lead-title", "渠道健康" }
+                            span { class: "lead-sub", "{active_channels}/{total_channels} 在线" }
                         }
                     }
 
-                    // Cloud Provider Health - The "Assets"
-                    div { class: "flex flex-col gap-md",
-                        div { class: "text-xxs uppercase tracking-[0.2em] font-bold text-tertiary mb-sm", "供应商健康度" }
-
-                        div { class: "grid grid-cols-3 gap-md",
-                            // AWS Card
-                            div { class: "bc-card-solid p-lg cursor-pointer",
-                                style: "transition: border-color var(--bc-transition-fast);",
-                                div { class: "flex justify-between items-start mb-lg",
-                                    span { class: "font-bold text-lg text-primary", "AWS" }
-                                    div { class: "status-dot",
-                                        style: "background: var(--bc-success); animation: pulse 2s infinite;"
+                    if loading {
+                        SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                        SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                        SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    } else if ch_list.is_empty() {
+                        EmptyState {
+                            icon: rsx! { span { style: "font-size:32px", "📡" } },
+                            title: "暂无渠道数据".to_string(),
+                            description: None,
+                            cta: None,
+                        }
+                    } else {
+                        PageTable {
+                            columns: channel_columns,
+                            for ch in &ch_list {
+                                tr {
+                                    key: "{ch.id}",
+                                    td { style: "font-weight:500", "{ch.name}" }
+                                    td { class: "mono", style: "font-size:13px", "{ch.type_}" }
+                                    td {
+                                        StatusPill {
+                                            value: channel_status(ch)
+                                        }
                                     }
+                                    td { class: "mono", style: "font-size:13px", "{ch.weight}" }
                                 }
-                                div { class: "text-2xl font-bold tabular-nums text-primary", "1,204" }
-                                div { class: "text-xxs text-tertiary uppercase tracking-wider mt-xs", "Active Accounts" }
-                            }
-
-                            // Google Cloud Card
-                            div { class: "bc-card-solid p-lg cursor-pointer",
-                                style: "transition: border-color var(--bc-transition-fast);",
-                                div { class: "flex justify-between items-start mb-lg",
-                                    span { class: "font-bold text-lg text-primary", "Google" }
-                                    div { class: "status-dot",
-                                        style: "background: var(--bc-success); animation: pulse 2s infinite;"
-                                    }
-                                }
-                                div { class: "text-2xl font-bold tabular-nums text-primary", "892" }
-                                div { class: "text-xxs text-tertiary uppercase tracking-wider mt-xs", "Active Accounts" }
-                            }
-
-                            // Azure Card
-                            div { class: "bc-card-solid p-lg cursor-pointer",
-                                style: "transition: border-color var(--bc-transition-fast);",
-                                div { class: "flex justify-between items-start mb-lg",
-                                    span { class: "font-bold text-lg text-primary", "Azure" }
-                                    div { class: "status-dot animate-pulse",
-                                        style: "background: var(--bc-warning);"
-                                    }
-                                }
-                                div { class: "text-2xl font-bold tabular-nums text-primary", "450" }
-                                div { class: "text-xxs text-tertiary uppercase tracking-wider mt-xs", "3 Flags Detected" }
                             }
                         }
                     }
                 }
 
-                // Right Column: Risk Radar (Activity)
-                div { class: "flex flex-col pl-xxl",
-                    h3 { class: "text-xxs font-bold uppercase tracking-[0.2em] mb-xxxl",
-                        style: "color: var(--bc-danger);",
-                        "风控预警 (RISK ALERTS)"
-                    }
-
-                    div { class: "flex-1 flex flex-col gap-md",
-                        // Mock Alerts for Enterprise Demo
-                        div { class: "relative pl-md py-xs",
-                            style: "border-left: 2px solid var(--bc-warning);",
-                            div { class: "text-caption font-bold text-primary", "Azure Account #8821" }
-                            div { class: "text-xxs text-secondary mt-xs", "Quota Usage > 90%" }
-                        }
-                        div { class: "relative pl-md py-xs",
-                            style: "border-left: 2px solid var(--bc-danger);",
-                            div { class: "text-caption font-bold text-primary", "GCP-US-EAST-1" }
-                            div { class: "text-xxs text-secondary mt-xs", "API Response Timeout (500ms)" }
-                        }
-                         div { class: "relative pl-md py-xs text-tertiary",
-                            style: "border-left: 2px solid var(--bc-border);",
-                            div { class: "text-caption font-bold text-primary", "AWS IAM Policy Update" }
-                            div { class: "text-xxs text-secondary mt-xs", "Routine Security Check" }
+                // Live logs
+                div {
+                    div { class: "section-h",
+                        div { class: "lead",
+                            span { class: "lead-title", "实时日志" }
+                            span { class: "lead-sub", "最近请求" }
                         }
                     }
 
-                    div { class: "mt-auto pt-lg p-lg bc-card-solid",
-                        style: "border-radius: var(--bc-radius-md);",
-                        div { class: "text-xxs font-bold text-tertiary uppercase mb-sm", "System Status" }
-                        div { class: "flex items-center gap-sm",
-                            div { class: "status-dot",
-                                style: "background: var(--bc-success);"
+                    if loading {
+                        SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                        SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    } else if log_list.is_empty() {
+                        EmptyState {
+                            icon: rsx! { span { style: "font-size:32px", "📋" } },
+                            title: "暂无日志".to_string(),
+                            description: None,
+                            cta: None,
+                        }
+                    } else {
+                        div { class: "log-block",
+                            for entry in &log_list {
+                                div { class: if entry.status_code >= 500 { "log-err" } else if entry.status_code >= 400 { "log-warn" } else { "log-info" },
+                                    span { class: "log-time", "{entry.request_id}" }
+                                    " {entry.status_code} {entry.path} {entry.latency_ms}ms"
+                                }
                             }
-                            span { class: "text-caption font-medium text-primary", "All Gateways Operational" }
                         }
                     }
                 }

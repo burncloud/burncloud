@@ -4,7 +4,8 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::validate_schema;
 use burncloud_client_shared::components::{
-    ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,
+    BCButton, ButtonVariant, FormMode, SchemaForm,
+    PageHeader, StatKpi, StatusPill, Chip, ColumnDef, PageTable, EmptyState,
 };
 use burncloud_client_shared::schema::channel_schema;
 use burncloud_client_shared::use_toast;
@@ -240,6 +241,10 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
     }
 }
 
+fn channel_status(status: i32) -> String {
+    if status == 1 { "active".to_string() } else { "down".to_string() }
+}
+
 #[component]
 pub fn ChannelPage() -> Element {
     let page = use_signal(|| 1);
@@ -401,117 +406,141 @@ pub fn ChannelPage() -> Element {
         });
     };
 
-    // 准备 SchemaTable 数据
+    // 准备数据
     let channels_data = channels.read().clone();
-    let table_data: Vec<serde_json::Value> = channels_data
-        .as_ref()
-        .map(|list| {
-            list.iter()
-                .filter_map(|c| serde_json::to_value(c).ok())
-                .collect()
-        })
-        .unwrap_or_default();
 
-    let actions = vec![
-        ActionDef {
-            action_id: "toggle".to_string(),
-            label: "Toggle".to_string(),
-            color: "var(--bc-warning)".to_string(),
-        },
-        ActionDef {
-            action_id: "delete".to_string(),
-            label: "Delete".to_string(),
-            color: "var(--bc-danger)".to_string(),
-        },
+    let channel_columns = vec![
+        ColumnDef { key: "name".to_string(), label: "Channel".to_string(), width: None },
+        ColumnDef { key: "type".to_string(), label: "Provider".to_string(), width: Some("120px".to_string()) },
+        ColumnDef { key: "models".to_string(), label: "Models".to_string(), width: None },
+        ColumnDef { key: "status".to_string(), label: "Status".to_string(), width: Some("100px".to_string()) },
+        ColumnDef { key: "weight".to_string(), label: "Weight".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "actions".to_string(), label: "".to_string(), width: Some("100px".to_string()) },
     ];
 
-    let handle_action = move |event: ActionEvent| match event.action_id.as_str() {
-        "toggle" => {
-            if let Ok(ch) = serde_json::from_value::<Channel>(event.row) {
-                let mut new_c = ch.clone();
-                new_c.status = if ch.status == 1 { 0 } else { 1 };
-                spawn(async move {
-                    if ChannelService::update(&new_c).await.is_ok() {
-                        channels.restart();
-                    } else {
-                        toast.error("Failed to update status");
-                    }
-                });
-            }
-        }
-        "delete" => {
-            let id = event.row["id"].as_i64().unwrap_or(0);
-            let name = event.row["name"].as_str().unwrap_or("").to_string();
-            delete_channel_id.set(id);
-            delete_channel_name.set(name);
-            is_delete_modal_open.set(true);
-        }
-        _ => {}
-    };
+    let active_count = channels_data.as_ref().map(|l| l.iter().filter(|c| c.status == 1).count()).unwrap_or(0);
+    let total_count = channels_data.as_ref().map(|l| l.len()).unwrap_or(0);
 
-    let _any_modal_open = is_modal_open() || is_delete_modal_open();
+    let mut active_filter = use_signal(|| "all".to_string());
+
+    let filtered_channels: Vec<Channel> = channels_data
+        .as_ref()
+        .map(|list| list.iter().filter(|c| {
+            match active_filter().as_str() {
+                "active" => c.status == 1,
+                "down" => c.status != 1,
+                _ => true,
+            }
+        }).cloned().collect())
+        .unwrap_or_default();
 
     rsx! {
         div { class: "relative h-full",
             div { class: "flex flex-col h-full gap-xl transition-all duration-300 ease-out",
-                // Header
-                div { class: "flex justify-between items-end px-xs",
-                    div {
-                        h1 { class: "text-title font-semibold text-primary mb-xs tracking-tight", "模型网络" }
-                        p { class: "text-caption text-secondary font-medium", "您的 AI 算力中枢" }
-                    }
-                    div { class: "flex gap-md",
+                PageHeader {
+                    title: "模型网络",
+                    subtitle: Some("您的 AI 算力中枢".to_string()),
+                    actions: rsx! {
                         BCButton {
-                            class: "btn-neutral btn-sm px-lg shadow-sm text-white",
+                            class: "btn-black",
                             onclick: open_create_modal,
                             "添加连接"
                         }
                     }
                 }
 
-                // 表格
-                div { class: "flex-1 overflow-y-auto min-h-0",
-                    match channels_data {
-                        Some(list) if !list.is_empty() => rsx! {
-                            SchemaTable {
-                                schema: schema.clone(),
-                                data: table_data,
-                                loading: false,
-                                actions: actions,
-                                on_action: handle_action,
-                                on_row_click: move |_| {},
-                            }
-                        },
-                        Some(_) => rsx! {
-                            div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
-                                div { class: "p-lg rounded-full mb-lg",
-                                    style: "background: var(--bc-bg-hover);",
-                                    svg {
-                                        class: "w-12 h-12",
-                                        style: "color: var(--bc-text-disabled);",
-                                        fill: "none",
-                                        view_box: "0 0 24 24",
-                                        stroke: "currentColor",
-                                        stroke_width: "1.5",
-                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" }
-                                    }
-                                }
-                                h3 { class: "text-title font-bold text-primary mb-sm tracking-tight", "暂无模型网络" }
-                                p { class: "text-body text-secondary max-w-sm mb-xl leading-relaxed",
-                                    "连接您的第一个 AI 服务提供商，构建专属的神经中枢。"
-                                }
+                div { class: "page-content",
+                    // Stats
+                    div { class: "stats-grid cols-4",
+                        StatKpi {
+                            label: "总渠道数",
+                            value: "{total_count}",
+                        }
+                        StatKpi {
+                            label: "活跃渠道",
+                            value: "{active_count}",
+                        }
+                        StatKpi {
+                            label: "离线渠道",
+                            value: "{total_count - active_count}",
+                        }
+                        StatKpi {
+                            label: "总权重",
+                            value: "{channels_data.as_ref().map(|l| l.iter().map(|c| c.weight).sum::<i32>()).unwrap_or(0)}",
+                        }
+                    }
+
+                    // Filter chips
+                    div { class: "chip-row", style: "margin: 20px 0;",
+                        Chip {
+                            label: "全部".to_string(),
+                            count: Some(total_count as i64),
+                            active: Some(active_filter() == "all"),
+                            onclick: move |_| active_filter.set("all".to_string()),
+                        }
+                        Chip {
+                            label: "活跃".to_string(),
+                            count: Some(active_count as i64),
+                            active: Some(active_filter() == "active"),
+                            onclick: move |_| active_filter.set("active".to_string()),
+                        }
+                        Chip {
+                            label: "离线".to_string(),
+                            count: Some((total_count - active_count) as i64),
+                            active: Some(active_filter() == "down"),
+                            onclick: move |_| active_filter.set("down".to_string()),
+                        }
+                    }
+
+                    // Table or empty state
+                    if filtered_channels.is_empty() && channels_data.is_some() {
+                        EmptyState {
+                            icon: rsx! { span { style: "font-size:40px", "📡" } },
+                            title: "暂无模型渠道".to_string(),
+                            description: Some("连接您的第一个 AI 服务提供商".to_string()),
+                            cta: Some(rsx! {
                                 BCButton {
-                                    class: "btn-primary btn-md px-xl shadow-lg shadow-primary/20",
+                                    class: "btn-black",
                                     onclick: open_create_modal,
                                     "开始连接"
                                 }
-                            }
-                        },
-                        None => rsx! {
-                            div { class: "flex flex-col items-center justify-center h-full gap-md pb-xxl animate-pulse",
-                                style: "opacity: 0.5;",
-                                div { class: "w-12 h-12 rounded-full", style: "background: var(--bc-bg-hover);" }
-                                div { class: "text-caption font-medium text-secondary", "正在搜索神经网络..." }
+                            }),
+                        }
+                    } else if channels_data.is_none() {
+                        div { class: "flex flex-col items-center justify-center h-full gap-md animate-pulse",
+                            style: "opacity: 0.5;",
+                            div { class: "text-caption font-medium text-secondary", "正在加载渠道..." }
+                        }
+                    } else {
+                        PageTable {
+                            columns: channel_columns,
+                            for ch in &filtered_channels {
+                                tr {
+                                    key: "{ch.id}",
+                                    td { style: "font-weight:500", "{ch.name}" }
+                                    td { class: "mono", style: "font-size:13px", "{ch.type_}" }
+                                    td { style: "font-size:13px; color:var(--bc-text-secondary)", "{ch.models}" }
+                                    td {
+                                        StatusPill {
+                                            value: channel_status(ch.status)
+                                        }
+                                    }
+                                    td { class: "mono", style: "font-size:13px", "{ch.weight}" }
+                                    td {
+                                        button {
+                                            class: "btn-ghost",
+                                            onclick: {
+                                                let ch = ch.clone();
+                                                move |_| {
+                                                    delete_channel_id.set(ch.id);
+                                                    delete_channel_name.set(ch.name.clone());
+                                                    is_delete_modal_open.set(true);
+                                                }
+                                            },
+                                            "删除"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

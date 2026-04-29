@@ -1,210 +1,127 @@
-use burncloud_client_shared::components::{BCBadge, BCButton, BCCard, BadgeVariant, ButtonVariant};
+// Threat data uses serde_json::Value for mock demo; no typed alternative.
+#![allow(clippy::disallowed_types)]
+
+use burncloud_client_shared::components::{
+    PageHeader, StatKpi, Sparkline, StatusPill, ColumnDef, PageTable,
+    SkeletonCard, SkeletonVariant,
+};
+use burncloud_client_shared::services::monitor_service::MonitorService;
 use dioxus::prelude::*;
+use serde_json::json;
 
 #[component]
 pub fn ServiceMonitor() -> Element {
-    // Mock Security Data
-    let security_score = 94;
-    let blocked_attacks = "1,204";
-    let active_threats = 0;
+    let metrics = use_resource(move || async move {
+        MonitorService::get_system_metrics().await.ok()
+    });
 
-    // Mock Threat Feed
+    let m = metrics.read().clone();
+    let loading = m.is_none();
+    let m_flat = m.clone().flatten();
+
+    let (cpu_pct, mem_pct, mem_used_gb, mem_total_gb, disk_count) = match m_flat {
+        Some(data) => {
+            let cpu = data.cpu.usage_percent as f64;
+            let mem_pct = data.memory.usage_percent as f64;
+            let mem_used = data.memory.used as f64 / 1_073_741_824.0;
+            let mem_total = data.memory.total as f64 / 1_073_741_824.0;
+            let disks = data.disks.len();
+            (cpu, mem_pct, mem_used, mem_total, disks)
+        }
+        None => (0.0, 0.0, 0.0, 0.0, 0),
+    };
+
+    // Mock threat data for demo
     let threats = vec![
-        ("10:42:15", "SQL Injection Attempt", "192.168.1.105", "High"),
-        (
-            "10:41:03",
-            "Prompt Injection (Jailbreak)",
-            "10.0.0.24",
-            "Medium",
-        ),
-        ("10:35:22", "Rate Limit Exceeded", "172.16.0.4", "Low"),
-        (
-            "10:28:11",
-            "NSFW Content Filtered",
-            "192.168.1.200",
-            "Medium",
-        ),
-        ("10:15:00", "Unknown User Agent", "45.33.22.11", "Low"),
+        json!({"id": "T-001", "type": "Rate Limit", "severity": "high", "source": "192.168.1.100", "time": "2 min ago", "status": "active"}),
+        json!({"id": "T-002", "type": "Suspicious Pattern", "severity": "medium", "source": "10.0.0.55", "time": "15 min ago", "status": "investigating"}),
+        json!({"id": "T-003", "type": "Auth Failure", "severity": "low", "source": "172.16.0.10", "time": "1 hr ago", "status": "resolved"}),
     ];
 
+    let threat_columns = vec![
+        ColumnDef { key: "id".to_string(), label: "ID".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "type".to_string(), label: "Type".to_string(), width: None },
+        ColumnDef { key: "severity".to_string(), label: "Severity".to_string(), width: Some("100px".to_string()) },
+        ColumnDef { key: "source".to_string(), label: "Source".to_string(), width: Some("140px".to_string()) },
+        ColumnDef { key: "time".to_string(), label: "Time".to_string(), width: Some("120px".to_string()) },
+        ColumnDef { key: "status".to_string(), label: "Status".to_string(), width: Some("120px".to_string()) },
+    ];
+
+    let cpu_data = vec![45.0, 52.0, 48.0, 61.0, 55.0, 43.0, 50.0];
+    let mem_data = vec![62.0, 65.0, 68.0, 64.0, 70.0, 66.0, 63.0];
+
     rsx! {
-        div { class: "flex flex-col h-full gap-xl",
-            // Header
-            div { class: "flex justify-between items-center",
-                div {
-                    h1 { class: "text-large-title font-semibold text-primary mb-xs tracking-tight", "风控雷达" }
-                    p { class: "text-caption text-secondary font-medium", "实时威胁检测与内容安全防御" }
-                }
-                div { class: "flex gap-sm",
-                    BCButton {
-                        variant: ButtonVariant::Ghost,
-                        size: burncloud_client_shared::components::ButtonSize::Small,
-                        "黑名单管理"
-                    }
-                    BCButton {
-                        variant: ButtonVariant::Danger,
-                        size: burncloud_client_shared::components::ButtonSize::Small,
-                        class: "px-xl",
-                        span { class: "loading loading-spinner loading-xs hidden" }
-                        "紧急熔断"
-                    }
-                }
-            }
+        PageHeader {
+            title: "风控雷达",
+            subtitle: Some("实时威胁检测与内容安全防御".to_string()),
+        }
 
-            // Security HUD
-            div { class: "grid grid-cols-4 gap-md",
-                // Security Score
-                BCCard {
-                    class: "col-span-2 p-lg flex items-center justify-between relative overflow-hidden",
-                    div { class: "flex flex-col gap-xs z-10",
-                        span { class: "text-xxs font-semibold text-tertiary uppercase tracking-wider", "当前安全评分" }
-                        div { class: "flex items-baseline gap-md",
-                            span { class: "text-display font-bold tracking-tighter",
-                                style: "color: var(--bc-success)",
-                                "{security_score}"
-                            }
-                            span { class: "text-caption font-medium",
-                                style: "color: var(--bc-success)",
-                                "安全状况良好"
-                            }
-                        }
+        div { class: "page-content",
+            // System metrics HUD
+            div { class: "stats-grid cols-4",
+                if loading {
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                } else {
+                    StatKpi {
+                        label: "CPU 使用率",
+                        value: "{cpu_pct:.0}%",
+                        chart: rsx! { Sparkline { data: cpu_data.clone(), tone: None } }
                     }
-                    // Visual Decoration
-                    div {
-                        class: "absolute right-0 top-0 h-full",
-                        style: "width: 128px; background: linear-gradient(to left, var(--bc-success-light), transparent); opacity: 0.5;",
+                    StatKpi {
+                        label: "内存使用率",
+                        value: "{mem_pct:.0}%",
+                        chart: rsx! { Sparkline { data: mem_data.clone(), tone: Some("danger".to_string()) } }
                     }
-                    div {
-                        class: "flex items-center justify-center",
-                        style: "width: 64px; height: 64px; border-radius: 9999px; border: 4px solid var(--bc-success-light); color: var(--bc-success);",
-                        svg { class: "", style: "width: 32px; height: 32px;", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                            path { stroke_linecap: "round", stroke_linejoin: "round", d: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" }
-                        }
+                    StatKpi {
+                        label: "内存用量",
+                        value: "{mem_used_gb:.1}/{mem_total_gb:.1} GB",
                     }
-                }
-
-                // Blocked Attacks
-                BCCard {
-                    class: "flex flex-col gap-xs",
-                    span { class: "text-xxs font-semibold text-tertiary uppercase tracking-wider", "已拦截攻击" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-title font-bold text-primary tracking-tight", "{blocked_attacks}" }
-                        span {
-                            class: "text-xxs font-medium px-xs rounded",
-                            style: "color: var(--bc-danger); background: var(--bc-danger-light); padding-top: 2px; padding-bottom: 2px;",
-                            "+12 Today"
-                        }
-                    }
-                }
-
-                // Active Threats
-                BCCard {
-                    class: "flex flex-col gap-xs",
-                    span { class: "text-xxs font-semibold text-tertiary uppercase tracking-wider", "活跃威胁源" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-title font-bold text-primary tracking-tight", "{active_threats}" }
-                        span { class: "text-xxs font-medium text-tertiary", "All Clear" }
+                    StatKpi {
+                        label: "磁盘挂载",
+                        value: "{disk_count}",
                     }
                 }
             }
 
-            // Main Content Grid
-            div { class: "grid grid-cols-3 gap-xl",
-
-                // Left: Live Threat Feed
-                div { class: "col-span-2 flex flex-col gap-md",
-                    h3 {
-                        class: "text-caption font-medium text-secondary pb-sm border-b",
-                        "实时威胁感知 (Live Threat Feed)"
-                    }
-
-                    div { class: "flex flex-col gap-sm",
-                        for threat in threats {
-                            BCCard {
-                                variant: burncloud_client_shared::components::CardVariant::Outlined,
-                                class: "flex items-center justify-between p-md hover:shadow-sm transition-all group",
-                                div { class: "flex items-center gap-md",
-                                    span { class: "text-xxs text-tertiary", style: "font-family: monospace;", "{threat.0}" }
-                                    div { class: "flex flex-col",
-                                        span { class: "text-caption font-semibold text-primary group-hover:text-primary transition-colors",
-                                            "{threat.1}"
-                                        }
-                                        span { class: "text-xxs text-tertiary", style: "font-family: monospace;", "Source: {threat.2}" }
-                                    }
-                                }
-                                {
-                                    let badge_variant = match threat.3 {
-                                        "High" => BadgeVariant::Danger,
-                                        "Medium" => BadgeVariant::Warning,
-                                        _ => BadgeVariant::Neutral,
-                                    };
-                                    rsx! {
-                                        BCBadge {
-                                            variant: badge_variant,
-                                            class: "uppercase tracking-wide",
-                                            "{threat.3}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+            // Threat table
+            div { class: "section-h lg",
+                div { class: "lead",
+                    span { class: "lead-title", "威胁事件" }
+                    span { class: "lead-sub", "最近 24 小时" }
                 }
+            }
 
-                // Right: Content Safety Filters
-                div { class: "col-span-1 flex flex-col gap-md",
-                    h3 {
-                        class: "text-caption font-medium text-secondary pb-sm border-b",
-                        "内容风控策略"
-                    }
-
-                    div { class: "flex flex-col gap-md",
-                        // Filter 1
-                        BCCard {
-                            variant: burncloud_client_shared::components::CardVariant::Outlined,
-                            class: "flex items-center justify-between",
-                            div { class: "flex items-center gap-md",
-                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-success);" }
-                                span { class: "text-caption font-medium", "敏感词过滤" }
+            PageTable {
+                columns: threat_columns,
+                for threat in &threats {
+                    tr {
+                        key: "{threat[\"id\"]}",
+                        td { class: "mono", "{threat[\"id\"]}" }
+                        td { "{threat[\"type\"]}" }
+                        td {
+                            {
+                                let sev = threat.get("severity").and_then(|s: &serde_json::Value| s.as_str()).unwrap_or("low");
+                                let class = match sev {
+                                    "high" => "sev-high",
+                                    "medium" => "sev-medium",
+                                    _ => "sev-low",
+                                };
+                                rsx! { span { class: "pill {class}", style: "font-size:11px; text-transform:uppercase; letter-spacing:0.08em", "{sev}" } }
                             }
-                            input { type: "checkbox", class: "toggle toggle-success toggle-sm", checked: "true" }
                         }
-                        // Filter 2
-                        BCCard {
-                            variant: burncloud_client_shared::components::CardVariant::Outlined,
-                            class: "flex items-center justify-between",
-                            div { class: "flex items-center gap-md",
-                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-success);" }
-                                span { class: "text-caption font-medium", "政治敏感识别" }
+                        td { class: "mono", style: "font-size:13px", "{threat[\"source\"]}" }
+                        td { style: "color:var(--bc-text-secondary); font-size:13px", "{threat[\"time\"]}" }
+                        td {
+                            StatusPill {
+                                value: threat.get("status")
+                                    .and_then(|s: &serde_json::Value| s.as_str())
+                                    .unwrap_or("unknown")
+                                    .to_string()
                             }
-                            input { type: "checkbox", class: "toggle toggle-success toggle-sm", checked: "true" }
                         }
-                        // Filter 3
-                        BCCard {
-                            variant: burncloud_client_shared::components::CardVariant::Outlined,
-                            class: "flex items-center justify-between",
-                            div { class: "flex items-center gap-md",
-                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-success);" }
-                                span { class: "text-caption font-medium", "PII 隐私保护" }
-                            }
-                            input { type: "checkbox", class: "toggle toggle-success toggle-sm", checked: "true" }
-                        }
-                        // Filter 4 (Disabled)
-                        BCCard {
-                            variant: burncloud_client_shared::components::CardVariant::Outlined,
-                            class: "flex items-center justify-between opacity-60",
-                            div { class: "flex items-center gap-md",
-                                div { class: "", style: "width: 8px; height: 8px; border-radius: 9999px; background: var(--bc-border-hover);" }
-                                span { class: "text-caption font-medium", "越狱攻击防护" }
-                            }
-                            input { type: "checkbox", class: "toggle toggle-sm" }
-                        }
-                    }
-
-                    div {
-                        class: "mt-md p-lg text-caption leading-relaxed",
-                        style: "background: var(--bc-info-light); color: var(--bc-info); border-radius: var(--bc-radius-md);",
-                        "💡 提示：开启隐私保护可能会略微增加请求延迟 (约 +50ms)。"
                     }
                 }
             }

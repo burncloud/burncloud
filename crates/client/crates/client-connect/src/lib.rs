@@ -3,7 +3,7 @@
 
 use burncloud_client_shared::components::{
     ActionDef, ActionEvent, BCBadge, BCButton, BCCard, BCModal, BadgeVariant, ButtonVariant,
-    FormMode, SchemaForm, SchemaTable,
+    FormMode, PageHeader, SchemaForm, SchemaTable, StatKpi,
 };
 use burncloud_client_shared::schema::channel_schema;
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
@@ -168,44 +168,35 @@ pub fn ConnectPage() -> Element {
 
     rsx! {
         div { class: "p-xl flex flex-col gap-xl",
-            // Header
-            div { class: "flex justify-between items-end",
-                div {
-                    h1 { class: "text-large-title font-bold m-0", "算力互联" }
-                    p { class: "text-secondary m-0 mt-xs font-mono", "BurnCloud Connect" }
-                }
-                BCButton {
-                    variant: ButtonVariant::Primary,
-                    onclick: move |_| show_add_modal.set(true),
-                    "➕ 接入本地资源"
+            PageHeader {
+                title: "算力互联",
+                subtitle: Some("BurnCloud Connect".to_string()),
+                actions: rsx! {
+                    BCButton {
+                        class: "btn-black",
+                        onclick: move |_| show_add_modal.set(true),
+                        "➕ 接入本地资源"
+                    }
                 }
             }
 
             // Quick Stats
-            div { class: "grid grid-cols-1 md:grid-cols-4 gap-lg",
-                BCCard {
-                    div { class: "p-lg",
-                        div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Active Nodes" }
-                        div { class: "text-3xl font-bold text-primary", "{channels.read().iter().filter(|c| c.type_ == 33).count()}" }
-                    }
+            div { class: "stats-grid cols-4",
+                StatKpi {
+                    label: "Active Nodes",
+                    value: "{channels.read().iter().filter(|c| c.type_ == 33).count()}",
                 }
-                BCCard {
-                    div { class: "p-lg",
-                        div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Network Capacity" }
-                        div { class: "text-3xl font-bold", style: "color: var(--bc-primary);", "1.2 PFlops" }
-                    }
+                StatKpi {
+                    label: "Network Capacity",
+                    value: "1.2 PFlops",
                 }
-                BCCard {
-                    div { class: "p-lg",
-                        div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Pool Balance" }
-                        div { class: "text-3xl font-bold text-primary", "$ 42.50" }
-                    }
+                StatKpi {
+                    label: "Pool Balance",
+                    value: "$ 42.50",
                 }
-                BCCard {
-                    div { class: "p-lg",
-                        div { class: "text-caption text-secondary uppercase tracking-widest mb-xs", "Efficiency Gain" }
-                        div { class: "text-3xl font-bold", style: "color: var(--bc-success);", "34.2%" }
-                    }
+                StatKpi {
+                    label: "Efficiency Gain",
+                    value: "34.2%",
                 }
             }
 

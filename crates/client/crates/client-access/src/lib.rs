@@ -2,7 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::components::{
-    BCBadge, BCButton, BadgeVariant, ButtonVariant, SchemaForm,
+    BCBadge, BCButton, BadgeVariant, ButtonVariant, PageHeader, SchemaForm,
 };
 use burncloud_client_shared::schema::token_schema;
 use burncloud_client_shared::{token_service::TokenService, use_auth, use_toast};
@@ -164,14 +164,14 @@ pub fn AccessCredentialsPage() -> Element {
     rsx! {
         div { class: "flex flex-col h-full gap-xl",
             // Header
-            div { class: "flex justify-between items-end",
-                div {
-                    h1 { class: "text-title font-bold text-primary mb-xs tracking-tight", "访问凭证" }
-                }
-                BCButton {
-                    class: "btn-neutral btn-sm px-lg text-white shadow-sm",
-                    onclick: handle_create_click,
-                    "创建新凭证"
+            PageHeader {
+                title: "访问凭证",
+                actions: rsx! {
+                    BCButton {
+                        class: "btn-black",
+                        onclick: handle_create_click,
+                        "创建新凭证"
+                    }
                 }
             }
 
