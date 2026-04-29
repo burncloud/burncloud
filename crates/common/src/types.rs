@@ -131,38 +131,6 @@ pub struct ExchangeRate {
 /// Spec-aligned alias: `billing_exchange_rates` row type.
 pub type BillingExchangeRate = ExchangeRate;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ModelInfo {
-    pub name: String,
-    pub size: u64,
-    pub downloaded: bool,
-    pub path: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Config {
-    pub models_dir: String,
-    pub server_port: u16,
-    pub max_memory: u64,
-    pub gpu_enabled: bool,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        let port = std::env::var("PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(3000);
-
-        Self {
-            models_dir: "models".to_string(),
-            server_port: port,
-            max_memory: 8192,
-            gpu_enabled: false,
-        }
-    }
-}
-
 // OpenAI Compatible Types
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OpenAIChatMessage {

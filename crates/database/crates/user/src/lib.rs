@@ -2,8 +2,6 @@
 //!
 //! The spec-aligned entity layout is split across per-entity files:
 //! - `user_account.rs`: `UserAccount`, `UserAccountInput`
-//! - `user_role.rs`: `UserRole`
-//! - `user_role_binding.rs`: `UserRoleBinding`
 //! - `user_recharge.rs`: `UserRecharge`
 //! - `user_api_key.rs`: `UserApiKey`, `UserApiKeyModel`, `UserApiKeyInput`, `UserApiKeyUpdateInput`
 //!
@@ -15,14 +13,10 @@ mod common;
 mod user_account;
 mod user_api_key;
 mod user_recharge;
-mod user_role;
-mod user_role_binding;
 
 pub use user_account::{UserAccount, UserAccountInput};
 pub use user_api_key::{UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
 pub use user_recharge::UserRecharge;
-pub use user_role::UserRole;
-pub use user_role_binding::UserRoleBinding;
 
 use burncloud_database::{Database, Result};
 use sqlx::Row;
