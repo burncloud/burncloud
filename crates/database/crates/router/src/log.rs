@@ -309,7 +309,7 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
 
     let row: (Option<i64>, Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(&sql)
         .bind(user_id)
-        .bind(threshold.to_string())
+        .bind(threshold)
         .fetch_one(conn.pool())
         .await?;
 
