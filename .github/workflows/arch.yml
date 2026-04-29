@@ -1,0 +1,38 @@
+name: Architecture Checks
+
+on:
+  pull_request:
+    paths:
+      - 'crates/router/Cargo.toml'
+      - 'deny.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  router-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Check router service dependency whitelist
+        run: ./crates/router/scripts/check-router-deps.sh --ci
+
+  cargo-deny-bans:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check cargo-deny bans
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans
+          arguments: --all-features
