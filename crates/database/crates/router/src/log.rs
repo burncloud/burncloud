@@ -3,7 +3,7 @@
 //! This crate handles all database operations related to router logs,
 //! usage statistics, and balance deductions.
 
-use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
+use burncloud_database::{adapt_sql, ph, phs, Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -199,21 +199,20 @@ impl RouterLogModel {
     ) -> Result<Vec<RouterLog>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
-        let placeholder = if is_postgres { "$" } else { "?" };
 
         let mut conditions: Vec<String> = Vec::new();
         let mut param_index = 1;
 
         if user_id.is_some() {
-            conditions.push(format!("user_id = {}{}", placeholder, param_index));
+            conditions.push(format!("user_id = {}", ph(is_postgres, param_index)));
             param_index += 1;
         }
         if upstream_id.is_some() {
-            conditions.push(format!("upstream_id = {}{}", placeholder, param_index));
+            conditions.push(format!("upstream_id = {}", ph(is_postgres, param_index)));
             param_index += 1;
         }
         if model.is_some() {
-            conditions.push(format!("model = {}{}", placeholder, param_index));
+            conditions.push(format!("model = {}", ph(is_postgres, param_index)));
             param_index += 1;
         }
 
@@ -223,11 +222,11 @@ impl RouterLogModel {
             format!("WHERE {}", conditions.join(" AND "))
         };
 
-        let limit_offset = if is_postgres {
-            format!("LIMIT ${} OFFSET ${}", param_index, param_index + 1)
-        } else {
-            "LIMIT ? OFFSET ?".to_string()
-        };
+        let limit_offset = format!(
+            "LIMIT {} OFFSET {}",
+            ph(is_postgres, param_index),
+            ph(is_postgres, param_index + 1)
+        );
         let sql = format!(
             "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, traffic_color, created_at FROM router_logs {} ORDER BY created_at DESC {}",
             where_clause, limit_offset
@@ -256,12 +255,12 @@ impl RouterLogModel {
     /// Get total usage by user
     pub async fn get_usage_by_user(db: &Database, user_id: &str) -> Result<(i64, i64)> {
         let conn = db.get_connection()?;
-        let sql = if db.kind() == "postgres" {
-            "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = $1"
-        } else {
-            "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = ?"
-        };
-        let row: (Option<i64>, Option<i64>) = sqlx::query_as(sql)
+        let is_postgres = db.kind() == "postgres";
+        let sql = adapt_sql(
+            is_postgres,
+            "SELECT SUM(prompt_tokens), SUM(completion_tokens) FROM router_logs WHERE user_id = ?",
+        );
+        let row: (Option<i64>, Option<i64>) = sqlx::query_as(&sql)
             .bind(user_id)
             .fetch_one(conn.pool())
             .await?;
@@ -288,31 +287,29 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
         _ => now - 30 * 24 * 60 * 60, // Default to month for any other input
     };
 
-    let sql = if is_postgres {
-        r#"
-        SELECT
-            COUNT(*) as total_requests,
-            COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
-            COALESCE(SUM(cost), 0) as total_cost
-        FROM router_logs
-        WHERE user_id = $1 AND created_at IS NOT NULL AND CAST(created_at AS BIGINT) >= $2
-        "#
+    let time_filter = if is_postgres {
+        format!("EXTRACT(EPOCH FROM created_at)::BIGINT >= {}", ph(is_postgres, 2))
     } else {
-        r#"
-        SELECT
-            COUNT(*) as total_requests,
-            COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
-            COALESCE(SUM(cost), 0) as total_cost
-        FROM router_logs
-        WHERE user_id = ? AND created_at IS NOT NULL AND CAST(created_at AS INTEGER) >= ?
-        "#
+        format!("CAST(strftime('%s', created_at) AS BIGINT) >= {}", ph(is_postgres, 2))
     };
 
-    let row: (Option<i64>, Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(sql)
+    let sql = format!(
+        r#"
+        SELECT
+            COUNT(*) as total_requests,
+            COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+            COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
+            COALESCE(SUM(cost), 0) as total_cost
+        FROM router_logs
+        WHERE user_id = {} AND created_at IS NOT NULL AND {}
+        "#,
+        ph(is_postgres, 1),
+        time_filter
+    );
+
+    let row: (Option<i64>, Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(&sql)
         .bind(user_id)
-        .bind(threshold.to_string())
+        .bind(threshold)
         .fetch_one(conn.pool())
         .await?;
 
@@ -325,48 +322,55 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
 }
 
 /// Get usage statistics grouped by model for a user over a time period
+/// Period can be: "day", "week", "month"
 pub async fn get_usage_stats_by_model(
     db: &Database,
     user_id: &str,
-    _period: &str,
+    period: &str,
 ) -> Result<Vec<ModelUsageStats>> {
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    let sql = if is_postgres {
-        r#"
-        SELECT
-            COALESCE(model, 'Unknown') as model,
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-            COALESCE(SUM(cost), 0) as cost
-        FROM router_logs
-        WHERE user_id = $1
-        GROUP BY model
-        ORDER BY cost DESC
-        "#
-    } else {
-        r#"
-        SELECT
-            COALESCE(model, 'Unknown') as model,
-            COUNT(*) as requests,
-            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-            COALESCE(SUM(cost), 0) as cost
-        FROM router_logs
-        WHERE user_id = ?
-        GROUP BY model
-        ORDER BY cost DESC
-        "#
+    // Calculate time threshold — same logic as get_usage_stats
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| DatabaseError::Query(format!("Time error: {}", e)))?
+        .as_secs() as i64;
+
+    let threshold = match period {
+        "day" => now - 24 * 60 * 60,
+        "week" => now - 7 * 24 * 60 * 60,
+        _ => now - 30 * 24 * 60 * 60,
     };
 
-    let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(sql)
+    let time_filter = if is_postgres {
+        format!("EXTRACT(EPOCH FROM created_at)::BIGINT >= {}", ph(is_postgres, 2))
+    } else {
+        "strftime('%s', created_at) >= CAST(? AS TEXT)".to_string()
+    };
+
+    let sql = format!(
+        r#"
+        SELECT
+            COALESCE(model, 'Unknown') as model,
+            COUNT(*) as requests,
+            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
+            COALESCE(SUM(cost), 0) as cost
+        FROM router_logs
+        WHERE user_id = {} AND created_at IS NOT NULL AND {}
+        GROUP BY model
+        ORDER BY cost DESC
+        "#,
+        ph(is_postgres, 1),
+        time_filter
+    );
+
+    let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(&sql)
         .bind(user_id)
+        .bind(threshold.to_string())
         .fetch_all(conn.pool())
         .await?;
 
@@ -436,20 +440,50 @@ pub async fn get_billing_summary(
     // PostgreSQL: created_at is TIMESTAMP, cast to date
     let (date_filter, date_cast_start, date_cast_end) = match (start, end) {
         (Some(_), Some(_)) if is_postgres => (
-            "AND created_at::date >= $1::date AND created_at::date <= $2::date",
+            format!(
+                "AND created_at::date >= {}::date AND created_at::date <= {}::date",
+                ph(is_postgres, 1),
+                ph(is_postgres, 2)
+            ),
             true,
             true,
         ),
-        (Some(_), None) if is_postgres => ("AND created_at::date >= $1::date", true, false),
-        (None, Some(_)) if is_postgres => ("AND created_at::date <= $1::date", false, true),
+        (Some(_), None) if is_postgres => (
+            format!("AND created_at::date >= {}::date", ph(is_postgres, 1)),
+            true,
+            false,
+        ),
+        (None, Some(_)) if is_postgres => (
+            format!("AND created_at::date <= {}::date", ph(is_postgres, 1)),
+            false,
+            true,
+        ),
         (Some(_), Some(_)) => (
-            "AND strftime('%Y-%m-%d', created_at) >= ? AND strftime('%Y-%m-%d', created_at) <= ?",
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) >= {} AND strftime('%Y-%m-%d', created_at) <= {}",
+                ph(is_postgres, 1),
+                ph(is_postgres, 2)
+            ),
             true,
             true,
         ),
-        (Some(_), None) => ("AND strftime('%Y-%m-%d', created_at) >= ?", true, false),
-        (None, Some(_)) => ("AND strftime('%Y-%m-%d', created_at) <= ?", false, true),
-        (None, None) => ("", false, false),
+        (Some(_), None) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) >= {}",
+                ph(is_postgres, 1)
+            ),
+            true,
+            false,
+        ),
+        (None, Some(_)) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) <= {}",
+                ph(is_postgres, 1)
+            ),
+            false,
+            true,
+        ),
+        (None, None) => (String::new(), false, false),
     };
 
     // Count pre-migration (NULL model) rows
@@ -464,7 +498,7 @@ pub async fn get_billing_summary(
     if date_cast_end {
         null_query = null_query.bind(end.unwrap_or(""));
     }
-    let pre_migration_requests: i64 = null_query.fetch_one(conn.pool()).await.unwrap_or(0);
+    let pre_migration_requests: i64 = null_query.fetch_one(conn.pool()).await?;
 
     // Main query: GROUP BY model (exclude NULL model rows from model breakdown)
     let main_sql = format!(
@@ -552,9 +586,9 @@ impl BalanceModel {
         );
         let balance: i64 = sqlx::query_scalar(&balance_sql)
             .bind(user_id)
-            .fetch_one(conn.pool())
-            .await
-            .unwrap_or(0);
+            .fetch_optional(conn.pool())
+            .await?
+            .ok_or_else(|| DatabaseError::Query(format!("user account not found: {}", user_id)))?;
 
         if balance < cost_nano {
             return Ok(false);
@@ -594,9 +628,9 @@ impl BalanceModel {
         );
         let balance: i64 = sqlx::query_scalar(&balance_sql)
             .bind(user_id)
-            .fetch_one(conn.pool())
-            .await
-            .unwrap_or(0);
+            .fetch_optional(conn.pool())
+            .await?
+            .ok_or_else(|| DatabaseError::Query(format!("user account not found: {}", user_id)))?;
 
         if balance < cost_nano {
             return Ok(false);
@@ -654,7 +688,8 @@ impl BalanceModel {
             .fetch_optional(conn.pool())
             .await?;
 
-        let (balance_usd, balance_cny) = balances.unwrap_or((0, 0));
+        let (balance_usd, balance_cny) = balances
+            .ok_or_else(|| DatabaseError::Query(format!("user account not found: {}", user_id)))?;
 
         if cost_currency == "CNY" {
             // CNY model: prioritize CNY balance

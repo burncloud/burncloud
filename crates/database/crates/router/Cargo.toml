@@ -17,9 +17,10 @@ hex.workspace = true
 rand.workspace = true
 
 [dev-dependencies]
-uuid.workspace = true
+chrono = { workspace = true }
+tempfile = { workspace = true }
+uuid = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tempfile.workspace = true
 
 [lints]
 workspace = true

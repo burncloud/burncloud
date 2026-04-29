@@ -1,6 +1,6 @@
 use crate::common::current_timestamp;
 use burncloud_common::types::{Price, PriceInput};
-use burncloud_database::{Database, Result};
+use burncloud_database::{Database, Result, adapt_sql};
 
 pub struct BillingPriceModel;
 
@@ -700,6 +700,82 @@ impl BillingPriceModel {
 
         tx.commit().await?;
         Ok(count)
+    }
+
+    /// Atomically update only the cache pricing columns for an existing row.
+    ///
+    /// Uses a targeted UPDATE instead of read-then-write to prevent concurrent
+    /// syncs from overwriting each other's partial updates (e.g. cache pricing
+    /// vs batch pricing).
+    ///
+    /// Returns `Ok(true)` if a row was updated, `Ok(false)` if no matching row exists.
+    pub async fn update_cache_pricing(
+        db: &Database,
+        model: &str,
+        region: Option<&str>,
+        cache_read_input_price: Option<i64>,
+        cache_creation_input_price: Option<i64>,
+    ) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let now = current_timestamp();
+        let region_key = region.unwrap_or("");
+
+        let sql = adapt_sql(
+            is_postgres,
+            "UPDATE billing_prices \
+             SET cache_read_input_price = ?, cache_creation_input_price = ?, updated_at = ? \
+             WHERE model = ? AND region = ?",
+        );
+
+        let result = sqlx::query(&sql)
+            .bind(cache_read_input_price)
+            .bind(cache_creation_input_price)
+            .bind(now)
+            .bind(model)
+            .bind(region_key)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Atomically update only the batch pricing columns for an existing row.
+    ///
+    /// Uses a targeted UPDATE instead of read-then-write to prevent concurrent
+    /// syncs from overwriting each other's partial updates (e.g. batch pricing
+    /// vs cache pricing).
+    ///
+    /// Returns `Ok(true)` if a row was updated, `Ok(false)` if no matching row exists.
+    pub async fn update_batch_pricing(
+        db: &Database,
+        model: &str,
+        region: Option<&str>,
+        batch_input_price: Option<i64>,
+        batch_output_price: Option<i64>,
+    ) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let now = current_timestamp();
+        let region_key = region.unwrap_or("");
+
+        let sql = adapt_sql(
+            is_postgres,
+            "UPDATE billing_prices \
+             SET batch_input_price = ?, batch_output_price = ?, updated_at = ? \
+             WHERE model = ? AND region = ?",
+        );
+
+        let result = sqlx::query(&sql)
+            .bind(batch_input_price)
+            .bind(batch_output_price)
+            .bind(now)
+            .bind(model)
+            .bind(region_key)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Delete a price entry

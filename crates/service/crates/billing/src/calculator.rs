@@ -170,6 +170,12 @@ fn compute_breakdown(
     };
 
     // --- Standard input / output ---
+    if is_priority && is_batch {
+        tracing::warn!(
+            request_id = %request_id,
+            "both is_priority and is_batch set — using priority rate"
+        );
+    }
     let (effective_input_price, effective_output_price) = if is_priority {
         (
             price.priority_input_price.unwrap_or(saturating_mul_percent(
@@ -266,6 +272,7 @@ fn compute_breakdown(
         None
     };
 
+
     let audio_cost = nano(
         usage.audio_input_tokens,
         audio_input_price,
@@ -336,7 +343,16 @@ fn compute_breakdown(
 /// Compute `tokens * price_per_million / 1_000_000` in nanodollars.
 /// Uses i128 intermediates to prevent overflow; caps at i64::MAX with a warn.
 fn nano(tokens: i64, price_per_million: i64, request_id: &str, field: &str) -> i64 {
-    if tokens <= 0 || price_per_million <= 0 {
+    if tokens < 0 {
+        tracing::warn!(
+            request_id = %request_id,
+            field = %field,
+            tokens = tokens,
+            "negative token count in cost calculation — upstream usage parse anomaly, treating as 0"
+        );
+        return 0;
+    }
+    if tokens == 0 || price_per_million <= 0 {
         return 0;
     }
     let result = tokens as i128 * price_per_million as i128 / 1_000_000;
@@ -520,6 +536,84 @@ mod tests {
         let calc = CostCalculator::new(cache);
         let result = calc.preflight("nonexistent-model", None).await;
         assert!(matches!(result, Err(BillingError::PriceNotFound(ref m)) if m == "nonexistent-model"));
+    }
+
+    /// B1 regression: voice_id must NOT cause double-counting of audio_output_tokens.
+    /// When voice_id matches voices_pricing, total() == audio_input_cost + voice_cost
+    /// (audio_output_tokens are NOT also billed at audio_output_price).
+    #[test]
+    fn test_voice_cost_no_double_count() {
+        let mut price = make_price(10_000, 30_000);
+        // Set explicit audio prices so we can compute expected values precisely
+        price.audio_input_price = Some(70_000);   // 70k nano/MTok
+        price.audio_output_price = Some(30_000);   // 30k nano/MTok
+        // voices_pricing: voice "alloy" costs 40_000 nano/MTok
+        price.voices_pricing = Some("{\"alloy\":40000}".to_string());
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+
+        let bd = compute_breakdown(&usage, &price, "req-voice-b1", false, false, Some("alloy"));
+
+        // audio_input_cost = 1M * 70k / 1M = 70_000
+        let expected_audio_input_cost = 70_000;
+        // voice_cost = 1M * 40k / 1M = 40_000
+        let expected_voice_cost = 40_000;
+        // audio_output_base should be 0 (voice covers it), so audio_cost = audio_input only
+        let expected_audio_cost = expected_audio_input_cost;
+
+        assert_eq!(bd.audio_cost, expected_audio_cost,
+            "audio_cost should only contain audio_input when voice_id matches voices_pricing");
+        assert_eq!(bd.voice_cost, expected_voice_cost,
+            "voice_cost should cover audio_output_tokens at voice_price");
+        assert_eq!(bd.total(), expected_audio_input_cost + expected_voice_cost,
+            "total must be audio_input_cost + voice_cost, NOT audio_input + audio_output + voice (no double-count)");
+    }
+
+    /// B1 complement: without voice_id, audio_output is billed at audio_output_price (normal path).
+    #[test]
+    fn test_audio_output_without_voice_id() {
+        let mut price = make_price(10_000, 30_000);
+        price.audio_input_price = Some(70_000);
+        price.audio_output_price = Some(30_000);
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+
+        let bd = compute_breakdown(&usage, &price, "req-audio-no-voice", false, false, None);
+
+        // audio_cost = audio_input + audio_output = 70_000 + 30_000 = 100_000
+        assert_eq!(bd.audio_cost, 100_000);
+        assert_eq!(bd.voice_cost, 0);
+        assert_eq!(bd.total(), 100_000);
+    }
+
+    /// B1 edge: voice_id provided but NOT found in voices_pricing → fall back to audio_output_price.
+    #[test]
+    fn test_voice_id_not_found_fallback() {
+        let mut price = make_price(10_000, 30_000);
+        price.audio_input_price = Some(70_000);
+        price.audio_output_price = Some(30_000);
+        price.voices_pricing = Some("{\"alloy\":40000}".to_string());
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+
+        // "nova" is not in voices_pricing → voice_cost = 0, audio_output billed normally
+        let bd = compute_breakdown(&usage, &price, "req-voice-missing", false, false, Some("nova"));
+
+        assert_eq!(bd.audio_cost, 100_000, "audio_output should be billed at audio_output_price when voice_id not found");
+        assert_eq!(bd.voice_cost, 0, "voice_cost should be 0 when voice_id not in voices_pricing");
+        assert_eq!(bd.total(), 100_000);
     }
 
     #[tokio::test]
