@@ -26,7 +26,7 @@ if [[ "$CI_MODE" == "false" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # ── Whitelist: service crates that router is allowed to depend on ──
 ALLOWED_SERVICE_CRATES=(
@@ -38,7 +38,7 @@ ALLOWED_SERVICE_CRATES=(
 cd "$REPO_ROOT"
 
 DEPS_JSON=$(cargo metadata --format-version 1 --no-deps 2>/dev/null | \
-  jq '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name')
+  jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name')
 
 if [[ -z "$DEPS_JSON" ]]; then
   echo "${RED}Error: could not find burncloud-router in cargo metadata${RESET}"
@@ -57,7 +57,7 @@ done
 
 # ── Check each service dep against the whitelist ──
 VIOLATIONS=()
-for dep in "${SERVICE_DEPS[@]:-}"; do
+for dep in "${SERVICE_DEPS[@]}"; do
   allowed=false
   for ok in "${ALLOWED_SERVICE_CRATES[@]}"; do
     if [[ "$dep" == "$ok" ]]; then
