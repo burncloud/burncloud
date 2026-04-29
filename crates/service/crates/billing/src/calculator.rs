@@ -260,9 +260,11 @@ fn compute_breakdown(
     //           → audio_cost = input + output at audio_*_price; voice_cost = 0
     //   Path 3: voice_id is None
     //           → same as path 2: audio_cost = input + output; voice_cost = 0
-    let voice_price_found = voice_id
-        .and_then(|vid| lookup_voice_price(&price.voices_pricing, vid))
-        .filter(|_| usage.audio_output_tokens > 0);
+    let voice_price_found = if usage.audio_output_tokens > 0 {
+        voice_id.and_then(|vid| lookup_voice_price(&price.voices_pricing, vid))
+    } else {
+        None
+    };
 
     let audio_cost = nano(
         usage.audio_input_tokens,
@@ -285,8 +287,15 @@ fn compute_breakdown(
 
     // --- Voice-specific cost (TTS) ---
     let voice_cost = if let Some(voice_price) = voice_price_found {
-        // Path 1: bill audio_output_tokens at per-voice rate
-        nano(usage.audio_output_tokens, voice_price, request_id, "voice")
+        // Apply priority/batch adjustments consistently with text pricing
+        let effective_voice_price = if is_priority {
+            saturating_mul_percent(voice_price, PRIORITY_SURCHARGE_PERCENT)
+        } else if is_batch {
+            saturating_mul_percent(voice_price, BATCH_DISCOUNT_PERCENT)
+        } else {
+            voice_price
+        };
+        nano(usage.audio_output_tokens, effective_voice_price, request_id, "voice")
     } else {
         // Path 2/3: audio_cost already includes output tokens; voice_cost = 0
         0
