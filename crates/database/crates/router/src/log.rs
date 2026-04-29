@@ -588,7 +588,6 @@ impl BalanceModel {
             .bind(user_id)
             .fetch_optional(conn.pool())
             .await?
-            .flatten()
             .ok_or_else(|| DatabaseError::Query(format!("user account not found: {}", user_id)))?;
 
         if balance < cost_nano {
