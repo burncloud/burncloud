@@ -37,19 +37,28 @@ ALLOWED_SERVICE_CRATES=(
 # ── Extract burncloud-router's direct dependencies via cargo metadata ──
 cd "$REPO_ROOT"
 
-DEPS_JSON=$(cargo metadata --format-version 1 --no-deps 2>/dev/null | \
-  jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name')
+# ── Prerequisites ──
+for cmd in cargo jq; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "${RED}Error: $cmd is required but not installed${RESET}"
+    exit 1
+  fi
+done
 
-if [[ -z "$DEPS_JSON" ]]; then
+CARGO_METADATA=$(cargo metadata --format-version 1 --no-deps)
+
+if ! echo "$CARGO_METADATA" | jq -e '.packages[] | select(.name == "burncloud-router")' > /dev/null; then
   echo "${RED}Error: could not find burncloud-router in cargo metadata${RESET}"
   echo "Make sure you are running this from the workspace root."
   exit 1
 fi
 
+DEPS_JSON=$(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name')
+
 # ── Find all burncloud-service-* dependencies ──
 SERVICE_DEPS=()
-for dep in $DEPS_JSON; do
-  dep=$(echo "$dep" | tr -d '"')
+mapfile -t deps_list < <(echo "$DEPS_JSON")
+for dep in "${deps_list[@]}"; do
   if [[ "$dep" == burncloud-service-* ]]; then
     SERVICE_DEPS+=("$dep")
   fi
@@ -58,14 +67,7 @@ done
 # ── Check each service dep against the whitelist ──
 VIOLATIONS=()
 for dep in "${SERVICE_DEPS[@]}"; do
-  allowed=false
-  for ok in "${ALLOWED_SERVICE_CRATES[@]}"; do
-    if [[ "$dep" == "$ok" ]]; then
-      allowed=true
-      break
-    fi
-  done
-  if [[ "$allowed" == "false" ]]; then
+  if ! [[ " ${ALLOWED_SERVICE_CRATES[*]} " =~ " $dep " ]]; then
     VIOLATIONS+=("$dep")
   fi
 done
