@@ -203,7 +203,7 @@ path = "src/main.rs"
 [dependencies]
 burncloud-common.workspace = true
 burncloud-server.workspace = true
-burncloud-client = { workspace = true, default-features = false, features = ["liveview", "desktop"] }
+burncloud-client = { workspace = true, default-features = false, features = ["liveview"] }
 
 tokio.workspace = true
 anyhow.workspace = true
@@ -228,3 +228,6 @@ serde.workspace = true
 serde_json.workspace = true
 dirs.workspace = true
 chrono.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+burncloud-client = { workspace = true, default-features = false, features = ["desktop"] }
