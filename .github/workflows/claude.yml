@@ -1,267 +1,50 @@
-name: Claude gstack All Skills
+name: Claude Code
 
 on:
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
   issues:
-    types: [opened]
-
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
-  gstack:
-    runs-on: ubuntu-latest
+  claude:
     if: |
-      github.actor != 'claude[bot]' &&
-      github.actor != 'github-actions[bot]' &&
-      (
-        github.event_name == 'issues' ||
-        contains(github.event.comment.body, '@claude-')
-      )
-
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
         with:
-          node-version: '20'
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+          # This is an optional setting that allows Claude to read CI results on PRs
+          additional_permissions: |
+            actions: read
 
-      - name: Install gstack (latest)
-        run: |
-          mkdir -p .claude/skills
-          git clone --single-branch --depth 1 \
-            https://github.com/garrytan/gstack.git \
-            .claude/skills/gstack
+          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
+          # prompt: 'Update the pull request description to include a summary of changes.'
 
-      - name: Detect skill and run
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ "${{ github.event_name }}" = "issue_comment" ]; then
-            COMMENT="${{ github.event.comment.body }}"
-            ISSUE_NUMBER="${{ github.event.issue.number }}"
-            ISSUE_TITLE="${{ github.event.issue.title }}"
-          else
-            COMMENT="${{ github.event.issue.body }}"
-            ISSUE_NUMBER="${{ github.event.issue.number }}"
-            ISSUE_TITLE="${{ github.event.issue.title }}"
-          fi
+          # Optional: Add claude_args to customize behavior and configuration
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
+          # claude_args: '--allowed-tools Bash(gh pr *)'
 
-          # ─── 命令映射表 ───────────────────────────────
-          declare -A SKILL_MAP
-          SKILL_MAP["@claude-ceo"]="plan-ceo-review"
-          SKILL_MAP["@claude-eng"]="plan-eng-review"
-          SKILL_MAP["@claude-design"]="plan-design-review"
-          SKILL_MAP["@claude-review"]="review"
-          SKILL_MAP["@claude-qa"]="qa"
-          SKILL_MAP["@claude-ship"]="ship"
-          SKILL_MAP["@claude-retro"]="retro"
-          SKILL_MAP["@claude-investigate"]="investigate"
-          SKILL_MAP["@claude-security"]="cso"
-          SKILL_MAP["@claude-doc"]="document-release"
-          SKILL_MAP["@claude-benchmark"]="benchmark"
-          SKILL_MAP["@claude-autoplan"]="autoplan"
-          SKILL_MAP["@claude-office"]="office-hours"
-
-          # ─── 检测命令 ─────────────────────────────────
-          SKILL_DIR=""
-          TRIGGER=""
-          for CMD in "${!SKILL_MAP[@]}"; do
-            if echo "$COMMENT" | grep -q "$CMD"; then
-              SKILL_DIR="${SKILL_MAP[$CMD]}"
-              TRIGGER="$CMD"
-              break
-            fi
-          done
-
-          # issues 新开时默认 CEO Review
-          if [ -z "$SKILL_DIR" ] && [ "${{ github.event_name }}" = "issues" ]; then
-            SKILL_DIR="plan-ceo-review"
-            TRIGGER="@claude-ceo (默认)"
-          fi
-
-          # ─── 特殊命令：implement → 创建 PR ───────────
-          if echo "$COMMENT" | grep -q "@claude-implement"; then
-
-            BRANCH="ai/issue-${ISSUE_NUMBER}"
-
-            # 配置 git
-            git config user.email "claude-bot@github.com"
-            git config user.name "Claude Bot"
-
-            # 创建新分支
-            git checkout -b $BRANCH
-
-            # 读取 Issue 所有评论作为上下文（让 Claude 了解整个对话）
-            ISSUE_CONTEXT=$(gh issue view $ISSUE_NUMBER --json body,comments \
-              --jq '"Issue: " + .body + "\n\nComments:\n" + 
-              ([.comments[].body] | join("\n---\n"))')
-
-            # 执行实现
-            claude -p "你是一个高级工程师。根据以下 Issue 讨论内容实现功能。
-            
-            ${ISSUE_CONTEXT}
-            
-            要求：
-            1. 仔细阅读所有评论，理解 CEO Review 和 Eng Review 的结论
-            2. 按照讨论中确定的技术方案实现
-            3. 写对应的测试
-            4. 不要做超出范围的修改" \
-              --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
-              --dangerously-skip-permissions
-
-            # 提交代码
-            git add -A
-            git commit -m "feat: implement issue #${ISSUE_NUMBER} - ${ISSUE_TITLE}"
-            git push origin $BRANCH
-
-            # 确保 label 存在
-            gh label create "ai-generated" --color "d4c5f9" --description "由 AI 自动生成" 2>/dev/null || true
-
-            # 创建 PR
-            PR_URL=$(gh pr create \
-              --title "feat: ${ISSUE_TITLE}" \
-              --body "## 关联 Issue
-            Closes #${ISSUE_NUMBER}
-
-            ## 实现说明
-            根据 Issue #${ISSUE_NUMBER} 的 CEO Review 和 Eng Review 结论自动实现。
-
-            ## 检查清单
-            - [ ] 代码实现完成
-            - [ ] 测试已添加
-            - [ ] 请人工 Review 后合并" \
-              --base main \
-              --head $BRANCH \
-              --label "ai-generated")
-
-            # 回复 Issue
-            gh issue comment $ISSUE_NUMBER \
-              --body "## ✅ 实现完成
-
-            已创建 PR：${PR_URL}
-
-            ---
-            > 下一步：Review PR 后评论 \`@claude-review\` 做代码审查"
-
-            exit 0
-          fi
-
-          # ─── 特殊命令：fix → 在 PR 分支上继续修改 ───
-          if echo "$COMMENT" | grep -q "@claude-fix"; then
-
-            # 验证是 PR 评论（不是 issue）
-            if [ -z "${{ github.event.issue.pull_request }}" ]; then
-              gh issue comment $ISSUE_NUMBER \
-                --body "❌ \`@claude-fix\` 只能在 PR 的评论中使用，不能在 Issue 中使用。"
-              exit 1
-            fi
-
-            PR_NUMBER="$ISSUE_NUMBER"
-
-            # 获取 PR head branch 并 checkout
-            PR_BRANCH=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
-            git fetch origin "$PR_BRANCH"
-            git checkout "$PR_BRANCH"
-
-            # 配置 git
-            git config user.email "claude-bot@github.com"
-            git config user.name "Claude Bot"
-
-            # 提取用户指示（去掉 @claude-fix 前缀）
-            FIX_INSTRUCTIONS=$(echo "$COMMENT" | sed 's/@claude-fix//')
-
-            # 获取 PR diff 作为上下文
-            PR_DIFF=$(gh pr diff $PR_NUMBER)
-
-            # 执行修复
-            claude -p "你是一个高级工程师。根据以下指示修复这个 PR 中的问题。
-
-            用户指示：
-            ${FIX_INSTRUCTIONS}
-
-            当前 PR diff：
-            ${PR_DIFF}
-
-            要求：
-            1. 仔细阅读用户的修复指示
-            2. 理解当前 PR 的改动内容
-            3. 按照指示进行修复
-            4. 不要做超出指示范围的修改" \
-              --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
-              --dangerously-skip-permissions
-
-            # 检测是否有变更
-            git add -A
-            if git diff --cached --quiet; then
-              gh pr comment $PR_NUMBER \
-                --body "## 🤖 @claude-fix 结果
-
-            检查完成，没有需要修改的内容。"
-              exit 0
-            fi
-
-            # 提交并推送
-            git commit -m "fix: apply @claude-fix on PR #${PR_NUMBER}"
-            git push origin "$PR_BRANCH"
-
-            # 回复 PR
-            CHANGED_FILES=$(git diff --name-only HEAD~1)
-            gh pr comment $PR_NUMBER \
-              --body "## 🤖 @claude-fix 修复完成
-
-            已推送修复到分支 \`${PR_BRANCH}\`。
-
-            ### 修改的文件
-            \`\`\`
-            ${CHANGED_FILES}
-            \`\`\`
-
-            ---
-            > 继续修复：\`@claude-fix <指示>\` · 代码审查：\`@claude-review\`"
-
-            exit 0
-          fi
-
-          # ─── 没匹配到命令，跳过 ───────────────────────
-          if [ -z "$SKILL_DIR" ]; then
-            echo "没有匹配到任何 gstack 命令，跳过"
-            exit 0
-          fi
-
-          # ─── 执行普通 skill ───────────────────────────
-          SKILL_PATH=".claude/skills/gstack/${SKILL_DIR}/SKILL.md"
-
-          if [ ! -f "$SKILL_PATH" ]; then
-            gh issue comment $ISSUE_NUMBER \
-              --body "❌ 找不到 skill：\`${SKILL_PATH}\`"
-            exit 1
-          fi
-
-          SKILL_CONTENT=$(cat "$SKILL_PATH")
-
-          echo "▶ 触发命令：$TRIGGER"
-          echo "▶ 使用 skill：$SKILL_DIR"
-
-          RESULT=$(claude -p "${COMMENT}" \
-            --allowedTools "Read,Glob,Grep" \
-            --append-system-prompt "${SKILL_CONTENT}")
-
-          gh issue comment $ISSUE_NUMBER \
-            --body "## 🤖 ${TRIGGER} 结果
-
-          ${RESULT}
-
-          ---
-          > 可用命令：\`@claude-ceo\` \`@claude-eng\` \`@claude-design\` \`@claude-review\` \`@claude-qa\` \`@claude-implement\`"
