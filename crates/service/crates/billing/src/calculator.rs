@@ -89,7 +89,13 @@ impl CostCalculator {
     ///
     /// `opts.region` selects the region-specific price (e.g. `"international"`, `"cn"`).
     /// `opts.voice_id` is used for TTS models that have per-voice pricing.
-    /// If the voice ID is not found in the model's voices_pricing, falls back to audio_output_price.
+    /// Three paths:
+    ///   1. voice_id found in voices_pricing AND audio_output_tokens > 0
+    ///      → audio_cost covers audio_input_tokens;
+    ///      voice_cost covers audio_output_tokens at the per-voice rate.
+    ///   2. voice_id provided but not found (or no audio_output_tokens)
+    ///      → audio_cost covers both input and output at audio_*_price; voice_cost = 0.
+    ///   3. voice_id is None → same as path 2.
     pub async fn calculate_with_voice(
         &self,
         model: &str,
@@ -139,7 +145,7 @@ pub fn lookup_voice_price(voices_json: &Option<String>, voice_id: &str) -> Optio
 
 /// Compute a [`CostBreakdown`] from usage and a [`Price`] entry.
 ///
-/// Priority order (matches existing billing.rs logic):
+/// Priority order:
 ///   embedding > cache/audio/image/video > priority > batch > standard
 fn compute_breakdown(
     usage: &UnifiedUsage,
@@ -246,34 +252,52 @@ fn compute_breakdown(
         AUDIO_INPUT_SURCHARGE_PERCENT,
     ));
     let audio_output_price = price.audio_output_price.unwrap_or(effective_output_price);
+
+    // Voice pricing — three paths (see calculate_with_voice doc comment):
+    //   Path 1: voice_id found in voices_pricing AND audio_output_tokens > 0
+    //           → audio_cost = input only; voice_cost = output at per-voice rate
+    //   Path 2: voice_id provided but not found in voices_pricing
+    //           → audio_cost = input + output at audio_*_price; voice_cost = 0
+    //   Path 3: voice_id is None
+    //           → same as path 2: audio_cost = input + output; voice_cost = 0
+    let voice_price_found = if usage.audio_output_tokens > 0 {
+        voice_id.and_then(|vid| lookup_voice_price(&price.voices_pricing, vid))
+    } else {
+        None
+    };
+
     let audio_cost = nano(
         usage.audio_input_tokens,
         audio_input_price,
         request_id,
         "audio_input",
     )
-    .saturating_add(nano(
-        usage.audio_output_tokens,
-        audio_output_price,
-        request_id,
-        "audio_output",
-    ));
+    .saturating_add(if voice_price_found.is_some() {
+        // Path 1: output tokens billed via voice_cost below
+        0
+    } else {
+        // Path 2/3: audio_cost covers both input and output tokens
+        nano(
+            usage.audio_output_tokens,
+            audio_output_price,
+            request_id,
+            "audio_output",
+        )
+    });
 
     // --- Voice-specific cost (TTS) ---
-    // If voice_id is provided and found in voices_pricing, use that rate
-    // Otherwise fall back to audio_output_price for audio_output_tokens
-    let voice_cost = if let Some(vid) = voice_id {
-        if usage.audio_output_tokens > 0 {
-            if let Some(voice_price) = lookup_voice_price(&price.voices_pricing, vid) {
-                nano(usage.audio_output_tokens, voice_price, request_id, "voice")
-            } else {
-                // Voice not found in pricing, use default audio_output_price
-                0 // Don't double-count; audio_cost already includes this
-            }
+    let voice_cost = if let Some(voice_price) = voice_price_found {
+        // Apply priority/batch adjustments consistently with text pricing
+        let effective_voice_price = if is_priority {
+            saturating_mul_percent(voice_price, PRIORITY_SURCHARGE_PERCENT)
+        } else if is_batch {
+            saturating_mul_percent(voice_price, BATCH_DISCOUNT_PERCENT)
         } else {
-            0
-        }
+            voice_price
+        };
+        nano(usage.audio_output_tokens, effective_voice_price, request_id, "voice")
     } else {
+        // Path 2/3: audio_cost already includes output tokens; voice_cost = 0
         0
     };
 
@@ -509,5 +533,395 @@ mod tests {
         let calc = CostCalculator::new(cache);
         assert!(calc.preflight("gpt-4o", None).await.is_ok());
         assert!(calc.preflight("GPT-4O", None).await.is_ok()); // case-insensitive
+    }
+
+    // --- voice_id path: no double-counting of audio_output_tokens ---
+
+    #[test]
+    fn test_voice_id_found_no_double_count() {
+        // When voice_id is found in voices_pricing, audio_cost should only include
+        // audio_input_tokens, and voice_cost covers audio_output_tokens at the per-voice rate.
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000); // 2M nano/1M tokens
+        price.audio_output_price = Some(3_000_000); // 3M nano/1M tokens
+        price.voices_pricing = Some(r#"{"alloy":5000000}"#.to_string()); // 5M nano/1M tokens
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-voice", false, false, Some("alloy"));
+
+        // audio_cost = 1M * 2M/1M = 2_000_000 (input only, output excluded from audio_cost)
+        assert_eq!(bd.audio_cost, 2_000_000);
+        // voice_cost = 1M * 5M/1M = 5_000_000
+        assert_eq!(bd.voice_cost, 5_000_000);
+        // total = 2M + 5M = 7M — NOT 2M + 3M + 5M = 10M (which would be double-counting)
+        assert_eq!(bd.total(), 7_000_000);
+    }
+
+    #[test]
+    fn test_voice_id_not_found_falls_back_to_audio_cost() {
+        // When voice_id is provided but not found in voices_pricing,
+        // audio_cost covers both input and output, voice_cost = 0.
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some(r#"{"alloy":5000000}"#.to_string());
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-novoice", false, false, Some("unknown_voice"));
+
+        // audio_cost = 1M * 2M/1M + 1M * 3M/1M = 5_000_000
+        assert_eq!(bd.audio_cost, 5_000_000);
+        assert_eq!(bd.voice_cost, 0);
+        assert_eq!(bd.total(), 5_000_000);
+    }
+
+    #[test]
+    fn test_voice_id_none_audio_covers_both() {
+        // When voice_id is None, audio_cost covers both input and output.
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-no-voice-id", false, false, None);
+
+        assert_eq!(bd.audio_cost, 5_000_000);
+        assert_eq!(bd.voice_cost, 0);
+        assert_eq!(bd.total(), 5_000_000);
+    }
+
+    // --- voice_id path: extended edge-case coverage ---
+
+    #[test]
+    fn test_voice_id_found_voice_price_differs_from_audio_output_price() {
+        // Verify that when voice_id is found, voice_cost uses the per-voice rate,
+        // NOT the audio_output_price. This is the core anti-double-counting invariant.
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some(r#"{"shimmer":8000000}"#.to_string()); // 8M, different from audio_output 3M
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-voice-diff", false, false, Some("shimmer"));
+
+        // audio_cost = input only = 1M * 2M/1M = 2_000_000
+        assert_eq!(bd.audio_cost, 2_000_000);
+        // voice_cost = 1M * 8M/1M = 8_000_000 (per-voice rate, not audio_output_price)
+        assert_eq!(bd.voice_cost, 8_000_000);
+        // If double-counted: audio_cost would be 2M+3M=5M, voice_cost=8M, total=13M
+        // Correct: audio_cost=2M, voice_cost=8M, total=10M
+        assert_eq!(bd.total(), 10_000_000);
+    }
+
+    #[test]
+    fn test_voice_id_found_but_zero_audio_output_tokens() {
+        // When voice_id is found but audio_output_tokens = 0,
+        // the voice_price_found filter returns None → falls through to path 2/3.
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some(r#"{"alloy":5000000}"#.to_string());
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 0, // no output tokens
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-voice-no-out", false, false, Some("alloy"));
+
+        // voice_price_found filters on audio_output_tokens > 0, so it's None
+        // → audio_cost covers input only (output is 0 anyway), voice_cost = 0
+        assert_eq!(bd.audio_cost, 2_000_000);
+        assert_eq!(bd.voice_cost, 0);
+    }
+
+    #[test]
+    fn test_voice_id_not_found_empty_voices_pricing() {
+        // voices_pricing is Some("{}") — valid JSON but no entries.
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some("{}".to_string());
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-empty-voices", false, false, Some("alloy"));
+
+        assert_eq!(bd.audio_cost, 5_000_000); // input + output
+        assert_eq!(bd.voice_cost, 0);
+    }
+
+    #[test]
+    fn test_voice_id_not_found_malformed_voices_pricing() {
+        // voices_pricing is Some("not-json") — parse failure, falls back gracefully.
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some("not-json".to_string());
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-bad-json", false, false, Some("alloy"));
+
+        // JSON parse failure → lookup_voice_price returns None → path 2
+        assert_eq!(bd.audio_cost, 5_000_000);
+        assert_eq!(bd.voice_cost, 0);
+    }
+
+    #[test]
+    fn test_voice_id_none_audio_cost_equals_input_plus_output() {
+        // Explicitly verify audio_cost = input_component + output_component
+        // when voice_id is None (path 3).
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 500_000,
+            audio_output_tokens: 800_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-no-voice", false, false, None);
+
+        let expected_input = 500_000 * 2_000_000 / 1_000_000; // 1_000_000
+        let expected_output = 800_000 * 3_000_000 / 1_000_000; // 2_400_000
+        assert_eq!(bd.audio_cost, expected_input + expected_output);
+        assert_eq!(bd.voice_cost, 0);
+    }
+
+    #[test]
+    fn test_voice_id_none_with_default_audio_prices() {
+        // When audio_input/output_price are None, defaults kick in.
+        // audio_input_price = 700% of input_price, audio_output_price = output_price.
+        let price = make_price(1_000_000, 3_000_000);
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-default-audio", false, false, None);
+
+        // audio_input_price = 1M * 700% = 7M; audio_output_price = 3M (output_price)
+        // audio_cost = 1M * 7M/1M + 1M * 3M/1M = 10_000_000
+        assert_eq!(bd.audio_cost, 10_000_000);
+        assert_eq!(bd.voice_cost, 0);
+    }
+
+    #[test]
+    fn test_lookup_voice_price_valid() {
+        let voices_json = Some(r#"{"alloy":5000000,"echo":6000000}"#.to_string());
+        assert_eq!(lookup_voice_price(&voices_json, "alloy"), Some(5_000_000));
+        assert_eq!(lookup_voice_price(&voices_json, "echo"), Some(6_000_000));
+        assert_eq!(lookup_voice_price(&voices_json, "unknown"), None);
+    }
+
+    #[test]
+    fn test_lookup_voice_price_none_json() {
+        assert_eq!(lookup_voice_price(&None, "alloy"), None);
+    }
+
+    #[test]
+    fn test_lookup_voice_price_empty_json() {
+        let voices_json = Some("{}".to_string());
+        assert_eq!(lookup_voice_price(&voices_json, "alloy"), None);
+    }
+
+    #[test]
+    fn test_lookup_voice_price_malformed_json() {
+        let voices_json = Some("not-json".to_string());
+        assert_eq!(lookup_voice_price(&voices_json, "alloy"), None);
+    }
+
+    // --- audio path: input + output tokens with default multipliers ---
+
+    #[test]
+    fn test_audio_input_default_multiplier() {
+        // audio_input_price defaults to 700% of input_price
+        let price = make_price(1_000_000, 3_000_000);
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-audio-in", false, false, None);
+
+        // audio_input_price = 1M * 700% = 7M; audio_cost = 1M * 7M/1M = 7_000_000
+        assert_eq!(bd.audio_cost, 7_000_000);
+    }
+
+    #[test]
+    fn test_audio_output_defaults_to_output_price() {
+        // audio_output_price defaults to effective_output_price
+        let price = make_price(1_000_000, 3_000_000);
+        let usage = UnifiedUsage {
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-audio-out", false, false, None);
+
+        // audio_output_price = 3M; audio_cost = 1M * 3M/1M = 3_000_000
+        assert_eq!(bd.audio_cost, 3_000_000);
+    }
+
+    // --- priority path ---
+
+    #[test]
+    fn test_priority_with_audio() {
+        // Priority surcharge should apply to audio_output_price fallback
+        let price = make_price(1_000_000, 3_000_000);
+        let usage = UnifiedUsage {
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-prio-audio", false, true, None);
+
+        // effective_output_price = 3M * 170% = 5_100_000
+        // audio_output_price defaults to effective_output_price = 5_100_000
+        // audio_cost = 1M * 5_100_000/1M = 5_100_000
+        assert_eq!(bd.audio_cost, 5_100_000);
+    }
+
+    #[test]
+    fn test_priority_with_custom_prices() {
+        // When priority_input/output_price are set, they override the surcharge
+        let mut price = make_price(1_000_000, 3_000_000);
+        price.priority_input_price = Some(2_000_000);
+        price.priority_output_price = Some(8_000_000);
+
+        let usage = UnifiedUsage {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let bd = compute_breakdown(&usage, &price, "req-prio-custom", false, true, None);
+
+        assert_eq!(bd.input_cost, 2_000_000);
+        assert_eq!(bd.output_cost, 8_000_000);
+    }
+
+    // --- region path (via PriceCache integration) ---
+
+    #[tokio::test]
+    async fn test_region_specific_pricing() {
+        // Verify that region-specific prices are looked up correctly
+        let cache = PriceCache::empty();
+        let price = make_price(5_000, 15_000);
+        let price_intl = make_price(7_000, 21_000);
+        {
+            let mut guard = cache.inner.write().await;
+            guard.insert(("gpt-4o".to_string(), String::new()), price);
+            guard.insert(("gpt-4o".to_string(), "international".to_string()), price_intl);
+        }
+        let calc = CostCalculator::new(cache);
+
+        let usage = UnifiedUsage {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+            ..Default::default()
+        };
+
+        // Default region
+        let result = calc.calculate("gpt-4o", &usage, "req-1", false, false, None).await.unwrap();
+        assert_eq!(result.breakdown.input_cost, 5_000);
+        assert_eq!(result.breakdown.output_cost, 15_000);
+
+        // International region
+        let opts = RequestOptions {
+            is_batch: false,
+            is_priority: false,
+            region: Some("international"),
+            voice_id: None,
+        };
+        let result_intl = calc.calculate_with_voice("gpt-4o", &usage, "req-2", opts).await.unwrap();
+        assert_eq!(result_intl.breakdown.input_cost, 7_000);
+        assert_eq!(result_intl.breakdown.output_cost, 21_000);
+    }
+
+    // --- voice_id integration via CostCalculator (end-to-end) ---
+
+    #[tokio::test]
+    async fn test_calculate_with_voice_found_no_double_billing() {
+        // End-to-end: voice_id found → audio_cost = input only, voice_cost = output at voice rate
+        let cache = PriceCache::empty();
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some(r#"{"alloy":5000000}"#.to_string());
+        {
+            let mut guard = cache.inner.write().await;
+            guard.insert(("tts-1".to_string(), String::new()), price);
+        }
+        let calc = CostCalculator::new(cache);
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let opts = RequestOptions {
+            is_batch: false,
+            is_priority: false,
+            region: None,
+            voice_id: Some("alloy"),
+        };
+        let result = calc.calculate_with_voice("tts-1", &usage, "req-e2e-voice", opts).await.unwrap();
+
+        assert_eq!(result.breakdown.audio_cost, 2_000_000, "audio_cost should be input only");
+        assert_eq!(result.breakdown.voice_cost, 5_000_000, "voice_cost should cover output at per-voice rate");
+        // 2M + 5M = 7M, NOT 2M + 3M + 5M = 10M (double-counting)
+        assert_eq!(result.usd_amount_nano, 7_000_000, "total must not double-count audio_output_tokens");
+    }
+
+    #[tokio::test]
+    async fn test_calculate_with_voice_not_found_fallback() {
+        // End-to-end: voice_id not found → audio_cost covers input + output, voice_cost = 0
+        let cache = PriceCache::empty();
+        let mut price = make_price(5_000, 15_000);
+        price.audio_input_price = Some(2_000_000);
+        price.audio_output_price = Some(3_000_000);
+        price.voices_pricing = Some(r#"{"alloy":5000000}"#.to_string());
+        {
+            let mut guard = cache.inner.write().await;
+            guard.insert(("tts-1".to_string(), String::new()), price);
+        }
+        let calc = CostCalculator::new(cache);
+
+        let usage = UnifiedUsage {
+            audio_input_tokens: 1_000_000,
+            audio_output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let opts = RequestOptions {
+            is_batch: false,
+            is_priority: false,
+            region: None,
+            voice_id: Some("unknown_voice"),
+        };
+        let result = calc.calculate_with_voice("tts-1", &usage, "req-e2e-fallback", opts).await.unwrap();
+
+        assert_eq!(result.breakdown.audio_cost, 5_000_000, "audio_cost should cover input + output");
+        assert_eq!(result.breakdown.voice_cost, 0, "voice_cost should be 0 when voice_id not found");
+        assert_eq!(result.usd_amount_nano, 5_000_000, "total = audio_cost only, no double-counting");
     }
 }
