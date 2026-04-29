@@ -20,6 +20,7 @@ Client (Dioxus) → Server (axum) → Router (data plane)
 依赖方向严格单向：Server 依赖 Service，Service 依赖 Database，Database 依赖 Common。
 
 **禁止反向依赖。禁止 Service 引入 axum 类型。**
+（Router 对 service-billing/service-user 的依赖是宪法例外，见 docs/code/README.md §1.1）
 
 ---
 

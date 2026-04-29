@@ -13,6 +13,17 @@
 - Service 不得引入 `axum`、`Router`、`Json` 等 HTTP 类型
 - 依赖方向：`Server → Service → Database → Common`
 
+#### §1.1 宪法例外：Router 对 Service 层的反向依赖
+
+`burncloud-router` 作为数据面独立组件，依赖方向本应为 `Router → Database → Common`，但存在以下两个对 Service 层的反向依赖例外：
+
+| 例外依赖 | 使用的类型/方法 | 理由 |
+|----------|----------------|------|
+| `router → service-billing` | `PriceCache`, `CostCalculator`, `UnifiedUsage`, `BillingError`, `get_parser`, `parse_chunk_or_default`, `parse_response_or_default`, `UnifiedTokenCounter` | `PriceCache` 是带后台刷新的业务缓存，下沉到 Database 层会污染纯数据层 |
+| `router → service-user` | `UserService::resolve_traffic_class` | 流量分类逻辑与 Router 数据面强耦合，下沉到 Database 层会引入权限判断语义 |
+
+**例外范围限制**：仅允许以上两个 `burncloud-service-*` crate。新增任何 `burncloud-service-*` 依赖到 `burncloud-router` 必须经过架构 review。
+
 ### 2. 禁止持有 Database 连接
 
 Service 方法通过参数接收 `db: &Database`，不得在结构体字段中持有 `Database` 实例。
