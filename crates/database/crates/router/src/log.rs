@@ -290,7 +290,7 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
     let time_filter = if is_postgres {
         format!("EXTRACT(EPOCH FROM created_at)::BIGINT >= {}", ph(is_postgres, 2))
     } else {
-        "strftime('%s', created_at) >= CAST(? AS TEXT)".to_string()
+        format!("CAST(strftime('%s', created_at) AS BIGINT) >= {}", ph(is_postgres, 2))
     };
 
     let sql = format!(
