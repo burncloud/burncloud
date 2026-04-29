@@ -11,6 +11,43 @@ use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
 use crate::scheduler::{self, CombinedScheduler, SchedulerKind, SchedulingRequest};
 
+/// Which routing layer made the final channel-selection decision.
+///
+/// BGP analogy: `layer_decision` ~ BGP origin attribute — tells Grafana *where*
+/// the route came from, not just *what* it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RoutingDecision {
+    /// L3 Affinity: HRW or cache hit hoisted the channel to rank-0.
+    AffinityHit,
+    /// L4 Scorer: CombinedScheduler ranked this channel first (no affinity hit).
+    ScorerPicked,
+    /// L5 Failover: attempt N (1-based) succeeded after earlier candidates failed.
+    Failover { attempt: u32 },
+}
+
+impl RoutingDecision {
+    /// Static label for non-dynamic variants (no heap allocation).
+    ///
+    /// **Note:** For `Failover { attempt }` this returns the truncated `"failover"`
+    /// without the attempt number. Use [`to_label()`](Self::to_label) for the
+    /// full label (e.g. `"failover_2"`) when writing to `router_logs.layer_decision`.
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            Self::AffinityHit => "affinity_hit",
+            Self::ScorerPicked => "scorer_picked",
+            Self::Failover { .. } => "failover",
+        }
+    }
+
+    /// Full label including dynamic attempt number (e.g. `"failover_2"`).
+    pub fn to_label(&self) -> String {
+        match self {
+            Self::Failover { attempt } => format!("failover_{attempt}"),
+            _ => self.as_label().to_string(),
+        }
+    }
+}
+
 /// Error returned when no channels are available for a model.
 #[derive(Debug, thiserror::Error)]
 #[error("No available channels for model '{model}': {reason}")]
@@ -162,7 +199,8 @@ impl ModelRouter {
         Ok(result)
     }
 
-    /// Route with the multi-factor scheduler, returning ranked candidates (top-5).
+    /// Route with the multi-factor scheduler, returning ranked candidates (top-5)
+    /// and the routing-layer decision that determined the first candidate.
     ///
     /// Pipeline (audit decisions D6 / D7 / E-D1):
     ///
@@ -175,13 +213,14 @@ impl ModelRouter {
     /// gets pinned to an expensive channel by historical affinity.
     ///
     /// Returns:
-    /// - `Ok(vec)` with ranked channels (may be empty if model has no configuration)
+    /// - `Ok((vec, Some(decision)))` with ranked channels + which layer picked rank-0
+    /// - `Ok((vec, None))` when channels exist but no model routing occurred (empty vec)
     /// - `Err(NoAvailableChannelsError)` if channels exist but all are unavailable,
     ///   **or** if `OrderType::Budget` filtered them all out (caller maps to 503).
     pub async fn route_with_scheduler(
         &self,
         inputs: RouteInputs<'_>,
-    ) -> std::result::Result<Vec<Channel>, NoAvailableChannelsError> {
+    ) -> std::result::Result<(Vec<Channel>, Option<RoutingDecision>), NoAvailableChannelsError> {
         let RouteInputs {
             group,
             model,
@@ -201,7 +240,7 @@ impl ModelRouter {
         })?;
 
         if candidates.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), None));
         }
 
         // L0: Filter by availability
@@ -293,6 +332,7 @@ impl ModelRouter {
 
         // Apply affinity preference: if `affinity_pick` is in `ranked`, hoist
         // it to the front and refresh the cache (stickiness reset).
+        let mut affinity_hoisted = false;
         if let (Some(picked), Some(cache), Some(key)) =
             (affinity_pick, affinity_cache, request.affinity_key())
         {
@@ -301,6 +341,7 @@ impl ModelRouter {
                     let entry = ranked.remove(pos);
                     ranked.insert(0, entry);
                 }
+                affinity_hoisted = true;
                 cache.insert(key, model, picked);
                 tracing::debug!(
                     user = key,
@@ -317,6 +358,15 @@ impl ModelRouter {
             .take(5)
             .map(|(ch, _)| ch)
             .collect();
-        Ok(channels)
+
+        // Determine which layer made the final decision for rank-0.
+        // Decision D8: do NOT split AffinityHit into CacheHit / HrwPick.
+        let decision = if affinity_hoisted {
+            Some(RoutingDecision::AffinityHit)
+        } else {
+            Some(RoutingDecision::ScorerPicked)
+        };
+
+        Ok((channels, decision))
     }
 }

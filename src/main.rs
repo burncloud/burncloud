@@ -63,11 +63,8 @@ fn main() -> Result<()> {
                 "server" | "router" => {
                     run_async_server()?;
                 }
-                "code" => {
-                    run_async_code()?;
-                }
                 _ => {
-                    // 处理其他命令 (pull, run, list 等)
+                    // 处理其他命令
                     run_async_cli(&args[1..])?;
                 }
             }
@@ -154,11 +151,6 @@ async fn run_async_server() -> Result<()> {
         .parse()
         .unwrap_or(burncloud_common::constants::DEFAULT_PORT);
     burncloud_server::start_server(&host, port, true).await
-}
-
-#[tokio::main]
-async fn run_async_code() -> Result<()> {
-    burncloud_code::start_cli().await
 }
 
 #[tokio::main]

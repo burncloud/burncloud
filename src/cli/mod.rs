@@ -6,7 +6,6 @@ pub mod group;
 pub mod install;
 pub mod log;
 pub mod monitor;
-pub mod output;
 pub mod price;
 pub mod protocol;
 pub mod token;

@@ -49,7 +49,7 @@ Building monolithic applications is strictly prohibited. Functionality must be s
 *   **Service Layer (`crates/service`)**: Pure Rust business logic, no UI dependencies.
 *   **Data Layer (`crates/database`)**: Responsible for persistence, using SQLx.
 *   **Router Layer (`crates/router`)**: Independent high-performance gateway component.
-*   **Core Layer (`crates/core`)**: Shared underlying logic.
+*   **Common Layer (`crates/common`)**: Shared underlying logic.
 
 ### 2.2 Unidirectional Dependency Flow
 Dependencies must be clear and unidirectional:

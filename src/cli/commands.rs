@@ -1,10 +1,8 @@
 use anyhow::Result;
 use burncloud_auto_update::AutoUpdater;
-use burncloud_core::{ConfigManager, ModelManager};
 use burncloud_database::Database;
 use clap::{Arg, Command};
 use log::{error, info};
-use std::io::{self, Write};
 
 use super::bundle::handle_bundle_command;
 use super::channel::handle_channel_command;
@@ -23,19 +21,6 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         .version("0.1.0")
         .about("AI model deployment and management platform")
         .subcommand_required(false)
-        .subcommand(
-            Command::new("pull")
-                .about("Download a model")
-                .arg(Arg::new("model").required(true).help("Model name")),
-        )
-        .subcommand(
-            Command::new("run")
-                .about("Run a model")
-                .arg(Arg::new("model").required(true).help("Model name"))
-                .arg(Arg::new("prompt").help("Input prompt")),
-        )
-        .subcommand(Command::new("list").about("List downloaded models"))
-        .subcommand(Command::new("server").about("Start server mode"))
         .subcommand(
             Command::new("update").about("Check and update the application").arg(
                 Arg::new("check-only")
@@ -1165,59 +1150,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         std::iter::once("burncloud".to_string()).chain(args.iter().cloned()),
     )?;
 
-    let config_manager = ConfigManager::new("config.json".to_string())?;
-    let mut model_manager = ModelManager::new(config_manager.get_models_dir().to_string());
-
     match matches.subcommand() {
-        Some(("pull", sub_m)) => {
-            let model = sub_m
-                .get_one::<String>("model")
-                .ok_or_else(|| anyhow::anyhow!("model argument is required"))?;
-            model_manager.pull_model(model).await?;
-        }
-        Some(("run", sub_m)) => {
-            let model = sub_m
-                .get_one::<String>("model")
-                .ok_or_else(|| anyhow::anyhow!("model argument is required"))?;
-            let prompt = sub_m.get_one::<String>("prompt");
-
-            if prompt.is_none() {
-                println!("Entering interactive mode, type 'exit' to quit:");
-                loop {
-                    print!("> ");
-                    io::stdout().flush()?;
-
-                    let mut input = String::new();
-                    io::stdin().read_line(&mut input)?;
-                    let input = input.trim();
-
-                    if input == "exit" {
-                        break;
-                    }
-
-                    if !input.is_empty() {
-                        let response = model_manager.run_model(model, Some(input)).await?;
-                        println!("{}", response);
-                    }
-                }
-            } else {
-                let response = model_manager
-                    .run_model(model, prompt.map(|s| s.as_str()))
-                    .await?;
-                println!("{}", response);
-            }
-        }
-        Some(("list", _)) => {
-            let models = model_manager.list_models();
-            if models.is_empty() {
-                println!("No downloaded models found");
-            } else {
-                println!("Downloaded models:");
-                for model in models {
-                    println!("  {} ({}MB)", model.name, model.size / 1024 / 1024);
-                }
-            }
-        }
         Some(("update", sub_m)) => {
             let check_only = sub_m.get_flag("check-only");
             let res = tokio::task::spawn_blocking(move || handle_update_command(check_only)).await;
@@ -1346,10 +1279,6 @@ pub fn show_help() {
     println!("  burncloud                     - Start GUI (Windows) / Show help (Linux)");
     println!("  burncloud client              - Start GUI client");
     println!("  burncloud server              - Start server");
-    println!("  burncloud code                - Programming mode");
-    println!("  burncloud pull <model>        - Download model");
-    println!("  burncloud run <model>         - Run model");
-    println!("  burncloud list                - List models");
     println!("  burncloud update              - Update application");
     println!("  burncloud update --check-only - Check for updates only");
     println!();
@@ -1373,7 +1302,5 @@ pub fn show_help() {
     println!();
     println!("Examples:");
     println!("  burncloud client");
-    println!("  burncloud pull llama3.2");
-    println!("  burncloud run gemma3");
     println!("  burncloud update --check-only");
 }

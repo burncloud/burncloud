@@ -10,7 +10,7 @@ authors = ["burncloud contributors"]
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop", "dep:image"]
+desktop = ["dioxus/desktop", "dep:image", "burncloud-client-shared/desktop"]
 web = ["dioxus/web"]
 liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
 
@@ -29,7 +29,7 @@ burncloud-client-log.workspace = true
 burncloud-client-connect.workspace = true
 burncloud-client-playground.workspace = true
 burncloud-client-register.workspace = true
-dioxus = { workspace = true, features = ["desktop", "router"] }
+dioxus = { workspace = true, features = ["router"] }
 dioxus-router.workspace = true
 tokio.workspace = true
 serde_json.workspace = true

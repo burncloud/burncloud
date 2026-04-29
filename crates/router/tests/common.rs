@@ -178,6 +178,23 @@ pub async fn insert_router_token(
     Ok(())
 }
 
+/// Ensure the `router_logs` table has the L6 Observability columns
+/// (`layer_decision`, `traffic_color`) added by migration 0011.
+/// `RouterDatabase::init` creates the base table without these columns,
+/// so tests that INSERT/SELECT with layer_decision/traffic_color must
+/// call this first. SQLite `ALTER TABLE ADD COLUMN` is idempotent if
+/// we swallow "duplicate column name" errors.
+#[allow(dead_code)]
+pub async fn ensure_l6_observability_columns(pool: &AnyPool) -> anyhow::Result<()> {
+    let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN layer_decision VARCHAR(32)")
+        .execute(pool)
+        .await; // ignore duplicate-column error
+    let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN traffic_color CHAR(1)")
+        .execute(pool)
+        .await; // ignore duplicate-column error
+    Ok(())
+}
+
 pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     // Use a unique temp file per test to avoid SQLite lock contention when tests run in parallel.
     let tmp = tempfile::NamedTempFile::new()?;

@@ -2,8 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use anyhow::Result;
-use bcrypt::{hash, DEFAULT_COST};
-use burncloud_common::utils::verify_password;
+use bcrypt::{hash, verify, DEFAULT_COST};
 use burncloud_database::Database;
 use burncloud_database_user::{UserAccount, UserDatabase};
 use clap::ArgMatches;
@@ -41,7 +40,8 @@ pub async fn cmd_user_login(db: &Database, matches: &ArgMatches) -> Result<()> {
         }
     };
 
-    let is_valid = verify_password(password, password_hash)?;
+    let is_valid = verify(password, password_hash)
+        .map_err(|e| anyhow::anyhow!("Password verification error: {}", e))?;
     if !is_valid {
         return Err(anyhow::anyhow!("Invalid username or password"));
     }

@@ -83,7 +83,7 @@ pub fn parse_rate_limit_info(
 /// - `x-ratelimit-reset-requests`: Time until request limit resets
 /// - `x-ratelimit-reset-tokens`: Time until token limit resets
 /// - `retry-after`: Seconds until retry (on 429)
-pub fn parse_openai_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
+pub(crate) fn parse_openai_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
     let mut info = RateLimitInfo::default();
 
     // Parse request limit
@@ -159,7 +159,7 @@ pub fn parse_openai_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
 /// - `anthropic-ratelimit-tokens-remaining`: Remaining tokens
 /// - `anthropic-ratelimit-tokens-reset`: ISO timestamp when limit resets
 /// - `retry-after`: Seconds until retry (on 429)
-pub fn parse_anthropic_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
+pub(crate) fn parse_anthropic_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
     let mut info = RateLimitInfo::default();
 
     // Parse request limit
@@ -218,7 +218,7 @@ pub fn parse_anthropic_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
 /// - `x-ratelimit-limit`: Maximum requests per time window
 /// - `x-ratelimit-remaining`: Remaining requests
 /// - `x-ratelimit-reset`: Unix timestamp when limit resets
-pub fn parse_azure_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
+pub(crate) fn parse_azure_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
     let mut info = RateLimitInfo::default();
 
     // Parse request limit
@@ -267,7 +267,7 @@ pub fn parse_azure_rate_limit(headers: &HeaderMap) -> RateLimitInfo {
 ///
 /// Gemini returns rate limit information in the response body as JSON errors
 /// rather than in headers. The error type is typically "RESOURCE_EXHAUSTED".
-pub fn parse_gemini_rate_limit(headers: &HeaderMap, body: Option<&str>) -> RateLimitInfo {
+pub(crate) fn parse_gemini_rate_limit(headers: &HeaderMap, body: Option<&str>) -> RateLimitInfo {
     let mut info = RateLimitInfo::default();
 
     // Check for retry-after header
@@ -452,7 +452,7 @@ fn parse_generic_error(body: &str) -> ErrorInfo {
 /// Parse rate limit scope from error response body.
 ///
 /// Looks for keywords like "account", "api key", "model" to determine scope.
-pub fn parse_rate_limit_scope_from_error(body: &str) -> Option<RateLimitScope> {
+pub(crate) fn parse_rate_limit_scope_from_error(body: &str) -> Option<RateLimitScope> {
     let body_lower = body.to_lowercase();
 
     if body_lower.contains("account")
