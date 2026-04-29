@@ -1,1 +1,1 @@
-pub use burncloud_client_users::UserPage;
+pub use burncloud_client_users::UsersPage;

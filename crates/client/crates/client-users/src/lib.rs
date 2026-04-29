@@ -1,39 +1,21 @@
 use burncloud_client_shared::components::{
-    BCButton, BCModal, FormMode, PageHeader, SchemaForm,
-    StatKpi, StatusPill, Chip, ColumnDef, PageTable,
-    SkeletonCard, SkeletonVariant,
+    BCButton, ButtonVariant, PageHeader, StatKpi, StatusPill, ColumnDef, PageTable,
+    EmptyState, SkeletonCard, SkeletonVariant,
 };
-use burncloud_client_shared::services::user_service::{User, UserService};
+use burncloud_client_shared::services::user_service::UserService;
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
-use serde_json::json;
 
-fn status_label(status: i32) -> &'static str {
-    match status {
-        1 => "active",
-        0 => "disabled",
-        _ => "unknown",
-    }
-}
-
-fn role_label(role: &str) -> &str {
-    match role {
-        "admin" => "admin",
-        "vip" => "vip",
-        _ => "user",
-    }
-}
-
-fn format_balance(nano: i64) -> String {
-    format!("{:.2}", nano as f64 / 1_000_000_000.0)
+fn format_cents(cents: i64) -> String {
+    let yuan = cents as f64 / 100.0;
+    format!("¥ {yuan:.2}")
 }
 
 #[component]
-pub fn UserPage() -> Element {
-    let mut show_form = use_signal(|| false);
-    let mut form_mode = use_signal(|| FormMode::Create);
-    let mut form_data = use_signal(|| json!({}));
-    let mut active_filter = use_signal(|| "all".to_string());
+pub fn UsersPage() -> Element {
+    let mut active_tab = use_signal(|| "all".to_string());
+    let mut show_topup = use_signal(|| None::<String>);
+    let mut topup_amount = use_signal(|| 0i64);
     let toast = use_toast();
 
     let users = use_resource(move || async move {
@@ -42,26 +24,26 @@ pub fn UserPage() -> Element {
 
     let user_list = users.read().clone().unwrap_or_default();
     let loading = users.read().is_none();
+
     let total = user_list.len();
     let active_count = user_list.iter().filter(|u| u.status == 1).count();
-    let vip_count = user_list.iter().filter(|u| u.role == "vip").count();
 
-    let columns = vec![
-        ColumnDef { key: "id".to_string(), label: "ID".to_string(), width: Some("80px".to_string()) },
-        ColumnDef { key: "name".to_string(), label: "Name".to_string(), width: None },
-        ColumnDef { key: "role".to_string(), label: "Role".to_string(), width: Some("100px".to_string()) },
-        ColumnDef { key: "status".to_string(), label: "Status".to_string(), width: Some("120px".to_string()) },
-        ColumnDef { key: "balance".to_string(), label: "Balance".to_string(), width: Some("120px".to_string()) },
-        ColumnDef { key: "actions".to_string(), label: "".to_string(), width: Some("80px".to_string()) },
-    ];
-
-    let filtered_users: Vec<&User> = user_list.iter().filter(|u| {
-        match active_filter().as_str() {
-            "active" => u.status == 1,
-            "vip" => u.role == "vip",
+    let filtered: Vec<_> = user_list.iter().cloned().filter(|u| {
+        match active_tab().as_str() {
+            "vip" => u.group == "VIP",
             _ => true,
         }
     }).collect();
+
+    let columns = vec![
+        ColumnDef { key: "id".to_string(), label: "ID".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "name".to_string(), label: "用户名".to_string(), width: None },
+        ColumnDef { key: "role".to_string(), label: "角色".to_string(), width: Some("100px".to_string()) },
+        ColumnDef { key: "balance".to_string(), label: "余额 (CNY)".to_string(), width: Some("120px".to_string()) },
+        ColumnDef { key: "group".to_string(), label: "分组".to_string(), width: Some("100px".to_string()) },
+        ColumnDef { key: "status".to_string(), label: "状态".to_string(), width: Some("100px".to_string()) },
+        ColumnDef { key: "action".to_string(), label: "操作".to_string(), width: Some("80px".to_string()) },
+    ];
 
     rsx! {
         PageHeader {
@@ -70,130 +52,169 @@ pub fn UserPage() -> Element {
             actions: rsx! {
                 BCButton {
                     class: "btn-black",
-                    onclick: move |_| {
-                        form_mode.set(FormMode::Create);
-                        form_data.set(json!({}));
-                        show_form.set(true);
-                    },
-                    "邀请用户"
+                    onclick: move |_| {},
+                    "邀请新用户"
                 }
-            }
+            },
         }
 
-        div { class: "page-content",
-            // Stats
-            div { class: "stats-grid cols-4",
+        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+            // KPI strip
+            div { class: "stats-grid cols-3",
                 if loading {
-                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
                     StatKpi {
-                        label: "总用户数",
-                        value: "{total}",
+                        label: "总用户数".to_string(),
+                        value: format!("{total}"),
+                        delta: rsx! { span { class: "stat-foot up", "▲ +24 This Week" } },
                     }
                     StatKpi {
-                        label: "活跃用户",
-                        value: "{active_count}",
+                        label: "今日活跃".to_string(),
+                        value: format!("{active_count}"),
+                        delta: rsx! { span { class: "stat-pill muted", "67% 活跃率" } },
                     }
                     StatKpi {
-                        label: "VIP 用户",
-                        value: "{vip_count}",
-                    }
-                    StatKpi {
-                        label: "今日新增",
-                        value: "—",
+                        label: "用户资金池".to_string(),
+                        value: "¥ 452,000.00".to_string(),
                     }
                 }
             }
 
-            // Filter chips
-            div { class: "chip-row", style: "margin: 20px 0;",
-                Chip {
-                    label: "全部".to_string(),
-                    count: Some(total as i64),
-                    active: Some(active_filter() == "all"),
-                    onclick: move |_| active_filter.set("all".to_string()),
+            // Tabs + table
+            div {
+                div { class: "section-h",
+                    span { class: "lead-title", "客户明细" }
+                    div { class: "tabs",
+                        span {
+                            class: if active_tab() == "all" { "tab active" } else { "tab" },
+                            onclick: move |_| active_tab.set("all".to_string()),
+                            "全部客户"
+                        }
+                        span {
+                            class: if active_tab() == "vip" { "tab active" } else { "tab" },
+                            onclick: move |_| active_tab.set("vip".to_string()),
+                            "VIP客户"
+                        }
+                    }
                 }
-                Chip {
-                    label: "活跃".to_string(),
-                    count: Some(active_count as i64),
-                    active: Some(active_filter() == "active"),
-                    onclick: move |_| active_filter.set("active".to_string()),
-                }
-                Chip {
-                    label: "VIP".to_string(),
-                    count: Some(vip_count as i64),
-                    active: Some(active_filter() == "vip"),
-                    onclick: move |_| active_filter.set("vip".to_string()),
-                }
-            }
 
-            // Table
-            if loading {
-                SkeletonCard { variant: Some(SkeletonVariant::Row) }
-                SkeletonCard { variant: Some(SkeletonVariant::Row) }
-                SkeletonCard { variant: Some(SkeletonVariant::Row) }
-            } else {
-                PageTable {
-                columns: columns,
-                for user in filtered_users {
-                    tr {
-                        key: "{user.id}",
-                        td { class: "mono", "{user.id}" }
-                        td { "{user.username}" }
-                        td { "{role_label(&user.role)}" }
-                        td {
-                            StatusPill {
-                                value: status_label(user.status).to_string()
-                            }
-                        }
-                        td { class: "mono", style: "font-size:13px",
-                            "¥{format_balance(user.balance_cny)}"
-                        }
-                        td {
-                            button {
-                                class: "btn-ghost",
-                                onclick: {
-                                    let user = user.clone();
-                                    move |_| {
-                                        form_data.set(json!({
-                                            "id": user.id,
-                                            "username": user.username,
-                                            "role": user.role,
-                                        }));
-                                        form_mode.set(FormMode::Edit);
-                                        show_form.set(true);
+                if loading {
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                } else if filtered.is_empty() {
+                    EmptyState {
+                        icon: rsx! { span { style: "font-size:40px", "👥" } },
+                        title: "暂无客户".to_string(),
+                        description: Some("邀请新用户开始使用".to_string()),
+                        cta: None,
+                    }
+                } else {
+                    PageTable {
+                        columns: columns,
+                        for u in filtered {
+                            tr {
+                                key: "{u.id}",
+                                td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)", "{u.id}" }
+                                td { style: "font-weight:600", "{u.username}" }
+                                td {
+                                    span { class: "pill neutral", "{u.role}" }
+                                }
+                                td { class: "mono", style: "color:var(--bc-text-primary)",
+                                    "{format_cents(u.balance_cny)}"
+                                }
+                                td {
+                                    if u.group == "VIP" {
+                                        span { class: "pill", style: "background:var(--bc-primary-light); color:var(--bc-primary)", "VIP" }
+                                    } else {
+                                        span { class: "pill neutral", "{u.group}" }
                                     }
-                                },
-                                "编辑"
+                                }
+                                td {
+                                    StatusPill {
+                                        value: if u.status == 1 { "active".to_string() } else { "disabled".to_string() },
+                                        label: if u.status == 1 { Some("Active".to_string()) } else { Some("Disabled".to_string()) },
+                                    }
+                                }
+                                td { style: "text-align:right",
+                                    button {
+                                        class: "btn btn-ghost",
+                                        style: "color:var(--bc-primary); font-weight:600",
+                                        onclick: move |_| {
+                                            show_topup.set(Some(u.id.clone()));
+                                            topup_amount.set(0);
+                                        },
+                                        "充值"
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
             }
         }
 
-        // Modal
-        if show_form() {
-            BCModal {
-                open: show_form(),
-                onclose: move |_| show_form.set(false),
-                SchemaForm {
-                    schema: json!({
-                        "fields": [
-                            {"key": "username", "label": "Name", "type": "text", "required": true},
-                            {"key": "role", "label": "Role", "type": "select", "options": ["user", "vip", "admin"]},
-                        ]
-                    }),
-                    data: form_data,
-                    mode: *form_mode.read(),
-                    on_submit: move |_data| {
-                        toast.success("保存成功");
-                        show_form.set(false);
-                    },
+        // Top-up modal
+        if let Some(uid) = show_topup() {
+            div { class: "bc-modal-overlay", onclick: move |_| show_topup.set(None),
+                div { class: "bc-modal", style: "width:440px", onclick: move |e| e.stop_propagation(),
+                    div { class: "bc-modal-header",
+                        h3 { "账户充值" }
+                    }
+                    div { class: "bc-modal-body",
+                        div { style: "display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--bc-bg-hover); border-radius:8px",
+                            span { style: "font-size:12px; color:var(--bc-text-secondary)", "目标账户" }
+                            span { style: "font-weight:600", "ID: {uid}" }
+                        }
+
+                        div { style: "margin-top:16px",
+                            label { class: "input-label", "充值金额 (CNY)" }
+                            div { class: "bc-input",
+                                input {
+                                    r#type: "number",
+                                    placeholder: "0.00",
+                                    value: if topup_amount() > 0 { format!("{}", topup_amount()) } else { String::new() },
+                                    oninput: move |e| topup_amount.set(e.value().parse().unwrap_or(0)),
+                                }
+                            }
+                        }
+
+                        div { style: "display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px",
+                            button {
+                                class: "btn btn-secondary",
+                                onclick: move |_| topup_amount.set(100),
+                                "¥100"
+                            }
+                            button {
+                                class: "btn btn-secondary",
+                                onclick: move |_| topup_amount.set(500),
+                                "¥500"
+                            }
+                            button {
+                                class: "btn btn-secondary",
+                                onclick: move |_| topup_amount.set(1000),
+                                "¥1000"
+                            }
+                        }
+                    }
+                    div { class: "bc-modal-footer",
+                        BCButton {
+                            variant: ButtonVariant::Secondary,
+                            onclick: move |_| show_topup.set(None),
+                            "取消"
+                        }
+                        BCButton {
+                            class: "btn-black",
+                            onclick: move |_| {
+                                show_topup.set(None);
+                                toast.success("充值成功");
+                            },
+                            "确认充值"
+                        }
+                    }
                 }
             }
         }

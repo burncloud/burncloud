@@ -43,14 +43,14 @@ pub fn ChannelPage() -> Element {
 }
 
 #[component]
-pub fn UserPage() -> Element {
+pub fn UsersPage() -> Element {
     rsx! {
         div { "User Placeholder" }
     }
 }
 
 #[component]
-pub fn BillingPage() -> Element {
+pub fn FinancePage() -> Element {
     rsx! {
         div { "Billing Placeholder" }
     }

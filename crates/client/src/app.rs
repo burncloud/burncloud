@@ -2,8 +2,8 @@ use dioxus::prelude::*;
 
 use crate::components::{guest_layout::GuestLayout, layout::Layout};
 use crate::pages::{
-    api::AccessCredentialsPage,
-    billing::BillingPage,
+    api::AccessPage,
+    billing::FinancePage,
     connect::ConnectPage,
     dashboard::Dashboard,
     deploy::DeployConfig,
@@ -15,7 +15,7 @@ use crate::pages::{
     not_found::NotFoundPage,
     playground::PlaygroundPage,
     settings::SystemSettings,
-    user::UserPage,
+    user::UsersPage,
 };
 use burncloud_client_register::RegisterPage;
 #[cfg(feature = "desktop")]
@@ -43,15 +43,15 @@ pub enum Route {
     #[route("/console/monitor")]
     ServiceMonitor {},
     #[route("/console/access")]
-    AccessCredentialsPage {},
+    AccessPage {},
     #[route("/console/models")]
     ChannelPage {},
     #[route("/console/users")]
-    UserPage {},
+    UsersPage {},
     #[route("/console/settings")]
     SystemSettings {},
     #[route("/console/finance")]
-    BillingPage {},
+    FinancePage {},
     #[route("/console/logs")]
     LogPage {},
     #[route("/console/connect")]

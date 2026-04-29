@@ -85,7 +85,7 @@ pub fn SystemSettings() -> Element {
 
         div { class: "page-content",
             // Tab Navigation
-            div { class: "tabs",
+            div { class: "tabs", style: "margin-bottom:24px",
                 button {
                     class: if active_tab() == "general" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("general"),
@@ -105,8 +105,8 @@ pub fn SystemSettings() -> Element {
             }
 
             if active_tab() == "general" {
-                div { class: "bc-card-solid",
-                    div { class: "p-lg",
+                div { class: "card flat", style: "padding:24px; max-width:640px",
+                    div { style: "display:flex; flex-direction:column; gap:24px",
                         SchemaForm {
                             schema: settings_schema_val.clone(),
                             data: settings_data,
@@ -114,44 +114,45 @@ pub fn SystemSettings() -> Element {
                             show_actions: false,
                             on_submit: handle_settings_change,
                         }
-                    }
-                }
 
-                // Theme toggle
-                div { class: "bc-card-solid", style: "margin-top:20px",
-                    div { class: "p-lg",
-                        div { class: "config-label", "外观主题" }
-                        div { style: "display:flex; gap:8px; margin-top:8px",
-                            {
-                                let cs = ClientState::load();
-                                let ct = cs.theme.clone().unwrap_or_default();
-                                rsx! {
-                                    button {
-                                        class: if ct == Theme::Light { "tab active" } else { "tab" },
-                                        onclick: move |_| {
-                                            let mut s = ClientState::load();
-                                            s.theme = Some(Theme::Light);
-                                            s.save();
-                                        },
-                                        "亮色"
-                                    }
-                                    button {
-                                        class: if ct == Theme::Dark { "tab active" } else { "tab" },
-                                        onclick: move |_| {
-                                            let mut s = ClientState::load();
-                                            s.theme = Some(Theme::Dark);
-                                            s.save();
-                                        },
-                                        "暗色"
-                                    }
-                                    button {
-                                        class: if ct == Theme::System { "tab active" } else { "tab" },
-                                        onclick: move |_| {
-                                            let mut s = ClientState::load();
-                                            s.theme = Some(Theme::System);
-                                            s.save();
-                                        },
-                                        "跟随系统"
+                        // Theme toggle
+                        div { style: "display:flex; justify-content:space-between; align-items:center; padding-top:16px; border-top:1px solid var(--bc-border)",
+                            div {
+                                div { style: "font-size:14px; font-weight:500", "外观主题" }
+                                div { style: "font-size:12px; color:var(--bc-text-secondary); margin-top:4px", "切换亮色/暗色/跟随系统" }
+                            }
+                            div { style: "display:flex; gap:8px",
+                                {
+                                    let cs = ClientState::load();
+                                    let ct = cs.theme.clone().unwrap_or_default();
+                                    rsx! {
+                                        button {
+                                            class: if ct == Theme::Light { "tab active" } else { "tab" },
+                                            onclick: move |_| {
+                                                let mut s = ClientState::load();
+                                                s.theme = Some(Theme::Light);
+                                                s.save();
+                                            },
+                                            "亮色"
+                                        }
+                                        button {
+                                            class: if ct == Theme::Dark { "tab active" } else { "tab" },
+                                            onclick: move |_| {
+                                                let mut s = ClientState::load();
+                                                s.theme = Some(Theme::Dark);
+                                                s.save();
+                                            },
+                                            "暗色"
+                                        }
+                                        button {
+                                            class: if ct == Theme::System { "tab active" } else { "tab" },
+                                            onclick: move |_| {
+                                                let mut s = ClientState::load();
+                                                s.theme = Some(Theme::System);
+                                                s.save();
+                                            },
+                                            "跟随系统"
+                                        }
                                     }
                                 }
                             }

@@ -2,444 +2,267 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::components::{
-    BCBadge, BCButton, BadgeVariant, ButtonVariant, PageHeader, SchemaForm,
+    BCButton, BCModal, ButtonVariant,
+    FormMode, PageHeader, SchemaForm, StatusPill,
+    EmptyState, SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::schema::token_schema;
-use burncloud_client_shared::{token_service::TokenService, use_auth, use_toast};
+use burncloud_client_shared::services::token_service::TokenService;
+use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
-#[derive(Clone, PartialEq)]
-struct ApiKey {
-    id: String,
-    name: String,
-    prefix: String,
-    masked_key: String,
-    status: &'static str,
-    created_at: String,
-    expires_at: String,
-    quota_limit: Option<String>,
+fn mask_key(key: &str) -> String {
+    if key.len() > 8 {
+        format!("{}...{}", &key[..7], &key[key.len()-4..])
+    } else {
+        "********".to_string()
+    }
 }
 
 #[component]
-pub fn AccessCredentialsPage() -> Element {
+pub fn AccessPage() -> Element {
+    let mut show_create = use_signal(|| false);
+    let mut show_result = use_signal(|| false);
+    let mut show_delete = use_signal(|| false);
+    let mut delete_token_id = use_signal(String::new);
+    let mut new_full_key = use_signal(String::new);
+    let mut form_data = use_signal(|| serde_json::json!({}));
     let toast = use_toast();
 
-    let mut show_create_modal = use_signal(|| false);
-    let mut show_key_result_modal = use_signal(|| false);
-    let mut new_full_key = use_signal(String::new);
-
-    let auth = use_auth();
-    let user = auth.current_user;
-
-    let mut keys_resource =
-        use_resource(move || async move { TokenService::list().await.unwrap_or_default() });
-
-    let keys = use_memo(move || {
-        keys_resource
-            .read()
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|t| {
-                let masked_key = if t.token.len() > 8 {
-                    format!("{}...{}", &t.token[0..7], &t.token[t.token.len() - 4..])
-                } else {
-                    "********".to_string()
-                };
-                ApiKey {
-                    id: t.token.clone(),
-                    name: "API Key".to_string(),
-                    prefix: "sk-burn".to_string(),
-                    masked_key,
-                    status: if t.status == "active" {
-                        "Active"
-                    } else {
-                        "Revoked"
-                    },
-                    created_at: "N/A".to_string(),
-                    expires_at: "Never".to_string(),
-                    quota_limit: if t.quota_limit < 0 {
-                        None
-                    } else {
-                        Some(format!("${}", t.quota_limit))
-                    },
-                }
-            })
-            .collect::<Vec<_>>()
+    let mut tokens = use_resource(move || async move {
+        TokenService::list().await.unwrap_or_default()
     });
 
-    let handle_create_click = move |_| {
-        show_create_modal.set(true);
-    };
+    let token_list = tokens.read().clone().unwrap_or_default();
+    let loading = tokens.read().is_none();
 
-    // Schema for the token form
-    let schema = token_schema();
-    let form_data = use_signal(|| serde_json::json!({"user_id": "", "quota_limit": -1}));
+    let handle_create = move |value: serde_json::Value| {
+        let name = value["name"].as_str().unwrap_or("").to_string();
+        if name.is_empty() { return; }
 
-    let handle_generate = move |value: serde_json::Value| {
         spawn(async move {
-            let limit = value["quota_limit"]
-                .as_i64()
-                .and_then(|v| if v < 0 { None } else { Some(v) });
-
-            let uid = user
-                .read()
-                .as_ref()
-                .map(|u| u.id.clone())
-                .unwrap_or_else(|| value["user_id"].as_str().unwrap_or("demo-user").to_string());
-
-            match TokenService::create(&uid, limit).await {
-                Ok(token) => {
-                    new_full_key.set(token);
-                    show_create_modal.set(false);
-                    show_key_result_modal.set(true);
-                    toast.success("访问凭证创建成功");
-                    keys_resource.restart();
+            match TokenService::create(&name, None).await {
+                Ok(key) => {
+                    new_full_key.set(key);
+                    show_create.set(false);
+                    show_result.set(true);
+                    tokens.restart();
+                    form_data.set(serde_json::json!({}));
+                    toast.success("凭证已创建");
                 }
                 Err(e) => toast.error(&format!("创建失败: {}", e)),
             }
         });
     };
 
-    let mut is_copied = use_signal(|| false);
-
-    let copy_key = move |_| {
-        let text = new_full_key();
-        match arboard::Clipboard::new() {
-            Ok(mut clipboard) => {
-                if let Err(e) = clipboard.set_text(text) {
-                    toast.error(&format!("复制失败: {}", e));
-                } else {
-                    is_copied.set(true);
-                    spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                        is_copied.set(false);
-                    });
-                }
-            }
-            Err(e) => toast.error(&format!("剪贴板不可用: {}", e)),
-        }
-    };
-
-    // Delete Modal State
-    let mut is_delete_modal_open = use_signal(|| false);
-    let mut delete_token_id = use_signal(String::new);
-
-    let mut open_delete_modal = move |token: String| {
-        delete_token_id.set(token);
-        is_delete_modal_open.set(true);
-    };
-
-    let handle_confirm_delete = move |_| {
-        spawn(async move {
-            let token = delete_token_id();
-            match TokenService::delete(&token).await {
-                Ok(_) => {
-                    toast.success("凭证已删除");
-                    is_delete_modal_open.set(false);
-                    keys_resource.restart();
-                }
-                Err(e) => toast.error(&format!("删除失败: {}", e)),
-            }
-        });
-    };
-
-    let render_status_icon = |status: &str| {
-        if status == "Active" {
-            rsx! {
-                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" }
-                }
-            }
-        } else {
-            rsx! {
-                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" }
-                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M21 12a9 9 0 11-18 0 9 9 0 0118 0z" }
-                }
-            }
-        }
-    };
+    let schema = token_schema();
 
     rsx! {
-        div { class: "flex flex-col h-full gap-xl",
-            // Header
-            PageHeader {
-                title: "访问凭证",
-                actions: rsx! {
-                    BCButton {
-                        class: "btn-black",
-                        onclick: handle_create_click,
-                        "创建新凭证"
-                    }
+        PageHeader {
+            title: "访问凭证",
+            actions: rsx! {
+                BCButton {
+                    class: "btn-black",
+                    onclick: move |_| show_create.set(true),
+                    "创建新凭证"
                 }
-            }
+            },
+        }
 
-            // Key List (card-based, custom UI)
-            div { class: "flex-1 overflow-y-auto min-h-0",
-                if keys.read().is_empty() {
-                    div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
-                        div { class: "p-lg rounded-full", style: "background: var(--bc-bg-hover);",
-                            svg { class: "w-12 h-12", style: "color: var(--bc-text-disabled);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
-                            }
-                        }
-                        h3 { class: "text-title font-bold text-primary mb-sm", "没有活跃的访问凭证" }
-                        p { class: "text-body text-secondary max-w-sm mb-lg", "创建您的第一个 API Key 以开始集成 BurnCloud 服务。" }
+        div { class: "page-content", style: "display:flex; flex-direction:column; gap:16px",
+            if loading {
+                SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                SkeletonCard { variant: Some(SkeletonVariant::Row) }
+            } else if token_list.is_empty() {
+                EmptyState {
+                    icon: rsx! { span { style: "font-size:40px", "🔑" } },
+                    title: "没有活跃的访问凭证".to_string(),
+                    description: Some("创建您的第一个 API Key 以开始集成 BurnCloud 服务。".to_string()),
+                    cta: Some(rsx! {
                         BCButton {
-                            variant: ButtonVariant::Primary,
-                            onclick: handle_create_click,
+                            class: "btn-black",
+                            onclick: move |_| show_create.set(true),
                             "创建凭证"
                         }
-                    }
-                } else {
-                    div { class: "grid gap-md",
+                    }),
+                }
+            } else {
+                div { style: "display:grid; gap:12px",
+                    for tk in token_list {
                         {
-                            keys().into_iter().map(|key| {
-                                let status_id = key.id.clone();
-                                let delete_id = key.id.clone();
-                                let current_status = key.status;
-
-                                rsx! {
-                                    div { class: "bc-card-solid group relative flex items-center justify-between p-lg transition-all duration-200",
-                                        style: "cursor: default;",
-                                        // Left: Key Info
-                                        div { class: "flex items-start gap-md",
-                                            div { class: "p-md rounded-lg text-secondary",
-                                                style: "background: var(--bc-bg-hover);",
-                                                svg { class: "w-6 h-6", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "1.5",
-                                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" }
-                                                }
+                            let tk_id = tk.token.clone();
+                            let tk_id_for_del = tk.token.clone();
+                            let tk_id_for_copy = tk.token.clone();
+                            rsx! {
+                                div { key: "{tk_id}", class: "row-card", style: "padding:20px",
+                                    div { style: "display:flex; align-items:flex-start; justify-content:space-between; gap:16px",
+                                        div { style: "display:flex; align-items:flex-start; gap:16px",
+                                            div { style: "padding:12px; border-radius:8px; background:var(--bc-bg-hover); color:var(--bc-text-secondary); display:flex; align-items:center; justify-content:center",
+                                                span { style: "font-size:20px", "🔑" }
                                             }
-                                            div { class: "flex flex-col gap-xs",
-                                                div { class: "flex items-center gap-sm",
-                                                    span { class: "font-bold text-primary text-lg", "{key.name}" }
-                                                    if key.status == "Active" {
-                                                        BCBadge { variant: BadgeVariant::Success, dot: true, "使用中" }
-                                                    } else {
-                                                        BCBadge { variant: BadgeVariant::Neutral, dot: true, "已吊销" }
+                                            div { style: "display:flex; flex-direction:column; gap:4px",
+                                                div { style: "display:flex; align-items:center; gap:8px",
+                                                    span { style: "font-size:16px; font-weight:700", "API Key" }
+                                                    StatusPill {
+                                                        value: if tk.status == "active" { "ok".to_string() } else { "neutral".to_string() },
+                                                        label: if tk.status == "active" { Some("使用中".to_string()) } else { Some("已吊销".to_string()) },
                                                     }
                                                 }
-                                                div { class: "flex items-center gap-md text-xs font-mono text-tertiary mt-xs",
-                                                    span { class: "px-sm py-0.5 rounded text-secondary", style: "background: var(--bc-bg-hover);", "{key.masked_key}" }
-                                                    span { "{key.created_at}" }
-                                                    if key.expires_at != "Never" {
-                                                        span { "Exp: {key.expires_at}" }
-                                                    }
+                                                div { class: "mono", style: "display:flex; align-items:center; gap:16px; font-size:11px; color:var(--bc-text-tertiary); margin-top:4px",
+                                                    span { style: "padding:2px 8px; border-radius:4px; background:var(--bc-bg-hover); color:var(--bc-text-secondary)", "{mask_key(&tk.token)}" }
                                                 }
                                             }
                                         }
-
-                                        // Right: Actions
-                                        div { class: "flex items-center gap-lg",
-                                            if let Some(quota) = &key.quota_limit {
-                                                 div { class: "badge badge-ghost font-mono text-xs", "{quota}" }
-                                            }
-
-                                            div { class: "flex gap-sm",
-                                                button {
-                                                    class: format!("btn btn-sm btn-ghost btn-square transition-colors {}",
-                                                        if key.status == "Active" { "text-warning hover:bg-warning/10" } else { "text-success hover:bg-success/10" }
-                                                    ),
-                                                    title: if key.status == "Active" { "禁用凭证" } else { "启用凭证" },
-                                                    onclick: move |_| {
-                                                        let id = status_id.clone();
-                                                        let status_val = current_status;
-                                                        spawn(async move {
-                                                            let new_status_str = if status_val == "Active" { "disabled" } else { "active" };
-                                                            match TokenService::update_status(&id, new_status_str).await {
-                                                                Ok(_) => {
-                                                                    match new_status_str {
-                                                                        "active" => toast.success("凭证已启用"),
-                                                                        _ => toast.success("凭证已禁用"),
-                                                                    }
-                                                                    keys_resource.restart();
-                                                                },
-                                                                Err(e) => toast.error(&format!("操作失败: {}", e)),
-                                                            }
-                                                        });
-                                                    },
-                                                    {render_status_icon(key.status)}
-                                                }
-
-                                                button {
-                                                    class: "btn btn-sm btn-ghost btn-square text-tertiary hover:text-error hover:bg-error/10 transition-colors",
-                                                    onclick: move |_| open_delete_modal(delete_id.clone()),
-                                                    svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" }
-                                                    }
-                                                }
+                                        div { style: "display:flex; align-items:center; gap:4px",
+                                            button {
+                                                class: "btn-icon",
+                                                style: "color:var(--bc-text-tertiary)",
+                                                onclick: move |_| {
+                                                    let id = tk_id_for_del.clone();
+                                                    delete_token_id.set(id);
+                                                    show_delete.set(true);
+                                                },
+                                                "🗑"
                                             }
                                         }
                                     }
                                 }
-                            })
-                        }
-                    }
-                }
-            }
-
-            // Create Modal - now uses SchemaForm from token_schema
-            if show_create_modal() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
-                    div {
-                        class: "absolute inset-0 transition-opacity",
-                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
-                        onclick: move |_| show_create_modal.set(false)
-                    }
-
-                    div {
-                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
-                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
-                        onclick: |e| e.stop_propagation(),
-
-                        div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
-                            style: "background: var(--bc-bg-card-solid);",
-                            div {
-                                h3 { class: "text-subtitle font-bold text-primary tracking-tight", "创建访问凭证" }
-                                p { class: "text-caption text-secondary font-medium hidden sm:block", "配置新的 API Key 以授权应用访问" }
-                            }
-                            button {
-                                class: "btn btn-sm btn-circle btn-ghost text-secondary",
-                                style: "background: transparent;",
-                                onclick: move |_| show_create_modal.set(false),
-                                "✕"
-                            }
-                        }
-
-                        // SchemaForm body
-                        div { class: "flex-1 overflow-y-auto p-md sm:p-lg min-h-0 overscroll-y-contain flex flex-col gap-md",
-                            SchemaForm {
-                                schema: schema.clone(),
-                                data: form_data,
-                                mode: burncloud_client_shared::components::FormMode::Create,
-                                show_actions: false,
-                            }
-
-                            div { class: "alert alert-warning text-xs mt-sm py-sm",
-                                style: "background: var(--bc-warning-light); border: 1px solid var(--bc-warning); color: var(--bc-warning);",
-                                svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }}
-                                span { "创建后，完整的 API Key 仅会显示一次，请务必立即妥善保存。" }
-                            }
-                        }
-
-                        div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0",
-                            style: "background: var(--bc-bg-hover);",
-                            BCButton {
-                                variant: ButtonVariant::Ghost,
-                                onclick: move |_| show_create_modal.set(false),
-                                "取消"
-                            }
-                            BCButton {
-                                class: "btn-neutral text-white shadow-lg shadow-neutral/20",
-                                onclick: move |_| {
-                                    let data = form_data.read().clone();
-                                    handle_generate(data);
-                                },
-                                "立即创建"
                             }
                         }
                     }
                 }
             }
+        }
 
-            // Key Result Modal (unchanged)
-            if show_key_result_modal() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
-                    div {
-                        class: "absolute inset-0 transition-opacity",
-                        style: "background: rgba(0,0,0,0.60); backdrop-filter: blur(8px);",
-                        onclick: move |_| show_key_result_modal.set(false)
+        // Create modal
+        BCModal {
+            title: "创建访问凭证".to_string(),
+            open: show_create(),
+            onclose: move |_| show_create.set(false),
+
+            div { class: "flex flex-col gap-lg p-lg",
+                SchemaForm {
+                    schema: schema.clone(),
+                    data: form_data,
+                    mode: FormMode::Create,
+                    show_actions: false,
+                    on_submit: handle_create,
+                }
+
+                div { style: "display:flex; align-items:flex-start; gap:12px; padding:12px; background:var(--bc-warning-light, #fef3cd); border-radius:8px; color:var(--bc-warning); border:1px solid var(--bc-warning)",
+                    span { style: "font-size:12px; line-height:1.5", "创建后，完整的 API Key 仅会显示一次，请务必立即妥善保存。" }
+                }
+
+                div { class: "flex justify-end gap-md mt-md",
+                    BCButton {
+                        variant: ButtonVariant::Secondary,
+                        onclick: move |_| show_create.set(false),
+                        "取消"
                     }
-                    div { class: "relative w-full max-w-lg p-lg animate-scale-in",
-                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl);",
-                        div { class: "flex flex-col items-center gap-md text-center",
-                            div { class: "w-16 h-16 rounded-full flex items-center justify-center mb-sm",
-                                style: "background: var(--bc-success-light);",
-                                svg { class: "w-8 h-8", style: "color: var(--bc-success);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" }
-                                }
-                            }
-                            h3 { class: "text-2xl font-bold text-primary", "凭证已创建" }
-                            p { class: "text-secondary", "请复制并保存您的 Secret Key，出于安全考虑，它将不会再次显示。" }
+                    BCButton {
+                        variant: ButtonVariant::Primary,
+                        onclick: move |_| {
+                            let data = form_data.read().clone();
+                            handle_create(data);
+                        },
+                        "立即创建"
+                    }
+                }
+            }
+        }
 
-                            div { class: "w-full p-md rounded-lg flex items-center justify-between gap-md mt-md font-mono text-sm break-all",
-                                style: "background: var(--bc-bg-hover);",
-                                span { class: "text-primary select-all", "{new_full_key}" }
-                                button {
-                                    class: "btn btn-square btn-sm btn-ghost transition-all duration-200",
-                                    class: if is_copied() { "text-success" } else { "" },
-                                    style: if is_copied() { "background: var(--bc-success-light); transform: scale(1.1);" } else { "" },
-                                    onclick: copy_key,
-                                    if is_copied() {
-                                        svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2.5", path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 13l4 4L19 7" } }
-                                    } else {
-                                        svg { class: "w-4 h-4", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" }}
+        // Key result modal
+        BCModal {
+            title: "凭证已创建".to_string(),
+            open: show_result(),
+            onclose: move |_| show_result.set(false),
+
+            div { style: "padding:24px 24px 16px; text-align:center",
+                div { style: "width:64px; height:64px; margin:0 auto 12px; border-radius:99px; background:var(--bc-success-light, #d1fae5); color:var(--bc-success); display:flex; align-items:center; justify-content:center; font-size:28px",
+                    "✓"
+                }
+                h3 { style: "font-size:22px; font-weight:700; margin:0", "凭证已创建" }
+                p { style: "font-size:13px; color:var(--bc-text-secondary); margin:8px 0 16px; line-height:1.5",
+                    "请复制并保存您的 Secret Key，"
+                    br {}
+                    "出于安全考虑，它将不会再次显示。"
+                }
+
+                div { style: "display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; background:var(--bc-bg-hover); border-radius:8px; font-family:var(--bc-font-mono); font-size:13px; word-break:break-all",
+                    span { style: "user-select:all; text-align:left; flex:1", "{new_full_key}" }
+                    button {
+                        class: "btn-icon",
+                        onclick: move |_| {
+                            let key = new_full_key();
+                            spawn(async move {
+                                match arboard::Clipboard::new() {
+                                    Ok(mut cb) => {
+                                        if cb.set_text(&key).is_ok() {
+                                            toast.success("已复制到剪贴板");
+                                        }
                                     }
+                                    _ => {}
                                 }
-                            }
-
-                            BCButton {
-                                class: "btn-neutral w-full mt-md",
-                                onclick: move |_| show_key_result_modal.set(false),
-                                "我已保存"
-                            }
-                        }
+                            });
+                        },
+                        "📋"
                     }
                 }
+
+                BCButton {
+                    class: "btn-black width-full mt-md",
+                    onclick: move |_| show_result.set(false),
+                    "我已保存"
+                }
             }
+        }
 
-            // Delete Confirmation Modal (unchanged)
-            if is_delete_modal_open() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
-                    div {
-                        class: "absolute inset-0 transition-opacity",
-                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);",
-                        onclick: move |_| is_delete_modal_open.set(false)
+        // Delete confirmation modal
+        BCModal {
+            title: "确认吊销".to_string(),
+            open: show_delete(),
+            onclose: move |_| show_delete.set(false),
+
+            div { style: "display:flex; flex-direction:column",
+                div { style: "display:flex; align-items:center; gap:12px; padding:24px; background:var(--bc-danger-light, #fee2e2)",
+                    div { style: "width:48px; height:48px; border-radius:99px; background:var(--bc-danger-light, #fee2e2); color:var(--bc-danger); display:flex; align-items:center; justify-content:center; font-size:20px",
+                        "🛡"
                     }
-
                     div {
-                        class: "relative w-full max-w-md overflow-hidden animate-scale-in",
-                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
-                        onclick: |e| e.stop_propagation(),
-
-                        div { class: "flex items-center gap-md px-lg py-lg border-b",
-                            style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
-                            div { class: "w-12 h-12 rounded-full flex items-center justify-center",
-                                style: "background: var(--bc-danger-light);",
-                                svg { class: "w-6 h-6", style: "color: var(--bc-danger);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
+                        div { style: "font-size:17px; font-weight:700", "确认吊销" }
+                        div { style: "font-size:13px; color:var(--bc-text-secondary); margin-top:2px", "此操作无法撤销" }
+                    }
+                }
+                div { style: "padding:16px 24px; font-size:13px; color:var(--bc-text-secondary); line-height:1.6",
+                    "确定要吊销此访问凭证吗？"
+                    br {}
+                    "所有使用此凭证的应用将"
+                    span { style: "color:var(--bc-danger); font-weight:700", "立即失去访问权限" }
+                    "。"
+                }
+                div { class: "flex justify-end gap-md p-md",
+                    BCButton {
+                        variant: ButtonVariant::Secondary,
+                        onclick: move |_| show_delete.set(false),
+                        "取消"
+                    }
+                    BCButton {
+                        class: "btn btn-danger",
+                        onclick: move |_| {
+                            let id = delete_token_id();
+                            spawn(async move {
+                                match TokenService::delete(&id).await {
+                                    Ok(_) => {
+                                        tokens.restart();
+                                        toast.success("凭证已吊销");
+                                    }
+                                    Err(e) => toast.error(&format!("吊销失败: {}", e)),
                                 }
-                            }
-                            div { class: "flex-1",
-                                h3 { class: "text-subtitle font-bold text-primary", "确认吊销" }
-                                p { class: "text-body text-secondary mt-xs", "此操作无法撤销" }
-                            }
-                        }
-
-                        div { class: "px-lg py-md",
-                            p { class: "text-secondary",
-                                "确定要吊销此访问凭证吗？"
-                                br {}
-                                "所有使用此凭证的应用将"
-                                span { class: "font-bold", style: "color: var(--bc-danger);", "立即失去访问权限" }
-                                "。"
-                            }
-                        }
-
-                        div { class: "flex justify-end gap-md px-lg py-md border-t",
-                            style: "background: var(--bc-bg-hover);",
-                            BCButton {
-                                variant: ButtonVariant::Ghost,
-                                onclick: move |_| is_delete_modal_open.set(false),
-                                "取消"
-                            }
-                            BCButton {
-                                class: "btn-error text-white shadow-md",
-                                onclick: handle_confirm_delete,
-                                "确认吊销"
-                            }
-                        }
+                            });
+                            show_delete.set(false);
+                        },
+                        "确认吊销"
                     }
                 }
             }

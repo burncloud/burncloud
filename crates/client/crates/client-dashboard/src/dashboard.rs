@@ -9,7 +9,33 @@ use burncloud_client_shared::services::usage_service::UsageService;
 use dioxus::prelude::*;
 
 fn channel_status(ch: &Channel) -> String {
-    if ch.status == 1 { "active".to_string() } else { "down".to_string() }
+    match ch.status {
+        1 => "ok".to_string(),
+        2 => "throttle".to_string(),
+        0 => "down".to_string(),
+        _ => "maintenance".to_string(),
+    }
+}
+
+fn channel_status_label(ch: &Channel) -> String {
+    match ch.status {
+        1 => "OK".to_string(),
+        2 => "Throttled".to_string(),
+        0 => "Down".to_string(),
+        _ => "Maintenance".to_string(),
+    }
+}
+
+fn format_compact(n: i64) -> String {
+    if n >= 1_000_000_000 {
+        format!("{:.1}B", n as f64 / 1e9)
+    } else if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1e6)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1e3)
+    } else {
+        n.to_string()
+    }
 }
 
 #[component]
@@ -40,41 +66,48 @@ pub fn Dashboard() -> Element {
         .or_else(|| u.as_ref().and_then(|r| r.clone().err().map(|e| e.to_string())));
     let ch_list = ch_res.and_then(|r| r.ok()).unwrap_or_default();
 
-    // System metrics
-    let (cpu_pct, mem_pct) = match &m {
-        Some(Ok(data)) => (data.cpu.usage_percent as f64, data.memory.usage_percent as f64),
-        _ => (0.0, 0.0),
-    };
-
-    // Usage data
     let total_tokens = match &u {
         Some(Ok(data)) => data.total_tokens,
         _ => 0,
     };
 
-    // Channel health stats
     let active_channels = ch_list.iter().filter(|c| c.status == 1).count();
-    let total_channels = ch_list.len();
+    let total_weight: i32 = ch_list.iter().map(|c| c.weight).sum();
 
-    let cpu_data = vec![45.0, 52.0, 48.0, 61.0, 55.0, 43.0, 50.0];
-    let req_data = vec![1200.0, 980.0, 1350.0, 1100.0, 1420.0, 1250.0, 1180.0];
+    let spark_req = vec![12.0, 18.0, 14.0, 22.0, 30.0, 28.0, 26.0, 34.0, 30.0, 42.0, 38.0, 50.0, 46.0, 58.0, 52.0, 60.0, 64.0];
+    let spark_tok: Vec<f64> = spark_req.iter().rev().map(|x| x * 0.9).collect();
+    let spark_lat = vec![40.0, 38.0, 34.0, 36.0, 32.0, 30.0, 32.0, 28.0, 30.0, 28.0, 26.0, 28.0, 24.0, 26.0, 22.0, 24.0, 20.0];
+    let spark_err = vec![2.0, 1.0, 2.0, 3.0, 2.0, 4.0, 3.0, 5.0, 3.0, 6.0, 4.0, 5.0, 4.0, 6.0, 5.0, 7.0, 5.0];
 
     let channel_columns = vec![
-        ColumnDef { key: "name".to_string(), label: "Channel".to_string(), width: None },
-        ColumnDef { key: "type".to_string(), label: "Provider".to_string(), width: Some("120px".to_string()) },
-        ColumnDef { key: "status".to_string(), label: "Status".to_string(), width: Some("100px".to_string()) },
-        ColumnDef { key: "weight".to_string(), label: "Weight".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "name".to_string(), label: "CHANNEL".to_string(), width: None },
+        ColumnDef { key: "weight".to_string(), label: "WEIGHT".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "p50".to_string(), label: "P50".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "rpm".to_string(), label: "RPM".to_string(), width: Some("80px".to_string()) },
+        ColumnDef { key: "status".to_string(), label: "STATUS".to_string(), width: Some("120px".to_string()) },
     ];
 
     let log_list = recent_logs.read().clone().and_then(|r| r.ok()).unwrap_or_default();
+
+    // Error breakdown (mock data matching design)
+    let err_breakdown = vec![
+        ("azure-uksouth", 1284, 62, "503 timeout"),
+        ("openai-eu", 412, 20, "401 invalid key"),
+        ("gemini-fallback", 268, 13, "429 throttled"),
+        ("qwen-cn", 92, 5, "5xx upstream"),
+    ];
 
     rsx! {
         PageHeader {
             title: "仪表盘",
             subtitle: Some("过去 24 小时 · 网关聚合视图".to_string()),
+            actions: rsx! {
+                button { class: "btn btn-secondary", "刷新" }
+                button { class: "btn btn-black", "创建渠道" }
+            },
         }
 
-        div { class: "page-content",
+        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
             if let Some(err) = metrics_error {
                 ErrorBanner {
                     message: err,
@@ -82,7 +115,7 @@ pub fn Dashboard() -> Element {
                 }
             }
 
-            // KPI row
+            // 4 KPIs
             div { class: "stats-grid cols-4",
                 if loading {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
@@ -91,35 +124,39 @@ pub fn Dashboard() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
                     StatKpi {
-                        label: "活跃渠道",
-                        value: "{active_channels}",
-                        chart: rsx! { Sparkline { data: req_data.clone(), tone: None } }
+                        label: "REQUESTS · 24H".to_string(),
+                        value: "1,284,902".to_string(),
+                        delta: rsx! { span { class: "stat-foot up", "▲ 12.4% vs yesterday" } },
+                        chart: rsx! { Sparkline { data: spark_req.clone(), tone: None } }
                     }
                     StatKpi {
-                        label: "总 Token 消耗",
-                        value: "{total_tokens}",
+                        label: "TOKENS · 24H".to_string(),
+                        value: format_compact(total_tokens),
+                        delta: rsx! { span { class: "stat-foot up", "▲ 8.1% vs yesterday" } },
+                        chart: rsx! { Sparkline { data: spark_tok.clone(), tone: None } }
                     }
                     StatKpi {
-                        label: "CPU 使用率",
-                        value: "{cpu_pct:.0}%",
-                        chart: rsx! { Sparkline { data: cpu_data.clone(), tone: Some("danger".to_string()) } }
+                        label: "P50 LATENCY".to_string(),
+                        value: "312ms".to_string(),
+                        delta: rsx! { span { class: "stat-foot up", "▲ −4.2%" } },
+                        chart: rsx! { Sparkline { data: spark_lat.clone(), tone: Some("success".to_string()) } }
                     }
                     StatKpi {
-                        label: "内存使用率",
-                        value: "{mem_pct:.0}%",
+                        label: "ERROR RATE".to_string(),
+                        value: "0.18%".to_string(),
+                        delta: rsx! { span { class: "stat-foot down", "▼ +0.04%" } },
+                        chart: rsx! { Sparkline { data: spark_err.clone(), tone: Some("danger".to_string()) } }
                     }
                 }
             }
 
-            // 2-column grid: channel health + live logs
-            div { style: "display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:24px",
+            // Channel health + live logs
+            div { style: "display:grid; grid-template-columns:1.45fr 1fr; gap:24px",
                 // Channel health
                 div {
                     div { class: "section-h",
-                        div { class: "lead",
-                            span { class: "lead-title", "渠道健康" }
-                            span { class: "lead-sub", "{active_channels}/{total_channels} 在线" }
-                        }
+                        span { class: "lead-title", "渠道健康" }
+                        span { class: "section-sub", "{active_channels} 个活跃 · 总权重 {total_weight}" }
                     }
 
                     if loading {
@@ -140,13 +177,14 @@ pub fn Dashboard() -> Element {
                                 tr {
                                     key: "{ch.id}",
                                     td { style: "font-weight:500", "{ch.name}" }
-                                    td { class: "mono", style: "font-size:13px", "{ch.type_}" }
+                                    td { class: "mono", style: "text-align:right; font-size:13px", "{ch.weight}" }
+                                    td { class: "mono", style: "text-align:right; font-size:13px", "—" }
+                                    td { class: "mono", style: "text-align:right; font-size:13px", "—" }
                                     td {
                                         StatusPill {
                                             value: channel_status(ch)
                                         }
                                     }
-                                    td { class: "mono", style: "font-size:13px", "{ch.weight}" }
                                 }
                             }
                         }
@@ -156,10 +194,8 @@ pub fn Dashboard() -> Element {
                 // Live logs
                 div {
                     div { class: "section-h",
-                        div { class: "lead",
-                            span { class: "lead-title", "实时日志" }
-                            span { class: "lead-sub", "最近请求" }
-                        }
+                        span { class: "lead-title", "实时日志" }
+                        span { class: "section-sub", "tail -f gateway.log" }
                     }
 
                     if loading {
@@ -173,12 +209,37 @@ pub fn Dashboard() -> Element {
                             cta: None,
                         }
                     } else {
-                        div { class: "log-block",
+                        div { class: "log-block", style: "height:320px",
                             for entry in &log_list {
                                 div { class: if entry.status_code >= 500 { "log-err" } else if entry.status_code >= 400 { "log-warn" } else { "log-info" },
                                     span { class: "log-time", "{entry.request_id}" }
                                     " {entry.status_code} {entry.path} {entry.latency_ms}ms"
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Error breakdown by upstream
+            div {
+                div { class: "section-h",
+                    span { class: "lead-title", "当日错误分布 · by upstream" }
+                    span { class: "section-sub", "2,056 errors · ↑ 12% vs yesterday" }
+                }
+                div { style: "display:flex; flex-direction:column; gap:8px",
+                    for (upstream, count, share, kind) in &err_breakdown {
+                        div { class: "row-card outlined", style: "padding:14px 16px",
+                            div { style: "display:flex; align-items:center; gap:14px; flex:1; min-width:0",
+                                span { style: "width:200px; font-size:13px; font-weight:500", "{upstream}" }
+                                div { style: "flex:1; height:6px; background:var(--bc-bg-hover); border-radius:99px; overflow:hidden",
+                                    div { style: "width:{share}%; height:100%; background:var(--bc-danger); border-radius:99px" }
+                                }
+                                span { class: "mono", style: "width:56px; text-align:right; font-size:12px; color:var(--bc-text-secondary)", "{share}%" }
+                            }
+                            div { style: "display:flex; align-items:center; gap:16px; margin-left:16px",
+                                span { class: "mono", style: "font-size:12px; color:var(--bc-text-tertiary)", "{kind}" }
+                                span { class: "mono", style: "font-size:14px; font-weight:600; min-width:52px; text-align:right", "{count}" }
                             }
                         }
                     }
