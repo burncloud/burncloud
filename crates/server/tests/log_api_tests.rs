@@ -5,17 +5,32 @@
     clippy::disallowed_types
 )]
 
-use burncloud_database::create_default_database;
+use burncloud_database::create_database_with_url;
 use burncloud_database_router::{RouterDatabase, RouterLog};
+use burncloud_database_user::UserDatabase;
 use reqwest::Client;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 
 #[tokio::test]
 async fn test_log_api_endpoints() -> anyhow::Result<()> {
     // 1. Setup DB and Insert Dummy Data
-    let db = create_default_database().await?;
-    RouterDatabase::init(&db).await?; // Ensure tables exist
+    if std::env::var("MASTER_KEY").is_err() {
+        std::env::set_var(
+            "MASTER_KEY",
+            "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
+        );
+    }
+
+    let tmp = tempfile::NamedTempFile::new()?;
+    let path = tmp.path().to_string_lossy().to_string();
+    std::mem::forget(tmp);
+    let url = format!("sqlite:{}", path);
+
+    let db = create_database_with_url(&url).await?;
+    RouterDatabase::init(&db).await?;
+    UserDatabase::init(&db).await?;
 
     let log_entry = RouterLog {
         id: 0,
@@ -54,12 +69,18 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
 
     RouterDatabase::insert_log(&db, &log_entry).await?;
 
-    // 2. Start Server
-    let port = 4002;
+    // 2. Start Server using create_app with the test DB
+    let db_arc = Arc::new(db);
+    let app = burncloud_server::create_app(db_arc, false).await?;
+
+    let port = 4002_u16;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server("127.0.0.1", port, false).await {
-            // Ignore bind errors if already running
-        }
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .expect("Failed to bind test port");
+        axum::serve(listener, app)
+            .await
+            .expect("Server error");
     });
     sleep(Duration::from_secs(2)).await;
 

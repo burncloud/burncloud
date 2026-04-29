@@ -40,6 +40,8 @@ pub enum FailureType {
     ServerError,
     /// Request timed out
     Timeout,
+    /// Connection failed (DNS, TCP refused, TLS handshake)
+    ConnectionError,
 }
 
 #[derive(Debug)]
@@ -139,12 +141,12 @@ impl CircuitBreaker {
 
         match failure_type {
             FailureType::AuthFailed | FailureType::PaymentRequired => {
-                // Auth and payment failures immediately trip the circuit
-                entry
-                    .failure_count
-                    .store(self.failure_threshold, Ordering::Relaxed);
+                // Auth/payment failures are permanent (bad key, exhausted quota),
+                // not transient — do NOT trip the circuit. The failure type is
+                // already recorded above; leave the failure count unchanged so
+                // transient-traffic CB semantics are preserved.
                 tracing::warn!(
-                    "Circuit Breaker: Upstream {} immediately tripped due to {:?}",
+                    "Circuit Breaker: Upstream {} auth/payment failure ({:?}) — recorded but NOT tripping circuit (permanent failure ≠ transient fault)",
                     upstream_id, failure_type
                 );
             }

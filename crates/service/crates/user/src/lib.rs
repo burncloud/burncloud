@@ -6,6 +6,7 @@ use bcrypt::{hash, verify, DEFAULT_COST};
 use burncloud_common::TrafficColor;
 use burncloud_database::Database;
 use burncloud_database_user::UserDatabase;
+use dashmap::DashMap;
 
 // Re-export domain types so server can depend on service-user instead of database-user
 pub use burncloud_database_user::{UserAccount, UserRecharge};
@@ -124,25 +125,46 @@ impl UserService {
     /// `SchedulingRequest` — the router crate stays color-agnostic (audit
     /// decision E-D3).
     ///
-    /// **Associated function (no `&self`)** — follows CLAUDE.md "Service 模式 B
-    /// (stateless, pure operation wrapper)" so the hot path can invoke it as
-    /// `UserService::resolve_traffic_class(&db, &user_id).await` without
-    /// constructing a `UserService`. This avoids `UserService::new()` reading
-    /// `JWT_SECRET` (irrelevant to color resolution) and panicking on every
-    /// request in release builds when that env var is missing.
-    ///
-    /// **MVP behavior** (audit decision D10): every user maps to `Yellow`
-    /// (Assured tier). Trader Class differentiation is deferred until customer
-    /// segmentation data is available — see
-    /// `docs/design/channel-scheduler-hqos.md` § Strategic Vision.
-    ///
-    /// `_db` and `_user_id` are placeholders for the future implementation
-    /// that will read user role / billing tier / customer agreement.
+    /// Uses a TTL cache (5 min, audit decision D13) to avoid per-request DB
+    /// queries. Falls back to Yellow on cache miss + DB failure.
     pub async fn resolve_traffic_class(
-        _db: &Database,
-        _user_id: &str,
+        db: &Database,
+        user_id: &str,
     ) -> Result<TrafficColor> {
-        Ok(TrafficColor::Yellow)
+        use std::sync::OnceLock;
+        static CACHE: OnceLock<DashMap<String, (TrafficColor, std::time::Instant)>> = OnceLock::new();
+        let cache = CACHE.get_or_init(DashMap::new);
+        const TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+        // Check cache
+        if let Some(entry) = cache.get(user_id) {
+            if entry.1.elapsed() < TTL {
+                return Ok(entry.0);
+            }
+            drop(entry);
+            cache.remove(user_id);
+        }
+
+        // Cache miss — query DB for user roles
+        let color = match UserDatabase::get_user_roles(db, user_id).await {
+            Ok(roles) => {
+                if roles.iter().any(|r| r == "admin" || r == "enterprise") {
+                    TrafficColor::Green
+                } else {
+                    TrafficColor::Yellow
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    user_id, error = %e,
+                    "DB error resolving traffic class, defaulting to Yellow"
+                );
+                TrafficColor::Yellow
+            }
+        };
+
+        cache.insert(user_id.to_string(), (color, std::time::Instant::now()));
+        Ok(color)
     }
 
     /// Register a new user

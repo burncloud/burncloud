@@ -30,7 +30,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     let _ = monitor.start_auto_update().await;
 
     // 3. Data Plane Router (Fallback) — must be created first to get force_sync_tx
-    let (router_app, force_sync_tx) = create_router_app(db.clone()).await?;
+    let (router_app, internal_app, force_sync_tx) = create_router_app(db.clone()).await?;
 
     let state = AppState {
         db: db.clone(),
@@ -45,9 +45,13 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     // Top-level liveness probe (unauthenticated, used by deploy validators and
     // external uptime monitors). The richer report lives at
     // `/console/internal/health`.
+    // Internal routes (health, reload, price-sync) must be registered BEFORE
+    // LiveView's catch-all `/console/{*path}` so they return JSON instead of
+    // the SPA HTML shell.
     let mut app = Router::new()
         .route("/health", get(|| async { "ok" }))
-        .merge(api_router);
+        .merge(api_router)
+        .merge(internal_app);
 
     if enable_liveview {
         // 2. LiveView Router

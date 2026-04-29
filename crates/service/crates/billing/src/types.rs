@@ -32,6 +32,20 @@ impl UnifiedUsage {
         *self == Self::default()
     }
 
+    /// Sum of all token counts (for budget commit actual-TPM).
+    pub fn total_tokens(&self) -> i64 {
+        self.input_tokens
+            .saturating_add(self.output_tokens)
+            .saturating_add(self.cache_read_tokens)
+            .saturating_add(self.cache_write_tokens)
+            .saturating_add(self.audio_input_tokens)
+            .saturating_add(self.audio_output_tokens)
+            .saturating_add(self.image_tokens)
+            .saturating_add(self.video_tokens)
+            .saturating_add(self.reasoning_tokens)
+            .saturating_add(self.embedding_tokens)
+    }
+
     /// Accumulate another usage into self using saturating add.
     /// Overflow is capped at i64::MAX and a warning should be logged by the caller.
     pub fn saturating_add(&mut self, other: &UnifiedUsage) {

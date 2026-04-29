@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use burncloud_service_router_log::{BillingService, RouterLogService};
@@ -41,15 +41,6 @@ struct ApiError {
     error: String,
 }
 
-#[derive(Serialize)]
-struct PriceSyncResult {
-    models_synced: usize,
-    currencies_synced: usize,
-    tiers_synced: usize,
-    errors: usize,
-    source: String,
-}
-
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/console/api/logs", get(list_logs))
@@ -58,7 +49,6 @@ pub fn routes() -> Router<AppState> {
             "/console/internal/billing/summary",
             get(billing_summary_handler),
         )
-        .route("/console/internal/prices/sync", post(price_sync_handler))
 }
 
 async fn list_logs(
@@ -115,43 +105,6 @@ async fn billing_summary_handler(
         std::env::var("BURNCLOUD_INTERNAL_SECRET").ok().as_deref(),
     )
     .await
-}
-
-async fn price_sync_handler(State(state): State<AppState>) -> Response {
-    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if state.force_sync_tx.send(reply_tx).await.is_err() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ApiError {
-                error: "Price sync task is not running".to_string(),
-            }),
-        )
-            .into_response();
-    }
-    match tokio::time::timeout(std::time::Duration::from_secs(60), reply_rx).await {
-        Ok(Ok(result)) => Json(PriceSyncResult {
-            models_synced: result.models_synced,
-            currencies_synced: result.currencies_synced,
-            tiers_synced: result.tiered_pricing_synced,
-            errors: result.errors,
-            source: result.source,
-        })
-        .into_response(),
-        Ok(Err(_)) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                error: "Sync task dropped the reply channel".to_string(),
-            }),
-        )
-            .into_response(),
-        Err(_) => (
-            StatusCode::GATEWAY_TIMEOUT,
-            Json(ApiError {
-                error: "Price sync timed out after 60s".to_string(),
-            }),
-        )
-            .into_response(),
-    }
 }
 
 async fn billing_summary_inner(

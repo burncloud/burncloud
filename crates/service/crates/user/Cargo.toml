@@ -10,6 +10,7 @@ burncloud-common.workspace = true
 burncloud-database-user.workspace = true
 burncloud-database.workspace = true
 bcrypt.workspace = true
+dashmap.workspace = true
 uuid.workspace = true
 jsonwebtoken.workspace = true
 serde.workspace = true
