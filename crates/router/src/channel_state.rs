@@ -350,7 +350,7 @@ impl ChannelStateTracker {
                     model_state.failure_count += 1;
                 }
             }
-            FailureType::ServerError | FailureType::Timeout => {
+            FailureType::ServerError | FailureType::Timeout | FailureType::ConnectionError => {
                 // These are transient errors, just update the model state if available
                 if let Some(model_name) = model {
                     let model_state = channel_state.get_or_create_model(model_name, channel_id);
@@ -365,21 +365,15 @@ impl ChannelStateTracker {
 
     /// Record a successful request for a specific channel and model.
     ///
-    /// This updates success counts and average latency metrics.
-    /// If the model was previously in a degraded state, this may restore it to available.
-    ///
-    /// # Arguments
-    /// * `channel_id` - The channel ID where the success occurred
-    /// * `model` - Optional model name if the success is model-specific
-    /// * `latency_ms` - The latency of the successful request in milliseconds
-    /// * `upstream_limit` - Optional rate limit learned from upstream response headers
+    /// Returns the AIMD learned limit if it changed after this success
+    /// (used for BudgetUpdate feedback to InMemoryBudget).
     pub fn record_success(
         &self,
         channel_id: i32,
         model: Option<&str>,
         latency_ms: u64,
         upstream_limit: Option<u32>,
-    ) {
+    ) -> Option<u32> {
         // Get or create channel state
         let mut channel_state = self
             .channel_states
@@ -387,10 +381,7 @@ impl ChannelStateTracker {
             .or_insert_with(|| ChannelState::new(channel_id));
 
         // If no model specified, nothing more to do
-        let model_name = match model {
-            Some(m) => m,
-            None => return,
-        };
+        let model_name = model?;
 
         // Update model state
         let model_state = channel_state.get_or_create_model(model_name, channel_id);
@@ -421,7 +412,15 @@ impl ChannelStateTracker {
         }
 
         // Update adaptive rate limiter with learned upstream limit
+        let prev_learned = model_state.adaptive_limit.get_learned_limit();
         model_state.adaptive_limit.on_success(upstream_limit);
+        let new_learned = model_state.adaptive_limit.get_learned_limit();
+        // Return learned limit if it changed (for BudgetUpdate feedback)
+        if new_learned != prev_learned {
+            new_learned
+        } else {
+            None
+        }
     }
 
     /// Filter a list of candidate channels to return only available ones.

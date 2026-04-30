@@ -20,6 +20,15 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, RwLock};
 
+/// AIMD → InMemoryBudget feedback message. When the adaptive limiter learns a
+/// new limit, this update is sent via a capacity-1 mpsc channel so the budget
+/// can be reconfigured asynchronously (audit decision D6/D10 — no lock
+/// contention, natural debounce).
+pub struct BudgetUpdate {
+    pub channel_id: i32,
+    pub learned_limit: u32,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub client: Client,
@@ -50,4 +59,6 @@ pub struct AppState {
     /// Exposed via `/router/status` so admins can spot silently-permissive
     /// channels (audit FM2 — fail-open silent failure).
     pub fail_open_count: Arc<AtomicU64>,
+    /// AIMD → InMemoryBudget feedback channel (capacity=1, latest-wins debounce).
+    pub budget_update_tx: mpsc::Sender<BudgetUpdate>,
 }

@@ -5,12 +5,12 @@ mod aimd_limiter;
 mod adaptor;
 pub mod affinity;
 mod balancer;
-mod channel_state;
+pub mod channel_state;
 mod circuit_breaker;
 mod config;
 pub mod exchange_rate;
 mod limiter;
-mod model_router;
+pub mod model_router;
 pub mod order_type;
 pub mod passthrough;
 pub mod price_sync;
@@ -125,6 +125,7 @@ fn record_upstream_failure(
     model_name: Option<&str>,
     failure_type: FailureType,
     error_msg: &str,
+    session_id: &str,
 ) {
     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
     state
@@ -133,6 +134,46 @@ fn record_upstream_failure(
     state
         .channel_state_tracker
         .record_error(channel_id, model_name, &failure_type, error_msg);
+    // Evict affinity entry when CB trips (audit decision D8 — only on CB
+    // trip, not on every failure, to avoid affinity storms).
+    if !state.circuit_breaker.allow_request(&upstream.id) {
+        if let Some(model) = model_name {
+            state.affinity_cache.evict(session_id, model);
+            tracing::debug!(
+                session_id, model, channel_id,
+                "Affinity evicted — CB tripped for upstream {}",
+                upstream.name
+            );
+        }
+    }
+}
+
+/// Classify an upstream HTTP error into a [`FailureType`] for circuit breaker
+/// and channel state tracking. Shared by passthrough and converted paths
+/// (audit decision D12 — DRY).
+fn classify_upstream_error(
+    status: StatusCode,
+    headers: &HeaderMap,
+    error_info: &response_parser::ErrorInfo,
+) -> FailureType {
+    match status {
+        StatusCode::UNAUTHORIZED => FailureType::AuthFailed,
+        StatusCode::PAYMENT_REQUIRED => FailureType::PaymentRequired,
+        StatusCode::TOO_MANY_REQUESTS => {
+            let retry_after = headers
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok());
+            let scope = error_info
+                .scope
+                .clone()
+                .unwrap_or(circuit_breaker::RateLimitScope::Unknown);
+            FailureType::RateLimited { scope, retry_after }
+        }
+        StatusCode::NOT_FOUND => FailureType::ModelNotFound,
+        _ if status.is_server_error() => FailureType::ServerError,
+        _ => FailureType::ServerError,
+    }
 }
 
 /// Helper function to build a response safely without panicking.
@@ -333,6 +374,7 @@ pub async fn create_router_app(
     db: Arc<Database>,
 ) -> anyhow::Result<(
     Router,
+    Router,
     mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
 )> {
     let config = load_router_config(&db).await?;
@@ -385,6 +427,35 @@ pub async fn create_router_app(
     // Counter for fail-open admissions (unconfigured channels). Surfaced
     // via /router/status so admins notice silently-permissive channels.
     let fail_open_count = Arc::new(AtomicU64::new(0));
+
+    // AIMD → InMemoryBudget feedback channel (capacity=1, latest-wins debounce).
+    // When the adaptive limiter learns a new RPM limit, it sends an update here;
+    // a background task reconfigures the budget bucket (audit decision D6/D10).
+    let (budget_update_tx, mut budget_update_rx) =
+        mpsc::channel::<state::BudgetUpdate>(1);
+    {
+        let rate_budget = rate_budget.clone();
+        tokio::spawn(async move {
+            tracing::info!("AIMD budget-update task started");
+            while let Some(update) = budget_update_rx.recv().await {
+                // Reconfigure the channel's RPM cap to the learned limit.
+                // TPM cap stays unchanged (AIMD only learns RPM).
+                if let Some(snapshot) = rate_budget.snapshot(update.channel_id) {
+                    rate_budget.configure(
+                        update.channel_id,
+                        update.learned_limit,
+                        snapshot.tpm_cap,
+                        rate_budget::ChannelReservation::default(),
+                    );
+                    tracing::debug!(
+                        channel_id = update.channel_id,
+                        learned_rpm = update.learned_limit,
+                        "AIMD feedback: reconfigured budget RPM cap"
+                    );
+                }
+            }
+        });
+    }
 
     // Start background price sync task (every 24 hours)
     // Prices pulled from pricing_data repo (GitHub/Gitee fallback).
@@ -440,6 +511,7 @@ pub async fn create_router_app(
         affinity_cache,
         rate_budget,
         fail_open_count,
+        budget_update_tx,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -449,10 +521,17 @@ pub async fn create_router_app(
     let reload_path = format!("{}/reload", INTERNAL_PREFIX);
     let health_path = format!("{}/health", INTERNAL_PREFIX);
     let price_sync_path = format!("{}/prices/sync", INTERNAL_PREFIX);
-    let app = Router::new()
+
+    // Internal routes that must be registered BEFORE LiveView's catch-all
+    // `/console/{*path}` in the server layer, otherwise LiveView intercepts
+    // them and returns HTML instead of JSON.
+    let internal_app = Router::new()
         .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
         .route(&price_sync_path, post(price_sync_handler))
+        .with_state(state.clone());
+
+    let app = Router::new()
         .route("/v1/models", axum::routing::get(models_handler))
         .route("/api/v1/usage", axum::routing::get(usage_handler))
         .route(
@@ -463,7 +542,7 @@ pub async fn create_router_app(
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    Ok((app, force_sync_tx))
+    Ok((app, internal_app, force_sync_tx))
 }
 
 // ...
@@ -1369,6 +1448,13 @@ async fn proxy_logic(
     // the L1 Classifier (issue #150) resolves a real color from the user.
     let mut shaper_color: TrafficColor = TrafficColor::Yellow;
 
+    // Extract session_id from conversation_id in request body (P0 affinity wiring).
+    // Falls back to user_id so affinity still works when no conversation_id is set.
+    let session_id: String = serde_json::from_slice::<serde_json::Value>(&body_bytes)
+        .ok()
+        .and_then(|v| v.get("conversation_id").and_then(|c| c.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| user_id.to_string());
+
     // Try to extract model from Gemini native path first
     let gemini_path_model = passthrough::extract_model_from_gemini_path(path);
 
@@ -1409,7 +1495,7 @@ async fn proxy_logic(
                 user_id: Some(user_id.to_string()),
                 color,
                 order_type,
-                session_id: None,
+                session_id: Some(session_id.clone()),
             };
 
             tracing::debug!(
@@ -1802,6 +1888,7 @@ async fn proxy_logic(
                         last_error = format!("Upstream returned {status}");
                         record_upstream_failure(
                             state, upstream, model_name, FailureType::ServerError, &last_error,
+                            &session_id,
                         );
                         continue;
                     }
@@ -1819,7 +1906,12 @@ async fn proxy_logic(
                             model_name,
                             latency_ms,
                             rate_limit_info.request_limit,
-                        );
+                        )
+                        .inspect(|&learned| {
+                            let _ = state.budget_update_tx.try_send(
+                                state::BudgetUpdate { channel_id, learned_limit: learned }
+                            );
+                        });
 
                         // Handle streaming vs non-streaming passthrough
                         if is_stream {
@@ -1901,9 +1993,14 @@ async fn proxy_logic(
                                 token_counter.set_from_usage(&resp_usage);
                             }
 
-                            // L2 Shaper success — see streaming branch above.
+                            // L2 Shaper success — non-streaming passthrough.
+                            // Use actual_tpm from parsed usage (audit decision D9 —
+                            // non-streaming paths have complete usage data).
+                            // Fall back to est_tpm when usage parsing yields 0.
+                            let actual_tpm = token_counter.get_usage().total_tokens() as u64;
+                            let commit_tpm = if actual_tpm > 0 { actual_tpm } else { shaper_ctx.est_tpm };
                             if let Some(g) = budget_guard.take() {
-                                g.commit(shaper_ctx.est_tpm);
+                                g.commit(commit_tpm);
                             }
                             return ProxyResult {
                                 response: build_response_with_header(
@@ -1925,7 +2022,8 @@ async fn proxy_logic(
                             };
                         }
                     } else {
-                        // Non-success status (4xx)
+                        // Non-success status (4xx) — capture headers before consuming body.
+                        let resp_headers = resp.headers().clone();
                         let body_bytes = match resp.bytes().await {
                             Ok(b) => b,
                             Err(e) => {
@@ -1949,15 +2047,26 @@ async fn proxy_logic(
                             }
                         };
 
-                        // Record rate limit errors
+                        // Classify all 4xx errors (not just 429) for circuit breaker
+                        // and channel state tracking (P1 — passthrough error mapping).
+                        let body_str = String::from_utf8_lossy(&body_bytes);
+                        let error_info = parse_error_response(&body_str, &upstream.protocol);
+                        let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
+                        let failure_type = classify_upstream_error(status, &resp_headers, &error_info);
+                        // Auth/payment failures affect entire channel (model_name=None)
+                        let error_model = match status {
+                            StatusCode::UNAUTHORIZED | StatusCode::PAYMENT_REQUIRED => None,
+                            _ => model_name,
+                        };
+                        record_upstream_failure(
+                            state, upstream, error_model, failure_type, error_message,
+                            &session_id,
+                        );
+                        // 429: try next ranked candidate
                         if status == StatusCode::TOO_MANY_REQUESTS {
-                            record_upstream_failure(
-                                state, upstream, model_name,
-                                FailureType::RateLimited {
-                                    scope: circuit_breaker::RateLimitScope::Unknown,
-                                    retry_after: None,
-                                },
-                                "Rate limited",
+                            tracing::warn!(
+                                "Passthrough: {} rate limited, trying next candidate",
+                                upstream.name
                             );
                             continue;
                         }
@@ -1986,8 +2095,14 @@ async fn proxy_logic(
                 }
                 Err(e) => {
                     last_error = format!("Network Error: {e}");
+                    let failure_type = if e.is_timeout() {
+                        FailureType::Timeout
+                    } else {
+                        FailureType::ConnectionError
+                    };
                     record_upstream_failure(
-                        state, upstream, model_name, FailureType::Timeout, &last_error,
+                        state, upstream, model_name, failure_type, &last_error,
+                        &session_id,
                     );
                     tracing::warn!(
                         "Failover: {} network error: {}, trying next...",
@@ -2101,6 +2216,7 @@ async fn proxy_logic(
                     last_error = format!("Upstream returned {status}");
                     record_upstream_failure(
                         state, upstream, model_name, FailureType::ServerError, &last_error,
+                        &session_id,
                     );
                     continue;
                 }
@@ -2124,7 +2240,12 @@ async fn proxy_logic(
                         model_name,
                         latency_ms,
                         rate_limit_info.request_limit,
-                    );
+                    )
+                    .inspect(|&learned| {
+                        let _ = state.budget_update_tx.try_send(
+                            state::BudgetUpdate { channel_id, learned_limit: learned }
+                        );
+                    });
 
                     // Log rate limit info for debugging/monitoring
                     if rate_limit_info.request_limit.is_some()
@@ -2172,9 +2293,11 @@ async fn proxy_logic(
                                 );
                                 token_counter.set_from_usage(&resp_usage);
                             }
-                            // L2 Shaper success — see Gemini stream branch above.
+                            // L2 Shaper success — video-gen non-streaming (actual_tpm available).
+                            let actual_tpm = token_counter.get_usage().total_tokens() as u64;
+                            let commit_tpm = if actual_tpm > 0 { actual_tpm } else { shaper_ctx.est_tpm };
                             if let Some(g) = budget_guard.take() {
-                                g.commit(shaper_ctx.est_tpm);
+                                g.commit(commit_tpm);
                             }
                             return ProxyResult {
                                 response: build_response_with_header(
@@ -2195,7 +2318,8 @@ async fn proxy_logic(
                                 sched_request_color: shaper_color,
                             };
                         }
-                        // L2 Shaper success: OpenAI default success path.
+                        // L2 Shaper success: OpenAI streaming path — keep est_tpm
+                        // (actual_tpm not yet available during stream, audit decision D9).
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
                         }
@@ -2252,7 +2376,8 @@ async fn proxy_logic(
                         });
                         let final_stream = stream.chain(done);
 
-                        // L2 Shaper success — non-OpenAI streaming.
+                        // L2 Shaper success — non-OpenAI streaming path — keep est_tpm
+                        // (actual_tpm not yet available during stream, audit decision D9).
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
                         }
@@ -2320,9 +2445,11 @@ async fn proxy_logic(
                         serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string())
                     };
 
-                    // L2 Shaper success — non-OpenAI non-streaming.
+                    // L2 Shaper success — non-OpenAI non-streaming (actual_tpm available).
+                    let actual_tpm = token_counter.get_usage().total_tokens() as u64;
+                    let commit_tpm = if actual_tpm > 0 { actual_tpm } else { shaper_ctx.est_tpm };
                     if let Some(g) = budget_guard.take() {
-                        g.commit(shaper_ctx.est_tpm);
+                        g.commit(commit_tpm);
                     }
                     return ProxyResult {
                         response: build_response_with_header(
@@ -2373,23 +2500,8 @@ async fn proxy_logic(
                     let error_info = parse_error_response(&body_str, &upstream.protocol);
                     let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
 
-                    // Determine failure type based on status code
-                    let failure_type = match status {
-                        StatusCode::UNAUTHORIZED => FailureType::AuthFailed,
-                        StatusCode::PAYMENT_REQUIRED => FailureType::PaymentRequired,
-                        StatusCode::TOO_MANY_REQUESTS => {
-                            let retry_after = resp_headers
-                                .get("retry-after")
-                                .and_then(|v| v.to_str().ok())
-                                .and_then(|v| v.parse::<u64>().ok());
-                            let scope = error_info
-                                .scope
-                                .unwrap_or(crate::circuit_breaker::RateLimitScope::Unknown);
-                            FailureType::RateLimited { scope, retry_after }
-                        }
-                        StatusCode::NOT_FOUND => FailureType::ModelNotFound,
-                        _ => FailureType::ServerError,
-                    };
+                    // Determine failure type using shared classifier (D12)
+                    let failure_type = classify_upstream_error(status, &resp_headers, &error_info);
 
                     // Auth/payment failures affect entire channel (model_name=None)
                     let error_model = match status {
@@ -2399,6 +2511,7 @@ async fn proxy_logic(
 
                     record_upstream_failure(
                         state, upstream, error_model, failure_type, error_message,
+                        &session_id,
                     );
 
                     // 429: try next ranked candidate (scheduler provides alternatives)
@@ -2473,8 +2586,14 @@ async fn proxy_logic(
             }
             Err(e) => {
                 last_error = format!("Network Error: {e}");
+                let failure_type = if e.is_timeout() {
+                    FailureType::Timeout
+                } else {
+                    FailureType::ConnectionError
+                };
                 record_upstream_failure(
-                    state, upstream, model_name, FailureType::Timeout, &last_error,
+                    state, upstream, model_name, failure_type, &last_error,
+                    &session_id,
                 );
                 tracing::warn!(
                     "Failover: {} failed with {}, trying next...",
