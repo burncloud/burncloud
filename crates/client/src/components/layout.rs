@@ -4,6 +4,7 @@ use crate::app::Route;
 use burncloud_client_shared::components::{Sidebar, TitleBar};
 use burncloud_client_shared::use_auth;
 use burncloud_client_shared::DesktopMode;
+use burncloud_client_shared::utils::storage::ClientState;
 
 #[component]
 pub fn Layout() -> Element {
@@ -11,6 +12,10 @@ pub fn Layout() -> Element {
     let navigator = use_navigator();
     let is_desktop = try_use_context::<DesktopMode>().is_some();
     let top_padding = if is_desktop { "pt-8" } else { "pt-0" };
+
+    let client_state = ClientState::load();
+    let theme = client_state.theme.unwrap_or_default();
+    let theme_str = theme.as_str();
 
     // Route guard: Check if user is authenticated
     // Only redirect on initial mount, not on every render
@@ -44,7 +49,7 @@ pub fn Layout() -> Element {
         }
 
         // Main App Container
-        div { class: "flex h-screen w-screen bg-base-100 text-base-content overflow-hidden select-none relative", "data-theme": "light",
+        div { class: "flex h-screen w-screen bg-base-100 text-base-content overflow-hidden select-none relative", "data-theme": "{theme_str}",
 
             // Floating TitleBar (Z-Index 50)
             div { class: "absolute top-0 left-0 w-full z-50 pointer-events-none",

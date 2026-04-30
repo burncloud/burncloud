@@ -1,1 +1,1 @@
-pub use burncloud_client_access::AccessCredentialsPage;
+pub use burncloud_client_access::AccessPage;

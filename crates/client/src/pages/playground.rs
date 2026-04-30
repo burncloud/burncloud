@@ -1,1 +1,1 @@
-pub use burncloud_client_playground::PlaygroundPage;
+pub use burncloud_client_playground::Playground as PlaygroundPage;

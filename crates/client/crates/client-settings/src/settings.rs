@@ -3,8 +3,9 @@
 
 use crate::groups::GroupManager;
 use crate::tokens::TokenManager;
-use burncloud_client_shared::components::{FormMode, SchemaForm};
+use burncloud_client_shared::components::{FormMode, PageHeader, SchemaForm};
 use burncloud_client_shared::i18n::{t, use_i18n, Language};
+use burncloud_client_shared::utils::storage::{ClientState, Theme};
 use dioxus::prelude::*;
 
 /// General settings schema
@@ -77,48 +78,84 @@ pub fn SystemSettings() -> Element {
     };
 
     rsx! {
-        div { class: "page-header",
-            h1 { class: "text-large-title font-bold text-primary m-0",
-                "{t(*lang, \"nav.settings\")}"
-            }
-            p { class: "text-secondary m-0 mt-sm",
-                "Configure system preferences"
-            }
+        PageHeader {
+            title: "{t(*lang, \"nav.settings\")}",
+            subtitle: Some("Configure system preferences".to_string()),
         }
 
         div { class: "page-content",
             // Tab Navigation
-            div { class: "flex gap-md mb-lg border-b",
+            div { class: "tabs", style: "margin-bottom:24px",
                 button {
-                    class: if active_tab() == "general" { "btn btn-subtle font-bold border-b-2 rounded-none p-md p-sm" } else { "btn btn-subtle p-md p-sm" },
-                    style: if active_tab() == "general" { "border-bottom-color: var(--bc-primary); color: var(--bc-primary);" } else { "" },
+                    class: if active_tab() == "general" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("general"),
                     "General"
                 }
 
                 button {
-                    class: if active_tab() == "groups" { "btn btn-subtle font-bold border-b-2 rounded-none p-md p-sm" } else { "btn btn-subtle p-md p-sm" },
-                    style: if active_tab() == "groups" { "border-bottom-color: var(--bc-primary); color: var(--bc-primary);" } else { "" },
+                    class: if active_tab() == "groups" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("groups"),
                     "Groups"
                 }
                 button {
-                    class: if active_tab() == "tokens" { "btn btn-subtle font-bold border-b-2 rounded-none p-md p-sm" } else { "btn btn-subtle p-md p-sm" },
-                    style: if active_tab() == "tokens" { "border-bottom-color: var(--bc-primary); color: var(--bc-primary);" } else { "" },
+                    class: if active_tab() == "tokens" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("tokens"),
                     "Tokens"
                 }
             }
 
             if active_tab() == "general" {
-                div { class: "bc-card-solid",
-                    div { class: "p-lg",
+                div { class: "card flat", style: "padding:24px; max-width:640px",
+                    div { style: "display:flex; flex-direction:column; gap:24px",
                         SchemaForm {
                             schema: settings_schema_val.clone(),
                             data: settings_data,
                             mode: FormMode::Create,
                             show_actions: false,
                             on_submit: handle_settings_change,
+                        }
+
+                        // Theme toggle
+                        div { style: "display:flex; justify-content:space-between; align-items:center; padding-top:16px; border-top:1px solid var(--bc-border)",
+                            div {
+                                div { style: "font-size:14px; font-weight:500", "外观主题" }
+                                div { style: "font-size:12px; color:var(--bc-text-secondary); margin-top:4px", "切换亮色/暗色/跟随系统" }
+                            }
+                            div { style: "display:flex; gap:8px",
+                                {
+                                    let cs = ClientState::load();
+                                    let ct = cs.theme.clone().unwrap_or_default();
+                                    rsx! {
+                                        button {
+                                            class: if ct == Theme::Light { "tab active" } else { "tab" },
+                                            onclick: move |_| {
+                                                let mut s = ClientState::load();
+                                                s.theme = Some(Theme::Light);
+                                                s.save();
+                                            },
+                                            "亮色"
+                                        }
+                                        button {
+                                            class: if ct == Theme::Dark { "tab active" } else { "tab" },
+                                            onclick: move |_| {
+                                                let mut s = ClientState::load();
+                                                s.theme = Some(Theme::Dark);
+                                                s.save();
+                                            },
+                                            "暗色"
+                                        }
+                                        button {
+                                            class: if ct == Theme::System { "tab active" } else { "tab" },
+                                            onclick: move |_| {
+                                                let mut s = ClientState::load();
+                                                s.theme = Some(Theme::System);
+                                                s.save();
+                                            },
+                                            "跟随系统"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

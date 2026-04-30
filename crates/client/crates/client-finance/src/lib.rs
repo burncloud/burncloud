@@ -1,89 +1,112 @@
-// JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
-#![allow(clippy::disallowed_types)]
-
-use burncloud_client_shared::components::SchemaTable;
-use burncloud_client_shared::schema::recharge_schema;
-use burncloud_client_shared::services::usage_service::UsageService;
+use burncloud_client_shared::components::{
+    BCButton, PageHeader,
+    SkeletonCard, SkeletonVariant,
+};
 use dioxus::prelude::*;
 
+fn format_cents(cents: i64) -> String {
+    let yuan = cents as f64 / 100.0;
+    format!("¥ {yuan:.2}")
+}
+
 #[component]
-pub fn BillingPage() -> Element {
-    let recharges =
-        use_resource(move || async move { UsageService::list_recharges("demo-user").await });
+pub fn FinancePage() -> Element {
+    let loading = false;
 
-    // Mock Data for "Left Brain" Finance View
-    let total_spend = "¥ 12,450.00";
-    let balance = "¥ 5,230.00";
-    let projected = "¥ 18,000.00";
+    // Mock billing data matching design
+    let balance = 523000; // cents → ¥ 5,230.00
+    let month_spend = 1245000; // → ¥ 12,450.00
+    let est_next = 1800000; // → ¥ 18,000.00
 
-    let schema = recharge_schema();
-
-    // Convert recharges to serde_json::Value for SchemaTable
-    let table_data: Vec<serde_json::Value> = match recharges.read().as_ref() {
-        Some(Ok(list)) => list
-            .iter()
-            .map(|item| {
-                serde_json::json!({
-                    "id": format!("RECH-{}", item.id),
-                    "created_at": item.created_at.as_deref().unwrap_or("-"),
-                    "description": item.description.as_deref().unwrap_or("账户充值"),
-                    "amount": item.amount,
-                    "status": "success"
-                })
-            })
-            .collect(),
-        _ => vec![],
-    };
-
-    let loading = recharges.read().is_none();
+    let recharge_records = vec![
+        ("RECH-1042", "2026-04-26 14:22", "微信支付 · 充值", 200000, "success"),
+        ("RECH-1041", "2026-04-22 09:18", "对公转账 · 充值", 500000, "success"),
+        ("RECH-1038", "2026-04-15 16:45", "支付宝 · 自动续充", 50000, "success"),
+        ("RECH-1031", "2026-04-08 11:02", "微信支付 · 充值", 100000, "success"),
+        ("RECH-1024", "2026-03-30 19:10", "对公转账 · 充值", 300000, "success"),
+        ("RECH-1020", "2026-03-22 08:34", "退款 · 误充", -12000, "refund"),
+    ];
 
     rsx! {
-        div { class: "flex flex-col h-full gap-xl",
-            // Header
-            div { class: "flex justify-between items-end",
-                div {
-                    h1 { class: "text-title font-semibold text-primary mb-xs tracking-tight", "财务中心" }
-                    p { class: "text-caption text-secondary font-medium", "管理您的账户余额、充值记录与收支统计" }
+        PageHeader {
+            title: "财务中心",
+            subtitle: Some("管理您的账户余额、充值记录与收支统计".to_string()),
+            actions: rsx! {
+                BCButton {
+                    class: "btn-primary",
+                    onclick: move |_| {},
+                    "充值余额"
                 }
-                button { class: "btn btn-primary btn-sm px-lg shadow-sm text-white", "充值余额" }
-            }
+            },
+        }
 
-            // Financial Overview Cards
-            div { class: "grid grid-cols-3 gap-lg",
-                div { class: "p-lg bc-card-solid flex flex-col gap-sm",
-                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "本月支出" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-4xl font-bold text-primary tracking-tight", "{total_spend}" }
-                        span { class: "text-xs font-medium px-sm py-0.5 rounded",
-                            style: "color: var(--bc-danger); background: var(--bc-danger-light);",
-                            "+15%"
+        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+            // Billing KPIs
+            div { class: "stats-grid",
+                if loading {
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                } else {
+                    div { class: "stat-card", style: "gap:8px",
+                        span { class: "stat-eyebrow", "本月支出" }
+                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums",
+                            "{format_cents(month_spend)} "
+                            span { class: "stat-pill danger", "+15%" }
                         }
                     }
-                }
-                div { class: "p-lg bc-card-solid flex flex-col gap-sm",
-                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "账户余额" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-4xl font-bold text-primary tracking-tight", "{balance}" }
+                    div { class: "stat-card", style: "gap:8px",
+                        span { class: "stat-eyebrow", "账户余额" }
+                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums", "{format_cents(balance)}" }
                     }
-                }
-                div { class: "p-lg bc-card-solid flex flex-col gap-sm",
-                    span { class: "text-xxs font-semibold uppercase tracking-wider text-tertiary", "预估下月" }
-                    div { class: "flex items-baseline gap-sm",
-                        span { class: "text-4xl font-bold text-secondary tracking-tight", "{projected}" }
+                    div { class: "stat-card", style: "gap:8px",
+                        span { class: "stat-eyebrow", "预估下月" }
+                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums; color:var(--bc-text-secondary)", "{format_cents(est_next)}" }
                     }
                 }
             }
 
-            // Transaction History via SchemaTable
-            div { class: "flex flex-col gap-md",
-                h3 { class: "text-caption font-medium text-secondary border-b pb-sm", "充值记录" }
+            // Recharge records
+            div {
+                div { class: "section-h",
+                    span { class: "lead-title", "充值记录" }
+                }
 
-                div { class: "overflow-x-auto bc-card-solid",
-                    SchemaTable {
-                        schema: schema.clone(),
-                        data: table_data,
-                        loading: loading,
-                        on_row_click: move |_| {},
+                if loading {
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                } else {
+                    table { class: "table",
+                        thead {
+                            tr {
+                                th { style: "width:140px", "充值单号" }
+                                th { style: "width:160px", "时间" }
+                                th { "说明" }
+                                th { style: "width:120px; text-align:right", "金额" }
+                                th { style: "width:100px", "状态" }
+                            }
+                        }
+                        tbody {
+                            for (id, time, desc, amount, status) in &recharge_records {
+                                tr {
+                                    key: "{id}",
+                                    td { class: "mono", style: "font-size:13px", "{id}" }
+                                    td { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)", "{time}" }
+                                    td { style: "font-size:13px", "{desc}" }
+                                    td { class: "mono", style: "text-align:right; font-weight:600; font-variant-numeric:tabular-nums; color:if *status == \"refund\" {{ \"var(--bc-danger)\" }} else {{ \"var(--bc-text-primary)\" }}",
+                                        "{format_cents(*amount)}"
+                                    }
+                                    td {
+                                        if *status == "success" {
+                                            span { class: "pill success", span { class: "dot" } "成功" }
+                                        } else {
+                                            span { class: "pill warning", span { class: "dot" } "已退款" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

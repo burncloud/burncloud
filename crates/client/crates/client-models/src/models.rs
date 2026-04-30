@@ -4,7 +4,9 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::validate_schema;
 use burncloud_client_shared::components::{
-    ActionDef, ActionEvent, BCButton, ButtonVariant, FormMode, SchemaForm, SchemaTable,
+    BCButton, ButtonVariant, FormMode, SchemaForm,
+    PageHeader, StatusPill, Chip, EmptyState,
+    SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::schema::channel_schema;
 use burncloud_client_shared::use_toast;
@@ -104,120 +106,53 @@ impl ProviderType {
     }
 }
 
-/// 从 form data 构建 Channel struct
 fn build_channel_from_form(data: &serde_json::Value) -> Channel {
     let type_str = data["type"].as_str().unwrap_or("1");
     let _provider_type: i32 = type_str.parse().unwrap_or(1);
 
     let (final_type, final_base_url, final_models, param_override, header_override) = match type_str
     {
-        "1" => {
-            // OpenAI
-            (
-                1,
-                "https://api.openai.com".to_string(),
-                "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string(),
-                None,
-                None,
-            )
-        }
-        "14" => {
-            // Anthropic
-            (
-                14,
-                "https://api.anthropic.com".to_string(),
-                "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string(),
-                None,
-                None,
-            )
-        }
+        "1" => (1, "https://api.openai.com".to_string(), "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string(), None, None),
+        "14" => (14, "https://api.anthropic.com".to_string(), "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string(), None, None),
         "24" => {
-            // Google
             let auth_type = data["google_auth_type"].as_str().unwrap_or("api_key");
             if auth_type == "vertex" {
                 let mut params = serde_json::Map::new();
-                if let Some(r) = data["google_region"].as_str() {
-                    params.insert("region".to_string(), json!(r));
-                }
-                if let Some(p) = data["google_project_id"].as_str() {
-                    if !p.is_empty() {
-                        params.insert("project_id".to_string(), json!(p));
-                    }
-                }
-                let base_url = "https://aiplatform.googleapis.com".to_string();
-                let models = "gemini-pro,gemini-1.5-pro".to_string();
-                (
-                    41,
-                    base_url,
-                    models,
-                    Some(serde_json::Value::Object(params).to_string()),
-                    None,
-                )
+                if let Some(r) = data["google_region"].as_str() { params.insert("region".to_string(), json!(r)); }
+                if let Some(p) = data["google_project_id"].as_str() { if !p.is_empty() { params.insert("project_id".to_string(), json!(p)); } }
+                (41, "https://aiplatform.googleapis.com".to_string(), "gemini-pro,gemini-1.5-pro".to_string(), Some(serde_json::Value::Object(params).to_string()), None)
             } else {
-                let base_url = "https://generativelanguage.googleapis.com".to_string();
-                let models = "gemini-pro,gemini-1.5-pro".to_string();
-                (24, base_url, models, None, None)
+                (24, "https://generativelanguage.googleapis.com".to_string(), "gemini-pro,gemini-1.5-pro".to_string(), None, None)
             }
         }
         "99" => {
-            // AWS Bedrock
             let region = data["aws_region"].as_str().unwrap_or("us-east-1");
             let base_url = format!("https://bedrock-runtime.{}.amazonaws.com", region);
-            let models = data["aws_model_id"]
-                .as_str()
-                .unwrap_or("anthropic.claude-sonnet-4-5-20250929-v1:0")
-                .to_string();
-            let params = json!({
-                "aws_secret_key": data["aws_sk"].as_str().unwrap_or(""),
-                "region": region,
-                "auth_type": "aws_sigv4"
-            });
+            let models = data["aws_model_id"].as_str().unwrap_or("anthropic.claude-sonnet-4-5-20250929-v1:0").to_string();
+            let params = json!({"aws_secret_key": data["aws_sk"].as_str().unwrap_or(""), "region": region, "auth_type": "aws_sigv4"});
             (1, base_url, models, Some(params.to_string()), None)
         }
         "98" => {
-            // Azure OpenAI
             let resource = data["azure_resource"].as_str().unwrap_or("");
             let deployment = data["azure_deployment"].as_str().unwrap_or("");
-            let base_url = format!(
-                "https://{}.openai.azure.com/openai/deployments/{}",
-                resource, deployment
-            );
+            let base_url = format!("https://{}.openai.azure.com/openai/deployments/{}", resource, deployment);
             let models = deployment.to_string();
-            let params = json!({
-                "api_version": data["azure_api_version"].as_str().unwrap_or("2023-05-15"),
-                "auth_type": "azure_ad"
-            });
-            let headers = json!({
-                "api-key": data["azure_key"].as_str().unwrap_or("")
-            });
-            (
-                1,
-                base_url,
-                models,
-                Some(params.to_string()),
-                Some(headers.to_string()),
-            )
+            let params = json!({"api_version": data["azure_api_version"].as_str().unwrap_or("2023-05-15"), "auth_type": "azure_ad"});
+            let headers = json!({"api-key": data["azure_key"].as_str().unwrap_or("")});
+            (1, base_url, models, Some(params.to_string()), Some(headers.to_string()))
         }
         "97" => {
-            // Local
-            let base_url = data["local_url"]
-                .as_str()
-                .unwrap_or("http://localhost:8080")
-                .to_string();
+            let base_url = data["local_url"].as_str().unwrap_or("http://localhost:8080").to_string();
             (1, base_url, "local-model".to_string(), None, None)
         }
         _ => (1, String::new(), String::new(), None, None),
     };
 
-    // 确定最终的 key 值
     let final_key = match type_str {
         "24" => {
             let auth_type = data["google_auth_type"].as_str().unwrap_or("api_key");
-            if auth_type == "vertex" {
-                data["google_vertex_key"].as_str().unwrap_or("").to_string()
-            } else {
-                data["google_key"].as_str().unwrap_or("").to_string()
-            }
+            if auth_type == "vertex" { data["google_vertex_key"].as_str().unwrap_or("").to_string() }
+            else { data["google_key"].as_str().unwrap_or("").to_string() }
         }
         "98" => data["azure_key"].as_str().unwrap_or("").to_string(),
         "99" => data["aws_key"].as_str().unwrap_or("").to_string(),
@@ -240,27 +175,65 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
     }
 }
 
+fn channel_status(status: i32) -> String {
+    match status {
+        1 => "ok".to_string(),
+        2 => "warning".to_string(),
+        0 => "danger".to_string(),
+        _ => "info".to_string(),
+    }
+}
+
+fn channel_status_label(status: i32) -> String {
+    match status {
+        1 => "正常".to_string(),
+        2 => "限流".to_string(),
+        0 => "已停止".to_string(),
+        _ => "维护中".to_string(),
+    }
+}
+
+fn provider_color(type_: i32) -> &'static str {
+    match type_ {
+        1 => "#10a37f",
+        14 => "#d97757",
+        24 | 41 => "#4285f4",
+        98 => "#0078d4",
+        97 => "#615ced",
+        _ => "#86868B",
+    }
+}
+
+fn provider_name(type_: i32) -> &'static str {
+    match type_ {
+        1 => "openai",
+        14 => "anthropic",
+        24 => "google",
+        41 => "google",
+        98 => "azure",
+        99 => "aws",
+        97 => "qwen",
+        _ => "other",
+    }
+}
+
 #[component]
 pub fn ChannelPage() -> Element {
-    let page = use_signal(|| 1);
-    let limit = 10;
-
-    let mut channels =
-        use_resource(
-            move || async move { ChannelService::list(page(), limit).await.unwrap_or(vec![]) },
-        );
-
+    let mut active_filter = use_signal(|| "all".to_string());
     let mut is_modal_open = use_signal(|| false);
     let mut modal_step = use_signal(|| 0);
     let mut is_delete_modal_open = use_signal(|| false);
-    let mut delete_channel_id = use_signal(|| 0i64);
-    let mut delete_channel_name = use_signal(String::new);
+    let delete_channel_id = use_signal(|| 0i64);
+    let delete_channel_name = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
     let toast = use_toast();
 
-    // Schema 驱动的表单数据
     let mut form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
     let schema = channel_schema();
+
+    let mut channels = use_resource(move || async move {
+        ChannelService::list(0, 200).await
+    });
 
     let open_create_modal = move |_| {
         form_data.set(serde_json::Value::Object(serde_json::Map::new()));
@@ -270,22 +243,10 @@ pub fn ChannelPage() -> Element {
 
     let channels_ref = channels;
     let mut select_provider = move |p: ProviderType| {
-        // 生成随机名称
-        let adjectives = vec![
-            "cosmic", "fluent", "quantum", "hyper", "silent", "pure", "rapid", "steady", "active",
-            "neural", "prime", "noble", "swift", "calm", "wild", "bright",
-        ];
-        let nouns = vec![
-            "flow", "grid", "core", "nexus", "pulse", "link", "node", "sphere", "spark", "wave",
-            "beam", "edge", "mind", "field", "stream", "gate",
-        ];
+        let adjectives = vec!["cosmic", "fluent", "quantum", "hyper", "silent", "pure", "rapid", "steady", "active", "neural", "prime", "noble", "swift", "calm", "wild", "bright"];
+        let nouns = vec!["flow", "grid", "core", "nexus", "pulse", "link", "node", "sphere", "spark", "wave", "beam", "edge", "mind", "field", "stream", "gate"];
 
-        let existing_names: Vec<String> = channels_ref
-            .read()
-            .as_ref()
-            .map(|list| list.iter().map(|c| c.name.clone()).collect())
-            .unwrap_or_default();
-
+        let existing_names: Vec<String> = channels_ref.read().as_ref().map(|r| r.as_ref().map(|list| list.iter().map(|c| c.name.clone()).collect()).unwrap_or_default()).unwrap_or_default();
         let mut rng = rand::thread_rng();
         let mut generated_name = String::new();
 
@@ -293,23 +254,14 @@ pub fn ChannelPage() -> Element {
             let adj = adjectives.choose(&mut rng).unwrap_or(&"zen");
             let noun = nouns.choose(&mut rng).unwrap_or(&"mode");
             let suffix: u16 = rng.gen_range(100..999);
-            let candidate = format!(
-                "{} {} {}",
-                adj[0..1].to_uppercase() + &adj[1..],
-                noun[0..1].to_uppercase() + &noun[1..],
-                suffix
-            );
-            if !existing_names.contains(&candidate) {
-                generated_name = candidate;
-                break;
-            }
+            let candidate = format!("{} {} {}", adj[0..1].to_uppercase() + &adj[1..], noun[0..1].to_uppercase() + &noun[1..], suffix);
+            if !existing_names.contains(&candidate) { generated_name = candidate; break; }
         }
         if generated_name.is_empty() {
             let suffix: u16 = rng.gen_range(1000..9999);
             generated_name = format!("{} Link {}", p.name(), suffix);
         }
 
-        // 设置表单初始数据（含 provider type 和默认值）
         let mut obj = serde_json::Map::new();
         obj.insert("type".to_string(), json!(p.value_str().to_string()));
         obj.insert("name".to_string(), json!(generated_name));
@@ -319,25 +271,11 @@ pub fn ChannelPage() -> Element {
         obj.insert("priority".to_string(), json!(0));
         obj.insert("weight".to_string(), json!(0));
 
-        // Provider-specific defaults
         match p {
-            ProviderType::Aws => {
-                obj.insert("aws_region".to_string(), json!("us-east-1"));
-                obj.insert(
-                    "aws_model_id".to_string(),
-                    json!("anthropic.claude-sonnet-4-5-20250929-v1:0"),
-                );
-            }
-            ProviderType::Google => {
-                obj.insert("google_auth_type".to_string(), json!("api_key"));
-                obj.insert("google_region".to_string(), json!("us-central1"));
-            }
-            ProviderType::Azure => {
-                obj.insert("azure_api_version".to_string(), json!("2023-05-15"));
-            }
-            ProviderType::Local => {
-                obj.insert("local_url".to_string(), json!("http://localhost:8080"));
-            }
+            ProviderType::Aws => { obj.insert("aws_region".to_string(), json!("us-east-1")); obj.insert("aws_model_id".to_string(), json!("anthropic.claude-sonnet-4-5-20250929-v1:0")); }
+            ProviderType::Google => { obj.insert("google_auth_type".to_string(), json!("api_key")); obj.insert("google_region".to_string(), json!("us-central1")); }
+            ProviderType::Azure => { obj.insert("azure_api_version".to_string(), json!("2023-05-15")); }
+            ProviderType::Local => { obj.insert("local_url".to_string(), json!("http://localhost:8080")); }
             _ => {}
         }
 
@@ -352,25 +290,13 @@ pub fn ChannelPage() -> Element {
             is_loading.set(true);
             let current_data = form_data.read().clone();
             let errors = validate_schema(&s, &current_data);
-            if !errors.is_empty() {
-                is_loading.set(false);
-                toast.error("请填写所有必填字段");
-                return;
-            }
+            if !errors.is_empty() { is_loading.set(false); toast.error("请填写所有必填字段"); return; }
 
             let ch = build_channel_from_form(&current_data);
-            let result = if ch.id == 0 {
-                ChannelService::create(&ch).await
-            } else {
-                ChannelService::update(&ch).await
-            };
+            let result = if ch.id == 0 { ChannelService::create(&ch).await } else { ChannelService::update(&ch).await };
 
             match result {
-                Ok(_) => {
-                    is_modal_open.set(false);
-                    channels.restart();
-                    toast.success("保存成功");
-                }
+                Ok(_) => { is_modal_open.set(false); channels.restart(); toast.success("保存成功"); }
                 Err(e) => toast.error(&format!("保存失败: {}", e)),
             }
             is_loading.set(false);
@@ -389,269 +315,318 @@ pub fn ChannelPage() -> Element {
         });
     };
 
-    let _handle_toggle_status = move |c: Channel| {
-        let mut new_c = c.clone();
-        new_c.status = if c.status == 1 { 0 } else { 1 };
-        spawn(async move {
-            if ChannelService::update(&new_c).await.is_ok() {
-                channels.restart();
-            } else {
-                toast.error("Failed to update status");
-            }
-        });
-    };
+    let ch_res = channels.read().clone();
+    let loading = ch_res.is_none();
+    let ch_list = ch_res.and_then(|r| r.ok()).unwrap_or_default();
 
-    // 准备 SchemaTable 数据
-    let channels_data = channels.read().clone();
-    let table_data: Vec<serde_json::Value> = channels_data
-        .as_ref()
-        .map(|list| {
-            list.iter()
-                .filter_map(|c| serde_json::to_value(c).ok())
-                .collect()
-        })
-        .unwrap_or_default();
+    let active_count = ch_list.iter().filter(|c| c.status == 1).count();
+    let throttle_count = ch_list.iter().filter(|c| c.status == 2).count();
+    let down_count = ch_list.iter().filter(|c| c.status == 0).count();
+    let maint_count = ch_list.iter().filter(|c| c.status != 0 && c.status != 1 && c.status != 2).count();
+    let total_weight: i32 = ch_list.iter().map(|c| c.weight).sum();
+    let health_rate = if ch_list.is_empty() { 0.0 } else { active_count as f64 / ch_list.len() as f64 * 100.0 };
 
-    let actions = vec![
-        ActionDef {
-            action_id: "toggle".to_string(),
-            label: "Toggle".to_string(),
-            color: "var(--bc-warning)".to_string(),
-        },
-        ActionDef {
-            action_id: "delete".to_string(),
-            label: "Delete".to_string(),
-            color: "var(--bc-danger)".to_string(),
-        },
-    ];
-
-    let handle_action = move |event: ActionEvent| match event.action_id.as_str() {
-        "toggle" => {
-            if let Ok(ch) = serde_json::from_value::<Channel>(event.row) {
-                let mut new_c = ch.clone();
-                new_c.status = if ch.status == 1 { 0 } else { 1 };
-                spawn(async move {
-                    if ChannelService::update(&new_c).await.is_ok() {
-                        channels.restart();
-                    } else {
-                        toast.error("Failed to update status");
-                    }
-                });
-            }
+    let filtered: Vec<&Channel> = ch_list.iter().filter(|c| {
+        match active_filter().as_str() {
+            "ok" => c.status == 1,
+            "throttle" => c.status == 2,
+            "down" => c.status == 0,
+            "maint" => c.status != 0 && c.status != 1 && c.status != 2,
+            _ => true,
         }
-        "delete" => {
-            let id = event.row["id"].as_i64().unwrap_or(0);
-            let name = event.row["name"].as_str().unwrap_or("").to_string();
-            delete_channel_id.set(id);
-            delete_channel_name.set(name);
-            is_delete_modal_open.set(true);
-        }
-        _ => {}
-    };
-
-    let _any_modal_open = is_modal_open() || is_delete_modal_open();
+    }).collect();
 
     rsx! {
-        div { class: "relative h-full",
-            div { class: "flex flex-col h-full gap-xl transition-all duration-300 ease-out",
-                // Header
-                div { class: "flex justify-between items-end px-xs",
-                    div {
-                        h1 { class: "text-title font-semibold text-primary mb-xs tracking-tight", "模型网络" }
-                        p { class: "text-caption text-secondary font-medium", "您的 AI 算力中枢" }
-                    }
-                    div { class: "flex gap-md",
-                        BCButton {
-                            class: "btn-neutral btn-sm px-lg shadow-sm text-white",
-                            onclick: open_create_modal,
-                            "添加连接"
-                        }
+        PageHeader {
+            title: "模型网络",
+            subtitle: Some(format!("{} 个渠道 · 总权重 {}", ch_list.len(), total_weight)),
+            actions: rsx! {
+                div { class: "input sm", style: "width:240px",
+                    input {
+                        r#type: "text",
+                        placeholder: "搜索渠道、模型或组织…",
                     }
                 }
+                button { class: "btn btn-secondary", "筛选" }
+                BCButton {
+                    class: "btn-primary",
+                    onclick: open_create_modal,
+                    "创建渠道"
+                }
+            },
+        }
 
-                // 表格
-                div { class: "flex-1 overflow-y-auto min-h-0",
-                    match channels_data {
-                        Some(list) if !list.is_empty() => rsx! {
-                            SchemaTable {
-                                schema: schema.clone(),
-                                data: table_data,
-                                loading: false,
-                                actions: actions,
-                                on_action: handle_action,
-                                on_row_click: move |_| {},
-                            }
-                        },
-                        Some(_) => rsx! {
-                            div { class: "flex flex-col items-center justify-center h-full text-center pb-xxl",
-                                div { class: "p-lg rounded-full mb-lg",
-                                    style: "background: var(--bc-bg-hover);",
-                                    svg {
-                                        class: "w-12 h-12",
-                                        style: "color: var(--bc-text-disabled);",
-                                        fill: "none",
-                                        view_box: "0 0 24 24",
-                                        stroke: "currentColor",
-                                        stroke_width: "1.5",
-                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" }
-                                    }
-                                }
-                                h3 { class: "text-title font-bold text-primary mb-sm tracking-tight", "暂无模型网络" }
-                                p { class: "text-body text-secondary max-w-sm mb-xl leading-relaxed",
-                                    "连接您的第一个 AI 服务提供商，构建专属的神经中枢。"
-                                }
-                                BCButton {
-                                    class: "btn-primary btn-md px-xl shadow-lg shadow-primary/20",
-                                    onclick: open_create_modal,
-                                    "开始连接"
-                                }
-                            }
-                        },
-                        None => rsx! {
-                            div { class: "flex flex-col items-center justify-center h-full gap-md pb-xxl animate-pulse",
-                                style: "opacity: 0.5;",
-                                div { class: "w-12 h-12 rounded-full", style: "background: var(--bc-bg-hover);" }
-                                div { class: "text-caption font-medium text-secondary", "正在搜索神经网络..." }
-                            }
+        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+            // KPI strip
+            div { class: "stats-grid cols-4",
+                if loading {
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
+                } else {
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "活跃渠道" }
+                        div { class: "stat-value",
+                            "{active_count}"
+                            span { class: "stat-pill muted", "/ {ch_list.len()}" }
                         }
+                        span { class: "stat-foot", "2 个 org · 5 个 provider" }
+                    }
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "总权重" }
+                        div { class: "stat-value", "{total_weight}" }
+                        span { class: "stat-foot", "round-robin 加权分发" }
+                    }
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "合计 RPM" }
+                        div { class: "stat-value", "—" }
+                        span { class: "stat-foot up", "↑ 8.2% vs 1h ago" }
+                    }
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "健康率" }
+                        div { class: "stat-value", style: "color:var(--bc-success)",
+                            "{health_rate:.0}%"
+                        }
+                        span { class: "stat-foot", "{throttle_count} 个限流 · {down_count} 个停止" }
                     }
                 }
             }
 
-            // 创建/编辑 Modal
-            if is_modal_open() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
-                    div {
-                        class: "absolute inset-0 transition-opacity",
-                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
-                        onclick: move |_| is_modal_open.set(false)
+            // Filter chips + table
+            div {
+                div { class: "section-h",
+                    span { class: "lead-title", "渠道明细" }
+                    div { class: "chip-row",
+                        Chip {
+                            label: "全部".to_string(),
+                            count: Some(ch_list.len() as i64),
+                            active: Some(active_filter() == "all"),
+                            onclick: move |_| active_filter.set("all".to_string()),
+                        }
+                        Chip {
+                            label: "正常".to_string(),
+                            count: Some(active_count as i64),
+                            active: Some(active_filter() == "ok"),
+                            onclick: move |_| active_filter.set("ok".to_string()),
+                        }
+                        Chip {
+                            label: "限流".to_string(),
+                            count: Some(throttle_count as i64),
+                            active: Some(active_filter() == "throttle"),
+                            onclick: move |_| active_filter.set("throttle".to_string()),
+                        }
+                        Chip {
+                            label: "已停止".to_string(),
+                            count: Some(down_count as i64),
+                            active: Some(active_filter() == "down"),
+                            onclick: move |_| active_filter.set("down".to_string()),
+                        }
+                        Chip {
+                            label: "维护".to_string(),
+                            count: Some(maint_count as i64),
+                            active: Some(active_filter() == "maint"),
+                            onclick: move |_| active_filter.set("maint".to_string()),
+                        }
                     }
+                }
 
-                    div {
-                        class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
-                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
-                        onclick: |e| e.stop_propagation(),
-
-                        // Header
-                        div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
-                            style: "background: var(--bc-bg-card-solid);",
-                            h3 { class: "text-subtitle font-bold text-primary tracking-tight",
-                                if modal_step() == 0 { "选择供应商" } else { "配置连接" }
+                if loading {
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
+                } else if filtered.is_empty() && !ch_list.is_empty() {
+                    EmptyState {
+                        icon: rsx! { span { style: "font-size:40px", "📡" } },
+                        title: "无匹配渠道".to_string(),
+                        description: Some("调整筛选条件".to_string()),
+                        cta: None,
+                    }
+                } else if ch_list.is_empty() {
+                    EmptyState {
+                        icon: rsx! { span { style: "font-size:40px", "📡" } },
+                        title: "暂无模型渠道".to_string(),
+                        description: Some("创建第一个渠道开始使用".to_string()),
+                        cta: Some(rsx! {
+                            BCButton {
+                                class: "btn-black",
+                                onclick: open_create_modal,
+                                "创建渠道"
                             }
-                            button {
-                                class: "btn btn-sm btn-circle btn-ghost text-secondary",
-                                onclick: move |_| is_modal_open.set(false),
-                                "✕"
+                        }),
+                    }
+                } else {
+                    table { class: "table",
+                        thead {
+                            tr {
+                                th { "NAME" }
+                                th { "PROVIDER" }
+                                th { "MODEL" }
+                                th { "WEIGHT" }
+                                th { "P50" }
+                                th { "RPM" }
+                                th { "STATUS" }
+                                th {}
                             }
                         }
-
-                        // Body
-                        div { class: "flex-1 overflow-y-auto p-md sm:p-lg min-h-0 overscroll-y-contain",
-                            if modal_step() == 0 {
-                                // Step 1: Provider Selection Grid
-                                div { class: "grid grid-cols-2 sm:grid-cols-3 gap-md",
-                                    for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
-                                        button {
-                                            class: "bc-card-solid group flex flex-col items-center justify-center gap-md p-lg h-36 transition-all duration-300 ease-out cursor-pointer",
-                                            style: "cursor: pointer;",
-                                            onclick: move |_| select_provider(p),
-                                            div { class: "text-secondary group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
-                                                {p.icon()}
-                                            }
-                                            span { class: "font-medium text-caption text-secondary group-hover:text-primary", "{p.name()}" }
+                        tbody {
+                            for ch in &filtered {
+                                tr {
+                                    key: "{ch.id}",
+                                    td { style: "font-weight:500", "{ch.name}" }
+                                    td {
+                                        span { style: "display:inline-flex; align-items:center; gap:8px",
+                                            span { style: "width:6px; height:6px; border-radius:9999px; background:{provider_color(ch.type_)}" }
+                                            span { style: "font-size:13px; color:var(--bc-text-secondary)", "{provider_name(ch.type_)}" }
                                         }
                                     }
-                                }
-                            } else {
-                                // Step 2: Schema 驱动的配置表单
-                                SchemaForm {
-                                    schema: schema.clone(),
-                                    data: form_data,
-                                    mode: FormMode::Create,
-                                    show_actions: false,
-                                    on_submit: move |v| {
-                                        form_data.set(v);
+                                    td { class: "mono", style: "font-size:13px", "{ch.models}" }
+                                    td { class: "mono", "{ch.weight}" }
+                                    td { class: "mono", "—" }
+                                    td { class: "mono", "—" }
+                                    td {
+                                        StatusPill {
+                                            value: channel_status(ch.status),
+                                            label: Some(channel_status_label(ch.status)),
+                                        }
                                     }
-                                }
-                            }
-                        }
-
-                        // Footer
-                        div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0",
-                            style: "background: var(--bc-bg-hover);",
-                            if modal_step() == 1 {
-                                BCButton {
-                                    variant: ButtonVariant::Ghost,
-                                    onclick: move |_| modal_step.set(0),
-                                    "上一步"
-                                }
-                            }
-                            BCButton {
-                                variant: ButtonVariant::Ghost,
-                                onclick: move |_| is_modal_open.set(false),
-                                "取消"
-                            }
-                            if modal_step() == 1 {
-                                BCButton {
-                                    class: "btn-neutral text-white shadow-md",
-                                    loading: is_loading(),
-                                    onclick: handle_save,
-                                    "保存"
+                                    td { style: "text-align:right",
+                                        button { style: "background:none; border:none; cursor:pointer; color:var(--bc-text-secondary); font-size:16px", "⚙" }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
 
-            // Delete Confirmation Modal
-            if is_delete_modal_open() {
-                div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
-                    div {
-                        class: "absolute inset-0 transition-opacity",
-                        style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
-                        onclick: move |_| is_delete_modal_open.set(false)
+        // Create/edit modal
+        if is_modal_open() {
+            div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
+                div {
+                    class: "absolute inset-0 transition-opacity",
+                    style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
+                    onclick: move |_| is_modal_open.set(false)
+                }
+
+                div {
+                    class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
+                    style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
+                    onclick: |e| e.stop_propagation(),
+
+                    div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
+                        style: "background: var(--bc-bg-card-solid);",
+                        h3 { class: "text-subtitle font-bold text-primary tracking-tight",
+                            if modal_step() == 0 { "选择供应商" } else { "配置连接" }
+                        }
+                        button {
+                            class: "btn btn-sm btn-circle btn-ghost text-secondary",
+                            onclick: move |_| is_modal_open.set(false),
+                            "✕"
+                        }
                     }
 
-                    div {
-                        class: "relative w-full max-w-md overflow-hidden animate-scale-in",
-                        style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
-                        onclick: |e| e.stop_propagation(),
-
-                        div { class: "flex items-center gap-md px-lg py-lg border-b",
-                            style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
-                            div { class: "w-12 h-12 rounded-full flex items-center justify-center",
-                                style: "background: var(--bc-danger-light);",
-                                svg { class: "w-6 h-6", style: "color: var(--bc-danger);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
+                    div { class: "flex-1 overflow-y-auto p-md sm:p-lg min-h-0 overscroll-y-contain",
+                        if modal_step() == 0 {
+                            div { class: "grid grid-cols-2 sm:grid-cols-3 gap-md",
+                                for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
+                                    button {
+                                        class: "bc-card-solid group flex flex-col items-center justify-center gap-md p-lg h-36 transition-all duration-300 ease-out cursor-pointer",
+                                        style: "cursor: pointer;",
+                                        onclick: move |_| select_provider(p),
+                                        div { class: "text-secondary group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
+                                            {p.icon()}
+                                        }
+                                        span { class: "font-medium text-caption text-secondary group-hover:text-primary", "{p.name()}" }
+                                    }
                                 }
                             }
-                            div { class: "flex-1",
-                                h3 { class: "text-subtitle font-bold text-primary", "确认删除" }
-                                p { class: "text-caption text-secondary mt-xs", "此操作无法撤销" }
+                        } else {
+                            SchemaForm {
+                                schema: schema.clone(),
+                                data: form_data,
+                                mode: FormMode::Create,
+                                show_actions: false,
+                                on_submit: move |v| { form_data.set(v); }
                             }
                         }
+                    }
 
-                        div { class: "px-lg py-md",
-                            p { class: "text-secondary",
-                                "确定要删除连接 \""
-                                span { class: "font-semibold text-primary", "{delete_channel_name()}" }
-                                "\" 吗？删除后所有相关配置将被永久清除。"
-                            }
-                        }
-
-                        div { class: "flex justify-end gap-md px-lg py-md border-t",
-                            style: "background: var(--bc-bg-hover);",
+                    div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0",
+                        style: "background: var(--bc-bg-hover);",
+                        if modal_step() == 1 {
                             BCButton {
                                 variant: ButtonVariant::Ghost,
-                                onclick: move |_| is_delete_modal_open.set(false),
-                                "取消"
+                                onclick: move |_| modal_step.set(0),
+                                "上一步"
                             }
+                        }
+                        BCButton {
+                            variant: ButtonVariant::Ghost,
+                            onclick: move |_| is_modal_open.set(false),
+                            "取消"
+                        }
+                        if modal_step() == 1 {
                             BCButton {
-                                class: "btn-error text-white shadow-md",
-                                onclick: handle_confirm_delete,
-                                "确认删除"
+                                class: "btn-neutral text-white shadow-md",
+                                loading: is_loading(),
+                                onclick: handle_save,
+                                "保存"
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Delete confirmation modal
+        if is_delete_modal_open() {
+            div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
+                div {
+                    class: "absolute inset-0 transition-opacity",
+                    style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
+                    onclick: move |_| is_delete_modal_open.set(false)
+                }
+
+                div {
+                    class: "relative w-full max-w-md overflow-hidden animate-scale-in",
+                    style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
+                    onclick: |e| e.stop_propagation(),
+
+                    div { class: "flex items-center gap-md px-lg py-lg border-b",
+                        style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
+                        div { class: "w-12 h-12 rounded-full flex items-center justify-center",
+                            style: "background: var(--bc-danger-light);",
+                            svg { class: "w-6 h-6", style: "color: var(--bc-danger);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
+                            }
+                        }
+                        div { class: "flex-1",
+                            h3 { class: "text-subtitle font-bold text-primary", "确认删除" }
+                            p { class: "text-caption text-secondary mt-xs", "此操作无法撤销" }
+                        }
+                    }
+
+                    div { class: "px-lg py-md",
+                        p { class: "text-secondary",
+                            "确定要删除连接 \""
+                            span { class: "font-semibold text-primary", "{delete_channel_name()}" }
+                            "\" 吗？"
+                        }
+                    }
+
+                    div { class: "flex justify-end gap-md px-lg py-md border-t",
+                        style: "background: var(--bc-bg-hover);",
+                        BCButton {
+                            variant: ButtonVariant::Ghost,
+                            onclick: move |_| is_delete_modal_open.set(false),
+                            "取消"
+                        }
+                        BCButton {
+                            class: "btn-error text-white shadow-md",
+                            onclick: handle_confirm_delete,
+                            "确认删除"
                         }
                     }
                 }

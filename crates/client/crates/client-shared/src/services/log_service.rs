@@ -8,8 +8,13 @@ pub struct LogEntry {
     pub request_id: String,
     pub user_id: Option<String>,
     pub path: String,
+    pub method: Option<String>,
+    pub upstream_id: Option<String>,
     pub status_code: u16,
     pub latency_ms: i64,
+    pub model: Option<String>,
+    pub total_tokens: Option<i64>,
+    pub created_at: Option<String>,
 }
 
 pub struct LogService;

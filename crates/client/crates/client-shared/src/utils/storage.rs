@@ -8,12 +8,31 @@ use std::path::PathBuf;
 #[cfg(target_arch = "wasm32")]
 use gloo_storage::{LocalStorage, Storage};
 
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq)]
+pub enum Theme {
+    #[default]
+    Light,
+    Dark,
+    System,
+}
+
+impl Theme {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Theme::Light => "light",
+            Theme::Dark => "dark",
+            Theme::System => "system",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ClientState {
     pub last_username: Option<String>,
     pub last_password: Option<String>, // TODO: Remove password storage in future
     pub auth_token: Option<String>,
     pub user_info: Option<String>, // JSON string of CurrentUser
+    pub theme: Option<Theme>,
 }
 
 impl ClientState {
