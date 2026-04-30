@@ -3,6 +3,7 @@
 
 use burncloud_client_shared::components::{FormMode, SchemaForm};
 use burncloud_client_shared::schema::deploy_schema;
+use burncloud_client_shared::services::deploy_service::{DeployRequest, DeployService};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
@@ -16,17 +17,44 @@ pub fn DeployConfig() -> Element {
     let schema = deploy_schema();
 
     let handle_deploy = move |value: serde_json::Value| {
+        let type_ = value["type"].as_str().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+        let key = value["key"].as_str().unwrap_or("").to_string();
+        let name = value["name"].as_str().unwrap_or("").to_string();
         let model_id = value["model_id"].as_str().unwrap_or("").to_string();
-        if model_id.is_empty() {
+        let group = value["group"]
+            .as_str()
+            .unwrap_or("default")
+            .to_string();
+
+        if key.is_empty() || name.is_empty() || model_id.is_empty() {
+            toast.error("Please fill in all required fields");
             return;
         }
+
         spawn(async move {
             is_deploying.set(true);
-            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-            is_deploying.set(false);
 
-            toast.success("Deployment Successful");
-            nav.push("/console/models");
+            let req = DeployRequest {
+                type_,
+                key,
+                name,
+                models: model_id,
+                group,
+                weight: 1,
+                priority: 1,
+            };
+
+            match DeployService::deploy(&req).await {
+                Ok(_) => {
+                    is_deploying.set(false);
+                    toast.success("Deployment Successful");
+                    nav.push("/console/models");
+                }
+                Err(e) => {
+                    is_deploying.set(false);
+                    toast.error(&e);
+                }
+            }
         });
     };
 
@@ -45,6 +73,7 @@ pub fn DeployConfig() -> Element {
                     data: form_data,
                     mode: FormMode::Create,
                     on_submit: handle_deploy,
+                    disabled: is_deploying(),
                 }
             }
         }

@@ -1,5 +1,6 @@
 pub mod auth_service;
 pub mod channel_service;
+pub mod deploy_service;
 pub mod log_service;
 pub mod monitor_service;
 pub mod token_service;

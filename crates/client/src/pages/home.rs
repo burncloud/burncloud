@@ -1,5 +1,4 @@
 use crate::app::Route;
-use burncloud_client_shared::DesktopMode;
 use dioxus::prelude::*;
 
 #[component]
@@ -20,12 +19,7 @@ pub fn Root() -> Element {
 
 #[component]
 pub fn HomePage() -> Element {
-    let is_desktop = try_use_context::<DesktopMode>().is_some();
-    let nav_padding = if is_desktop {
-        "landing-nav"
-    } else {
-        "landing-nav"
-    };
+    let nav_padding = "landing-nav";
 
     rsx! {
         div { class: "landing",

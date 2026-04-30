@@ -272,6 +272,7 @@ pub fn SchemaForm(
     #[props(default)] on_submit: EventHandler<serde_json::Value>,
     #[props(default = true)] show_actions: bool,
     #[props(default)] class: String,
+    #[props(default)] disabled: bool,
 ) -> Element {
     let mut errors: Signal<HashMap<String, String>> = use_signal(HashMap::new);
 
@@ -320,6 +321,8 @@ pub fn SchemaForm(
                 div { class: "flex gap-sm justify-end",
                     BCButton {
                         variant: ButtonVariant::Primary,
+                        loading: disabled,
+                        disabled: disabled,
                         onclick: handle_submit,
                         "提交"
                     }
