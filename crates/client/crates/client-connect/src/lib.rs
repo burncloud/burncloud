@@ -3,7 +3,7 @@
 
 use burncloud_client_shared::components::{
     BCButton, BCModal, ButtonVariant,
-    FormMode, PageHeader, SchemaForm, StatKpi, StatusPill, ColumnDef, PageTable,
+    FormMode, PageHeader, SchemaForm, StatusPill,
     EmptyState, SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
@@ -124,28 +124,21 @@ pub fn ConnectPage() -> Element {
         });
     };
 
-    let columns = vec![
-        ColumnDef { key: "id".to_string(), label: "ID".to_string(), width: Some("60px".to_string()) },
-        ColumnDef { key: "status".to_string(), label: "状态".to_string(), width: Some("100px".to_string()) },
-        ColumnDef { key: "name".to_string(), label: "名称".to_string(), width: None },
-        ColumnDef { key: "models".to_string(), label: "模型".to_string(), width: None },
-        ColumnDef { key: "base_url".to_string(), label: "Base URL".to_string(), width: None },
-    ];
-
     rsx! {
         PageHeader {
             title: "算力互联",
             subtitle: Some("BurnCloud Connect".to_string()),
+            subtitle_class: Some("mono".to_string()),
             actions: rsx! {
                 BCButton {
-                    class: "btn-black",
+                    class: "btn-primary",
                     onclick: move |_| show_add_modal.set(true),
                     "接入本地资源"
                 }
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content", style: "display:flex; flex-direction:column; gap:28px",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {
@@ -154,21 +147,21 @@ pub fn ConnectPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
-                    StatKpi {
-                        label: "Active Nodes".to_string(),
-                        value: format!("{active_nodes}"),
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "Active Nodes" }
+                        div { class: "stat-value", "{active_nodes}" }
                     }
-                    StatKpi {
-                        label: "Network Capacity".to_string(),
-                        value: "1.2 PFlops".to_string(),
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "Network Capacity" }
+                        div { class: "stat-value", style: "color:var(--bc-primary)", "1.2 PFlops" }
                     }
-                    StatKpi {
-                        label: "Pool Balance".to_string(),
-                        value: "$ 42.50".to_string(),
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "Pool Balance" }
+                        div { class: "stat-value", "$ 42.50" }
                     }
-                    StatKpi {
-                        label: "Efficiency Gain".to_string(),
-                        value: "34.2%".to_string(),
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "Efficiency Gain" }
+                        div { class: "stat-value", style: "color:var(--bc-success)", "34.2%" }
                     }
                 }
             }
@@ -176,17 +169,17 @@ pub fn ConnectPage() -> Element {
             // Tabs
             div {
                 div { class: "tabs",
-                    span {
+                    button {
                         class: if active_tab() == "local" { "tab active" } else { "tab" },
                         onclick: move |_| active_tab.set("local".to_string()),
                         "本地算力"
                     }
-                    span {
+                    button {
                         class: if active_tab() == "net" { "tab active" } else { "tab" },
                         onclick: move |_| active_tab.set("net".to_string()),
                         "网络互联"
                     }
-                    span {
+                    button {
                         class: if active_tab() == "settle" { "tab active" } else { "tab" },
                         onclick: move |_| active_tab.set("settle".to_string()),
                         "结算账单"
@@ -214,27 +207,42 @@ pub fn ConnectPage() -> Element {
                                     description: Some("请接入 AWS 账号开始共享算力".to_string()),
                                     cta: Some(rsx! {
                                         BCButton {
-                                            class: "btn-black",
+                                            class: "btn-secondary",
                                             onclick: move |_| show_add_modal.set(true),
                                             "立即接入 AWS 账号"
                                         }
                                     }),
                                 }
                             } else {
-                                PageTable {
-                                    columns: columns,
-                                    for ch in &ch_list {
+                                table { class: "table",
+                                    thead {
                                         tr {
-                                            key: "{ch.id}",
-                                            td { class: "mono", style: "font-size:12px", "#{ch.id}" }
-                                            td {
-                                                StatusPill {
-                                                    value: if ch.status == 1 { "ok".to_string() } else { "down".to_string() }
+                                            th { "ID" }
+                                            th { "状态" }
+                                            th { "名称" }
+                                            th { "模型" }
+                                            th { "Base URL" }
+                                            th { style: "text-align:right", "操作" }
+                                        }
+                                    }
+                                    tbody {
+                                        for ch in &ch_list {
+                                            tr {
+                                                key: "{ch.id}",
+                                                td { class: "mono", style: "font-size:12px", "#{ch.id}" }
+                                                td {
+                                                    StatusPill {
+                                                        value: if ch.status == 1 { "ok".to_string() } else { "neutral".to_string() },
+                                                        label: if ch.status == 1 { Some("Active".to_string()) } else { Some("Disabled".to_string()) },
+                                                    }
+                                                }
+                                                td { style: "font-weight:600", "{ch.name}" }
+                                                td { class: "mono", style: "font-size:12px", "{ch.models}" }
+                                                td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)", "{ch.base_url}" }
+                                                td { style: "text-align:right",
+                                                    button { class: "btn btn-ghost", style: "color:var(--bc-danger); font-weight:600", "删除" }
                                                 }
                                             }
-                                            td { style: "font-weight:500", "{ch.name}" }
-                                            td { class: "mono", style: "font-size:12px", "{ch.models}" }
-                                            td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)", "{ch.base_url}" }
                                         }
                                     }
                                 }
@@ -248,6 +256,7 @@ pub fn ConnectPage() -> Element {
                                     span { class: "lead-title", "互联算力池 (Sourcing)" }
                                     span { class: "lead-sub", "接入外部专业矿池以采购全球算力" }
                                 }
+                                button { class: "btn btn-secondary", "接入新算力池" }
                             }
 
                             // Featured pool card

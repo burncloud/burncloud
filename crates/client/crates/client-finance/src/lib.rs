@@ -1,5 +1,5 @@
 use burncloud_client_shared::components::{
-    BCButton, PageHeader, StatKpi, StatusPill, ColumnDef, PageTable,
+    BCButton, PageHeader,
     SkeletonCard, SkeletonVariant,
 };
 use dioxus::prelude::*;
@@ -27,21 +27,13 @@ pub fn FinancePage() -> Element {
         ("RECH-1020", "2026-03-22 08:34", "退款 · 误充", -12000, "refund"),
     ];
 
-    let recharge_columns = vec![
-        ColumnDef { key: "id".to_string(), label: "充值单号".to_string(), width: Some("140px".to_string()) },
-        ColumnDef { key: "time".to_string(), label: "时间".to_string(), width: Some("160px".to_string()) },
-        ColumnDef { key: "desc".to_string(), label: "说明".to_string(), width: None },
-        ColumnDef { key: "amount".to_string(), label: "金额".to_string(), width: Some("120px".to_string()) },
-        ColumnDef { key: "status".to_string(), label: "状态".to_string(), width: Some("100px".to_string()) },
-    ];
-
     rsx! {
         PageHeader {
             title: "财务中心",
             subtitle: Some("管理您的账户余额、充值记录与收支统计".to_string()),
             actions: rsx! {
                 BCButton {
-                    class: "btn-black",
+                    class: "btn-primary",
                     onclick: move |_| {},
                     "充值余额"
                 }
@@ -50,27 +42,26 @@ pub fn FinancePage() -> Element {
 
         div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
             // Billing KPIs
-            div { class: "stats-grid cols-3",
+            div { class: "stats-grid",
                 if loading {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
-                    StatKpi {
-                        label: "本月支出".to_string(),
-                        value: format_cents(month_spend),
-                        large: Some(true),
-                        delta: rsx! { span { class: "stat-pill danger", "+15%" } },
+                    div { class: "stat-card", style: "gap:8px",
+                        span { class: "stat-eyebrow", "本月支出" }
+                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums",
+                            "{format_cents(month_spend)} "
+                            span { class: "stat-pill danger", "+15%" }
+                        }
                     }
-                    StatKpi {
-                        label: "账户余额".to_string(),
-                        value: format_cents(balance),
-                        large: Some(true),
+                    div { class: "stat-card", style: "gap:8px",
+                        span { class: "stat-eyebrow", "账户余额" }
+                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums", "{format_cents(balance)}" }
                     }
-                    StatKpi {
-                        label: "预估下月".to_string(),
-                        value: format_cents(est_next),
-                        large: Some(true),
+                    div { class: "stat-card", style: "gap:8px",
+                        span { class: "stat-eyebrow", "预估下月" }
+                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums; color:var(--bc-text-secondary)", "{format_cents(est_next)}" }
                     }
                 }
             }
@@ -86,21 +77,32 @@ pub fn FinancePage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Row) }
                     SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 } else {
-                    PageTable {
-                        columns: recharge_columns,
-                        for (id, time, desc, amount, status) in &recharge_records {
+                    table { class: "table",
+                        thead {
                             tr {
-                                key: "{id}",
-                                td { class: "mono", style: "font-size:13px", "{id}" }
-                                td { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)", "{time}" }
-                                td { style: "font-size:13px", "{desc}" }
-                                td { class: "mono", style: "text-align:right; font-weight:600; color:if *status == \"refund\" { \"var(--bc-danger)\" } else { \"var(--bc-text-primary)\" }",
-                                    "{format_cents(*amount)}"
-                                }
-                                td {
-                                    StatusPill {
-                                        value: if *status == "success" { "ok".to_string() } else { "warning".to_string() },
-                                        label: if *status == "success" { Some("成功".to_string()) } else { Some("已退款".to_string()) },
+                                th { style: "width:140px", "充值单号" }
+                                th { style: "width:160px", "时间" }
+                                th { "说明" }
+                                th { style: "width:120px; text-align:right", "金额" }
+                                th { style: "width:100px", "状态" }
+                            }
+                        }
+                        tbody {
+                            for (id, time, desc, amount, status) in &recharge_records {
+                                tr {
+                                    key: "{id}",
+                                    td { class: "mono", style: "font-size:13px", "{id}" }
+                                    td { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)", "{time}" }
+                                    td { style: "font-size:13px", "{desc}" }
+                                    td { class: "mono", style: "text-align:right; font-weight:600; font-variant-numeric:tabular-nums; color:if *status == \"refund\" {{ \"var(--bc-danger)\" }} else {{ \"var(--bc-text-primary)\" }}",
+                                        "{format_cents(*amount)}"
+                                    }
+                                    td {
+                                        if *status == "success" {
+                                            span { class: "pill success", span { class: "dot" } "成功" }
+                                        } else {
+                                            span { class: "pill warning", span { class: "dot" } "已退款" }
+                                        }
                                     }
                                 }
                             }

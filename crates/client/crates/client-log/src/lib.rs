@@ -1,5 +1,5 @@
 use burncloud_client_shared::components::{
-    PageHeader, StatKpi, LevelBadge, Chip, ColumnDef, PageTable, EmptyState,
+    PageHeader, LevelBadge, Chip, EmptyState,
     SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::services::log_service::{LogEntry, LogService};
@@ -23,18 +23,6 @@ fn avg_latency(entries: &[LogEntry]) -> String {
     if entries.is_empty() { "—".to_string() } else {
         let avg: f64 = entries.iter().map(|e| e.latency_ms as f64).sum::<f64>() / entries.len() as f64;
         format!("{avg:.0}")
-    }
-}
-
-fn format_compact(n: i64) -> String {
-    if n >= 1_000_000_000 {
-        format!("{:.1}B", n as f64 / 1e9)
-    } else if n >= 1_000_000 {
-        format!("{:.2}M", n as f64 / 1e6)
-    } else if n >= 1_000 {
-        format!("{:.1}K", n as f64 / 1e3)
-    } else {
-        n.to_string()
     }
 }
 
@@ -75,25 +63,19 @@ pub fn LogPage() -> Element {
         };
         let q = search_query().to_lowercase();
         let text_match = if q.is_empty() { true } else {
-            e.path.to_lowercase().contains(&q) || e.request_id.to_lowercase().contains(&q)
+            e.path.to_lowercase().contains(&q)
+                || e.upstream_id.as_deref().unwrap_or("").to_lowercase().contains(&q)
+                || e.model.as_deref().unwrap_or("").to_lowercase().contains(&q)
         };
         level_match && text_match
     }).collect();
-
-    let columns = vec![
-        ColumnDef { key: "time".to_string(), label: "时间".to_string(), width: Some("200px".to_string()) },
-        ColumnDef { key: "level".to_string(), label: "级别".to_string(), width: Some("80px".to_string()) },
-        ColumnDef { key: "channel".to_string(), label: "渠道".to_string(), width: Some("160px".to_string()) },
-        ColumnDef { key: "message".to_string(), label: "消息".to_string(), width: None },
-    ];
 
     rsx! {
         PageHeader {
             title: "Logs",
             subtitle: Some("全量请求与计费日志 · 实时流".to_string()),
             actions: rsx! {
-                div { class: "bc-input sm", style: "width:240px; display:flex; align-items:center; gap:8px",
-                    span { style: "color:var(--bc-text-tertiary); font-size:14px", "🔍" }
+                div { class: "input sm", style: "width:240px",
                     input {
                         placeholder: "搜索消息、渠道、token…",
                         value: "{search_query}",
@@ -113,25 +95,35 @@ pub fn LogPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
-                    StatKpi {
-                        label: "总条数 · 24H".to_string(),
-                        value: format_compact(total as i64),
-                        delta: rsx! { span { class: "stat-foot up", "↑ 12.4% vs yesterday" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "总条数 · 24H" }
+                        div { class: "stat-value",
+                            "2.84"
+                            span { class: "stat-pill muted", "M" }
+                        }
+                        span { class: "stat-foot up", "↑ 12.4% vs yesterday" }
                     }
-                    StatKpi {
-                        label: "错误数".to_string(),
-                        value: format_thousands(error_count),
-                        delta: rsx! { span { class: "stat-foot down", "↑ 18 in last hour" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "错误数" }
+                        div { class: "stat-value", style: "color:var(--bc-danger)",
+                            "{format_thousands(error_count)}"
+                        }
+                        span { class: "stat-foot down", "↑ 18 in last hour" }
                     }
-                    StatKpi {
-                        label: "告警数".to_string(),
-                        value: format_thousands(warn_count),
-                        delta: rsx! { span { class: "stat-foot", "3 个 channel degraded" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "告警数" }
+                        div { class: "stat-value", style: "color:var(--bc-warning)",
+                            "{format_thousands(warn_count)}"
+                        }
+                        span { class: "stat-foot", "3 个 channel degraded" }
                     }
-                    StatKpi {
-                        label: "平均延迟".to_string(),
-                        value: format!("{}ms", avg_latency(&log_list)),
-                        delta: rsx! { span { class: "stat-foot up", "P50 · ↓ 4.2%" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "平均延迟" }
+                        div { class: "stat-value",
+                            "{avg_latency(&log_list)}"
+                            span { class: "stat-pill muted", "ms" }
+                        }
+                        span { class: "stat-foot up", "P50 · ↓ 4.2%" }
                     }
                 }
             }
@@ -187,24 +179,43 @@ pub fn LogPage() -> Element {
                         cta: None,
                     }
                 } else {
-                    PageTable {
-                        columns: columns,
-                        for entry in filtered_logs {
+                    table { class: "table",
+                        thead {
                             tr {
-                                key: "{entry.request_id}",
-                                td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
-                                    "{entry.request_id}"
-                                }
-                                td {
-                                    LevelBadge {
-                                        value: status_level(entry.status_code)
+                                th { style: "width:200px", "时间" }
+                                th { style: "width:80px", "级别" }
+                                th { style: "width:160px", "渠道" }
+                                th { "消息" }
+                            }
+                        }
+                        tbody {
+                            for entry in filtered_logs {
+                                {
+                                    let ts = entry.created_at.as_deref().unwrap_or(&entry.request_id);
+                                    let upstream = entry.upstream_id.as_deref().unwrap_or("—");
+                                    let http_method = entry.method.as_deref().unwrap_or("POST");
+                                    let tok_str = entry.total_tokens.map_or(String::new(), |t| format!(" · {} tok", format_thousands(t)));
+                                    let msg = format!("{} {} ({}ms{})", http_method, entry.path, entry.latency_ms, tok_str);
+                                    let req_id = entry.request_id.clone();
+                                    rsx! {
+                                        tr {
+                                            key: "{req_id}",
+                                            td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
+                                                "{ts}"
+                                            }
+                                            td {
+                                                LevelBadge {
+                                                    value: status_level(entry.status_code)
+                                                }
+                                            }
+                                            td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
+                                                "{upstream}"
+                                            }
+                                            td { class: "mono", style: "font-size:13px; color:var(--bc-text-primary)",
+                                                "{msg}"
+                                            }
+                                        }
                                     }
-                                }
-                                td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
-                                    "{entry.path}"
-                                }
-                                td { class: "mono", style: "font-size:13px; color:var(--bc-text-primary)",
-                                    "{entry.status_code} {entry.path} {entry.latency_ms}ms"
                                 }
                             }
                         }

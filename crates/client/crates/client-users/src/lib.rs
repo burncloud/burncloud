@@ -1,5 +1,5 @@
 use burncloud_client_shared::components::{
-    BCButton, ButtonVariant, PageHeader, StatKpi, StatusPill, ColumnDef, PageTable,
+    BCButton, PageHeader, StatusPill,
     EmptyState, SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::services::user_service::UserService;
@@ -16,6 +16,7 @@ pub fn UsersPage() -> Element {
     let mut active_tab = use_signal(|| "all".to_string());
     let mut show_topup = use_signal(|| None::<String>);
     let mut topup_amount = use_signal(|| 0i64);
+    let mut topup_username = use_signal(String::new);
     let toast = use_toast();
 
     let users = use_resource(move || async move {
@@ -35,16 +36,6 @@ pub fn UsersPage() -> Element {
         }
     }).collect();
 
-    let columns = vec![
-        ColumnDef { key: "id".to_string(), label: "ID".to_string(), width: Some("80px".to_string()) },
-        ColumnDef { key: "name".to_string(), label: "用户名".to_string(), width: None },
-        ColumnDef { key: "role".to_string(), label: "角色".to_string(), width: Some("100px".to_string()) },
-        ColumnDef { key: "balance".to_string(), label: "余额 (CNY)".to_string(), width: Some("120px".to_string()) },
-        ColumnDef { key: "group".to_string(), label: "分组".to_string(), width: Some("100px".to_string()) },
-        ColumnDef { key: "status".to_string(), label: "状态".to_string(), width: Some("100px".to_string()) },
-        ColumnDef { key: "action".to_string(), label: "操作".to_string(), width: Some("80px".to_string()) },
-    ];
-
     rsx! {
         PageHeader {
             title: "客户列表",
@@ -60,41 +51,47 @@ pub fn UsersPage() -> Element {
 
         div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
             // KPI strip
-            div { class: "stats-grid cols-3",
+            div { class: "stats-grid",
                 if loading {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
-                    StatKpi {
-                        label: "总用户数".to_string(),
-                        value: format!("{total}"),
-                        delta: rsx! { span { class: "stat-foot up", "▲ +24 This Week" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "总用户数" }
+                        div { class: "stat-value",
+                            "{total} "
+                            span { class: "stat-pill success", "+24 This Week" }
+                        }
                     }
-                    StatKpi {
-                        label: "今日活跃".to_string(),
-                        value: format!("{active_count}"),
-                        delta: rsx! { span { class: "stat-pill muted", "67% 活跃率" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "今日活跃" }
+                        div { class: "stat-value",
+                            "{active_count} "
+                            span { class: "stat-pill muted", "67% 活跃率" }
+                        }
                     }
-                    StatKpi {
-                        label: "用户资金池".to_string(),
-                        value: "¥ 452,000.00".to_string(),
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "用户资金池" }
+                        div { class: "stat-value", "¥ 452,000.00" }
                     }
                 }
             }
 
             // Tabs + table
             div {
-                div { class: "section-h",
+                div { class: "section-h row", style: "margin-bottom:0",
                     span { class: "lead-title", "客户明细" }
-                    div { class: "tabs",
-                        span {
+                    div { class: "tabs", style: "border-bottom:none; padding-bottom:0; gap:16px",
+                        button {
                             class: if active_tab() == "all" { "tab active" } else { "tab" },
+                            style: "padding-bottom:8px; margin-bottom:0",
                             onclick: move |_| active_tab.set("all".to_string()),
                             "全部客户"
                         }
-                        span {
+                        button {
                             class: if active_tab() == "vip" { "tab active" } else { "tab" },
+                            style: "padding-bottom:8px; margin-bottom:0",
                             onclick: move |_| active_tab.set("vip".to_string()),
                             "VIP客户"
                         }
@@ -113,41 +110,52 @@ pub fn UsersPage() -> Element {
                         cta: None,
                     }
                 } else {
-                    PageTable {
-                        columns: columns,
-                        for u in filtered {
+                    table { class: "table", style: "margin-top:16px",
+                        thead {
                             tr {
-                                key: "{u.id}",
-                                td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)", "{u.id}" }
-                                td { style: "font-weight:600", "{u.username}" }
-                                td {
-                                    span { class: "pill neutral", "{u.role}" }
-                                }
-                                td { class: "mono", style: "color:var(--bc-text-primary)",
-                                    "{format_cents(u.balance_cny)}"
-                                }
-                                td {
-                                    if u.group == "VIP" {
-                                        span { class: "pill", style: "background:var(--bc-primary-light); color:var(--bc-primary)", "VIP" }
-                                    } else {
-                                        span { class: "pill neutral", "{u.group}" }
+                                th { "ID" }
+                                th { "用户名" }
+                                th { "角色" }
+                                th { "余额 (CNY)" }
+                                th { "分组" }
+                                th { "状态" }
+                                th { style: "text-align:right", "操作" }
+                            }
+                        }
+                        tbody {
+                            for u in filtered {
+                                tr {
+                                    key: "{u.id}",
+                                    td { span { class: "mono", style: "font-size:12px", "{u.id}" } }
+                                    td { style: "font-weight:600", "{u.username}" }
+                                    td { span { class: "pill neutral", "{u.role}" } }
+                                    td { class: "mono", style: "color:var(--bc-text-primary); font-variant-numeric:tabular-nums",
+                                        "{format_cents(u.balance_cny)}"
                                     }
-                                }
-                                td {
-                                    StatusPill {
-                                        value: if u.status == 1 { "active".to_string() } else { "disabled".to_string() },
-                                        label: if u.status == 1 { Some("Active".to_string()) } else { Some("Disabled".to_string()) },
+                                    td {
+                                        if u.group == "VIP" {
+                                            span { class: "pill", style: "background:var(--bc-primary-light); color:var(--bc-primary)", "VIP" }
+                                        } else {
+                                            span { class: "pill neutral", "{u.group}" }
+                                        }
                                     }
-                                }
-                                td { style: "text-align:right",
-                                    button {
-                                        class: "btn btn-ghost",
-                                        style: "color:var(--bc-primary); font-weight:600",
-                                        onclick: move |_| {
-                                            show_topup.set(Some(u.id.clone()));
-                                            topup_amount.set(0);
-                                        },
-                                        "充值"
+                                    td {
+                                        StatusPill {
+                                            value: if u.status == 1 { "active".to_string() } else { "disabled".to_string() },
+                                            label: if u.status == 1 { Some("Active".to_string()) } else { Some("Disabled".to_string()) },
+                                        }
+                                    }
+                                    td { style: "text-align:right",
+                                        button {
+                                            class: "btn btn-ghost",
+                                            style: "color:var(--bc-primary); font-weight:600",
+                                            onclick: move |_| {
+                                                show_topup.set(Some(u.id.clone()));
+                                                topup_username.set(u.username.clone());
+                                                topup_amount.set(0);
+                                            },
+                                            "充值"
+                                        }
                                     }
                                 }
                             }
@@ -158,21 +166,22 @@ pub fn UsersPage() -> Element {
         }
 
         // Top-up modal
-        if let Some(uid) = show_topup() {
+        if let Some(_uid) = show_topup() {
             div { class: "bc-modal-overlay", onclick: move |_| show_topup.set(None),
                 div { class: "bc-modal", style: "width:440px", onclick: move |e| e.stop_propagation(),
                     div { class: "bc-modal-header",
-                        h3 { "账户充值" }
+                        span { class: "bc-modal-title", "账户充值" }
+                        button { class: "btn-icon", onclick: move |_| show_topup.set(None), "✕" }
                     }
                     div { class: "bc-modal-body",
                         div { style: "display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--bc-bg-hover); border-radius:8px",
                             span { style: "font-size:12px; color:var(--bc-text-secondary)", "目标账户" }
-                            span { style: "font-weight:600", "ID: {uid}" }
+                            span { style: "font-weight:600", "{topup_username()}" }
                         }
 
                         div { style: "margin-top:16px",
                             label { class: "input-label", "充值金额 (CNY)" }
-                            div { class: "bc-input",
+                            div { class: "input",
                                 input {
                                     r#type: "number",
                                     placeholder: "0.00",
@@ -201,19 +210,11 @@ pub fn UsersPage() -> Element {
                         }
                     }
                     div { class: "bc-modal-footer",
-                        BCButton {
-                            variant: ButtonVariant::Secondary,
-                            onclick: move |_| show_topup.set(None),
-                            "取消"
-                        }
-                        BCButton {
-                            class: "btn-black",
-                            onclick: move |_| {
-                                show_topup.set(None);
-                                toast.success("充值成功");
-                            },
-                            "确认充值"
-                        }
+                        button { class: "btn btn-ghost", onclick: move |_| show_topup.set(None), "取消" }
+                        button { class: "btn btn-black", onclick: move |_| {
+                            show_topup.set(None);
+                            toast.success("充值成功");
+                        }, "确认充值" }
                     }
                 }
             }

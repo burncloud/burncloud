@@ -1,15 +1,20 @@
 use burncloud_client_shared::components::{
-    PageHeader, StatKpi, StatusPill, ColumnDef, PageTable,
+    PageHeader,
     SkeletonCard, SkeletonVariant,
 };
 use dioxus::prelude::*;
 
-fn risk_pill(level: &str) -> Element {
-    match level {
-        "high" => rsx! { StatusPill { value: "danger".to_string(), label: Some("高危".to_string()) } },
-        "medium" => rsx! { StatusPill { value: "warning".to_string(), label: Some("中危".to_string()) } },
-        "low" => rsx! { StatusPill { value: "info".to_string(), label: Some("低危".to_string()) } },
-        _ => rsx! { StatusPill { value: "neutral".to_string(), label: Some(level.to_string()) } },
+fn sev_pill(level: &str) -> Element {
+    let (cls, label) = match level {
+        "High" => ("danger", "HIGH"),
+        "Medium" => ("warning", "MEDIUM"),
+        "Low" => ("neutral", "LOW"),
+        _ => ("neutral", level),
+    };
+    rsx! {
+        span { class: "pill {cls}", style: "font-family:var(--bc-font-mono); font-size:11px; padding:2px 8px; letter-spacing:0.04em",
+            "{label}"
+        }
     }
 }
 
@@ -17,36 +22,36 @@ fn risk_pill(level: &str) -> Element {
 pub fn ServiceMonitor() -> Element {
     let loading = false;
 
-    // Mock risk data matching design
-    let risk_events = vec![
-        ("2026-04-29 08:12", "Channel-A", "high", "异常流量激增 — 5分钟内请求量超阈值300%"),
-        ("2026-04-29 07:45", "Channel-B", "medium", "API Key 调用频率异常 — 单Key QPS超限"),
-        ("2026-04-29 06:30", "Channel-C", "low", "延迟波动 — P99延迟上升15%"),
-        ("2026-04-28 22:18", "Channel-A", "high", "疑似凭证泄露 — 同一Key多IP并发调用"),
-        ("2026-04-28 19:05", "Channel-D", "medium", "错误率上升 — 429占比超10%"),
-        ("2026-04-28 15:22", "Channel-B", "low", "配额接近上限 — 已用92%"),
-        ("2026-04-28 11:00", "Channel-A", "medium", "模型降级 — 自动切换至备用模型"),
+    // Threat feed matching design spec
+    let threats = vec![
+        ("10:42:15", "SQL Injection Attempt",        "192.168.1.105", "High"),
+        ("10:41:03", "Prompt Injection (Jailbreak)", "10.0.0.24",     "Medium"),
+        ("10:35:22", "Rate Limit Exceeded",          "172.16.0.4",    "Low"),
+        ("10:28:11", "NSFW Content Filtered",        "192.168.1.200", "Medium"),
+        ("10:15:00", "Unknown User Agent",           "45.33.22.11",   "Low"),
     ];
 
-    let high_count = risk_events.iter().filter(|(_, _, l, _)| *l == "high").count();
-    let medium_count = risk_events.iter().filter(|(_, _, l, _)| *l == "medium").count();
-    let low_count = risk_events.iter().filter(|(_, _, l, _)| *l == "low").count();
+    // Content filter switches
+    let mut filter_sensitive = use_signal(|| true);
+    let mut filter_political = use_signal(|| true);
+    let mut filter_pii = use_signal(|| true);
+    let mut filter_jailbreak = use_signal(|| false);
 
-    let columns = vec![
-        ColumnDef { key: "time".to_string(), label: "时间".to_string(), width: Some("180px".to_string()) },
-        ColumnDef { key: "channel".to_string(), label: "来源".to_string(), width: Some("120px".to_string()) },
-        ColumnDef { key: "level".to_string(), label: "风险等级".to_string(), width: Some("100px".to_string()) },
-        ColumnDef { key: "desc".to_string(), label: "描述".to_string(), width: None },
-    ];
+    let spark_security = vec![78.0, 82.0, 80.0, 86.0, 88.0, 90.0, 94.0];
 
     rsx! {
         PageHeader {
-            title: "风控中心",
-            subtitle: Some("实时风险监控与异常事件追踪".to_string()),
+            title: "风控雷达",
+            subtitle: Some("实时威胁检测与内容安全防御".to_string()),
+            actions: rsx! {
+                button { class: "btn btn-secondary", "黑名单管理" }
+                button { class: "btn btn-danger", style: "padding-left:24px; padding-right:24px", "紧急熔断" }
+            },
         }
 
         div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
-            // KPI strip
+
+            // Security HUD: 4-col grid, security score spans 2
             div { class: "stats-grid cols-4",
                 if loading {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
@@ -54,66 +59,139 @@ pub fn ServiceMonitor() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
-                    StatKpi {
-                        label: "总请求数 · 24H".to_string(),
-                        value: "1.24M".to_string(),
-                        delta: rsx! { span { class: "stat-foot up", "↑ 8.3%" } },
-                    }
-                    StatKpi {
-                        label: "拦截率".to_string(),
-                        value: "0.12%".to_string(),
-                        delta: rsx! { span { class: "stat-foot", "1,488 blocked" } },
-                    }
-                    StatKpi {
-                        label: "风险评分".to_string(),
-                        value: "23".to_string(),
-                        delta: rsx! { span { class: "stat-foot", style: "color:var(--bc-success)", "Low Risk" } },
-                    }
-                    StatKpi {
-                        label: "异常事件".to_string(),
-                        value: format!("{}", risk_events.len()),
-                        delta: rsx! { span { class: "stat-foot", style: "color:var(--bc-danger)", "↑ {high_count} high" } },
-                    }
-                }
-            }
-
-            // Risk trend chart placeholder
-            div { class: "card", style: "padding:24px",
-                div { class: "section-h",
-                    span { class: "lead-title", "风险趋势" }
-                }
-                div { style: "height:200px; display:flex; align-items:center; justify-content:center; color:var(--bc-text-tertiary); font-size:14px",
-                    "📈 风险趋势图 (待接入数据源)"
-                }
-            }
-
-            // Risk events table
-            div {
-                div { class: "section-h",
-                    span { class: "lead-title", "异常事件" }
-                    div { style: "display:flex; gap:8px",
-                        span { class: "chip active", "全部 {risk_events.len()}" }
-                        span { class: "chip", "高危 {high_count}" }
-                        span { class: "chip", "中危 {medium_count}" }
-                        span { class: "chip", "低危 {low_count}" }
-                    }
-                }
-
-                if loading {
-                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
-                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
-                } else {
-                    PageTable {
-                        columns: columns,
-                        for (time, channel, level, desc) in &risk_events {
-                            tr {
-                                key: "{time}-{channel}",
-                                td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)", "{time}" }
-                                td { style: "font-weight:600", "{channel}" }
-                                td { {risk_pill(level)} }
-                                td { style: "font-size:13px", "{desc}" }
+                    // Security score card (span 2)
+                    div { class: "stat-card", style: "grid-column:span 2; flex-direction:row; align-items:center; justify-content:space-between; padding:24px; position:relative; overflow:hidden",
+                        // Gradient glow
+                        div { style: "position:absolute; right:0; top:0; bottom:0; width:160px; background:linear-gradient(to left, var(--bc-success-light), transparent); opacity:0.45; pointer-events:none" }
+                        div { style: "display:flex; flex-direction:column; gap:6px; z-index:1",
+                            span { class: "stat-eyebrow", "当前安全评分" }
+                            div { style: "display:flex; align-items:baseline; gap:16px",
+                                span { style: "font-size:56px; font-weight:700; letter-spacing:-0.03em; line-height:1; color:var(--bc-success)", "94" }
+                                span { style: "font-size:13px; font-weight:500; color:var(--bc-success)", "安全状况良好" }
+                            }
+                            div { style: "display:flex; align-items:center; gap:8px; margin-top:6px",
+                                span { style: "font-size:11px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "7d" }
+                                div { class: "spark sm", style: "width:120px; height:24px",
+                                    for (i, v) in spark_security.iter().enumerate() {
+                                        {
+                                            let idx = i;
+                                            let opacity = 0.4 + idx as f64 * 0.1;
+                                            let height_pct = *v;
+                                            rsx! {
+                                                div {
+                                                    key: "{idx}",
+                                                    class: "bar success",
+                                                    style: "height:{height_pct}%; opacity:{opacity}",
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+                        // Shield icon circle
+                        div { style: "width:64px; height:64px; border-radius:99px; border:4px solid var(--bc-success-light); color:var(--bc-success); display:flex; align-items:center; justify-content:center; z-index:1; font-size:28px",
+                            "🛡"
+                        }
+                    }
+
+                    // Intercepted attacks
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "已拦截攻击" }
+                        div { class: "stat-value",
+                            "1,204 "
+                            span { class: "stat-pill danger", "+12 Today" }
+                        }
+                    }
+
+                    // Active threat sources
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "活跃威胁源" }
+                        div { class: "stat-value",
+                            "0 "
+                            span { class: "stat-pill muted", "All Clear" }
+                        }
+                    }
+                }
+            }
+
+            // Two-column: threat feed | filters
+            div { style: "display:grid; grid-template-columns:2fr 1fr; gap:24px",
+                // Threat feed
+                div {
+                    div { class: "section-h",
+                        span { class: "lead-title", "实时威胁感知 (Live Threat Feed)" }
+                    }
+                    div { style: "display:flex; flex-direction:column; gap:8px",
+                        for (time, kind, src, sev) in &threats {
+                            div { class: "row-card outlined", style: "padding:16px",
+                                div { style: "display:flex; align-items:center; gap:16px",
+                                    span { class: "mono", style: "font-size:11px; color:var(--bc-text-tertiary)", "{time}" }
+                                    div { style: "display:flex; flex-direction:column; gap:2px",
+                                        span { style: "font-size:13px; font-weight:600", "{kind}" }
+                                        span { class: "mono", style: "font-size:11px; color:var(--bc-text-tertiary)", "Source: {src}" }
+                                    }
+                                }
+                                {sev_pill(sev)}
+                            }
+                        }
+                    }
+                }
+
+                // Content filter switches
+                div {
+                    div { class: "section-h",
+                        span { class: "lead-title", "内容风控策略" }
+                    }
+                    div { style: "display:flex; flex-direction:column; gap:12px",
+                        // Filter row: 敏感词过滤
+                        div { class: "row-card outlined", style: if !filter_sensitive() { "opacity:0.6" } else { "" },
+                            div { style: "display:flex; align-items:center; gap:12px",
+                                span { style: "width:8px; height:8px; border-radius:99px; background:if filter_sensitive() {{ \"var(--bc-success)\" }} else {{ \"var(--bc-border-hover)\" }}" }
+                                span { style: "font-size:13px; font-weight:500", "敏感词过滤" }
+                            }
+                            label { class: "switch",
+                                input { r#type: "checkbox", checked: filter_sensitive(), onchange: move |_| filter_sensitive.set(!filter_sensitive()) }
+                                span { class: "switch-track" }
+                            }
+                        }
+                        // Filter row: 政治敏感识别
+                        div { class: "row-card outlined", style: if !filter_political() { "opacity:0.6" } else { "" },
+                            div { style: "display:flex; align-items:center; gap:12px",
+                                span { style: "width:8px; height:8px; border-radius:99px; background:if filter_political() {{ \"var(--bc-success)\" }} else {{ \"var(--bc-border-hover)\" }}" }
+                                span { style: "font-size:13px; font-weight:500", "政治敏感识别" }
+                            }
+                            label { class: "switch",
+                                input { r#type: "checkbox", checked: filter_political(), onchange: move |_| filter_political.set(!filter_political()) }
+                                span { class: "switch-track" }
+                            }
+                        }
+                        // Filter row: PII 隐私保护
+                        div { class: "row-card outlined", style: if !filter_pii() { "opacity:0.6" } else { "" },
+                            div { style: "display:flex; align-items:center; gap:12px",
+                                span { style: "width:8px; height:8px; border-radius:99px; background:if filter_pii() {{ \"var(--bc-success)\" }} else {{ \"var(--bc-border-hover)\" }}" }
+                                span { style: "font-size:13px; font-weight:500", "PII 隐私保护" }
+                            }
+                            label { class: "switch",
+                                input { r#type: "checkbox", checked: filter_pii(), onchange: move |_| filter_pii.set(!filter_pii()) }
+                                span { class: "switch-track" }
+                            }
+                        }
+                        // Filter row: 越狱攻击防护
+                        div { class: "row-card outlined", style: if !filter_jailbreak() { "opacity:0.6" } else { "" },
+                            div { style: "display:flex; align-items:center; gap:12px",
+                                span { style: "width:8px; height:8px; border-radius:99px; background:if filter_jailbreak() {{ \"var(--bc-success)\" }} else {{ \"var(--bc-border-hover)\" }}" }
+                                span { style: "font-size:13px; font-weight:500", "越狱攻击防护" }
+                            }
+                            label { class: "switch",
+                                input { r#type: "checkbox", checked: filter_jailbreak(), onchange: move |_| filter_jailbreak.set(!filter_jailbreak()) }
+                                span { class: "switch-track" }
+                            }
+                        }
+                    }
+                    // Info tip
+                    div { style: "margin-top:16px; padding:16px; font-size:12px; line-height:1.6; background:var(--bc-info-light); color:var(--bc-info); border-radius:12px",
+                        "💡 提示：开启隐私保护可能会略微增加请求延迟 (约 +50ms)。"
                     }
                 }
             }

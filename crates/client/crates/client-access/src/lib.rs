@@ -19,6 +19,11 @@ fn mask_key(key: &str) -> String {
     }
 }
 
+fn format_quota(cents: i64) -> String {
+    let dollars = cents / 100;
+    format!("${dollars}")
+}
+
 #[component]
 pub fn AccessPage() -> Element {
     let mut show_create = use_signal(|| false);
@@ -81,7 +86,7 @@ pub fn AccessPage() -> Element {
                     description: Some("创建您的第一个 API Key 以开始集成 BurnCloud 服务。".to_string()),
                     cta: Some(rsx! {
                         BCButton {
-                            class: "btn-black",
+                            class: "btn-primary",
                             onclick: move |_| show_create.set(true),
                             "创建凭证"
                         }
@@ -93,7 +98,7 @@ pub fn AccessPage() -> Element {
                         {
                             let tk_id = tk.token.clone();
                             let tk_id_for_del = tk.token.clone();
-                            let tk_id_for_copy = tk.token.clone();
+                            let _tk_id_for_copy = tk.token.clone();
                             rsx! {
                                 div { key: "{tk_id}", class: "row-card", style: "padding:20px",
                                     div { style: "display:flex; align-items:flex-start; justify-content:space-between; gap:16px",
@@ -111,6 +116,9 @@ pub fn AccessPage() -> Element {
                                                 }
                                                 div { class: "mono", style: "display:flex; align-items:center; gap:16px; font-size:11px; color:var(--bc-text-tertiary); margin-top:4px",
                                                     span { style: "padding:2px 8px; border-radius:4px; background:var(--bc-bg-hover); color:var(--bc-text-secondary)", "{mask_key(&tk.token)}" }
+                                                    if tk.quota_limit > 0 {
+                                                        span { class: "pill neutral mono", style: "font-size:11px", "{format_quota(tk.quota_limit)}" }
+                                                    }
                                                 }
                                             }
                                         }
@@ -142,6 +150,8 @@ pub fn AccessPage() -> Element {
             onclose: move |_| show_create.set(false),
 
             div { class: "flex flex-col gap-lg p-lg",
+                div { style: "font-size:12px; color:var(--bc-text-secondary); margin-top:4px", "配置新的 API Key 以授权应用访问" }
+
                 SchemaForm {
                     schema: schema.clone(),
                     data: form_data,
@@ -156,12 +166,12 @@ pub fn AccessPage() -> Element {
 
                 div { class: "flex justify-end gap-md mt-md",
                     BCButton {
-                        variant: ButtonVariant::Secondary,
+                        variant: ButtonVariant::Ghost,
                         onclick: move |_| show_create.set(false),
                         "取消"
                     }
                     BCButton {
-                        variant: ButtonVariant::Primary,
+                        variant: ButtonVariant::Black,
                         onclick: move |_| {
                             let data = form_data.read().clone();
                             handle_create(data);
@@ -211,7 +221,8 @@ pub fn AccessPage() -> Element {
                 }
 
                 BCButton {
-                    class: "btn-black width-full mt-md",
+                    variant: ButtonVariant::Black,
+                    class: "width-full mt-md",
                     onclick: move |_| show_result.set(false),
                     "我已保存"
                 }
@@ -243,7 +254,7 @@ pub fn AccessPage() -> Element {
                 }
                 div { class: "flex justify-end gap-md p-md",
                     BCButton {
-                        variant: ButtonVariant::Secondary,
+                        variant: ButtonVariant::Ghost,
                         onclick: move |_| show_delete.set(false),
                         "取消"
                     }

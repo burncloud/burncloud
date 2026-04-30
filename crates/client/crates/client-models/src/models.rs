@@ -5,7 +5,7 @@ use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::validate_schema;
 use burncloud_client_shared::components::{
     BCButton, ButtonVariant, FormMode, SchemaForm,
-    PageHeader, StatKpi, StatusPill, Chip, ColumnDef, PageTable, EmptyState,
+    PageHeader, StatusPill, Chip, EmptyState,
     SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::schema::channel_schema;
@@ -199,6 +199,7 @@ fn provider_color(type_: i32) -> &'static str {
         14 => "#d97757",
         24 | 41 => "#4285f4",
         98 => "#0078d4",
+        97 => "#615ced",
         _ => "#86868B",
     }
 }
@@ -211,6 +212,7 @@ fn provider_name(type_: i32) -> &'static str {
         41 => "google",
         98 => "azure",
         99 => "aws",
+        97 => "qwen",
         _ => "other",
     }
 }
@@ -334,28 +336,20 @@ pub fn ChannelPage() -> Element {
         }
     }).collect();
 
-    let columns = vec![
-        ColumnDef { key: "name".to_string(), label: "CHANNEL".to_string(), width: None },
-        ColumnDef { key: "weight".to_string(), label: "WEIGHT".to_string(), width: Some("80px".to_string()) },
-        ColumnDef { key: "p50".to_string(), label: "P50".to_string(), width: Some("80px".to_string()) },
-        ColumnDef { key: "rpm".to_string(), label: "RPM".to_string(), width: Some("80px".to_string()) },
-        ColumnDef { key: "status".to_string(), label: "STATUS".to_string(), width: Some("120px".to_string()) },
-        ColumnDef { key: "action".to_string(), label: "".to_string(), width: Some("48px".to_string()) },
-    ];
-
     rsx! {
         PageHeader {
             title: "模型网络",
             subtitle: Some(format!("{} 个渠道 · 总权重 {}", ch_list.len(), total_weight)),
             actions: rsx! {
-                input {
-                    r#type: "text",
-                    placeholder: "搜索渠道...",
-                    class: "bc-input",
-                    style: "width:200px; font-size:13px; padding:6px 12px",
+                div { class: "input sm", style: "width:240px",
+                    input {
+                        r#type: "text",
+                        placeholder: "搜索渠道、模型或组织…",
+                    }
                 }
+                button { class: "btn btn-secondary", "筛选" }
                 BCButton {
-                    class: "btn-black",
+                    class: "btn-primary",
                     onclick: open_create_modal,
                     "创建渠道"
                 }
@@ -371,27 +365,30 @@ pub fn ChannelPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
-                    StatKpi {
-                        label: "活跃渠道".to_string(),
-                        value: format!("{active_count}"),
-                        delta: rsx! {
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "活跃渠道" }
+                        div { class: "stat-value",
+                            "{active_count}"
                             span { class: "stat-pill muted", "/ {ch_list.len()}" }
-                        },
+                        }
+                        span { class: "stat-foot", "2 个 org · 5 个 provider" }
                     }
-                    StatKpi {
-                        label: "总权重".to_string(),
-                        value: format!("{total_weight}"),
-                        delta: rsx! { span { class: "stat-foot", "round-robin 加权分发" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "总权重" }
+                        div { class: "stat-value", "{total_weight}" }
+                        span { class: "stat-foot", "round-robin 加权分发" }
                     }
-                    StatKpi {
-                        label: "合计 RPM".to_string(),
-                        value: "—".to_string(),
-                        delta: rsx! { span { class: "stat-foot up", "↑ 8.2% vs 1h ago" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "合计 RPM" }
+                        div { class: "stat-value", "—" }
+                        span { class: "stat-foot up", "↑ 8.2% vs 1h ago" }
                     }
-                    StatKpi {
-                        label: "健康率".to_string(),
-                        value: format!("{health_rate:.0}%"),
-                        delta: rsx! { span { class: "stat-foot", "{throttle_count} 个限流 · {down_count} 个停止" } },
+                    div { class: "stat-card",
+                        span { class: "stat-eyebrow", "健康率" }
+                        div { class: "stat-value", style: "color:var(--bc-success)",
+                            "{health_rate:.0}%"
+                        }
+                        span { class: "stat-foot", "{throttle_count} 个限流 · {down_count} 个停止" }
                     }
                 }
             }
@@ -459,29 +456,43 @@ pub fn ChannelPage() -> Element {
                         }),
                     }
                 } else {
-                    PageTable {
-                        columns: columns,
-                        for ch in &filtered {
+                    table { class: "table",
+                        thead {
                             tr {
-                                key: "{ch.id}",
-                                td {
-                                    div { style: "display:flex; align-items:center; gap:8px",
-                                        span { style: "width:8px; height:8px; border-radius:50%; background:{provider_color(ch.type_)}; flex-shrink:0" }
-                                        span { style: "font-weight:500", "{ch.name}" }
-                                        span { class: "mono", style: "font-size:11px; color:var(--bc-text-secondary)", "{provider_name(ch.type_)}" }
+                                th { "NAME" }
+                                th { "PROVIDER" }
+                                th { "MODEL" }
+                                th { "WEIGHT" }
+                                th { "P50" }
+                                th { "RPM" }
+                                th { "STATUS" }
+                                th {}
+                            }
+                        }
+                        tbody {
+                            for ch in &filtered {
+                                tr {
+                                    key: "{ch.id}",
+                                    td { style: "font-weight:500", "{ch.name}" }
+                                    td {
+                                        span { style: "display:inline-flex; align-items:center; gap:8px",
+                                            span { style: "width:6px; height:6px; border-radius:9999px; background:{provider_color(ch.type_)}" }
+                                            span { style: "font-size:13px; color:var(--bc-text-secondary)", "{provider_name(ch.type_)}" }
+                                        }
                                     }
-                                }
-                                td { class: "mono", style: "text-align:right; font-size:13px", "{ch.weight}" }
-                                td { class: "mono", style: "text-align:right; font-size:13px", "—" }
-                                td { class: "mono", style: "text-align:right; font-size:13px", "—" }
-                                td {
-                                    StatusPill {
-                                        value: channel_status(ch.status),
-                                        label: Some(channel_status_label(ch.status)),
+                                    td { class: "mono", style: "font-size:13px", "{ch.models}" }
+                                    td { class: "mono", "{ch.weight}" }
+                                    td { class: "mono", "—" }
+                                    td { class: "mono", "—" }
+                                    td {
+                                        StatusPill {
+                                            value: channel_status(ch.status),
+                                            label: Some(channel_status_label(ch.status)),
+                                        }
                                     }
-                                }
-                                td {
-                                    button { style: "background:none; border:none; cursor:pointer; color:var(--bc-text-secondary); font-size:16px", "⚙" }
+                                    td { style: "text-align:right",
+                                        button { style: "background:none; border:none; cursor:pointer; color:var(--bc-text-secondary); font-size:16px", "⚙" }
+                                    }
                                 }
                             }
                         }

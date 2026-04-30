@@ -1,6 +1,4 @@
-use burncloud_client_shared::components::{
-    BCButton, PageHeader,
-};
+use burncloud_client_shared::components::PageHeader;
 use burncloud_client_shared::services::channel_service::ChannelService;
 use dioxus::prelude::*;
 
@@ -40,7 +38,12 @@ fn role_color(role: &str) -> String {
 
 #[component]
 pub fn Playground() -> Element {
-    let mut messages = use_signal(Vec::<ChatMessage>::new);
+    let mut messages = use_signal(|| vec![
+        ChatMessage { role: "system".to_string(), content: "You are a helpful Rust systems engineer.".to_string() },
+        ChatMessage { role: "user".to_string(), content: "解释一下 Tokio 中 select! 宏的取消安全语义。".to_string() },
+        ChatMessage { role: "assistant".to_string(), content: "Tokio 的 `select!` 在多个 future 之间竞争，赢家被 await，其余被 drop —— 这就是\"取消\"。\n\n关键是：被 drop 的 future 必须能在任意 await 点被安全丢弃。这意味着它不能在 await 之间持有需要显式释放的资源（比如未提交的事务、半发送的字节）。Tokio 的 IO 原语（`AsyncRead/AsyncWrite`、`Mutex::lock`）都是取消安全的；自定义 future 需要自己保证。".to_string() },
+        ChatMessage { role: "user".to_string(), content: "给我一个反面例子。".to_string() },
+    ]);
     let mut input_text = use_signal(String::new);
     let mut selected_channel = use_signal(|| 0i64);
     let mut temperature = use_signal(|| 0.7f64);
@@ -150,7 +153,7 @@ pub fn Playground() -> Element {
 
                 div { class: "config-row",
                     label { class: "config-label", "Max tokens" }
-                    div { class: "bc-input sm", style: "width:100%",
+                    div { class: "input sm", style: "width:100%",
                         input {
                             r#type: "number",
                             value: "{max_tokens}",
@@ -213,7 +216,7 @@ pub fn Playground() -> Element {
 
                 // Input bar
                 div { style: "border-top:1px solid var(--bc-border); background:var(--bc-bg-card-solid); padding:16px; display:flex; gap:8px",
-                    div { class: "bc-input", style: "flex:1",
+                    div { class: "input", style: "flex:1",
                         input {
                             r#type: "text",
                             value: "{input_text}",
@@ -226,11 +229,11 @@ pub fn Playground() -> Element {
                             },
                         }
                     }
-                    BCButton {
-                        class: "btn-black",
+                    button {
+                        class: "btn btn-primary",
                         disabled: sending(),
                         onclick: move |_| send_trigger += 1,
-                        if sending() { "生成中..." } else { "发送" }
+                        if sending() { "生成中..." } else { "发送 ↗" }
                     }
                 }
             }
