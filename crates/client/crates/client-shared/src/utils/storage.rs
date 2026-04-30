@@ -29,7 +29,6 @@ impl Theme {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ClientState {
     pub last_username: Option<String>,
-    pub last_password: Option<String>, // TODO: Remove password storage in future
     pub auth_token: Option<String>,
     pub user_info: Option<String>, // JSON string of CurrentUser
     pub theme: Option<Theme>,
@@ -88,7 +87,12 @@ impl ClientState {
         {
             let path = Self::get_path();
             if let Ok(content) = serde_json::to_string_pretty(self) {
-                let _ = fs::write(path, content);
+                let _ = fs::write(&path, content);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+                }
             }
         }
     }

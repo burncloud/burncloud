@@ -26,6 +26,7 @@ pub struct GroupMemberDto {
 struct GroupOpResult {
     status: &'static str,
     id: String,
+    name: String,
 }
 
 #[derive(Serialize)]
@@ -78,6 +79,7 @@ async fn create_group(
         Ok(_) => Json(GroupOpResult {
             status: "created",
             id: group.id,
+            name: group.name,
         })
         .into_response(),
         Err(e) => group_err(e).into_response(),
@@ -93,10 +95,15 @@ async fn get_group(State(state): State<AppState>, Path(id): Path<String>) -> imp
 }
 
 async fn delete_group(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    let name = match GroupService::get(&state.db, &id).await {
+        Ok(Some(g)) => g.name,
+        _ => String::new(),
+    };
     match GroupService::delete(&state.db, &id).await {
         Ok(_) => Json(GroupOpResult {
             status: "deleted",
             id,
+            name,
         })
         .into_response(),
         Err(e) => group_err(e).into_response(),
