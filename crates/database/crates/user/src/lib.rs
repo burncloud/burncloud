@@ -203,9 +203,9 @@ impl UserDatabase {
     ) -> Result<Option<UserAccount>> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
-            "SELECT * FROM user_accounts WHERE username = $1"
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts WHERE username = $1"
         } else {
-            "SELECT * FROM user_accounts WHERE username = ?"
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts WHERE username = ?"
         };
         let user = sqlx::query_as::<_, UserAccount>(sql)
             .bind(username)
@@ -265,7 +265,9 @@ impl UserDatabase {
 
     pub async fn list_users(db: &Database) -> Result<Vec<UserAccount>> {
         let conn = db.get_connection()?;
-        let users = sqlx::query_as::<_, UserAccount>("SELECT * FROM user_accounts")
+        let users = sqlx::query_as::<_, UserAccount>(
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts"
+        )
             .fetch_all(conn.pool())
             .await?;
         Ok(users)

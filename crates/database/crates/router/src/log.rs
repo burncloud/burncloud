@@ -564,6 +564,147 @@ pub async fn get_billing_summary(
     })
 }
 
+/// Get per-user billing summary grouped by model.
+/// Mirrors `get_billing_summary` but filters by `user_id`.
+pub async fn get_billing_summary_for_user(
+    db: &Database,
+    user_id: &str,
+    start: Option<&str>,
+    end: Option<&str>,
+) -> Result<BillingSummary> {
+    let conn = db.get_connection()?;
+    let is_postgres = db.kind() == "postgres";
+
+    // Build date filter clause (same pattern as get_billing_summary)
+    let (date_filter, date_cast_start, date_cast_end) = match (start, end) {
+        (Some(_), Some(_)) if is_postgres => (
+            format!(
+                "AND created_at::date >= {}::date AND created_at::date <= {}::date",
+                ph(is_postgres, 2),
+                ph(is_postgres, 3)
+            ),
+            true,
+            true,
+        ),
+        (Some(_), None) if is_postgres => (
+            format!("AND created_at::date >= {}::date", ph(is_postgres, 2)),
+            true,
+            false,
+        ),
+        (None, Some(_)) if is_postgres => (
+            format!("AND created_at::date <= {}::date", ph(is_postgres, 2)),
+            false,
+            true,
+        ),
+        (Some(_), Some(_)) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) >= {} AND strftime('%Y-%m-%d', created_at) <= {}",
+                ph(is_postgres, 2),
+                ph(is_postgres, 3)
+            ),
+            true,
+            true,
+        ),
+        (Some(_), None) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) >= {}",
+                ph(is_postgres, 2)
+            ),
+            true,
+            false,
+        ),
+        (None, Some(_)) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) <= {}",
+                ph(is_postgres, 2)
+            ),
+            false,
+            true,
+        ),
+        (None, None) => (String::new(), false, false),
+    };
+
+    // Count pre-migration (NULL model) rows for this user
+    let null_model_sql = format!(
+        "SELECT COUNT(*) FROM router_logs WHERE model IS NULL AND user_id = {} {}",
+        ph(is_postgres, 1),
+        date_filter
+    );
+    let mut null_query = sqlx::query_scalar::<_, i64>(&null_model_sql)
+        .bind(user_id);
+    if date_cast_start {
+        null_query = null_query.bind(start.unwrap_or(""));
+    }
+    if date_cast_end {
+        null_query = null_query.bind(end.unwrap_or(""));
+    }
+    let pre_migration_requests = null_query.fetch_one(conn.pool()).await?;
+
+    // Per-model aggregation for this user
+    let model_sql = format!(
+        r#"
+        SELECT
+            model,
+            COUNT(*) as requests,
+            COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
+            COALESCE(SUM(cost), 0) as cost_nano
+        FROM router_logs
+        WHERE model IS NOT NULL AND user_id = {} {}
+        GROUP BY model
+        ORDER BY cost_nano DESC
+        "#,
+        ph(is_postgres, 1),
+        date_filter
+    );
+    let mut model_query = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(&model_sql)
+        .bind(user_id);
+    if date_cast_start {
+        model_query = model_query.bind(start.unwrap_or(""));
+    }
+    if date_cast_end {
+        model_query = model_query.bind(end.unwrap_or(""));
+    }
+    let rows = model_query.fetch_all(conn.pool()).await?;
+
+    let mut total_cost_nano: i64 = 0;
+    let models: Vec<BillingModelSummary> = rows
+        .into_iter()
+        .map(
+            |(
+                model,
+                requests,
+                prompt_tokens,
+                cache_read_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                cost_nano,
+            )| {
+                total_cost_nano = total_cost_nano.saturating_add(cost_nano);
+                BillingModelSummary {
+                    model,
+                    requests,
+                    prompt_tokens,
+                    cache_read_tokens,
+                    completion_tokens,
+                    reasoning_tokens,
+                    cost_usd: cost_nano as f64 / 1_000_000_000.0,
+                }
+            },
+        )
+        .collect();
+
+    Ok(BillingSummary {
+        period_start: start.map(|s| s.to_string()),
+        period_end: end.map(|s| s.to_string()),
+        pre_migration_requests,
+        total_cost_usd: total_cost_nano as f64 / 1_000_000_000.0,
+        models,
+    })
+}
+
 /// Balance operations for dual-currency deduction
 pub struct BalanceModel;
 

@@ -13,6 +13,7 @@ pub use auth_context::{use_auth, use_init_auth, AuthContext, CurrentUser};
 pub use components::toast::{use_init_toast, use_toast, ToastContainer, ToastManager};
 pub use components::*;
 pub use services::auth_service;
+pub use services::billing_service;
 pub use services::channel_service;
 pub use services::log_service;
 pub use services::monitor_service;

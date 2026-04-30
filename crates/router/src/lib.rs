@@ -1897,6 +1897,11 @@ async fn proxy_logic(
                         state.circuit_breaker.record_success(&upstream.id);
 
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        // Affinity: record successful routing so subsequent requests
+                        // from this session stick to the same channel.
+                        if let Some(model) = model_name {
+                            state.affinity_cache.insert(&session_id, model, channel_id);
+                        }
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
                         // Parse rate limit info from response headers for adaptive limiter
                         let rate_limit_info =
@@ -2234,6 +2239,11 @@ async fn proxy_logic(
 
                     // Record success in channel state tracker with learned upstream limit
                     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    // Affinity: record successful routing so subsequent requests
+                    // from this session stick to the same channel.
+                    if let Some(model) = model_name {
+                        state.affinity_cache.insert(&session_id, model, channel_id);
+                    }
                     let latency_ms = request_start_time.elapsed().as_millis() as u64;
                     state.channel_state_tracker.record_success(
                         channel_id,

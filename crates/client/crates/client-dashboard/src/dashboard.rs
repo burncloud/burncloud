@@ -1,3 +1,4 @@
+use burncloud_client_shared::billing_service::BillingService;
 use burncloud_client_shared::components::{
     PageHeader, StatKpi, Sparkline, StatusPill, EmptyState,
     SkeletonCard, SkeletonVariant, ErrorBanner,
@@ -6,6 +7,7 @@ use burncloud_client_shared::services::channel_service::{Channel, ChannelService
 use burncloud_client_shared::services::log_service::LogService;
 use burncloud_client_shared::services::monitor_service::MonitorService;
 use burncloud_client_shared::services::usage_service::UsageService;
+use burncloud_client_shared::use_auth;
 use dioxus::prelude::*;
 
 fn channel_status(ch: &Channel) -> String {
@@ -52,6 +54,10 @@ fn format_thousands(n: i64) -> String {
 
 #[component]
 pub fn Dashboard() -> Element {
+    let auth = use_auth();
+    let user_id = auth.get_user().map(|u| u.id).unwrap_or_default();
+    let token = auth.get_token().unwrap_or_default();
+
     let metrics = use_resource(move || async move {
         MonitorService::get_system_metrics().await
     });
@@ -60,8 +66,26 @@ pub fn Dashboard() -> Element {
         ChannelService::list(0, 50).await
     });
 
-    let usage = use_resource(move || async move {
-        UsageService::get_user_usage("demo-user").await
+    let usage = use_resource(move || {
+        let uid = user_id.clone();
+        async move {
+            if uid.is_empty() {
+                Err("Not authenticated".to_string())
+            } else {
+                UsageService::get_user_usage(&uid).await
+            }
+        }
+    });
+
+    let billing = use_resource(move || {
+        let t = token.clone();
+        async move {
+            if t.is_empty() {
+                Err("Not authenticated".to_string())
+            } else {
+                BillingService::get_billing_summary(&t).await
+            }
+        }
     });
 
     let recent_logs = use_resource(move || async move {
@@ -71,6 +95,7 @@ pub fn Dashboard() -> Element {
     let m = metrics.read().clone();
     let ch_res = channels.read().clone();
     let u = usage.read().clone();
+    let b = billing.read().clone();
 
     let loading = m.is_none() && ch_res.is_none();
     let metrics_error = m.as_ref()
@@ -82,6 +107,20 @@ pub fn Dashboard() -> Element {
         Some(Ok(data)) => data.total_tokens,
         _ => 0,
     };
+
+    let billing_summary = match &b {
+        Some(Ok(data)) => Some(data.clone()),
+        _ => None,
+    };
+
+    let total_requests: i64 = billing_summary
+        .as_ref()
+        .map(|s| s.models.iter().map(|m| m.requests).sum())
+        .unwrap_or(0);
+    let total_cost_usd = billing_summary
+        .as_ref()
+        .map(|s| s.total_cost_usd)
+        .unwrap_or(0.0);
 
     let active_channels = ch_list.iter().filter(|c| c.status == 1).count();
     let total_weight: i32 = ch_list.iter().map(|c| c.weight).sum();
@@ -128,15 +167,15 @@ pub fn Dashboard() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
                     StatKpi {
-                        label: "REQUESTS · 24H".to_string(),
-                        value: "1,284,902".to_string(),
-                        delta: rsx! { span { class: "stat-foot up", "▲ 12.4% vs yesterday" } },
+                        label: "REQUESTS · ALL".to_string(),
+                        value: format_thousands(total_requests),
+                        delta: rsx! { span { class: "stat-foot", "$ {total_cost_usd:.4} total" } },
                         chart: rsx! { Sparkline { data: spark_req.clone(), tone: None, sm: Some(true) } }
                     }
                     StatKpi {
-                        label: "TOKENS · 24H".to_string(),
+                        label: "TOKENS · ALL".to_string(),
                         value: format_compact(total_tokens),
-                        delta: rsx! { span { class: "stat-foot up", "▲ 8.1% vs yesterday" } },
+                        delta: rsx! { span { class: "stat-foot", "{billing_summary.as_ref().map(|s| s.models.len()).unwrap_or(0)} models" } },
                         chart: rsx! { Sparkline { data: spark_tok.clone(), tone: None, sm: Some(true) } }
                     }
                     StatKpi {

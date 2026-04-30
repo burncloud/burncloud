@@ -209,10 +209,25 @@ impl UserService {
 
         UserDatabase::create_user(db, &user).await?;
 
-        // Assign default role - log warning if it fails but don't fail registration
-        if let Err(e) = UserDatabase::assign_role(db, &user.id, "user").await {
+        // First-user-is-admin: if no users existed before this one, assign
+        // "admin" instead of the default "user" role (audit decision D3).
+        let list_result = UserDatabase::list_users(db).await;
+        let is_first_user = list_result
+            .as_ref()
+            .map(|users| {
+                tracing::info!("First-user-is-admin check: {} users in DB", users.len());
+                users.len() == 1
+            })
+            .unwrap_or_else(|e| {
+                tracing::warn!("First-user-is-admin check failed: {}", e);
+                false
+            });
+        let default_role = if is_first_user { "admin" } else { "user" };
+
+        if let Err(e) = UserDatabase::assign_role(db, &user.id, default_role).await {
             tracing::warn!(
-                "Warning: Failed to assign default role to user {}: {}",
+                "Warning: Failed to assign {} role to user {}: {}",
+                default_role,
                 user.id,
                 e
             );
