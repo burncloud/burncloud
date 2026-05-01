@@ -171,6 +171,30 @@ impl UserDatabase {
                 .await;
         }
 
+        // Migration: assign roles to users that were created before the role system
+        // existed (they have no entries in user_role_bindings).
+        {
+            let orphan_sql = if db.kind() == "postgres" {
+                "SELECT u.id FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.id"
+            } else {
+                "SELECT u.id FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
+            };
+            let orphan_rows = sqlx::query(orphan_sql)
+                .fetch_all(conn.pool())
+                .await?;
+
+            if !orphan_rows.is_empty() {
+                tracing::info!("UserDatabase: assigning roles to {} orphan user(s)", orphan_rows.len());
+                for (i, row) in orphan_rows.iter().enumerate() {
+                    let user_id: String = row.get(0);
+                    let role = if i == 0 { "admin" } else { "user" };
+                    if let Err(e) = Self::assign_role(db, &user_id, role).await {
+                        tracing::warn!("Failed to assign {} role to orphan user {}: {}", role, user_id, e);
+                    }
+                }
+            }
+        }
+
         tracing::info!("UserDatabase: init complete.");
         Ok(())
     }
@@ -275,9 +299,12 @@ impl UserDatabase {
 
     /// Count real users (excludes seed/demo accounts). Used by
     /// first-user-is-admin check to avoid counting the demo-user seed.
+    /// Filters by username (not id) because the demo-user seed row has
+    /// a generated `usr_` prefixed id, not the literal 'demo-user'.
     pub async fn count_users(db: &Database) -> Result<i64> {
         let conn = db.get_connection()?;
-        let count: i64 = sqlx::query("SELECT COUNT(*) FROM user_accounts WHERE id != 'demo-user'")
+        let sql = "SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'";
+        let count: i64 = sqlx::query(sql)
             .fetch_one(conn.pool())
             .await?
             .get(0);
