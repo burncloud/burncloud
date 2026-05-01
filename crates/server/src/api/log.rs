@@ -1,10 +1,7 @@
-use crate::api::auth::Claims;
-use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    middleware,
     response::{IntoResponse, Json, Response},
     routing::get,
     Router,
@@ -45,10 +42,6 @@ struct ApiError {
 }
 
 pub fn routes() -> Router<AppState> {
-    let public_billing = Router::new()
-        .route("/api/billing/summary", get(public_billing_summary_handler))
-        .layer(middleware::from_fn(crate::auth_middleware));
-
     Router::new()
         .route("/console/api/logs", get(list_logs))
         .route("/console/api/usage/{user_id}", get(get_user_usage))
@@ -56,7 +49,6 @@ pub fn routes() -> Router<AppState> {
             "/console/internal/billing/summary",
             get(billing_summary_handler),
         )
-        .merge(public_billing)
 }
 
 async fn list_logs(
@@ -113,24 +105,6 @@ async fn billing_summary_handler(
         std::env::var("BURNCLOUD_INTERNAL_SECRET").ok().as_deref(),
     )
     .await
-}
-
-async fn public_billing_summary_handler(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
-    Query(params): Query<BillingSummaryParams>,
-) -> Response {
-    match BillingService::get_billing_summary_for_user(
-        &state.db,
-        &claims.sub,
-        params.start.as_deref(),
-        params.end.as_deref(),
-    )
-    .await
-    {
-        Ok(summary) => ok(summary).into_response(),
-        Err(e) => err(e.to_string()).into_response(),
-    }
 }
 
 async fn billing_summary_inner(

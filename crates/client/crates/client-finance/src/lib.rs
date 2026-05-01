@@ -1,29 +1,56 @@
 use burncloud_client_shared::billing_service::BillingService;
 use burncloud_client_shared::components::{
-    BCButton, PageHeader,
-    SkeletonCard, SkeletonVariant,
+    EmptyState, ErrorBanner, PageHeader, SkeletonCard, SkeletonVariant, StatKpi,
 };
 use burncloud_client_shared::services::usage_service::UsageService;
 use burncloud_client_shared::use_auth;
 use dioxus::prelude::*;
 
-fn format_usd(nanodollars: i64) -> String {
-    let usd = nanodollars as f64 / 1_000_000_000.0;
-    format!("$ {usd:.4}")
+fn format_usd(usd: f64) -> String {
+    if usd >= 1.0 {
+        format!("$ {usd:.2}")
+    } else if usd >= 0.01 {
+        format!("$ {usd:.4}")
+    } else if usd > 0.0 {
+        format!("$ {usd:.6}")
+    } else {
+        "$ 0.00".to_string()
+    }
 }
 
-fn format_usd_f(usd: f64) -> String {
-    format!("$ {usd:.4}")
+fn format_thousands(n: i64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
+fn format_compact(n: i64) -> String {
+    if n >= 1_000_000_000 {
+        format!("{:.1}B", n as f64 / 1e9)
+    } else if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1e6)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1e3)
+    } else {
+        n.to_string()
+    }
 }
 
 #[component]
-pub fn FinancePage() -> Element {
+pub fn Finance() -> Element {
     let auth = use_auth();
-    let user_id = auth.get_user().map(|u| u.id).unwrap_or_default();
     let token = auth.get_token().unwrap_or_default();
+    let token_for_billing = token.clone();
+    let token_for_recharges = token.clone();
 
     let billing = use_resource(move || {
-        let t = token.clone();
+        let t = token_for_billing.clone();
         async move {
             if t.is_empty() {
                 Err("Not authenticated".to_string())
@@ -34,12 +61,12 @@ pub fn FinancePage() -> Element {
     });
 
     let recharges = use_resource(move || {
-        let uid = user_id.clone();
+        let t = token_for_recharges.clone();
         async move {
-            if uid.is_empty() {
+            if t.is_empty() {
                 Err("Not authenticated".to_string())
             } else {
-                UsageService::list_recharges(&uid).await
+                UsageService::list_recharges(&t).await
             }
         }
     });
@@ -47,112 +74,173 @@ pub fn FinancePage() -> Element {
     let b = billing.read().clone();
     let r = recharges.read().clone();
 
-    let loading = b.is_none() && r.is_none();
+    let billing_loading = b.is_none();
+    let billing_error = b.as_ref().and_then(|res| res.as_ref().err().cloned());
+    let billing_summary = b.and_then(|res| res.ok());
 
-    let billing_summary = match &b {
-        Some(Ok(data)) => Some(data.clone()),
-        _ => None,
-    };
+    let recharges_error = r.as_ref().and_then(|res| res.as_ref().err().cloned());
+    let recharge_list = r.and_then(|res| res.ok()).unwrap_or_default();
 
-    let recharge_list = match &r {
-        Some(Ok(data)) => data.clone(),
-        _ => vec![],
-    };
-
-    let total_cost_usd = billing_summary
+    // Billing-derived KPIs
+    let total_cost = billing_summary
         .as_ref()
         .map(|s| s.total_cost_usd)
         .unwrap_or(0.0);
-
+    let total_requests: i64 = billing_summary
+        .as_ref()
+        .map(|s| s.models.iter().map(|m| m.requests).sum::<i64>() + s.pre_migration_requests)
+        .unwrap_or(0);
+    let total_prompt: i64 = billing_summary
+        .as_ref()
+        .map(|s| s.models.iter().map(|m| m.prompt_tokens).sum())
+        .unwrap_or(0);
+    let total_completion: i64 = billing_summary
+        .as_ref()
+        .map(|s| s.models.iter().map(|m| m.completion_tokens).sum())
+        .unwrap_or(0);
+    let total_tokens = total_prompt + total_completion;
     let model_count = billing_summary
         .as_ref()
         .map(|s| s.models.len())
         .unwrap_or(0);
 
+    let cost_str = format_usd(total_cost);
+    let req_str = format_thousands(total_requests);
+    let token_str = format_compact(total_tokens);
+
     rsx! {
         PageHeader {
-            title: "财务中心",
-            subtitle: Some("管理您的账户余额、充值记录与收支统计".to_string()),
-            actions: rsx! {
-                BCButton {
-                    class: "btn-primary",
-                    onclick: move |_| {},
-                    "充值余额"
-                }
-            },
+            title: "财务",
+            subtitle: Some("账单与充值记录".to_string()),
         }
 
         div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
-            // Billing KPIs
-            div { class: "stats-grid",
-                if loading {
+            // Error banners
+            if let Some(ref err) = billing_error {
+                ErrorBanner {
+                    message: format!("账单数据加载失败: {err}"),
+                    on_retry: None,
+                }
+            }
+            if let Some(ref err) = recharges_error {
+                ErrorBanner {
+                    message: format!("充值记录加载失败: {err}"),
+                    on_retry: None,
+                }
+            }
+
+            // 3 KPI cards — real billing data
+            div { class: "stats-grid cols-3",
+                if billing_loading {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
-                } else {
-                    div { class: "stat-card", style: "gap:8px",
-                        span { class: "stat-eyebrow", "累计支出" }
-                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums",
-                            "{format_usd_f(total_cost_usd)} "
-                            span { class: "stat-pill", "{model_count} models" }
-                        }
+                } else if billing_summary.is_none() && billing_error.is_none() {
+                    EmptyState {
+                        icon: rsx! { span { style: "font-size:32px", "💰" } },
+                        title: "暂无账单数据".to_string(),
+                        description: Some("使用网关后账单将在此显示".to_string()),
+                        cta: None,
                     }
-                    div { class: "stat-card", style: "gap:8px",
-                        span { class: "stat-eyebrow", "模型明细" }
-                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums",
-                            if let Some(summary) = &billing_summary {
+                } else {
+                    StatKpi {
+                        label: "TOTAL COST".to_string(),
+                        value: cost_str,
+                        delta: rsx! { span { class: "stat-foot", "{req_str} requests" } },
+                        chart: None,
+                    }
+                    StatKpi {
+                        label: "TOKEN USAGE".to_string(),
+                        value: token_str,
+                        delta: rsx! { span { class: "stat-foot", "{model_count} models" } },
+                        chart: None,
+                    }
+                    StatKpi {
+                        label: "AVG COST / REQ".to_string(),
+                        value: if total_requests > 0 {
+                            format_usd(total_cost / total_requests as f64)
+                        } else {
+                            "$ —".to_string()
+                        },
+                        delta: rsx! { span { class: "stat-foot", "prompt {format_compact(total_prompt)} · completion {format_compact(total_completion)}" } },
+                        chart: None,
+                    }
+                }
+            }
+
+            // Model cost breakdown table
+            if let Some(summary) = &billing_summary {
+                if !summary.models.is_empty() {
+                    div {
+                        div { class: "section-h",
+                            span { class: "lead-title", "模型费用明细" }
+                            span { class: "section-sub", "{summary.models.len()} models" }
+                        }
+                        table { class: "table",
+                            thead {
+                                tr {
+                                    th { "MODEL" }
+                                    th { style: "text-align:right", "REQUESTS" }
+                                    th { style: "text-align:right", "PROMPT" }
+                                    th { style: "text-align:right", "COMPLETION" }
+                                    th { style: "text-align:right", "COST" }
+                                }
+                            }
+                            tbody {
                                 for m in &summary.models {
-                                    div { key: "{m.model}", style: "font-size:13px; margin:2px 0",
-                                        "{m.model}: {format_usd_f(m.cost_usd)} ({m.requests} req)"
+                                    tr {
+                                        key: "{m.model}",
+                                        td { style: "font-weight:500", "{m.model}" }
+                                        td { class: "mono", style: "text-align:right", "{format_thousands(m.requests)}" }
+                                        td { class: "mono", style: "text-align:right", "{format_compact(m.prompt_tokens)}" }
+                                        td { class: "mono", style: "text-align:right", "{format_compact(m.completion_tokens)}" }
+                                        td { class: "mono", style: "text-align:right; font-weight:600", "{format_usd(m.cost_usd)}" }
                                     }
                                 }
                             }
                         }
                     }
-                    div { class: "stat-card", style: "gap:8px",
-                        span { class: "stat-eyebrow", "充值记录" }
-                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums; color:var(--bc-text-secondary)",
-                            "{recharge_list.len()} records"
-                        }
-                    }
                 }
             }
 
-            // Recharge records
+            // Recharge history
             div {
                 div { class: "section-h",
                     span { class: "lead-title", "充值记录" }
+                    span { class: "section-sub", "{recharge_list.len()} records" }
                 }
 
-                if loading {
-                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
-                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
-                    SkeletonCard { variant: Some(SkeletonVariant::Row) }
-                } else if recharge_list.is_empty() {
-                    div { class: "empty-state", style: "padding:32px; text-align:center; color:var(--bc-text-secondary)",
-                        "暂无充值记录"
+                if recharge_list.is_empty() {
+                    EmptyState {
+                        icon: rsx! { span { style: "font-size:32px", "💳" } },
+                        title: "暂无充值记录".to_string(),
+                        description: Some("充值后记录将在此显示".to_string()),
+                        cta: None,
                     }
                 } else {
                     table { class: "table",
                         thead {
                             tr {
-                                th { style: "width:100px", "ID" }
-                                th { style: "width:160px", "时间" }
-                                th { "说明" }
-                                th { style: "width:140px; text-align:right", "金额" }
+                                th { "ID" }
+                                th { "AMOUNT" }
+                                th { "DESCRIPTION" }
+                                th { "DATE" }
                             }
                         }
                         tbody {
-                            for rec in &recharge_list {
+                            for r in &recharge_list {
                                 tr {
-                                    key: "{rec.id}",
-                                    td { class: "mono", style: "font-size:13px", "#{rec.id}" }
-                                    td { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)",
-                                        "{rec.created_at.as_deref().unwrap_or(\"—\")}"
+                                    key: "{r.id}",
+                                    td { class: "mono", "#{r.id}" }
+                                    td { class: "mono", style: "font-weight:600",
+                                        // Amount is in nanodollars (9 decimal precision)
+                                        "{format_usd(r.amount as f64 / 1e9)}"
                                     }
-                                    td { style: "font-size:13px", "{rec.description.as_deref().unwrap_or(\"充值\")}" }
-                                    td { class: "mono", style: "text-align:right; font-weight:600; font-variant-numeric:tabular-nums",
-                                        "{format_usd(rec.amount)}"
+                                    td { style: "color:var(--bc-text-secondary)",
+                                        {r.description.as_deref().unwrap_or("—")}
+                                    }
+                                    td { class: "mono", style: "color:var(--bc-text-secondary)",
+                                        {r.created_at.as_deref().unwrap_or("—")}
                                     }
                                 }
                             }

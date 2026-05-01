@@ -211,17 +211,18 @@ impl UserService {
 
         // First-user-is-admin: if no users existed before this one, assign
         // "admin" instead of the default "user" role (audit decision D3).
-        let list_result = UserDatabase::list_users(db).await;
-        let is_first_user = list_result
-            .as_ref()
-            .map(|users| {
-                tracing::info!("First-user-is-admin check: {} users in DB", users.len());
-                users.len() == 1
-            })
-            .unwrap_or_else(|e| {
+        // Uses count_users (SELECT COUNT) instead of list_users to avoid
+        // loading all user rows just for the count.
+        let is_first_user = match UserDatabase::count_users(db).await {
+            Ok(count) => {
+                tracing::info!("First-user-is-admin check: {count} users in DB");
+                count == 1
+            }
+            Err(e) => {
                 tracing::warn!("First-user-is-admin check failed: {}", e);
                 false
-            });
+            }
+        };
         let default_role = if is_first_user { "admin" } else { "user" };
 
         if let Err(e) = UserDatabase::assign_role(db, &user.id, default_role).await {

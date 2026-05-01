@@ -9,6 +9,8 @@ edition = "2021"
 burncloud-common.workspace = true
 burncloud-database.workspace = true
 burncloud-database-billing.workspace = true
+burncloud-database-router.workspace = true
+burncloud-service-router-log.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }

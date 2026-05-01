@@ -206,13 +206,10 @@ pub fn AccessPage() -> Element {
                         onclick: move |_| {
                             let key = new_full_key();
                             spawn(async move {
-                                match arboard::Clipboard::new() {
-                                    Ok(mut cb) => {
-                                        if cb.set_text(&key).is_ok() {
-                                            toast.success("已复制到剪贴板");
-                                        }
+                                if let Ok(mut cb) = arboard::Clipboard::new() {
+                                    if cb.set_text(&key).is_ok() {
+                                        toast.success("已复制到剪贴板");
                                     }
-                                    _ => {}
                                 }
                             });
                         },

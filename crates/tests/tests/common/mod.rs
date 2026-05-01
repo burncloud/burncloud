@@ -135,6 +135,7 @@ pub fn get_openai_config() -> Option<(String, String)> {
 // Removed deprecated functions: get_base_url (sync), get_db_pool, seed_demo_data
 
 /// Insert a price entry for a mock model so the router's preflight check passes.
+#[allow(dead_code)]
 pub async fn insert_mock_price(model: &str) {
     let db_url = std::env::var("BURNCLOUD_DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:///tmp/test_burncloud.db?mode=rwc".to_string());

@@ -145,6 +145,72 @@ response = client.chat.completions.create(
 
 If built with the `liveview` feature, the web dashboard is available at `http://localhost:3000/`.
 
+## Docker Deployment
+
+### Quick Start with Docker Compose
+
+The project includes a `docker-compose.yml` that sets up BurnCloud with PostgreSQL.
+
+```bash
+# 1. Set JWT_SECRET (required)
+echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
+
+# 2. Build and start
+docker compose up -d
+
+# 3. Verify
+curl http://localhost:8080/health
+```
+
+### Docker Compose Configuration
+
+The `docker-compose.yml` defines two services:
+
+| Service | Image | Port | Notes |
+|---------|-------|------|-------|
+| `burncloud` | Built from `Dockerfile` | 8080 | Multi-stage Rust build, health check on `/health` |
+| `postgres` | `postgres:16-alpine` | 5432 (internal) | Data persisted in `pgdata` volume |
+
+Key environment variables in the compose file:
+
+- `HOST=0.0.0.0` — Required in containers to accept external connections
+- `PORT=8080` — Service port (mapped to host port 8080)
+- `JWT_SECRET` — **Must be set** in `.env` file before starting
+- `BURNCLOUD_DATABASE_URL` — PostgreSQL connection string pointing to the `postgres` service
+
+### Standalone Docker
+
+To run BurnCloud alone with the default SQLite database:
+
+```bash
+docker build -t burncloud .
+
+docker run -d \
+  -p 8080:8080 \
+  -e HOST=0.0.0.0 \
+  -e PORT=8080 \
+  -e JWT_SECRET=$(openssl rand -hex 32) \
+  --name burncloud \
+  burncloud
+```
+
+### Customizing the Deployment
+
+To use a different PostgreSQL password or port, modify `docker-compose.yml` or override via environment:
+
+```bash
+# Override PostgreSQL credentials
+POSTGRES_PASSWORD=mysecurepass docker compose up -d
+```
+
+To change the BurnCloud port mapping:
+
+```yaml
+# In docker-compose.yml, change the ports line:
+ports:
+  - "3000:8080"   # Map host port 3000 to container port 8080
+```
+
 ## Next Steps
 
 - Add multiple channels for failover and load balancing

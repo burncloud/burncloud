@@ -273,6 +273,17 @@ impl UserDatabase {
         Ok(users)
     }
 
+    /// Count real users (excludes seed/demo accounts). Used by
+    /// first-user-is-admin check to avoid counting the demo-user seed.
+    pub async fn count_users(db: &Database) -> Result<i64> {
+        let conn = db.get_connection()?;
+        let count: i64 = sqlx::query("SELECT COUNT(*) FROM user_accounts WHERE id != 'demo-user'")
+            .fetch_one(conn.pool())
+            .await?
+            .get(0);
+        Ok(count)
+    }
+
     /// Update USD balance by delta (in nanodollars)
     pub async fn update_balance_usd(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;

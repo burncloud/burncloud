@@ -113,12 +113,27 @@ struct ProxyResult {
     sched_request_color: TrafficColor,
 }
 
+#[derive(serde::Deserialize)]
+struct JwtClaims {
+    sub: String,
+    #[allow(dead_code)]
+    exp: usize,
+    #[allow(dead_code)]
+    iat: usize,
+}
+
 /// Build a JSON error response body: `{"error": "<message>"}`.
 fn json_error_body(message: impl std::fmt::Display) -> Body {
     Body::from(serde_json::json!({"error": message.to_string()}).to_string())
 }
 
 /// Record a channel error in both circuit breaker and channel state tracker.
+///
+/// Affinity eviction policy (P0-1): ServerError, Timeout, and ConnectionError
+/// evict the affinity entry immediately so the next request re-picks via HRW
+/// instead of pinning to a sick channel. AuthFailed, PaymentRequired,
+/// RateLimited, and ModelNotFound do NOT evict — they are not upstream
+/// health problems and the affined channel may still be the best choice.
 fn record_upstream_failure(
     state: &AppState,
     upstream: &Upstream,
@@ -134,17 +149,39 @@ fn record_upstream_failure(
     state
         .channel_state_tracker
         .record_error(channel_id, model_name, &failure_type, error_msg);
-    // Evict affinity entry when CB trips (audit decision D8 — only on CB
-    // trip, not on every failure, to avoid affinity storms).
-    if !state.circuit_breaker.allow_request(&upstream.id) {
+    // Immediate evict on upstream health failures (P0-1). These indicate the
+    // channel is unhealthy right now; waiting for CB trip (5 failures) would
+    // pin the user to a sick channel for too long.
+    let should_evict = matches!(
+        &failure_type,
+        FailureType::ServerError | FailureType::Timeout | FailureType::ConnectionError
+    );
+    if should_evict {
         if let Some(model) = model_name {
             state.affinity_cache.evict(session_id, model);
             tracing::debug!(
                 session_id, model, channel_id,
-                "Affinity evicted — CB tripped for upstream {}",
-                upstream.name
+                "Affinity evicted — upstream failure {:?} for {}",
+                failure_type, upstream.name
             );
         }
+    }
+}
+
+/// Record a successful upstream response in circuit breaker and affinity cache.
+///
+/// Extracted from the two success paths (passthrough + converted) to avoid
+/// duplicating the `record_success` + `affinity_cache.insert` pattern (P0-1).
+fn record_upstream_success(
+    state: &AppState,
+    upstream: &Upstream,
+    model_name: Option<&str>,
+    session_id: &str,
+) {
+    state.circuit_breaker.record_success(&upstream.id);
+    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+    if let Some(model) = model_name {
+        state.affinity_cache.insert(session_id, model, channel_id);
     }
 }
 
@@ -684,10 +721,23 @@ async fn extract_token_user(
             // Fall back to legacy token table
             match RouterDatabase::validate_token_detailed(&state.db, &token).await {
                 Ok(RouterTokenValidationResult::Valid(t)) => Ok(t.user_id),
-                _ => Err(build_response(
-                    StatusCode::UNAUTHORIZED,
-                    Body::from(r#"{"error":"Invalid token"}"#),
-                )),
+                _ => {
+                    // Fall back to JWT: decode and extract sub (user_id)
+                    let secret = std::env::var("JWT_SECRET")
+                        .unwrap_or_else(|_| "burncloud-default-secret-change-in-production".to_string());
+                    let decoded = jsonwebtoken::decode::<JwtClaims>(
+                        &token,
+                        &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
+                        &jsonwebtoken::Validation::default(),
+                    );
+                    match decoded {
+                        Ok(data) => Ok(data.claims.sub),
+                        _ => Err(build_response(
+                            StatusCode::UNAUTHORIZED,
+                            Body::from(r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#),
+                        )),
+                    }
+                }
             }
         }
         Err(e) => {
@@ -1894,14 +1944,9 @@ async fn proxy_logic(
                     }
 
                     if status.is_success() {
-                        state.circuit_breaker.record_success(&upstream.id);
+                        record_upstream_success(state, upstream, model_name, &session_id);
 
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                        // Affinity: record successful routing so subsequent requests
-                        // from this session stick to the same channel.
-                        if let Some(model) = model_name {
-                            state.affinity_cache.insert(&session_id, model, channel_id);
-                        }
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
                         // Parse rate limit info from response headers for adaptive limiter
                         let rate_limit_info =
@@ -2227,7 +2272,7 @@ async fn proxy_logic(
                 }
 
                 if resp.status().is_success() {
-                    state.circuit_breaker.record_success(&upstream.id);
+                    record_upstream_success(state, upstream, model_name, &session_id);
                     let status = resp.status();
 
                     // Parse rate limit info from response headers
@@ -2239,11 +2284,6 @@ async fn proxy_logic(
 
                     // Record success in channel state tracker with learned upstream limit
                     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-                    // Affinity: record successful routing so subsequent requests
-                    // from this session stick to the same channel.
-                    if let Some(model) = model_name {
-                        state.affinity_cache.insert(&session_id, model, channel_id);
-                    }
                     let latency_ms = request_start_time.elapsed().as_millis() as u64;
                     state.channel_state_tracker.record_success(
                         channel_id,
