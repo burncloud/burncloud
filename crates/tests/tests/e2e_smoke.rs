@@ -19,15 +19,46 @@ fn client() -> reqwest::Client {
         .expect("build client")
 }
 
-async fn get_admin_token() -> String {
+/// Generate a unique username to avoid collisions with prior test runs.
+fn unique_username(prefix: &str) -> String {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    format!("{prefix}_{ts}")
+}
+
+async fn register_user(username: &str, password: &str, email: &str) -> (bool, String, Vec<String>) {
+    let url = format!("{}/api/auth/register", base_url());
+    let body = serde_json::json!({
+        "username": username,
+        "password": password,
+        "email": email
+    });
+    let resp = client().post(&url).json(&body).send().await.expect("register request");
+    let data: serde_json::Value = resp.json().await.expect("register response json");
+    let success = data["success"].as_bool().unwrap_or(false);
+    let token = data["data"]["token"].as_str().unwrap_or("").to_string();
+    let roles = data["data"]["roles"].as_array()
+        .map(|r| r.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    (success, token, roles)
+}
+
+async fn login_user(username: &str, password: &str) -> (bool, String, Vec<String>) {
     let url = format!("{}/api/auth/login", base_url());
     let body = serde_json::json!({
-        "username": "e2e_qa_admin",
-        "password": "QaTest169!"
+        "username": username,
+        "password": password
     });
     let resp = client().post(&url).json(&body).send().await.expect("login request");
     let data: serde_json::Value = resp.json().await.expect("login response json");
-    data["data"]["token"].as_str().expect("token").to_string()
+    let success = data["success"].as_bool().unwrap_or(false);
+    let token = data["data"]["token"].as_str().unwrap_or("").to_string();
+    let roles = data["data"]["roles"].as_array()
+        .map(|r| r.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    (success, token, roles)
 }
 
 #[tokio::test]
@@ -50,44 +81,42 @@ async fn e2e_smoke_v04() {
     }
 
     // Step 2: First user registration — should get admin role
+    // Use unique username to guarantee a fresh registration.
     {
-        let url = format!("{}/api/auth/register", base_url());
-        let body = serde_json::json!({
-            "username": "e2e_qa_admin",
-            "password": "QaTest169!",
-            "email": "qa@e2e.test"
-        });
-        let resp = client().post(&url).json(&body).send().await.expect("register request");
-        let data: serde_json::Value = resp.json().await.expect("register response json");
-        let success = data["success"].as_bool().unwrap_or(false);
-        let roles = data["data"]["roles"].as_array();
-        let has_admin = roles.is_some_and(|r| r.iter().any(|v| v.as_str() == Some("admin")));
-        let has_token = data["data"]["token"].as_str().is_some_and(|t| !t.is_empty());
+        let admin_user = unique_username("e2e_admin");
+        let (success, token, roles) = register_user(&admin_user, "QaTest169!", "qa@e2e.test").await;
+        let has_admin = roles.iter().any(|r| r == "admin");
+        let has_token = !token.is_empty();
         if success && has_admin && has_token {
             passed += 1;
             eprintln!("  PASS  2_first_user_admin");
         } else {
             failed += 1;
-            eprintln!("  FAIL  2_first_user_admin: roles={:?}", data["data"]["roles"]);
+            eprintln!("  FAIL  2_first_user_admin: success={success}, roles={roles:?}, has_token={has_token}");
         }
     }
 
-    // Step 3: Login and get JWT
+    // Step 3: Login and get JWT (use the admin user from step 2)
+    // Since step 2 uses a unique username each run, we register a fresh admin here too.
     {
-        let token = get_admin_token().await;
+        let admin_user = unique_username("e2e_login");
+        let (_, _, _) = register_user(&admin_user, "QaTest169!", "login@e2e.test").await;
+        let (success, token, _) = login_user(&admin_user, "QaTest169!").await;
         let parts: Vec<&str> = token.split('.').collect();
-        if parts.len() == 3 {
+        if success && parts.len() == 3 {
             passed += 1;
             eprintln!("  PASS  3_login");
         } else {
             failed += 1;
-            eprintln!("  FAIL  3_login: expected 3-part JWT, got {} parts", parts.len());
+            eprintln!("  FAIL  3_login: success={success}, jwt_parts={}", parts.len());
         }
     }
 
     // Step 4: Add upstream channel
     {
-        let token = get_admin_token().await;
+        // Register a fresh admin to get a valid JWT
+        let admin_user = unique_username("e2e_ch");
+        let (_, token, _) = register_user(&admin_user, "QaTest169!", "ch@e2e.test").await;
         let url = format!("{}/console/api/channel", base_url());
         let body = serde_json::json!({
             "name": "qa-burncloud-channel",
@@ -117,9 +146,10 @@ async fn e2e_smoke_v04() {
         }
     }
 
-    // Step 5: LLM request through gateway (using JWT token)
+    // Step 5: LLM request through gateway (using JWT token with fallback)
     {
-        let token = get_admin_token().await;
+        let admin_user = unique_username("e2e_llm");
+        let (_, token, _) = register_user(&admin_user, "QaTest169!", "llm@e2e.test").await;
         let url = format!("{}/v1/chat/completions", base_url());
         let body = serde_json::json!({
             "model": "gpt-4o-mini",
@@ -150,7 +180,8 @@ async fn e2e_smoke_v04() {
 
     // Step 6: Billing summary
     {
-        let token = get_admin_token().await;
+        let admin_user = unique_username("e2e_bill");
+        let (_, token, _) = register_user(&admin_user, "QaTest169!", "bill@e2e.test").await;
         let url = format!("{}/api/billing/summary", base_url());
         let resp = client()
             .get(&url)
@@ -204,25 +235,18 @@ async fn e2e_smoke_v04() {
     }
 
     // Step 8: Second user gets "user" role (not admin)
+    // Register a second user (after the admin from step 2 already exists).
     {
-        let url = format!("{}/api/auth/register", base_url());
-        let body = serde_json::json!({
-            "username": "e2e_qa_user",
-            "password": "QaTest169!",
-            "email": "user@e2e.test"
-        });
-        let resp = client().post(&url).json(&body).send().await.expect("register2 request");
-        let data: serde_json::Value = resp.json().await.expect("register2 response json");
-        let success = data["success"].as_bool().unwrap_or(false);
-        let roles = data["data"]["roles"].as_array();
-        let has_admin = roles.is_some_and(|r| r.iter().any(|v| v.as_str() == Some("admin")));
-        let has_user = roles.is_some_and(|r| r.iter().any(|v| v.as_str() == Some("user")));
+        let second_user = unique_username("e2e_user");
+        let (success, _token, roles) = register_user(&second_user, "QaTest169!", "user@e2e.test").await;
+        let has_admin = roles.iter().any(|r| r == "admin");
+        let has_user = roles.iter().any(|r| r == "user");
         if success && !has_admin && has_user {
             passed += 1;
             eprintln!("  PASS  8_second_user");
         } else {
             failed += 1;
-            eprintln!("  FAIL  8_second_user: roles={:?}", data["data"]["roles"]);
+            eprintln!("  FAIL  8_second_user: success={success}, roles={roles:?}");
         }
     }
 

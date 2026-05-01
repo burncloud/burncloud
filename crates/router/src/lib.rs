@@ -1014,14 +1014,27 @@ async fn proxy_handler(
                         )
                     }
                     Ok(RouterTokenValidationResult::Invalid) => {
-                        return build_response_with_header(
-                            StatusCode::UNAUTHORIZED,
-                            "content-type",
-                            "application/json",
-                            Body::from(
-                                r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#,
-                            ),
-                        )
+                        // Fall back to JWT: decode and extract sub (user_id)
+                        let secret = std::env::var("JWT_SECRET")
+                            .unwrap_or_else(|_| "burncloud-default-secret-change-in-production".to_string());
+                        let decoded = jsonwebtoken::decode::<JwtClaims>(
+                            &user_token,
+                            &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
+                            &jsonwebtoken::Validation::default(),
+                        );
+                        match decoded {
+                            Ok(data) => (data.claims.sub, "default".to_string(), -1_i64, 0_i64, None, None),
+                            _ => {
+                                return build_response_with_header(
+                                    StatusCode::UNAUTHORIZED,
+                                    "content-type",
+                                    "application/json",
+                                    Body::from(
+                                        r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#,
+                                    ),
+                                )
+                            }
+                        }
                     }
                     Err(e) => {
                         return build_response_with_header(
