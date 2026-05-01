@@ -171,13 +171,15 @@ impl UserDatabase {
                 .await;
         }
 
-        // Migration: assign roles to users that were created before the role system
-        // existed (they have no entries in user_role_bindings).
+        // Migration: assign roles to users that were created before the role
+        // system existed (they have no entries in user_role_bindings).
+        // The demo-user seed (password_hash = 'no-login) is always
+        // assigned "user" — it cannot log in and should never be admin.
         {
             let orphan_sql = if db.kind() == "postgres" {
-                "SELECT u.id FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.id"
+                "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.id"
             } else {
-                "SELECT u.id FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
+                "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
             };
             let orphan_rows = sqlx::query(orphan_sql)
                 .fetch_all(conn.pool())
@@ -185,9 +187,20 @@ impl UserDatabase {
 
             if !orphan_rows.is_empty() {
                 tracing::info!("UserDatabase: assigning roles to {} orphan user(s)", orphan_rows.len());
-                for (i, row) in orphan_rows.iter().enumerate() {
+                // First real orphan (non-seed) gets admin; all others get user.
+                let mut first_real = true;
+                for row in orphan_rows.iter() {
                     let user_id: String = row.get(0);
-                    let role = if i == 0 { "admin" } else { "user" };
+                    let username: String = row.get(1);
+                    let pw_hash: Option<String> = row.get(2);
+                    let is_seed = username == "demo-user"
+                        || pw_hash.as_deref() == Some("no-login");
+                    let role = if !is_seed && first_real {
+                        first_real = false;
+                        "admin"
+                    } else {
+                        "user"
+                    };
                     if let Err(e) = Self::assign_role(db, &user_id, role).await {
                         tracing::warn!("Failed to assign {} role to orphan user {}: {}", role, user_id, e);
                     }
@@ -309,6 +322,23 @@ impl UserDatabase {
             .await?
             .get(0);
         Ok(count)
+    }
+
+    /// Check whether any real user (excluding seed/demo accounts) has the
+    /// admin role. Used by first-user-is-admin logic: if no admin exists,
+    /// the next registrant is promoted so the system always has at least
+    /// one admin.
+    ///
+    /// Excludes: (1) username = 'demo-user' (seed row), (2) password_hash =
+    /// 'no-login' (seed placeholder — cannot log in, so not a real admin).
+    pub async fn has_admin_user(db: &Database) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let sql = "SELECT COUNT(*) FROM user_role_bindings urb JOIN user_roles r ON urb.role_id = r.id JOIN user_accounts u ON urb.user_id = u.id WHERE r.name = 'admin' AND u.username != 'demo-user' AND (u.password_hash IS NULL OR u.password_hash != 'no-login')";
+        let count: i64 = sqlx::query(sql)
+            .fetch_one(conn.pool())
+            .await?
+            .get(0);
+        Ok(count > 0)
     }
 
     /// Update USD balance by delta (in nanodollars)

@@ -207,23 +207,24 @@ impl UserService {
             preferred_currency: Some("USD".to_string()),
         };
 
-        UserDatabase::create_user(db, &user).await?;
-
-        // First-user-is-admin: if no users existed before this one, assign
-        // "admin" instead of the default "user" role (audit decision D3).
-        // Uses count_users (SELECT COUNT) instead of list_users to avoid
-        // loading all user rows just for the count.
-        let is_first_user = match UserDatabase::count_users(db).await {
+        // First-user-is-admin: check BEFORE creating the user so that
+        // count_users() == 0 means this is truly the first real user.
+        // Uses count_users (excludes demo-user seed) instead of
+        // has_admin_user so the check is based on user count, not on
+        // whether a stale admin from a prior run still exists.
+        let is_first_admin = match UserDatabase::count_users(db).await {
             Ok(count) => {
-                tracing::info!("First-user-is-admin check: {count} users in DB");
-                count == 1
+                tracing::info!("First-user-is-admin check: user count = {count}");
+                count == 0
             }
             Err(e) => {
                 tracing::warn!("First-user-is-admin check failed: {}", e);
                 false
             }
         };
-        let default_role = if is_first_user { "admin" } else { "user" };
+        let default_role = if is_first_admin { "admin" } else { "user" };
+
+        UserDatabase::create_user(db, &user).await?;
 
         if let Err(e) = UserDatabase::assign_role(db, &user.id, default_role).await {
             tracing::warn!(
