@@ -4,6 +4,8 @@
 //! before running. The server must have a mock price for `gpt-4o-mini` inserted
 //! (or `SKIP_INITIAL_PRICE_SYNC=0` with a working price source).
 
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+
 mod common;
 
 fn base_url() -> String {
@@ -59,8 +61,8 @@ async fn e2e_smoke_v04() {
         let data: serde_json::Value = resp.json().await.expect("register response json");
         let success = data["success"].as_bool().unwrap_or(false);
         let roles = data["data"]["roles"].as_array();
-        let has_admin = roles.map_or(false, |r| r.iter().any(|v| v.as_str() == Some("admin")));
-        let has_token = data["data"]["token"].as_str().map_or(false, |t| !t.is_empty());
+        let has_admin = roles.is_some_and(|r| r.iter().any(|v| v.as_str() == Some("admin")));
+        let has_token = data["data"]["token"].as_str().is_some_and(|t| !t.is_empty());
         if success && has_admin && has_token {
             passed += 1;
             eprintln!("  PASS  2_first_user_admin");
@@ -132,10 +134,10 @@ async fn e2e_smoke_v04() {
             .await
             .expect("llm request");
         let data: serde_json::Value = resp.json().await.expect("llm response json");
-        let has_choices = data["choices"].as_array().map_or(false, |c| !c.is_empty());
+        let has_choices = data["choices"].as_array().is_some_and(|c| !c.is_empty());
         let has_content = data["choices"][0]["message"]["content"]
             .as_str()
-            .map_or(false, |c| !c.is_empty());
+            .is_some_and(|c| !c.is_empty());
         let has_usage = data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) > 0;
         if has_choices && has_content && has_usage {
             passed += 1;
@@ -159,7 +161,7 @@ async fn e2e_smoke_v04() {
         let data: serde_json::Value = resp.json().await.expect("billing response json");
         let success = data["success"].as_bool().unwrap_or(false);
         let models = data["data"]["models"].as_array();
-        let has_models = models.map_or(false, |m| !m.is_empty());
+        let has_models = models.is_some_and(|m| !m.is_empty());
         let first_requests = models
             .and_then(|m| m.first())
             .and_then(|m| m["requests"].as_u64())
@@ -213,8 +215,8 @@ async fn e2e_smoke_v04() {
         let data: serde_json::Value = resp.json().await.expect("register2 response json");
         let success = data["success"].as_bool().unwrap_or(false);
         let roles = data["data"]["roles"].as_array();
-        let has_admin = roles.map_or(false, |r| r.iter().any(|v| v.as_str() == Some("admin")));
-        let has_user = roles.map_or(false, |r| r.iter().any(|v| v.as_str() == Some("user")));
+        let has_admin = roles.is_some_and(|r| r.iter().any(|v| v.as_str() == Some("admin")));
+        let has_user = roles.is_some_and(|r| r.iter().any(|v| v.as_str() == Some("user")));
         if success && !has_admin && has_user {
             passed += 1;
             eprintln!("  PASS  8_second_user");

@@ -12,7 +12,7 @@
 
 ```bash
 cargo build --release
-JWT_SECRET=your-secure-random-secret ./target/release/burncloud-server
+JWT_SECRET=your-secure-random-secret ./target/release/burncloud
 ```
 
 > **Security Warning:** The default `JWT_SECRET` is hardcoded for development only.
@@ -55,16 +55,18 @@ Add your upstream API provider as a channel:
 ```bash
 TOKEN="<your-token-from-step-2>"
 
-curl -s -X POST http://localhost:3000/console/api/channels \
+curl -s -X POST http://localhost:3000/console/api/channel \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
     "name": "my-openai-channel",
+    "type": 1,
+    "key": "sk-your-openai-key",
     "base_url": "https://api.openai.com",
-    "api_key": "sk-your-openai-key",
-    "protocol": "openai",
-    "models": ["gpt-4o-mini"],
-    "status": 1
+    "models": "gpt-4o-mini",
+    "group": "default",
+    "weight": 1,
+    "priority": 0
   }'
 ```
 
@@ -121,6 +123,8 @@ Response:
 | `JWT_SECRET` | `burncloud-default-secret-change-in-production` | **Must be changed in production.** Secret key for signing JWT tokens. |
 | `BURNCLOUD_INTERNAL_SECRET` | *(none)* | Shared secret for internal API endpoints. Optional. |
 | `DATABASE_URL` | `sqlite:burncloud.db` | Database connection string. |
+| `PORT` | `3000` | Server listening port. |
+| `HOST` | `0.0.0.0` | Server listening host. |
 | `RUST_LOG` | `info` | Log level (`debug`, `info`, `warn`, `error`). |
 
 ## Using with OpenAI SDK
@@ -210,6 +214,41 @@ To change the BurnCloud port mapping:
 ports:
   - "3000:8080"   # Map host port 3000 to container port 8080
 ```
+
+## Troubleshooting
+
+### "Invalid token" on API calls
+
+- Verify you're using the JWT token from registration/login, not your upstream API key.
+- Tokens expire based on `JWT_SECRET` — if you restart with a different secret, all existing tokens become invalid.
+- Ensure the `Authorization: Bearer <token>` header is set correctly (no extra spaces, `Bearer` capitalized).
+
+### Server starts but API returns 401
+
+- Check that the `JWT_SECRET` environment variable is set and consistent across restarts.
+- If using Docker, confirm the `.env` file exists and `JWT_SECRET` is set before `docker compose up`.
+
+### "No available channel" error on `/v1/chat/completions`
+
+- You must add at least one channel (Step 3) before making LLM requests.
+- Verify the channel's `models` field includes the model you're requesting.
+- Check the channel status is `1` (enabled) in the console.
+
+### Database locked (SQLite)
+
+- SQLite does not support concurrent writes well. If you see "database is locked" errors:
+  - Use a single process (no concurrent `burncloud` instances pointing to the same `.db` file).
+  - Or switch to PostgreSQL by setting `BURNCLOUD_DATABASE_URL`.
+
+### Port already in use
+
+- Change the port with `PORT=8080 ./target/release/burncloud`.
+- If using Docker, modify the port mapping in `docker-compose.yml`.
+
+### Dashboard shows "Not authenticated"
+
+- The dashboard requires login. Register a user first (Step 2).
+- If the dashboard page loads but data shows errors, your JWT token may have expired — log in again.
 
 ## Next Steps
 

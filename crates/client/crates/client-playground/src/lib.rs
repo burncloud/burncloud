@@ -97,6 +97,8 @@ pub fn Playground() -> Element {
 
     let msg_list = messages.read();
     let total_tokens = *total_prompt_tokens.read() + *total_completion_tokens.read();
+    let cost_usd = *total_prompt_tokens.read() as f64 * 0.00003 + *total_completion_tokens.read() as f64 * 0.00006;
+    let cost_cny = cost_usd * 7.2;
 
     rsx! {
         PageHeader {
@@ -250,17 +252,20 @@ pub fn Playground() -> Element {
 
                 div { class: "stat-card", style: "padding:14px; gap:4px",
                     span { class: "stat-eyebrow", "COST" }
-                    div { class: "stat-value", style: "font-size:22px", "$0.064" }
-                    span { class: "stat-foot", "≈ ¥0.46" }
+                    div { class: "stat-value", style: "font-size:22px",
+                        "${cost_usd:.4}"
+                    }
+                    span { class: "stat-foot", "≈ ¥{cost_cny:.2}" }
                 }
 
                 div {
                     label { class: "config-label", "路由轨迹" }
                     div { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary); line-height:1.9",
-                        div { "→ openai-prod" }
-                        div { "→ openai-prod" }
-                        div { style: "color:var(--bc-warning)", "→ anthropic-main ", span { style: "font-size:10px; opacity:0.7", "(failover)" } }
-                        div { "→ openai-prod" }
+                        if total_tokens == 0 {
+                            div { "暂无请求" }
+                        } else {
+                            div { "→ {total_tokens} tokens processed" }
+                        }
                     }
                 }
             }
