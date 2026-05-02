@@ -1945,4 +1945,116 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
   transition: opacity 150ms;
 }
 .error-banner .retry-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Token-compliant utility classes (Issue #179 migration)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Gap scale extensions */
+.bc-gap-xs { gap: 2px; }
+.bc-gap-6 { gap: var(--bc-space-6); }   /* 24px */
+.bc-gap-7 { gap: 28px; }
+.bc-gap-8 { gap: var(--bc-space-8); }   /* 32px */
+.bc-gap-9 { gap: 36px; }
+.bc-gap-10 { gap: var(--bc-space-10); } /* 40px */
+
+/* Brand / semantic text color utilities */
+.bc-text-brand { color: var(--bc-primary); }
+.bc-text-success { color: var(--bc-success); }
+.bc-text-danger { color: var(--bc-danger); }
+.bc-text-warning { color: var(--bc-warning); }
+.bc-text-info { color: var(--bc-info); }
+
+/* Font size utilities for intermediate sizes */
+.bc-font-13 { font-size: 13px; }
+.bc-font-11 { font-size: 11px; }
+.bc-font-15 { font-size: 15px; }
+.bc-font-17 { font-size: 17px; }
+.bc-font-emoji { font-size: 40px; }
+.bc-font-emoji-sm { font-size: 32px; }
+
+/* Eyebrow label (uppercase micro-label) */
+.bc-eyebrow { font-size: 10px; color: var(--bc-text-tertiary); text-transform: uppercase; letter-spacing: 0.16em; }
+
+/* Icon circle (40px round icon container) */
+.bc-icon-circle { width: 40px; height: 40px; border-radius: 99px; display: flex; align-items: center; justify-content: center; }
+.bc-icon-circle-brand { background: var(--bc-primary-light); }
+
+/* Grid utilities */
+.bc-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); }
+.bc-grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; }
+.bc-col-span-2 { grid-column: span 2; }
+.bc-col-span-4 { grid-column: span 4; }
+
+/* Border utilities */
+.bc-border-l { border-left: 1px solid var(--bc-border); }
+.bc-border-l-2 { border-left: 2px solid var(--bc-border); }
+
+/* Indent left (marketplace sidebar) */
+.bc-indent-left { padding-left: 20px; margin-left: 8px; border-left: 2px solid var(--bc-border); }
+
+/* Padding left extension */
+.bc-pl-6 { padding-left: var(--bc-space-6); }  /* 24px */
+
+/* Extra-small button */
+.bc-btn-xs { min-height: 24px; padding: 2px 10px; font-size: 12px; }
+
+/* Security score card (monitor) */
+.bc-score-card { grid-column: span 2; flex-direction: row; align-items: center; justify-content: space-between; padding: 24px; position: relative; overflow: hidden; }
+.bc-score-glow { position: absolute; right: 0; top: 0; bottom: 0; width: 160px; opacity: 0.45; pointer-events: none; }
+.bc-score-body { display: flex; flex-direction: column; gap: 6px; z-index: 1; }
+.bc-score-value { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.bc-score-label { font-size: 13px; font-weight: 500; }
+.bc-score-shield { width: 64px; height: 64px; border-radius: 99px; display: flex; align-items: center; justify-content: center; z-index: 1; font-size: 28px; }
+
+/* Emergency modal warning box */
+.bc-modal-warning { margin-bottom: 16px; padding: 12px; background: var(--bc-danger-light); color: var(--bc-danger); border-radius: 8px; font-size: 13px; }
+
+/* Info tip box */
+.bc-info-tip { margin-top: 16px; padding: 16px; font-size: 12px; line-height: 1.6; background: var(--bc-info-light); color: var(--bc-info); border-radius: 12px; }
+
+/* Status dot (8px round indicator) */
+.bc-status-dot { width: 8px; height: 8px; border-radius: 99px; }
+
+/* Dynamic style slots (--bc-dynamic-* pattern) */
+.bc-dynamic-color { color: var(--bc-dynamic-color); }
+.bc-dynamic-bg { background: var(--bc-dynamic-bg); }
+.bc-dynamic-border-color { border-color: var(--bc-dynamic-border-color); }
+.bc-dynamic-opacity { opacity: var(--bc-dynamic-opacity); }
+.bc-dynamic-display { display: var(--bc-dynamic-display); }
+
+/* Margin-top micro */
+.bc-mt-2 { margin-top: 2px; }
+.bc-mt-6 { margin-top: 6px; }
+
+/* Padding-top micro */
+.bc-pt-10 { padding-top: 10px; }
+
+/* Pool metric column (right-aligned) */
+.bc-pool-metric { text-align: right; }
+
+/* Pool metric value with brand color */
+.bc-pool-value-brand { font-size: 17px; font-weight: 700; color: var(--bc-primary); margin-top: 2px; }
+
+/* Marketplace card footer row */
+.bc-marketplace-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--bc-border); }
+
+/* Emergency button padding */
+.bc-btn-emergency { padding-left: 24px; padding-right: 24px; }
+
+/* Modal form row */
+.bc-modal-form-row { margin-bottom: 16px; }
+.bc-modal-form-label { font-size: 13px; font-weight: 500; display: block; margin-bottom: 6px; }
+
+/* Error text inline */
+.bc-error-text { font-size: 12px; color: var(--bc-danger); }
+
+/* Flex row with gap */
+.bc-flex-row-end { display: flex; gap: 12px; justify-content: flex-end; }
+
+/* h3 reset */
+.bc-h3 { font-size: 15px; font-weight: 700; margin: 0; }
+
+/* Zero margin */
+.m-0 { margin: 0; }
 "#;
