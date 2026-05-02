@@ -1,7 +1,9 @@
+use crate::api::auth::Claims;
 use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
-    extract::{Json, Query, State},
+    extract::{Extension, Json, Query, State},
+    middleware,
     response::IntoResponse,
     routing::{get, post},
     Router,
@@ -64,13 +66,17 @@ struct UserSummary {
 }
 
 pub fn routes() -> Router<AppState> {
+    let authenticated = Router::new()
+        .route("/console/api/user/recharges", get(list_recharges))
+        .layer(middleware::from_fn(crate::auth_middleware));
+
     Router::new()
         .route("/console/api/user/register", post(register))
         .route("/console/api/user/login", post(login))
         .route("/console/api/user/topup", post(topup))
-        .route("/console/api/user/recharges", get(list_recharges))
         .route("/console/api/user/check_username", get(check_username))
         .route("/console/api/list_users", get(list_users))
+        .merge(authenticated)
 }
 
 async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> impl IntoResponse {
@@ -207,17 +213,11 @@ async fn list_users(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-#[derive(Deserialize)]
-pub struct RechargeQuery {
-    user_id: Option<String>,
-}
-
 async fn list_recharges(
     State(state): State<AppState>,
-    Query(params): Query<RechargeQuery>,
+    Extension(claims): Extension<Claims>,
 ) -> impl IntoResponse {
-    let user_id = params.user_id.as_deref().unwrap_or("demo-user");
-    match state.user_service.list_recharges(&state.db, user_id).await {
+    match state.user_service.list_recharges(&state.db, &claims.sub).await {
         Ok(recharges) => ok(recharges).into_response(),
         Err(e) => err(e).into_response(),
     }
