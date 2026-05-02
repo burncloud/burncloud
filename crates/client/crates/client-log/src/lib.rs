@@ -47,7 +47,7 @@ fn csv_escape(s: &str) -> String {
     }
 }
 
-fn generate_csv(entries: &[&LogEntry]) -> String {
+fn generate_csv(entries: &[LogEntry]) -> String {
     let mut rows = vec![
         "时间,级别,渠道,方法,路径,状态码,延迟(ms),模型,Token数".to_string()
     ];
@@ -97,7 +97,7 @@ pub fn LogPage() -> Element {
     let error_count = is_error(&log_list);
     let warn_count = is_warn(&log_list);
 
-    let filtered_logs: Vec<&LogEntry> = log_list.iter().filter(|e| {
+    let filtered_logs: Vec<LogEntry> = log_list.iter().filter(|e| {
         let level = status_level(e.status_code);
         let level_match = match active_filter().as_str() {
             "error" => level == "ERROR",
@@ -113,7 +113,7 @@ pub fn LogPage() -> Element {
                 || e.model.as_deref().unwrap_or("").to_lowercase().contains(&q)
         };
         level_match && text_match
-    }).collect();
+    }).cloned().collect();
 
     let toast = use_toast();
 

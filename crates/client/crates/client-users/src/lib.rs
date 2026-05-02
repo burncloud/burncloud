@@ -226,7 +226,10 @@ pub fn UsersPage() -> Element {
                                     toast.error("请输入有效金额");
                                     return;
                                 }
-                                let uid = show_topup().unwrap();
+                                let uid = match show_topup() {
+                                    Some(id) => id,
+                                    None => return,
+                                };
                                 let amount_nano = amount * 1_000_000_000;
                                 topup_loading.set(true);
                                 spawn(async move {
@@ -265,7 +268,7 @@ pub fn UsersPage() -> Element {
                     r#type: "text".to_string(),
                     placeholder: "请输入用户名".to_string(),
                     value: invite_username(),
-                    oninput: move |e| invite_username.set(e.value()),
+                    oninput: move |e: FormEvent| invite_username.set(e.value()),
                 }
 
                 BCInput {
@@ -273,7 +276,7 @@ pub fn UsersPage() -> Element {
                     r#type: "password".to_string(),
                     placeholder: "请输入密码（至少8位）".to_string(),
                     value: invite_password(),
-                    oninput: move |e| invite_password.set(e.value()),
+                    oninput: move |e: FormEvent| invite_password.set(e.value()),
                 }
 
                 div { class: "flex justify-end gap-md mt-md",
