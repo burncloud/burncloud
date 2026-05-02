@@ -18,6 +18,14 @@ fn score_color(score: u8) -> &'static str {
     }
 }
 
+fn filter_dot_bg(enabled: bool) -> &'static str {
+    if enabled {
+        "var(--bc-success)"
+    } else {
+        "var(--bc-border-hover)"
+    }
+}
+
 fn score_label(score: u8) -> &'static str {
     if score >= 80 {
         "安全状况良好"
@@ -340,7 +348,7 @@ pub fn ServiceMonitor() -> Element {
                                 style: if !content_filter_enabled() { "--bc-dynamic-opacity:0.6" } else { "" },
                                 div { class: "flex items-center gap-md",
                                     span { class: "bc-status-dot",
-                                        style: "--bc-dynamic-bg:{if content_filter_enabled() { \"var(--bc-success)\" } else { \"var(--bc-border-hover)\" }}",
+                                        style: "--bc-dynamic-bg:{filter_dot_bg(content_filter_enabled())}",
                                     }
                                     span { class: "bc-font-13 font-medium", "内容过滤" }
                                 }
@@ -362,7 +370,7 @@ pub fn ServiceMonitor() -> Element {
                                 style: if !blacklist_enabled() { "--bc-dynamic-opacity:0.6" } else { "" },
                                 div { class: "flex items-center gap-md",
                                     span { class: "bc-status-dot",
-                                        style: "--bc-dynamic-bg:{if blacklist_enabled() { \"var(--bc-success)\" } else { \"var(--bc-border-hover)\" }}",
+                                        style: "--bc-dynamic-bg:{filter_dot_bg(blacklist_enabled())}",
                                     }
                                     span { class: "bc-font-13 font-medium", "黑名单拦截" }
                                 }

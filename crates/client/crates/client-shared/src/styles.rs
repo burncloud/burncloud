@@ -143,6 +143,15 @@ pub const DESIGN_SYSTEM_CSS: &str = r#"
 
     /* ── Dynamic Style Slots ── */
     --bc-dynamic-height: 0%;
+    --bc-dynamic-width: auto;
+    --bc-dynamic-color: inherit;
+    --bc-dynamic-bg: transparent;
+    --bc-dynamic-border-color: inherit;
+    --bc-dynamic-opacity: 1;
+    --bc-dynamic-display: block;
+    --bc-dynamic-avatar-bg: transparent;
+    --bc-dynamic-avatar-color: inherit;
+    --bc-dynamic-provider-color: var(--bc-primary);
 
     /* ── Legacy Aliases (for gradual migration) ── */
     --accent-color: var(--bc-primary);
