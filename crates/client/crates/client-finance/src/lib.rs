@@ -1,8 +1,22 @@
+use burncloud_client_shared::auth_context::use_auth;
 use burncloud_client_shared::components::{
     BCButton, PageHeader,
-    SkeletonCard, SkeletonVariant,
+    SkeletonCard, SkeletonVariant, StatKpi,
 };
+use burncloud_client_shared::services::billing_service::BillingService;
 use dioxus::prelude::*;
+
+/// Format nanodollars (i64, 10^9 precision) to a readable USD string with 2 decimal places.
+fn format_nano_usd(nano: i64) -> String {
+    let usd = nano as f64 / 1_000_000_000.0;
+    format!("${usd:.2}")
+}
+
+/// Format nanodollars (i64, 10^9 precision) to a readable CNY string with 2 decimal places.
+fn format_nano_cny(nano: i64) -> String {
+    let cny = nano as f64 / 1_000_000_000.0;
+    format!("¥{cny:.2}")
+}
 
 fn format_cents(cents: i64) -> String {
     let yuan = cents as f64 / 100.0;
@@ -11,12 +25,28 @@ fn format_cents(cents: i64) -> String {
 
 #[component]
 pub fn FinancePage() -> Element {
-    let loading = false;
+    let auth = use_auth();
+    let current_user = auth.get_user();
+    let user_id = current_user.map(|u| u.id).unwrap_or_default();
 
-    // Mock billing data matching design
-    let balance = 523000; // cents → ¥ 5,230.00
-    let month_spend = 1245000; // → ¥ 12,450.00
-    let est_next = 1800000; // → ¥ 18,000.00
+    let billing = use_resource(move || {
+        let uid = user_id.clone();
+        async move {
+            if uid.is_empty() {
+                return Err("Not authenticated".to_string());
+            }
+            BillingService::get_billing_summary(&uid, None, None).await
+        }
+    });
+
+    let billing_data = billing.read().clone();
+    let loading = billing_data.is_none();
+    let billing_result = billing_data.as_ref().and_then(|r| r.clone().ok());
+    let billing_error = billing_data.and_then(|r| r.err().map(|e| e.to_string()));
+
+    let balance_usd = billing_result.as_ref().map(|b| b.balance_usd).unwrap_or(0);
+    let balance_cny = billing_result.as_ref().map(|b| b.balance_cny).unwrap_or(0);
+    let total_cost_usd = billing_result.as_ref().map(|b| b.total_cost_usd).unwrap_or(0.0);
 
     let recharge_records = vec![
         ("RECH-1042", "2026-04-26 14:22", "微信支付 · 充值", 200000, "success"),
@@ -41,27 +71,33 @@ pub fn FinancePage() -> Element {
         }
 
         div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
-            // Billing KPIs
+            if let Some(err) = billing_error {
+                div { class: "error-banner", style: "padding:12px 16px; background:var(--bc-danger-bg); border:1px solid var(--bc-danger); border-radius:8px; color:var(--bc-danger); font-size:13px",
+                    "加载账单数据失败: {err}"
+                }
+            }
+
+            // Billing KPIs — Balance cards first (most important per design review)
             div { class: "stats-grid",
                 if loading {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
-                    div { class: "stat-card", style: "gap:8px",
-                        span { class: "stat-eyebrow", "本月支出" }
-                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums",
-                            "{format_cents(month_spend)} "
-                            span { class: "stat-pill danger", "+15%" }
-                        }
+                    StatKpi {
+                        label: "USD 余额".to_string(),
+                        value: format_nano_usd(balance_usd),
+                        large: Some(true),
                     }
-                    div { class: "stat-card", style: "gap:8px",
-                        span { class: "stat-eyebrow", "账户余额" }
-                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums", "{format_cents(balance)}" }
+                    StatKpi {
+                        label: "CNY 余额".to_string(),
+                        value: format_nano_cny(balance_cny),
+                        large: Some(true),
                     }
-                    div { class: "stat-card", style: "gap:8px",
-                        span { class: "stat-eyebrow", "预估下月" }
-                        div { class: "stat-value lg", style: "font-variant-numeric:tabular-nums; color:var(--bc-text-secondary)", "{format_cents(est_next)}" }
+                    StatKpi {
+                        label: "本月支出".to_string(),
+                        value: format!("${total_cost_usd:.2}"),
+                        large: Some(true),
                     }
                 }
             }

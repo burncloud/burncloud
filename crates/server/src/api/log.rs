@@ -9,6 +9,8 @@ use axum::{
 use burncloud_service_router_log::{BillingService, RouterLogService};
 use serde::{Deserialize, Serialize};
 
+use crate::api::response::{ok, err};
+
 #[derive(Deserialize)]
 pub struct Pagination {
     pub page: Option<i32>,
@@ -19,6 +21,7 @@ pub struct Pagination {
 struct BillingSummaryParams {
     start: Option<String>,
     end: Option<String>,
+    user_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -48,6 +51,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/console/internal/billing/summary",
             get(billing_summary_handler),
+        )
+        .route(
+            "/console/api/billing/summary",
+            get(console_billing_summary),
         )
 }
 
@@ -102,6 +109,7 @@ async fn billing_summary_handler(
         &headers,
         params.start.as_deref(),
         params.end.as_deref(),
+        params.user_id.as_deref(),
         std::env::var("BURNCLOUD_INTERNAL_SECRET").ok().as_deref(),
     )
     .await
@@ -112,6 +120,7 @@ async fn billing_summary_inner(
     headers: &HeaderMap,
     start: Option<&str>,
     end: Option<&str>,
+    user_id: Option<&str>,
     secret: Option<&str>,
 ) -> Response {
     if let Some(expected) = secret {
@@ -124,7 +133,7 @@ async fn billing_summary_inner(
         }
     }
 
-    match BillingService::get_billing_summary(&state.db, start, end).await {
+    match BillingService::get_billing_summary(&state.db, start, end, user_id).await {
         Ok(summary) => Json(summary).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -133,5 +142,24 @@ async fn billing_summary_inner(
             }),
         )
             .into_response(),
+    }
+}
+
+/// Public billing summary endpoint for the frontend console.
+/// Requires a user_id query parameter to fetch balance data.
+async fn console_billing_summary(
+    State(state): State<AppState>,
+    Query(params): Query<BillingSummaryParams>,
+) -> impl IntoResponse {
+    match BillingService::get_billing_summary(
+        &state.db,
+        params.start.as_deref(),
+        params.end.as_deref(),
+        params.user_id.as_deref(),
+    )
+    .await
+    {
+        Ok(summary) => ok(summary).into_response(),
+        Err(e) => err(e.to_string()).into_response(),
     }
 }

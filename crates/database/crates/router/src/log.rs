@@ -420,16 +420,24 @@ pub struct BillingSummary {
     pub pre_migration_requests: i64,
     pub models: Vec<BillingModelSummary>,
     pub total_cost_usd: f64,
+    /// USD balance in nanodollars (from user_accounts, 9 decimal precision)
+    #[serde(default)]
+    pub balance_usd: i64,
+    /// CNY balance in nanodollars (from user_accounts, 9 decimal precision)
+    #[serde(default)]
+    pub balance_cny: i64,
 }
 
 /// Get aggregate billing summary grouped by model for internal reconciliation.
 ///
 /// start/end are optional YYYY-MM-DD date strings.
 /// Pre-migration rows (model IS NULL) are counted separately.
+/// user_id is optional; when provided, balance_usd/balance_cny are read from user_accounts.
 pub async fn get_billing_summary(
     db: &Database,
     start: Option<&str>,
     end: Option<&str>,
+    user_id: Option<&str>,
 ) -> Result<BillingSummary> {
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
@@ -555,12 +563,29 @@ pub async fn get_billing_summary(
         )
         .collect();
 
+    // Fetch user balances if user_id is provided
+    let (balance_usd, balance_cny) = if let Some(uid) = user_id {
+        let bal_sql = adapt_sql(
+            is_postgres,
+            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ?",
+        );
+        let balances: Option<(i64, i64)> = sqlx::query_as(&bal_sql)
+            .bind(uid)
+            .fetch_optional(conn.pool())
+            .await?;
+        balances.unwrap_or((0, 0))
+    } else {
+        (0, 0)
+    };
+
     Ok(BillingSummary {
         period_start: start.map(|s| s.to_string()),
         period_end: end.map(|s| s.to_string()),
         pre_migration_requests,
         total_cost_usd: total_cost_nano as f64 / 1_000_000_000.0,
         models,
+        balance_usd,
+        balance_cny,
     })
 }
 

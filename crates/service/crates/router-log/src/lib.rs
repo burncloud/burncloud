@@ -118,11 +118,13 @@ pub struct BillingService;
 impl BillingService {
     /// Get per-model billing summary for a time range.
     /// `start` and `end` are optional ISO-8601 date strings (e.g. "2024-01-01").
+    /// `user_id` is optional; when provided, balance_usd/balance_cny are populated.
     pub async fn get_billing_summary(
         db: &Database,
         start: Option<&str>,
         end: Option<&str>,
+        user_id: Option<&str>,
     ) -> Result<BillingSummary> {
-        burncloud_database_router::get_billing_summary(db, start, end).await
+        burncloud_database_router::get_billing_summary(db, start, end, user_id).await
     }
 }
