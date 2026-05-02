@@ -1,11 +1,13 @@
+use burncloud_client_shared::billing_service::BillingService;
 use burncloud_client_shared::components::{
-    PageHeader, StatKpi, Sparkline, StatusPill, EmptyState,
+    PageHeader, StatKpi, StatusPill, EmptyState,
     SkeletonCard, SkeletonVariant, ErrorBanner,
 };
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::services::log_service::LogService;
 use burncloud_client_shared::services::monitor_service::MonitorService;
 use burncloud_client_shared::services::usage_service::UsageService;
+use burncloud_client_shared::use_auth;
 use dioxus::prelude::*;
 
 fn channel_status(ch: &Channel) -> String {
@@ -14,15 +16,6 @@ fn channel_status(ch: &Channel) -> String {
         2 => "throttle".to_string(),
         0 => "down".to_string(),
         _ => "maintenance".to_string(),
-    }
-}
-
-fn channel_status_label(ch: &Channel) -> String {
-    match ch.status {
-        1 => "OK".to_string(),
-        2 => "Throttled".to_string(),
-        0 => "Down".to_string(),
-        _ => "Maintenance".to_string(),
     }
 }
 
@@ -50,8 +43,24 @@ fn format_thousands(n: i64) -> String {
     result.chars().rev().collect()
 }
 
+fn format_usd_short(usd: f64) -> String {
+    if usd >= 1.0 {
+        format!("$ {usd:.2}")
+    } else if usd >= 0.01 {
+        format!("$ {usd:.4}")
+    } else {
+        format!("$ {usd:.6}")
+    }
+}
+
 #[component]
 pub fn Dashboard() -> Element {
+    let auth = use_auth();
+    let user_id = auth.get_user().map(|u| u.id).unwrap_or_default();
+    let token = auth.get_token().unwrap_or_default();
+    let token_for_usage = token.clone();
+    let token_for_billing = token.clone();
+
     let metrics = use_resource(move || async move {
         MonitorService::get_system_metrics().await
     });
@@ -60,66 +69,133 @@ pub fn Dashboard() -> Element {
         ChannelService::list(0, 50).await
     });
 
-    let usage = use_resource(move || async move {
-        UsageService::get_user_usage("demo-user").await
+    let usage = use_resource(move || {
+        let uid = user_id.clone();
+        let t = token_for_usage.clone();
+        async move {
+            if uid.is_empty() || t.is_empty() {
+                Err("Not authenticated".to_string())
+            } else {
+                UsageService::get_user_usage(&uid, &t).await
+            }
+        }
+    });
+
+    let billing = use_resource(move || {
+        let t = token_for_billing.clone();
+        async move {
+            if t.is_empty() {
+                Err("Not authenticated".to_string())
+            } else {
+                BillingService::get_billing_summary(&t).await
+            }
+        }
     });
 
     let recent_logs = use_resource(move || async move {
         LogService::list(10).await
     });
 
+    // Read resource states
     let m = metrics.read().clone();
     let ch_res = channels.read().clone();
     let u = usage.read().clone();
+    let b = billing.read().clone();
+    let log_res = recent_logs.read().clone();
 
-    let loading = m.is_none() && ch_res.is_none();
-    let metrics_error = m.as_ref()
-        .and_then(|r| r.clone().err().map(|e| e.to_string()))
-        .or_else(|| u.as_ref().and_then(|r| r.clone().err().map(|e| e.to_string())));
+    // Loading: any resource still pending
+    let loading = m.is_none() || ch_res.is_none() || b.is_none();
+
+    // Collect errors from all API calls
+    let metrics_error = m.as_ref().and_then(|r| r.as_ref().err().cloned());
+    let channels_error = ch_res.as_ref().and_then(|r| r.as_ref().err().cloned());
+    let billing_error = b.as_ref().and_then(|r| r.as_ref().err().cloned());
+    let logs_error = log_res.as_ref().and_then(|r| r.as_ref().err().cloned());
+
+    // Unwrap successful data
+    let system_metrics = m.and_then(|r| r.ok());
     let ch_list = ch_res.and_then(|r| r.ok()).unwrap_or_default();
+    let billing_summary = b.and_then(|r| r.ok());
+    let log_list = log_res.and_then(|r| r.ok()).unwrap_or_default();
 
+    // Usage stats
     let total_tokens = match &u {
         Some(Ok(data)) => data.total_tokens,
         _ => 0,
     };
 
+    // Billing-derived KPIs
+    let total_requests: i64 = billing_summary
+        .as_ref()
+        .map(|s| s.models.iter().map(|m| m.requests).sum::<i64>() + s.pre_migration_requests)
+        .unwrap_or(0);
+    let total_cost_usd = billing_summary
+        .as_ref()
+        .map(|s| s.total_cost_usd)
+        .unwrap_or(0.0);
+    let model_count = billing_summary
+        .as_ref()
+        .map(|s| s.models.len())
+        .unwrap_or(0);
+    let cost_str = format_usd_short(total_cost_usd);
+    let token_str = format_compact(total_tokens);
+    let req_str = format_thousands(total_requests);
+
+    // Channel health stats
     let active_channels = ch_list.iter().filter(|c| c.status == 1).count();
+    let down_channels = ch_list.iter().filter(|c| c.status == 0).count();
     let total_weight: i32 = ch_list.iter().map(|c| c.weight).sum();
+    let channel_delta = if down_channels > 0 {
+        format!("{down_channels} down")
+    } else {
+        "all healthy".to_string()
+    };
+    let channel_count = ch_list.len();
 
-    let spark_req = vec![12.0, 18.0, 14.0, 22.0, 30.0, 28.0, 26.0, 34.0, 30.0, 42.0, 38.0, 50.0, 46.0, 58.0, 52.0, 60.0, 64.0];
-    let spark_tok: Vec<f64> = spark_req.iter().rev().map(|x| x * 0.9).collect();
-    let spark_lat = vec![40.0, 38.0, 34.0, 36.0, 32.0, 30.0, 32.0, 28.0, 30.0, 28.0, 26.0, 28.0, 24.0, 26.0, 22.0, 24.0, 20.0];
-    let spark_err = vec![2.0, 1.0, 2.0, 3.0, 2.0, 4.0, 3.0, 5.0, 3.0, 6.0, 4.0, 5.0, 4.0, 6.0, 5.0, 7.0, 5.0];
-
-    let log_list = recent_logs.read().clone().and_then(|r| r.ok()).unwrap_or_default();
-
-    // Error breakdown (mock data matching design)
-    let err_breakdown = vec![
-        ("azure-uksouth", 1284, 62, "503 timeout"),
-        ("openai-eu", 412, 20, "401 invalid key"),
-        ("gemini-fallback", 268, 13, "429 throttled"),
-        ("qwen-cn", 92, 5, "5xx upstream"),
-    ];
+    // System health from metrics
+    let cpu_pct = system_metrics
+        .as_ref()
+        .map(|m| m.cpu.usage_percent)
+        .unwrap_or(0.0);
+    let mem_pct = system_metrics
+        .as_ref()
+        .map(|m| m.memory.usage_percent)
+        .unwrap_or(0.0);
 
     rsx! {
         PageHeader {
             title: "仪表盘",
             subtitle: Some("过去 24 小时 · 网关聚合视图".to_string()),
-            actions: rsx! {
-                button { class: "btn btn-secondary", "刷新" }
-                button { class: "btn btn-black", "创建渠道" }
-            },
         }
 
         div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+            // Error banners for all API calls
             if let Some(err) = metrics_error {
                 ErrorBanner {
-                    message: err,
+                    message: format!("系统指标: {err}"),
+                    on_retry: None,
+                }
+            }
+            if let Some(err) = billing_error {
+                ErrorBanner {
+                    message: format!("账单数据: {err}"),
+                    on_retry: None,
+                }
+            }
+            if let Some(err) = channels_error {
+                ErrorBanner {
+                    message: format!("渠道数据: {err}"),
+                    on_retry: None,
+                }
+            }
+            if let Some(err) = logs_error {
+                ErrorBanner {
+                    message: format!("日志数据: {err}"),
                     on_retry: None,
                 }
             }
 
-            // 4 KPIs
+            // 4 KPIs — real data from billing + usage APIs
             div { class: "stats-grid cols-4",
                 if loading {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
@@ -128,35 +204,72 @@ pub fn Dashboard() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
                     StatKpi {
-                        label: "REQUESTS · 24H".to_string(),
-                        value: "1,284,902".to_string(),
-                        delta: rsx! { span { class: "stat-foot up", "▲ 12.4% vs yesterday" } },
-                        chart: rsx! { Sparkline { data: spark_req.clone(), tone: None, sm: Some(true) } }
+                        label: "REQUESTS · ALL".to_string(),
+                        value: req_str,
+                        delta: rsx! { span { class: "stat-foot", "{cost_str} total" } },
+                        chart: None,
                     }
                     StatKpi {
-                        label: "TOKENS · 24H".to_string(),
-                        value: format_compact(total_tokens),
-                        delta: rsx! { span { class: "stat-foot up", "▲ 8.1% vs yesterday" } },
-                        chart: rsx! { Sparkline { data: spark_tok.clone(), tone: None, sm: Some(true) } }
+                        label: "TOKENS · ALL".to_string(),
+                        value: token_str,
+                        delta: rsx! { span { class: "stat-foot", "{model_count} models" } },
+                        chart: None,
                     }
                     StatKpi {
-                        label: "P50 LATENCY".to_string(),
-                        value: "312ms".to_string(),
-                        delta: rsx! { span { class: "stat-foot up", "▲ −4.2%" } },
-                        chart: rsx! { Sparkline { data: spark_lat.clone(), tone: Some("success".to_string()), sm: Some(true) } }
+                        label: "CPU / MEM".to_string(),
+                        value: format!("{cpu_pct:.0}% / {mem_pct:.0}%"),
+                        delta: rsx! { span { class: "stat-foot", "{active_channels} channels up" } },
+                        chart: None,
                     }
                     StatKpi {
-                        label: "ERROR RATE".to_string(),
-                        value: "0.18%".to_string(),
-                        delta: rsx! { span { class: "stat-foot down", "▼ +0.04%" } },
-                        chart: rsx! { Sparkline { data: spark_err.clone(), tone: Some("danger".to_string()), sm: Some(true) } }
+                        label: "CHANNEL STATUS".to_string(),
+                        value: format!("{active_channels}/{channel_count}"),
+                        delta: rsx! { span { class: "stat-foot", "{channel_delta}" } },
+                        chart: None,
+                    }
+                }
+            }
+
+            // Billing model breakdown (real data)
+            if let Some(summary) = &billing_summary {
+                if !summary.models.is_empty() {
+                    div {
+                        div { class: "section-h",
+                            span { class: "lead-title", "模型用量明细" }
+                            span { class: "section-sub",
+                                "{summary.models.len()} models · {format_usd_short(summary.total_cost_usd)}"
+                            }
+                        }
+                        table { class: "table",
+                            thead {
+                                tr {
+                                    th { "MODEL" }
+                                    th { style: "text-align:right", "REQUESTS" }
+                                    th { style: "text-align:right", "PROMPT" }
+                                    th { style: "text-align:right", "COMPLETION" }
+                                    th { style: "text-align:right", "COST" }
+                                }
+                            }
+                            tbody {
+                                for m in &summary.models {
+                                    tr {
+                                        key: "{m.model}",
+                                        td { style: "font-weight:500", "{m.model}" }
+                                        td { class: "mono", style: "text-align:right", "{format_thousands(m.requests)}" }
+                                        td { class: "mono", style: "text-align:right", "{format_compact(m.prompt_tokens)}" }
+                                        td { class: "mono", style: "text-align:right", "{format_compact(m.completion_tokens)}" }
+                                        td { class: "mono", style: "text-align:right; font-weight:600", "{format_usd_short(m.cost_usd)}" }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             // Channel health + live logs
             div { style: "display:grid; grid-template-columns:1.45fr 1fr; gap:24px",
-                // Channel health
+                // Channel health (real data)
                 div {
                     div { class: "section-h",
                         span { class: "lead-title", "渠道健康" }
@@ -171,7 +284,7 @@ pub fn Dashboard() -> Element {
                         EmptyState {
                             icon: rsx! { span { style: "font-size:32px", "📡" } },
                             title: "暂无渠道数据".to_string(),
-                            description: None,
+                            description: Some("请先添加上游渠道".to_string()),
                             cta: None,
                         }
                     } else {
@@ -180,8 +293,8 @@ pub fn Dashboard() -> Element {
                                 tr {
                                     th { "CHANNEL" }
                                     th { style: "text-align:right", "WEIGHT" }
-                                    th { style: "text-align:right", "P50" }
-                                    th { style: "text-align:right", "RPM" }
+                                    th { "TYPE" }
+                                    th { "MODELS" }
                                     th { "STATUS" }
                                 }
                             }
@@ -191,12 +304,15 @@ pub fn Dashboard() -> Element {
                                         key: "{ch.id}",
                                         td { style: "font-weight:500", "{ch.name}" }
                                         td { class: "mono", style: "text-align:right", "{ch.weight}" }
-                                        td { class: "mono", style: "text-align:right", "—" }
-                                        td { class: "mono", style: "text-align:right", "—" }
+                                        td { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)",
+                                            "{ch.type_}"
+                                        }
+                                        td { style: "font-size:13px; color:var(--bc-text-secondary); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap",
+                                            "{ch.models}"
+                                        }
                                         td {
                                             StatusPill {
                                                 value: channel_status(ch),
-                                                label: Some(channel_status_label(ch)),
                                             }
                                         }
                                     }
@@ -206,7 +322,7 @@ pub fn Dashboard() -> Element {
                     }
                 }
 
-                // Live logs
+                // Live logs (real data)
                 div {
                     div { class: "section-h",
                         span { class: "lead-title", "实时日志" }
@@ -220,7 +336,7 @@ pub fn Dashboard() -> Element {
                         EmptyState {
                             icon: rsx! { span { style: "font-size:32px", "📋" } },
                             title: "暂无日志".to_string(),
-                            description: None,
+                            description: Some("网关请求日志将在此显示".to_string()),
                             cta: None,
                         }
                     } else {
@@ -247,25 +363,29 @@ pub fn Dashboard() -> Element {
                 }
             }
 
-            // Error breakdown by upstream
-            div {
-                div { class: "section-h",
-                    span { class: "lead-title", "当日错误分布 · by upstream" }
-                    span { class: "section-sub", "2,056 errors · ↑ 12% vs yesterday" }
-                }
-                div { style: "display:flex; flex-direction:column; gap:8px",
-                    for (upstream, count, share, kind) in &err_breakdown {
+            // System health (real data from monitor API)
+            if let Some(sm) = &system_metrics {
+                div {
+                    div { class: "section-h",
+                        span { class: "lead-title", "系统状态" }
+                    }
+                    div { style: "display:grid; grid-template-columns:1fr 1fr; gap:16px",
                         div { class: "row-card outlined", style: "padding:14px 16px",
-                            div { style: "display:flex; align-items:center; gap:14px; flex:1; min-width:0",
-                                span { style: "width:200px; font-size:13px; font-weight:500", "{upstream}" }
-                                div { style: "flex:1; height:6px; background:var(--bc-bg-hover); border-radius:99px; overflow:hidden",
-                                    div { style: "width:{share}%; height:100%; background:var(--bc-danger); border-radius:99px" }
-                                }
-                                span { class: "mono", style: "width:56px; text-align:right; font-size:12px; color:var(--bc-text-secondary)", "{share}%" }
+                            span { class: "stat-eyebrow", "CPU" }
+                            div { style: "font-size:20px; font-weight:600; font-variant-numeric:tabular-nums",
+                                "{sm.cpu.usage_percent:.1}%"
                             }
-                            div { style: "display:flex; align-items:center; gap:16px; margin-left:16px",
-                                span { class: "mono", style: "font-size:12px; color:var(--bc-text-tertiary)", "{kind}" }
-                                span { class: "mono", style: "font-size:14px; font-weight:600; min-width:52px; text-align:right", "{format_thousands(*count)}" }
+                            div { style: "font-size:12px; color:var(--bc-text-secondary)",
+                                "{sm.cpu.core_count} cores · {sm.cpu.brand}"
+                            }
+                        }
+                        div { class: "row-card outlined", style: "padding:14px 16px",
+                            span { class: "stat-eyebrow", "MEMORY" }
+                            div { style: "font-size:20px; font-weight:600; font-variant-numeric:tabular-nums",
+                                "{sm.memory.usage_percent:.1}%"
+                            }
+                            div { style: "font-size:12px; color:var(--bc-text-secondary)",
+                                "{sm.memory.used / 1024 / 1024} / {sm.memory.total / 1024 / 1024} MB"
                             }
                         }
                     }

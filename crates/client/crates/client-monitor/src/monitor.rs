@@ -37,7 +37,7 @@ pub fn ServiceMonitor() -> Element {
     let mut filter_pii = use_signal(|| true);
     let mut filter_jailbreak = use_signal(|| false);
 
-    let spark_security = vec![78.0, 82.0, 80.0, 86.0, 88.0, 90.0, 94.0];
+    let spark_security = [78.0, 82.0, 80.0, 86.0, 88.0, 90.0, 94.0];
 
     rsx! {
         PageHeader {

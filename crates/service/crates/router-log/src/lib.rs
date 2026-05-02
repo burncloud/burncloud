@@ -125,4 +125,14 @@ impl BillingService {
     ) -> Result<BillingSummary> {
         burncloud_database_router::get_billing_summary(db, start, end).await
     }
+
+    /// Get per-model billing summary filtered by user_id.
+    pub async fn get_billing_summary_for_user(
+        db: &Database,
+        user_id: &str,
+        start: Option<&str>,
+        end: Option<&str>,
+    ) -> Result<BillingSummary> {
+        burncloud_database_router::get_billing_summary_for_user(db, user_id, start, end).await
+    }
 }
