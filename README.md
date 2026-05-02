@@ -9,7 +9,7 @@
 
 **The Next-Gen High-Performance AI Gateway & Aggregator**
 
-[Feature Requests](https://github.com/burncloud/burncloud/issues) · [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) · [Documentation](docs/)
+[Feature Requests](https://github.com/burncloud/burncloud/issues) · [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) · [Getting Started](docs/getting-started.md) · [Documentation](docs/)
 
 [English](README.md) | [简体中文](README_CN.md)
 
@@ -76,6 +76,8 @@ The router is a smart pipe, not a processor. It handles authentication and routi
 *   Windows 10/11, Linux, or macOS
 
 ### Quick Start
+
+> **Full guide:** [docs/getting-started.md](docs/getting-started.md) — 环境要求、安全配置、验证步骤、常见问题
 
 ```bash
 # 1. Clone repository

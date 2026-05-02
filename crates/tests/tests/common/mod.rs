@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching, dead_code)]
 pub mod evidence;
 
 use dotenvy::dotenv;
@@ -135,6 +135,7 @@ pub fn get_openai_config() -> Option<(String, String)> {
 // Removed deprecated functions: get_base_url (sync), get_db_pool, seed_demo_data
 
 /// Insert a price entry for a mock model so the router's preflight check passes.
+#[allow(dead_code)]
 pub async fn insert_mock_price(model: &str) {
     let db_url = std::env::var("BURNCLOUD_DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:///tmp/test_burncloud.db?mode=rwc".to_string());

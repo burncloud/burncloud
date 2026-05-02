@@ -60,20 +60,18 @@ pub fn UsersPage() -> Element {
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "总用户数" }
                         div { class: "stat-value",
-                            "{total} "
-                            span { class: "stat-pill success", "+24 This Week" }
+                            "{total}"
                         }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "今日活跃" }
                         div { class: "stat-value",
-                            "{active_count} "
-                            span { class: "stat-pill muted", "67% 活跃率" }
+                            "{active_count}"
                         }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "用户资金池" }
-                        div { class: "stat-value", "¥ 452,000.00" }
+                        div { class: "stat-value", "{format_cents(user_list.iter().map(|u| u.balance_cny).sum::<i64>())}" }
                     }
                 }
             }

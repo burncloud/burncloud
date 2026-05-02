@@ -13,6 +13,7 @@ use std::path::Path;
 ///
 /// The directory is created if it does not exist.
 /// Any I/O failure is logged with `eprintln!` but does NOT panic.
+#[allow(dead_code)]
 pub fn write_evidence(test_name: &str, payload: &Value) {
     let dir = Path::new("evidence");
     if let Err(e) = std::fs::create_dir_all(dir) {
@@ -33,6 +34,7 @@ pub fn write_evidence(test_name: &str, payload: &Value) {
 }
 
 /// Build the base evidence object every test starts with.
+#[allow(dead_code)]
 pub fn base_evidence(test_name: &str, model: &str) -> Value {
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
@@ -52,6 +54,7 @@ pub fn base_evidence(test_name: &str, model: &str) -> Value {
 }
 
 /// Append a named assertion result to an evidence object's `assertions` array.
+#[allow(dead_code)]
 pub fn add_assertion(evidence: &mut Value, name: &str, expected: i64, actual: i64) {
     let result = if (actual - expected).abs() <= 1 {
         "PASS"
@@ -78,6 +81,7 @@ pub fn add_assertion(evidence: &mut Value, name: &str, expected: i64, actual: i6
 }
 
 /// Set the top-level verdict based on whether all assertions passed.
+#[allow(dead_code)]
 pub fn finalize_verdict(evidence: &mut Value) {
     let all_pass = evidence
         .get("assertions")
