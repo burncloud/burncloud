@@ -79,22 +79,29 @@ async fn create_user(
         )
         .await
     {
-        Ok(user_id) => match state
-            .user_service
-            .generate_token(&user_id, &payload.username)
-        {
-            Ok(auth_token) => ok(AuthData {
-                id: user_id,
-                username: payload.username,
-                roles: None,
-                token: auth_token.token,
-            })
-            .into_response(),
-            Err(e) => {
-                tracing::error!("JWT generation failed: {}", e);
-                err("Failed to generate authentication token").into_response()
+        Ok(user_id) => {
+            let roles = state
+                .user_service
+                .get_user_roles(&state.db, &user_id)
+                .await
+                .unwrap_or_default();
+            match state
+                .user_service
+                .generate_token(&user_id, &payload.username)
+            {
+                Ok(auth_token) => ok(AuthData {
+                    id: user_id,
+                    username: payload.username,
+                    roles: Some(roles),
+                    token: auth_token.token,
+                })
+                .into_response(),
+                Err(e) => {
+                    tracing::error!("JWT generation failed: {}", e);
+                    err("Failed to generate authentication token").into_response()
+                }
             }
-        },
+        }
         Err(UserServiceError::UserAlreadyExists) => err("Username already exists").into_response(),
         Err(e) => {
             tracing::error!("Registration error: {}", e);

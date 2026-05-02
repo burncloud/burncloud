@@ -56,6 +56,7 @@ pub fn ServiceMonitor() -> Element {
     let mut emergency_loading = use_signal(|| false);
     let mut emergency_error = use_signal(|| None::<String>);
 
+<<<<<<< HEAD
     let summary_loading = summary_res.read().is_none();
     let events_loading = events_res.read().is_none();
     let filter_loading = filter_res.read().is_none();
@@ -140,6 +141,9 @@ pub fn ServiceMonitor() -> Element {
             }
         });
     };
+=======
+    let spark_security = [78.0, 82.0, 80.0, 86.0, 88.0, 90.0, 94.0];
+>>>>>>> origin/main
 
     rsx! {
         PageHeader {

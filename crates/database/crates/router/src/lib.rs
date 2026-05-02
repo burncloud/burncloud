@@ -24,8 +24,9 @@ pub use group::{
     RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel, RouterGroupRepository,
 };
 pub use log::{
-    get_billing_summary, get_usage_stats, get_usage_stats_by_model, BalanceModel,
-    BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, RouterLogModel, UsageStats,
+    get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
+    BalanceModel, BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, RouterLogModel,
+    UsageStats,
 };
 pub use router_video_task::{RouterVideoTask, RouterVideoTaskModel};
 pub use token::{
