@@ -184,12 +184,13 @@ fn channel_status(status: i32) -> String {
     }
 }
 
-fn channel_status_label(status: i32) -> String {
+fn channel_status_label(status: i32, lang: Language) -> String {
+    use burncloud_client_shared::i18n::t;
     match status {
-        1 => "正常".to_string(),
-        2 => "限流".to_string(),
-        0 => "已停止".to_string(),
-        _ => "维护中".to_string(),
+        1 => t(lang, "models.status.ok").to_string(),
+        2 => t(lang, "models.status.throttle").to_string(),
+        0 => t(lang, "models.status.down").to_string(),
+        _ => t(lang, "models.status.maint").to_string(),
     }
 }
 
@@ -487,7 +488,7 @@ pub fn ChannelPage() -> Element {
                                     td {
                                         StatusPill {
                                             value: channel_status(ch.status),
-                                            label: Some(channel_status_label(ch.status)),
+                                            label: Some(channel_status_label(ch.status, lang_signal())),
                                         }
                                     }
                                     td { style: "text-align:right",
