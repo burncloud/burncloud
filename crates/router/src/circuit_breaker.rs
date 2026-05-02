@@ -182,6 +182,28 @@ impl CircuitBreaker {
         }
     }
 
+    /// Emergency trip: force all known upstreams into Open state.
+    ///
+    /// Sets each upstream's failure count to the threshold and records the
+    /// current time as `last_failure_time`, so the circuit stays Open for
+    /// the full cooldown duration. Returns the list of upstream IDs that
+    /// were tripped.
+    pub fn trip_all(&self) -> Vec<String> {
+        let mut tripped = Vec::new();
+        for mut entry in self.states.iter_mut() {
+            entry.failure_count.store(self.failure_threshold, Ordering::Relaxed);
+            entry.last_failure_time = Some(Instant::now());
+            entry.failure_type = Some(FailureType::ServerError);
+            entry.rate_limit_until = None;
+            tripped.push(entry.key().clone());
+        }
+        tracing::warn!(
+            "Circuit Breaker: Emergency trip-all triggered — {} upstream(s) forced to Open",
+            tripped.len()
+        );
+        tripped
+    }
+
     /// Get current health status map for monitoring
     pub fn get_status_map(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();

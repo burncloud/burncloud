@@ -46,7 +46,7 @@ struct AuthData {
 
 fn get_jwt_secret() -> String {
     env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "burncloud-default-secret-change-in-production".to_string())
+        .unwrap_or_else(|_| "default-secret-key-change-in-production".to_string())
 }
 
 pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {

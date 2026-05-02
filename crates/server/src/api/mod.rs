@@ -1,4 +1,6 @@
 use crate::AppState;
+pub mod security;
+
 use axum::Router;
 
 pub mod auth;
@@ -23,5 +25,6 @@ pub fn routes(state: AppState) -> Router {
         .merge(log::routes())
         .merge(monitor::routes())
         .merge(user::routes())
+        .merge(security::security_routes())
         .with_state(state)
 }
