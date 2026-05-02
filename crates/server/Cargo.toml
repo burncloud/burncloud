@@ -37,6 +37,7 @@ burncloud-service-router-log = { workspace = true }
 burncloud-service-channel = { workspace = true }
 burncloud-service-upstream = { workspace = true }
 jsonwebtoken = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }

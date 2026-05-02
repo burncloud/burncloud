@@ -37,7 +37,6 @@ pub fn LoginPage() -> Element {
                     loading.set(false);
                     let new_state = ClientState {
                         last_username: Some(u.clone()),
-                        last_password: None,
                         auth_token: Some(response.token.clone()),
                         user_info: Some(
                             serde_json::to_string(&CurrentUser {

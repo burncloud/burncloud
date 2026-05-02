@@ -166,17 +166,49 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
                 .await
                 .unwrap_or_default();
 
-            ok(AuthData {
-                id: auth_token.user_id,
-                username: auth_token.username,
-                roles,
-                token: auth_token.token,
-            })
-            .into_response()
+            let data = AuthData {
+                id: auth_token.user_id.clone(),
+                username: auth_token.username.clone(),
+                roles: roles.clone(),
+                token: auth_token.token.clone(),
+            };
+
+            persist_client_state(&auth_token.username, &auth_token.token);
+
+            ok(data).into_response()
         }
         Err(UserServiceError::UserNotFound) => err("User not found").into_response(),
         Err(UserServiceError::InvalidCredentials) => err("Invalid credentials").into_response(),
         Err(e) => err(e).into_response(),
+    }
+}
+
+/// Persist minimal client state to `~/.burncloud/client_state.json` so the
+/// desktop client can resume an authenticated session after restart.
+/// File is created with 0o600 permissions on Unix (owner-only read/write).
+fn persist_client_state(username: &str, token: &str) {
+    use std::path::PathBuf;
+
+    let dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".burncloud");
+
+    let _ = std::fs::create_dir_all(&dir);
+
+    let state = serde_json::json!({
+        "last_username": username,
+        "auth_token": token
+    });
+
+    if let Ok(content) = serde_json::to_string_pretty(&state) {
+        let path = dir.join("client_state.json");
+        if std::fs::write(&path, content).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            }
+        }
     }
 }
 
