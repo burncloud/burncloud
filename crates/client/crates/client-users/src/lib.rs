@@ -1,5 +1,5 @@
 use burncloud_client_shared::components::{
-    BCButton, PageHeader, StatusPill,
+    BCButton, BCInput, BCModal, ButtonVariant, PageHeader, StatusPill,
     EmptyState, SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::services::user_service::UserService;
@@ -18,6 +18,10 @@ pub fn UsersPage() -> Element {
     let mut topup_amount = use_signal(|| 0i64);
     let mut topup_username = use_signal(String::new);
     let mut topup_loading = use_signal(|| false);
+    let mut show_invite = use_signal(|| false);
+    let mut invite_username = use_signal(String::new);
+    let mut invite_password = use_signal(String::new);
+    let mut invite_loading = use_signal(|| false);
     let toast = use_toast();
 
     let mut users = use_resource(move || async move {
@@ -44,7 +48,11 @@ pub fn UsersPage() -> Element {
             actions: rsx! {
                 BCButton {
                     class: "btn-black",
-                    onclick: move |_| {},
+                    onclick: move |_| {
+                        invite_username.set(String::new());
+                        invite_password.set(String::new());
+                        show_invite.set(true);
+                    },
                     "邀请新用户"
                 }
             },
@@ -238,6 +246,75 @@ pub fn UsersPage() -> Element {
                             },
                             if topup_loading() { "处理中..." } else { "确认充值" }
                         }
+                    }
+                }
+            }
+        }
+
+        // Invite new user modal
+        BCModal {
+            title: "邀请新用户".to_string(),
+            open: show_invite(),
+            onclose: move |_| show_invite.set(false),
+
+            div { class: "flex flex-col gap-lg",
+                div { style: "font-size:12px; color:var(--bc-text-secondary)", "创建新用户账户，用户可使用用户名和密码登录" }
+
+                BCInput {
+                    label: Some("用户名".to_string()),
+                    r#type: "text".to_string(),
+                    placeholder: "请输入用户名".to_string(),
+                    value: invite_username(),
+                    oninput: move |e| invite_username.set(e.value()),
+                }
+
+                BCInput {
+                    label: Some("密码".to_string()),
+                    r#type: "password".to_string(),
+                    placeholder: "请输入密码（至少8位）".to_string(),
+                    value: invite_password(),
+                    oninput: move |e| invite_password.set(e.value()),
+                }
+
+                div { class: "flex justify-end gap-md mt-md",
+                    BCButton {
+                        variant: ButtonVariant::Ghost,
+                        onclick: move |_| show_invite.set(false),
+                        "取消"
+                    }
+                    BCButton {
+                        variant: ButtonVariant::Black,
+                        loading: invite_loading(),
+                        disabled: invite_loading(),
+                        onclick: move |_| {
+                            let username = invite_username().trim().to_string();
+                            let password = invite_password();
+                            if username.is_empty() {
+                                toast.error("请输入用户名");
+                                return;
+                            }
+                            if password.len() < 8 {
+                                toast.error("密码至少需要8位");
+                                return;
+                            }
+                            invite_loading.set(true);
+                            spawn(async move {
+                                match UserService::create(&username, &password).await {
+                                    Ok(()) => {
+                                        toast.success("用户创建成功");
+                                        show_invite.set(false);
+                                        invite_username.set(String::new());
+                                        invite_password.set(String::new());
+                                        users.restart();
+                                    }
+                                    Err(e) => {
+                                        toast.error(&format!("创建失败: {}", e));
+                                    }
+                                }
+                                invite_loading.set(false);
+                            });
+                        },
+                        "创建用户"
                     }
                 }
             }
