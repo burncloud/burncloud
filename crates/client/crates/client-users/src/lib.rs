@@ -17,9 +17,10 @@ pub fn UsersPage() -> Element {
     let mut show_topup = use_signal(|| None::<String>);
     let mut topup_amount = use_signal(|| 0i64);
     let mut topup_username = use_signal(String::new);
+    let mut topup_loading = use_signal(|| false);
     let toast = use_toast();
 
-    let users = use_resource(move || async move {
+    let mut users = use_resource(move || async move {
         UserService::list().await.unwrap_or_default()
     });
 
@@ -209,10 +210,34 @@ pub fn UsersPage() -> Element {
                     }
                     div { class: "bc-modal-footer",
                         button { class: "btn btn-ghost", onclick: move |_| show_topup.set(None), "取消" }
-                        button { class: "btn btn-black", onclick: move |_| {
-                            show_topup.set(None);
-                            toast.success("充值成功");
-                        }, "确认充值" }
+                        button { class: "btn btn-black",
+                            disabled: topup_loading(),
+                            onclick: move |_| {
+                                let amount = topup_amount();
+                                if amount <= 0 {
+                                    toast.error("请输入有效金额");
+                                    return;
+                                }
+                                let uid = show_topup().unwrap();
+                                let amount_nano = amount * 1_000_000_000;
+                                topup_loading.set(true);
+                                spawn(async move {
+                                    match UserService::topup(&uid, amount_nano, Some("CNY")).await {
+                                        Ok(_) => {
+                                            topup_loading.set(false);
+                                            show_topup.set(None);
+                                            users.restart();
+                                            toast.success("充值成功");
+                                        }
+                                        Err(e) => {
+                                            topup_loading.set(false);
+                                            toast.error(&format!("充值失败: {}", e));
+                                        }
+                                    }
+                                });
+                            },
+                            if topup_loading() { "处理中..." } else { "确认充值" }
+                        }
                     }
                 }
             }
