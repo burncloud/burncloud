@@ -28,6 +28,10 @@ name = "local_nodejs_test"
 path = "tests/installer/local_nodejs_test.rs"
 
 [[test]]
+name = "e2e_smoke"
+path = "tests/e2e_smoke.rs"
+
+[[test]]
 name = "logging_test"
 path = "tests/logging_test.rs"
 

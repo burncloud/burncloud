@@ -1,0 +1,39 @@
+services:
+  burncloud:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - BURNCLOUD_DATABASE_URL=postgres://burncloud:burncloud@postgres:5432/burncloud
+      - RUST_LOG=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=burncloud
+      - POSTGRES_PASSWORD=burncloud
+      - POSTGRES_DB=burncloud
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U burncloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -26,15 +26,20 @@ pub struct Recharge {
 pub struct UsageService;
 
 impl UsageService {
-    pub async fn list_recharges(user_id: &str) -> Result<Vec<Recharge>, String> {
+    /// List recharge records for the authenticated user.
+    /// `token` is the JWT Bearer token for authentication.
+    /// The server extracts user_id from the JWT claims, so no user_id parameter is needed.
+    pub async fn list_recharges(token: &str) -> Result<Vec<Recharge>, String> {
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
-        let url = format!(
-            "http://127.0.0.1:{}/console/api/user/recharges?user_id={}",
-            port, user_id
-        );
+        let url = format!("http://127.0.0.1:{}/console/api/user/recharges", port);
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
@@ -48,12 +53,19 @@ impl UsageService {
         }
     }
 
-    pub async fn get_user_usage(user_id: &str) -> Result<UsageStats, String> {
+    /// Get usage statistics for a specific user.
+    /// `token` is the JWT Bearer token for authentication.
+    pub async fn get_user_usage(user_id: &str, token: &str) -> Result<UsageStats, String> {
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/console/api/usage/{}", port, user_id);
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
