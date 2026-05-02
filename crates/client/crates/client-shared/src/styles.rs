@@ -112,6 +112,37 @@ pub const DESIGN_SYSTEM_CSS: &str = r#"
 
     /* ── Font Family ── */
     --bc-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+    --bc-font-mono: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace;
+
+    /* ── Extended Typography Scale ── */
+    --bc-font-11: 11px;
+    --bc-font-13: 13px;
+    --bc-font-16: 16px;
+    --bc-font-19: 19px;
+    --bc-font-22: 22px;
+    --bc-font-24: 24px;
+    --bc-font-32: 32px;
+    --bc-font-42: 42px;
+    --bc-font-56: 56px;
+    --bc-font-64: 64px;
+    --bc-font-72: 72px;
+
+    /* ── Extended Spacing Scale ── */
+    --bc-space-7: 28px;
+    --bc-space-9: 36px;
+
+    /* ── Landing Page Colors ── */
+    --bc-landing-orange: #FF6B3D;
+    --bc-landing-orange-dark: #C2410C;
+    --bc-landing-warm-bg: #FFF5F0;
+    --bc-landing-warm-bg-end: #FFFBF7;
+    --bc-landing-warm-border: #FFD9C2;
+    --bc-term-red: #FF5F57;
+    --bc-term-yellow: #FEBC2E;
+    --bc-term-green: #28C840;
+
+    /* ── Dynamic Style Slots ── */
+    --bc-dynamic-height: 0%;
 
     /* ── Legacy Aliases (for gradual migration) ── */
     --accent-color: var(--bc-primary);
@@ -1515,6 +1546,168 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 .landing-foot-grid ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .landing-foot-grid a:hover { color: #FFFFFF; }
 .landing-foot-bottom { display: flex; justify-content: space-between; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 12px; color: rgba(255,255,255,0.4); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Landing Page — Semantic Component Classes (home.rs migration)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Root splash screen */
+.bc-splash { background-color: var(--bc-bg-canvas); }
+
+/* Terminal dot colors */
+.bc-term-dot-red { background: var(--bc-term-red); }
+.bc-term-dot-yellow { background: var(--bc-term-yellow); }
+.bc-term-dot-green { background: var(--bc-term-green); }
+
+/* Hero sub strong (white text) */
+.bc-hero-strong { color: #fff; }
+
+/* Trust strip no-padding override */
+.landing-strip.no-pad { padding: 0; }
+
+/* Performance card KPI row */
+.bc-kpi-row {
+    display: flex;
+    gap: var(--bc-space-8);
+    margin-top: var(--bc-space-8);
+    padding-top: var(--bc-space-6);
+    border-top: 1px solid rgba(255,255,255,0.08);
+}
+.bc-kpi-value {
+    font-size: var(--bc-font-24);
+    font-weight: 700;
+    color: #fff;
+}
+.bc-kpi-label {
+    font-size: var(--bc-font-11);
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-top: var(--bc-space-1);
+}
+
+/* Value card icon variants */
+.v-icon-info { background: var(--bc-info-light); color: var(--bc-info); }
+.v-icon-warning { background: var(--bc-warning-light); color: var(--bc-warning); }
+.v-icon-success { background: var(--bc-success-light); color: var(--bc-success); }
+.v-icon-primary { background: var(--bc-primary-light); color: var(--bc-primary); }
+
+/* Orange accent text (em in dark card) */
+.bc-accent-orange { font-style: normal; color: var(--bc-landing-orange); }
+
+/* Fluent experience card (span-12 warm gradient) */
+.bc-fluent-card {
+    background: linear-gradient(135deg, var(--bc-landing-warm-bg) 0%, var(--bc-landing-warm-bg-end) 100%);
+    border-color: var(--bc-landing-warm-border);
+}
+.bc-fluent-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--bc-space-12);
+    align-items: center;
+}
+.bc-fluent-eyebrow { color: var(--bc-landing-orange-dark); }
+.bc-fluent-title { font-size: var(--bc-font-32); }
+.bc-fluent-desc { font-size: var(--bc-font-md); }
+
+/* Mini dashboard mock */
+.bc-mock-dashboard {
+    background: var(--bc-bg-card-solid);
+    border-radius: var(--bc-radius-md);
+    box-shadow: 0 8px 32px rgba(194,65,12,0.12);
+    overflow: hidden;
+    border: 1px solid var(--bc-border);
+}
+.bc-mock-titlebar {
+    height: 28px;
+    background: var(--bc-bg-card-solid);
+    border-bottom: 1px solid var(--bc-border);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--bc-space-3);
+    gap: 6px;
+}
+.bc-mock-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+.bc-mock-dot-red { background: var(--bc-term-red); }
+.bc-mock-dot-yellow { background: var(--bc-term-yellow); }
+.bc-mock-dot-green { background: var(--bc-term-green); }
+.bc-mock-body {
+    padding: var(--bc-space-5);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--bc-space-3);
+}
+.bc-mock-stat {
+    padding: var(--bc-space-3);
+    background: var(--bc-bg-canvas);
+    border-radius: var(--bc-radius-sm);
+}
+.bc-mock-stat-label {
+    font-size: var(--bc-font-xs);
+    color: var(--bc-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+}
+.bc-mock-stat-value {
+    font-size: var(--bc-font-22);
+    font-weight: 700;
+    margin-top: var(--bc-space-1);
+}
+.bc-mock-spark {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 24px;
+    margin-top: 6px;
+}
+.bc-mock-bar {
+    flex: 1;
+    border-radius: 1px;
+    height: var(--bc-dynamic-height);
+}
+.bc-mock-bar-orange { background: var(--bc-landing-orange); }
+.bc-mock-bar-blue { background: var(--bc-primary); }
+
+/* Architecture chip faded */
+.bc-chip-faded { opacity: 0.5; }
+
+/* Code section overrides */
+.bc-code-title { font-size: var(--bc-font-42); }
+.bc-code-desc {
+    font-size: var(--bc-font-16);
+    color: var(--bc-text-secondary);
+    line-height: 1.55;
+    margin: 0;
+}
+
+/* Final CTA section */
+.bc-cta-title {
+    font-size: var(--bc-font-64);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin: 0 0 var(--bc-space-5);
+    color: #fff;
+}
+.bc-cta-desc {
+    font-size: var(--bc-font-19);
+    color: rgba(255,255,255,0.7);
+    margin: 0 auto var(--bc-space-9);
+    max-width: 540px;
+    line-height: 1.5;
+}
+.bc-cta-actions {
+    display: inline-flex;
+    gap: var(--bc-space-3);
+}
+
+/* Footer brand white */
+.bc-foot-brand { color: #fff; margin-bottom: var(--bc-space-4); }
+.bc-foot-about { max-width: 320px; line-height: 1.6; }
 
 /* BCButton sizes — concrete utility (no arbitrary values) */
 .bc-btn-sm {

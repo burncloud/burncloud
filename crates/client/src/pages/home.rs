@@ -13,7 +13,7 @@ pub fn Root() -> Element {
     });
 
     rsx! {
-        div { class: "h-screen w-screen", style: "background-color: var(--bc-bg-canvas);" }
+        div { class: "h-screen w-screen bc-splash" }
     }
 }
 
@@ -58,7 +58,7 @@ pub fn HomePage() -> Element {
                         }
                         p { class: "landing-hero-sub",
                             "A high-performance LLM aggregation gateway that unifies Anthropic, Gemini, Azure & Qwen behind one OpenAI-compatible interface. "
-                            strong { style: "color:#fff", "MB-level memory" }
+                            strong { class: "bc-hero-strong", "MB-level memory" }
                             ", zero-overhead routing, single binary."
                         }
                         div { class: "landing-hero-ctas",
@@ -90,9 +90,9 @@ pub fn HomePage() -> Element {
                     // Terminal mock
                     div { class: "landing-terminal",
                         div { class: "landing-term-bar",
-                            span { class: "landing-term-dot", style: "background:#FF5F57" }
-                            span { class: "landing-term-dot", style: "background:#FEBC2E" }
-                            span { class: "landing-term-dot", style: "background:#28C840" }
+                            span { class: "landing-term-dot bc-term-dot-red" }
+                            span { class: "landing-term-dot bc-term-dot-yellow" }
+                            span { class: "landing-term-dot bc-term-dot-green" }
                             span { class: "landing-term-title", "curl \u{00b7} burncloud router" }
                         }
                         div { class: "landing-term-body",
@@ -109,7 +109,7 @@ pub fn HomePage() -> Element {
             }
 
             // ─── Trust strip ───
-            section { class: "landing-strip", style: "padding:0",
+            section { class: "landing-strip no-pad",
                 div { class: "landing-wrap",
                     div { class: "landing-strip-inner",
                         div { class: "landing-strip-item",
@@ -148,27 +148,27 @@ pub fn HomePage() -> Element {
                                 }
                             }
                             div { class: "v-eyebrow", "Performance first" }
-                            h3 { class: "v-title", "Astonishing concurrency, " em { style: "font-style:normal; color:#FF6B3D", "mythical memory" } "." }
+                            h3 { class: "v-title", "Astonishing concurrency, " em { class: "bc-accent-orange", "mythical memory" } "." }
                             p { class: "v-desc", "A unique \"don't touch the body\" routing mode achieves byte-level zero-copy forwarding when no protocol conversion is required. Latency-conscious by default \u{2014} every request path is hot." }
-                            div { style: "display:flex; gap:32px; margin-top:32px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.08);",
+                            div { class: "bc-kpi-row",
                                 div {
-                                    div { style: "font-size:24px;font-weight:700;color:#fff", "~12 MB" }
-                                    div { style: "font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.12em;margin-top:4px", "Idle RSS" }
+                                    div { class: "bc-kpi-value", "~12 MB" }
+                                    div { class: "bc-kpi-label", "Idle RSS" }
                                 }
                                 div {
-                                    div { style: "font-size:24px;font-weight:700;color:#fff", "< 1 ms" }
-                                    div { style: "font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.12em;margin-top:4px", "Pass-through overhead" }
+                                    div { class: "bc-kpi-value", "< 1 ms" }
+                                    div { class: "bc-kpi-label", "Pass-through overhead" }
                                 }
                                 div {
-                                    div { style: "font-size:24px;font-weight:700;color:#fff", "10K+" }
-                                    div { style: "font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.12em;margin-top:4px", "Concurrent streams" }
+                                    div { class: "bc-kpi-value", "10K+" }
+                                    div { class: "bc-kpi-label", "Concurrent streams" }
                                 }
                             }
                         }
 
                         // Universal aggregation (span-5)
                         div { class: "landing-value-card span-5",
-                            div { class: "v-icon", style: "background:var(--bc-info-light);color:var(--bc-info)",
+                            div { class: "v-icon v-icon-info",
                                 svg { width: "24", height: "24", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.6",
                                     path { d: "M5 12h14M5 12l4-4M5 12l4 4M19 12l-4-4M19 12l-4 4" }
                                 }
@@ -180,7 +180,7 @@ pub fn HomePage() -> Element {
 
                         // Smart load balancing (span-4)
                         div { class: "landing-value-card span-4",
-                            div { class: "v-icon", style: "background:var(--bc-warning-light);color:var(--bc-warning)",
+                            div { class: "v-icon v-icon-warning",
                                 svg { width: "24", height: "24", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.6",
                                     path { d: "M3 6h18M3 12h18M3 18h18" }
                                     circle { cx: "6", cy: "6", r: "2", fill: "currentColor" }
@@ -195,7 +195,7 @@ pub fn HomePage() -> Element {
 
                         // Precise billing (span-4)
                         div { class: "landing-value-card span-4",
-                            div { class: "v-icon", style: "background:var(--bc-success-light);color:var(--bc-success)",
+                            div { class: "v-icon v-icon-success",
                                 svg { width: "24", height: "24", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.6",
                                     path { d: "M12 2v8M12 22v-4M2 12h8M22 12h-4" }
                                     circle { cx: "12", cy: "12", r: "4", stroke_width: "1.6", fill: "none" }
@@ -208,7 +208,7 @@ pub fn HomePage() -> Element {
 
                         // Real-world tested (span-4)
                         div { class: "landing-value-card span-4",
-                            div { class: "v-icon", style: "background:var(--bc-primary-light);color:var(--bc-primary)",
+                            div { class: "v-icon v-icon-primary",
                                 svg { width: "24", height: "24", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.6",
                                     path { d: "M12 2L4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z" }
                                     polyline { points: "9 12 11 14 15 10" }
@@ -220,47 +220,47 @@ pub fn HomePage() -> Element {
                         }
 
                         // Fluent experience (span-12, warm gradient)
-                        div { class: "landing-value-card span-12", style: "background: linear-gradient(135deg, #FFF5F0 0%, #FFFBF7 100%); border-color:#FFD9C2",
-                            div { style: "display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center;",
+                        div { class: "landing-value-card span-12 bc-fluent-card",
+                            div { class: "bc-fluent-grid",
                                 div {
-                                    div { class: "v-eyebrow", style: "color:#C2410C", "Fluent experience" }
-                                    h3 { class: "v-title", style: "font-size:32px;", "A native client. Not a web wrapper." }
-                                    p { class: "v-desc", style: "font-size:15px;", "Built with Dioxus and styled with Windows 11 Fluent Design. Real-time TPS, RPM and token consumption charts \u{2014} you'll never grep a log file again." }
+                                    div { class: "v-eyebrow bc-fluent-eyebrow", "Fluent experience" }
+                                    h3 { class: "v-title bc-fluent-title", "A native client. Not a web wrapper." }
+                                    p { class: "v-desc bc-fluent-desc", "Built with Dioxus and styled with Windows 11 Fluent Design. Real-time TPS, RPM and token consumption charts \u{2014} you'll never grep a log file again." }
                                 }
                                 // Mini dashboard mock
-                                div { style: "background:#fff; border-radius:12px; box-shadow: 0 8px 32px rgba(194,65,12,0.12); overflow:hidden; border:1px solid var(--bc-border);",
-                                    div { style: "height: 28px; background:#fff; border-bottom:1px solid var(--bc-border); display:flex; align-items:center; padding:0 12px; gap:6px;",
-                                        span { style: "width:10px;height:10px;border-radius:50%;background:#FF5F57" }
-                                        span { style: "width:10px;height:10px;border-radius:50%;background:#FEBC2E" }
-                                        span { style: "width:10px;height:10px;border-radius:50%;background:#28C840" }
+                                div { class: "bc-mock-dashboard",
+                                    div { class: "bc-mock-titlebar",
+                                        span { class: "bc-mock-dot bc-mock-dot-red" }
+                                        span { class: "bc-mock-dot bc-mock-dot-yellow" }
+                                        span { class: "bc-mock-dot bc-mock-dot-green" }
                                     }
-                                    div { style: "padding:20px; display:grid; grid-template-columns:1fr 1fr; gap:12px;",
+                                    div { class: "bc-mock-body",
                                         // Requests/min card
-                                        div { style: "padding:12px; background:var(--bc-bg-canvas); border-radius:8px;",
-                                            div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "Requests / min" }
-                                            div { style: "font-size:22px; font-weight:700; margin-top:4px", "14,820" }
-                                            div { style: "display:flex; align-items:flex-end; gap:2px; height:24px; margin-top:6px",
-                                                span { style: "flex:1;background:#FF6B3D;border-radius:1px;height:40%" }
-                                                span { style: "flex:1;background:#FF6B3D;border-radius:1px;height:60%" }
-                                                span { style: "flex:1;background:#FF6B3D;border-radius:1px;height:55%" }
-                                                span { style: "flex:1;background:#FF6B3D;border-radius:1px;height:80%" }
-                                                span { style: "flex:1;background:#FF6B3D;border-radius:1px;height:70%" }
-                                                span { style: "flex:1;background:#FF6B3D;border-radius:1px;height:90%" }
-                                                span { style: "flex:1;background:#FF6B3D;border-radius:1px;height:100%" }
+                                        div { class: "bc-mock-stat",
+                                            div { class: "bc-mock-stat-label", "Requests / min" }
+                                            div { class: "bc-mock-stat-value", "14,820" }
+                                            div { class: "bc-mock-spark",
+                                                span { class: "bc-mock-bar bc-mock-bar-orange", style: "--bc-dynamic-height:40%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-orange", style: "--bc-dynamic-height:60%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-orange", style: "--bc-dynamic-height:55%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-orange", style: "--bc-dynamic-height:80%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-orange", style: "--bc-dynamic-height:70%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-orange", style: "--bc-dynamic-height:90%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-orange", style: "--bc-dynamic-height:100%" }
                                             }
                                         }
                                         // Tokens/hour card
-                                        div { style: "padding:12px; background:var(--bc-bg-canvas); border-radius:8px;",
-                                            div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "Tokens / hour" }
-                                            div { style: "font-size:22px; font-weight:700; margin-top:4px", "2.4M" }
-                                            div { style: "display:flex; align-items:flex-end; gap:2px; height:24px; margin-top:6px",
-                                                span { style: "flex:1;background:#007AFF;border-radius:1px;height:30%" }
-                                                span { style: "flex:1;background:#007AFF;border-radius:1px;height:55%" }
-                                                span { style: "flex:1;background:#007AFF;border-radius:1px;height:70%" }
-                                                span { style: "flex:1;background:#007AFF;border-radius:1px;height:60%" }
-                                                span { style: "flex:1;background:#007AFF;border-radius:1px;height:88%" }
-                                                span { style: "flex:1;background:#007AFF;border-radius:1px;height:75%" }
-                                                span { style: "flex:1;background:#007AFF;border-radius:1px;height:95%" }
+                                        div { class: "bc-mock-stat",
+                                            div { class: "bc-mock-stat-label", "Tokens / hour" }
+                                            div { class: "bc-mock-stat-value", "2.4M" }
+                                            div { class: "bc-mock-spark",
+                                                span { class: "bc-mock-bar bc-mock-bar-blue", style: "--bc-dynamic-height:30%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-blue", style: "--bc-dynamic-height:55%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-blue", style: "--bc-dynamic-height:70%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-blue", style: "--bc-dynamic-height:60%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-blue", style: "--bc-dynamic-height:88%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-blue", style: "--bc-dynamic-height:75%" }
+                                                span { class: "bc-mock-bar bc-mock-bar-blue", style: "--bc-dynamic-height:95%" }
                                             }
                                         }
                                     }
@@ -362,7 +362,7 @@ pub fn HomePage() -> Element {
                                 span { class: "landing-arch-chip", "SQLx" }
                                 span { class: "landing-arch-chip", "SQLite" }
                                 span { class: "landing-arch-chip", "PostgreSQL" }
-                                span { class: "landing-arch-chip", style: "opacity:0.5", "Redis (planned)" }
+                                span { class: "landing-arch-chip bc-chip-faded", "Redis (planned)" }
                             }
                         }
                     }
@@ -374,8 +374,8 @@ pub fn HomePage() -> Element {
                 div { class: "landing-wrap landing-code-grid",
                     div {
                         div { class: "landing-section-eyebrow", "Drop-in compatible" }
-                        h2 { class: "landing-section-title", style: "font-size:42px;", "One curl. Every model." }
-                        p { style: "font-size:16px;color:var(--bc-text-secondary);line-height:1.55;margin:0", "Already using OpenAI? Change one URL. Already on Anthropic? Same. The router handles protocol, billing, and failover behind the scenes." }
+                        h2 { class: "landing-section-title bc-code-title", "One curl. Every model." }
+                        p { class: "bc-code-desc", "Already using OpenAI? Change one URL. Already on Anthropic? Same. The router handles protocol, billing, and failover behind the scenes." }
                         div { class: "landing-code-feat",
                             div { class: "pt",
                                 span { class: "pt-mark", "1" }
@@ -394,9 +394,9 @@ pub fn HomePage() -> Element {
 
                     div { class: "landing-terminal",
                         div { class: "landing-term-bar",
-                            span { class: "landing-term-dot", style: "background:#FF5F57" }
-                            span { class: "landing-term-dot", style: "background:#FEBC2E" }
-                            span { class: "landing-term-dot", style: "background:#28C840" }
+                            span { class: "landing-term-dot bc-term-dot-red" }
+                            span { class: "landing-term-dot bc-term-dot-yellow" }
+                            span { class: "landing-term-dot bc-term-dot-green" }
                             span { class: "landing-term-title", "app.py \u{00b7} using BurnCloud as base" }
                         }
                         div { class: "landing-term-body",
@@ -473,9 +473,9 @@ pub fn HomePage() -> Element {
             // ─── Final CTA ───
             section { class: "landing-final-cta",
                 div { class: "landing-wrap landing-final-cta-inner",
-                    h2 { style: "font-size:64px;font-weight:700;letter-spacing:-0.03em;line-height:1.05;margin:0 0 20px;color:#fff", "Stop paying the" br {} "runtime tax." }
-                    p { style: "font-size:19px;color:rgba(255,255,255,0.7);margin:0 auto 36px;max-width:540px;line-height:1.5", "One binary. Five protocols. Zero config drama. Try BurnCloud locally in under a minute." }
-                    div { style: "display:inline-flex;gap:12px;",
+                    h2 { class: "bc-cta-title", "Stop paying the" br {} "runtime tax." }
+                    p { class: "bc-cta-desc", "One binary. Five protocols. Zero config drama. Try BurnCloud locally in under a minute." }
+                    div { class: "bc-cta-actions",
                         Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", "Get Started \u{2192}" }
                         a { class: "landing-btn landing-btn-ghost", href: "#", "Star on GitHub" }
                     }
@@ -487,11 +487,11 @@ pub fn HomePage() -> Element {
                 div { class: "landing-wrap",
                     div { class: "landing-foot-grid",
                         div {
-                            div { class: "landing-brand", style: "color:#fff; margin-bottom:16px",
+                            div { class: "landing-brand bc-foot-brand",
                                 span { class: "landing-brand-mark", "B" }
                                 span { "BurnCloud" }
                             }
-                            div { style: "max-width:320px;line-height:1.6;", "A Rust-native LLM aggregation gateway. Apache 2.0 / MIT. Built with care by an open-source community." }
+                            div { class: "bc-foot-about", "A Rust-native LLM aggregation gateway. Apache 2.0 / MIT. Built with care by an open-source community." }
                         }
                         div {
                             div { class: "landing-foot-h", "Product" }
