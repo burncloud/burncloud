@@ -4,12 +4,15 @@
 use burncloud_client_shared::auth_context::{use_auth, CurrentUser};
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::components::logo::Logo;
+use burncloud_client_shared::i18n::{t, use_i18n};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 use std::time::Duration;
 
 #[component]
 pub fn RegisterPage() -> Element {
+    let i18n = use_i18n();
+    let lang = i18n.language;
     let mut email = use_signal(String::new);
     let mut pw = use_signal(String::new);
     let mut pw2 = use_signal(String::new);
@@ -34,7 +37,7 @@ pub fn RegisterPage() -> Element {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 shake_form.set(false);
             });
-            toast.error("请填写所有必填字段");
+            toast.error(t(*lang.read(), "register.error.fill_required"));
             return;
         }
 
@@ -44,7 +47,7 @@ pub fn RegisterPage() -> Element {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 shake_form.set(false);
             });
-            toast.error("两次输入的密码不一致");
+            toast.error(t(*lang.read(), "register.error.password_mismatch"));
             return;
         }
 
@@ -61,7 +64,7 @@ pub fn RegisterPage() -> Element {
                             roles: login_response.roles.clone(),
                         },
                     );
-                    toast.success("注册成功！欢迎使用 BurnCloud");
+                    toast.success(t(*lang.read(), "register.success"));
                     tokio::time::sleep(Duration::from_millis(500)).await;
                     loading.set(false);
                     navigator.push("/console/dashboard");
@@ -93,7 +96,7 @@ pub fn RegisterPage() -> Element {
     rsx! {
         div { class: "login",
 
-            // ─── LEFT: BRAND PANEL (50%) ───
+            // --- LEFT: BRAND PANEL (50%) ---
             aside { class: "login-brand",
                 // Logo + brand
                 div { style: "display:flex; align-items:center; gap:12px;",
@@ -113,7 +116,7 @@ pub fn RegisterPage() -> Element {
                         "Every model."
                     }
                     p { class: "login-brand-subhead",
-                        "免费 14 天试用 \u{00b7} 100 万 token 额度 \u{00b7} 无需信用卡。注册即得跨 Anthropic / Gemini / Azure / Qwen 的统一 OpenAI 兼容接口。"
+                        {t(*lang.read(), "register.brand.subhead")}
                     }
 
                     // Benefit rows
@@ -121,22 +124,22 @@ pub fn RegisterPage() -> Element {
                         div { class: "login-benefit",
                             span { class: "login-benefit-check", "\u{2713}" }
                             div { style: "display:flex; flex-direction:column;",
-                                span { class: "login-benefit-key", "免费额度" }
-                                span { class: "login-benefit-val", "1,000,000 tokens \u{00b7} 14 天有效" }
+                                span { class: "login-benefit-key", {t(*lang.read(), "register.brand.benefit_free_key")} }
+                                span { class: "login-benefit-val", {t(*lang.read(), "register.brand.benefit_free_val")} }
                             }
                         }
                         div { class: "login-benefit",
                             span { class: "login-benefit-check", "\u{2713}" }
                             div { style: "display:flex; flex-direction:column;",
-                                span { class: "login-benefit-key", "统一接口" }
+                                span { class: "login-benefit-key", {t(*lang.read(), "register.brand.benefit_unified_key")} }
                                 span { class: "login-benefit-val", "OpenAI \u{00b7} Anthropic \u{00b7} Gemini \u{00b7} Azure \u{00b7} Qwen" }
                             }
                         }
                         div { class: "login-benefit",
                             span { class: "login-benefit-check", "\u{2713}" }
                             div { style: "display:flex; flex-direction:column;",
-                                span { class: "login-benefit-key", "即开即用" }
-                                span { class: "login-benefit-val", "无需信用卡 \u{00b7} 邮箱验证后立即生效" }
+                                span { class: "login-benefit-key", {t(*lang.read(), "register.brand.benefit_instant_key")} }
+                                span { class: "login-benefit-val", {t(*lang.read(), "register.brand.benefit_instant_val")} }
                             }
                         }
                     }
@@ -148,31 +151,31 @@ pub fn RegisterPage() -> Element {
                 }
             }
 
-            // ─── RIGHT: FORM PANEL (50%) ───
+            // --- RIGHT: FORM PANEL (50%) ---
             main { class: "login-form",
                 div { class: "{form_class}", style: "display:flex; flex-direction:column; gap:18px; width:100%;",
 
                     // Header
                     div { style: "margin-bottom:14px;",
-                        h2 { class: "login-form-title", "创建账户" }
-                        div { class: "login-form-subtitle", "几秒钟开通您的 AI 网关" }
+                        h2 { class: "login-form-title", {t(*lang.read(), "register.form.title")} }
+                        div { class: "login-form-subtitle", {t(*lang.read(), "register.form.subtitle")} }
                     }
 
                     // Name + Org (2-column)
                     div { style: "display:grid; grid-template-columns:1fr 1fr; gap:12px;",
                         div {
-                            label { class: "login-input-label", "姓名" }
+                            label { class: "login-input-label", {t(*lang.read(), "register.form.name_label")} }
                             div { class: "login-input",
                                 input {
                                     r#type: "text",
-                                    placeholder: "张三",
+                                    placeholder: t(*lang.read(), "register.form.name_placeholder"),
                                     value: "{name}",
                                     oninput: move |e: Event<FormData>| name.set(e.value()),
                                 }
                             }
                         }
                         div {
-                            label { class: "login-input-label", "组织 " span { style: "color:var(--bc-text-tertiary); font-weight:400;", "(可选)" } }
+                            label { class: "login-input-label", {t(*lang.read(), "register.form.org_label")} " " span { style: "color:var(--bc-text-tertiary); font-weight:400;", {t(*lang.read(), "register.form.org_optional")} } }
                             div { class: "login-input",
                                 input {
                                     r#type: "text",
@@ -186,7 +189,7 @@ pub fn RegisterPage() -> Element {
 
                     // Email
                     div {
-                        label { class: "login-input-label", "邮箱地址" }
+                        label { class: "login-input-label", {t(*lang.read(), "register.form.email_label")} }
                         div { class: "login-input",
                             input {
                                 r#type: "email",
@@ -199,11 +202,11 @@ pub fn RegisterPage() -> Element {
 
                     // Password
                     div {
-                        label { class: "login-input-label", "密码" }
+                        label { class: "login-input-label", {t(*lang.read(), "register.form.password_label")} }
                         div { class: "login-input",
                             input {
                                 r#type: "password",
-                                placeholder: "至少 8 位 \u{00b7} 含数字与字母",
+                                placeholder: t(*lang.read(), "register.form.password_placeholder"),
                                 value: "{pw}",
                                 oninput: move |e: Event<FormData>| pw.set(e.value()),
                             }
@@ -224,11 +227,11 @@ pub fn RegisterPage() -> Element {
 
                     // Confirm password
                     div {
-                        label { class: "login-input-label", "确认密码" }
+                        label { class: "login-input-label", {t(*lang.read(), "register.form.confirm_password_label")} }
                         div { class: "login-input",
                             input {
                                 r#type: "password",
-                                placeholder: "再次输入",
+                                placeholder: t(*lang.read(), "register.form.confirm_password_placeholder"),
                                 value: "{pw2}",
                                 oninput: move |e: Event<FormData>| pw2.set(e.value()),
                             }
@@ -244,11 +247,11 @@ pub fn RegisterPage() -> Element {
                             style: "margin-top:2px; accent-color:#000;",
                         }
                         span {
-                            "我已阅读并同意 "
-                            a { style: "color:var(--bc-primary); text-decoration:none;", "服务条款" }
-                            " 与 "
-                            a { style: "color:var(--bc-primary); text-decoration:none;", "隐私政策" }
-                            "，同意接收产品更新通知。"
+                            {t(*lang.read(), "register.form.terms_prefix")}
+                            a { style: "color:var(--bc-primary); text-decoration:none;", {t(*lang.read(), "register.form.terms_tos")} }
+                            {t(*lang.read(), "register.form.terms_and")}
+                            a { style: "color:var(--bc-primary); text-decoration:none;", {t(*lang.read(), "register.form.terms_privacy")} }
+                            {t(*lang.read(), "register.form.terms_suffix")}
                         }
                     }
 
@@ -259,16 +262,16 @@ pub fn RegisterPage() -> Element {
                         disabled: loading(),
                         onclick: handle_register,
                         if loading() {
-                            "注册中..."
+                            {t(*lang.read(), "register.form.registering")}
                         } else {
-                            "创建账户"
+                            {t(*lang.read(), "register.form.create_account")}
                         }
                     }
 
                     // Divider
                     div { class: "login-divider",
                         div { class: "login-divider-line" }
-                        span { class: "login-divider-text", "或" }
+                        span { class: "login-divider-text", {t(*lang.read(), "register.form.or")} }
                         div { class: "login-divider-line" }
                     }
 
@@ -287,8 +290,8 @@ pub fn RegisterPage() -> Element {
 
                     // Switch link
                     div { class: "login-footer",
-                        "已有账户? "
-                        Link { to: "/login", style: "color:var(--bc-primary); text-decoration:none; font-weight:500; cursor:pointer;", "立即登录" }
+                        {t(*lang.read(), "register.form.has_account")}
+                        Link { to: "/login", style: "color:var(--bc-primary); text-decoration:none; font-weight:500; cursor:pointer;", {t(*lang.read(), "register.form.login_now")} }
                     }
                 }
             }

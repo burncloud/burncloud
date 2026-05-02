@@ -6,22 +6,23 @@ use burncloud_client_shared::components::{
     FormMode, PageHeader, SchemaForm, StatusPill,
     EmptyState, SkeletonCard, SkeletonVariant,
 };
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
 /// AWS connection form schema
-fn aws_connect_schema() -> serde_json::Value {
+fn aws_connect_schema(lang: burncloud_client_shared::i18n::Language) -> serde_json::Value {
     serde_json::json!({
         "entity_type": "aws_connect",
-        "label": "接入本地资源",
+        "label": t(lang, "connect.schema.label"),
         "fields": [
             {
                 "key": "name",
-                "label": "资源别名",
+                "label": t(lang, "connect.schema.name_label"),
                 "type": "text",
                 "required": true,
-                "placeholder": "例如: 生产环境-AWS"
+                "placeholder": t(lang, "connect.schema.name_placeholder")
             },
             {
                 "key": "aws_ak",
@@ -48,13 +49,15 @@ fn aws_connect_schema() -> serde_json::Value {
         ],
         "table_columns": [],
         "form_sections": [
-            {"title": "AWS 凭证", "fields": ["name", "aws_ak", "aws_region", "aws_sk"]}
+            {"title": t(lang, "connect.schema.section_title"), "fields": ["name", "aws_ak", "aws_region", "aws_sk"]}
         ]
     })
 }
 
 #[component]
 pub fn ConnectPage() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let mut active_tab = use_signal(|| "local".to_string());
     let mut show_add_modal = use_signal(|| false);
     let toast = use_toast();
@@ -68,7 +71,7 @@ pub fn ConnectPage() -> Element {
         })
     });
 
-    let aws_schema = aws_connect_schema();
+    let aws_schema = aws_connect_schema(*lang.read());
 
     let mut channels = use_resource(move || async move {
         ChannelService::list(0, 100).await.unwrap_or_default()
@@ -117,23 +120,23 @@ pub fn ConnectPage() -> Element {
                         "aws_sk": "",
                         "aws_region": "us-east-1"
                     }));
-                    toast.success("资源已接入");
+                    toast.success(t(*lang.read(), "connect.success.connected"));
                 }
-                Err(e) => toast.error(&format!("接入失败: {}", e)),
+                Err(e) => toast.error(&t_fmt(*lang.read(), "connect.error.connect_failed", &[("error", &e.to_string())])),
             }
         });
     };
 
     rsx! {
         PageHeader {
-            title: "算力互联",
-            subtitle: Some("BurnCloud Connect".to_string()),
+            title: t(*lang.read(), "connect.title"),
+            subtitle: Some(t(*lang.read(), "connect.subtitle").to_string()),
             subtitle_class: Some("mono".to_string()),
             actions: rsx! {
                 BCButton {
                     class: "btn-primary",
                     onclick: move |_| show_add_modal.set(true),
-                    "接入本地资源"
+                    {t(*lang.read(), "connect.add_local")}
                 }
             },
         }
@@ -172,17 +175,17 @@ pub fn ConnectPage() -> Element {
                     button {
                         class: if active_tab() == "local" { "tab active" } else { "tab" },
                         onclick: move |_| active_tab.set("local".to_string()),
-                        "本地算力"
+                        {t(*lang.read(), "connect.tab.local")}
                     }
                     button {
                         class: if active_tab() == "net" { "tab active" } else { "tab" },
                         onclick: move |_| active_tab.set("net".to_string()),
-                        "网络互联"
+                        {t(*lang.read(), "connect.tab.network")}
                     }
                     button {
                         class: if active_tab() == "settle" { "tab active" } else { "tab" },
                         onclick: move |_| active_tab.set("settle".to_string()),
-                        "结算账单"
+                        {t(*lang.read(), "connect.tab.billing")}
                     }
                 }
 
@@ -192,8 +195,8 @@ pub fn ConnectPage() -> Element {
                         div {
                             div { class: "section-h lg",
                                 div { class: "lead",
-                                    span { class: "lead-title", "本地资源矩阵" }
-                                    span { class: "lead-sub", "当前节点贡献给网络的算力资源" }
+                                    span { class: "lead-title", {t(*lang.read(), "connect.local.lead_title")} }
+                                    span { class: "lead-sub", {t(*lang.read(), "connect.local.lead_sub")} }
                                 }
                             }
 
@@ -203,13 +206,13 @@ pub fn ConnectPage() -> Element {
                             } else if ch_list.is_empty() {
                                 EmptyState {
                                     icon: rsx! { span { style: "font-size:40px", "🖥️" } },
-                                    title: "暂无本地资源".to_string(),
-                                    description: Some("请接入 AWS 账号开始共享算力".to_string()),
+                                    title: t(*lang.read(), "connect.local.empty_title").to_string(),
+                                    description: Some(t(*lang.read(), "connect.local.empty_desc").to_string()),
                                     cta: Some(rsx! {
                                         BCButton {
                                             class: "btn-secondary",
                                             onclick: move |_| show_add_modal.set(true),
-                                            "立即接入 AWS 账号"
+                                            {t(*lang.read(), "connect.local.connect_aws")}
                                         }
                                     }),
                                 }
@@ -218,11 +221,11 @@ pub fn ConnectPage() -> Element {
                                     thead {
                                         tr {
                                             th { "ID" }
-                                            th { "状态" }
-                                            th { "名称" }
-                                            th { "模型" }
+                                            th { {t(*lang.read(), "connect.col.status")} }
+                                            th { {t(*lang.read(), "connect.col.name")} }
+                                            th { {t(*lang.read(), "connect.col.models")} }
                                             th { "Base URL" }
-                                            th { style: "text-align:right", "操作" }
+                                            th { style: "text-align:right", {t(*lang.read(), "connect.col.actions")} }
                                         }
                                     }
                                     tbody {
@@ -240,7 +243,7 @@ pub fn ConnectPage() -> Element {
                                                 td { class: "mono", style: "font-size:12px", "{ch.models}" }
                                                 td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)", "{ch.base_url}" }
                                                 td { style: "text-align:right",
-                                                    button { class: "btn btn-ghost", style: "color:var(--bc-danger); font-weight:600", "删除" }
+                                                    button { class: "btn btn-ghost", style: "color:var(--bc-danger); font-weight:600", {t(*lang.read(), "connect.col.delete")} }
                                                 }
                                             }
                                         }
@@ -253,10 +256,10 @@ pub fn ConnectPage() -> Element {
                         div { style: "padding-top:24px; border-top:1px solid var(--bc-border)",
                             div { class: "section-h lg",
                                 div { class: "lead",
-                                    span { class: "lead-title", "互联算力池 (Sourcing)" }
-                                    span { class: "lead-sub", "接入外部专业矿池以采购全球算力" }
+                                    span { class: "lead-title", {t(*lang.read(), "connect.pool.lead_title")} }
+                                    span { class: "lead-sub", {t(*lang.read(), "connect.pool.lead_sub")} }
                                 }
-                                button { class: "btn btn-secondary", "接入新算力池" }
+                                button { class: "btn btn-secondary", {t(*lang.read(), "connect.pool.add")} }
                             }
 
                             // Featured pool card
@@ -265,8 +268,8 @@ pub fn ConnectPage() -> Element {
                                     div { style: "width:40px; height:40px; border-radius:99px; background:var(--bc-primary-light); display:flex; align-items:center; justify-content:center; font-size:20px", "🌐" }
                                     div {
                                         div { style: "display:flex; align-items:center; gap:8px",
-                                            h3 { style: "font-size:15px; font-weight:700; margin:0", "SkyNet Prime (官方合作伙伴)" }
-                                            span { class: "pill success", style: "font-size:10px", "官方推荐" }
+                                            h3 { style: "font-size:15px; font-weight:700; margin:0", {t(*lang.read(), "connect.pool.skynet_title")} }
+                                            span { class: "pill success", style: "font-size:10px", {t(*lang.read(), "connect.pool.official")} }
                                         }
                                         div { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary); margin-top:4px", "https://pool.skynet-ops.io" }
                                     }
@@ -275,7 +278,7 @@ pub fn ConnectPage() -> Element {
                                 div { style: "display:flex; align-items:center; gap:32px",
                                     div { style: "text-align:right",
                                         div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "Status" }
-                                        div { style: "font-size:13px; font-weight:500; margin-top:2px; color:var(--bc-success)", "● 已连接" }
+                                        div { style: "font-size:13px; font-weight:500; margin-top:2px; color:var(--bc-success)", {t(*lang.read(), "connect.pool.connected")} }
                                     }
                                     div { style: "text-align:right",
                                         div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "Latency" }
@@ -289,13 +292,13 @@ pub fn ConnectPage() -> Element {
                                         div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "My Balance" }
                                         div { style: "font-size:17px; font-weight:700; color:var(--bc-primary); margin-top:2px", "$ 12.50" }
                                     }
-                                    button { class: "btn btn-ghost", "配置" }
+                                    button { class: "btn btn-ghost", {t(*lang.read(), "connect.pool.configure")} }
                                 }
                             }
 
                             // Marketplace
                             div { style: "padding-left:20px; margin-left:8px; border-left:2px solid var(--bc-border)",
-                                div { class: "config-label", style: "margin-bottom:12px; color:var(--bc-text-secondary); font-weight:700", "算力池实时可用资源" }
+                                div { class: "config-label", style: "margin-bottom:12px; color:var(--bc-text-secondary); font-weight:700", {t(*lang.read(), "connect.pool.available")} }
                                 div { style: "display:grid; grid-template-columns:repeat(3, 1fr); gap:12px",
                                     MarketplaceCard { provider: "AWS", region: "us-east-1", latency: "12ms", price: "0.002", trust: 99, nodes: 312 }
                                     MarketplaceCard { provider: "Azure", region: "japan-east", latency: "88ms", price: "0.0018", trust: 95, nodes: 128 }
@@ -308,7 +311,7 @@ pub fn ConnectPage() -> Element {
                     div { style: "margin-top:24px",
                         EmptyState {
                             icon: rsx! { span { style: "font-size:40px", "🌐" } },
-                            title: "网络拓扑视图加载中…".to_string(),
+                            title: t(*lang.read(), "connect.network.loading").to_string(),
                             description: None,
                             cta: None,
                         }
@@ -317,7 +320,7 @@ pub fn ConnectPage() -> Element {
                     div { style: "margin-top:24px",
                         EmptyState {
                             icon: rsx! { span { style: "font-size:40px", "📄" } },
-                            title: "暂无结算单据".to_string(),
+                            title: t(*lang.read(), "connect.billing.empty_title").to_string(),
                             description: None,
                             cta: None,
                         }
@@ -328,13 +331,13 @@ pub fn ConnectPage() -> Element {
 
         // Add AWS modal
         BCModal {
-            title: "接入本地资源 (Miner)".to_string(),
+            title: t(*lang.read(), "connect.modal.title").to_string(),
             open: show_add_modal(),
             onclose: move |_| show_add_modal.set(false),
 
             div { class: "flex flex-col gap-lg p-lg",
                 p { class: "text-secondary text-caption",
-                    "输入您的 AWS IAM 用户凭证。您的凭证将保持在本地加密存储，仅用于算力互联。 "
+                    {t(*lang.read(), "connect.modal.description")}
                 }
 
                 SchemaForm {
@@ -349,7 +352,7 @@ pub fn ConnectPage() -> Element {
                     BCButton {
                         variant: ButtonVariant::Secondary,
                         onclick: move |_| show_add_modal.set(false),
-                        "取消"
+                        {t(*lang.read(), "common.cancel")}
                     }
                     BCButton {
                         variant: ButtonVariant::Primary,
@@ -357,7 +360,7 @@ pub fn ConnectPage() -> Element {
                             let data = form_data.read().clone();
                             handle_add_aws(data);
                         },
-                        "验证并开启互联"
+                        {t(*lang.read(), "connect.modal.submit")}
                     }
                 }
             }
@@ -374,6 +377,9 @@ fn MarketplaceCard(
     trust: i32,
     nodes: i32,
 ) -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
+
     rsx! {
         div { class: "pick-card",
             div { style: "display:flex; justify-content:space-between; align-items:flex-start",
@@ -389,7 +395,7 @@ fn MarketplaceCard(
             }
             div { style: "display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--bc-border)",
                 span { style: "font-size:11px; color:var(--bc-text-secondary)", "trust ", span { class: "mono", style: "font-weight:600; color:var(--bc-text-primary)", "{trust}" } }
-                button { class: "btn btn-ghost", style: "min-height:24px; padding:2px 10px; font-size:12px", "接入" }
+                button { class: "btn btn-ghost", style: "min-height:24px; padding:2px 10px; font-size:12px", {t(*lang.read(), "connect.marketplace.connect")} }
             }
         }
     }

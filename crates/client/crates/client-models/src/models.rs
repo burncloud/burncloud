@@ -8,6 +8,7 @@ use burncloud_client_shared::components::{
     PageHeader, StatusPill, Chip, EmptyState,
     SkeletonCard, SkeletonVariant,
 };
+use burncloud_client_shared::i18n::{t, t_fmt, use_i18n, Language};
 use burncloud_client_shared::schema::channel_schema;
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
@@ -185,7 +186,6 @@ fn channel_status(status: i32) -> String {
 }
 
 fn channel_status_label(status: i32, lang: Language) -> String {
-    use burncloud_client_shared::i18n::t;
     match status {
         1 => t(lang, "models.status.ok").to_string(),
         2 => t(lang, "models.status.throttle").to_string(),
@@ -220,6 +220,8 @@ fn provider_name(type_: i32) -> &'static str {
 
 #[component]
 pub fn ChannelPage() -> Element {
+    let i18n = use_i18n();
+    let lang = i18n.language;
     let mut active_filter = use_signal(|| "all".to_string());
     let mut is_modal_open = use_signal(|| false);
     let mut modal_step = use_signal(|| 0);
@@ -290,15 +292,15 @@ pub fn ChannelPage() -> Element {
         spawn(async move {
             is_loading.set(true);
             let current_data = form_data.read().clone();
-            let errors = validate_schema(&s, &current_data);
-            if !errors.is_empty() { is_loading.set(false); toast.error("请填写所有必填字段"); return; }
+            let errors = validate_schema(&s, &current_data, *lang.read());
+            if !errors.is_empty() { is_loading.set(false); toast.error(t(*lang.read(), "models.channel.fill_required")); return; }
 
             let ch = build_channel_from_form(&current_data);
             let result = if ch.id == 0 { ChannelService::create(&ch).await } else { ChannelService::update(&ch).await };
 
             match result {
-                Ok(_) => { is_modal_open.set(false); channels.restart(); toast.success("保存成功"); }
-                Err(e) => toast.error(&format!("保存失败: {}", e)),
+                Ok(_) => { is_modal_open.set(false); channels.restart(); toast.success(t(*lang.read(), "models.channel.saved")); }
+                Err(e) => toast.error(&t_fmt(*lang.read(), "models.channel.save_failed", &[("error", &e.to_string())])),
             }
             is_loading.set(false);
         });
@@ -308,10 +310,10 @@ pub fn ChannelPage() -> Element {
         spawn(async move {
             if ChannelService::delete(delete_channel_id()).await.is_ok() {
                 channels.restart();
-                toast.success("渠道已删除");
+                toast.success(t(*lang.read(), "models.channel.channel_deleted"));
                 is_delete_modal_open.set(false);
             } else {
-                toast.error("删除失败");
+                toast.error(t(*lang.read(), "models.channel.delete_failed"));
             }
         });
     };
@@ -339,20 +341,20 @@ pub fn ChannelPage() -> Element {
 
     rsx! {
         PageHeader {
-            title: "模型网络",
-            subtitle: Some(format!("{} 个渠道 · 总权重 {}", ch_list.len(), total_weight)),
+            title: t(*lang.read(), "models.channel.title"),
+            subtitle: t_fmt(*lang.read(), "models.channel.subtitle", &[("count", &ch_list.len().to_string()), ("weight", &total_weight.to_string())]),
             actions: rsx! {
                 div { class: "input sm", style: "width:240px",
                     input {
                         r#type: "text",
-                        placeholder: "搜索渠道、模型或组织…",
+                        placeholder: t(*lang.read(), "models.channel.search_placeholder"),
                     }
                 }
-                button { class: "btn btn-secondary", "筛选" }
+                button { class: "btn btn-secondary", {t(*lang.read(), "models.channel.filter")} }
                 BCButton {
                     class: "btn-primary",
                     onclick: open_create_modal,
-                    "创建渠道"
+                    {t(*lang.read(), "models.channel.create")}
                 }
             },
         }
@@ -367,29 +369,29 @@ pub fn ChannelPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "活跃渠道" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "models.channel.kpi.active")} }
                         div { class: "stat-value",
                             "{active_count}"
                             span { class: "stat-pill muted", "/ {ch_list.len()}" }
                         }
-                        span { class: "stat-foot", "2 个 org · 5 个 provider" }
+                        span { class: "stat-foot", {t_fmt(*lang.read(), "models.channel.kpi.org_provider", &[("org", "2"), ("provider", "5")])} }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "总权重" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "models.channel.kpi.weight")} }
                         div { class: "stat-value", "{total_weight}" }
-                        span { class: "stat-foot", "round-robin 加权分发" }
+                        span { class: "stat-foot", {t(*lang.read(), "models.channel.kpi.weighted_dispatch")} }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "合计 RPM" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "models.channel.kpi.rpm")} }
                         div { class: "stat-value", "—" }
                         span { class: "stat-foot up", "↑ 8.2% vs 1h ago" }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "健康率" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "models.channel.kpi.health")} }
                         div { class: "stat-value", style: "color:var(--bc-success)",
                             "{health_rate:.0}%"
                         }
-                        span { class: "stat-foot", "{throttle_count} 个限流 · {down_count} 个停止" }
+                        span { class: "stat-foot", {t_fmt(*lang.read(), "models.channel.kpi.throttle_down", &[("throttle", &throttle_count.to_string()), ("down", &down_count.to_string())])} }
                     }
                 }
             }
@@ -397,34 +399,34 @@ pub fn ChannelPage() -> Element {
             // Filter chips + table
             div {
                 div { class: "section-h",
-                    span { class: "lead-title", "渠道明细" }
+                    span { class: "lead-title", {t(*lang.read(), "models.channel.detail")} }
                     div { class: "chip-row",
                         Chip {
-                            label: "全部".to_string(),
+                            label: t(*lang.read(), "models.channel.chip.all").to_string(),
                             count: Some(ch_list.len() as i64),
                             active: Some(active_filter() == "all"),
                             onclick: move |_| active_filter.set("all".to_string()),
                         }
                         Chip {
-                            label: "正常".to_string(),
+                            label: t(*lang.read(), "models.channel.chip.ok").to_string(),
                             count: Some(active_count as i64),
                             active: Some(active_filter() == "ok"),
                             onclick: move |_| active_filter.set("ok".to_string()),
                         }
                         Chip {
-                            label: "限流".to_string(),
+                            label: t(*lang.read(), "models.channel.chip.throttle").to_string(),
                             count: Some(throttle_count as i64),
                             active: Some(active_filter() == "throttle"),
                             onclick: move |_| active_filter.set("throttle".to_string()),
                         }
                         Chip {
-                            label: "已停止".to_string(),
+                            label: t(*lang.read(), "models.channel.chip.down").to_string(),
                             count: Some(down_count as i64),
                             active: Some(active_filter() == "down"),
                             onclick: move |_| active_filter.set("down".to_string()),
                         }
                         Chip {
-                            label: "维护".to_string(),
+                            label: t(*lang.read(), "models.channel.chip.maint").to_string(),
                             count: Some(maint_count as i64),
                             active: Some(active_filter() == "maint"),
                             onclick: move |_| active_filter.set("maint".to_string()),
@@ -439,20 +441,20 @@ pub fn ChannelPage() -> Element {
                 } else if filtered.is_empty() && !ch_list.is_empty() {
                     EmptyState {
                         icon: rsx! { span { style: "font-size:40px", "📡" } },
-                        title: "无匹配渠道".to_string(),
-                        description: Some("调整筛选条件".to_string()),
+                        title: t(*lang.read(), "models.channel.no_match_title").to_string(),
+                        description: Some(t(*lang.read(), "models.channel.no_match_desc").to_string()),
                         cta: None,
                     }
                 } else if ch_list.is_empty() {
                     EmptyState {
                         icon: rsx! { span { style: "font-size:40px", "📡" } },
-                        title: "暂无模型渠道".to_string(),
-                        description: Some("创建第一个渠道开始使用".to_string()),
+                        title: t(*lang.read(), "models.channel.empty_title").to_string(),
+                        description: Some(t(*lang.read(), "models.channel.empty_desc").to_string()),
                         cta: Some(rsx! {
                             BCButton {
                                 class: "btn-black",
                                 onclick: open_create_modal,
-                                "创建渠道"
+                                {t(*lang.read(), "models.channel.create")}
                             }
                         }),
                     }
@@ -488,7 +490,7 @@ pub fn ChannelPage() -> Element {
                                     td {
                                         StatusPill {
                                             value: channel_status(ch.status),
-                                            label: Some(channel_status_label(ch.status, lang_signal())),
+                                            label: Some(channel_status_label(ch.status, *lang.read())),
                                         }
                                     }
                                     td { style: "text-align:right",
@@ -519,7 +521,7 @@ pub fn ChannelPage() -> Element {
                     div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
                         style: "background: var(--bc-bg-card-solid);",
                         h3 { class: "text-subtitle font-bold text-primary tracking-tight",
-                            if modal_step() == 0 { "选择供应商" } else { "配置连接" }
+                            {if modal_step() == 0 { t(*lang.read(), "models.channel.select_provider").to_string() } else { t(*lang.read(), "models.channel.configure").to_string() }}
                         }
                         button {
                             class: "btn btn-sm btn-circle btn-ghost text-secondary",
@@ -560,20 +562,20 @@ pub fn ChannelPage() -> Element {
                             BCButton {
                                 variant: ButtonVariant::Ghost,
                                 onclick: move |_| modal_step.set(0),
-                                "上一步"
+                                {t(*lang.read(), "models.channel.prev_step")}
                             }
                         }
                         BCButton {
                             variant: ButtonVariant::Ghost,
                             onclick: move |_| is_modal_open.set(false),
-                            "取消"
+                            {t(*lang.read(), "common.cancel")}
                         }
                         if modal_step() == 1 {
                             BCButton {
                                 class: "btn-neutral text-white shadow-md",
                                 loading: is_loading(),
                                 onclick: handle_save,
-                                "保存"
+                                {t(*lang.read(), "models.channel.save")}
                             }
                         }
                     }
@@ -604,16 +606,16 @@ pub fn ChannelPage() -> Element {
                             }
                         }
                         div { class: "flex-1",
-                            h3 { class: "text-subtitle font-bold text-primary", "确认删除" }
-                            p { class: "text-caption text-secondary mt-xs", "此操作无法撤销" }
+                            h3 { class: "text-subtitle font-bold text-primary", {t(*lang.read(), "models.channel.delete_confirm_title")} }
+                            p { class: "text-caption text-secondary mt-xs", {t(*lang.read(), "models.channel.cannot_undo")} }
                         }
                     }
 
                     div { class: "px-lg py-md",
                         p { class: "text-secondary",
-                            "确定要删除连接 \""
+                            {t(*lang.read(), "models.channel.delete_confirm_msg")}
                             span { class: "font-semibold text-primary", "{delete_channel_name()}" }
-                            "\" 吗？"
+                            {t(*lang.read(), "models.channel.delete_confirm_suffix")}
                         }
                     }
 
@@ -622,12 +624,12 @@ pub fn ChannelPage() -> Element {
                         BCButton {
                             variant: ButtonVariant::Ghost,
                             onclick: move |_| is_delete_modal_open.set(false),
-                            "取消"
+                            {t(*lang.read(), "common.cancel")}
                         }
                         BCButton {
                             class: "btn-error text-white shadow-md",
                             onclick: handle_confirm_delete,
-                            "确认删除"
+                            {t(*lang.read(), "models.channel.delete_confirm_title")}
                         }
                     }
                 }

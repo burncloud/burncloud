@@ -254,7 +254,7 @@ pub fn StandardCrudPage(
                             variant: ButtonVariant::Danger,
                             disabled: *saving.read(),
                             onclick: confirm_delete,
-                            if *saving.read() { t(*lang.read(), "common.deleting") } else { t(*lang.read(), "common.confirm") }
+                            {if *saving.read() { t(*lang.read(), "common.deleting").to_string() } else { t(*lang.read(), "common.confirm").to_string() }}
                         }
                     }
                 }

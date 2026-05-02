@@ -2,6 +2,7 @@ use burncloud_client_shared::components::{
     PageHeader, LevelBadge, Chip, EmptyState,
     SkeletonCard, SkeletonVariant,
 };
+use burncloud_client_shared::i18n::t;
 use burncloud_client_shared::services::log_service::{LogEntry, LogService};
 use dioxus::prelude::*;
 
@@ -39,6 +40,8 @@ fn format_thousands(n: i64) -> String {
 
 #[component]
 pub fn LogPage() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let mut active_filter = use_signal(|| "all".to_string());
     let mut search_query = use_signal(String::new);
 
@@ -73,11 +76,11 @@ pub fn LogPage() -> Element {
     rsx! {
         PageHeader {
             title: "Logs",
-            subtitle: Some("全量请求与计费日志 · 实时流".to_string()),
+            subtitle: Some(t(*lang.read(), "log.subtitle").to_string()),
             actions: rsx! {
                 div { class: "input sm", style: "width:240px",
                     input {
-                        placeholder: "搜索消息、渠道、token…",
+                        placeholder: t(*lang.read(), "log.search_placeholder"),
                         value: "{search_query}",
                         oninput: move |e| search_query.set(e.value()),
                     }
@@ -96,7 +99,7 @@ pub fn LogPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "总条数 · 24H" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.total_24h")} }
                         div { class: "stat-value",
                             "2.84"
                             span { class: "stat-pill muted", "M" }
@@ -104,21 +107,21 @@ pub fn LogPage() -> Element {
                         span { class: "stat-foot up", "↑ 12.4% vs yesterday" }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "错误数" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.error_count")} }
                         div { class: "stat-value", style: "color:var(--bc-danger)",
                             "{format_thousands(error_count)}"
                         }
                         span { class: "stat-foot down", "↑ 18 in last hour" }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "告警数" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.warn_count")} }
                         div { class: "stat-value", style: "color:var(--bc-warning)",
                             "{format_thousands(warn_count)}"
                         }
-                        span { class: "stat-foot", "3 个 channel degraded" }
+                        span { class: "stat-foot", {t(*lang.read(), "log.kpi.channels_degraded")} }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "平均延迟" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.avg_latency")} }
                         div { class: "stat-value",
                             "{avg_latency(&log_list)}"
                             span { class: "stat-pill muted", "ms" }
@@ -131,10 +134,10 @@ pub fn LogPage() -> Element {
             // Level filter chips inside section-h
             div {
                 div { class: "section-h",
-                    span { class: "lead-title", "请求流" }
+                    span { class: "lead-title", {t(*lang.read(), "log.request_stream")} }
                     div { class: "chip-row",
                         Chip {
-                            label: "全部".to_string(),
+                            label: t(*lang.read(), "log.filter_all").to_string(),
                             count: Some(total as i64),
                             active: Some(active_filter() == "all"),
                             onclick: move |_| active_filter.set("all".to_string()),
@@ -174,18 +177,18 @@ pub fn LogPage() -> Element {
                 } else if filtered_logs.is_empty() {
                     EmptyState {
                         icon: rsx! { span { style: "font-size:40px", "🔍" } },
-                        title: "没有匹配的日志".to_string(),
-                        description: Some("调整搜索关键词或级别筛选".to_string()),
+                        title: t(*lang.read(), "log.no_matching_logs").to_string(),
+                        description: Some(t(*lang.read(), "log.adjust_search").to_string()),
                         cta: None,
                     }
                 } else {
                     table { class: "table",
                         thead {
                             tr {
-                                th { style: "width:200px", "时间" }
-                                th { style: "width:80px", "级别" }
-                                th { style: "width:160px", "渠道" }
-                                th { "消息" }
+                                th { style: "width:200px", {t(*lang.read(), "log.col.time")} }
+                                th { style: "width:80px", {t(*lang.read(), "log.col.level")} }
+                                th { style: "width:160px", {t(*lang.read(), "log.col.channel")} }
+                                th { {t(*lang.read(), "log.col.message")} }
                             }
                         }
                         tbody {

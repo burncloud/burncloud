@@ -1,5 +1,6 @@
 use burncloud_client_shared::api_client::{ChatUsage, RouteTrace};
 use burncloud_client_shared::components::PageHeader;
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::channel_service::ChannelService;
 use burncloud_client_shared::services::playground_service::{
     ExportFormat, PlaygroundConfig, PlaygroundMessage, PlaygroundService,
@@ -72,6 +73,8 @@ fn format_cost_cny(usd: f64) -> String {
 
 #[component]
 pub fn Playground() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let mut messages: Signal<Vec<ChatMessage>> = use_signal(Vec::new);
     let mut input_text = use_signal(String::new);
     let mut selected_channel = use_signal(|| 0i64);
@@ -199,9 +202,10 @@ pub fn Playground() -> Element {
                         let mut msgs = messages.write();
                         if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_id_for_result) {
                             if !msg.content.is_empty() {
-                                msg.content.push_str("\n\n[连接中断]");
+                                msg.content.push_str("\n\n");
+                                msg.content.push_str(t(*lang.read(), "playground.connection_interrupted"));
                             } else {
-                                msg.content = format!("错误: {}", e);
+                                msg.content = t_fmt(*lang.read(), "playground.error_prefix", &[("error", &e.to_string())]);
                             }
                         }
                         error_msg.set(Some(e.to_string()));
@@ -277,11 +281,11 @@ pub fn Playground() -> Element {
 
     rsx! {
         PageHeader {
-            title: "演练场",
-            subtitle: Some("直连网关 · 测试模型路由与系统提示".to_string()),
+            title: t(*lang.read(), "playground.title"),
+            subtitle: Some(t(*lang.read(), "playground.subtitle").to_string()),
             actions: rsx! {
-                button { class: "btn btn-secondary", onclick: on_clear, "清空" }
-                button { class: "btn btn-secondary", onclick: on_export, "导出" }
+                button { class: "btn btn-secondary", onclick: on_clear, {t(*lang.read(), "playground.clear")} }
+                button { class: "btn btn-secondary", onclick: on_export, {t(*lang.read(), "playground.export")} }
             },
         }
 
@@ -297,7 +301,7 @@ pub fn Playground() -> Element {
             div { style: "border-right:1px solid var(--bc-border); background:var(--bc-bg-card-solid); padding:20px; overflow-y:auto",
                 // Channel selector
                 div { class: "config-row",
-                    label { class: "config-label", "渠道" }
+                    label { class: "config-label", {t(*lang.read(), "playground.channel")} }
                     div { class: "select-input", style: "width:100%; height:40px",
                         select {
                             onchange: move |e| {
@@ -321,7 +325,7 @@ pub fn Playground() -> Element {
                     label { class: "config-label", "Token" }
                     div { class: "select-input", style: "width:100%; height:40px",
                         select {
-                            aria_label: "选择 API Token",
+                            aria_label: t(*lang.read(), "playground.select_api_token"),
                             onchange: move |e| {
                                 selected_token.set(e.value());
                             },
@@ -338,7 +342,7 @@ pub fn Playground() -> Element {
 
                 // Model display
                 div { class: "config-row",
-                    label { class: "config-label", "模型" }
+                    label { class: "config-label", {t(*lang.read(), "playground.model")} }
                     div { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)",
                         "{current_model}"
                     }
@@ -380,23 +384,23 @@ pub fn Playground() -> Element {
                 }
 
                 div { class: "config-row",
-                    label { class: "config-label", "选项" }
+                    label { class: "config-label", {t(*lang.read(), "playground.options")} }
                     label { style: "display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px",
-                        span { "流式响应" }
+                        span { {t(*lang.read(), "playground.stream_response")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: stream_mode(), onchange: move |e| stream_mode.set(e.checked()) }
                             span { class: "switch-track" }
                         }
                     }
                     label { style: "display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px",
-                        span { "显示推理过程" }
+                        span { {t(*lang.read(), "playground.show_reasoning")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: show_reasoning(), onchange: move |e| show_reasoning.set(e.checked()) }
                             span { class: "switch-track" }
                         }
                     }
                     label { style: "display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px",
-                        span { "JSON 模式" }
+                        span { {t(*lang.read(), "playground.json_mode")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: json_mode(), onchange: move |e| json_mode.set(e.checked()) }
                             span { class: "switch-track" }
@@ -410,7 +414,7 @@ pub fn Playground() -> Element {
                 div { role: "log", aria_live: "polite", style: "flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:20px",
                     if msg_list.is_empty() {
                         div { style: "display:flex; align-items:center; justify-content:center; height:100%; color:var(--bc-text-secondary)",
-                            "输入消息开始对话"
+                            {t(*lang.read(), "playground.start_conversation")}
                         }
                     } else {
                         for msg in msg_list.iter() {
@@ -432,9 +436,9 @@ pub fn Playground() -> Element {
                     div { class: "input", style: "flex:1",
                         input {
                             r#type: "text",
-                            aria_label: "输入对话消息",
+                            aria_label: t(*lang.read(), "playground.input_message_aria"),
                             value: "{input_text}",
-                            placeholder: "输入消息… ⌘+Enter 发送",
+                            placeholder: t(*lang.read(), "playground.input_placeholder"),
                             oninput: move |e| input_text.set(e.value()),
                             onkeypress: move |e: KeyboardEvent| {
                                 if e.key() == Key::Enter && e.modifiers().ctrl() {
@@ -447,7 +451,7 @@ pub fn Playground() -> Element {
                         class: "btn btn-primary",
                         disabled: sending(),
                         onclick: move |_| send_trigger += 1,
-                        if sending() { "生成中..." } else { "发送 ↗" }
+                        if sending() { {t(*lang.read(), "playground.generating")} } else { {t(*lang.read(), "playground.send")} }
                     }
                 }
             }
@@ -469,10 +473,10 @@ pub fn Playground() -> Element {
                 }
 
                 div {
-                    label { class: "config-label", "路由轨迹" }
+                    label { class: "config-label", {t(*lang.read(), "playground.route_trace")} }
                     div { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary); line-height:1.9",
                         if route_traces.read().is_empty() {
-                            div { "暂无路由记录" }
+                            div { {t(*lang.read(), "playground.no_route_records")} }
                         } else {
                             for trace in route_traces.read().iter() {
                                 div {
