@@ -341,7 +341,7 @@ pub fn ChannelPage() -> Element {
             title: "模型网络",
             subtitle: Some(format!("{} 个渠道 · 总权重 {}", ch_list.len(), total_weight)),
             actions: rsx! {
-                div { class: "input sm", style: "width:240px",
+                div { class: "input sm bc-w-240",
                     input {
                         r#type: "text",
                         placeholder: "搜索渠道、模型或组织…",
@@ -356,7 +356,7 @@ pub fn ChannelPage() -> Element {
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content flex flex-col gap-xl",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {
@@ -385,7 +385,7 @@ pub fn ChannelPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "健康率" }
-                        div { class: "stat-value", style: "color:var(--bc-success)",
+                        div { class: "stat-value success",
                             "{health_rate:.0}%"
                         }
                         span { class: "stat-foot", "{throttle_count} 个限流 · {down_count} 个停止" }
@@ -437,14 +437,14 @@ pub fn ChannelPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 } else if filtered.is_empty() && !ch_list.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:40px", "📡" } },
+                        icon: rsx! { span { class: "bc-text-4xl", "📡" } },
                         title: "无匹配渠道".to_string(),
                         description: Some("调整筛选条件".to_string()),
                         cta: None,
                     }
                 } else if ch_list.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:40px", "📡" } },
+                        icon: rsx! { span { class: "bc-text-4xl", "📡" } },
                         title: "暂无模型渠道".to_string(),
                         description: Some("创建第一个渠道开始使用".to_string()),
                         cta: Some(rsx! {
@@ -473,14 +473,14 @@ pub fn ChannelPage() -> Element {
                             for ch in &filtered {
                                 tr {
                                     key: "{ch.id}",
-                                    td { style: "font-weight:500", "{ch.name}" }
+                                    td { class: "font-medium", "{ch.name}" }
                                     td {
-                                        span { style: "display:inline-flex; align-items:center; gap:8px",
-                                            span { style: "width:6px; height:6px; border-radius:9999px; background:{provider_color(ch.type_)}" }
-                                            span { style: "font-size:13px; color:var(--bc-text-secondary)", "{provider_name(ch.type_)}" }
+                                        span { class: "bc-provider-row",
+                                            span { class: "bc-provider-dot", style: "--bc-dynamic-provider-color:{provider_color(ch.type_)}" }
+                                            span { class: "bc-text-sm-secondary", "{provider_name(ch.type_)}" }
                                         }
                                     }
-                                    td { class: "mono", style: "font-size:13px", "{ch.models}" }
+                                    td { class: "mono bc-text-sm", "{ch.models}" }
                                     td { class: "mono", "{ch.weight}" }
                                     td { class: "mono", "—" }
                                     td { class: "mono", "—" }
@@ -490,8 +490,8 @@ pub fn ChannelPage() -> Element {
                                             label: Some(channel_status_label(ch.status)),
                                         }
                                     }
-                                    td { style: "text-align:right",
-                                        button { style: "background:none; border:none; cursor:pointer; color:var(--bc-text-secondary); font-size:16px", "⚙" }
+                                    td { class: "text-right",
+                                        button { class: "bc-icon-btn", "⚙" }
                                     }
                                 }
                             }
@@ -505,18 +505,15 @@ pub fn ChannelPage() -> Element {
         if is_modal_open() {
             div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
                 div {
-                    class: "absolute inset-0 transition-opacity",
-                    style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
+                    class: "absolute inset-0 transition-opacity bc-modal-overlay",
                     onclick: move |_| is_modal_open.set(false)
                 }
 
                 div {
-                    class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain",
-                    style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
+                    class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain bc-modal-card",
                     onclick: |e| e.stop_propagation(),
 
-                    div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0",
-                        style: "background: var(--bc-bg-card-solid);",
+                    div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0 bc-modal-header-bg",
                         h3 { class: "text-subtitle font-bold text-primary tracking-tight",
                             if modal_step() == 0 { "选择供应商" } else { "配置连接" }
                         }
@@ -533,7 +530,6 @@ pub fn ChannelPage() -> Element {
                                 for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
                                     button {
                                         class: "bc-card-solid group flex flex-col items-center justify-center gap-md p-lg h-36 transition-all duration-300 ease-out cursor-pointer",
-                                        style: "cursor: pointer;",
                                         onclick: move |_| select_provider(p),
                                         div { class: "text-secondary group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
                                             {p.icon()}
@@ -553,8 +549,7 @@ pub fn ChannelPage() -> Element {
                         }
                     }
 
-                    div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0",
-                        style: "background: var(--bc-bg-hover);",
+                    div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0 bc-modal-footer-bg",
                         if modal_step() == 1 {
                             BCButton {
                                 variant: ButtonVariant::Ghost,
@@ -584,21 +579,17 @@ pub fn ChannelPage() -> Element {
         if is_delete_modal_open() {
             div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
                 div {
-                    class: "absolute inset-0 transition-opacity",
-                    style: "background: rgba(0,0,0,0.30); backdrop-filter: blur(5px);",
+                    class: "absolute inset-0 transition-opacity bc-modal-overlay",
                     onclick: move |_| is_delete_modal_open.set(false)
                 }
 
                 div {
-                    class: "relative w-full max-w-md overflow-hidden animate-scale-in",
-                    style: "background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border);",
+                    class: "relative w-full max-w-md overflow-hidden animate-scale-in bc-modal-card",
                     onclick: |e| e.stop_propagation(),
 
-                    div { class: "flex items-center gap-md px-lg py-lg border-b",
-                        style: "background: var(--bc-danger-light); border-color: var(--bc-danger-light);",
-                        div { class: "w-12 h-12 rounded-full flex items-center justify-center",
-                            style: "background: var(--bc-danger-light);",
-                            svg { class: "w-6 h-6", style: "color: var(--bc-danger);", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
+                    div { class: "flex items-center gap-md px-lg py-lg border-b bc-danger-header",
+                        div { class: "w-12 h-12 rounded-full flex items-center justify-center bc-danger-light-bg",
+                            svg { class: "w-6 h-6 text-danger", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
                                 path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
                             }
                         }
@@ -616,8 +607,7 @@ pub fn ChannelPage() -> Element {
                         }
                     }
 
-                    div { class: "flex justify-end gap-md px-lg py-md border-t",
-                        style: "background: var(--bc-bg-hover);",
+                    div { class: "flex justify-end gap-md px-lg py-md border-t bc-modal-footer-bg",
                         BCButton {
                             variant: ButtonVariant::Ghost,
                             onclick: move |_| is_delete_modal_open.set(false),
