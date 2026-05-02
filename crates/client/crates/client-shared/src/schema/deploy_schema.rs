@@ -10,14 +10,22 @@ pub fn deploy_schema() -> serde_json::Value {
         "label": "schema.deploy.label",
         "fields": [
             {
-                "key": "source",
-                "label": "schema.deploy.field.source.label",
+                "key": "type",
+                "label": "schema.deploy.field.type.label",
                 "type": "select",
                 "required": true,
-                "default": "HuggingFace",
+                "default": "1",
                 "options": [
-                    {"value": "HuggingFace", "label": "HuggingFace"},
-                    {"value": "Local", "label": "Local Path"}
+                    {"value": "1", "label": "OpenAI"},
+                    {"value": "14", "label": "Anthropic"},
+                    {"value": "43", "label": "DeepSeek"},
+                    {"value": "24", "label": "Gemini"},
+                    {"value": "42", "label": "Mistral"},
+                    {"value": "3", "label": "Azure"},
+                    {"value": "4", "label": "Ollama"},
+                    {"value": "20", "label": "OpenRouter"},
+                    {"value": "40", "label": "SiliconFlow"},
+                    {"value": "8", "label": "Custom"}
                 ]
             },
             {
@@ -25,12 +33,34 @@ pub fn deploy_schema() -> serde_json::Value {
                 "label": "Model ID",
                 "type": "text",
                 "required": true,
-                "placeholder": "e.g. gpt2 or organization/model"
+                "placeholder": "e.g. gpt-4o or organization/model"
+            },
+            {
+                "key": "name",
+                "label": "schema.deploy.field.name.label",
+                "type": "text",
+                "required": true,
+                "placeholder": "e.g. My GPT-4o Channel"
+            },
+            {
+                "key": "key",
+                "label": "schema.deploy.field.key.label",
+                "type": "password",
+                "required": true,
+                "placeholder": "API Key"
+            },
+            {
+                "key": "group",
+                "label": "schema.deploy.field.group.label",
+                "type": "text",
+                "required": true,
+                "default": "default",
+                "placeholder": "default"
             }
         ],
         "table_columns": [],
         "form_sections": [
-            {"title": "schema.deploy.section.label", "fields": ["source", "model_id"]}
+            {"title": "schema.deploy.section.label", "fields": ["type", "model_id", "name", "key", "group"]}
         ]
     })
 }

@@ -15,7 +15,7 @@ desktop = ["dioxus/desktop"]
 [dependencies]
 dioxus = { workspace = true, features = ["signals", "hooks", "html", "macro", "launch"] }
 dioxus-router.workspace = true
-reqwest = { workspace = true, features = ["json"] }
+reqwest = { workspace = true, features = ["json", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -26,5 +26,6 @@ regex = "1.10"
 dirs = { workspace = true }
 gloo-storage = "0.3"
 burncloud-common = { workspace = true }
+futures-util = { workspace = true }
 [lints]
 workspace = true
