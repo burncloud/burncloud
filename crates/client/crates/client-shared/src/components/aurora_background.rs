@@ -77,10 +77,7 @@ pub fn AuroraBackground(
 
             // Grid pattern overlay (optional)
             if with_grid {
-                div {
-                    class: "absolute inset-0 opacity-[0.02]",
-                    style: "background-image: radial-gradient(circle at 1px 1px, #1D1D1F 1px, transparent 0); background-size: 40px 40px;"
-                }
+                div { class: "absolute inset-0 opacity-[0.02] aurora-grid", }
             }
         }
     }

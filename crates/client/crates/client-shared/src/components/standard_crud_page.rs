@@ -193,7 +193,7 @@ pub fn StandardCrudPage(
             div { class: "bg-card border rounded-xl overflow-hidden shadow-sm",
                 if !*loading.read() && items.read().is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:32px", "📭" } },
+                        icon: rsx! { span { class: "text-xxl", "📭" } },
                         title: format!("暂无{}", entity_label),
                         description: Some(format!("点击上方按钮创建第一个{}", entity_label)),
                         cta: None,
