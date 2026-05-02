@@ -521,6 +521,7 @@ pub async fn create_router_app(
     let reload_path = format!("{}/reload", INTERNAL_PREFIX);
     let health_path = format!("{}/health", INTERNAL_PREFIX);
     let price_sync_path = format!("{}/prices/sync", INTERNAL_PREFIX);
+    let trip_all_path = format!("{}/circuit-breaker/trip-all", INTERNAL_PREFIX);
 
     // Internal routes that must be registered BEFORE LiveView's catch-all
     // `/console/{*path}` in the server layer, otherwise LiveView intercepts
@@ -529,6 +530,7 @@ pub async fn create_router_app(
         .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
         .route(&price_sync_path, post(price_sync_handler))
+        .route(&trip_all_path, post(circuit_breaker_trip_all_handler))
         .with_state(state.clone());
 
     let app = Router::new()
@@ -604,6 +606,27 @@ async fn price_sync_handler(State(state): State<AppState>) -> Response {
             Body::from("Price sync timed out after 60 seconds"),
         ),
     }
+}
+
+/// POST /console/internal/circuit-breaker/trip-all
+///
+/// Emergency operation: forces all known upstream circuits into Open state.
+/// Each tripped upstream will remain Open for the full cooldown duration
+/// before transitioning to Half-Open. Returns the list of tripped upstream IDs.
+async fn circuit_breaker_trip_all_handler(State(state): State<AppState>) -> Response {
+    let tripped = state.circuit_breaker.trip_all();
+    let body = serde_json::json!({
+        "status": "all_circuits_tripped",
+        "tripped_upstreams": tripped,
+        "count": tripped.len(),
+    });
+    let json = serde_json::to_string(&body).unwrap_or_else(|_| r#"{"status":"all_circuits_tripped"}"#.to_string());
+    build_response_with_header(
+        StatusCode::OK,
+        "content-type",
+        "application/json",
+        Body::from(json),
+    )
 }
 
 async fn models_handler(State(state): State<AppState>) -> Response {
