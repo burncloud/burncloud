@@ -145,8 +145,8 @@ pub fn GroupManager() -> Element {
     rsx! {
         div { class: "flex flex-col gap-lg",
             // Create
-            div { class: "card flat", style: "padding:20px",
-                div { class: "section-h lg", style: "margin-bottom:12px",
+            div { class: "card flat p-xl",
+                div { class: "section-h lg mb-md",
                     div { class: "lead",
                         span { class: "lead-title", "新建分组" }
                     }
@@ -161,10 +161,10 @@ pub fn GroupManager() -> Element {
                 }
             }
 
-            div { class: "grid gap-lg", style: "grid-template-columns: 1fr 2fr;",
+            div { class: "grid gap-lg groups-layout",
                 // Group List
-                div { class: "card flat h-full", style: "padding:20px",
-                    div { class: "section-h lg", style: "margin-bottom:12px",
+                div { class: "card flat h-full p-xl",
+                    div { class: "section-h lg mb-md",
                         div { class: "lead",
                             span { class: "lead-title", "分组列表" }
                         }
@@ -175,17 +175,11 @@ pub fn GroupManager() -> Element {
                                 let gid2 = group.id.clone();
                                 rsx! {
                                     div {
-                                        class: "p-sm cursor-pointer",
-                                        style: if selected_group_id() == Some(group.id.clone()) {{
-                                            "background: var(--bc-primary-light); border-radius: var(--bc-radius-md); border: 1px solid var(--bc-primary);"
-                                        }} else {{
-                                            "background: var(--bc-bg-hover); border-radius: var(--bc-radius-md); border: 1px solid transparent;"
-                                        }},
+                                        class: if selected_group_id() == Some(group.id.clone()) {{ "p-sm cursor-pointer group-item-selected" }} else {{ "p-sm cursor-pointer group-item-default" }},
                                         onclick: move |_| select_group(gid1.clone()),
                                         div { class: "flex justify-between items-center",
                                             span { class: "font-medium", "{group.name}" }
-                                            button { class: "btn btn-subtle",
-                                                style: "color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1);",
+                                            button { class: "btn btn-subtle btn-danger-sm",
                                                 onclick: move |e| {
                                                     e.stop_propagation();
                                                     let id = gid2.clone();
@@ -202,9 +196,9 @@ pub fn GroupManager() -> Element {
                     }
 
                 // Member Editor
-                div { class: "card flat", style: "padding:20px",
+                div { class: "card flat p-xl",
                     if let Some(gid) = selected_group_id() {
-                        div { class: "section-h lg", style: "margin-bottom:16px",
+                        div { class: "section-h lg mb-lg",
                             div { class: "lead",
                                 span { class: "lead-title", "编辑成员" }
                                 span { class: "lead-sub mono", "{gid}" }
@@ -219,8 +213,7 @@ pub fn GroupManager() -> Element {
                                     let uid1 = member.upstream_id.clone();
                                     let uid2 = member.upstream_id.clone();
                                     rsx! {
-                                        div { class: "flex items-center justify-between p-sm",
-                                            style: "background: var(--bc-bg-card-solid); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md);",
+                                        div { class: "flex items-center justify-between p-sm member-row",
                                             span {
                                                 if let Some(ch) = all_channels().iter().find(|c| c.id == member.upstream_id) {
                                                     "{ch.name}"
@@ -230,8 +223,7 @@ pub fn GroupManager() -> Element {
                                             }
                                             div { class: "flex gap-sm items-center",
                                                 span { class: "text-caption", "权重:" }
-                                                input { class: "input",
-                                                    style: "padding: 0 var(--bc-space-1); width: 64px; text-align: center; min-height: auto;",
+                                                input { class: "input weight-input",
                                                     r#type: "number",
                                                     value: "{member.weight}",
                                                     oninput: move |e| {
@@ -244,8 +236,7 @@ pub fn GroupManager() -> Element {
                                                         selected_group_members.set(members);
                                                     }
                                                 }
-                                                button { class: "btn btn-subtle",
-                                                    style: "color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1);",
+                                                button { class: "btn btn-subtle btn-danger-sm",
                                                     onclick: move |_| remove_member(uid2.clone()),
                                                     "✕"
                                                 }
@@ -254,8 +245,7 @@ pub fn GroupManager() -> Element {
                                     }
                                 })}
                                 if selected_group_members().is_empty() {
-                                    div { class: "text-secondary text-center p-md",
-                                        style: "font-style: italic;",
+                                    div { class: "text-secondary text-center p-md italic",
                                         "暂无成员"
                                     }
                                 }
@@ -265,11 +255,10 @@ pub fn GroupManager() -> Element {
                         // Add Member
                         div { class: "mb-lg",
                             h4 { class: "text-caption font-bold text-secondary mb-sm", "添加成员" }
-                            div { class: "flex gap-sm", style: "flex-wrap: wrap;",
+                            div { class: "flex gap-sm add-member-wrap",
                                 for channel in all_channels() {
                                     if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
-                                        button { class: "btn btn-secondary",
-                                            style: "padding: var(--bc-space-1) var(--bc-space-3); font-size: var(--bc-font-sm);",
+                                        button { class: "btn btn-secondary add-member-btn",
                                             onclick: move |_| add_member(channel.id.clone()),
                                             "+ {channel.name}"
                                         }

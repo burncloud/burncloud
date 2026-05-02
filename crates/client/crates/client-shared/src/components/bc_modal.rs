@@ -7,12 +7,11 @@ pub fn BCModal(
     onclose: EventHandler<()>,
     children: Element,
 ) -> Element {
-    let display_style = if open { "flex" } else { "none" };
+    let modal_class = if open { "bc-modal-overlay" } else { "bc-modal-overlay bc-modal-hidden" };
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center",
-            style: "display: {display_style}",
+            class: "{modal_class}",
 
             // Backdrop
             div {

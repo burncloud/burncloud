@@ -11,7 +11,7 @@ pub fn LevelBadge(value: String) -> Element {
     };
 
     rsx! {
-        span { class: "pill {class}", style: "font-family:var(--bc-font-mono); font-size:11px; padding:2px 8px; letter-spacing:0.04em",
+        span { class: "pill {class} level-badge-mono",
             "{value}"
         }
     }

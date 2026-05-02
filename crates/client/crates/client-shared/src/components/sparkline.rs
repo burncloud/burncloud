@@ -16,7 +16,7 @@ pub fn Sparkline(data: Vec<f64>, tone: Option<String>, sm: Option<bool>) -> Elem
         }
         return rsx! {
             div { class: "{size_class}",
-                div { class: "bar {tone_class}", style: "width:6px; height:100%; border-radius:50%; opacity:0.85;" }
+                div { class: "bar {tone_class} spark-single", }
             }
         };
     }
@@ -39,7 +39,7 @@ pub fn Sparkline(data: Vec<f64>, tone: Option<String>, sm: Option<bool>) -> Elem
                     let pct = (*val / max * 100.0).clamp(2.0, 100.0);
                     let opacity = 0.35 + (i as f64 / len as f64) * 0.65;
                     rsx! {
-                        div { class: "bar {tone_class}", style: "height: {pct}%; opacity: {opacity};" }
+                        div { class: "bar {tone_class}", style: "--bc-dynamic-height:{pct}%; --bc-dynamic-opacity:{opacity};" }
                     }
                 }
             }

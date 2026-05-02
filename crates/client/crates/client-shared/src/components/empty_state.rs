@@ -12,11 +12,11 @@ pub fn EmptyState(
             div { class: "empty-icon",
                 {icon}
             }
-            div { style: "font-size:15px; font-weight:600; color:var(--bc-text-primary)",
+            div { class: "empty-title",
                 "{title}"
             }
             if let Some(desc) = description {
-                div { style: "font-size:13px; color:var(--bc-text-secondary)",
+                div { class: "empty-desc",
                     "{desc}"
                 }
             }

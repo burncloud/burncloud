@@ -1392,6 +1392,87 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
     text-decoration: underline;
 }
 
+/* Login page — additional utility classes */
+.login-brand-header { display: flex; align-items: center; gap: var(--bc-space-3); }
+.login-brand-name { font-size: var(--bc-font-lg); font-weight: 600; line-height: 1; color: #FFFFFF; }
+.login-brand-sublabel { font-size: var(--bc-font-xs); font-weight: 500; color: rgba(255,255,255,0.4); letter-spacing: 0.18em; text-transform: uppercase; margin-top: var(--bc-space-1); }
+.login-forgot-link { font-size: var(--bc-font-sm); color: var(--bc-primary); text-decoration: none; font-weight: 500; cursor: pointer; }
+.login-forgot-link:hover { text-decoration: underline; }
+.login-error-text { font-size: 13px; color: var(--bc-danger); }
+.login-social-btn { height: 42px; font-size: 13px; background: transparent; color: var(--bc-text-primary); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md); width: 100%; }
+.login-social-btn:hover { background: var(--bc-bg-hover); border-color: var(--bc-border-hover); }
+.login-social-letter { font-weight: 700; margin-right: var(--bc-space-2); }
+.login-social-icon { margin-right: var(--bc-space-2); }
+.login-footer-link { color: var(--bc-primary); text-decoration: none; font-weight: 500; cursor: pointer; }
+.login-footer-link:hover { text-decoration: underline; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Component utility classes (migrated from inline styles)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Dynamic style slots (--bc-dynamic-* pattern) */
+.bc-dynamic-width { width: var(--bc-dynamic-width); }
+.bc-dynamic-color { color: var(--bc-dynamic-color); }
+
+/* Empty state */
+.empty-title { font-size: var(--bc-font-md); font-weight: 600; color: var(--bc-text-primary); }
+.empty-desc { font-size: 13px; color: var(--bc-text-secondary); }
+
+/* Stat KPI */
+.stat-footer-row { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--bc-space-3); margin-top: var(--bc-space-1); }
+.stat-chart-wrap { flex: 1; max-width: 140px; }
+
+/* Level badge mono */
+.level-badge-mono { font-family: var(--bc-font-mono); font-size: 11px; padding: 2px 8px; letter-spacing: 0.04em; }
+
+/* BCInput password */
+.bc-input-password { padding-right: 40px; }
+
+/* BCModal */
+.bc-modal-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+.bc-modal-hidden { display: none; }
+
+/* Schema table */
+.bc-mono-cell { font-family: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace; font-size: var(--bc-font-sm); }
+.bc-badge-compact { padding: var(--bc-space-1) var(--bc-space-2); border-radius: var(--bc-radius-full); font-size: var(--bc-font-xs); }
+.bc-action-btn { min-height: auto; padding: var(--bc-space-1) var(--bc-space-2); color: var(--bc-dynamic-color); }
+
+/* Aurora grid */
+.aurora-grid { background-image: radial-gradient(circle at 1px 1px, #1D1D1F 1px, transparent 0); background-size: 40px 40px; }
+
+/* Sparkline dynamic */
+.spark-single { width: 6px; height: 100%; border-radius: 50%; opacity: 0.85; }
+.spark .bar { height: var(--bc-dynamic-height, 100%); opacity: var(--bc-dynamic-opacity, 0.85); }
+
+/* Groups page */
+.groups-layout { grid-template-columns: 1fr 2fr; }
+.group-item-selected { background: var(--bc-primary-light); border-radius: var(--bc-radius-md); border: 1px solid var(--bc-primary); }
+.group-item-default { background: var(--bc-bg-hover); border-radius: var(--bc-radius-md); border: 1px solid transparent; }
+.btn-danger-sm { color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1); }
+.member-row { background: var(--bc-bg-card-solid); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md); }
+.weight-input { padding: 0 var(--bc-space-1); width: 64px; text-align: center; min-height: auto; }
+.add-member-wrap { flex-wrap: wrap; }
+.add-member-btn { padding: var(--bc-space-1) var(--bc-space-3); font-size: var(--bc-font-sm); }
+
+/* Settings page */
+.settings-card { max-width: 640px; }
+.settings-theme-row { display: flex; justify-content: space-between; align-items: center; padding-top: var(--bc-space-4); border-top: 1px solid var(--bc-border); }
+
+/* Log page */
+.log-search-input { width: 240px; }
+.log-col-time { width: 200px; }
+.log-col-level { width: 80px; }
+.log-col-channel { width: 160px; }
+.log-cell-secondary { font-size: var(--bc-font-sm); color: var(--bc-text-secondary); }
+.log-cell-primary { font-size: 13px; color: var(--bc-text-primary); }
+
+/* Text color utilities for stat values */
+.text-danger { color: var(--bc-danger); }
+.text-warning { color: var(--bc-warning); }
+
+/* Gap utility */
+.gap-xxxl { gap: var(--bc-space-8); }
+
 /* ═══════════════════════════════════════════════════════════════════
    Landing / Marketing Page
    ═══════════════════════════════════════════════════════════════════ */

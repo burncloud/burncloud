@@ -10,19 +10,19 @@ pub fn StatKpi(
     chart: Option<Element>,
 ) -> Element {
     let large_class = if large.unwrap_or(false) { "lg" } else { "" };
-    let color_style = color.map(|c| format!("color:{}", c)).unwrap_or_default();
+    let color_class = color.map(|c| format!("text-{c}")).unwrap_or_default();
     rsx! {
         div { class: "stat-card",
             span { class: "stat-eyebrow", "{label}" }
-            div { class: "stat-value {large_class}", style: "{color_style}",
+            div { class: "stat-value {large_class} {color_class}",
                 "{value}"
             }
-            div { style: "display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-top:4px",
+            div { class: "stat-footer-row",
                 if let Some(delta) = delta {
                     {delta}
                 }
                 if let Some(chart) = chart {
-                    div { style: "flex:1; max-width:140px",
+                    div { class: "stat-chart-wrap",
                         {chart}
                     }
                 }
