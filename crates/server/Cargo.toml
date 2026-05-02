@@ -39,6 +39,7 @@ burncloud-service-upstream = { workspace = true }
 jsonwebtoken = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 chrono = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }

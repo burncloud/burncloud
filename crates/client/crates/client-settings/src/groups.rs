@@ -3,8 +3,8 @@
 
 use burncloud_client_shared::components::{FormMode, SchemaForm};
 use burncloud_client_shared::schema::group_schema;
+use burncloud_client_shared::{GroupDto, GroupMemberDto, API_CLIENT};
 use dioxus::prelude::*;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -13,31 +13,16 @@ pub struct Channel {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Group {
-    pub id: String,
-    pub name: String,
-    pub strategy: String,
-    pub match_path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct GroupMember {
-    pub group_id: String,
-    pub upstream_id: String,
-    pub weight: i32,
-}
-
 #[component]
 pub fn GroupManager() -> Element {
-    let mut groups = use_signal::<Vec<Group>>(Vec::new);
+    let mut groups = use_signal::<Vec<GroupDto>>(Vec::new);
     let mut all_channels = use_signal::<Vec<Channel>>(Vec::new);
     let mut loading = use_signal(|| true);
     let _error_msg = use_signal(String::new);
 
     // Editor State
     let mut selected_group_id = use_signal::<Option<String>>(|| None);
-    let mut selected_group_members = use_signal::<Vec<GroupMember>>(Vec::new);
+    let mut selected_group_members = use_signal::<Vec<GroupMemberDto>>(Vec::new);
 
     // Form State (New Group) - SchemaForm uses Signal<serde_json::Value>
     let form_data = use_signal(|| {
@@ -53,26 +38,21 @@ pub fn GroupManager() -> Element {
     // Load Data
     let fetch_data = move || async move {
         loading.set(true);
-        let client = Client::new();
 
-        if let Ok(resp) = client
-            .get("http://127.0.0.1:3000/console/api/groups")
-            .send()
-            .await
-        {
-            if let Ok(data) = resp.json::<Vec<Group>>().await {
-                groups.set(data);
-            }
+        if let Ok(data) = API_CLIENT.list_groups().await {
+            groups.set(data);
         }
 
-        if let Ok(resp) = client
-            .get("http://127.0.0.1:3000/console/api/channel")
-            .send()
-            .await
-        {
-            if let Ok(data) = resp.json::<Vec<Channel>>().await {
-                all_channels.set(data);
-            }
+        if let Ok(channels) = API_CLIENT.list_channels().await {
+            all_channels.set(
+                channels
+                    .into_iter()
+                    .map(|c| Channel {
+                        id: c.id,
+                        name: c.name,
+                    })
+                    .collect(),
+            );
         }
 
         loading.set(false);
@@ -89,8 +69,7 @@ pub fn GroupManager() -> Element {
         let mut form_data = form_data;
         move |value: serde_json::Value| {
             spawn(async move {
-                let client = Client::new();
-                let new_group = Group {
+                let new_group = GroupDto {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: value["name"].as_str().unwrap_or("").to_string(),
                     strategy: value["strategy"]
@@ -100,64 +79,39 @@ pub fn GroupManager() -> Element {
                     match_path: value["match_path"].as_str().unwrap_or("").to_string(),
                 };
 
-                if let Ok(resp) = client
-                    .post("http://127.0.0.1:3000/console/api/groups")
-                    .json(&new_group)
-                    .send()
-                    .await
-                {
-                    if resp.status().is_success() {
-                        fetch_data().await;
-                        form_data.set(serde_json::json!({
-                            "name": "",
-                            "strategy": "round_robin",
-                            "match_path": "/v1/chat/completions"
-                        }));
-                    }
+                if API_CLIENT.create_group(&new_group).await.is_ok() {
+                    fetch_data().await;
+                    form_data.set(serde_json::json!({
+                        "name": "",
+                        "strategy": "round_robin",
+                        "match_path": "/v1/chat/completions"
+                    }));
                 }
             });
         }
     };
 
     let delete_group = move |id: String| async move {
-        let client = Client::new();
-        if let Ok(resp) = client
-            .delete(format!("http://127.0.0.1:3000/console/api/groups/{}", id))
-            .send()
-            .await
-        {
-            if resp.status().is_success() {
-                fetch_data().await;
-                if selected_group_id() == Some(id) {
-                    selected_group_id.set(None);
-                }
+        if API_CLIENT.delete_group(&id).await.is_ok() {
+            fetch_data().await;
+            if selected_group_id() == Some(id) {
+                selected_group_id.set(None);
             }
         }
     };
 
     let select_group = move |id: String| async move {
         selected_group_id.set(Some(id.clone()));
-        let client = Client::new();
-        if let Ok(resp) = client
-            .get(format!(
-                "http://127.0.0.1:3000/console/api/groups/{}/members",
-                id
-            ))
-            .send()
-            .await
-        {
-            if let Ok(members) = resp.json::<Vec<GroupMember>>().await {
-                selected_group_members.set(members);
-            }
+        if let Ok(members) = API_CLIENT.get_group_members(&id).await {
+            selected_group_members.set(members);
         }
     };
 
     let mut add_member = move |upstream_id: String| {
-        if let Some(gid) = selected_group_id() {
+        if selected_group_id().is_some() {
             let mut members = selected_group_members();
             if !members.iter().any(|m| m.upstream_id == upstream_id) {
-                members.push(GroupMember {
-                    group_id: gid,
+                members.push(GroupMemberDto {
                     upstream_id,
                     weight: 1,
                 });
@@ -174,24 +128,16 @@ pub fn GroupManager() -> Element {
 
     let save_members = move |_| async move {
         if let Some(gid) = selected_group_id() {
-            let client = Client::new();
-            let body: Vec<serde_json::Value> = selected_group_members()
+            let members: Vec<GroupMemberDto> = selected_group_members()
                 .iter()
-                .map(|m| serde_json::json!({ "upstream_id": m.upstream_id, "weight": m.weight }))
+                .map(|m| GroupMemberDto {
+                    upstream_id: m.upstream_id.clone(),
+                    weight: m.weight,
+                })
                 .collect();
 
-            if let Ok(resp) = client
-                .put(format!(
-                    "http://127.0.0.1:3000/console/api/groups/{}/members",
-                    gid
-                ))
-                .json(&body)
-                .send()
-                .await
-            {
-                if resp.status().is_success() {
-                    // success toast?
-                }
+            if API_CLIENT.update_group_members(&gid, &members).await.is_ok() {
+                // success toast?
             }
         }
     };
