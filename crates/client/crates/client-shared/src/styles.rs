@@ -723,6 +723,7 @@ html, body {
 .text-primary { color: var(--bc-text-primary); }
 .text-secondary { color: var(--bc-text-secondary); }
 .text-tertiary { color: var(--bc-text-tertiary); }
+.text-danger { color: var(--bc-danger); }
 .text-disabled { color: var(--bc-text-disabled); }
 
 .font-normal { font-weight: 400; }
@@ -1792,7 +1793,7 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 .table .mono { font-family: var(--bc-font-mono); font-size: 13px; color: var(--bc-text-secondary); }
 
 /* Modal */
-.bc-modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.bc-modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .bc-modal { width: 480px; background: var(--bc-bg-card-solid); border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,0.20); overflow: hidden; }
 .bc-modal-header { padding: 20px 24px; border-bottom: 1px solid var(--bc-border); display:flex; align-items:center; justify-content:space-between; }
 .bc-modal-body { padding: 24px; display:flex; flex-direction:column; gap: 16px; }
@@ -1921,6 +1922,38 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 .skeleton-kpi { width: 100%; height: 80px; }
 .skeleton-row { width: 100%; height: 48px; margin-bottom: 8px; }
 .skeleton-bar { width: 60%; height: 16px; margin-bottom: 8px; }
+
+/* Error banner */
+
+/* ── Dashboard & Models: semantic utility classes ── */
+.bc-grid-channel-log { display: grid; grid-template-columns: 1.45fr 1fr; gap: var(--bc-space-6); }
+.bc-grid-2 { grid-template-columns: 1fr 1fr; }
+.bc-text-3xl { font-size: 32px; }
+.bc-text-4xl { font-size: 40px; }
+.bc-text-sm-secondary { font-size: 13px; color: var(--bc-text-secondary); }
+.bc-text-sm { font-size: 13px; }
+.bc-ellipsis-200 { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-h-320 { height: 320px; }
+.bc-p-14-16 { padding: 14px 16px; }
+.bc-metric-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bc-detail-line { font-size: 12px; color: var(--bc-text-secondary); }
+.bc-w-240 { width: 240px; }
+
+/* Modal classes */
+.bc-modal-card { background: var(--bc-bg-card-solid); border-radius: var(--bc-radius-lg); box-shadow: var(--bc-shadow-xl); border: 1px solid var(--bc-border); }
+.bc-modal-header-bg { background: var(--bc-bg-card-solid); }
+.bc-modal-footer-bg { background: var(--bc-bg-hover); }
+
+/* Provider row in channel table */
+.bc-provider-row { display: inline-flex; align-items: center; gap: 8px; }
+.bc-provider-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--bc-dynamic-provider-color); }
+
+/* Icon button */
+.bc-icon-btn { background: none; border: none; cursor: pointer; color: var(--bc-text-secondary); font-size: 16px; }
+
+/* Danger variants */
+.bc-danger-header { background: var(--bc-danger-light); border-color: var(--bc-danger-light); }
+.bc-danger-light-bg { background: var(--bc-danger-light); }
 
 /* Error banner */
 .error-banner {
