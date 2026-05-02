@@ -87,3 +87,23 @@ crates/
   client/        ← Dioxus 前端
   cli/           ← 命令行工具
 ```
+
+---
+
+## 仓库根目录纪律
+
+**禁止在仓库根目录新增任何文件或目录。** 新内容按下表归位：
+
+| 类别 | 落点 | 示例 |
+|------|------|------|
+| 部署 / 容器 / 编排 | `deploy/` | `Dockerfile`、`docker-compose.yml`、k8s manifests |
+| 部署 / 运维脚本 | `deploy/scripts/` | `entrypoint.sh`、`migrate.sh`、`release.sh` |
+| Crate 局部脚本 | `crates/<crate>/scripts/` | 已有约定，例：`crates/router/scripts/` |
+| 文档 | `docs/` | 所有 `.md`（根目录 README 例外） |
+| 代码 | `crates/` 或 `src/` | 按 workspace 既有结构 |
+
+**根目录允许列表**（工具链强制位置，新增前需 PR 评审）：
+
+`Cargo.toml`、`Cargo.lock`、`README.md`、`clippy.toml`、`deny.toml`、`config.json`、`.cargo/`、`.github/`、`.gitignore`、`.gitattributes`、`.env.example`
+
+不在此列表的根目录新增项一律 reject。
