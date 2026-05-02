@@ -6,8 +6,8 @@ use burncloud_client_shared::services::user_service::UserService;
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
-fn format_cents(cents: i64) -> String {
-    let yuan = cents as f64 / 100.0;
+fn format_nano_to_cny(nano: i64) -> String {
+    let yuan = nano as f64 / 1_000_000_000.0;
     format!("¥ {yuan:.2}")
 }
 
@@ -71,7 +71,7 @@ pub fn UsersPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "用户资金池" }
-                        div { class: "stat-value", "{format_cents(user_list.iter().map(|u| u.balance_cny).sum::<i64>())}" }
+                        div { class: "stat-value", "{format_nano_to_cny(user_list.iter().map(|u| u.balance_cny).sum::<i64>())}" }
                     }
                 }
             }
@@ -128,7 +128,7 @@ pub fn UsersPage() -> Element {
                                     td { style: "font-weight:600", "{u.username}" }
                                     td { span { class: "pill neutral", "{u.role}" } }
                                     td { class: "mono", style: "color:var(--bc-text-primary); font-variant-numeric:tabular-nums",
-                                        "{format_cents(u.balance_cny)}"
+                                        "{format_nano_to_cny(u.balance_cny)}"
                                     }
                                     td {
                                         if u.group == "VIP" {
