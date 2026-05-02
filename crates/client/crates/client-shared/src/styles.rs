@@ -1351,7 +1351,7 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
     flex: 1;
     height: 3px;
     border-radius: 2px;
-    background: var(--bc-border);
+    background: var(--bc-dynamic-bg, var(--bc-border));
 }
 
 .login-divider {
@@ -2115,6 +2115,125 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 .skeleton-kpi { width: 100%; height: 80px; }
 .skeleton-row { width: 100%; height: 48px; margin-bottom: 8px; }
 .skeleton-bar { width: 60%; height: 16px; margin-bottom: 8px; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Semantic Component Classes — register / users / api migration
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Background utilities */
+.bc-bg-canvas { background: var(--bc-bg-canvas); }
+.bc-bg-card-solid { background: var(--bc-bg-card-solid); }
+.bc-bg-hover { background: var(--bc-bg-hover); }
+
+/* Border color utilities */
+.bc-border-color { border-color: var(--bc-border); }
+
+/* Color utilities */
+.bc-text-danger { color: var(--bc-danger); }
+.bc-text-primary { color: var(--bc-text-primary); }
+
+/* Monospace font utility */
+.bc-mono { font-family: var(--bc-font-mono); }
+.bc-mono-sm { font-family: var(--bc-font-mono); font-size: var(--bc-font-sm); }
+
+/* Transition utility */
+.bc-transition-bg { transition: background var(--bc-transition-fast); }
+
+/* Status dot */
+.bc-status-dot { width: 8px; height: 8px; border-radius: var(--bc-radius-full); background: var(--bc-success); }
+.bc-status-dot-sm { width: 8px; height: 8px; border-radius: var(--bc-radius-full); }
+
+/* Avatar / icon circle */
+.bc-avatar-sm { width: 40px; height: 40px; border-radius: var(--bc-radius-sm); background: var(--bc-primary-light); color: var(--bc-primary); display: inline-flex; align-items: center; justify-content: center; }
+.bc-avatar-lg { width: 64px; height: 64px; border-radius: var(--bc-radius-full); background: var(--bc-bg-hover); display: flex; align-items: center; justify-content: center; }
+
+/* Pill primary variant */
+.pill.primary { background: var(--bc-primary-light); color: var(--bc-primary); }
+
+/* VIP pill */
+.pill.vip { background: var(--bc-primary-light); color: var(--bc-primary); }
+
+/* Tabular numerics with primary color */
+.bc-tabular-primary { color: var(--bc-text-primary); font-variant-numeric: tabular-nums; }
+
+/* Button with primary color and semibold */
+.bc-btn-primary-text { color: var(--bc-primary); font-weight: 600; }
+
+/* Modal sizing */
+.bc-modal-sm { width: 440px; }
+
+/* Modal info row */
+.bc-modal-info-row { display: flex; justify-content: space-between; align-items: center; padding: var(--bc-space-3) var(--bc-space-4); background: var(--bc-bg-hover); border-radius: var(--bc-radius-sm); }
+
+/* Grid layouts */
+.bc-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: var(--bc-space-3); }
+.bc-grid-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--bc-space-2); }
+
+/* Flex column with gap */
+.bc-flex-col-gap-xl { display: flex; flex-direction: column; gap: var(--bc-space-6); }
+
+/* Section header no margin */
+.bc-section-no-mb { margin-bottom: 0; }
+
+/* Tabs compact override */
+.bc-tabs-compact { border-bottom: none; padding-bottom: 0; gap: var(--bc-space-4); }
+
+/* Tab compact override */
+.bc-tab-compact { padding-bottom: var(--bc-space-2); margin-bottom: 0; }
+
+/* Table with top margin */
+.bc-table-mt { margin-top: var(--bc-space-4); }
+
+/* Register page brand panel inner layout */
+.bc-brand-header { display: flex; align-items: center; gap: var(--bc-space-3); }
+.bc-brand-name { font-size: var(--bc-font-lg); font-weight: 600; line-height: 1; }
+.bc-brand-sub { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.4); letter-spacing: 0.18em; text-transform: uppercase; margin-top: var(--bc-space-1); }
+.bc-benefits-list { display: flex; flex-direction: column; gap: var(--bc-space-3); margin-top: var(--bc-space-8); }
+.bc-benefit-text { display: flex; flex-direction: column; }
+
+/* Register form layout */
+.bc-form-stack { display: flex; flex-direction: column; gap: 18px; width: 100%; }
+.bc-form-header { margin-bottom: 14px; }
+
+/* Terms checkbox layout */
+.bc-terms-label { display: flex; align-items: flex-start; gap: 10px; font-size: var(--bc-font-sm); color: var(--bc-text-secondary); line-height: 1.5; cursor: pointer; user-select: none; }
+.bc-terms-checkbox { margin-top: 2px; accent-color: #000; }
+
+/* Link styles */
+.bc-link { color: var(--bc-primary); text-decoration: none; }
+.bc-link-semibold { color: var(--bc-primary); text-decoration: none; font-weight: 500; cursor: pointer; }
+
+/* Optional label hint */
+.bc-label-optional { color: var(--bc-text-tertiary); font-weight: 400; }
+
+/* Register CTA button */
+.bc-register-btn { width: 100%; height: 48px; font-size: var(--bc-font-md); border-radius: var(--bc-radius-md); margin-top: var(--bc-space-1); }
+
+/* Social OAuth button */
+.bc-oauth-btn { height: 42px; font-size: 13px; background: transparent; color: var(--bc-text-primary); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md); width: 100%; }
+.bc-oauth-btn-bold { font-weight: 700; margin-right: 6px; }
+.bc-oauth-icon { margin-right: 6px; }
+
+/* Password meter dynamic background */
+.bc-dynamic-bg { background: var(--bc-dynamic-bg); }
+
+/* API page header bar */
+.bc-api-header { background: var(--bc-bg-card-solid); border-color: var(--bc-border); }
+.bc-api-table-header { background: var(--bc-bg-hover); }
+
+/* API channel row hover */
+.bc-channel-row { transition: background var(--bc-transition-fast); }
+
+/* API empty state icon */
+.bc-empty-channel-icon { width: 64px; height: 64px; border-radius: var(--bc-radius-full); background: var(--bc-bg-hover); }
+
+/* API modal */
+.bc-api-modal { max-width: 560px; box-shadow: var(--bc-shadow-xl); }
+.bc-api-modal-header { background: var(--bc-bg-hover); border-color: var(--bc-border); }
+.bc-api-modal-footer { background: var(--bc-bg-hover); border-color: var(--bc-border); }
+
+/* API modal backdrop */
+.bc-api-backdrop { background: rgba(0, 0, 0, 0.40); backdrop-filter: blur(4px); }
 
 /* Error banner */
 
