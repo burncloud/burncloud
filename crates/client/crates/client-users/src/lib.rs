@@ -29,7 +29,7 @@ pub fn UsersPage() -> Element {
     let total = user_list.len();
     let active_count = user_list.iter().filter(|u| u.status == 1).count();
 
-    let filtered: Vec<_> = user_list.iter().filter(|u| {
+    let filtered: Vec<_> = user_list.iter().filter(|&u| {
         match active_tab().as_str() {
             "vip" => u.group == "VIP",
             _ => true,
