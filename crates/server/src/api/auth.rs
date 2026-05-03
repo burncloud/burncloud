@@ -6,7 +6,7 @@ use axum::{
     http::{Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use burncloud_service_user::UserServiceError;
@@ -25,6 +25,17 @@ pub struct RegisterDto {
 pub struct LoginDto {
     pub username: String,
     pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct ForgotPasswordDto {
+    pub email: String,
+}
+
+#[derive(Deserialize)]
+pub struct ResetPasswordDto {
+    pub token: String,
+    pub new_password: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -63,6 +74,10 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/auth/register", post(create_user))
         .route("/api/auth/login", post(login))
+        .route("/console/api/auth/forgot-password", post(forgot_password))
+        .route("/console/api/auth/reset-password", post(reset_password))
+        .route("/console/api/auth/google", get(oauth_google))
+        .route("/console/api/auth/github", get(oauth_github))
 }
 
 async fn create_user(
@@ -136,6 +151,73 @@ async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> 
         Err(e) => {
             tracing::error!("Login error: {}", e);
             err("Login failed").into_response()
+        }
+    }
+}
+
+async fn forgot_password(
+    State(state): State<AppState>,
+    Json(payload): Json<ForgotPasswordDto>,
+) -> impl IntoResponse {
+    match state
+        .user_service
+        .request_password_reset(&state.db, &payload.email)
+        .await
+    {
+        Ok(_reset_token) => {
+            tracing::info!(
+                "Password reset token generated for {}",
+                payload.email
+            );
+            ok(serde_json::json!({ "message": "If the email exists, a reset token has been generated" })).into_response()
+        }
+        Err(UserServiceError::UserNotFound) => {
+            // Return success even if user not found to prevent email enumeration
+            ok(serde_json::json!({ "message": "If the email exists, a reset token has been generated" })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Forgot password error: {}", e);
+            err("Failed to process password reset request").into_response()
+        }
+    }
+}
+
+async fn reset_password(
+    State(state): State<AppState>,
+    Json(payload): Json<ResetPasswordDto>,
+) -> impl IntoResponse {
+    match state
+        .user_service
+        .reset_password(&state.db, &payload.token, &payload.new_password)
+        .await
+    {
+        Ok(()) => ok(serde_json::json!({ "message": "Password reset successful" })).into_response(),
+        Err(UserServiceError::InvalidCredentials) => {
+            err("Invalid or expired reset token").into_response()
+        }
+        Err(e) => {
+            tracing::error!("Reset password error: {}", e);
+            err("Password reset failed").into_response()
+        }
+    }
+}
+
+async fn oauth_google(State(_state): State<AppState>) -> impl IntoResponse {
+    match burncloud_service_user::UserService::oauth_url("google") {
+        Ok(url) => ok(serde_json::json!({ "url": url })).into_response(),
+        Err(e) => {
+            tracing::error!("Google OAuth URL error: {}", e);
+            err("Failed to generate Google OAuth URL").into_response()
+        }
+    }
+}
+
+async fn oauth_github(State(_state): State<AppState>) -> impl IntoResponse {
+    match burncloud_service_user::UserService::oauth_url("github") {
+        Ok(url) => ok(serde_json::json!({ "url": url })).into_response(),
+        Err(e) => {
+            tracing::error!("GitHub OAuth URL error: {}", e);
+            err("Failed to generate GitHub OAuth URL").into_response()
         }
     }
 }

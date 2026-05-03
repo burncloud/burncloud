@@ -433,6 +433,68 @@ impl ApiClient {
         }
     }
 
+    pub async fn forgot_password(&self, email: &str) -> Result<(), String> {
+        let url = format!("{}/api/auth/forgot-password", self.base_url);
+        let body = serde_json::json!({ "email": email });
+
+        let resp = self
+            .client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+        if json["success"].as_bool().unwrap_or(false) {
+            Ok(())
+        } else {
+            Err(json["message"].as_str().unwrap_or("Failed to send reset email").to_string())
+        }
+    }
+
+    pub async fn reset_password(&self, token: &str, new_password: &str) -> Result<(), String> {
+        let url = format!("{}/api/auth/reset-password", self.base_url);
+        let body = serde_json::json!({
+            "token": token,
+            "new_password": new_password
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+        if json["success"].as_bool().unwrap_or(false) {
+            Ok(())
+        } else {
+            Err(json["message"].as_str().unwrap_or("Password reset failed").to_string())
+        }
+    }
+
+    pub async fn oauth_url(&self, provider: &str) -> Result<String, String> {
+        let url = format!("{}/api/auth/{provider}", self.base_url);
+
+        let resp = self.client.get(&url).send().await.map_err(|e| e.to_string())?;
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+        if json["success"].as_bool().unwrap_or(false) {
+            json["data"]["url"]
+                .as_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| "No OAuth URL in response".to_string())
+        } else {
+            Err(json["message"].as_str().unwrap_or("OAuth URL request failed").to_string())
+        }
+    }
+
     // --- Generic CRUD Operations ---
     // Used by StandardCrudPage for any RESTful endpoint.
 

@@ -73,6 +73,14 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
         version: "0011_alter_router_mvp_columns",
         sql: include_str!("../migrations/sqlite/0011_alter_router_mvp_columns.sql"),
     },
+    Migration {
+        version: "0012_password_reset_and_google_id",
+        sql: include_str!("../migrations/sqlite/0012_password_reset_and_google_id.sql"),
+    },
+    Migration {
+        version: "0013_alter_router_logs_add_cost_status",
+        sql: include_str!("../migrations/sqlite/0013_alter_router_logs_add_cost_status.sql"),
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -123,6 +131,14 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
     Migration {
         version: "0011_alter_router_mvp_columns",
         sql: include_str!("../migrations/postgres/0011_alter_router_mvp_columns.sql"),
+    },
+    Migration {
+        version: "0012_password_reset_and_google_id",
+        sql: include_str!("../migrations/postgres/0012_password_reset_and_google_id.sql"),
+    },
+    Migration {
+        version: "0013_alter_router_logs_add_cost_status",
+        sql: include_str!("../migrations/postgres/0013_alter_router_logs_add_cost_status.sql"),
     },
 ];
 

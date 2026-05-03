@@ -10,6 +10,8 @@ license = "MIT"
 dioxus = { workspace = true, features = ["router"] }
 tokio = { workspace = true, features = ["time"] }
 serde_json.workspace = true
+open = "5"
+log = { workspace = true }
 burncloud-client-shared = { path = "../client-shared" }
 
 [lints]

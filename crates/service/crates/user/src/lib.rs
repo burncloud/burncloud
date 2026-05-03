@@ -6,6 +6,7 @@ use bcrypt::{hash, verify, DEFAULT_COST};
 use burncloud_common::TrafficColor;
 use burncloud_database::Database;
 use burncloud_database_user::UserDatabase;
+use burncloud_database_user::PasswordResetDatabase;
 use dashmap::DashMap;
 
 // Re-export domain types so server can depend on service-user instead of database-user
@@ -379,6 +380,71 @@ impl UserService {
         .map_err(|e| UserServiceError::TokenValidationError(e.to_string()))?;
 
         Ok((token_data.claims.sub, token_data.claims.username))
+    }
+
+    pub async fn request_password_reset(&self, db: &Database, email: &str) -> Result<String> {
+        let user = UserDatabase::get_user_by_email(db, email)
+            .await?
+            .ok_or(UserServiceError::UserNotFound)?;
+
+        let token = Uuid::new_v4().to_string();
+        let expires_at = Utc::now() + Duration::hours(1);
+        PasswordResetDatabase::create_token(db, &token, &user.id, &expires_at.to_rfc3339())
+            .await?;
+
+        Ok(token)
+    }
+
+    pub async fn reset_password(&self, db: &Database, token: &str, new_password: &str) -> Result<()> {
+        let reset_token = PasswordResetDatabase::get_token(db, token)
+            .await?
+            .ok_or(UserServiceError::InvalidCredentials)?;
+
+        if reset_token.used_at.is_some() {
+            return Err(UserServiceError::InvalidCredentials);
+        }
+
+        let expires_at = chrono::DateTime::parse_from_rfc3339(&reset_token.expires_at)
+            .map_err(|e| UserServiceError::ConfigError(e.to_string()))?;
+        if Utc::now() > expires_at {
+            return Err(UserServiceError::InvalidCredentials);
+        }
+
+        let password_hash = hash(new_password, DEFAULT_COST)
+            .map_err(|e| UserServiceError::HashError(e.to_string()))?;
+
+        UserDatabase::update_password_hash(db, &reset_token.user_id, &password_hash)
+            .await?;
+
+        PasswordResetDatabase::mark_used(db, token).await?;
+
+        Ok(())
+    }
+
+    pub fn oauth_url(provider: &str) -> Result<String> {
+        match provider {
+            "google" => {
+                let client_id = std::env::var("GOOGLE_CLIENT_ID")
+                    .map_err(|e| UserServiceError::ConfigError(e.to_string()))?;
+                let redirect_uri = std::env::var("GOOGLE_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:8080/console/api/auth/google/callback".to_string());
+                Ok(format!(
+                    "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile",
+                    client_id, redirect_uri
+                ))
+            }
+            "github" => {
+                let client_id = std::env::var("GITHUB_CLIENT_ID")
+                    .map_err(|e| UserServiceError::ConfigError(e.to_string()))?;
+                let redirect_uri = std::env::var("GITHUB_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:8080/console/api/auth/github/callback".to_string());
+                Ok(format!(
+                    "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user:email",
+                    client_id, redirect_uri
+                ))
+            }
+            _ => Err(UserServiceError::ConfigError(format!("Unknown OAuth provider: {provider}"))),
+        }
     }
 }
 

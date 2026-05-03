@@ -7,6 +7,7 @@ use crate::pages::{
     connect::ConnectPage,
     dashboard::Dashboard,
     deploy::DeployConfig,
+    forgot_password::ForgotPasswordPage,
     home::{HomePage, Root},
     login::LoginPage,
     logs::LogPage,
@@ -14,6 +15,7 @@ use crate::pages::{
     monitor::ServiceMonitor,
     not_found::NotFoundPage,
     playground::PlaygroundPage,
+    reset_password::ResetPasswordPage,
     settings::SystemSettings,
     user::UsersPage,
 };
@@ -34,6 +36,10 @@ pub enum Route {
     LoginPage {},
     #[route("/register")]
     RegisterPage {},
+    #[route("/forgot-password")]
+    ForgotPasswordPage {},
+    #[route("/reset-password?:token")]
+    ResetPasswordPage { token: Option<String> },
     #[end_layout]
     #[layout(Layout)]
     #[route("/console/dashboard")]
