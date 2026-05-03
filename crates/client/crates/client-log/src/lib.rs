@@ -3,6 +3,8 @@ use burncloud_client_shared::components::{
     SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::services::log_service::{LogEntry, LogService};
+use burncloud_client_shared::use_toast;
+use dioxus::document::eval;
 use dioxus::prelude::*;
 
 fn status_level(code: u16) -> String {
@@ -37,6 +39,49 @@ fn format_thousands(n: i64) -> String {
     result
 }
 
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+fn generate_csv(entries: &[LogEntry]) -> String {
+    let mut rows = vec![
+        "时间,级别,渠道,方法,路径,状态码,延迟(ms),模型,Token数".to_string()
+    ];
+    for e in entries {
+        let ts = csv_escape(e.created_at.as_deref().unwrap_or(&e.request_id));
+        let level = csv_escape(&status_level(e.status_code));
+        let upstream = csv_escape(e.upstream_id.as_deref().unwrap_or("—"));
+        let method = csv_escape(e.method.as_deref().unwrap_or("POST"));
+        let path = csv_escape(&e.path);
+        let model = csv_escape(e.model.as_deref().unwrap_or("—"));
+        let tokens = e.total_tokens.map_or(String::new(), |t| t.to_string());
+        rows.push(format!("{ts},{level},{upstream},{method},{path},{},{},{model},{tokens}", e.status_code, e.latency_ms));
+    }
+    rows.join("\n")
+}
+
+fn trigger_download(csv: &str, filename: &str) {
+    let escaped = csv.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$");
+    let js = format!(
+        r#"(function() {{
+            var blob = new Blob([`{escaped}`], {{ type: 'text/csv;charset=utf-8;' }});
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = '{filename}';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }})()"#
+    );
+    eval(&js);
+}
+
 #[component]
 pub fn LogPage() -> Element {
     let mut active_filter = use_signal(|| "all".to_string());
@@ -52,7 +97,7 @@ pub fn LogPage() -> Element {
     let error_count = is_error(&log_list);
     let warn_count = is_warn(&log_list);
 
-    let filtered_logs: Vec<&LogEntry> = log_list.iter().filter(|e| {
+    let filtered_logs: Vec<LogEntry> = log_list.iter().filter(|e| {
         let level = status_level(e.status_code);
         let level_match = match active_filter().as_str() {
             "error" => level == "ERROR",
@@ -68,7 +113,9 @@ pub fn LogPage() -> Element {
                 || e.model.as_deref().unwrap_or("").to_lowercase().contains(&q)
         };
         level_match && text_match
-    }).collect();
+    }).cloned().collect();
+
+    let toast = use_toast();
 
     rsx! {
         PageHeader {
@@ -82,7 +129,23 @@ pub fn LogPage() -> Element {
                         oninput: move |e| search_query.set(e.value()),
                     }
                 }
-                button { class: "btn btn-secondary", "Export CSV" }
+                {
+                    let filtered_snapshot = filtered_logs.clone();
+                    rsx! {
+                        button {
+                            class: "btn btn-secondary",
+                            onclick: move |_| {
+                                if filtered_snapshot.is_empty() {
+                                    toast.error("无数据可导出");
+                                    return;
+                                }
+                                let csv = generate_csv(&filtered_snapshot);
+                                trigger_download(&csv, "logs_export.csv");
+                            },
+                            "导出 CSV"
+                        }
+                    }
+                }
             },
         }
 

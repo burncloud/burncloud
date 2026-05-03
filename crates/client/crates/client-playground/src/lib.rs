@@ -5,6 +5,7 @@ use burncloud_client_shared::services::playground_service::{
     ExportFormat, PlaygroundConfig, PlaygroundMessage, PlaygroundService,
 };
 use burncloud_client_shared::services::token_service::TokenService;
+use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 use uuid::Uuid;
 
@@ -263,16 +264,32 @@ pub fn Playground() -> Element {
 
     // Export button handler
     let on_export = move |_| {
-        let playground_msgs: Vec<PlaygroundMessage> = messages
-            .read()
+        let toast = use_toast();
+        let msgs = messages.read();
+        if msgs.is_empty() {
+            toast.warning("暂无对话可导出");
+            return;
+        }
+        let playground_msgs: Vec<PlaygroundMessage> = msgs
             .iter()
             .map(|m| PlaygroundMessage {
                 role: m.role.clone(),
                 content: m.content.clone(),
             })
             .collect();
-        let content = PlaygroundService::export_conversation(&playground_msgs, ExportFormat::Markdown);
-        let _ = content;
+        drop(msgs);
+
+        let mut content = PlaygroundService::export_conversation(&playground_msgs, ExportFormat::Markdown);
+        content.push_str("\n> ⚠️ 模拟数据 — 当前 Playground 发送功能为模拟实现，以上对话非真实 LLM 输出\n");
+
+        let filename = format!("playground_{}.md", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+        let dir = dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+        let path = dir.join(&filename);
+
+        match std::fs::write(&path, &content) {
+            Ok(()) => toast.success(&format!("已导出到 {}", path.display())),
+            Err(e) => toast.error(&format!("导出失败: {}", e)),
+        }
     };
 
     rsx! {

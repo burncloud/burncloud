@@ -347,7 +347,7 @@ pub fn ChannelPage() -> Element {
                         placeholder: "搜索渠道、模型或组织…",
                     }
                 }
-                button { class: "btn btn-secondary", "筛选" }
+                button { class: "btn btn-secondary", onclick: move |_| channels.restart(), "刷新" }
                 BCButton {
                     class: "btn-primary",
                     onclick: open_create_modal,
