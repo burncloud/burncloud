@@ -77,14 +77,14 @@ pub fn AccessPage() -> Element {
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:16px",
+        div { class: "page-content flex flex-col gap-lg",
             if loading {
                 SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 SkeletonCard { variant: Some(SkeletonVariant::Row) }
             } else if token_list.is_empty() {
                 EmptyState {
-                    icon: rsx! { span { style: "font-size:40px", "🔑" } },
+                    icon: rsx! { span { class: "text-display", "🔑" } },
                     title: t(*lang.read(), "access.empty_title").to_string(),
                     description: Some(t(*lang.read(), "access.empty_desc").to_string()),
                     cta: Some(rsx! {
@@ -96,39 +96,38 @@ pub fn AccessPage() -> Element {
                     }),
                 }
             } else {
-                div { style: "display:grid; gap:12px",
+                div { class: "grid gap-md",
                     for tk in token_list {
                         {
                             let tk_id = tk.token.clone();
                             let tk_id_for_del = tk.token.clone();
                             let _tk_id_for_copy = tk.token.clone();
                             rsx! {
-                                div { key: "{tk_id}", class: "row-card", style: "padding:20px",
-                                    div { style: "display:flex; align-items:flex-start; justify-content:space-between; gap:16px",
-                                        div { style: "display:flex; align-items:flex-start; gap:16px",
-                                            div { style: "padding:12px; border-radius:8px; background:var(--bc-bg-hover); color:var(--bc-text-secondary); display:flex; align-items:center; justify-content:center",
-                                                span { style: "font-size:20px", "🔑" }
+                                div { key: "{tk_id}", class: "row-card p-xl",
+                                    div { class: "flex items-start justify-between gap-lg",
+                                        div { class: "flex items-start gap-lg",
+                                            div { class: "bc-icon-box",
+                                                span { class: "text-title", "🔑" }
                                             }
-                                            div { style: "display:flex; flex-direction:column; gap:4px",
-                                                div { style: "display:flex; align-items:center; gap:8px",
-                                                    span { style: "font-size:16px; font-weight:700", "API Key" }
+                                            div { class: "flex flex-col gap-xs",
+                                                div { class: "flex items-center gap-sm",
+                                                    span { class: "text-subtitle font-bold", "API Key" }
                                                     StatusPill {
                                                         value: if tk.status == "active" { "ok".to_string() } else { "neutral".to_string() },
                                                         label: if tk.status == "active" { Some(t(*lang.read(), "access.status.active").to_string()) } else { Some(t(*lang.read(), "access.status.revoked").to_string()) },
                                                     }
                                                 }
-                                                div { class: "mono", style: "display:flex; align-items:center; gap:16px; font-size:11px; color:var(--bc-text-tertiary); margin-top:4px",
-                                                    span { style: "padding:2px 8px; border-radius:4px; background:var(--bc-bg-hover); color:var(--bc-text-secondary)", "{mask_key(&tk.token)}" }
+                                                div { class: "mono bc-key-row",
+                                                    span { class: "bc-key-display", "{mask_key(&tk.token)}" }
                                                     if tk.quota_limit > 0 {
-                                                        span { class: "pill neutral mono", style: "font-size:11px", "{format_quota(tk.quota_limit)}" }
+                                                        span { class: "pill neutral mono bc-text-11px", "{format_quota(tk.quota_limit)}" }
                                                     }
                                                 }
                                             }
                                         }
-                                        div { style: "display:flex; align-items:center; gap:4px",
+                                        div { class: "flex items-center gap-xs",
                                             button {
-                                                class: "btn-icon",
-                                                style: "color:var(--bc-text-tertiary)",
+                                                class: "btn-icon text-tertiary",
                                                 onclick: move |_| {
                                                     let id = tk_id_for_del.clone();
                                                     delete_token_id.set(id);
@@ -153,7 +152,7 @@ pub fn AccessPage() -> Element {
             onclose: move |_| show_create.set(false),
 
             div { class: "flex flex-col gap-lg p-lg",
-                div { style: "font-size:12px; color:var(--bc-text-secondary); margin-top:4px", {t(*lang.read(), "access.create_modal.desc")} }
+                div { class: "bc-hint-text mt-xs", {t(*lang.read(), "access.create_modal.desc")} }
 
                 SchemaForm {
                     schema: schema.clone(),
@@ -163,8 +162,8 @@ pub fn AccessPage() -> Element {
                     on_submit: handle_create,
                 }
 
-                div { style: "display:flex; align-items:flex-start; gap:12px; padding:12px; background:var(--bc-warning-light, #fef3cd); border-radius:8px; color:var(--bc-warning); border:1px solid var(--bc-warning)",
-                    span { style: "font-size:12px; line-height:1.5", {t(*lang.read(), "access.create_modal.warning")} }
+                div { class: "bc-warning-banner",
+                    span { class: "bc-hint-text", {t(*lang.read(), "access.create_modal.warning")} }
                 }
 
                 div { class: "flex justify-end gap-md mt-md",
@@ -191,19 +190,19 @@ pub fn AccessPage() -> Element {
             open: show_result(),
             onclose: move |_| show_result.set(false),
 
-            div { style: "padding:24px 24px 16px; text-align:center",
-                div { style: "width:64px; height:64px; margin:0 auto 12px; border-radius:99px; background:var(--bc-success-light, #d1fae5); color:var(--bc-success); display:flex; align-items:center; justify-content:center; font-size:28px",
+            div { class: "bc-result-modal-body",
+                div { class: "bc-success-circle",
                     "✓"
                 }
-                h3 { style: "font-size:22px; font-weight:700; margin:0", {t(*lang.read(), "access.result_modal.heading")} }
-                p { style: "font-size:13px; color:var(--bc-text-secondary); margin:8px 0 16px; line-height:1.5",
+                h3 { class: "bc-heading-22px", {t(*lang.read(), "access.result_modal.heading")} }
+                p { class: "bc-body-13px text-secondary",
                     {t(*lang.read(), "access.result_modal.copy_prompt_1")}
                     br {}
                     {t(*lang.read(), "access.result_modal.copy_prompt_2")}
                 }
 
-                div { style: "display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; background:var(--bc-bg-hover); border-radius:8px; font-family:var(--bc-font-mono); font-size:13px; word-break:break-all",
-                    span { style: "user-select:all; text-align:left; flex:1", "{new_full_key}" }
+                div { class: "bc-key-result-box",
+                    span { class: "bc-selectable flex-1 text-left", "{new_full_key}" }
                     button {
                         class: "btn-icon",
                         onclick: move |_| {
@@ -235,21 +234,21 @@ pub fn AccessPage() -> Element {
             open: show_delete(),
             onclose: move |_| show_delete.set(false),
 
-            div { style: "display:flex; flex-direction:column",
-                div { style: "display:flex; align-items:center; gap:12px; padding:24px; background:var(--bc-danger-light, #fee2e2)",
-                    div { style: "width:48px; height:48px; border-radius:99px; background:var(--bc-danger-light, #fee2e2); color:var(--bc-danger); display:flex; align-items:center; justify-content:center; font-size:20px",
+            div { class: "flex flex-col",
+                div { class: "bc-danger-banner",
+                    div { class: "bc-danger-circle",
                         "🛡"
                     }
                     div {
-                        div { style: "font-size:17px; font-weight:700", {t(*lang.read(), "access.delete_modal.heading")} }
-                        div { style: "font-size:13px; color:var(--bc-text-secondary); margin-top:2px", {t(*lang.read(), "access.delete_modal.cannot_undo")} }
+                        div { class: "text-subtitle font-bold", {t(*lang.read(), "access.delete_modal.heading")} }
+                        div { class: "bc-body-13px text-secondary mt-xs", {t(*lang.read(), "access.delete_modal.cannot_undo")} }
                     }
                 }
-                div { style: "padding:16px 24px; font-size:13px; color:var(--bc-text-secondary); line-height:1.6",
+                div { class: "bc-delete-warning-body",
                     {t(*lang.read(), "access.delete_modal.confirm_msg")}
                     br {}
                     {t(*lang.read(), "access.delete_modal.impact_prefix")}
-                    span { style: "color:var(--bc-danger); font-weight:700", {t(*lang.read(), "access.delete_modal.impact_highlight")} }
+                    span { class: "text-danger font-bold", {t(*lang.read(), "access.delete_modal.impact_highlight")} }
                     {t(*lang.read(), "access.delete_modal.impact_suffix")}
                 }
                 div { class: "flex justify-end gap-md p-md",

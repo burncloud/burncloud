@@ -4,6 +4,8 @@ use burncloud_client_shared::components::{
 };
 use burncloud_client_shared::i18n::t;
 use burncloud_client_shared::services::log_service::{LogEntry, LogService};
+use burncloud_client_shared::use_toast;
+use dioxus::document::eval;
 use dioxus::prelude::*;
 
 fn status_level(code: u16) -> String {
@@ -38,6 +40,49 @@ fn format_thousands(n: i64) -> String {
     result
 }
 
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+fn generate_csv(entries: &[LogEntry]) -> String {
+    let mut rows = vec![
+        "时间,级别,渠道,方法,路径,状态码,延迟(ms),模型,Token数".to_string()
+    ];
+    for e in entries {
+        let ts = csv_escape(e.created_at.as_deref().unwrap_or(&e.request_id));
+        let level = csv_escape(&status_level(e.status_code));
+        let upstream = csv_escape(e.upstream_id.as_deref().unwrap_or("—"));
+        let method = csv_escape(e.method.as_deref().unwrap_or("POST"));
+        let path = csv_escape(&e.path);
+        let model = csv_escape(e.model.as_deref().unwrap_or("—"));
+        let tokens = e.total_tokens.map_or(String::new(), |t| t.to_string());
+        rows.push(format!("{ts},{level},{upstream},{method},{path},{},{},{model},{tokens}", e.status_code, e.latency_ms));
+    }
+    rows.join("\n")
+}
+
+fn trigger_download(csv: &str, filename: &str) {
+    let escaped = csv.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$");
+    let js = format!(
+        r#"(function() {{
+            var blob = new Blob([`{escaped}`], {{ type: 'text/csv;charset=utf-8;' }});
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = '{filename}';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }})()"#
+    );
+    eval(&js);
+}
+
 #[component]
 pub fn LogPage() -> Element {
     let i18n = burncloud_client_shared::i18n::use_i18n();
@@ -55,7 +100,7 @@ pub fn LogPage() -> Element {
     let error_count = is_error(&log_list);
     let warn_count = is_warn(&log_list);
 
-    let filtered_logs: Vec<&LogEntry> = log_list.iter().filter(|e| {
+    let filtered_logs: Vec<LogEntry> = log_list.iter().filter(|e| {
         let level = status_level(e.status_code);
         let level_match = match active_filter().as_str() {
             "error" => level == "ERROR",
@@ -71,25 +116,43 @@ pub fn LogPage() -> Element {
                 || e.model.as_deref().unwrap_or("").to_lowercase().contains(&q)
         };
         level_match && text_match
-    }).collect();
+    }).cloned().collect();
+
+    let toast = use_toast();
 
     rsx! {
         PageHeader {
             title: "Logs",
             subtitle: Some(t(*lang.read(), "log.subtitle").to_string()),
             actions: rsx! {
-                div { class: "input sm", style: "width:240px",
+                div { class: "input sm log-search-input",
                     input {
                         placeholder: t(*lang.read(), "log.search_placeholder"),
                         value: "{search_query}",
                         oninput: move |e| search_query.set(e.value()),
                     }
                 }
-                button { class: "btn btn-secondary", "Export CSV" }
+                {
+                    let filtered_snapshot = filtered_logs.clone();
+                    rsx! {
+                        button {
+                            class: "btn btn-secondary",
+                            onclick: move |_| {
+                                if filtered_snapshot.is_empty() {
+                                    toast.error(t(*lang.read(), "log.export.no_data"));
+                                    return;
+                                }
+                                let csv = generate_csv(&filtered_snapshot);
+                                trigger_download(&csv, "logs_export.csv");
+                            },
+                            {t(*lang.read(), "log.export_csv")}
+                        }
+                    }
+                }
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content flex flex-col gap-xxxl",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {
@@ -108,14 +171,14 @@ pub fn LogPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.error_count")} }
-                        div { class: "stat-value", style: "color:var(--bc-danger)",
+                        div { class: "stat-value text-danger",
                             "{format_thousands(error_count)}"
                         }
                         span { class: "stat-foot down", "↑ 18 in last hour" }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.warn_count")} }
-                        div { class: "stat-value", style: "color:var(--bc-warning)",
+                        div { class: "stat-value text-warning",
                             "{format_thousands(warn_count)}"
                         }
                         span { class: "stat-foot", {t(*lang.read(), "log.kpi.channels_degraded")} }
@@ -176,7 +239,7 @@ pub fn LogPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 } else if filtered_logs.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:40px", "🔍" } },
+                        icon: rsx! { span { class: "text-xxxl", "🔍" } },
                         title: t(*lang.read(), "log.no_matching_logs").to_string(),
                         description: Some(t(*lang.read(), "log.adjust_search").to_string()),
                         cta: None,
@@ -185,9 +248,9 @@ pub fn LogPage() -> Element {
                     table { class: "table",
                         thead {
                             tr {
-                                th { style: "width:200px", {t(*lang.read(), "log.col.time")} }
-                                th { style: "width:80px", {t(*lang.read(), "log.col.level")} }
-                                th { style: "width:160px", {t(*lang.read(), "log.col.channel")} }
+                                th { class: "log-col-time", {t(*lang.read(), "log.col.time")} }
+                                th { class: "log-col-level", {t(*lang.read(), "log.col.level")} }
+                                th { class: "log-col-channel", {t(*lang.read(), "log.col.channel")} }
                                 th { {t(*lang.read(), "log.col.message")} }
                             }
                         }
@@ -203,7 +266,7 @@ pub fn LogPage() -> Element {
                                     rsx! {
                                         tr {
                                             key: "{req_id}",
-                                            td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
+                                            td { class: "mono log-cell-secondary",
                                                 "{ts}"
                                             }
                                             td {
@@ -211,10 +274,10 @@ pub fn LogPage() -> Element {
                                                     value: status_level(entry.status_code)
                                                 }
                                             }
-                                            td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
+                                            td { class: "mono log-cell-secondary",
                                                 "{upstream}"
                                             }
-                                            td { class: "mono", style: "font-size:13px; color:var(--bc-text-primary)",
+                                            td { class: "mono log-cell-primary",
                                                 "{msg}"
                                             }
                                         }

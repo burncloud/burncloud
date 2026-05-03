@@ -141,7 +141,7 @@ pub fn ConnectPage() -> Element {
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:28px",
+        div { class: "page-content flex flex-col bc-gap-7",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {
@@ -156,7 +156,7 @@ pub fn ConnectPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "Network Capacity" }
-                        div { class: "stat-value", style: "color:var(--bc-primary)", "1.2 PFlops" }
+                        div { class: "stat-value bc-text-brand", "1.2 PFlops" }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "Pool Balance" }
@@ -164,7 +164,7 @@ pub fn ConnectPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "Efficiency Gain" }
-                        div { class: "stat-value", style: "color:var(--bc-success)", "34.2%" }
+                        div { class: "stat-value bc-text-success", "34.2%" }
                     }
                 }
             }
@@ -190,7 +190,7 @@ pub fn ConnectPage() -> Element {
                 }
 
                 if active_tab() == "local" {
-                    div { style: "display:flex; flex-direction:column; gap:28px; margin-top:24px",
+                    div { class: "flex flex-col bc-gap-7 mt-xxl",
                         // Local resources
                         div {
                             div { class: "section-h lg",
@@ -205,7 +205,7 @@ pub fn ConnectPage() -> Element {
                                 SkeletonCard { variant: Some(SkeletonVariant::Row) }
                             } else if ch_list.is_empty() {
                                 EmptyState {
-                                    icon: rsx! { span { style: "font-size:40px", "🖥️" } },
+                                    icon: rsx! { span { class: "bc-font-emoji", "🖥️" } },
                                     title: t(*lang.read(), "connect.local.empty_title").to_string(),
                                     description: Some(t(*lang.read(), "connect.local.empty_desc").to_string()),
                                     cta: Some(rsx! {
@@ -225,25 +225,25 @@ pub fn ConnectPage() -> Element {
                                             th { {t(*lang.read(), "connect.col.name")} }
                                             th { {t(*lang.read(), "connect.col.models")} }
                                             th { "Base URL" }
-                                            th { style: "text-align:right", {t(*lang.read(), "connect.col.actions")} }
+                                            th { class: "text-right", {t(*lang.read(), "connect.col.actions")} }
                                         }
                                     }
                                     tbody {
                                         for ch in &ch_list {
                                             tr {
                                                 key: "{ch.id}",
-                                                td { class: "mono", style: "font-size:12px", "#{ch.id}" }
+                                                td { class: "mono text-caption", "#{ch.id}" }
                                                 td {
                                                     StatusPill {
                                                         value: if ch.status == 1 { "ok".to_string() } else { "neutral".to_string() },
                                                         label: if ch.status == 1 { Some("Active".to_string()) } else { Some("Disabled".to_string()) },
                                                     }
                                                 }
-                                                td { style: "font-weight:600", "{ch.name}" }
-                                                td { class: "mono", style: "font-size:12px", "{ch.models}" }
-                                                td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)", "{ch.base_url}" }
-                                                td { style: "text-align:right",
-                                                    button { class: "btn btn-ghost", style: "color:var(--bc-danger); font-weight:600", {t(*lang.read(), "connect.col.delete")} }
+                                                td { class: "font-semibold", "{ch.name}" }
+                                                td { class: "mono text-caption", "{ch.models}" }
+                                                td { class: "mono text-caption text-secondary", "{ch.base_url}" }
+                                                td { class: "text-right",
+                                                    button { class: "btn btn-ghost bc-text-danger font-semibold", {t(*lang.read(), "connect.col.delete")} }
                                                 }
                                             }
                                         }
@@ -253,7 +253,7 @@ pub fn ConnectPage() -> Element {
                         }
 
                         // Connected pools
-                        div { style: "padding-top:24px; border-top:1px solid var(--bc-border)",
+                        div { class: "mt-xxl border-t",
                             div { class: "section-h lg",
                                 div { class: "lead",
                                     span { class: "lead-title", {t(*lang.read(), "connect.pool.lead_title")} }
@@ -263,43 +263,43 @@ pub fn ConnectPage() -> Element {
                             }
 
                             // Featured pool card
-                            div { class: "row-card", style: "padding:20px; margin-bottom:24px",
-                                div { style: "display:flex; align-items:center; gap:16px",
-                                    div { style: "width:40px; height:40px; border-radius:99px; background:var(--bc-primary-light); display:flex; align-items:center; justify-content:center; font-size:20px", "🌐" }
+                            div { class: "row-card p-xl mb-xxl",
+                                div { class: "flex items-center gap-lg",
+                                    div { class: "bc-icon-circle bc-icon-circle-brand bc-font-emoji", "🌐" }
                                     div {
-                                        div { style: "display:flex; align-items:center; gap:8px",
-                                            h3 { style: "font-size:15px; font-weight:700; margin:0", {t(*lang.read(), "connect.pool.skynet_title")} }
-                                            span { class: "pill success", style: "font-size:10px", {t(*lang.read(), "connect.pool.official")} }
+                                        div { class: "flex items-center gap-sm",
+                                            h3 { class: "bc-h3", {t(*lang.read(), "connect.pool.skynet_title")} }
+                                            span { class: "pill success text-xxs", {t(*lang.read(), "connect.pool.official")} }
                                         }
-                                        div { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary); margin-top:4px", "https://pool.skynet-ops.io" }
+                                        div { class: "mono text-caption text-secondary mt-xs", "https://pool.skynet-ops.io" }
                                     }
                                 }
 
-                                div { style: "display:flex; align-items:center; gap:32px",
-                                    div { style: "text-align:right",
-                                        div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "Status" }
-                                        div { style: "font-size:13px; font-weight:500; margin-top:2px; color:var(--bc-success)", {t(*lang.read(), "connect.pool.connected")} }
+                                div { class: "flex items-center bc-gap-8",
+                                    div { class: "bc-pool-metric",
+                                        div { class: "bc-eyebrow", "Status" }
+                                        div { class: "bc-font-13 font-medium bc-mt-2 bc-text-success", {t(*lang.read(), "connect.pool.connected")} }
                                     }
-                                    div { style: "text-align:right",
-                                        div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "Latency" }
-                                        div { style: "font-size:13px; font-weight:500; margin-top:2px", "45ms" }
+                                    div { class: "bc-pool-metric",
+                                        div { class: "bc-eyebrow", "Latency" }
+                                        div { class: "bc-font-13 font-medium bc-mt-2", "45ms" }
                                     }
-                                    div { style: "text-align:right",
-                                        div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "Capacity" }
-                                        div { style: "font-size:13px; font-weight:500; margin-top:2px", "842 Nodes" }
+                                    div { class: "bc-pool-metric",
+                                        div { class: "bc-eyebrow", "Capacity" }
+                                        div { class: "bc-font-13 font-medium bc-mt-2", "842 Nodes" }
                                     }
-                                    div { style: "padding-left:24px; border-left:1px solid var(--bc-border)",
-                                        div { style: "font-size:10px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "My Balance" }
-                                        div { style: "font-size:17px; font-weight:700; color:var(--bc-primary); margin-top:2px", "$ 12.50" }
+                                    div { class: "bc-pl-6 bc-border-l",
+                                        div { class: "bc-eyebrow", "My Balance" }
+                                        div { class: "bc-pool-value-brand", "$ 12.50" }
                                     }
                                     button { class: "btn btn-ghost", {t(*lang.read(), "connect.pool.configure")} }
                                 }
                             }
 
                             // Marketplace
-                            div { style: "padding-left:20px; margin-left:8px; border-left:2px solid var(--bc-border)",
-                                div { class: "config-label", style: "margin-bottom:12px; color:var(--bc-text-secondary); font-weight:700", {t(*lang.read(), "connect.pool.available")} }
-                                div { style: "display:grid; grid-template-columns:repeat(3, 1fr); gap:12px",
+                            div { class: "bc-indent-left",
+                                div { class: "config-label mb-md text-secondary font-bold", {t(*lang.read(), "connect.pool.available")} }
+                                div { class: "bc-grid-3 gap-md",
                                     MarketplaceCard { provider: "AWS", region: "us-east-1", latency: "12ms", price: "0.002", trust: 99, nodes: 312 }
                                     MarketplaceCard { provider: "Azure", region: "japan-east", latency: "88ms", price: "0.0018", trust: 95, nodes: 128 }
                                     MarketplaceCard { provider: "AWS", region: "eu-central-1", latency: "115ms", price: "0.0021", trust: 98, nodes: 240 }
@@ -308,18 +308,18 @@ pub fn ConnectPage() -> Element {
                         }
                     }
                 } else if active_tab() == "net" {
-                    div { style: "margin-top:24px",
+                    div { class: "mt-xxl",
                         EmptyState {
-                            icon: rsx! { span { style: "font-size:40px", "🌐" } },
+                            icon: rsx! { span { class: "bc-font-emoji", "🌐" } },
                             title: t(*lang.read(), "connect.network.loading").to_string(),
                             description: None,
                             cta: None,
                         }
                     }
                 } else {
-                    div { style: "margin-top:24px",
+                    div { class: "mt-xxl",
                         EmptyState {
-                            icon: rsx! { span { style: "font-size:40px", "📄" } },
+                            icon: rsx! { span { class: "bc-font-emoji", "📄" } },
                             title: t(*lang.read(), "connect.billing.empty_title").to_string(),
                             description: None,
                             cta: None,
@@ -382,20 +382,20 @@ fn MarketplaceCard(
 
     rsx! {
         div { class: "pick-card",
-            div { style: "display:flex; justify-content:space-between; align-items:flex-start",
+            div { class: "flex justify-between items-start",
                 div {
-                    span { class: "pill neutral", style: "font-size:10px", "{provider}" }
-                    h3 { style: "font-size:13px; font-weight:700; margin:6px 0 0", "{region}" }
-                    div { class: "mono", style: "font-size:10px; color:var(--bc-text-tertiary); margin-top:2px", "{latency} · {nodes} nodes" }
+                    span { class: "pill neutral text-xxs", "{provider}" }
+                    h3 { class: "bc-font-13 font-bold bc-mt-6", "{region}" }
+                    div { class: "mono text-xxs text-tertiary bc-mt-2", "{latency} · {nodes} nodes" }
                 }
-                div { style: "text-align:right",
-                    div { style: "font-size:14px; font-weight:700; color:var(--bc-primary)", "${price}" }
-                    div { style: "font-size:10px; color:var(--bc-text-tertiary)", "/ 1K tok" }
+                div { class: "text-right",
+                    div { class: "bc-font-13 font-bold bc-text-brand", "${price}" }
+                    div { class: "text-xxs text-tertiary", "/ 1K tok" }
                 }
             }
-            div { style: "display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--bc-border)",
-                span { style: "font-size:11px; color:var(--bc-text-secondary)", "trust ", span { class: "mono", style: "font-weight:600; color:var(--bc-text-primary)", "{trust}" } }
-                button { class: "btn btn-ghost", style: "min-height:24px; padding:2px 10px; font-size:12px", {t(*lang.read(), "connect.marketplace.connect")} }
+            div { class: "bc-marketplace-footer",
+                span { class: "bc-font-11 text-secondary", "trust ", span { class: "mono font-semibold text-primary", "{trust}" } }
+                button { class: "btn btn-ghost bc-btn-xs", {t(*lang.read(), "connect.marketplace.connect")} }
             }
         }
     }

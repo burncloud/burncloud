@@ -117,7 +117,7 @@ pub fn Finance() -> Element {
             subtitle: Some(t(*lang.read(), "finance.subtitle").to_string()),
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content flex flex-col gap-xxxl",
             // Error banners
             if let Some(ref err) = billing_error {
                 ErrorBanner {
@@ -140,7 +140,7 @@ pub fn Finance() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else if billing_summary.is_none() && billing_error.is_none() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:32px", "💰" } },
+                        icon: rsx! { span { class: "text-xxl", "💰" } },
                         title: t(*lang.read(), "finance.empty.billing_title").to_string(),
                         description: Some(t(*lang.read(), "finance.empty.billing_desc").to_string()),
                         cta: None,
@@ -183,21 +183,21 @@ pub fn Finance() -> Element {
                             thead {
                                 tr {
                                     th { "MODEL" }
-                                    th { style: "text-align:right", "REQUESTS" }
-                                    th { style: "text-align:right", "PROMPT" }
-                                    th { style: "text-align:right", "COMPLETION" }
-                                    th { style: "text-align:right", "COST" }
+                                    th { class: "text-right", "REQUESTS" }
+                                    th { class: "text-right", "PROMPT" }
+                                    th { class: "text-right", "COMPLETION" }
+                                    th { class: "text-right", "COST" }
                                 }
                             }
                             tbody {
                                 for m in &summary.models {
                                     tr {
                                         key: "{m.model}",
-                                        td { style: "font-weight:500", "{m.model}" }
-                                        td { class: "mono", style: "text-align:right", "{format_thousands(m.requests)}" }
-                                        td { class: "mono", style: "text-align:right", "{format_compact(m.prompt_tokens)}" }
-                                        td { class: "mono", style: "text-align:right", "{format_compact(m.completion_tokens)}" }
-                                        td { class: "mono", style: "text-align:right; font-weight:600", "{format_usd(m.cost_usd)}" }
+                                        td { class: "font-medium", "{m.model}" }
+                                        td { class: "mono text-right", "{format_thousands(m.requests)}" }
+                                        td { class: "mono text-right", "{format_compact(m.prompt_tokens)}" }
+                                        td { class: "mono text-right", "{format_compact(m.completion_tokens)}" }
+                                        td { class: "mono text-right font-semibold", "{format_usd(m.cost_usd)}" }
                                     }
                                 }
                             }
@@ -215,7 +215,7 @@ pub fn Finance() -> Element {
 
                 if recharge_list.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:32px", "💳" } },
+                        icon: rsx! { span { class: "text-xxl", "💳" } },
                         title: t(*lang.read(), "finance.empty.recharge_title").to_string(),
                         description: Some(t(*lang.read(), "finance.empty.recharge_desc").to_string()),
                         cta: None,
@@ -235,14 +235,14 @@ pub fn Finance() -> Element {
                                 tr {
                                     key: "{r.id}",
                                     td { class: "mono", "#{r.id}" }
-                                    td { class: "mono", style: "font-weight:600",
+                                    td { class: "mono font-semibold",
                                         // Amount is in nanodollars (9 decimal precision)
                                         "{format_usd(r.amount as f64 / 1e9)}"
                                     }
-                                    td { style: "color:var(--bc-text-secondary)",
+                                    td { class: "text-secondary",
                                         {r.description.as_deref().unwrap_or("—")}
                                     }
-                                    td { class: "mono", style: "color:var(--bc-text-secondary)",
+                                    td { class: "mono text-secondary",
                                         {r.created_at.as_deref().unwrap_or("—")}
                                     }
                                 }

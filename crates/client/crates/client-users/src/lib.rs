@@ -1,14 +1,14 @@
 use burncloud_client_shared::components::{
-    BCButton, PageHeader, StatusPill,
+    BCButton, BCInput, BCModal, ButtonVariant, PageHeader, StatusPill,
     EmptyState, SkeletonCard, SkeletonVariant,
 };
-use burncloud_client_shared::i18n::t;
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::user_service::UserService;
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
-fn format_cents(cents: i64) -> String {
-    let yuan = cents as f64 / 100.0;
+fn format_nano_to_cny(nano: i64) -> String {
+    let yuan = nano as f64 / 1_000_000_000.0;
     format!("¥ {yuan:.2}")
 }
 
@@ -20,9 +20,14 @@ pub fn UsersPage() -> Element {
     let mut show_topup = use_signal(|| None::<String>);
     let mut topup_amount = use_signal(|| 0i64);
     let mut topup_username = use_signal(String::new);
+    let mut topup_loading = use_signal(|| false);
+    let mut show_invite = use_signal(|| false);
+    let mut invite_username = use_signal(String::new);
+    let mut invite_password = use_signal(String::new);
+    let mut invite_loading = use_signal(|| false);
     let toast = use_toast();
 
-    let users = use_resource(move || async move {
+    let mut users = use_resource(move || async move {
         UserService::list().await.unwrap_or_default()
     });
 
@@ -46,13 +51,17 @@ pub fn UsersPage() -> Element {
             actions: rsx! {
                 BCButton {
                     class: "btn-black",
-                    onclick: move |_| {},
+                    onclick: move |_| {
+                        invite_username.set(String::new());
+                        invite_password.set(String::new());
+                        show_invite.set(true);
+                    },
                     {t(*lang.read(), "users.invite")}
                 }
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content bc-flex-col-gap-xl",
             // KPI strip
             div { class: "stats-grid",
                 if loading {
@@ -74,25 +83,23 @@ pub fn UsersPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", {t(*lang.read(), "users.kpi.fund_pool")} }
-                        div { class: "stat-value", "{format_cents(user_list.iter().map(|u| u.balance_cny).sum::<i64>())}" }
+                        div { class: "stat-value", "{format_nano_to_cny(user_list.iter().map(|u| u.balance_cny).sum::<i64>())}" }
                     }
                 }
             }
 
             // Tabs + table
             div {
-                div { class: "section-h row", style: "margin-bottom:0",
+                div { class: "section-h row bc-section-no-mb",
                     span { class: "lead-title", {t(*lang.read(), "users.detail_title")} }
-                    div { class: "tabs", style: "border-bottom:none; padding-bottom:0; gap:16px",
+                    div { class: "tabs bc-tabs-compact",
                         button {
-                            class: if active_tab() == "all" { "tab active" } else { "tab" },
-                            style: "padding-bottom:8px; margin-bottom:0",
+                            class: if active_tab() == "all" { "tab active bc-tab-compact" } else { "tab bc-tab-compact" },
                             onclick: move |_| active_tab.set("all".to_string()),
                             {t(*lang.read(), "users.tab.all")}
                         }
                         button {
-                            class: if active_tab() == "vip" { "tab active" } else { "tab" },
-                            style: "padding-bottom:8px; margin-bottom:0",
+                            class: if active_tab() == "vip" { "tab active bc-tab-compact" } else { "tab bc-tab-compact" },
                             onclick: move |_| active_tab.set("vip".to_string()),
                             {t(*lang.read(), "users.tab.vip")}
                         }
@@ -105,13 +112,13 @@ pub fn UsersPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 } else if filtered.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:40px", "👥" } },
+                        icon: rsx! { span { class: "text-xxxl", "👥" } },
                         title: t(*lang.read(), "users.empty_title").to_string(),
                         description: Some(t(*lang.read(), "users.empty_desc").to_string()),
                         cta: None,
                     }
                 } else {
-                    table { class: "table", style: "margin-top:16px",
+                    table { class: "table bc-table-mt",
                         thead {
                             tr {
                                 th { "ID" }
@@ -131,7 +138,7 @@ pub fn UsersPage() -> Element {
                                     td { style: "font-weight:600", "{u.username}" }
                                     td { span { class: "pill neutral", "{u.role}" } }
                                     td { class: "mono", style: "color:var(--bc-text-primary); font-variant-numeric:tabular-nums",
-                                        "{format_cents(u.balance_cny)}"
+                                        "{format_nano_to_cny(u.balance_cny)}"
                                     }
                                     td {
                                         if u.group == "VIP" {
@@ -212,10 +219,106 @@ pub fn UsersPage() -> Element {
                     }
                     div { class: "bc-modal-footer",
                         button { class: "btn btn-ghost", onclick: move |_| show_topup.set(None), {t(*lang.read(), "common.cancel")} }
-                        button { class: "btn btn-black", onclick: move |_| {
-                            show_topup.set(None);
-                            toast.success(t(*lang.read(), "users.topup_modal.success"));
-                        }, {t(*lang.read(), "users.topup_modal.confirm")} }
+                        button { class: "btn btn-black",
+                            disabled: topup_loading(),
+                            onclick: move |_| {
+                                let amount = topup_amount();
+                                if amount <= 0 {
+                                    toast.error(t(*lang.read(), "users.topup_modal.invalid_amount"));
+                                    return;
+                                }
+                                let uid = match show_topup() {
+                                    Some(id) => id,
+                                    None => return,
+                                };
+                                let amount_nano = amount * 1_000_000_000;
+                                topup_loading.set(true);
+                                spawn(async move {
+                                    match UserService::topup(&uid, amount_nano, Some("CNY")).await {
+                                        Ok(_) => {
+                                            topup_loading.set(false);
+                                            show_topup.set(None);
+                                            users.restart();
+                                            toast.success(t(*lang.read(), "users.topup_modal.success"));
+                                        }
+                                        Err(e) => {
+                                            topup_loading.set(false);
+                                            toast.error(&t_fmt(*lang.read(), "users.topup_modal.failed", &[("error", &e.to_string())]));
+                                        }
+                                    }
+                                });
+                            },
+                            {if topup_loading() { t(*lang.read(), "users.topup_modal.processing") } else { t(*lang.read(), "users.topup_modal.confirm") }}
+                        }
+                    }
+                }
+            }
+        }
+
+        // Invite new user modal
+        BCModal {
+            title: t(*lang.read(), "users.invite_modal.title").to_string(),
+            open: show_invite(),
+            onclose: move |_| show_invite.set(false),
+
+            div { class: "flex flex-col gap-lg",
+                div { style: "font-size:12px; color:var(--bc-text-secondary)", {t(*lang.read(), "users.invite_modal.desc")} }
+
+                BCInput {
+                    label: Some(t(*lang.read(), "users.invite_modal.username_label").to_string()),
+                    r#type: "text".to_string(),
+                    placeholder: t(*lang.read(), "users.invite_modal.username_placeholder").to_string(),
+                    value: invite_username(),
+                    oninput: move |e: FormEvent| invite_username.set(e.value()),
+                }
+
+                BCInput {
+                    label: Some(t(*lang.read(), "users.invite_modal.password_label").to_string()),
+                    r#type: "password".to_string(),
+                    placeholder: t(*lang.read(), "users.invite_modal.password_placeholder").to_string(),
+                    value: invite_password(),
+                    oninput: move |e: FormEvent| invite_password.set(e.value()),
+                }
+
+                div { class: "flex justify-end gap-md mt-md",
+                    BCButton {
+                        variant: ButtonVariant::Ghost,
+                        onclick: move |_| show_invite.set(false),
+                        {t(*lang.read(), "common.cancel")}
+                    }
+                    BCButton {
+                        variant: ButtonVariant::Black,
+                        loading: invite_loading(),
+                        disabled: invite_loading(),
+                        onclick: move |_| {
+                            let username = invite_username().trim().to_string();
+                            let password = invite_password();
+                            if username.is_empty() {
+                                toast.error(t(*lang.read(), "users.invite_modal.username_required"));
+                                return;
+                            }
+                            if password.len() < 8 {
+                                toast.error(t(*lang.read(), "users.invite_modal.password_min_length"));
+                                return;
+                            }
+                            invite_loading.set(true);
+                            spawn(async move {
+                                match UserService::create(&username, &password).await {
+                                    Ok(()) => {
+                                        toast.success(t(*lang.read(), "users.invite_modal.success"));
+                                        show_invite.set(false);
+                                        invite_username.set(String::new());
+                                        invite_password.set(String::new());
+                                        users.restart();
+                                    }
+                                    Err(e) => {
+                                        toast.error(&t_fmt(*lang.read(), "users.invite_modal.failed", &[("error", &e.to_string())]));
+                                    }
+                                }
+                                invite_loading.set(false);
+                            });
+                        },
+                        {t(*lang.read(), "users.invite_modal.create")}
                     }
                 }
             }

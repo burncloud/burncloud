@@ -6,6 +6,7 @@ use burncloud_client_shared::services::playground_service::{
     ExportFormat, PlaygroundConfig, PlaygroundMessage, PlaygroundService,
 };
 use burncloud_client_shared::services::token_service::TokenService;
+use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 use uuid::Uuid;
 
@@ -267,16 +268,32 @@ pub fn Playground() -> Element {
 
     // Export button handler
     let on_export = move |_| {
-        let playground_msgs: Vec<PlaygroundMessage> = messages
-            .read()
+        let toast = use_toast();
+        let msgs = messages.read();
+        if msgs.is_empty() {
+            toast.warning(t(*lang.read(), "playground.export.no_conversation"));
+            return;
+        }
+        let playground_msgs: Vec<PlaygroundMessage> = msgs
             .iter()
             .map(|m| PlaygroundMessage {
                 role: m.role.clone(),
                 content: m.content.clone(),
             })
             .collect();
-        let content = PlaygroundService::export_conversation(&playground_msgs, ExportFormat::Markdown);
-        let _ = content;
+        drop(msgs);
+
+        let mut content = PlaygroundService::export_conversation(&playground_msgs, ExportFormat::Markdown);
+        content.push_str(t_fmt(*lang.read(), "playground.export.simulation_notice", &[]).as_str());
+
+        let filename = format!("playground_{}.md", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+        let dir = dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+        let path = dir.join(&filename);
+
+        match std::fs::write(&path, &content) {
+            Ok(()) => toast.success(&t_fmt(*lang.read(), "playground.export.success", &[("path", &path.display().to_string())])),
+            Err(e) => toast.error(&t_fmt(*lang.read(), "playground.export.failed", &[("error", &e.to_string())])),
+        }
     };
 
     rsx! {
@@ -291,18 +308,18 @@ pub fn Playground() -> Element {
 
         // Error banner
         if let Some(err) = error_msg() {
-            div { style: "background:var(--bc-warning, #f59e0b); color:#fff; padding:8px 16px; font-size:13px; border-radius:4px; margin-bottom:8px",
+            div { class: "bc-error-banner-warning mb-sm",
                 "{err}"
             }
         }
 
-        div { style: "display:grid; grid-template-columns:260px 1fr 240px; height:calc(100vh - 180px); min-height:0",
+        div { class: "bc-playground-layout",
             // Config rail
-            div { style: "border-right:1px solid var(--bc-border); background:var(--bc-bg-card-solid); padding:20px; overflow-y:auto",
+            div { class: "bc-config-rail",
                 // Channel selector
                 div { class: "config-row",
                     label { class: "config-label", {t(*lang.read(), "playground.channel")} }
-                    div { class: "select-input", style: "width:100%; height:40px",
+                    div { class: "select-input w-full bc-h-40px",
                         select {
                             onchange: move |e| {
                                 if let Ok(id) = e.value().parse::<i64>() {
@@ -323,7 +340,7 @@ pub fn Playground() -> Element {
                 // Token selector
                 div { class: "config-row",
                     label { class: "config-label", "Token" }
-                    div { class: "select-input", style: "width:100%; height:40px",
+                    div { class: "select-input w-full bc-h-40px",
                         select {
                             aria_label: t(*lang.read(), "playground.select_api_token"),
                             onchange: move |e| {
@@ -343,34 +360,34 @@ pub fn Playground() -> Element {
                 // Model display
                 div { class: "config-row",
                     label { class: "config-label", {t(*lang.read(), "playground.model")} }
-                    div { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)",
+                    div { class: "mono bc-body-13px text-secondary",
                         "{current_model}"
                     }
                 }
 
                 div { class: "config-row",
                     label { class: "config-label", "Temperature" }
-                    div { style: "display:flex; align-items:center; gap:12px",
+                    div { class: "flex items-center gap-md",
                         input {
                             r#type: "range",
                             min: "0",
                             max: "2",
                             step: "0.1",
                             value: "{temperature():.1}",
-                            style: "flex:1; accent-color:var(--bc-primary)",
+                            class: "bc-range-input",
                             oninput: move |e| {
                                 if let Ok(v) = e.value().parse::<f64>() {
                                     temperature.set(v);
                                 }
                             },
                         }
-                        span { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary); width:28px; text-align:right", "{temperature():.1}" }
+                        span { class: "mono bc-body-13px text-secondary bc-temp-value", "{temperature():.1}" }
                     }
                 }
 
                 div { class: "config-row",
                     label { class: "config-label", "Max tokens" }
-                    div { class: "input sm", style: "width:100%",
+                    div { class: "input sm w-full",
                         input {
                             r#type: "number",
                             value: "{max_tokens}",
@@ -385,21 +402,21 @@ pub fn Playground() -> Element {
 
                 div { class: "config-row",
                     label { class: "config-label", {t(*lang.read(), "playground.options")} }
-                    label { style: "display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px",
+                    label { class: "bc-option-row",
                         span { {t(*lang.read(), "playground.stream_response")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: stream_mode(), onchange: move |e| stream_mode.set(e.checked()) }
                             span { class: "switch-track" }
                         }
                     }
-                    label { style: "display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px",
+                    label { class: "bc-option-row",
                         span { {t(*lang.read(), "playground.show_reasoning")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: show_reasoning(), onchange: move |e| show_reasoning.set(e.checked()) }
                             span { class: "switch-track" }
                         }
                     }
-                    label { style: "display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px",
+                    label { class: "bc-option-row",
                         span { {t(*lang.read(), "playground.json_mode")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: json_mode(), onchange: move |e| json_mode.set(e.checked()) }
@@ -410,21 +427,23 @@ pub fn Playground() -> Element {
             }
 
             // Conversation
-            div { style: "display:flex; flex-direction:column; min-height:0",
-                div { role: "log", aria_live: "polite", style: "flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:20px",
+            div { class: "bc-conversation-area",
+                div { role: "log", aria_live: "polite", class: "bc-conversation-log",
                     if msg_list.is_empty() {
-                        div { style: "display:flex; align-items:center; justify-content:center; height:100%; color:var(--bc-text-secondary)",
+                        div { class: "flex items-center justify-center h-full text-secondary",
                             {t(*lang.read(), "playground.start_conversation")}
                         }
                     } else {
                         for msg in msg_list.iter() {
-                            div { key: "{msg.id}", style: "display:flex; gap:12px; max-width:720px",
-                                div { style: "width:32px; height:32px; border-radius:8px; background:{role_bg(&msg.role)}; color:{role_color(&msg.role)}; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0",
+                            div { key: "{msg.id}", class: "bc-msg-row",
+                                div { class: "bc-msg-avatar", style: "--bc-dynamic-avatar-bg:{role_bg(&msg.role)}; --bc-dynamic-avatar-color:{role_color(&msg.role)}",
                                     "{role_label(&msg.role)}"
                                 }
-                                div { style: "flex:1",
-                                    div { class: "config-label", style: "margin-bottom:4px", "{msg.role}" }
-                                    div { style: "font-size:14px; line-height:1.6; white-space:pre-wrap", "{msg.content}" }
+                                div { class: "flex-1",
+                                    div { class: "config-label mb-xs", "{msg.role}" }
+                                    div { class: "bc-msg-content",
+                                        "{msg.content}"
+                                    }
                                 }
                             }
                         }
@@ -432,8 +451,8 @@ pub fn Playground() -> Element {
                 }
 
                 // Input bar
-                div { style: "border-top:1px solid var(--bc-border); background:var(--bc-bg-card-solid); padding:16px; display:flex; gap:8px",
-                    div { class: "input", style: "flex:1",
+                div { class: "bc-input-bar",
+                    div { class: "input flex-1",
                         input {
                             r#type: "text",
                             aria_label: t(*lang.read(), "playground.input_message_aria"),
@@ -457,24 +476,24 @@ pub fn Playground() -> Element {
             }
 
             // Token meter
-            div { style: "border-left:1px solid var(--bc-border); background:var(--bc-bg-card-solid); padding:20px; overflow-y:auto; display:flex; flex-direction:column; gap:16px",
-                label { class: "config-label", style: "margin-bottom:0", "Usage · this session" }
+            div { class: "bc-token-meter",
+                label { class: "config-label bc-mb-0", "Usage · this session" }
 
-                div { class: "stat-card", style: "padding:14px; gap:4px",
+                div { class: "stat-card bc-stat-compact",
                     span { class: "stat-eyebrow", "TOKENS" }
-                    div { class: "stat-value", style: "font-size:22px", "{total_tokens}" }
+                    div { class: "stat-value bc-heading-22px", "{total_tokens}" }
                     span { class: "stat-foot", "{total_prompt_tokens} in · {total_completion_tokens} out" }
                 }
 
-                div { class: "stat-card", style: "padding:14px; gap:4px",
+                div { class: "stat-card bc-stat-compact",
                     span { class: "stat-eyebrow", "COST" }
-                    div { class: "stat-value", style: "font-size:22px", "{cost_display}" }
+                    div { class: "stat-value bc-heading-22px", "{cost_display}" }
                     span { class: "stat-foot", "{cost_cny_display}" }
                 }
 
                 div {
                     label { class: "config-label", {t(*lang.read(), "playground.route_trace")} }
-                    div { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary); line-height:1.9",
+                    div { class: "mono bc-route-trace-text",
                         if route_traces.read().is_empty() {
                             div { {t(*lang.read(), "playground.no_route_records")} }
                         } else {

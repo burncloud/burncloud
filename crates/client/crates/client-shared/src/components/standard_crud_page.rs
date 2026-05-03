@@ -196,7 +196,7 @@ pub fn StandardCrudPage(
             div { class: "bg-card border rounded-xl overflow-hidden shadow-sm",
                 if !*loading.read() && items.read().is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:32px", "📭" } },
+                        icon: rsx! { span { class: "text-xxl", "📭" } },
                         title: t_fmt(*lang.read(), "crud.no_entity", &[("label", &entity_label)]),
                         description: Some(t_fmt(*lang.read(), "crud.create_first", &[("label", &entity_label)])),
                         cta: None,

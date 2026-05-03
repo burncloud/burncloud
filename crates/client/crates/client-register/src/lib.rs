@@ -99,11 +99,11 @@ pub fn RegisterPage() -> Element {
             // --- LEFT: BRAND PANEL (50%) ---
             aside { class: "login-brand",
                 // Logo + brand
-                div { style: "display:flex; align-items:center; gap:12px;",
+                div { class: "bc-brand-header",
                     Logo { class: "login-brand-logo" }
                     div {
-                        div { style: "font-size:17px; font-weight:600; line-height:1;", "BurnCloud" }
-                        div { style: "font-size:11px; font-weight:500; color:rgba(255,255,255,0.4); letter-spacing:0.18em; text-transform:uppercase; margin-top:4px;", "Enterprise" }
+                        div { class: "bc-brand-name", "BurnCloud" }
+                        div { class: "bc-brand-sub", "Enterprise" }
                     }
                 }
 
@@ -120,24 +120,24 @@ pub fn RegisterPage() -> Element {
                     }
 
                     // Benefit rows
-                    div { style: "display:flex; flex-direction:column; gap:12px; margin-top:32px;",
+                    div { class: "bc-benefits-list",
                         div { class: "login-benefit",
                             span { class: "login-benefit-check", "\u{2713}" }
-                            div { style: "display:flex; flex-direction:column;",
+                            div { class: "bc-benefit-text",
                                 span { class: "login-benefit-key", {t(*lang.read(), "register.brand.benefit_free_key")} }
                                 span { class: "login-benefit-val", {t(*lang.read(), "register.brand.benefit_free_val")} }
                             }
                         }
                         div { class: "login-benefit",
                             span { class: "login-benefit-check", "\u{2713}" }
-                            div { style: "display:flex; flex-direction:column;",
+                            div { class: "bc-benefit-text",
                                 span { class: "login-benefit-key", {t(*lang.read(), "register.brand.benefit_unified_key")} }
                                 span { class: "login-benefit-val", "OpenAI \u{00b7} Anthropic \u{00b7} Gemini \u{00b7} Azure \u{00b7} Qwen" }
                             }
                         }
                         div { class: "login-benefit",
                             span { class: "login-benefit-check", "\u{2713}" }
-                            div { style: "display:flex; flex-direction:column;",
+                            div { class: "bc-benefit-text",
                                 span { class: "login-benefit-key", {t(*lang.read(), "register.brand.benefit_instant_key")} }
                                 span { class: "login-benefit-val", {t(*lang.read(), "register.brand.benefit_instant_val")} }
                             }
@@ -153,16 +153,16 @@ pub fn RegisterPage() -> Element {
 
             // --- RIGHT: FORM PANEL (50%) ---
             main { class: "login-form",
-                div { class: "{form_class}", style: "display:flex; flex-direction:column; gap:18px; width:100%;",
+                div { class: "{form_class} bc-form-stack",
 
                     // Header
-                    div { style: "margin-bottom:14px;",
+                    div { class: "bc-form-header",
                         h2 { class: "login-form-title", {t(*lang.read(), "register.form.title")} }
                         div { class: "login-form-subtitle", {t(*lang.read(), "register.form.subtitle")} }
                     }
 
                     // Name + Org (2-column)
-                    div { style: "display:grid; grid-template-columns:1fr 1fr; gap:12px;",
+                    div { class: "bc-grid-2col",
                         div {
                             label { class: "login-input-label", {t(*lang.read(), "register.form.name_label")} }
                             div { class: "login-input",
@@ -175,7 +175,7 @@ pub fn RegisterPage() -> Element {
                             }
                         }
                         div {
-                            label { class: "login-input-label", {t(*lang.read(), "register.form.org_label")} " " span { style: "color:var(--bc-text-tertiary); font-weight:400;", {t(*lang.read(), "register.form.org_optional")} } }
+                            label { class: "login-input-label", {t(*lang.read(), "register.form.org_label")} " " span { class: "bc-label-optional", {t(*lang.read(), "register.form.org_optional")} } }
                             div { class: "login-input",
                                 input {
                                     r#type: "text",
@@ -218,7 +218,7 @@ pub fn RegisterPage() -> Element {
                                     div {
                                         key: "{i}",
                                         class: "pw-meter-bar",
-                                        style: if *active { format!("background:{}", color) } else { String::new() },
+                                        style: if *active { format!("--bc-dynamic-bg:{}", color) } else { String::new() },
                                     }
                                 }
                             }
@@ -239,26 +239,25 @@ pub fn RegisterPage() -> Element {
                     }
 
                     // Terms checkbox
-                    label { style: "display:flex; align-items:flex-start; gap:10px; font-size:12px; color:var(--bc-text-secondary); line-height:1.5; cursor:pointer; user-select:none;",
+                    label { class: "bc-terms-label",
                         input {
+                            class: "bc-terms-checkbox",
                             r#type: "checkbox",
                             checked: agreed(),
                             onchange: move |_| agreed.set(!agreed()),
-                            style: "margin-top:2px; accent-color:#000;",
                         }
                         span {
                             {t(*lang.read(), "register.form.terms_prefix")}
-                            a { style: "color:var(--bc-primary); text-decoration:none;", {t(*lang.read(), "register.form.terms_tos")} }
+                            a { class: "bc-link", {t(*lang.read(), "register.form.terms_tos")} }
                             {t(*lang.read(), "register.form.terms_and")}
-                            a { style: "color:var(--bc-primary); text-decoration:none;", {t(*lang.read(), "register.form.terms_privacy")} }
+                            a { class: "bc-link", {t(*lang.read(), "register.form.terms_privacy")} }
                             {t(*lang.read(), "register.form.terms_suffix")}
                         }
                     }
 
                     // Register button
                     button {
-                        class: "landing-btn landing-btn-dark",
-                        style: "width:100%; height:48px; font-size:15px; border-radius:12px; margin-top:4px;",
+                        class: "landing-btn landing-btn-dark bc-register-btn",
                         disabled: loading(),
                         onclick: handle_register,
                         if loading() {
@@ -277,11 +276,11 @@ pub fn RegisterPage() -> Element {
 
                     // OAuth buttons
                     div { class: "login-social-grid",
-                        button { class: "landing-btn", style: "height:42px; font-size:13px; background:transparent; color:var(--bc-text-primary); border:1px solid var(--bc-border); border-radius:12px; width:100%;",
-                            span { style: "font-weight:700; margin-right:6px;", "G" } " Google"
+                        button { class: "landing-btn bc-oauth-btn",
+                            span { class: "bc-oauth-btn-bold", "G" } " Google"
                         }
-                        button { class: "landing-btn", style: "height:42px; font-size:13px; background:transparent; color:var(--bc-text-primary); border:1px solid var(--bc-border); border-radius:12px; width:100%;",
-                            svg { width: "14", height: "14", view_box: "0 0 24 24", fill: "currentColor", style: "margin-right:6px;",
+                        button { class: "landing-btn bc-oauth-btn",
+                            svg { width: "14", height: "14", view_box: "0 0 24 24", fill: "currentColor", class: "bc-oauth-icon",
                                 path { d: "M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.05c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.69.08-.69 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.73-1.53-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.18.91-.25 1.89-.38 2.86-.38.97 0 1.95.13 2.86.38 2.18-1.49 3.14-1.18 3.14-1.18.62 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.09 0 4.42-2.69 5.4-5.25 5.68.41.36.78 1.05.78 2.12v3.14c0 .31.21.66.79.55C20.21 21.39 23.5 17.07 23.5 12 23.5 5.65 18.35.5 12 .5z" }
                             }
                             "GitHub"
@@ -291,7 +290,7 @@ pub fn RegisterPage() -> Element {
                     // Switch link
                     div { class: "login-footer",
                         {t(*lang.read(), "register.form.has_account")}
-                        Link { to: "/login", style: "color:var(--bc-primary); text-decoration:none; font-weight:500; cursor:pointer;", {t(*lang.read(), "register.form.login_now")} }
+                        Link { to: "/login", class: "bc-link-semibold", {t(*lang.read(), "register.form.login_now")} }
                     }
                 }
             }

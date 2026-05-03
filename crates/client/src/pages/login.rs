@@ -76,11 +76,11 @@ pub fn LoginPage() -> Element {
             // --- LEFT: BRAND PANEL (50%) ---
             aside { class: "login-brand",
                 // Logo + brand
-                div { style: "display:flex; align-items:center; gap:12px;",
+                div { class: "login-brand-header",
                     Logo { class: "login-brand-logo" }
                     div {
-                        div { style: "font-size:17px; font-weight:600; line-height:1;", "BurnCloud" }
-                        div { style: "font-size:11px; font-weight:500; color:rgba(255,255,255,0.4); letter-spacing:0.18em; text-transform:uppercase; margin-top:4px;", "Enterprise" }
+                        div { class: "login-brand-name", "BurnCloud" }
+                        div { class: "login-brand-sublabel", "Enterprise" }
                     }
                 }
 
@@ -105,12 +105,12 @@ pub fn LoginPage() -> Element {
 
             // --- RIGHT: FORM PANEL (50%) ---
             main { class: "login-form",
-                div { style: "margin-bottom:32px;",
+                div { class: "mb-xxxl",
                     h2 { class: "login-form-title", {t(*lang.read(), "login.form.title")} }
                     div { class: "login-form-subtitle", {t(*lang.read(), "login.form.subtitle")} }
                 }
 
-                div { style: "display:flex; flex-direction:column; gap:18px;",
+                div { class: "flex flex-col gap-xl",
                     // Email field
                     div {
                         label { class: "login-input-label", {t(*lang.read(), "login.form.email_label")} }
@@ -126,9 +126,9 @@ pub fn LoginPage() -> Element {
 
                     // Password field
                     div {
-                        div { style: "display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;",
-                            label { class: "login-input-label", style: "margin:0", {t(*lang.read(), "login.form.password_label")} }
-                            a { style: "font-size:12px; color:var(--bc-primary); text-decoration:none; font-weight:500; cursor:pointer;", {t(*lang.read(), "login.form.forgot_password")} }
+                        div { class: "flex items-center justify-between mb-sm",
+                            label { class: "login-input-label m-0", {t(*lang.read(), "login.form.password_label")} }
+                            a { class: "login-forgot-link", {t(*lang.read(), "login.form.forgot_password")} }
                         }
                         div { class: "login-input",
                             input {
@@ -142,13 +142,12 @@ pub fn LoginPage() -> Element {
 
                     // Error message
                     if let Some(err) = login_error() {
-                        div { style: "font-size:13px; color:var(--bc-danger);", "{err}" }
+                        div { class: "login-error-text", "{err}" }
                     }
 
                     // Login button
                     button {
-                        class: "landing-btn landing-btn-dark",
-                        style: "width:100%; height:48px; font-size:15px; border-radius:12px;",
+                        class: "landing-btn landing-btn-dark bc-btn-block bc-btn-lg",
                         disabled: loading(),
                         onclick: handle_login,
                         if loading() {
@@ -167,11 +166,11 @@ pub fn LoginPage() -> Element {
 
                     // OAuth buttons
                     div { class: "login-social-grid",
-                        button { class: "landing-btn", style: "height:42px; font-size:13px; background:transparent; color:var(--bc-text-primary); border:1px solid var(--bc-border); border-radius:12px; width:100%;",
-                            span { style: "font-weight:700; margin-right:6px;", "G" } " Google"
+                        button { class: "landing-btn login-social-btn",
+                            span { class: "login-social-letter font-bold mr-sm", "G" } " Google"
                         }
-                        button { class: "landing-btn", style: "height:42px; font-size:13px; background:transparent; color:var(--bc-text-primary); border:1px solid var(--bc-border); border-radius:12px; width:100%;",
-                            svg { width: "14", height: "14", view_box: "0 0 24 24", fill: "currentColor", style: "margin-right:6px;",
+                        button { class: "landing-btn login-social-btn",
+                            svg { class: "login-social-icon", width: "14", height: "14", view_box: "0 0 24 24", fill: "currentColor",
                                 path { d: "M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.05c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.69.08-.69 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.73-1.53-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.18.91-.25 1.89-.38 2.86-.38.97 0 1.95.13 2.86.38 2.18-1.49 3.14-1.18 3.14-1.18.62 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.09 0 4.42-2.69 5.4-5.25 5.68.41.36.78 1.05.78 2.12v3.14c0 .31.21.66.79.55C20.21 21.39 23.5 17.07 23.5 12 23.5 5.65 18.35.5 12 .5z" }
                             }
                             "GitHub"
@@ -181,7 +180,7 @@ pub fn LoginPage() -> Element {
                     // Switch link
                     div { class: "login-footer",
                         {t(*lang.read(), "login.form.no_account")}
-                        Link { to: Route::RegisterPage {}, style: "color:var(--bc-primary); text-decoration:none; font-weight:500;", {t(*lang.read(), "login.form.free_register")} }
+                        Link { to: Route::RegisterPage {}, class: "login-footer-link", {t(*lang.read(), "login.form.free_register")} }
                     }
                 }
             }
