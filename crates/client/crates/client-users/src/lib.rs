@@ -58,7 +58,7 @@ pub fn UsersPage() -> Element {
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content bc-flex-col-gap-xl",
             // KPI strip
             div { class: "stats-grid",
                 if loading {
@@ -87,18 +87,16 @@ pub fn UsersPage() -> Element {
 
             // Tabs + table
             div {
-                div { class: "section-h row", style: "margin-bottom:0",
+                div { class: "section-h row bc-section-no-mb",
                     span { class: "lead-title", "客户明细" }
-                    div { class: "tabs", style: "border-bottom:none; padding-bottom:0; gap:16px",
+                    div { class: "tabs bc-tabs-compact",
                         button {
-                            class: if active_tab() == "all" { "tab active" } else { "tab" },
-                            style: "padding-bottom:8px; margin-bottom:0",
+                            class: if active_tab() == "all" { "tab active bc-tab-compact" } else { "tab bc-tab-compact" },
                             onclick: move |_| active_tab.set("all".to_string()),
                             "全部客户"
                         }
                         button {
-                            class: if active_tab() == "vip" { "tab active" } else { "tab" },
-                            style: "padding-bottom:8px; margin-bottom:0",
+                            class: if active_tab() == "vip" { "tab active bc-tab-compact" } else { "tab bc-tab-compact" },
                             onclick: move |_| active_tab.set("vip".to_string()),
                             "VIP客户"
                         }
@@ -111,13 +109,13 @@ pub fn UsersPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 } else if filtered.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:40px", "👥" } },
+                        icon: rsx! { span { class: "text-xxxl", "👥" } },
                         title: "暂无客户".to_string(),
                         description: Some("邀请新用户开始使用".to_string()),
                         cta: None,
                     }
                 } else {
-                    table { class: "table", style: "margin-top:16px",
+                    table { class: "table bc-table-mt",
                         thead {
                             tr {
                                 th { "ID" }

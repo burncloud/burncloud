@@ -34,7 +34,7 @@ fn render_cell(col: &serde_json::Value, row: &serde_json::Value) -> Element {
             let text = value_to_string(val);
             rsx! {
                 span {
-                    style: "font-family: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace; font-size: var(--bc-font-sm);",
+                    class: "bc-mono-cell",
                     "{text}"
                 }
             }
@@ -50,7 +50,7 @@ fn render_cell(col: &serde_json::Value, row: &serde_json::Value) -> Element {
             rsx! {
                 div { class: "flex flex-wrap gap-xs",
                     for tag in tags {
-                        span { class: "bc-badge-neutral", style: "padding: var(--bc-space-1) var(--bc-space-2); border-radius: var(--bc-radius-full); font-size: var(--bc-font-xs);",
+                        span { class: "bc-badge-neutral bc-badge-compact",
                             "{tag}"
                         }
                     }
@@ -175,8 +175,8 @@ pub fn SchemaTable(
                                                             let row_data = row.clone();
                                                             rsx! {
                                                                 button {
-                                                                    class: "btn btn-subtle text-caption",
-                                                                    style: "min-height: auto; padding: var(--bc-space-1) var(--bc-space-2); color: {act_color};",
+                                                                    class: "btn btn-subtle text-caption bc-action-btn",
+                                                                    style: "--bc-dynamic-color:{act_color}",
                                                                     onclick: move |e: MouseEvent| {
                                                                         e.stop_propagation();
                                                                         on_action.call(ActionEvent {

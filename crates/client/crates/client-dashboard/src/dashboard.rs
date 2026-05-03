@@ -168,7 +168,7 @@ pub fn Dashboard() -> Element {
             subtitle: Some("过去 24 小时 · 网关聚合视图".to_string()),
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content flex flex-col gap-xl",
             // Error banners for all API calls
             if let Some(err) = metrics_error {
                 ErrorBanner {
@@ -244,21 +244,21 @@ pub fn Dashboard() -> Element {
                             thead {
                                 tr {
                                     th { "MODEL" }
-                                    th { style: "text-align:right", "REQUESTS" }
-                                    th { style: "text-align:right", "PROMPT" }
-                                    th { style: "text-align:right", "COMPLETION" }
-                                    th { style: "text-align:right", "COST" }
+                                    th { class: "text-right", "REQUESTS" }
+                                    th { class: "text-right", "PROMPT" }
+                                    th { class: "text-right", "COMPLETION" }
+                                    th { class: "text-right", "COST" }
                                 }
                             }
                             tbody {
                                 for m in &summary.models {
                                     tr {
                                         key: "{m.model}",
-                                        td { style: "font-weight:500", "{m.model}" }
-                                        td { class: "mono", style: "text-align:right", "{format_thousands(m.requests)}" }
-                                        td { class: "mono", style: "text-align:right", "{format_compact(m.prompt_tokens)}" }
-                                        td { class: "mono", style: "text-align:right", "{format_compact(m.completion_tokens)}" }
-                                        td { class: "mono", style: "text-align:right; font-weight:600", "{format_usd_short(m.cost_usd)}" }
+                                        td { class: "font-medium", "{m.model}" }
+                                        td { class: "mono text-right", "{format_thousands(m.requests)}" }
+                                        td { class: "mono text-right", "{format_compact(m.prompt_tokens)}" }
+                                        td { class: "mono text-right", "{format_compact(m.completion_tokens)}" }
+                                        td { class: "mono text-right font-semibold", "{format_usd_short(m.cost_usd)}" }
                                     }
                                 }
                             }
@@ -268,7 +268,7 @@ pub fn Dashboard() -> Element {
             }
 
             // Channel health + live logs
-            div { style: "display:grid; grid-template-columns:1.45fr 1fr; gap:24px",
+            div { class: "grid bc-grid-channel-log",
                 // Channel health (real data)
                 div {
                     div { class: "section-h",
@@ -282,7 +282,7 @@ pub fn Dashboard() -> Element {
                         SkeletonCard { variant: Some(SkeletonVariant::Row) }
                     } else if ch_list.is_empty() {
                         EmptyState {
-                            icon: rsx! { span { style: "font-size:32px", "📡" } },
+                            icon: rsx! { span { class: "bc-text-3xl", "📡" } },
                             title: "暂无渠道数据".to_string(),
                             description: Some("请先添加上游渠道".to_string()),
                             cta: None,
@@ -292,7 +292,7 @@ pub fn Dashboard() -> Element {
                             thead {
                                 tr {
                                     th { "CHANNEL" }
-                                    th { style: "text-align:right", "WEIGHT" }
+                                    th { class: "text-right", "WEIGHT" }
                                     th { "TYPE" }
                                     th { "MODELS" }
                                     th { "STATUS" }
@@ -302,12 +302,12 @@ pub fn Dashboard() -> Element {
                                 for ch in &ch_list {
                                     tr {
                                         key: "{ch.id}",
-                                        td { style: "font-weight:500", "{ch.name}" }
-                                        td { class: "mono", style: "text-align:right", "{ch.weight}" }
-                                        td { class: "mono", style: "font-size:13px; color:var(--bc-text-secondary)",
+                                        td { class: "font-medium", "{ch.name}" }
+                                        td { class: "mono text-right", "{ch.weight}" }
+                                        td { class: "mono bc-text-sm-secondary",
                                             "{ch.type_}"
                                         }
-                                        td { style: "font-size:13px; color:var(--bc-text-secondary); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap",
+                                        td { class: "bc-text-sm-secondary bc-ellipsis-200",
                                             "{ch.models}"
                                         }
                                         td {
@@ -334,13 +334,13 @@ pub fn Dashboard() -> Element {
                         SkeletonCard { variant: Some(SkeletonVariant::Row) }
                     } else if log_list.is_empty() {
                         EmptyState {
-                            icon: rsx! { span { style: "font-size:32px", "📋" } },
+                            icon: rsx! { span { class: "bc-text-3xl", "📋" } },
                             title: "暂无日志".to_string(),
                             description: Some("网关请求日志将在此显示".to_string()),
                             cta: None,
                         }
                     } else {
-                        div { class: "log-block", style: "height:320px",
+                        div { class: "log-block bc-h-320",
                             for entry in &log_list {
                                 {
                                     let level = if entry.status_code >= 500 { "ERROR" } else if entry.status_code >= 400 { "WARN " } else { "INFO " };
@@ -369,22 +369,22 @@ pub fn Dashboard() -> Element {
                     div { class: "section-h",
                         span { class: "lead-title", "系统状态" }
                     }
-                    div { style: "display:grid; grid-template-columns:1fr 1fr; gap:16px",
-                        div { class: "row-card outlined", style: "padding:14px 16px",
+                    div { class: "grid bc-grid-2 gap-lg",
+                        div { class: "row-card outlined bc-p-14-16",
                             span { class: "stat-eyebrow", "CPU" }
-                            div { style: "font-size:20px; font-weight:600; font-variant-numeric:tabular-nums",
+                            div { class: "bc-metric-value",
                                 "{sm.cpu.usage_percent:.1}%"
                             }
-                            div { style: "font-size:12px; color:var(--bc-text-secondary)",
+                            div { class: "bc-detail-line",
                                 "{sm.cpu.core_count} cores · {sm.cpu.brand}"
                             }
                         }
-                        div { class: "row-card outlined", style: "padding:14px 16px",
+                        div { class: "row-card outlined bc-p-14-16",
                             span { class: "stat-eyebrow", "MEMORY" }
-                            div { style: "font-size:20px; font-weight:600; font-variant-numeric:tabular-nums",
+                            div { class: "bc-metric-value",
                                 "{sm.memory.usage_percent:.1}%"
                             }
-                            div { style: "font-size:12px; color:var(--bc-text-secondary)",
+                            div { class: "bc-detail-line",
                                 "{sm.memory.used / 1024 / 1024} / {sm.memory.total / 1024 / 1024} MB"
                             }
                         }

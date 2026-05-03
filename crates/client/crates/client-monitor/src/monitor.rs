@@ -18,6 +18,14 @@ fn score_color(score: u8) -> &'static str {
     }
 }
 
+fn filter_dot_bg(enabled: bool) -> &'static str {
+    if enabled {
+        "var(--bc-success)"
+    } else {
+        "var(--bc-border-hover)"
+    }
+}
+
 fn score_label(score: u8) -> &'static str {
     if score >= 80 {
         "安全状况良好"
@@ -148,8 +156,7 @@ pub fn ServiceMonitor() -> Element {
             actions: rsx! {
                 button { class: "btn btn-secondary", disabled: true, title: "v0.5 开放", "黑名单管理" }
                 button {
-                    class: "btn btn-danger",
-                    style: "padding-left:24px; padding-right:24px",
+                    class: "btn btn-danger bc-btn-emergency",
                     onclick: move |_| show_emergency_modal.set(true),
                     "紧急熔断"
                 }
@@ -160,7 +167,7 @@ pub fn ServiceMonitor() -> Element {
         {rsx! {
             div {
                 class: "fixed inset-0 z-50 flex items-center justify-center",
-                style: if show_emergency_modal() { "display:flex" } else { "display:none" },
+                style: if show_emergency_modal() { "--bc-dynamic-display:flex" } else { "--bc-dynamic-display:none" },
 
                 div {
                     class: "absolute inset-0 bg-[rgba(0,0,0,0.4)] backdrop-blur-sm",
@@ -181,15 +188,14 @@ pub fn ServiceMonitor() -> Element {
                     }
 
                     div { class: "p-lg",
-                        div { style: "margin-bottom:16px; padding:12px; background:var(--bc-danger-light); color:var(--bc-danger); border-radius:8px; font-size:13px",
+                        div { class: "bc-modal-warning",
                             "⚠ 此操作将立即触发所有上游的熔断器，所有请求将被拒绝。请确认操作意图。"
                         }
 
-                        div { style: "margin-bottom:16px",
-                            label { style: "font-size:13px; font-weight:500; display:block; margin-bottom:6px", "熔断原因" }
+                        div { class: "bc-modal-form-row",
+                            label { class: "bc-modal-form-label", "熔断原因" }
                             input {
-                                class: "bc-input",
-                                style: "width:100%",
+                                class: "bc-input w-full",
                                 r#type: "text",
                                 value: "{emergency_reason}",
                                 oninput: move |e| emergency_reason.set(e.value()),
@@ -199,10 +205,10 @@ pub fn ServiceMonitor() -> Element {
                         }
 
                         if let Some(err) = emergency_error() {
-                            div { style: "margin-bottom:12px; font-size:12px; color:var(--bc-danger)", "{err}" }
+                            div { class: "bc-error-text mb-md", "{err}" }
                         }
 
-                        div { style: "display:flex; gap:12px; justify-content:flex-end",
+                        div { class: "bc-flex-row-end",
                             button {
                                 class: "btn btn-secondary",
                                 onclick: move |_| show_emergency_modal.set(false),
@@ -221,7 +227,7 @@ pub fn ServiceMonitor() -> Element {
             }
         }}
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content flex flex-col bc-gap-6",
 
             // Security HUD: 4-col grid, security score spans 2
             div { class: "stats-grid cols-4",
@@ -231,7 +237,7 @@ pub fn ServiceMonitor() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else if let Some(err) = &summary_error {
-                    div { class: "stat-card", style: "grid-column:span 4",
+                    div { class: "stat-card bc-col-span-4",
                         ErrorBanner {
                             message: format!("安全数据加载失败: {err}"),
                             on_retry: None,
@@ -239,20 +245,22 @@ pub fn ServiceMonitor() -> Element {
                     }
                 } else {
                     // Security score card (span 2)
-                    div { class: "stat-card", style: "grid-column:span 2; flex-direction:row; align-items:center; justify-content:space-between; padding:24px; position:relative; overflow:hidden",
-                        div { style: "position:absolute; right:0; top:0; bottom:0; width:160px; background:linear-gradient(to left, {score_color(score)}22, transparent); opacity:0.45; pointer-events:none" }
-                        div { style: "display:flex; flex-direction:column; gap:6px; z-index:1",
+                    div { class: "stat-card bc-score-card",
+                        style: "--bc-dynamic-color:{score_color(score)}; --bc-dynamic-bg:linear-gradient(to left, {score_color(score)}22, transparent); --bc-dynamic-border-color:{score_color(score)}33",
+                        div { class: "bc-score-glow bc-dynamic-bg bc-dynamic-opacity", }
+                        div { class: "bc-score-body",
                             span { class: "stat-eyebrow", "当前安全评分" }
-                            div { style: "display:flex; align-items:baseline; gap:16px",
-                                span { style: "font-size:56px; font-weight:700; letter-spacing:-0.03em; line-height:1; color:{score_color(score)}", "{score}" }
-                                span { style: "font-size:13px; font-weight:500; color:{score_color(score)}", "{score_label(score)}" }
+                            div { class: "flex items-baseline gap-lg",
+                                span { class: "bc-score-value bc-dynamic-color", "{score}" }
+                                span { class: "bc-score-label bc-dynamic-color", "{score_label(score)}" }
                             }
-                            div { style: "display:flex; align-items:center; gap:8px; margin-top:6px",
-                                span { style: "font-size:11px; color:var(--bc-text-tertiary); text-transform:uppercase; letter-spacing:0.16em", "7d" }
+                            div { class: "flex items-center gap-sm bc-mt-6",
+                                span { class: "bc-eyebrow", "7d" }
                                 Sparkline { data: spark_data, tone: Some("success".to_string()), sm: Some(true) }
                             }
                         }
-                        div { style: "width:64px; height:64px; border-radius:99px; border:4px solid {score_color(score)}33; color:{score_color(score)}; display:flex; align-items:center; justify-content:center; z-index:1; font-size:28px",
+                        div { class: "bc-score-shield bc-dynamic-color",
+                            style: "--bc-dynamic-border-color:{score_color(score)}33",
                             "🛡"
                         }
                     }
@@ -279,14 +287,14 @@ pub fn ServiceMonitor() -> Element {
             }
 
             // Two-column: threat feed | filters
-            div { style: "display:grid; grid-template-columns:2fr 1fr; gap:24px",
+            div { class: "bc-grid-2-1 bc-gap-6",
                 // Threat feed
                 div {
                     div { class: "section-h",
                         span { class: "lead-title", "实时威胁感知 (Live Threat Feed)" }
                     }
                     if events_loading {
-                        div { style: "display:flex; flex-direction:column; gap:8px",
+                        div { class: "flex flex-col gap-sm",
                             SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                             SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                             SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
@@ -298,20 +306,20 @@ pub fn ServiceMonitor() -> Element {
                         }
                     } else if events.is_empty() {
                         EmptyState {
-                            icon: rsx! { span { style: "font-size:32px", "🛡" } },
+                            icon: rsx! { span { class: "bc-font-emoji-sm", "🛡" } },
                             title: "暂无威胁事件".to_string(),
                             description: Some("当前没有检测到安全威胁".to_string()),
                         }
                     } else {
-                        div { style: "display:flex; flex-direction:column; gap:8px",
+                        div { class: "flex flex-col gap-sm",
                             for event in events.iter() {
-                                div { class: "row-card outlined", style: "padding:16px",
+                                div { class: "row-card outlined p-md",
                                     key: "{event.id}",
-                                    div { style: "display:flex; align-items:center; gap:16px",
-                                        span { class: "mono", style: "font-size:11px; color:var(--bc-text-tertiary)", "{event.time}" }
-                                        div { style: "display:flex; flex-direction:column; gap:2px",
-                                            span { style: "font-size:13px; font-weight:600", "{event.event_type}" }
-                                            span { class: "mono", style: "font-size:11px; color:var(--bc-text-tertiary)", "Source: {event.source} → {event.target} ({event.detail})" }
+                                    div { class: "flex items-center gap-lg",
+                                        span { class: "mono bc-font-11 text-tertiary", "{event.time}" }
+                                        div { class: "flex flex-col bc-gap-xs",
+                                            span { class: "bc-font-13 font-semibold", "{event.event_type}" }
+                                            span { class: "mono bc-font-11 text-tertiary", "Source: {event.source} → {event.target} ({event.detail})" }
                                         }
                                     }
                                     {severity_pill(&event.severity)}
@@ -334,12 +342,15 @@ pub fn ServiceMonitor() -> Element {
                             on_retry: None,
                         }
                     } else {
-                        div { style: "display:flex; flex-direction:column; gap:12px",
+                        div { class: "flex flex-col gap-md",
                             // Content filter
-                            div { class: "row-card outlined", style: if !content_filter_enabled() { "opacity:0.6" } else { "" },
-                                div { style: "display:flex; align-items:center; gap:12px",
-                                    span { style: "width:8px; height:8px; border-radius:99px; background:if content_filter_enabled() {{ \"var(--bc-success)\" }} else {{ \"var(--bc-border-hover)\" }}" }
-                                    span { style: "font-size:13px; font-weight:500", "内容过滤" }
+                            div { class: "row-card outlined",
+                                style: if !content_filter_enabled() { "--bc-dynamic-opacity:0.6" } else { "" },
+                                div { class: "flex items-center gap-md",
+                                    span { class: "bc-status-dot",
+                                        style: "--bc-dynamic-bg:{filter_dot_bg(content_filter_enabled())}",
+                                    }
+                                    span { class: "bc-font-13 font-medium", "内容过滤" }
                                 }
                                 label { class: "switch",
                                     input {
@@ -355,10 +366,13 @@ pub fn ServiceMonitor() -> Element {
                                 }
                             }
                             // Blacklist
-                            div { class: "row-card outlined", style: if !blacklist_enabled() { "opacity:0.6" } else { "" },
-                                div { style: "display:flex; align-items:center; gap:12px",
-                                    span { style: "width:8px; height:8px; border-radius:99px; background:if blacklist_enabled() {{ \"var(--bc-success)\" }} else {{ \"var(--bc-border-hover)\" }}" }
-                                    span { style: "font-size:13px; font-weight:500", "黑名单拦截" }
+                            div { class: "row-card outlined",
+                                style: if !blacklist_enabled() { "--bc-dynamic-opacity:0.6" } else { "" },
+                                div { class: "flex items-center gap-md",
+                                    span { class: "bc-status-dot",
+                                        style: "--bc-dynamic-bg:{filter_dot_bg(blacklist_enabled())}",
+                                    }
+                                    span { class: "bc-font-13 font-medium", "黑名单拦截" }
                                 }
                                 label { class: "switch",
                                     input {
@@ -375,7 +389,7 @@ pub fn ServiceMonitor() -> Element {
                             }
                         }
                         // Info tip
-                        div { style: "margin-top:16px; padding:16px; font-size:12px; line-height:1.6; background:var(--bc-info-light); color:var(--bc-info); border-radius:12px",
+                        div { class: "bc-info-tip",
                             "💡 提示：开启内容过滤可能会略微增加请求延迟 (约 +50ms)。"
                         }
                     }

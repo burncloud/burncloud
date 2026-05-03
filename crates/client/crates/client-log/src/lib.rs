@@ -122,7 +122,7 @@ pub fn LogPage() -> Element {
             title: "Logs",
             subtitle: Some("全量请求与计费日志 · 实时流".to_string()),
             actions: rsx! {
-                div { class: "input sm", style: "width:240px",
+                div { class: "input sm log-search-input",
                     input {
                         placeholder: "搜索消息、渠道、token…",
                         value: "{search_query}",
@@ -149,7 +149,7 @@ pub fn LogPage() -> Element {
             },
         }
 
-        div { class: "page-content", style: "display:flex; flex-direction:column; gap:24px",
+        div { class: "page-content flex flex-col gap-xxxl",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {
@@ -168,14 +168,14 @@ pub fn LogPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "错误数" }
-                        div { class: "stat-value", style: "color:var(--bc-danger)",
+                        div { class: "stat-value text-danger",
                             "{format_thousands(error_count)}"
                         }
                         span { class: "stat-foot down", "↑ 18 in last hour" }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "告警数" }
-                        div { class: "stat-value", style: "color:var(--bc-warning)",
+                        div { class: "stat-value text-warning",
                             "{format_thousands(warn_count)}"
                         }
                         span { class: "stat-foot", "3 个 channel degraded" }
@@ -236,7 +236,7 @@ pub fn LogPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 } else if filtered_logs.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { style: "font-size:40px", "🔍" } },
+                        icon: rsx! { span { class: "text-xxxl", "🔍" } },
                         title: "没有匹配的日志".to_string(),
                         description: Some("调整搜索关键词或级别筛选".to_string()),
                         cta: None,
@@ -245,9 +245,9 @@ pub fn LogPage() -> Element {
                     table { class: "table",
                         thead {
                             tr {
-                                th { style: "width:200px", "时间" }
-                                th { style: "width:80px", "级别" }
-                                th { style: "width:160px", "渠道" }
+                                th { class: "log-col-time", "时间" }
+                                th { class: "log-col-level", "级别" }
+                                th { class: "log-col-channel", "渠道" }
                                 th { "消息" }
                             }
                         }
@@ -263,7 +263,7 @@ pub fn LogPage() -> Element {
                                     rsx! {
                                         tr {
                                             key: "{req_id}",
-                                            td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
+                                            td { class: "mono log-cell-secondary",
                                                 "{ts}"
                                             }
                                             td {
@@ -271,10 +271,10 @@ pub fn LogPage() -> Element {
                                                     value: status_level(entry.status_code)
                                                 }
                                             }
-                                            td { class: "mono", style: "font-size:12px; color:var(--bc-text-secondary)",
+                                            td { class: "mono log-cell-secondary",
                                                 "{upstream}"
                                             }
-                                            td { class: "mono", style: "font-size:13px; color:var(--bc-text-primary)",
+                                            td { class: "mono log-cell-primary",
                                                 "{msg}"
                                             }
                                         }

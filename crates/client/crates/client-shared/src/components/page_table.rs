@@ -18,7 +18,8 @@ pub fn PageTable(
                 tr {
                     for col in &columns {
                         th {
-                            style: col.width.as_ref().map(|w| format!("width:{w}")).unwrap_or_default(),
+                            style: col.width.as_ref().map(|w| format!("--bc-dynamic-width:{w}")).unwrap_or_default(),
+                            class: if col.width.is_some() { "bc-dynamic-width" } else { "" },
                             "{col.label}"
                         }
                     }

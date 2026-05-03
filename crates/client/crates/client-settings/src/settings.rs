@@ -85,7 +85,7 @@ pub fn SystemSettings() -> Element {
 
         div { class: "page-content",
             // Tab Navigation
-            div { class: "tabs", style: "margin-bottom:24px",
+            div { class: "tabs mb-xxxl",
                 button {
                     class: if active_tab() == "general" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("general"),
@@ -105,8 +105,8 @@ pub fn SystemSettings() -> Element {
             }
 
             if active_tab() == "general" {
-                div { class: "card flat", style: "padding:24px; max-width:640px",
-                    div { style: "display:flex; flex-direction:column; gap:24px",
+                div { class: "card flat p-xxxl settings-card",
+                    div { class: "flex flex-col gap-xxxl",
                         SchemaForm {
                             schema: settings_schema_val.clone(),
                             data: settings_data,
@@ -116,12 +116,12 @@ pub fn SystemSettings() -> Element {
                         }
 
                         // Theme toggle
-                        div { style: "display:flex; justify-content:space-between; align-items:center; padding-top:16px; border-top:1px solid var(--bc-border)",
+                        div { class: "settings-theme-row",
                             div {
-                                div { style: "font-size:14px; font-weight:500", "外观主题" }
-                                div { style: "font-size:12px; color:var(--bc-text-secondary); margin-top:4px", "切换亮色/暗色/跟随系统" }
+                                div { class: "text-body font-medium", "外观主题" }
+                                div { class: "text-caption text-secondary mt-xs", "切换亮色/暗色/跟随系统" }
                             }
-                            div { style: "display:flex; gap:8px",
+                            div { class: "flex gap-sm",
                                 {
                                     let cs = ClientState::load();
                                     let ct = cs.theme.clone().unwrap_or_default();

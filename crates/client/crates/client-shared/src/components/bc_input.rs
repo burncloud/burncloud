@@ -40,8 +40,7 @@ pub fn BCInput(
 
             div { class: "bc-input bc-input-field {state_class}",
                 input {
-                    class: "bc-input-native",
-                    style: if is_password { "padding-right: 40px;" } else { "" },
+                    class: if is_password { "bc-input-native bc-input-password" } else { "bc-input-native" },
                     r#type: "{actual_type}",
                     value: "{display_value}",
                     placeholder: "{placeholder}",
