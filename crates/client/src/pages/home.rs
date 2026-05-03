@@ -1,4 +1,5 @@
 use crate::app::Route;
+use burncloud_client_shared::i18n::{t, use_i18n};
 use dioxus::prelude::*;
 
 #[component]
@@ -20,6 +21,8 @@ pub fn Root() -> Element {
 #[component]
 pub fn HomePage() -> Element {
     let nav_padding = "landing-nav";
+    let i18n = use_i18n();
+    let lang = i18n.language;
 
     rsx! {
         div { class: "landing",
@@ -33,14 +36,14 @@ pub fn HomePage() -> Element {
                             span { "BurnCloud" }
                         }
                         div { class: "landing-nav-links",
-                            a { href: "#features", "Features" }
-                            a { href: "#architecture", "Architecture" }
-                            a { href: "#roadmap", "Roadmap" }
-                            a { href: "#docs", "Docs" }
+                            a { href: "#features", {t(*lang.read(), "home.nav.features")} }
+                            a { href: "#architecture", {t(*lang.read(), "home.nav.architecture")} }
+                            a { href: "#roadmap", {t(*lang.read(), "home.nav.roadmap")} }
+                            a { href: "#docs", {t(*lang.read(), "home.nav.docs")} }
                         }
                         div { class: "landing-nav-cta",
                             a { class: "landing-btn landing-btn-ghost", href: "#", "GitHub \u{2192}" }
-                            Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", "Get Started" }
+                            Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", {t(*lang.read(), "home.cta.get_started")} }
                         }
                     }
                 }
@@ -52,18 +55,18 @@ pub fn HomePage() -> Element {
                             " v0.3 \u{00b7} E2E test suite shipped"
                         }
                         h1 { class: "landing-hero-title",
-                            "The next-gen AI gateway,"
+                            {t(*lang.read(), "home.hero.title_1")}
                             br {}
-                            span { class: "grad", "built for Rust speed." }
+                            span { class: "grad", {t(*lang.read(), "home.hero.title_2")} }
                         }
                         p { class: "landing-hero-sub",
-                            "A high-performance LLM aggregation gateway that unifies Anthropic, Gemini, Azure & Qwen behind one OpenAI-compatible interface. "
-                            strong { style: "color:#fff", "MB-level memory" }
-                            ", zero-overhead routing, single binary."
+                            {t(*lang.read(), "home.hero.sub")}
+                            strong { style: "color:#fff", {t(*lang.read(), "home.hero.sub_highlight")} }
+                            {t(*lang.read(), "home.hero.sub_suffix")}
                         }
                         div { class: "landing-hero-ctas",
                             a { class: "landing-btn landing-btn-light", href: "#", "$ cargo install burncloud \u{2192}" }
-                            a { class: "landing-btn landing-btn-ghost", href: "#", "Read the docs" }
+                            a { class: "landing-btn landing-btn-ghost", href: "#", {t(*lang.read(), "home.cta.read_docs")} }
                         }
                         div { class: "landing-hero-meta",
                             div { class: "item",
@@ -473,11 +476,11 @@ pub fn HomePage() -> Element {
             // ─── Final CTA ───
             section { class: "landing-final-cta",
                 div { class: "landing-wrap landing-final-cta-inner",
-                    h2 { style: "font-size:64px;font-weight:700;letter-spacing:-0.03em;line-height:1.05;margin:0 0 20px;color:#fff", "Stop paying the" br {} "runtime tax." }
-                    p { style: "font-size:19px;color:rgba(255,255,255,0.7);margin:0 auto 36px;max-width:540px;line-height:1.5", "One binary. Five protocols. Zero config drama. Try BurnCloud locally in under a minute." }
+                    h2 { style: "font-size:64px;font-weight:700;letter-spacing:-0.03em;line-height:1.05;margin:0 0 20px;color:#fff", {t(*lang.read(), "home.cta.stop_runtime_tax")} br {} {t(*lang.read(), "home.cta.runtime_tax")} }
+                    p { style: "font-size:19px;color:rgba(255,255,255,0.7);margin:0 auto 36px;max-width:540px;line-height:1.5", {t(*lang.read(), "home.cta.final_sub")} }
                     div { style: "display:inline-flex;gap:12px;",
-                        Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", "Get Started \u{2192}" }
-                        a { class: "landing-btn landing-btn-ghost", href: "#", "Star on GitHub" }
+                        Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", {t(*lang.read(), "home.cta.get_started")} " \u{2192}" }
+                        a { class: "landing-btn landing-btn-ghost", href: "#", {t(*lang.read(), "home.cta.star_github")} }
                     }
                 }
             }
