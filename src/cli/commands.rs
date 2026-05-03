@@ -2,7 +2,7 @@ use anyhow::Result;
 use burncloud_auto_update::AutoUpdater;
 use burncloud_database::Database;
 use clap::{Arg, Command};
-use log::{error, info};
+use tracing::{error, info};
 
 use super::bundle::handle_bundle_command;
 use super::channel::handle_channel_command;

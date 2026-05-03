@@ -8,7 +8,7 @@ use axum::{
 use burncloud_service_group::{GroupMemberService, GroupService, RouterGroup, RouterGroupMember};
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct GroupDto {
     pub id: String,
     pub name: String,
@@ -63,6 +63,7 @@ pub fn routes() -> Router<AppState> {
         .route("/groups/{id}/members", get(get_members).put(set_members))
 }
 
+#[tracing::instrument(skip_all)]
 async fn list_groups(State(state): State<AppState>) -> impl IntoResponse {
     match GroupService::get_all(&state.db).await {
         Ok(groups) => Json(groups).into_response(),
@@ -70,6 +71,7 @@ async fn list_groups(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+#[tracing::instrument(skip(state), fields(name = %payload.name))]
 async fn create_group(
     State(state): State<AppState>,
     Json(payload): Json<GroupDto>,
@@ -94,6 +96,7 @@ async fn get_group(State(state): State<AppState>, Path(id): Path<String>) -> imp
     }
 }
 
+#[tracing::instrument(skip(state))]
 async fn delete_group(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let name = match GroupService::get(&state.db, &id).await {
         Ok(Some(g)) => g.name,

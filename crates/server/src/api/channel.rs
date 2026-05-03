@@ -21,7 +21,7 @@ fn default_limit() -> i32 {
     20
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ChannelDto {
     pub id: Option<i32>,
     #[serde(rename = "type")]
@@ -131,6 +131,7 @@ async fn list_channels(
     }
 }
 
+#[tracing::instrument(skip(state), fields(name = %payload.name))]
 async fn create_channel(
     State(state): State<AppState>,
     axum::extract::Json(payload): axum::extract::Json<ChannelDto>,
@@ -142,6 +143,7 @@ async fn create_channel(
     }
 }
 
+#[tracing::instrument(skip(state, payload), fields(name = %payload.name))]
 async fn update_channel(
     State(state): State<AppState>,
     axum::extract::Json(payload): axum::extract::Json<ChannelDto>,
@@ -156,6 +158,7 @@ async fn update_channel(
     }
 }
 
+#[tracing::instrument(skip(state))]
 async fn delete_channel(State(state): State<AppState>, Path(id): Path<i32>) -> impl IntoResponse {
     match ChannelService::delete(&state.db, id).await {
         Ok(_) => ok(()).into_response(),
