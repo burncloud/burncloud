@@ -1,6 +1,6 @@
 //! Core installer implementation
 
-use log::{info, warn};
+use tracing::{info, warn};
 use regex::Regex;
 use reqwest::Client;
 use std::collections::HashMap;

@@ -10,7 +10,6 @@ burncloud-database.workspace = true
 burncloud-common.workspace = true
 sqlx.workspace = true
 serde.workspace = true
-log.workspace = true
 tracing.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
 

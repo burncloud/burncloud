@@ -1,6 +1,6 @@
 //! npm package installation support
 
-use log::info;
+use tracing::info;
 use std::path::Path;
 use std::process::Command;
 

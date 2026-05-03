@@ -9,7 +9,7 @@ use burncloud_service_token::{RouterToken, TokenService};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateTokenRequest {
     pub user_id: String,
     pub quota_limit: Option<i64>,
@@ -46,6 +46,7 @@ pub fn routes() -> Router<AppState> {
         )
 }
 
+#[tracing::instrument(skip_all)]
 async fn list_tokens(State(state): State<AppState>) -> impl IntoResponse {
     tracing::info!("[API] list_tokens request received");
     match TokenService::list(&state.db).await {
@@ -60,6 +61,7 @@ async fn list_tokens(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+#[tracing::instrument(skip(state), fields(user_id = %payload.user_id))]
 async fn create_token(
     State(state): State<AppState>,
     Json(payload): Json<CreateTokenRequest>,
@@ -98,6 +100,7 @@ async fn create_token(
     }
 }
 
+#[tracing::instrument(skip(state, payload), fields(status = %payload.status))]
 async fn update_token(
     State(state): State<AppState>,
     Path(token): Path<String>,
@@ -124,6 +127,7 @@ async fn update_token(
     }
 }
 
+#[tracing::instrument(skip(state))]
 async fn delete_token(
     State(state): State<AppState>,
     Path(token): Path<String>,

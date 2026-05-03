@@ -58,7 +58,6 @@ disallowed_types = "deny"
 
 [workspace.dependencies]
 anyhow = "1.0"
-env_logger = "0.11"
 dotenvy = "0.15"
 log = "0.4"
 semver = "1.0"
@@ -96,7 +95,7 @@ rand = "0.8"
 # HTTP
 reqwest = { version = "0.12", features = ["json", "stream"] }
 axum = { version = "0.8.7", features = ["macros", "ws"] }
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "request-id"] }
 http-body-util = "0.1"
 http = "1.0"
 
@@ -222,7 +221,7 @@ burncloud-installer.workspace = true
 bcrypt.workspace = true
 uuid.workspace = true
 clap.workspace = true
-log.workspace = true
+tracing.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
