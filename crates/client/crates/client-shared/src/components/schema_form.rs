@@ -1,6 +1,7 @@
 // Dynamic form rendering from JSON schema — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
+use crate::i18n::{t, use_i18n, Language};
 use dioxus::prelude::*;
 use std::collections::HashMap;
 
@@ -228,6 +229,7 @@ fn render_field(
 pub fn validate_schema(
     schema: &serde_json::Value,
     data: &serde_json::Value,
+    lang: Language,
 ) -> HashMap<String, String> {
     let mut errors = HashMap::new();
     let empty: Vec<serde_json::Value> = vec![];
@@ -252,7 +254,7 @@ pub fn validate_schema(
                 _ => false,
             };
             if empty {
-                errors.insert(key.to_string(), "此字段必填".to_string());
+                errors.insert(key.to_string(), t(lang, "schema_form.field_required").to_string());
             }
         }
     }
@@ -274,6 +276,8 @@ pub fn SchemaForm(
     #[props(default)] class: String,
     #[props(default)] disabled: bool,
 ) -> Element {
+    let i18n = use_i18n();
+    let lang_signal = i18n.language;
     let mut errors: Signal<HashMap<String, String>> = use_signal(HashMap::new);
 
     let fields = schema["fields"].as_array().cloned().unwrap_or_default();
@@ -304,7 +308,7 @@ pub fn SchemaForm(
     let _validate_fields = fields.clone();
     let handle_submit = move |_| {
         let current_data = data.read().clone();
-        let validation_errors = validate_schema(&schema, &current_data);
+        let validation_errors = validate_schema(&schema, &current_data, *lang_signal.read());
 
         if validation_errors.is_empty() {
             on_submit.call(current_data);
@@ -324,7 +328,7 @@ pub fn SchemaForm(
                         loading: disabled,
                         disabled: disabled,
                         onclick: handle_submit,
-                        "提交"
+                        {t(*lang_signal.read(), "schema_form.submit")}
                     }
                 }
             }

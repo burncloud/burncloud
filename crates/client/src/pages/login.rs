@@ -4,6 +4,7 @@
 use crate::app::Route;
 use burncloud_client_shared::auth_service::AuthService;
 use burncloud_client_shared::components::logo::Logo;
+use burncloud_client_shared::i18n::{t, use_i18n};
 use burncloud_client_shared::use_toast;
 use burncloud_client_shared::utils::storage::ClientState;
 use burncloud_client_shared::{use_auth, CurrentUser};
@@ -11,6 +12,8 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn LoginPage() -> Element {
+    let i18n = use_i18n();
+    let lang = i18n.language;
     let state = ClientState::load();
     let last_username = state.last_username.unwrap_or_default();
 
@@ -26,7 +29,7 @@ pub fn LoginPage() -> Element {
         let u = email.read().clone();
         let p = pw.read().clone();
         if u.is_empty() || p.is_empty() {
-            login_error.set(Some("请填写所有字段".to_string()));
+            login_error.set(Some(t(*lang.read(), "login.error.fill_required").to_string()));
             return;
         }
         loading.set(true);
@@ -55,13 +58,13 @@ pub fn LoginPage() -> Element {
                         roles: response.roles,
                     };
                     auth.set_auth(response.token, user);
-                    toast.success("登录成功");
+                    toast.success(t(*lang.read(), "login.success"));
                     navigator.push(Route::Dashboard {});
                 }
                 Err(e) => {
                     loading.set(false);
                     eprintln!("LoginPage: Login error: {}", e);
-                    login_error.set(Some("用户名或密码错误".to_string()));
+                    login_error.set(Some(t(*lang.read(), "login.error.invalid_credentials").to_string()));
                 }
             }
         });
@@ -70,7 +73,7 @@ pub fn LoginPage() -> Element {
     rsx! {
         div { class: "login",
 
-            // ─── LEFT: BRAND PANEL (50%) ───
+            // --- LEFT: BRAND PANEL (50%) ---
             aside { class: "login-brand",
                 // Logo + brand
                 div { class: "login-brand-header",
@@ -100,17 +103,17 @@ pub fn LoginPage() -> Element {
                 }
             }
 
-            // ─── RIGHT: FORM PANEL (50%) ───
+            // --- RIGHT: FORM PANEL (50%) ---
             main { class: "login-form",
                 div { class: "mb-xxxl",
-                    h2 { class: "login-form-title", "欢迎回来" }
-                    div { class: "login-form-subtitle", "登录到您的网关控制台" }
+                    h2 { class: "login-form-title", {t(*lang.read(), "login.form.title")} }
+                    div { class: "login-form-subtitle", {t(*lang.read(), "login.form.subtitle")} }
                 }
 
                 div { class: "flex flex-col gap-xl",
                     // Email field
                     div {
-                        label { class: "login-input-label", "邮箱地址" }
+                        label { class: "login-input-label", {t(*lang.read(), "login.form.email_label")} }
                         div { class: "login-input",
                             input {
                                 r#type: "email",
@@ -124,8 +127,8 @@ pub fn LoginPage() -> Element {
                     // Password field
                     div {
                         div { class: "flex items-center justify-between mb-sm",
-                            label { class: "login-input-label m-0", "密码" }
-                            a { class: "login-forgot-link", "忘记密码?" }
+                            label { class: "login-input-label m-0", {t(*lang.read(), "login.form.password_label")} }
+                            a { class: "login-forgot-link", {t(*lang.read(), "login.form.forgot_password")} }
                         }
                         div { class: "login-input",
                             input {
@@ -148,16 +151,16 @@ pub fn LoginPage() -> Element {
                         disabled: loading(),
                         onclick: handle_login,
                         if loading() {
-                            "登录中..."
+                            {t(*lang.read(), "login.form.logging_in")}
                         } else {
-                            "登录"
+                            {t(*lang.read(), "login.form.login")}
                         }
                     }
 
                     // Divider
                     div { class: "login-divider",
                         div { class: "login-divider-line" }
-                        span { class: "login-divider-text", "或" }
+                        span { class: "login-divider-text", {t(*lang.read(), "login.form.or")} }
                         div { class: "login-divider-line" }
                     }
 
@@ -176,8 +179,8 @@ pub fn LoginPage() -> Element {
 
                     // Switch link
                     div { class: "login-footer",
-                        "还没有账户? "
-                        Link { to: Route::RegisterPage {}, class: "login-footer-link", "免费注册" }
+                        {t(*lang.read(), "login.form.no_account")}
+                        Link { to: Route::RegisterPage {}, class: "login-footer-link", {t(*lang.read(), "login.form.free_register")} }
                     }
                 }
             }

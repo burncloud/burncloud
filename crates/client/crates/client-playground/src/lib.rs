@@ -1,5 +1,6 @@
 use burncloud_client_shared::api_client::{ChatUsage, RouteTrace};
 use burncloud_client_shared::components::PageHeader;
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::channel_service::ChannelService;
 use burncloud_client_shared::services::playground_service::{
     ExportFormat, PlaygroundConfig, PlaygroundMessage, PlaygroundService,
@@ -73,6 +74,8 @@ fn format_cost_cny(usd: f64) -> String {
 
 #[component]
 pub fn Playground() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let mut messages: Signal<Vec<ChatMessage>> = use_signal(Vec::new);
     let mut input_text = use_signal(String::new);
     let mut selected_channel = use_signal(|| 0i64);
@@ -200,9 +203,10 @@ pub fn Playground() -> Element {
                         let mut msgs = messages.write();
                         if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_id_for_result) {
                             if !msg.content.is_empty() {
-                                msg.content.push_str("\n\n[连接中断]");
+                                msg.content.push_str("\n\n");
+                                msg.content.push_str(t(*lang.read(), "playground.connection_interrupted"));
                             } else {
-                                msg.content = format!("错误: {}", e);
+                                msg.content = t_fmt(*lang.read(), "playground.error_prefix", &[("error", &e.to_string())]);
                             }
                         }
                         error_msg.set(Some(e.to_string()));
@@ -267,7 +271,7 @@ pub fn Playground() -> Element {
         let toast = use_toast();
         let msgs = messages.read();
         if msgs.is_empty() {
-            toast.warning("暂无对话可导出");
+            toast.warning(t(*lang.read(), "playground.export.no_conversation"));
             return;
         }
         let playground_msgs: Vec<PlaygroundMessage> = msgs
@@ -280,25 +284,25 @@ pub fn Playground() -> Element {
         drop(msgs);
 
         let mut content = PlaygroundService::export_conversation(&playground_msgs, ExportFormat::Markdown);
-        content.push_str("\n> ⚠️ 模拟数据 — 当前 Playground 发送功能为模拟实现，以上对话非真实 LLM 输出\n");
+        content.push_str(t_fmt(*lang.read(), "playground.export.simulation_notice", &[]).as_str());
 
         let filename = format!("playground_{}.md", chrono::Local::now().format("%Y%m%d_%H%M%S"));
         let dir = dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
         let path = dir.join(&filename);
 
         match std::fs::write(&path, &content) {
-            Ok(()) => toast.success(&format!("已导出到 {}", path.display())),
-            Err(e) => toast.error(&format!("导出失败: {}", e)),
+            Ok(()) => toast.success(&t_fmt(*lang.read(), "playground.export.success", &[("path", &path.display().to_string())])),
+            Err(e) => toast.error(&t_fmt(*lang.read(), "playground.export.failed", &[("error", &e.to_string())])),
         }
     };
 
     rsx! {
         PageHeader {
-            title: "演练场",
-            subtitle: Some("直连网关 · 测试模型路由与系统提示".to_string()),
+            title: t(*lang.read(), "playground.title"),
+            subtitle: Some(t(*lang.read(), "playground.subtitle").to_string()),
             actions: rsx! {
-                button { class: "btn btn-secondary", onclick: on_clear, "清空" }
-                button { class: "btn btn-secondary", onclick: on_export, "导出" }
+                button { class: "btn btn-secondary", onclick: on_clear, {t(*lang.read(), "playground.clear")} }
+                button { class: "btn btn-secondary", onclick: on_export, {t(*lang.read(), "playground.export")} }
             },
         }
 
@@ -314,7 +318,7 @@ pub fn Playground() -> Element {
             div { class: "bc-config-rail",
                 // Channel selector
                 div { class: "config-row",
-                    label { class: "config-label", "渠道" }
+                    label { class: "config-label", {t(*lang.read(), "playground.channel")} }
                     div { class: "select-input w-full bc-h-40px",
                         select {
                             onchange: move |e| {
@@ -338,7 +342,7 @@ pub fn Playground() -> Element {
                     label { class: "config-label", "Token" }
                     div { class: "select-input w-full bc-h-40px",
                         select {
-                            aria_label: "选择 API Token",
+                            aria_label: t(*lang.read(), "playground.select_api_token"),
                             onchange: move |e| {
                                 selected_token.set(e.value());
                             },
@@ -355,7 +359,7 @@ pub fn Playground() -> Element {
 
                 // Model display
                 div { class: "config-row",
-                    label { class: "config-label", "模型" }
+                    label { class: "config-label", {t(*lang.read(), "playground.model")} }
                     div { class: "mono bc-body-13px text-secondary",
                         "{current_model}"
                     }
@@ -397,23 +401,23 @@ pub fn Playground() -> Element {
                 }
 
                 div { class: "config-row",
-                    label { class: "config-label", "选项" }
+                    label { class: "config-label", {t(*lang.read(), "playground.options")} }
                     label { class: "bc-option-row",
-                        span { "流式响应" }
+                        span { {t(*lang.read(), "playground.stream_response")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: stream_mode(), onchange: move |e| stream_mode.set(e.checked()) }
                             span { class: "switch-track" }
                         }
                     }
                     label { class: "bc-option-row",
-                        span { "显示推理过程" }
+                        span { {t(*lang.read(), "playground.show_reasoning")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: show_reasoning(), onchange: move |e| show_reasoning.set(e.checked()) }
                             span { class: "switch-track" }
                         }
                     }
                     label { class: "bc-option-row",
-                        span { "JSON 模式" }
+                        span { {t(*lang.read(), "playground.json_mode")} }
                         label { class: "switch",
                             input { r#type: "checkbox", checked: json_mode(), onchange: move |e| json_mode.set(e.checked()) }
                             span { class: "switch-track" }
@@ -427,7 +431,7 @@ pub fn Playground() -> Element {
                 div { role: "log", aria_live: "polite", class: "bc-conversation-log",
                     if msg_list.is_empty() {
                         div { class: "flex items-center justify-center h-full text-secondary",
-                            "输入消息开始对话"
+                            {t(*lang.read(), "playground.start_conversation")}
                         }
                     } else {
                         for msg in msg_list.iter() {
@@ -451,9 +455,9 @@ pub fn Playground() -> Element {
                     div { class: "input flex-1",
                         input {
                             r#type: "text",
-                            aria_label: "输入对话消息",
+                            aria_label: t(*lang.read(), "playground.input_message_aria"),
                             value: "{input_text}",
-                            placeholder: "输入消息… ⌘+Enter 发送",
+                            placeholder: t(*lang.read(), "playground.input_placeholder"),
                             oninput: move |e| input_text.set(e.value()),
                             onkeypress: move |e: KeyboardEvent| {
                                 if e.key() == Key::Enter && e.modifiers().ctrl() {
@@ -466,7 +470,7 @@ pub fn Playground() -> Element {
                         class: "btn btn-primary",
                         disabled: sending(),
                         onclick: move |_| send_trigger += 1,
-                        if sending() { "生成中..." } else { "发送 ↗" }
+                        if sending() { {t(*lang.read(), "playground.generating")} } else { {t(*lang.read(), "playground.send")} }
                     }
                 }
             }
@@ -488,10 +492,10 @@ pub fn Playground() -> Element {
                 }
 
                 div {
-                    label { class: "config-label", "路由轨迹" }
+                    label { class: "config-label", {t(*lang.read(), "playground.route_trace")} }
                     div { class: "mono bc-route-trace-text",
                         if route_traces.read().is_empty() {
-                            div { "暂无路由记录" }
+                            div { {t(*lang.read(), "playground.no_route_records")} }
                         } else {
                             for trace in route_traces.read().iter() {
                                 div {

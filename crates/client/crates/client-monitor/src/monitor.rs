@@ -2,6 +2,7 @@ use burncloud_client_shared::components::{
     BCBadge, BadgeVariant, EmptyState, ErrorBanner, PageHeader, Sparkline, StatusPill,
     SkeletonCard, SkeletonVariant,
 };
+use burncloud_client_shared::i18n::{t, t_fmt, Language};
 use burncloud_client_shared::monitor_service::{
     FilterConfig, MonitorService, RiskEvent,
 };
@@ -26,13 +27,13 @@ fn filter_dot_bg(enabled: bool) -> &'static str {
     }
 }
 
-fn score_label(score: u8) -> &'static str {
+fn score_label(score: u8, lang: Language) -> &'static str {
     if score >= 80 {
-        "安全状况良好"
+        t(lang, "monitor.score.good")
     } else if score >= 50 {
-        "需要关注"
+        t(lang, "monitor.score.attention")
     } else {
-        "风险较高"
+        t(lang, "monitor.score.high_risk")
     }
 }
 
@@ -47,6 +48,8 @@ fn severity_pill(sev: &str) -> Element {
 
 #[component]
 pub fn ServiceMonitor() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let toast = use_toast();
 
     let mut summary_res = use_resource(move || async move {
@@ -117,7 +120,7 @@ pub fn ServiceMonitor() -> Element {
                 // Rollback on failure
                 content_filter_enabled.set(prev_cf);
                 blacklist_enabled.set(prev_bl);
-                toast.error("过滤策略保存失败，已回滚");
+                toast.error(t(*lang.read(), "monitor.filter.save_failed_rollback"));
             }
         });
     };
@@ -125,7 +128,7 @@ pub fn ServiceMonitor() -> Element {
     let handle_emergency = move |_| {
         let reason = emergency_reason().trim().to_string();
         if reason.is_empty() {
-            emergency_error.set(Some("请输入熔断原因".to_string()));
+            emergency_error.set(Some(t(*lang.read(), "monitor.emergency.reason_required").to_string()));
             return;
         }
         emergency_loading.set(true);
@@ -138,12 +141,12 @@ pub fn ServiceMonitor() -> Element {
                     emergency_reason.set(String::new());
                     summary_res.restart();
                     events_res.restart();
-                    toast.success("紧急熔断已执行，所有上游已关闭");
+                    toast.success(t(*lang.read(), "monitor.emergency.executed"));
                 }
                 Err(e) => {
                     emergency_loading.set(false);
                     emergency_error.set(Some(e.clone()));
-                    toast.error(&format!("熔断执行失败: {e}"));
+                    toast.error(&t_fmt(*lang.read(), "monitor.emergency.execute_failed", &[("error", &e.to_string())]));
                 }
             }
         });
@@ -151,14 +154,14 @@ pub fn ServiceMonitor() -> Element {
 
     rsx! {
         PageHeader {
-            title: "风控雷达",
-            subtitle: Some("实时威胁检测与内容安全防御".to_string()),
+            title: t(*lang.read(), "monitor.title"),
+            subtitle: Some(t(*lang.read(), "monitor.subtitle").to_string()),
             actions: rsx! {
-                button { class: "btn btn-secondary", disabled: true, title: "v0.5 开放", "黑名单管理" }
+                button { class: "btn btn-secondary", disabled: true, title: t(*lang.read(), "monitor.blacklist_mgmt_tooltip"), {t(*lang.read(), "monitor.blacklist_mgmt")} }
                 button {
                     class: "btn btn-danger bc-btn-emergency",
                     onclick: move |_| show_emergency_modal.set(true),
-                    "紧急熔断"
+                    {t(*lang.read(), "monitor.emergency.button")}
                 }
             },
         }
@@ -179,7 +182,7 @@ pub fn ServiceMonitor() -> Element {
                     onclick: |e| e.stop_propagation(),
 
                     div { class: "flex items-center justify-between p-lg border-b border-[var(--bc-border)]",
-                        h3 { class: "text-subtitle font-bold text-primary m-0", "紧急熔断确认" }
+                        h3 { class: "text-subtitle font-bold text-primary m-0", {t(*lang.read(), "monitor.emergency.confirm_title")} }
                         button {
                             class: "btn-subtle w-8 h-8 flex items-center justify-center rounded-full text-lg",
                             onclick: move |_| show_emergency_modal.set(false),
@@ -189,17 +192,17 @@ pub fn ServiceMonitor() -> Element {
 
                     div { class: "p-lg",
                         div { class: "bc-modal-warning",
-                            "⚠ 此操作将立即触发所有上游的熔断器，所有请求将被拒绝。请确认操作意图。"
+                            {t(*lang.read(), "monitor.emergency.warning")}
                         }
 
                         div { class: "bc-modal-form-row",
-                            label { class: "bc-modal-form-label", "熔断原因" }
+                            label { class: "bc-modal-form-label", {t(*lang.read(), "monitor.emergency.reason_label")} }
                             input {
                                 class: "bc-input w-full",
                                 r#type: "text",
                                 value: "{emergency_reason}",
                                 oninput: move |e| emergency_reason.set(e.value()),
-                                placeholder: "请输入熔断原因...",
+                                placeholder: t(*lang.read(), "monitor.emergency.reason_placeholder"),
                                 disabled: emergency_loading(),
                             }
                         }
@@ -213,13 +216,13 @@ pub fn ServiceMonitor() -> Element {
                                 class: "btn btn-secondary",
                                 onclick: move |_| show_emergency_modal.set(false),
                                 disabled: emergency_loading(),
-                                "取消"
+                                {t(*lang.read(), "common.cancel")}
                             }
                             button {
                                 class: "btn btn-danger",
                                 onclick: handle_emergency,
                                 disabled: emergency_loading(),
-                                if emergency_loading() { "执行中..." } else { "确认熔断" }
+                                if emergency_loading() { {t(*lang.read(), "monitor.emergency.executing")} } else { {t(*lang.read(), "monitor.emergency.confirm")} }
                             }
                         }
                     }
@@ -239,7 +242,7 @@ pub fn ServiceMonitor() -> Element {
                 } else if let Some(err) = &summary_error {
                     div { class: "stat-card bc-col-span-4",
                         ErrorBanner {
-                            message: format!("安全数据加载失败: {err}"),
+                            message: t_fmt(*lang.read(), "monitor.summary.load_failed", &[("error", &err.to_string())]),
                             on_retry: None,
                         }
                     }
@@ -249,10 +252,10 @@ pub fn ServiceMonitor() -> Element {
                         style: "--bc-dynamic-color:{score_color(score)}; --bc-dynamic-bg:linear-gradient(to left, {score_color(score)}22, transparent); --bc-dynamic-border-color:{score_color(score)}33",
                         div { class: "bc-score-glow bc-dynamic-bg bc-dynamic-opacity", }
                         div { class: "bc-score-body",
-                            span { class: "stat-eyebrow", "当前安全评分" }
+                            span { class: "stat-eyebrow", {t(*lang.read(), "monitor.score.current")} }
                             div { class: "flex items-baseline gap-lg",
                                 span { class: "bc-score-value bc-dynamic-color", "{score}" }
-                                span { class: "bc-score-label bc-dynamic-color", "{score_label(score)}" }
+                                span { class: "bc-score-label bc-dynamic-color", "{score_label(score, *lang.read())}" }
                             }
                             div { class: "flex items-center gap-sm bc-mt-6",
                                 span { class: "bc-eyebrow", "7d" }
@@ -267,7 +270,7 @@ pub fn ServiceMonitor() -> Element {
 
                     // Intercepted attacks
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "已拦截攻击" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "monitor.stats.blocked_attacks")} }
                         div { class: "stat-value",
                             "{blocked_count}"
                         }
@@ -275,7 +278,7 @@ pub fn ServiceMonitor() -> Element {
 
                     // Active threat sources
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "活跃威胁源" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "monitor.stats.active_threats")} }
                         div { class: "stat-value",
                             "{threat_count}"
                             if threat_count == 0 {
@@ -291,7 +294,7 @@ pub fn ServiceMonitor() -> Element {
                 // Threat feed
                 div {
                     div { class: "section-h",
-                        span { class: "lead-title", "实时威胁感知 (Live Threat Feed)" }
+                        span { class: "lead-title", {t(*lang.read(), "monitor.threat_feed.title")} }
                     }
                     if events_loading {
                         div { class: "flex flex-col gap-sm",
@@ -301,14 +304,14 @@ pub fn ServiceMonitor() -> Element {
                         }
                     } else if let Some(err) = &events_error {
                         ErrorBanner {
-                            message: format!("威胁事件加载失败: {err}"),
+                            message: t_fmt(*lang.read(), "monitor.events.load_failed", &[("error", &err.to_string())]),
                             on_retry: None,
                         }
                     } else if events.is_empty() {
                         EmptyState {
                             icon: rsx! { span { class: "bc-font-emoji-sm", "🛡" } },
-                            title: "暂无威胁事件".to_string(),
-                            description: Some("当前没有检测到安全威胁".to_string()),
+                            title: t(*lang.read(), "monitor.events.empty_title").to_string(),
+                            description: Some(t(*lang.read(), "monitor.events.empty_desc").to_string()),
                         }
                     } else {
                         div { class: "flex flex-col gap-sm",
@@ -332,13 +335,13 @@ pub fn ServiceMonitor() -> Element {
                 // Content filter switches
                 div {
                     div { class: "section-h",
-                        span { class: "lead-title", "内容风控策略" }
+                        span { class: "lead-title", {t(*lang.read(), "monitor.filter.title")} }
                     }
                     if filter_loading {
                         SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                     } else if let Some(err) = &filter_error {
                         ErrorBanner {
-                            message: format!("过滤策略加载失败: {err}"),
+                            message: t_fmt(*lang.read(), "monitor.filter.load_failed", &[("error", &err.to_string())]),
                             on_retry: None,
                         }
                     } else {
@@ -350,7 +353,7 @@ pub fn ServiceMonitor() -> Element {
                                     span { class: "bc-status-dot",
                                         style: "--bc-dynamic-bg:{filter_dot_bg(content_filter_enabled())}",
                                     }
-                                    span { class: "bc-font-13 font-medium", "内容过滤" }
+                                    span { class: "bc-font-13 font-medium", {t(*lang.read(), "monitor.filter.content_filter")} }
                                 }
                                 label { class: "switch",
                                     input {
@@ -372,7 +375,7 @@ pub fn ServiceMonitor() -> Element {
                                     span { class: "bc-status-dot",
                                         style: "--bc-dynamic-bg:{filter_dot_bg(blacklist_enabled())}",
                                     }
-                                    span { class: "bc-font-13 font-medium", "黑名单拦截" }
+                                    span { class: "bc-font-13 font-medium", {t(*lang.read(), "monitor.filter.blacklist")} }
                                 }
                                 label { class: "switch",
                                     input {
@@ -390,7 +393,7 @@ pub fn ServiceMonitor() -> Element {
                         }
                         // Info tip
                         div { class: "bc-info-tip",
-                            "💡 提示：开启内容过滤可能会略微增加请求延迟 (约 +50ms)。"
+                            {t(*lang.read(), "monitor.filter.latency_tip")}
                         }
                     }
                 }

@@ -3,6 +3,7 @@ use burncloud_client_shared::components::{
     PageHeader, StatKpi, StatusPill, EmptyState,
     SkeletonCard, SkeletonVariant, ErrorBanner,
 };
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::services::log_service::LogService;
 use burncloud_client_shared::services::monitor_service::MonitorService;
@@ -55,6 +56,8 @@ fn format_usd_short(usd: f64) -> String {
 
 #[component]
 pub fn Dashboard() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let auth = use_auth();
     let user_id = auth.get_user().map(|u| u.id).unwrap_or_default();
     let token = auth.get_token().unwrap_or_default();
@@ -164,33 +167,33 @@ pub fn Dashboard() -> Element {
 
     rsx! {
         PageHeader {
-            title: "仪表盘",
-            subtitle: Some("过去 24 小时 · 网关聚合视图".to_string()),
+            title: t(*lang.read(), "dashboard.title"),
+            subtitle: Some(t(*lang.read(), "dashboard.subtitle_24h").to_string()),
         }
 
         div { class: "page-content flex flex-col gap-xl",
             // Error banners for all API calls
             if let Some(err) = metrics_error {
                 ErrorBanner {
-                    message: format!("系统指标: {err}"),
+                    message: t_fmt(*lang.read(), "dashboard.error.metrics", &[("error", &err)]),
                     on_retry: None,
                 }
             }
             if let Some(err) = billing_error {
                 ErrorBanner {
-                    message: format!("账单数据: {err}"),
+                    message: t_fmt(*lang.read(), "dashboard.error.billing", &[("error", &err)]),
                     on_retry: None,
                 }
             }
             if let Some(err) = channels_error {
                 ErrorBanner {
-                    message: format!("渠道数据: {err}"),
+                    message: t_fmt(*lang.read(), "dashboard.error.channels", &[("error", &err)]),
                     on_retry: None,
                 }
             }
             if let Some(err) = logs_error {
                 ErrorBanner {
-                    message: format!("日志数据: {err}"),
+                    message: t_fmt(*lang.read(), "dashboard.error.logs", &[("error", &err)]),
                     on_retry: None,
                 }
             }
@@ -235,7 +238,7 @@ pub fn Dashboard() -> Element {
                 if !summary.models.is_empty() {
                     div {
                         div { class: "section-h",
-                            span { class: "lead-title", "模型用量明细" }
+                            span { class: "lead-title", {t(*lang.read(), "dashboard.model_breakdown")} }
                             span { class: "section-sub",
                                 "{summary.models.len()} models · {format_usd_short(summary.total_cost_usd)}"
                             }
@@ -272,8 +275,8 @@ pub fn Dashboard() -> Element {
                 // Channel health (real data)
                 div {
                     div { class: "section-h",
-                        span { class: "lead-title", "渠道健康" }
-                        span { class: "section-sub", "{active_channels} 个活跃 · 总权重 {total_weight}" }
+                        span { class: "lead-title", {t(*lang.read(), "dashboard.channel_health")} }
+                        span { class: "section-sub", {t_fmt(*lang.read(), "dashboard.channel_health_sub", &[("active", &active_channels.to_string()), ("weight", &total_weight.to_string())])} }
                     }
 
                     if loading {
@@ -283,8 +286,8 @@ pub fn Dashboard() -> Element {
                     } else if ch_list.is_empty() {
                         EmptyState {
                             icon: rsx! { span { class: "bc-text-3xl", "📡" } },
-                            title: "暂无渠道数据".to_string(),
-                            description: Some("请先添加上游渠道".to_string()),
+                            title: t(*lang.read(), "dashboard.no_channel_title").to_string(),
+                            description: Some(t(*lang.read(), "dashboard.no_channel_desc").to_string()),
                             cta: None,
                         }
                     } else {
@@ -325,7 +328,7 @@ pub fn Dashboard() -> Element {
                 // Live logs (real data)
                 div {
                     div { class: "section-h",
-                        span { class: "lead-title", "实时日志" }
+                        span { class: "lead-title", {t(*lang.read(), "dashboard.live_logs")} }
                         span { class: "section-sub", "tail -f gateway.log" }
                     }
 
@@ -335,8 +338,8 @@ pub fn Dashboard() -> Element {
                     } else if log_list.is_empty() {
                         EmptyState {
                             icon: rsx! { span { class: "bc-text-3xl", "📋" } },
-                            title: "暂无日志".to_string(),
-                            description: Some("网关请求日志将在此显示".to_string()),
+                            title: t(*lang.read(), "dashboard.no_log_title").to_string(),
+                            description: Some(t(*lang.read(), "dashboard.no_log_desc").to_string()),
                             cta: None,
                         }
                     } else {
@@ -367,7 +370,7 @@ pub fn Dashboard() -> Element {
             if let Some(sm) = &system_metrics {
                 div {
                     div { class: "section-h",
-                        span { class: "lead-title", "系统状态" }
+                        span { class: "lead-title", {t(*lang.read(), "dashboard.system_status")} }
                     }
                     div { class: "grid bc-grid-2 gap-lg",
                         div { class: "row-card outlined bc-p-14-16",

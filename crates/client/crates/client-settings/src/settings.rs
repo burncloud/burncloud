@@ -9,19 +9,19 @@ use burncloud_client_shared::utils::storage::{ClientState, Theme};
 use dioxus::prelude::*;
 
 /// General settings schema
-fn settings_schema() -> serde_json::Value {
+fn settings_schema(lang: Language) -> serde_json::Value {
     serde_json::json!({
         "entity_type": "settings",
         "label": "General Settings",
         "fields": [
             {
                 "key": "language",
-                "label": "Language / 语言",
+                "label": t(lang, "settings.general.language_label"),
                 "type": "select",
                 "required": true,
                 "default": "zh",
                 "options": [
-                    {"value": "zh", "label": "中文"},
+                    {"value": "zh", "label": t(lang, "settings.general.language_zh")},
                     {"value": "en", "label": "English"}
                 ]
             },
@@ -64,7 +64,7 @@ pub fn SystemSettings() -> Element {
         })
     });
 
-    let settings_schema_val = settings_schema();
+    let settings_schema_val = settings_schema(*lang);
 
     // Handle settings change (immediate apply)
     let handle_settings_change = move |value: serde_json::Value| {
@@ -118,8 +118,8 @@ pub fn SystemSettings() -> Element {
                         // Theme toggle
                         div { class: "settings-theme-row",
                             div {
-                                div { class: "text-body font-medium", "外观主题" }
-                                div { class: "text-caption text-secondary mt-xs", "切换亮色/暗色/跟随系统" }
+                                div { class: "text-body font-medium", "{t(*lang, \"settings.general.theme_title\")}" }
+                                div { class: "text-caption text-secondary mt-xs", "{t(*lang, \"settings.general.theme_desc\")}" }
                             }
                             div { class: "flex gap-sm",
                                 {
@@ -133,7 +133,7 @@ pub fn SystemSettings() -> Element {
                                                 s.theme = Some(Theme::Light);
                                                 s.save();
                                             },
-                                            "亮色"
+                                            "{t(*lang, \"settings.general.theme_light\")}"
                                         }
                                         button {
                                             class: if ct == Theme::Dark { "tab active" } else { "tab" },
@@ -142,7 +142,7 @@ pub fn SystemSettings() -> Element {
                                                 s.theme = Some(Theme::Dark);
                                                 s.save();
                                             },
-                                            "暗色"
+                                            "{t(*lang, \"settings.general.theme_dark\")}"
                                         }
                                         button {
                                             class: if ct == Theme::System { "tab active" } else { "tab" },
@@ -151,7 +151,7 @@ pub fn SystemSettings() -> Element {
                                                 s.theme = Some(Theme::System);
                                                 s.save();
                                             },
-                                            "跟随系统"
+                                            "{t(*lang, \"settings.general.theme_system\")}"
                                         }
                                     }
                                 }

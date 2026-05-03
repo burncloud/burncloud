@@ -2,6 +2,7 @@ use burncloud_client_shared::components::{
     BCButton, BCInput, BCModal, ButtonVariant, PageHeader, StatusPill,
     EmptyState, SkeletonCard, SkeletonVariant,
 };
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::user_service::UserService;
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
@@ -13,6 +14,8 @@ fn format_nano_to_cny(nano: i64) -> String {
 
 #[component]
 pub fn UsersPage() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let mut active_tab = use_signal(|| "all".to_string());
     let mut show_topup = use_signal(|| None::<String>);
     let mut topup_amount = use_signal(|| 0i64);
@@ -43,8 +46,8 @@ pub fn UsersPage() -> Element {
 
     rsx! {
         PageHeader {
-            title: "客户列表",
-            subtitle: Some("用户增长与留存管理".to_string()),
+            title: t(*lang.read(), "users.title"),
+            subtitle: Some(t(*lang.read(), "users.subtitle").to_string()),
             actions: rsx! {
                 BCButton {
                     class: "btn-black",
@@ -53,7 +56,7 @@ pub fn UsersPage() -> Element {
                         invite_password.set(String::new());
                         show_invite.set(true);
                     },
-                    "邀请新用户"
+                    {t(*lang.read(), "users.invite")}
                 }
             },
         }
@@ -67,19 +70,19 @@ pub fn UsersPage() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else {
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "总用户数" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "users.kpi.total_users")} }
                         div { class: "stat-value",
                             "{total}"
                         }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "今日活跃" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "users.kpi.active_today")} }
                         div { class: "stat-value",
                             "{active_count}"
                         }
                     }
                     div { class: "stat-card",
-                        span { class: "stat-eyebrow", "用户资金池" }
+                        span { class: "stat-eyebrow", {t(*lang.read(), "users.kpi.fund_pool")} }
                         div { class: "stat-value", "{format_nano_to_cny(user_list.iter().map(|u| u.balance_cny).sum::<i64>())}" }
                     }
                 }
@@ -88,17 +91,17 @@ pub fn UsersPage() -> Element {
             // Tabs + table
             div {
                 div { class: "section-h row bc-section-no-mb",
-                    span { class: "lead-title", "客户明细" }
+                    span { class: "lead-title", {t(*lang.read(), "users.detail_title")} }
                     div { class: "tabs bc-tabs-compact",
                         button {
                             class: if active_tab() == "all" { "tab active bc-tab-compact" } else { "tab bc-tab-compact" },
                             onclick: move |_| active_tab.set("all".to_string()),
-                            "全部客户"
+                            {t(*lang.read(), "users.tab.all")}
                         }
                         button {
                             class: if active_tab() == "vip" { "tab active bc-tab-compact" } else { "tab bc-tab-compact" },
                             onclick: move |_| active_tab.set("vip".to_string()),
-                            "VIP客户"
+                            {t(*lang.read(), "users.tab.vip")}
                         }
                     }
                 }
@@ -110,8 +113,8 @@ pub fn UsersPage() -> Element {
                 } else if filtered.is_empty() {
                     EmptyState {
                         icon: rsx! { span { class: "text-xxxl", "👥" } },
-                        title: "暂无客户".to_string(),
-                        description: Some("邀请新用户开始使用".to_string()),
+                        title: t(*lang.read(), "users.empty_title").to_string(),
+                        description: Some(t(*lang.read(), "users.empty_desc").to_string()),
                         cta: None,
                     }
                 } else {
@@ -119,12 +122,12 @@ pub fn UsersPage() -> Element {
                         thead {
                             tr {
                                 th { "ID" }
-                                th { "用户名" }
-                                th { "角色" }
-                                th { "余额 (CNY)" }
-                                th { "分组" }
-                                th { "状态" }
-                                th { style: "text-align:right", "操作" }
+                                th { {t(*lang.read(), "users.col.username")} }
+                                th { {t(*lang.read(), "users.col.role")} }
+                                th { {t(*lang.read(), "users.col.balance")} }
+                                th { {t(*lang.read(), "users.col.group")} }
+                                th { {t(*lang.read(), "users.col.status")} }
+                                th { style: "text-align:right", {t(*lang.read(), "users.col.actions")} }
                             }
                         }
                         tbody {
@@ -159,7 +162,7 @@ pub fn UsersPage() -> Element {
                                                 topup_username.set(u.username.clone());
                                                 topup_amount.set(0);
                                             },
-                                            "充值"
+                                            {t(*lang.read(), "users.topup")}
                                         }
                                     }
                                 }
@@ -175,17 +178,17 @@ pub fn UsersPage() -> Element {
             div { class: "bc-modal-overlay", onclick: move |_| show_topup.set(None),
                 div { class: "bc-modal", style: "width:440px", onclick: move |e| e.stop_propagation(),
                     div { class: "bc-modal-header",
-                        span { class: "bc-modal-title", "账户充值" }
+                        span { class: "bc-modal-title", {t(*lang.read(), "users.topup_modal.title")} }
                         button { class: "btn-icon", onclick: move |_| show_topup.set(None), "✕" }
                     }
                     div { class: "bc-modal-body",
                         div { style: "display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--bc-bg-hover); border-radius:8px",
-                            span { style: "font-size:12px; color:var(--bc-text-secondary)", "目标账户" }
+                            span { style: "font-size:12px; color:var(--bc-text-secondary)", {t(*lang.read(), "users.topup_modal.target_account")} }
                             span { style: "font-weight:600", "{topup_username()}" }
                         }
 
                         div { style: "margin-top:16px",
-                            label { class: "input-label", "充值金额 (CNY)" }
+                            label { class: "input-label", {t(*lang.read(), "users.topup_modal.amount")} }
                             div { class: "input",
                                 input {
                                     r#type: "number",
@@ -215,13 +218,13 @@ pub fn UsersPage() -> Element {
                         }
                     }
                     div { class: "bc-modal-footer",
-                        button { class: "btn btn-ghost", onclick: move |_| show_topup.set(None), "取消" }
+                        button { class: "btn btn-ghost", onclick: move |_| show_topup.set(None), {t(*lang.read(), "common.cancel")} }
                         button { class: "btn btn-black",
                             disabled: topup_loading(),
                             onclick: move |_| {
                                 let amount = topup_amount();
                                 if amount <= 0 {
-                                    toast.error("请输入有效金额");
+                                    toast.error(t(*lang.read(), "users.topup_modal.invalid_amount"));
                                     return;
                                 }
                                 let uid = match show_topup() {
@@ -236,16 +239,16 @@ pub fn UsersPage() -> Element {
                                             topup_loading.set(false);
                                             show_topup.set(None);
                                             users.restart();
-                                            toast.success("充值成功");
+                                            toast.success(t(*lang.read(), "users.topup_modal.success"));
                                         }
                                         Err(e) => {
                                             topup_loading.set(false);
-                                            toast.error(&format!("充值失败: {}", e));
+                                            toast.error(&t_fmt(*lang.read(), "users.topup_modal.failed", &[("error", &e.to_string())]));
                                         }
                                     }
                                 });
                             },
-                            if topup_loading() { "处理中..." } else { "确认充值" }
+                            {if topup_loading() { t(*lang.read(), "users.topup_modal.processing") } else { t(*lang.read(), "users.topup_modal.confirm") }}
                         }
                     }
                 }
@@ -254,25 +257,25 @@ pub fn UsersPage() -> Element {
 
         // Invite new user modal
         BCModal {
-            title: "邀请新用户".to_string(),
+            title: t(*lang.read(), "users.invite_modal.title").to_string(),
             open: show_invite(),
             onclose: move |_| show_invite.set(false),
 
             div { class: "flex flex-col gap-lg",
-                div { style: "font-size:12px; color:var(--bc-text-secondary)", "创建新用户账户，用户可使用用户名和密码登录" }
+                div { style: "font-size:12px; color:var(--bc-text-secondary)", {t(*lang.read(), "users.invite_modal.desc")} }
 
                 BCInput {
-                    label: Some("用户名".to_string()),
+                    label: Some(t(*lang.read(), "users.invite_modal.username_label").to_string()),
                     r#type: "text".to_string(),
-                    placeholder: "请输入用户名".to_string(),
+                    placeholder: t(*lang.read(), "users.invite_modal.username_placeholder").to_string(),
                     value: invite_username(),
                     oninput: move |e: FormEvent| invite_username.set(e.value()),
                 }
 
                 BCInput {
-                    label: Some("密码".to_string()),
+                    label: Some(t(*lang.read(), "users.invite_modal.password_label").to_string()),
                     r#type: "password".to_string(),
-                    placeholder: "请输入密码（至少8位）".to_string(),
+                    placeholder: t(*lang.read(), "users.invite_modal.password_placeholder").to_string(),
                     value: invite_password(),
                     oninput: move |e: FormEvent| invite_password.set(e.value()),
                 }
@@ -281,7 +284,7 @@ pub fn UsersPage() -> Element {
                     BCButton {
                         variant: ButtonVariant::Ghost,
                         onclick: move |_| show_invite.set(false),
-                        "取消"
+                        {t(*lang.read(), "common.cancel")}
                     }
                     BCButton {
                         variant: ButtonVariant::Black,
@@ -291,31 +294,31 @@ pub fn UsersPage() -> Element {
                             let username = invite_username().trim().to_string();
                             let password = invite_password();
                             if username.is_empty() {
-                                toast.error("请输入用户名");
+                                toast.error(t(*lang.read(), "users.invite_modal.username_required"));
                                 return;
                             }
                             if password.len() < 8 {
-                                toast.error("密码至少需要8位");
+                                toast.error(t(*lang.read(), "users.invite_modal.password_min_length"));
                                 return;
                             }
                             invite_loading.set(true);
                             spawn(async move {
                                 match UserService::create(&username, &password).await {
                                     Ok(()) => {
-                                        toast.success("用户创建成功");
+                                        toast.success(t(*lang.read(), "users.invite_modal.success"));
                                         show_invite.set(false);
                                         invite_username.set(String::new());
                                         invite_password.set(String::new());
                                         users.restart();
                                     }
                                     Err(e) => {
-                                        toast.error(&format!("创建失败: {}", e));
+                                        toast.error(&t_fmt(*lang.read(), "users.invite_modal.failed", &[("error", &e.to_string())]));
                                     }
                                 }
                                 invite_loading.set(false);
                             });
                         },
-                        "创建用户"
+                        {t(*lang.read(), "users.invite_modal.create")}
                     }
                 }
             }

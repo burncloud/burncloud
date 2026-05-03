@@ -2,6 +2,7 @@ use burncloud_client_shared::billing_service::BillingService;
 use burncloud_client_shared::components::{
     EmptyState, ErrorBanner, PageHeader, SkeletonCard, SkeletonVariant, StatKpi,
 };
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::usage_service::UsageService;
 use burncloud_client_shared::use_auth;
 use dioxus::prelude::*;
@@ -44,29 +45,31 @@ fn format_compact(n: i64) -> String {
 
 #[component]
 pub fn Finance() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let auth = use_auth();
     let token = auth.get_token().unwrap_or_default();
     let token_for_billing = token.clone();
     let token_for_recharges = token.clone();
 
     let billing = use_resource(move || {
-        let t = token_for_billing.clone();
+        let tok = token_for_billing.clone();
         async move {
-            if t.is_empty() {
+            if tok.is_empty() {
                 Err("Not authenticated".to_string())
             } else {
-                BillingService::get_billing_summary(&t).await
+                BillingService::get_billing_summary(&tok).await
             }
         }
     });
 
     let recharges = use_resource(move || {
-        let t = token_for_recharges.clone();
+        let tok = token_for_recharges.clone();
         async move {
-            if t.is_empty() {
+            if tok.is_empty() {
                 Err("Not authenticated".to_string())
             } else {
-                UsageService::list_recharges(&t).await
+                UsageService::list_recharges(&tok).await
             }
         }
     });
@@ -110,21 +113,21 @@ pub fn Finance() -> Element {
 
     rsx! {
         PageHeader {
-            title: "财务",
-            subtitle: Some("账单与充值记录".to_string()),
+            title: t(*lang.read(), "finance.title"),
+            subtitle: Some(t(*lang.read(), "finance.subtitle").to_string()),
         }
 
         div { class: "page-content flex flex-col gap-xxxl",
             // Error banners
             if let Some(ref err) = billing_error {
                 ErrorBanner {
-                    message: format!("账单数据加载失败: {err}"),
+                    message: t_fmt(*lang.read(), "finance.error.billing_load", &[("error", err)]),
                     on_retry: None,
                 }
             }
             if let Some(ref err) = recharges_error {
                 ErrorBanner {
-                    message: format!("充值记录加载失败: {err}"),
+                    message: t_fmt(*lang.read(), "finance.error.recharge_load", &[("error", err)]),
                     on_retry: None,
                 }
             }
@@ -138,8 +141,8 @@ pub fn Finance() -> Element {
                 } else if billing_summary.is_none() && billing_error.is_none() {
                     EmptyState {
                         icon: rsx! { span { class: "text-xxl", "💰" } },
-                        title: "暂无账单数据".to_string(),
-                        description: Some("使用网关后账单将在此显示".to_string()),
+                        title: t(*lang.read(), "finance.empty.billing_title").to_string(),
+                        description: Some(t(*lang.read(), "finance.empty.billing_desc").to_string()),
                         cta: None,
                     }
                 } else {
@@ -173,7 +176,7 @@ pub fn Finance() -> Element {
                 if !summary.models.is_empty() {
                     div {
                         div { class: "section-h",
-                            span { class: "lead-title", "模型费用明细" }
+                            span { class: "lead-title", {t(*lang.read(), "finance.model_breakdown.title")} }
                             span { class: "section-sub", "{summary.models.len()} models" }
                         }
                         table { class: "table",
@@ -206,15 +209,15 @@ pub fn Finance() -> Element {
             // Recharge history
             div {
                 div { class: "section-h",
-                    span { class: "lead-title", "充值记录" }
+                    span { class: "lead-title", {t(*lang.read(), "finance.recharge_history.title")} }
                     span { class: "section-sub", "{recharge_list.len()} records" }
                 }
 
                 if recharge_list.is_empty() {
                     EmptyState {
                         icon: rsx! { span { class: "text-xxl", "💳" } },
-                        title: "暂无充值记录".to_string(),
-                        description: Some("充值后记录将在此显示".to_string()),
+                        title: t(*lang.read(), "finance.empty.recharge_title").to_string(),
+                        description: Some(t(*lang.read(), "finance.empty.recharge_desc").to_string()),
                         cta: None,
                     }
                 } else {

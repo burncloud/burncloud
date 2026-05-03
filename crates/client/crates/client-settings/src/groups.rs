@@ -2,6 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::components::{FormMode, SchemaForm};
+use burncloud_client_shared::i18n::t;
 use burncloud_client_shared::schema::group_schema;
 use burncloud_client_shared::{GroupDto, GroupMemberDto, API_CLIENT};
 use dioxus::prelude::*;
@@ -15,6 +16,8 @@ pub struct Channel {
 
 #[component]
 pub fn GroupManager() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let mut groups = use_signal::<Vec<GroupDto>>(Vec::new);
     let mut all_channels = use_signal::<Vec<Channel>>(Vec::new);
     let mut loading = use_signal(|| true);
@@ -148,7 +151,7 @@ pub fn GroupManager() -> Element {
             div { class: "card flat p-xl",
                 div { class: "section-h lg mb-md",
                     div { class: "lead",
-                        span { class: "lead-title", "新建分组" }
+                        span { class: "lead-title", {t(*lang.read(), "settings.groups.new_group")} }
                     }
                 }
                 SchemaForm {
@@ -166,7 +169,7 @@ pub fn GroupManager() -> Element {
                 div { class: "card flat h-full p-xl",
                     div { class: "section-h lg mb-md",
                         div { class: "lead",
-                            span { class: "lead-title", "分组列表" }
+                            span { class: "lead-title", {t(*lang.read(), "settings.groups.group_list")} }
                         }
                     }
                         div { class: "flex flex-col gap-sm",
@@ -200,14 +203,14 @@ pub fn GroupManager() -> Element {
                     if let Some(gid) = selected_group_id() {
                         div { class: "section-h lg mb-lg",
                             div { class: "lead",
-                                span { class: "lead-title", "编辑成员" }
+                                span { class: "lead-title", {t(*lang.read(), "settings.groups.edit_members")} }
                                 span { class: "lead-sub mono", "{gid}" }
                             }
                         }
 
                         // Current Members
                         div { class: "mb-lg",
-                            h4 { class: "text-caption font-bold text-secondary mb-sm", "当前成员" }
+                            h4 { class: "text-caption font-bold text-secondary mb-sm", {t(*lang.read(), "settings.groups.current_members")} }
                             div { class: "flex flex-col gap-sm",
                                 {selected_group_members().iter().map(|member| {
                                     let uid1 = member.upstream_id.clone();
@@ -222,7 +225,7 @@ pub fn GroupManager() -> Element {
                                                 }
                                             }
                                             div { class: "flex gap-sm items-center",
-                                                span { class: "text-caption", "权重:" }
+                                                span { class: "text-caption", {t(*lang.read(), "settings.groups.weight")} }
                                                 input { class: "input weight-input",
                                                     r#type: "number",
                                                     value: "{member.weight}",
@@ -246,7 +249,7 @@ pub fn GroupManager() -> Element {
                                 })}
                                 if selected_group_members().is_empty() {
                                     div { class: "text-secondary text-center p-md italic",
-                                        "暂无成员"
+                                        {t(*lang.read(), "settings.groups.no_members")}
                                     }
                                 }
                             }
@@ -254,7 +257,7 @@ pub fn GroupManager() -> Element {
 
                         // Add Member
                         div { class: "mb-lg",
-                            h4 { class: "text-caption font-bold text-secondary mb-sm", "添加成员" }
+                            h4 { class: "text-caption font-bold text-secondary mb-sm", {t(*lang.read(), "settings.groups.add_member")} }
                             div { class: "flex gap-sm add-member-wrap",
                                 for channel in all_channels() {
                                     if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
@@ -268,10 +271,10 @@ pub fn GroupManager() -> Element {
                         }
 
                         div { class: "flex justify-end",
-                            button { class: "btn btn-primary", onclick: save_members, "保存更改" }
+                            button { class: "btn btn-primary", onclick: save_members, {t(*lang.read(), "settings.groups.save_changes")} }
                         }
                     } else {
-                        div { class: "flex items-center justify-center h-full text-secondary", "请选择左侧分组进行编辑" }
+                        div { class: "flex items-center justify-center h-full text-secondary", {t(*lang.read(), "settings.groups.select_group_hint")} }
                     }
                 }
             }

@@ -6,6 +6,7 @@ use burncloud_client_shared::components::{
     FormMode, PageHeader, SchemaForm, StatusPill,
     EmptyState, SkeletonCard, SkeletonVariant,
 };
+use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::schema::token_schema;
 use burncloud_client_shared::services::token_service::TokenService;
 use burncloud_client_shared::use_toast;
@@ -26,6 +27,8 @@ fn format_quota(cents: i64) -> String {
 
 #[component]
 pub fn AccessPage() -> Element {
+    let i18n = burncloud_client_shared::i18n::use_i18n();
+    let lang = i18n.language;
     let mut show_create = use_signal(|| false);
     let mut show_result = use_signal(|| false);
     let mut show_delete = use_signal(|| false);
@@ -47,15 +50,15 @@ pub fn AccessPage() -> Element {
 
         spawn(async move {
             match TokenService::create(&name, None).await {
-                Ok(key) => {
-                    new_full_key.set(key);
+                Ok(_key) => {
+                    new_full_key.set(_key);
                     show_create.set(false);
                     show_result.set(true);
                     tokens.restart();
                     form_data.set(serde_json::json!({}));
-                    toast.success("凭证已创建");
+                    toast.success(t(*lang.read(), "access.token_created"));
                 }
-                Err(e) => toast.error(&format!("创建失败: {}", e)),
+                Err(e) => toast.error(&t_fmt(*lang.read(), "access.create_failed", &[("error", &e.to_string())])),
             }
         });
     };
@@ -64,12 +67,12 @@ pub fn AccessPage() -> Element {
 
     rsx! {
         PageHeader {
-            title: "访问凭证",
+            title: t(*lang.read(), "access.title"),
             actions: rsx! {
                 BCButton {
                     class: "btn-black",
                     onclick: move |_| show_create.set(true),
-                    "创建新凭证"
+                    {t(*lang.read(), "access.create_new")}
                 }
             },
         }
@@ -82,13 +85,13 @@ pub fn AccessPage() -> Element {
             } else if token_list.is_empty() {
                 EmptyState {
                     icon: rsx! { span { class: "text-display", "🔑" } },
-                    title: "没有活跃的访问凭证".to_string(),
-                    description: Some("创建您的第一个 API Key 以开始集成 BurnCloud 服务。".to_string()),
+                    title: t(*lang.read(), "access.empty_title").to_string(),
+                    description: Some(t(*lang.read(), "access.empty_desc").to_string()),
                     cta: Some(rsx! {
                         BCButton {
                             class: "btn-primary",
                             onclick: move |_| show_create.set(true),
-                            "创建凭证"
+                            {t(*lang.read(), "access.create_first")}
                         }
                     }),
                 }
@@ -111,7 +114,7 @@ pub fn AccessPage() -> Element {
                                                     span { class: "text-subtitle font-bold", "API Key" }
                                                     StatusPill {
                                                         value: if tk.status == "active" { "ok".to_string() } else { "neutral".to_string() },
-                                                        label: if tk.status == "active" { Some("使用中".to_string()) } else { Some("已吊销".to_string()) },
+                                                        label: if tk.status == "active" { Some(t(*lang.read(), "access.status.active").to_string()) } else { Some(t(*lang.read(), "access.status.revoked").to_string()) },
                                                     }
                                                 }
                                                 div { class: "mono bc-key-row",
@@ -144,12 +147,12 @@ pub fn AccessPage() -> Element {
 
         // Create modal
         BCModal {
-            title: "创建访问凭证".to_string(),
+            title: t(*lang.read(), "access.create_modal.title").to_string(),
             open: show_create(),
             onclose: move |_| show_create.set(false),
 
             div { class: "flex flex-col gap-lg p-lg",
-                div { class: "bc-hint-text mt-xs", "配置新的 API Key 以授权应用访问" }
+                div { class: "bc-hint-text mt-xs", {t(*lang.read(), "access.create_modal.desc")} }
 
                 SchemaForm {
                     schema: schema.clone(),
@@ -160,14 +163,14 @@ pub fn AccessPage() -> Element {
                 }
 
                 div { class: "bc-warning-banner",
-                    span { class: "bc-hint-text", "创建后，完整的 API Key 仅会显示一次，请务必立即妥善保存。" }
+                    span { class: "bc-hint-text", {t(*lang.read(), "access.create_modal.warning")} }
                 }
 
                 div { class: "flex justify-end gap-md mt-md",
                     BCButton {
                         variant: ButtonVariant::Ghost,
                         onclick: move |_| show_create.set(false),
-                        "取消"
+                        {t(*lang.read(), "common.cancel")}
                     }
                     BCButton {
                         variant: ButtonVariant::Black,
@@ -175,7 +178,7 @@ pub fn AccessPage() -> Element {
                             let data = form_data.read().clone();
                             handle_create(data);
                         },
-                        "立即创建"
+                        {t(*lang.read(), "access.create_modal.submit")}
                     }
                 }
             }
@@ -183,7 +186,7 @@ pub fn AccessPage() -> Element {
 
         // Key result modal
         BCModal {
-            title: "凭证已创建".to_string(),
+            title: t(*lang.read(), "access.result_modal.title").to_string(),
             open: show_result(),
             onclose: move |_| show_result.set(false),
 
@@ -191,11 +194,11 @@ pub fn AccessPage() -> Element {
                 div { class: "bc-success-circle",
                     "✓"
                 }
-                h3 { class: "bc-heading-22px", "凭证已创建" }
+                h3 { class: "bc-heading-22px", {t(*lang.read(), "access.result_modal.heading")} }
                 p { class: "bc-body-13px text-secondary",
-                    "请复制并保存您的 Secret Key，"
+                    {t(*lang.read(), "access.result_modal.copy_prompt_1")}
                     br {}
-                    "出于安全考虑，它将不会再次显示。"
+                    {t(*lang.read(), "access.result_modal.copy_prompt_2")}
                 }
 
                 div { class: "bc-key-result-box",
@@ -207,7 +210,7 @@ pub fn AccessPage() -> Element {
                             spawn(async move {
                                 if let Ok(mut cb) = arboard::Clipboard::new() {
                                     if cb.set_text(&key).is_ok() {
-                                        toast.success("已复制到剪贴板");
+                                        toast.success(t(*lang.read(), "access.result_modal.copied"));
                                     }
                                 }
                             });
@@ -220,14 +223,14 @@ pub fn AccessPage() -> Element {
                     variant: ButtonVariant::Black,
                     class: "width-full mt-md",
                     onclick: move |_| show_result.set(false),
-                    "我已保存"
+                    {t(*lang.read(), "access.result_modal.saved")}
                 }
             }
         }
 
         // Delete confirmation modal
         BCModal {
-            title: "确认吊销".to_string(),
+            title: t(*lang.read(), "access.delete_modal.title").to_string(),
             open: show_delete(),
             onclose: move |_| show_delete.set(false),
 
@@ -237,22 +240,22 @@ pub fn AccessPage() -> Element {
                         "🛡"
                     }
                     div {
-                        div { class: "text-subtitle font-bold", "确认吊销" }
-                        div { class: "bc-body-13px text-secondary mt-xs", "此操作无法撤销" }
+                        div { class: "text-subtitle font-bold", {t(*lang.read(), "access.delete_modal.heading")} }
+                        div { class: "bc-body-13px text-secondary mt-xs", {t(*lang.read(), "access.delete_modal.cannot_undo")} }
                     }
                 }
                 div { class: "bc-delete-warning-body",
-                    "确定要吊销此访问凭证吗？"
+                    {t(*lang.read(), "access.delete_modal.confirm_msg")}
                     br {}
-                    "所有使用此凭证的应用将"
-                    span { class: "text-danger font-bold", "立即失去访问权限" }
-                    "。"
+                    {t(*lang.read(), "access.delete_modal.impact_prefix")}
+                    span { class: "text-danger font-bold", {t(*lang.read(), "access.delete_modal.impact_highlight")} }
+                    {t(*lang.read(), "access.delete_modal.impact_suffix")}
                 }
                 div { class: "flex justify-end gap-md p-md",
                     BCButton {
                         variant: ButtonVariant::Ghost,
                         onclick: move |_| show_delete.set(false),
-                        "取消"
+                        {t(*lang.read(), "common.cancel")}
                     }
                     BCButton {
                         class: "btn btn-danger",
@@ -262,14 +265,14 @@ pub fn AccessPage() -> Element {
                                 match TokenService::delete(&id).await {
                                     Ok(_) => {
                                         tokens.restart();
-                                        toast.success("凭证已吊销");
+                                        toast.success(t(*lang.read(), "access.delete_modal.revoked"));
                                     }
-                                    Err(e) => toast.error(&format!("吊销失败: {}", e)),
+                                    Err(e) => toast.error(&t_fmt(*lang.read(), "access.delete_modal.revoke_failed", &[("error", &e.to_string())])),
                                 }
                             });
                             show_delete.set(false);
                         },
-                        "确认吊销"
+                        {t(*lang.read(), "access.delete_modal.confirm")}
                     }
                 }
             }
