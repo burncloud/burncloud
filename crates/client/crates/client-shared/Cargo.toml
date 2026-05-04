@@ -19,6 +19,8 @@ reqwest = { workspace = true, features = ["json", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
+open = "5"
+log = { workspace = true }
 once_cell = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true }

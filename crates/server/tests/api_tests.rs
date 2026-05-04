@@ -5,27 +5,26 @@
     clippy::disallowed_types
 )]
 
+use burncloud_server::create_app;
 use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
 
-fn ensure_master_key() {
-    if std::env::var("MASTER_KEY").is_err() {
-        std::env::set_var(
-            "MASTER_KEY",
-            "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
-        );
-    }
-}
+mod test_utils;
 
 #[tokio::test]
 async fn test_api_health() -> anyhow::Result<()> {
-    ensure_master_key();
-    let port = 4000;
+    let db_arc = test_utils::make_isolated_db().await;
+    let app = create_app(db_arc, false).await?;
+
+    let port = 4000_u16;
     tokio::spawn(async move {
-        if let Err(e) = burncloud_server::start_server("127.0.0.1", port, false).await {
-            eprintln!("Server error: {}", e);
-        }
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .expect("Failed to bind test port");
+        axum::serve(listener, app)
+            .await
+            .expect("Server error");
     });
     sleep(Duration::from_secs(2)).await;
 
@@ -40,12 +39,17 @@ async fn test_api_health() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_token_api() -> anyhow::Result<()> {
-    ensure_master_key();
-    let port = 4001;
+    let db_arc = test_utils::make_isolated_db().await;
+    let app = create_app(db_arc, false).await?;
+
+    let port = 4001_u16;
     tokio::spawn(async move {
-        if let Err(_e) = burncloud_server::start_server("127.0.0.1", port, false).await {
-            // Ignore
-        }
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .expect("Failed to bind test port");
+        axum::serve(listener, app)
+            .await
+            .expect("Server error");
     });
     sleep(Duration::from_secs(2)).await;
 
