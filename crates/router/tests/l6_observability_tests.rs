@@ -53,6 +53,7 @@ fn make_log(layer_decision: Option<&str>, traffic_color: Option<&str>) -> Router
         embedding_cost: 0,
         layer_decision: layer_decision.map(|s| s.to_string()),
         traffic_color: traffic_color.map(|s| s.to_string()),
+        cost_status: None,
         created_at: None,
     }
 }

@@ -59,6 +59,14 @@ pub struct AppState {
     /// Exposed via `/router/status` so admins can spot silently-permissive
     /// channels (audit FM2 — fail-open silent failure).
     pub fail_open_count: Arc<AtomicU64>,
+    /// Billing strict mode: when true, preflight PriceNotFound returns 400;
+    /// when false, only warns and allows the request through.
+    pub billing_strict: bool,
+    /// Counter for requests rejected by billing preflight (PriceNotFound in strict mode).
+    pub billing_preflight_rejected_count: Arc<AtomicU64>,
+    /// Counter for post-settle price-missing hits (PriceNotFound after request completed).
+    /// A healthy system should see this remain at 0.
+    pub billing_post_settle_price_missing_count: Arc<AtomicU64>,
     /// AIMD → InMemoryBudget feedback channel (capacity=1, latest-wins debounce).
     pub budget_update_tx: mpsc::Sender<BudgetUpdate>,
 }

@@ -32,7 +32,7 @@ pub struct RequestOptions<'a> {
 ///
 /// # Preflight check
 /// Call [`CostCalculator::preflight`] **before** forwarding the upstream request.
-/// If the model price is not configured, return 503 immediately.
+/// If the model price is not configured, return 400 immediately.
 /// This prevents billing gaps from requests that already started streaming.
 ///
 /// # Cost formula
