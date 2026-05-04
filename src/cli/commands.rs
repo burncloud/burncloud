@@ -168,6 +168,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("reservation-red")
                                 .long("reservation-red")
                                 .help("L2 Shaper red reservation share (0.0-1.0)"),
+                        )
+                        .arg(
+                            Arg::new("model-mapping")
+                                .long("model-mapping")
+                                .help("JSON model mapping (e.g., '{\"gpt-4o-mini\": \"gpt-4o\"}')"),
                         ),
                 )
                 .subcommand(
@@ -278,6 +283,11 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("reservation-red")
                                 .long("reservation-red")
                                 .help("L2 Shaper red reservation share (0.0-1.0)"),
+                        )
+                        .arg(
+                            Arg::new("model-mapping")
+                                .long("model-mapping")
+                                .help("JSON model mapping (e.g., '{\"gpt-4o-mini\": \"gpt-4o\"}')"),
                         ),
                 ),
         )

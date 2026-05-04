@@ -179,6 +179,9 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         None => None,
     };
 
+    // Get model mapping (optional)
+    let model_mapping = args.get_one::<String>("model-mapping").cloned();
+
     // Build Channel struct
     let mut channel = Channel {
         id: 0,
@@ -194,7 +197,7 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         models,
         group: "default".to_string(),
         used_quota: 0,
-        model_mapping: None,
+        model_mapping,
         priority: 0,
         auto_ban: 1,
         other_info: None,
@@ -399,6 +402,10 @@ pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> 
             s.parse()
                 .map_err(|e| anyhow!("Invalid reservation-red value '{}': {}", s, e))?,
         );
+    }
+
+    if let Some(mapping) = args.get_one::<String>("model-mapping") {
+        channel.model_mapping = Some(mapping.clone());
     }
 
     // Save updates

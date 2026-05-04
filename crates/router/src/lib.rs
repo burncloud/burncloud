@@ -286,6 +286,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             header_override: u.header_override,
             api_version: u.api_version,
             pricing_region: None,
+            model_mapping: None,
         })
         .collect();
 
@@ -1674,6 +1675,7 @@ async fn proxy_logic(
                             header_override: channel.header_override.clone(),
                             api_version: channel.api_version.clone(),
                             pricing_region: channel.pricing_region.clone(),
+                            model_mapping: channel.model_mapping.clone(),
                         });
                     }
                 }
@@ -2308,6 +2310,39 @@ async fn proxy_logic(
                         body_map.insert(k, v);
                     }
                     tracing::debug!("Applied param_override for {}", upstream.name);
+                }
+            }
+        }
+
+        // Apply model_mapping: replace the model name in the request body
+        // with the mapped value so the upstream provider receives the correct model name.
+        if let Some(ref mapping_str) = upstream.model_mapping {
+            if let Ok(serde_json::Value::Object(mapping)) =
+                serde_json::from_str::<serde_json::Value>(mapping_str)
+            {
+                if let Some(serde_json::Value::String(ref model)) =
+                    request_body_json.get("model").cloned()
+                {
+                    let model_lower = model.to_lowercase();
+                    if let Some(mapped) = mapping
+                        .keys()
+                        .find(|k| k.to_lowercase() == model_lower)
+                        .and_then(|k| mapping.get(k))
+                        .and_then(|v| v.as_str())
+                    {
+                        if let serde_json::Value::Object(ref mut body_map) = request_body_json {
+                            body_map.insert(
+                                "model".to_string(),
+                                serde_json::Value::String(mapped.to_string()),
+                            );
+                            tracing::debug!(
+                                "Applied model_mapping for {}: {} -> {}",
+                                upstream.name,
+                                model,
+                                mapped
+                            );
+                        }
+                    }
                 }
             }
         }

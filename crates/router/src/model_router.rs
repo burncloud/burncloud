@@ -89,6 +89,10 @@ impl ModelRouter {
         let pool = conn.pool();
         let is_postgres = self.db.kind() == "postgres";
 
+        // Normalize model name to lowercase for consistent matching
+        // (channel_abilities stores model names in lowercase)
+        let model_lower = model.to_lowercase();
+
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
         // 1. Get max priority
@@ -110,7 +114,7 @@ impl ModelRouter {
 
         let max_priority: Option<i64> = sqlx::query_scalar(&query)
             .bind(group)
-            .bind(model)
+            .bind(&model_lower)
             .fetch_optional(pool)
             .await?;
 
@@ -135,7 +139,7 @@ impl ModelRouter {
 
         let candidates: Vec<(i32, i32)> = sqlx::query_as::<_, (i32, i64)>(&query_candidates)
             .bind(group)
-            .bind(model)
+            .bind(&model_lower)
             .bind(priority)
             .fetch_all(pool)
             .await?

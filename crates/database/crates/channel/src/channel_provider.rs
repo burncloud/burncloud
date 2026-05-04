@@ -18,23 +18,23 @@ impl ChannelProviderModel {
         let sql = if is_postgres {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red, model_mapping)
                 VALUES ({})
                 RETURNING id
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 19)
+                phs(is_postgres, 20)
             )
         } else {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red, model_mapping)
                 VALUES ({})
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 19)
+                phs(is_postgres, 20)
             )
         };
 
@@ -63,7 +63,8 @@ impl ChannelProviderModel {
             .bind(channel.tpm_cap)
             .bind(channel.reservation_green)
             .bind(channel.reservation_yellow)
-            .bind(channel.reservation_red);
+            .bind(channel.reservation_red)
+            .bind(&channel.model_mapping);
 
         let id = if db.kind() == "postgres" {
             let row = query.fetch_one(&mut *tx).await?;
@@ -99,7 +100,7 @@ impl ChannelProviderModel {
             &format!(
                 r#"
             UPDATE channel_providers
-            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?, rpm_cap = ?, tpm_cap = ?, reservation_green = ?, reservation_yellow = ?, reservation_red = ?
+            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?, rpm_cap = ?, tpm_cap = ?, reservation_green = ?, reservation_yellow = ?, reservation_red = ?, model_mapping = ?
             WHERE id = ?
             "#,
                 type_col, group_col
@@ -125,6 +126,7 @@ impl ChannelProviderModel {
             .bind(channel.reservation_green)
             .bind(channel.reservation_yellow)
             .bind(channel.reservation_red)
+            .bind(&channel.model_mapping)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -254,12 +256,26 @@ impl ChannelProviderModel {
             return Ok(());
         }
 
-        let models: Vec<&str> = channel
+        let models: Vec<String> = channel
             .models
             .split(',')
-            .map(|s| s.trim())
+            .map(|s| s.trim().to_lowercase())
             .filter(|s| !s.is_empty())
             .collect();
+
+        // Collect model_mapping keys as additional routable model names
+        let mapping_keys: Vec<String> = channel
+            .model_mapping
+            .as_deref()
+            .map(extract_json_keys)
+            .unwrap_or_default();
+
+        let mut all_models: Vec<String> = models
+            .into_iter()
+            .chain(mapping_keys)
+            .collect();
+        all_models.sort();
+        all_models.dedup();
         let groups: Vec<&str> = channel
             .group
             .split(',')
@@ -279,7 +295,7 @@ impl ChannelProviderModel {
             ),
         );
 
-        for model in models {
+        for model in &all_models {
             for group in &groups {
                 tracing::info!(
                     "ChannelProviderModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
@@ -300,5 +316,103 @@ impl ChannelProviderModel {
         }
 
         Ok(())
+    }
+}
+
+/// Extract top-level string keys from a JSON object string, returning lowercase keys.
+fn extract_json_keys(json: &str) -> Vec<String> {
+    let trimmed = json.trim();
+    if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
+        return Vec::new();
+    }
+    let inner = &trimmed[1..trimmed.len() - 1];
+    if inner.trim().is_empty() {
+        return Vec::new();
+    }
+    let mut keys = Vec::new();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape_next = false;
+    let mut current_key_start: Option<usize> = None;
+    // After a colon at depth 0, we're in the value position — skip strings until comma
+    let mut in_value = false;
+
+    for (i, ch) in inner.char_indices() {
+        if escape_next {
+            escape_next = false;
+            continue;
+        }
+        if ch == '\\' {
+            escape_next = true;
+            continue;
+        }
+        if ch == '"' {
+            if in_string {
+                if depth == 0 && !in_value {
+                    if let Some(start) = current_key_start.take() {
+                        let key: String = inner[start..i]
+                            .chars()
+                            .filter(|c| !c.is_whitespace())
+                            .collect();
+                        let key_lower = key.trim().to_lowercase();
+                        if !key_lower.is_empty() {
+                            keys.push(key_lower);
+                        }
+                    }
+                }
+                in_string = false;
+            } else {
+                in_string = true;
+                if depth == 0 && !in_value {
+                    current_key_start = Some(i + 1);
+                }
+            }
+        } else if !in_string {
+            match ch {
+                '{' | '[' => depth += 1,
+                '}' | ']' => depth -= 1,
+                ':' if depth == 0 => {
+                    current_key_start = None;
+                    in_value = true;
+                }
+                ',' if depth == 0 => {
+                    current_key_start = None;
+                    in_value = false;
+                }
+                _ => {}
+            }
+        }
+    }
+    keys
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_json_keys_basic() {
+        let keys = extract_json_keys(r#"{"gpt-4o-mini": "gpt-4o"}"#);
+        assert_eq!(keys, vec!["gpt-4o-mini"]);
+    }
+
+    #[test]
+    fn test_extract_json_keys_multiple() {
+        let keys = extract_json_keys(r#"{"gpt-4o-mini": "gpt-4o", "gpt-4": "gpt-4o"}"#);
+        assert_eq!(keys, vec!["gpt-4o-mini", "gpt-4"]);
+    }
+
+    #[test]
+    fn test_extract_json_keys_empty() {
+        assert!(extract_json_keys("{}").is_empty());
+        assert!(extract_json_keys("").is_empty());
+        assert!(extract_json_keys("not json").is_empty());
+    }
+
+    #[test]
+    fn test_extract_json_keys_lowercase() {
+        let keys = extract_json_keys(r#"{"GPT-4O": "gpt-4o"}"#);
+        assert_eq!(keys, vec!["gpt-4o"]);
     }
 }

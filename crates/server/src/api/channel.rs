@@ -7,7 +7,25 @@ use axum::{
     Router,
 };
 use burncloud_service_channel::{Channel, ChannelService};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Serde module for `model_mapping` in `ChannelDto`: accepts either a JSON
+/// string or a JSON object and normalises both to `Option<String>`.
+#[allow(clippy::disallowed_types)]
+mod dto_model_mapping_serde {
+    use super::{Deserialize, Deserializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+        Ok(value.map(|v| match v {
+            serde_json::Value::String(s) => s,
+            other => other.to_string(),
+        }))
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct PaginationParams {
@@ -36,6 +54,8 @@ pub struct ChannelDto {
     pub param_override: Option<String>,
     pub header_override: Option<String>,
     pub api_version: Option<String>,
+    #[serde(default, deserialize_with = "dto_model_mapping_serde::deserialize")]
+    pub model_mapping: Option<String>,
     // L2 Shaper config (issue #151). Omit to leave channel fail-open.
     #[serde(default)]
     pub rpm_cap: Option<i32>,
@@ -82,7 +102,7 @@ impl ChannelDto {
             models: self.models,
             group: self.group,
             used_quota: 0,
-            model_mapping: None,
+            model_mapping: self.model_mapping,
             priority: self.priority,
             auto_ban: 1,
             other_info: None,
@@ -111,6 +131,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/console/api/channel/{id}",
             get(get_channel).delete(delete_channel),
+        )
+        .route(
+            "/console/api/channel/{id}/sync-abilities",
+            post(sync_abilities),
         )
 }
 
@@ -169,6 +193,17 @@ async fn delete_channel(State(state): State<AppState>, Path(id): Path<i32>) -> i
 async fn get_channel(State(state): State<AppState>, Path(id): Path<i32>) -> impl IntoResponse {
     match ChannelService::get_by_id(&state.db, id).await {
         Ok(Some(c)) => ok(c).into_response(),
+        Err(e) => err(e).into_response(),
+        Ok(None) => err("channel not found").into_response(),
+    }
+}
+
+async fn sync_abilities(State(state): State<AppState>, Path(id): Path<i32>) -> impl IntoResponse {
+    match ChannelService::get_by_id(&state.db, id).await {
+        Ok(Some(channel)) => match ChannelService::sync_abilities(&state.db, &channel).await {
+            Ok(()) => ok(()).into_response(),
+            Err(e) => err(e).into_response(),
+        },
         Ok(None) => err("channel not found").into_response(),
         Err(e) => err(e).into_response(),
     }
