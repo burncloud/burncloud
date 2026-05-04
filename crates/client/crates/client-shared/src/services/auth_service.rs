@@ -31,4 +31,16 @@ impl AuthService {
     pub async fn check_username_availability(username: &str) -> Result<bool, String> {
         API_CLIENT.check_username_availability(username).await
     }
+
+    pub async fn forgot_password(email: &str) -> Result<(), String> {
+        API_CLIENT.forgot_password(email).await
+    }
+
+    pub async fn reset_password(token: &str, new_password: &str) -> Result<(), String> {
+        API_CLIENT.reset_password(token, new_password).await
+    }
+
+    pub async fn get_oauth_url(provider: &str) -> Result<String, String> {
+        API_CLIENT.oauth_url(provider).await
+    }
 }

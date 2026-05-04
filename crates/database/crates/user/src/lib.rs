@@ -13,10 +13,12 @@ mod common;
 mod user_account;
 mod user_api_key;
 mod user_recharge;
+mod password_reset;
 
 pub use user_account::{UserAccount, UserAccountInput};
 pub use user_api_key::{UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
 pub use user_recharge::UserRecharge;
+pub use password_reset::{PasswordResetDatabase, PasswordResetToken};
 
 use burncloud_database::{Database, Result};
 use sqlx::Row;
@@ -308,6 +310,49 @@ impl UserDatabase {
             .fetch_all(conn.pool())
             .await?;
         Ok(users)
+    }
+
+    pub async fn update_password_hash(db: &Database, user_id: &str, password_hash: &str) -> Result<()> {
+        let conn = db.get_connection()?;
+        let sql = if db.kind() == "postgres" {
+            "UPDATE user_accounts SET password_hash = $1 WHERE id = $2"
+        } else {
+            "UPDATE user_accounts SET password_hash = ? WHERE id = ?"
+        };
+        sqlx::query(sql)
+            .bind(password_hash)
+            .bind(user_id)
+            .execute(conn.pool())
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_user_by_id(db: &Database, user_id: &str) -> Result<Option<UserAccount>> {
+        let conn = db.get_connection()?;
+        let sql = if db.kind() == "postgres" {
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts WHERE id = $1"
+        } else {
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts WHERE id = ?"
+        };
+        let user = sqlx::query_as::<_, UserAccount>(sql)
+            .bind(user_id)
+            .fetch_optional(conn.pool())
+            .await?;
+        Ok(user)
+    }
+
+    pub async fn get_user_by_email(db: &Database, email: &str) -> Result<Option<UserAccount>> {
+        let conn = db.get_connection()?;
+        let sql = if db.kind() == "postgres" {
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts WHERE email = $1"
+        } else {
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts WHERE email = ?"
+        };
+        let user = sqlx::query_as::<_, UserAccount>(sql)
+            .bind(email)
+            .fetch_optional(conn.pool())
+            .await?;
+        Ok(user)
     }
 
     /// Count real users (excludes seed/demo accounts). Used by

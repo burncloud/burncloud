@@ -29,6 +29,8 @@ burncloud-client-log.workspace = true
 burncloud-client-connect.workspace = true
 burncloud-client-playground.workspace = true
 burncloud-client-register.workspace = true
+open = "5"
+log = { workspace = true }
 dioxus = { workspace = true, features = ["router"] }
 dioxus-router.workspace = true
 tokio.workspace = true
