@@ -69,6 +69,10 @@ pub struct RouterLog {
     pub layer_decision: Option<String>,
     #[sqlx(default)]
     pub traffic_color: Option<String>,
+    // Billing observability (migration 0013): why cost=0 — "ok", "price_missing",
+    // "calc_error", "no_model". NULL for pre-migration rows.
+    #[sqlx(default)]
+    pub cost_status: Option<String>,
     pub created_at: Option<String>,
 }
 
@@ -112,10 +116,10 @@ impl RouterLogModel {
              cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens,
              input_cost, output_cost, cache_read_cost, cache_write_cost,
              audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost,
-             layer_decision, traffic_color)
+             layer_decision, traffic_color, cost_status)
             VALUES ({})
             "#,
-            phs(is_postgres, 30)
+            phs(is_postgres, 31)
         );
 
         sqlx::query(&sql)
@@ -149,6 +153,7 @@ impl RouterLogModel {
             .bind(log.embedding_cost)
             .bind(&log.layer_decision)
             .bind(&log.traffic_color)
+            .bind(&log.cost_status)
             .execute(conn.pool())
             .await?;
 
@@ -177,7 +182,7 @@ impl RouterLogModel {
         let is_postgres = db.kind() == "postgres";
 
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, traffic_color, created_at FROM router_logs ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, traffic_color, cost_status, created_at FROM router_logs ORDER BY created_at DESC {}",
             adapt_sql(is_postgres, "LIMIT ? OFFSET ?")
         );
         let logs = sqlx::query_as::<_, RouterLog>(&sql)
@@ -228,7 +233,7 @@ impl RouterLogModel {
             ph(is_postgres, param_index + 1)
         );
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, traffic_color, created_at FROM router_logs {} ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, traffic_color, cost_status, created_at FROM router_logs {} ORDER BY created_at DESC {}",
             where_clause, limit_offset
         );
 

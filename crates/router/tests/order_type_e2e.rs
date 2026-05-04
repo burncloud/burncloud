@@ -305,6 +305,7 @@ async fn t5b_layer_decision_and_traffic_color_db_roundtrip() -> anyhow::Result<(
         embedding_cost: 0,
         layer_decision: Some("affinity_hit".to_string()),
         traffic_color: Some("Y".to_string()),
+        cost_status: None,
         created_at: None,
     };
     RouterDatabase::insert_log(&db, &log).await?;
@@ -505,6 +506,7 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
         embedding_cost: 0,
         layer_decision,
         traffic_color,
+        cost_status: None,
         created_at: None,
     };
     RouterDatabase::insert_log(&db_arc, &log).await?;
