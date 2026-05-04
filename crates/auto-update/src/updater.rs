@@ -1,7 +1,7 @@
 //! 自动更新器核心实现
 
 use crate::{UpdateConfig, UpdateError, UpdateResult};
-use log::{error, info};
+use tracing::{error, info};
 use self_update::backends::github;
 use semver;
 

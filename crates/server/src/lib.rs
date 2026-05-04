@@ -2,6 +2,7 @@ pub mod api;
 pub mod logging;
 pub use api::auth::{auth_middleware, Claims};
 
+use axum::http::HeaderName;
 use axum::{routing::get, Router};
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
@@ -14,6 +15,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::CorsLayer;
+use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
 #[derive(Clone)]
@@ -24,6 +26,7 @@ pub struct AppState {
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
 }
 
+#[tracing::instrument(skip(db))]
 pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Result<Router> {
     let monitor = Arc::new(SystemMonitorService::new());
     // Start auto collection in background
@@ -62,14 +65,22 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     // Note: If LiveView is disabled, "/" requests will hit the fallback (router_app)
     // which usually returns 404 for unknown paths, or handles LLM requests.
 
+    let x_request_id = HeaderName::from_static("x-request-id");
+
     let app = app
         .fallback_service(router_app)
+        .layer(SetRequestIdLayer::new(
+            x_request_id.clone(),
+            MakeRequestUuid,
+        ))
+        .layer(PropagateRequestIdLayer::new(x_request_id.clone()))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 
     Ok(app)
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;

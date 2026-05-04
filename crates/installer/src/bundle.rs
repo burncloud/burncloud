@@ -1,7 +1,7 @@
 //! Bundle creation and verification for offline installation
 
 use chrono::Utc;
-use log::{info, warn};
+use tracing::{info, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

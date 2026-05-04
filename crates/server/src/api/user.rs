@@ -79,6 +79,7 @@ pub fn routes() -> Router<AppState> {
         .merge(authenticated)
 }
 
+#[tracing::instrument(skip(state, payload), fields(user_id = %payload.user_id))]
 async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> impl IntoResponse {
     let currency = payload.currency.unwrap_or_else(|| "USD".to_string());
     match state
@@ -91,6 +92,7 @@ async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> 
     }
 }
 
+#[tracing::instrument(skip(state, payload), fields(username = %payload.username))]
 async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
@@ -153,6 +155,7 @@ async fn check_username(
     }
 }
 
+#[tracing::instrument(skip(state, payload), fields(username = %payload.username))]
 async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> impl IntoResponse {
     match state
         .user_service
@@ -212,6 +215,7 @@ fn persist_client_state(username: &str, token: &str) {
     }
 }
 
+#[tracing::instrument(skip_all)]
 async fn list_users(State(state): State<AppState>) -> impl IntoResponse {
     match state.user_service.list_users(&state.db).await {
         Ok(users) => {
@@ -245,6 +249,7 @@ async fn list_users(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+#[tracing::instrument(skip_all)]
 async fn list_recharges(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,

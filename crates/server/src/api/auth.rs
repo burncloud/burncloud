@@ -80,6 +80,7 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/auth/github", get(oauth_github))
 }
 
+#[tracing::instrument(skip(state, payload), fields(username = %payload.username))]
 async fn create_user(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
@@ -125,6 +126,7 @@ async fn create_user(
     }
 }
 
+#[tracing::instrument(skip(state, payload), fields(username = %payload.username))]
 async fn login(State(state): State<AppState>, Json(payload): Json<LoginDto>) -> impl IntoResponse {
     match state
         .user_service
@@ -222,6 +224,7 @@ async fn oauth_github(State(_state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
     let auth_header = req
         .headers()

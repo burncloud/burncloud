@@ -14,7 +14,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow.workspace = true
-log.workspace = true
+tracing.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -27,14 +27,6 @@ sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 winapi.workspace = true
-
-[dev-dependencies]
-env_logger.workspace = true
-
-[package.metadata.cargo-machete]
-# winapi is under [target.'cfg(windows)'.dependencies] — machete doesn't detect cfg-gated deps
-# env_logger is in [dev-dependencies] — machete limitation
-ignored = ["winapi", "env_logger"]
 
 [lints]
 workspace = true

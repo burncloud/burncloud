@@ -8,8 +8,7 @@
 use burncloud_auto_update::{AutoUpdater, UpdateConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logger
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Create updater with custom config
     let config = UpdateConfig {

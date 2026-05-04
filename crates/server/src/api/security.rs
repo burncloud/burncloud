@@ -72,12 +72,12 @@ impl From<FilterConfig> for FilterConfigResponse {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct EmergencyBreakRequest {
     reason: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct EventQueryParams {
     page: Option<i32>,
     page_size: Option<i32>,
@@ -266,6 +266,7 @@ fn log_to_risk_event(log: &RouterLog) -> RiskEvent {
 ///
 /// Aggregate security summary: score based on 4xx/5xx ratio in router_logs,
 /// blocked count, threat source count, and a 7-day sparkline.
+#[tracing::instrument(skip_all)]
 async fn security_summary(State(state): State<AppState>) -> impl IntoResponse {
     match RouterLogService::get(&state.db, 1000, 0).await {
         Ok(logs) => {
@@ -290,6 +291,7 @@ async fn security_summary(State(state): State<AppState>) -> impl IntoResponse {
 /// GET /console/api/monitor/security/events
 ///
 /// Paginated list of risk events derived from 4xx/5xx router logs.
+#[tracing::instrument(skip(state))]
 async fn security_events(
     State(state): State<AppState>,
     Query(params): Query<EventQueryParams>,
@@ -393,6 +395,7 @@ async fn security_filters_put(
 /// POST /console/api/monitor/security/emergency-circuit-break
 ///
 /// Proxy to router's internal trip-all endpoint. Requires a reason.
+#[tracing::instrument(skip(_state), fields(reason = %body.reason))]
 async fn security_emergency_circuit_break(
     State(_state): State<AppState>,
     Json(body): Json<EmergencyBreakRequest>,
@@ -401,7 +404,7 @@ async fn security_emergency_circuit_break(
         return err("Reason is required for emergency circuit break").into_response();
     }
 
-    log::warn!(
+    tracing::warn!(
         "SECURITY: Emergency circuit break triggered — reason: \"{}\"",
         body.reason
     );
@@ -428,6 +431,7 @@ async fn security_emergency_circuit_break(
 /// GET /console/api/monitor/security/circuit-breaker-status
 ///
 /// Proxy to router's internal health endpoint to get circuit breaker states.
+#[tracing::instrument(skip_all)]
 async fn security_circuit_breaker_status(
     State(_state): State<AppState>,
 ) -> impl IntoResponse {
