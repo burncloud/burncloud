@@ -49,7 +49,18 @@ pub fn should_passthrough(
     body: &Value,
     channel_type: ChannelType,
 ) -> PassthroughDecision {
-    // Only Gemini channels support passthrough
+    // Anthropic channels: passthrough when request is already Claude native format
+    if channel_type == ChannelType::Anthropic {
+        // Claude native path: /v1/messages
+        if path.starts_with("/v1/messages") {
+            return PassthroughDecision::Passthrough;
+        }
+        // Claude native body: has "messages" array but no "model" at top level
+        // (Anthropic SDK sends model as top-level field, but the key signal is the path)
+        return PassthroughDecision::Convert;
+    }
+
+    // Only Gemini/Vertex channels support passthrough
     if channel_type != ChannelType::Gemini && channel_type != ChannelType::VertexAi {
         return PassthroughDecision::Convert;
     }

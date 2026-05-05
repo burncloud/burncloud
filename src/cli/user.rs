@@ -338,6 +338,9 @@ pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Route user commands
 pub async fn handle_user_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+    // Ensure user tables (user_roles, user_role_bindings, user_recharges) exist
+    UserDatabase::init(db).await?;
+
     match matches.subcommand() {
         Some(("register", sub_m)) => {
             cmd_user_register(db, sub_m).await?;

@@ -84,8 +84,12 @@ impl UserApiKeyModel {
         let key = Self::generate_key();
         let now = current_timestamp();
 
-        let remain_quota = input.remain_quota.unwrap_or(0);
         let unlimited_quota = input.unlimited_quota.unwrap_or(false);
+        let remain_quota = if unlimited_quota {
+            -1
+        } else {
+            input.remain_quota.unwrap_or(0)
+        };
         let expired_time = input.expired_time.unwrap_or(-1);
 
         let sql = if is_postgres {
