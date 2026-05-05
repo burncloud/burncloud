@@ -100,7 +100,10 @@ impl ChannelDto {
             response_time: None,
             base_url: self.base_url,
             models: self.models,
-            group: self.group,
+            group: {
+                let g = self.group.trim().to_lowercase();
+                if g.is_empty() { "default".to_string() } else { g }
+            },
             used_quota: 0,
             model_mapping: self.model_mapping,
             priority: self.priority,

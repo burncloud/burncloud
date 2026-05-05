@@ -276,10 +276,10 @@ impl ChannelProviderModel {
             .collect();
         all_models.sort();
         all_models.dedup();
-        let groups: Vec<&str> = channel
+        let groups: Vec<String> = channel
             .group
             .split(',')
-            .map(|s| s.trim())
+            .map(|s| s.trim().to_lowercase())
             .filter(|s| !s.is_empty())
             .collect();
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
@@ -414,5 +414,11 @@ mod tests {
     fn test_extract_json_keys_lowercase() {
         let keys = extract_json_keys(r#"{"GPT-4O": "gpt-4o"}"#);
         assert_eq!(keys, vec!["gpt-4o"]);
+    }
+
+    #[test]
+    fn test_extract_json_keys_astron_mapping() {
+        let keys = extract_json_keys(r#"{"astron-code": "astron-code-latest"}"#);
+        assert_eq!(keys, vec!["astron-code"]);
     }
 }

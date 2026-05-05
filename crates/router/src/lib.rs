@@ -1706,8 +1706,8 @@ async fn proxy_logic(
                     }
                 }
                 Ok(_) => {
-                    tracing::debug!(
-                        "ModelRouter: No candidates for {} (Group: {})",
+                    tracing::warn!(
+                        "ModelRouter: No candidates for model '{}' in group '{}' — channel_abilities may be missing",
                         model, user_group
                     );
                 }
