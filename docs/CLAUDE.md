@@ -104,7 +104,7 @@ crates/
 
 **根目录允许列表**（工具链强制位置，新增前需 PR 评审）：
 
-`Cargo.toml`、`Cargo.lock`、`README.md`、`clippy.toml`、`deny.toml`、`config.json`、`.cargo/`、`.github/`、`.gitignore`、`.gitattributes`、`.env.example`
+`Cargo.toml`、`Cargo.lock`、`README.md`、`clippy.toml`、`deny.toml`、`.cargo/`、`.github/`、`.gitignore`、`.gitattributes`、`.env.example`
 
 不在此列表的根目录新增项一律 reject。
 
