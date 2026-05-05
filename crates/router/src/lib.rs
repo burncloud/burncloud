@@ -423,6 +423,32 @@ pub async fn create_router_app(
     // Circuit breaker: 5 failure threshold, 30s cooldown
     let circuit_breaker = Arc::new(CircuitBreaker::new(CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_COOLDOWN_SECS));
     let model_router = Arc::new(ModelRouter::new(db.clone()));
+
+    // Auto-repair channel_abilities at startup: ensure every enabled channel
+    // has complete abilities rows. Handles DB migration gaps and channels
+    // re-enabled outside the update path.
+    match ChannelProviderModel::list(&db, 10000, 0).await {
+        Ok(channels) => {
+            let enabled: Vec<_> = channels.iter().filter(|c| c.status == 1).collect();
+            let enabled_count = enabled.len();
+            for channel in enabled {
+                if let Err(e) = ChannelProviderModel::sync_abilities(&db, channel).await {
+                    tracing::warn!(
+                        "startup abilities repair: channel {} sync failed: {e}",
+                        channel.id
+                    );
+                }
+            }
+            tracing::info!(
+                "startup abilities repair: checked {} enabled channels",
+                enabled_count
+            );
+        }
+        Err(e) => {
+            tracing::warn!("startup abilities repair: failed to list channels: {e}");
+        }
+    }
+
     // Channel State Tracker for health monitoring
     let channel_state_tracker = Arc::new(ChannelStateTracker::new());
     // Dynamic Adaptor Factory for protocol adaptation
