@@ -101,6 +101,9 @@ struct ProxyResult {
     final_status: StatusCode,
     pricing_region: Option<String>,
     video_task_id: Option<String>,
+    /// Mapped upstream model name for billing (from model_mapping).
+    /// `None` when no mapping applies or request never reached an upstream.
+    upstream_model: Option<String>,
     /// L2 Shaper outcome: `(layer_decision, traffic_color)` for RouterLog.
     /// `None` when the request never reached the shaper (early routing error).
     shaper_outcome: Option<(String, String)>,
@@ -289,6 +292,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             header_override: u.header_override,
             api_version: u.api_version,
             pricing_region: None,
+            model_mapping: None,
         })
         .collect();
 
@@ -1364,8 +1368,11 @@ async fn proxy_handler(
     let usage = inject_video_tokens_if_empty(result.final_status, usage, seedance_tokens, "seedance");
 
     // Calculate cost using CostCalculator (nanodollars)
+    // Use upstream_model (from model_mapping) for billing when available,
+    // falling back to the original model_name otherwise.
+    let billing_model = result.upstream_model.as_ref().or(model_name.as_ref());
     let (cost, cost_breakdown, cost_status) = if !usage.is_empty() {
-        if let Some(model) = &model_name {
+        if let Some(model) = billing_model {
             match state
                 .cost_calculator
                 .calculate(
@@ -1574,6 +1581,8 @@ async fn proxy_logic(
     // Assigned inside the retry loop (candidates guaranteed non-empty at this point).
     // Uninitialized: assigned inside the retry loop before any use
     let mut selected_pricing_region: Option<String>;
+    // Track mapped upstream model name for billing (from model_mapping).
+    let mut selected_upstream_model: Option<String>;
 
     // L2 Shaper: pre-compute est_tpm from `max_tokens` in the request body.
     // TODO(phase 2.5 #151): per-adaptor est_tpm refinement — 4096 may grossly
@@ -1696,6 +1705,7 @@ async fn proxy_logic(
                             header_override: channel.header_override.clone(),
                             api_version: channel.api_version.clone(),
                             pricing_region: channel.pricing_region.clone(),
+                            model_mapping: channel.model_mapping.clone(),
                         });
                     }
                 }
@@ -1743,6 +1753,7 @@ async fn proxy_logic(
                         final_status: StatusCode::SERVICE_UNAVAILABLE,
                         pricing_region: None,
                         video_task_id: None,
+                        upstream_model: None,
                         shaper_outcome: None,
                         routing_decision: None,
                         sched_request_color: shaper_color,
@@ -1775,6 +1786,7 @@ async fn proxy_logic(
                     final_status: StatusCode::NOT_FOUND,
                     pricing_region: None,
                     video_task_id: None,
+                    upstream_model: None,
                     shaper_outcome: None,
                     routing_decision: None,
                     sched_request_color: shaper_color,
@@ -1796,6 +1808,7 @@ async fn proxy_logic(
                         final_status: StatusCode::SERVICE_UNAVAILABLE,
                         pricing_region: None,
                         video_task_id: None,
+                        upstream_model: None,
                         shaper_outcome: None,
                         routing_decision: None,
                         sched_request_color: shaper_color,
@@ -1825,6 +1838,7 @@ async fn proxy_logic(
             final_status: StatusCode::INTERNAL_SERVER_ERROR,
             pricing_region: None,
             video_task_id: None,
+            upstream_model: None,
             shaper_outcome: None,
             routing_decision: None,
             sched_request_color: shaper_color,
@@ -1835,8 +1849,32 @@ async fn proxy_logic(
     // Preflight billing check: reject requests for models with no price configured.
     // In strict mode (default), returns 400 to prevent unbilled usage.
     // In non-strict mode, only warns and allows the request through.
+    // When model_mapping is configured, the client model name may not have a
+    // price entry — try the mapped upstream model name as a fallback.
     if let Some(model) = model_name {
-        if let Err(e) = state.cost_calculator.preflight(model, None).await {
+        let preflight_result = state.cost_calculator.preflight(model, None).await;
+        // If the original model name has no price, try mapped names from candidates
+        let preflight_result = if preflight_result.is_err() {
+            let mut found_mapped = false;
+            for upstream in &candidates {
+                if let Some(ref mapping_str) = upstream.model_mapping {
+                    if let Ok(map) = serde_json::from_str::<serde_json::Value>(mapping_str) {
+                        if let Some(obj) = map.as_object() {
+                            if let Some(mapped) = obj.iter().find(|(k, _)| k.eq_ignore_ascii_case(model)).map(|(_, v)| v.as_str().unwrap_or(model)) {
+                                if state.cost_calculator.preflight(mapped, None).await.is_ok() {
+                                    found_mapped = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if found_mapped { Ok(()) } else { preflight_result }
+        } else {
+            preflight_result
+        };
+        if let Err(e) = preflight_result {
             if state.billing_strict {
                 tracing::warn!(model = %model, "Preflight billing check failed — rejecting request: {e}");
                 state.billing_preflight_rejected_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1854,6 +1892,7 @@ async fn proxy_logic(
                     final_status: StatusCode::BAD_REQUEST,
                     pricing_region: None,
                     video_task_id: None,
+                    upstream_model: None,
                     shaper_outcome: None,
                     routing_decision: None,
                     sched_request_color: shaper_color,
@@ -1887,6 +1926,24 @@ async fn proxy_logic(
 
         // Update pricing_region for billing to match the actual upstream serving
         selected_pricing_region = upstream.pricing_region.clone();
+
+        // Resolve model_mapping: if the upstream has a mapping and the client model
+        // name matches a key, use the mapped value for billing.
+        selected_upstream_model = if let Some(ref mapping_str) = upstream.model_mapping {
+            if let Ok(map) = serde_json::from_str::<serde_json::Value>(mapping_str) {
+                if let Some(obj) = map.as_object() {
+                    model_name.as_ref().and_then(|m| {
+                        obj.iter().find(|(k, _)| k.eq_ignore_ascii_case(m)).map(|(_, v)| v.as_str().unwrap_or(m).to_string())
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         // L2 Shaper Check (issue #151) — runs BEFORE the circuit breaker so
         // a locally-overloaded channel is rejected without consuming a CB slot.
@@ -1982,6 +2039,16 @@ async fn proxy_logic(
                 channel_type
             );
 
+            // Apply model_mapping: replace model in body before URL construction
+            if let Some(ref mapped) = selected_upstream_model {
+                if let Some(obj) = body_json.as_object_mut() {
+                    obj.insert(
+                        "model".to_string(),
+                        serde_json::Value::String(mapped.clone()),
+                    );
+                }
+            }
+
             // Build target URL and auth for passthrough
             let (req_builder, is_stream, is_gemini) = if channel_type == ChannelType::Anthropic {
                 // Anthropic passthrough: forward to base_url + /v1/messages
@@ -2001,6 +2068,16 @@ async fn proxy_logic(
                 // Gemini passthrough
                 let passthrough_url =
                     passthrough::build_gemini_passthrough_url(&upstream.base_url, path, &body_json);
+                // Replace model in URL for Gemini native paths (model embedded in URL path)
+                let passthrough_url = if let Some(ref mapped) = selected_upstream_model {
+                    if let Some(ref client_model) = model_name {
+                        passthrough_url.replace(client_model, mapped)
+                    } else {
+                        passthrough_url
+                    }
+                } else {
+                    passthrough_url
+                };
                 let is_stream = body_json
                     .get("stream")
                     .and_then(|v| v.as_bool())
@@ -2119,6 +2196,7 @@ async fn proxy_logic(
                                 final_status: status,
                                 pricing_region: selected_pricing_region.clone(),
                                 video_task_id: None,
+                                upstream_model: selected_upstream_model.clone(),
                                 shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
@@ -2170,6 +2248,7 @@ async fn proxy_logic(
                                 final_status: status,
                                 pricing_region: selected_pricing_region.clone(),
                                 video_task_id: None,
+                                upstream_model: selected_upstream_model.clone(),
                                 shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
@@ -2195,6 +2274,7 @@ async fn proxy_logic(
                                     final_status: status,
                                     pricing_region: selected_pricing_region.clone(),
                                     video_task_id: None,
+                                    upstream_model: selected_upstream_model.clone(),
                                     shaper_outcome: Some((
                                         iter_label.to_string(),
                                         shaper_ctx.color.as_char().to_string(),
@@ -2252,6 +2332,7 @@ async fn proxy_logic(
                             final_status: status,
                             pricing_region: selected_pricing_region.clone(),
                             video_task_id: None,
+                            upstream_model: selected_upstream_model.clone(),
                             shaper_outcome: Some((
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
@@ -2355,6 +2436,16 @@ async fn proxy_logic(
                     }
                     tracing::debug!("Applied param_override for {}", upstream.name);
                 }
+            }
+        }
+
+        // Apply model_mapping: replace model in request body with mapped upstream model name
+        if let Some(ref mapped) = selected_upstream_model {
+            if let serde_json::Value::Object(ref mut body_map) = request_body_json {
+                body_map.insert(
+                    "model".to_string(),
+                    serde_json::Value::String(mapped.clone()),
+                );
             }
         }
 
@@ -2479,6 +2570,7 @@ async fn proxy_logic(
                                 final_status: status,
                                 pricing_region: selected_pricing_region.clone(),
                                 video_task_id: task_id,
+                                upstream_model: selected_upstream_model.clone(),
                                 shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
@@ -2499,6 +2591,7 @@ async fn proxy_logic(
                             final_status: status,
                             pricing_region: selected_pricing_region.clone(),
                             video_task_id: None,
+                            upstream_model: selected_upstream_model.clone(),
                             shaper_outcome: Some((
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
@@ -2569,6 +2662,7 @@ async fn proxy_logic(
                             final_status: status,
                             pricing_region: selected_pricing_region.clone(),
                             video_task_id: None,
+                            upstream_model: selected_upstream_model.clone(),
                             shaper_outcome: Some((
                                 iter_label.to_string(),
                                 shaper_ctx.color.as_char().to_string(),
@@ -2634,6 +2728,7 @@ async fn proxy_logic(
                         final_status: status,
                         pricing_region: selected_pricing_region.clone(),
                         video_task_id: None,
+                        upstream_model: selected_upstream_model.clone(),
                         shaper_outcome: Some((
                             iter_label.to_string(),
                             shaper_ctx.color.as_char().to_string(),
@@ -2658,6 +2753,7 @@ async fn proxy_logic(
                                 final_status: status,
                                 pricing_region: selected_pricing_region.clone(),
                                 video_task_id: None,
+                                upstream_model: selected_upstream_model.clone(),
                                 shaper_outcome: Some((
                                     iter_label.to_string(),
                                     shaper_ctx.color.as_char().to_string(),
@@ -2758,6 +2854,7 @@ async fn proxy_logic(
                         final_status: status,
                         pricing_region: selected_pricing_region.clone(),
                         video_task_id: None,
+                        upstream_model: selected_upstream_model.clone(),
                         shaper_outcome: Some((
                             iter_label.to_string(),
                             shaper_ctx.color.as_char().to_string(),
@@ -2814,6 +2911,7 @@ async fn proxy_logic(
             final_status: StatusCode::SERVICE_UNAVAILABLE,
             pricing_region: None,
             video_task_id: None,
+            upstream_model: None,
             shaper_outcome: Some((
                 "shaper_reject".to_string(),
                 shaper_ctx.color.as_char().to_string(),
@@ -2833,6 +2931,7 @@ async fn proxy_logic(
         final_status: StatusCode::BAD_GATEWAY,
         pricing_region: None,
         video_task_id: None,
+        upstream_model: None,
         // Mixed shaper-reject + upstream-failure: emit shaper context so
         // RouterLog still records the color/last-iter outcome if any.
         shaper_outcome: shaper_ctx.outcome.map(|lbl| {
