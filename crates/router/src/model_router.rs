@@ -92,7 +92,7 @@ impl ModelRouter {
         // Normalize to lowercase for consistent matching
         // (channel_abilities stores model and group in lowercase)
         let group_lower = group.trim().to_lowercase();
-        let model_lower = model.to_lowercase();
+        let model_lower = model.trim().to_lowercase();
 
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 

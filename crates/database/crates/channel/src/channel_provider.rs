@@ -297,7 +297,7 @@ impl ChannelProviderModel {
 
         for model in &all_models {
             for group in &groups {
-                tracing::info!(
+                tracing::debug!(
                     "ChannelProviderModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
                     model,
                     group,
