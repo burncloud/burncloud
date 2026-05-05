@@ -16,6 +16,8 @@ pub struct LogListItem {
     pub user_id: Option<String>,
     pub channel_id: Option<String>,
     pub model: String,
+    pub status_code: i32,
+    pub error_type: Option<String>,
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
     /// Cost in dollars (converted from nanodollars)
@@ -27,7 +29,7 @@ impl From<RouterLog> for LogListItem {
     fn from(log: RouterLog) -> Self {
         // Extract model from path if possible (e.g., "/v1/chat/completions" -> "N/A")
         // In most cases, model is in request body, not path
-        let model = extract_model_from_path(&log.path);
+        let model = log.model.unwrap_or_else(|| extract_model_from_path(&log.path));
 
         // Convert nanodollars to dollars
         let cost = log.cost as f64 / 1_000_000_000.0;
@@ -38,6 +40,8 @@ impl From<RouterLog> for LogListItem {
             user_id: log.user_id,
             channel_id: log.upstream_id,
             model,
+            status_code: log.status_code,
+            error_type: log.error_type,
             prompt_tokens: log.prompt_tokens,
             completion_tokens: log.completion_tokens,
             cost,
@@ -104,27 +108,32 @@ pub async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
         _ => {
             // Table format
             println!(
-                "{:<8} {:<36} {:<36} {:<20} {:<15} {:<15} {:<12} {:<20}",
+                "{:<8} {:<36} {:<36} {:<20} {:<11} {:<15} {:<15} {:<15} {:<12} {:<20}",
                 "ID",
                 "UserID",
                 "ChannelID",
                 "Model",
+                "Status",
+                "ErrorType",
                 "PromptTokens",
                 "CompletionTokens",
                 "Cost",
                 "Timestamp"
             );
-            println!("{}", "-".repeat(170));
+            println!("{}", "-".repeat(195));
             for item in &list_items {
                 let user_id = item.user_id.as_deref().unwrap_or("N/A");
                 let channel_id = item.channel_id.as_deref().unwrap_or("N/A");
+                let error_type = item.error_type.as_deref().unwrap_or("-");
                 let timestamp = item.timestamp.as_deref().unwrap_or("N/A");
                 println!(
-                    "{:<8} {:<36} {:<36} {:<20} {:<15} {:<15} ${:<11.6} {:<20}",
+                    "{:<8} {:<36} {:<36} {:<20} {:<11} {:<15} {:<15} {:<15} ${:<11.6} {:<20}",
                     item.id,
                     user_id,
                     channel_id,
                     item.model,
+                    item.status_code,
+                    error_type,
                     item.prompt_tokens,
                     item.completion_tokens,
                     item.cost,

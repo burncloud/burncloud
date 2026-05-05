@@ -81,6 +81,10 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
         version: "0013_alter_router_logs_add_cost_status",
         sql: include_str!("../migrations/sqlite/0013_alter_router_logs_add_cost_status.sql"),
     },
+    Migration {
+        version: "0014_alter_router_logs_add_error_type",
+        sql: include_str!("../migrations/sqlite/0014_alter_router_logs_add_error_type.sql"),
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -139,6 +143,10 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
     Migration {
         version: "0013_alter_router_logs_add_cost_status",
         sql: include_str!("../migrations/postgres/0013_alter_router_logs_add_cost_status.sql"),
+    },
+    Migration {
+        version: "0014_alter_router_logs_add_error_type",
+        sql: include_str!("../migrations/postgres/0014_alter_router_logs_add_error_type.sql"),
     },
 ];
 
