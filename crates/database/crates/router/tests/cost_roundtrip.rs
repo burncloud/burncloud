@@ -89,6 +89,7 @@ fn make_log(request_id: &str) -> RouterLog {
         layer_decision: None,
         traffic_color: None,
         cost_status: None,
+        error_type: None,
         created_at: None,
     }
 }
@@ -236,6 +237,7 @@ async fn test_zero_values_read_as_zero_not_null() {
         layer_decision: None,
         traffic_color: None,
         cost_status: None,
+        error_type: None,
         created_at: None,
     };
 

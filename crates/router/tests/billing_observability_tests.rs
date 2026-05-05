@@ -51,6 +51,7 @@ fn make_log(cost_status: Option<&str>) -> RouterLog {
         layer_decision: None,
         traffic_color: None,
         cost_status: cost_status.map(|s| s.to_string()),
+        error_type: None,
         created_at: None,
     }
 }
@@ -65,6 +66,7 @@ async fn t1_cost_status_roundtrip_all_values() -> anyhow::Result<()> {
     let (db, pool, _url) = setup_db().await?;
     common::ensure_l6_observability_columns(&pool).await?;
     common::ensure_cost_status_column(&pool).await?;
+    common::ensure_error_type_column(&pool).await?;
 
     let values: Vec<Option<&str>> = vec![
         Some("ok"),
@@ -171,6 +173,7 @@ async fn t3_post_settle_price_missing_roundtrip() -> anyhow::Result<()> {
     let (db, pool, _url) = setup_db().await?;
     common::ensure_l6_observability_columns(&pool).await?;
     common::ensure_cost_status_column(&pool).await?;
+    common::ensure_error_type_column(&pool).await?;
 
     let mut log = make_log(Some("price_missing"));
     log.request_id = "req-t3-post-settle".to_string();

@@ -16,7 +16,7 @@ mod common;
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_router::RouterLog;
 
-use common::{ensure_l6_observability_columns, setup_db};
+use common::{ensure_error_type_column, ensure_l6_observability_columns, setup_db};
 
 /// Build a minimal `RouterLog` for testing. Only `layer_decision` and
 /// `traffic_color` vary between tests; everything else uses defaults.
@@ -54,6 +54,7 @@ fn make_log(layer_decision: Option<&str>, traffic_color: Option<&str>) -> Router
         layer_decision: layer_decision.map(|s| s.to_string()),
         traffic_color: traffic_color.map(|s| s.to_string()),
         cost_status: None,
+        error_type: None,
         created_at: None,
     }
 }
@@ -64,6 +65,7 @@ fn make_log(layer_decision: Option<&str>, traffic_color: Option<&str>) -> Router
 async fn t1_insert_roundtrip_affinity_hit_yellow() -> anyhow::Result<()> {
     let (db, pool, _url) = setup_db().await?;
     ensure_l6_observability_columns(&pool).await?;
+    ensure_error_type_column(&pool).await?;
 
     let log = make_log(Some("affinity_hit"), Some("Y"));
     RouterDatabase::insert_log(&db, &log).await?;
@@ -84,6 +86,7 @@ async fn t1_insert_roundtrip_affinity_hit_yellow() -> anyhow::Result<()> {
 async fn t2_all_layer_decision_labels_roundtrip() -> anyhow::Result<()> {
     let (db, pool, _url) = setup_db().await?;
     ensure_l6_observability_columns(&pool).await?;
+    ensure_error_type_column(&pool).await?;
 
     let labels = [
         "affinity_hit",
@@ -125,6 +128,7 @@ async fn t2_all_layer_decision_labels_roundtrip() -> anyhow::Result<()> {
 async fn t3_traffic_color_gyr_roundtrip() -> anyhow::Result<()> {
     let (db, pool, _url) = setup_db().await?;
     ensure_l6_observability_columns(&pool).await?;
+    ensure_error_type_column(&pool).await?;
 
     let colors = ["G", "Y", "R"];
 

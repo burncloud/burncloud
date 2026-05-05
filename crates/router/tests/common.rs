@@ -208,6 +208,16 @@ pub async fn ensure_cost_status_column(pool: &AnyPool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Ensure the `router_logs` table has the `error_type` column added by
+/// migration 0014. Same pattern as `ensure_cost_status_column`.
+#[allow(dead_code)]
+pub async fn ensure_error_type_column(pool: &AnyPool) -> anyhow::Result<()> {
+    let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN error_type TEXT DEFAULT NULL")
+        .execute(pool)
+        .await; // ignore duplicate-column error
+    Ok(())
+}
+
 pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     // Use a unique temp file per test to avoid SQLite lock contention when tests run in parallel.
     let tmp = tempfile::NamedTempFile::new()?;

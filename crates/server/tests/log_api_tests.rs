@@ -65,6 +65,7 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
         layer_decision: None,
         traffic_color: None,
         cost_status: None,
+        error_type: None,
         created_at: None,
     };
 

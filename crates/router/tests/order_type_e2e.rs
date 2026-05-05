@@ -272,6 +272,8 @@ async fn t5b_layer_decision_and_traffic_color_db_roundtrip() -> anyhow::Result<(
     // back and assert both columns survive the round-trip.
     let (db, pool, _url) = setup_db().await?;
     common::ensure_l6_observability_columns(&pool).await?;
+    common::ensure_cost_status_column(&pool).await?;
+    common::ensure_error_type_column(&pool).await?;
 
     let log = RouterLog {
         id: 0,
@@ -306,6 +308,7 @@ async fn t5b_layer_decision_and_traffic_color_db_roundtrip() -> anyhow::Result<(
         layer_decision: Some("affinity_hit".to_string()),
         traffic_color: Some("Y".to_string()),
         cost_status: None,
+        error_type: None,
         created_at: None,
     };
     RouterDatabase::insert_log(&db, &log).await?;
@@ -349,6 +352,8 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
 
     let (db, pool, _url) = setup_db().await?;
     common::ensure_l6_observability_columns(&pool).await?;
+    common::ensure_cost_status_column(&pool).await?;
+    common::ensure_error_type_column(&pool).await?;
 
     // Seed channel_providers + channel_abilities so route_with_scheduler
     // can find candidates for the model.
@@ -507,6 +512,7 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
         layer_decision,
         traffic_color,
         cost_status: None,
+        error_type: None,
         created_at: None,
     };
     RouterDatabase::insert_log(&db_arc, &log).await?;
