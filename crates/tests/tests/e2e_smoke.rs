@@ -62,6 +62,7 @@ async fn login_user(username: &str, password: &str) -> (bool, String, Vec<String
 }
 
 #[tokio::test]
+#[ignore = "requires external infrastructure (running server + LLM backend)"]
 async fn e2e_smoke_v04() {
     let mut passed = 0u32;
     let mut failed = 0u32;
