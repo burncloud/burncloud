@@ -320,6 +320,7 @@ impl ChannelProviderModel {
 }
 
 /// Extract top-level string keys from a JSON object string, returning lowercase keys.
+/// Returns an empty list for empty objects, non-objects, or malformed JSON.
 fn extract_json_keys(json: &str) -> Vec<String> {
     let trimmed = json.trim();
     if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
@@ -329,12 +330,13 @@ fn extract_json_keys(json: &str) -> Vec<String> {
     if inner.trim().is_empty() {
         return Vec::new();
     }
+
     let mut keys = Vec::new();
-    let mut depth = 0i32;
     let mut in_string = false;
     let mut escape_next = false;
-    let mut current_key_start: Option<usize> = None;
-    // After a colon at depth 0, we're in the value position — skip strings until comma
+    let mut depth = 0usize;
+    let mut key_start = None;
+    // After a colon at depth 0, we're inside a value and should not capture strings as keys
     let mut in_value = false;
 
     for (i, ch) in inner.char_indices() {
@@ -342,45 +344,40 @@ fn extract_json_keys(json: &str) -> Vec<String> {
             escape_next = false;
             continue;
         }
-        if ch == '\\' {
+        if ch == '\\' && in_string {
             escape_next = true;
             continue;
         }
         if ch == '"' {
             if in_string {
-                if depth == 0 && !in_value {
-                    if let Some(start) = current_key_start.take() {
-                        let key: String = inner[start..i]
-                            .chars()
-                            .filter(|c| !c.is_whitespace())
-                            .collect();
-                        let key_lower = key.trim().to_lowercase();
-                        if !key_lower.is_empty() {
-                            keys.push(key_lower);
+                if depth == 0 && key_start.is_some() && !in_value {
+                    if let Some(start) = key_start.take() {
+                        let key = &inner[start + 1..i];
+                        if !key.is_empty() {
+                            keys.push(key.to_lowercase());
                         }
                     }
                 }
-                in_string = false;
-            } else {
-                in_string = true;
-                if depth == 0 && !in_value {
-                    current_key_start = Some(i + 1);
-                }
+            } else if depth == 0 && !in_value {
+                key_start = Some(i);
             }
-        } else if !in_string {
-            match ch {
-                '{' | '[' => depth += 1,
-                '}' | ']' => depth -= 1,
-                ':' if depth == 0 => {
-                    current_key_start = None;
-                    in_value = true;
-                }
-                ',' if depth == 0 => {
-                    current_key_start = None;
-                    in_value = false;
-                }
-                _ => {}
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        match ch {
+            '{' | '[' => depth += 1,
+            '}' | ']' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => {
+                in_value = true;
             }
+            ',' if depth == 0 => {
+                in_value = false;
+                key_start = None;
+            }
+            _ => {}
         }
     }
     keys

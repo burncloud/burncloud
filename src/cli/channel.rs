@@ -405,7 +405,11 @@ pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> 
     }
 
     if let Some(mapping) = args.get_one::<String>("model-mapping") {
-        channel.model_mapping = Some(mapping.clone());
+        if mapping.is_empty() {
+            channel.model_mapping = None;
+        } else {
+            channel.model_mapping = Some(mapping.clone());
+        }
     }
 
     // Save updates
