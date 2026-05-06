@@ -37,6 +37,29 @@ Client (Dioxus) → Server (axum) → Router (data plane)
 | 日志 | `log::info!` / `log::warn!` / `log::error!` | `eprintln!` / `println!` |
 | 错误类型 | `thiserror::Error` derive | 裸 `String` / `Box<dyn Error>` |
 
+## Upstream Policy（上游接入硬规则）
+
+BurnCloud 仅接入**可溯源的信誉平台**，禁止匿名/不可溯源的第三方中转。
+
+**准入标准**：客户能明确知道资源来路 + 平台有公开品牌和运营主体。
+
+| 类别 | 平台 | ChannelType | Base URL |
+|------|------|-------------|----------|
+| 官方直连 | Anthropic | 14 | `https://api.anthropic.com` |
+| 官方直连 | OpenAI | 1 | `https://api.openai.com` |
+| 官方直连 | 智谱AI (Zhipu) | 16 | `https://open.bigmodel.cn` |
+| 官方直连 | DeepSeek | 43 | `https://api.deepseek.com` |
+| 官方直连 | 阿里云百炼 (Ali) | 17 | `https://dashscope.aliyuncs.com` |
+| 官方直连 | 月之暗面 (Moonshot) | 25 | `https://api.moonshot.cn` |
+| 信誉聚合 | OpenRouter | 20 | `https://openrouter.ai/api/v1` |
+| 信誉聚合 | SiliconFlow | 40 | `https://api.siliconflow.cn/v1` |
+
+**禁止接入**：one-api、new-api 等自建匿名中转。代码中 `ChannelType::NewApi(58)` 为历史遗留，禁止新增此类渠道。
+
+**适用范围**：源代码、配置文件、环境变量示例、文档示例、测试用例、CI 脚本。
+
+新平台接入需满足准入标准并经 PR 评审。
+
 ---
 
 ## Service 两种模式

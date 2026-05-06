@@ -458,11 +458,25 @@ impl Default for UserService {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use burncloud_database::create_default_database;
+    use burncloud_database::create_database_with_url;
+
+    async fn test_db() -> burncloud_database::Result<Database> {
+        let path = format!("/tmp/burncloud_test_{}.db", uuid::Uuid::new_v4());
+        let url = format!("sqlite:///{}?mode=rwc", path);
+        let db = create_database_with_url(&url).await?;
+        // Clean up temp file when db is dropped
+        let path_clone = path.clone();
+        tokio::spawn(async move {
+            let _ = std::fs::remove_file(&path_clone);
+            let _ = std::fs::remove_file(format!("{}-shm", &path_clone));
+            let _ = std::fs::remove_file(format!("{}-wal", &path_clone));
+        });
+        Ok(db)
+    }
 
     #[tokio::test]
     async fn test_register_user() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = test_db().await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -493,7 +507,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_duplicate_user() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = test_db().await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -519,7 +533,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_success() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = test_db().await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -543,7 +557,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_wrong_password() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = test_db().await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -567,7 +581,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_not_found() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = test_db().await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
