@@ -270,9 +270,18 @@ impl ChannelProviderModel {
             .map(extract_json_keys)
             .unwrap_or_default();
 
+        // Collect model_mapping values so that requesting the upstream model name
+        // directly also routes to this channel
+        let mapping_values: Vec<String> = channel
+            .model_mapping
+            .as_deref()
+            .map(extract_json_values)
+            .unwrap_or_default();
+
         let mut all_models: Vec<String> = models
             .into_iter()
             .chain(mapping_keys)
+            .chain(mapping_values)
             .collect();
         all_models.sort();
         all_models.dedup();
@@ -321,66 +330,35 @@ impl ChannelProviderModel {
 
 /// Extract top-level string keys from a JSON object string, returning lowercase keys.
 /// Returns an empty list for empty objects, non-objects, or malformed JSON.
+#[allow(clippy::disallowed_types)]
 fn extract_json_keys(json: &str) -> Vec<String> {
-    let trimmed = json.trim();
-    if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
-        return Vec::new();
-    }
-    let inner = &trimmed[1..trimmed.len() - 1];
-    if inner.trim().is_empty() {
-        return Vec::new();
-    }
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .map(|obj| {
+            obj.keys()
+                .map(|k| k.to_lowercase())
+                .filter(|k| !k.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
-    let mut keys = Vec::new();
-    let mut in_string = false;
-    let mut escape_next = false;
-    let mut depth = 0usize;
-    let mut key_start = None;
-    // After a colon at depth 0, we're inside a value and should not capture strings as keys
-    let mut in_value = false;
-
-    for (i, ch) in inner.char_indices() {
-        if escape_next {
-            escape_next = false;
-            continue;
-        }
-        if ch == '\\' && in_string {
-            escape_next = true;
-            continue;
-        }
-        if ch == '"' {
-            if in_string {
-                if depth == 0 && key_start.is_some() && !in_value {
-                    if let Some(start) = key_start.take() {
-                        let key = &inner[start + 1..i];
-                        if !key.is_empty() {
-                            keys.push(key.to_lowercase());
-                        }
-                    }
-                }
-            } else if depth == 0 && !in_value {
-                key_start = Some(i);
-            }
-            in_string = !in_string;
-            continue;
-        }
-        if in_string {
-            continue;
-        }
-        match ch {
-            '{' | '[' => depth += 1,
-            '}' | ']' => depth = depth.saturating_sub(1),
-            ':' if depth == 0 => {
-                in_value = true;
-            }
-            ',' if depth == 0 => {
-                in_value = false;
-                key_start = None;
-            }
-            _ => {}
-        }
-    }
-    keys
+/// Extract top-level string values from a JSON object string, returning lowercase values.
+/// Returns an empty list for empty objects, non-objects, or malformed JSON.
+#[allow(clippy::disallowed_types)]
+fn extract_json_values(json: &str) -> Vec<String> {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .map(|obj| {
+            obj.values()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -397,7 +375,9 @@ mod tests {
     #[test]
     fn test_extract_json_keys_multiple() {
         let keys = extract_json_keys(r#"{"gpt-4o-mini": "gpt-4o", "gpt-4": "gpt-4o"}"#);
-        assert_eq!(keys, vec!["gpt-4o-mini", "gpt-4"]);
+        let mut sorted = keys;
+        sorted.sort();
+        assert_eq!(sorted, vec!["gpt-4", "gpt-4o-mini"]);
     }
 
     #[test]
@@ -417,5 +397,36 @@ mod tests {
     fn test_extract_json_keys_astron_mapping() {
         let keys = extract_json_keys(r#"{"astron-code": "astron-code-latest"}"#);
         assert_eq!(keys, vec!["astron-code"]);
+    }
+
+    #[test]
+    fn test_extract_json_values_basic() {
+        let values = extract_json_values(r#"{"gpt-4o-mini": "gpt-4o"}"#);
+        assert_eq!(values, vec!["gpt-4o"]);
+    }
+
+    #[test]
+    fn test_extract_json_values_multiple() {
+        let values = extract_json_values(r#"{"gpt-4o-mini": "gpt-4o", "gpt-4": "gpt-4o"}"#);
+        assert_eq!(values, vec!["gpt-4o", "gpt-4o"]);
+    }
+
+    #[test]
+    fn test_extract_json_values_empty() {
+        assert!(extract_json_values("{}").is_empty());
+        assert!(extract_json_values("").is_empty());
+        assert!(extract_json_values("not json").is_empty());
+    }
+
+    #[test]
+    fn test_extract_json_values_lowercase() {
+        let values = extract_json_values(r#"{"key": "GPT-4O"}"#);
+        assert_eq!(values, vec!["gpt-4o"]);
+    }
+
+    #[test]
+    fn test_extract_json_values_astron_mapping() {
+        let values = extract_json_values(r#"{"astron-code": "astron-code-latest"}"#);
+        assert_eq!(values, vec!["astron-code-latest"]);
     }
 }
