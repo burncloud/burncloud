@@ -299,9 +299,10 @@ impl From<i32> for ChannelType {
 
 /// Serde module for `model_mapping`: serializes the inner JSON string as a native
 /// JSON value (object/null) and deserializes from either a JSON string or object.
-/// On invalid JSON, serialize falls back to emitting the raw string instead of failing.
+/// On invalid JSON, serialize emits null instead of the raw string to preserve
+/// the API contract that model_mapping is always a JSON object or null.
 mod model_mapping_serde {
-    use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(opt: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -311,7 +312,7 @@ mod model_mapping_serde {
             None => serializer.serialize_none(),
             Some(s) => match serde_json::from_str::<serde_json::Value>(s) {
                 Ok(v) => v.serialize(serializer),
-                Err(_) => serializer.serialize_str(s),
+                Err(_) => serializer.serialize_none(),
             },
         }
     }

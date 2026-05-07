@@ -271,7 +271,12 @@ impl ChannelProviderModel {
             .unwrap_or_default();
 
         // Collect model_mapping values so that requesting the upstream model name
-        // directly also routes to this channel
+        // directly also routes to this channel.
+        // Note: values are lowercased here for channel_abilities routing lookup
+        // (get_candidates also lowercases its query). The runtime model_mapping
+        // substitution in proxy_logic uses the original-case value from the JSON
+        // object to preserve the exact model name expected by the upstream API.
+        // These two paths serve different purposes and are intentionally asymmetric.
         let mapping_values: Vec<String> = channel
             .model_mapping
             .as_deref()
@@ -337,7 +342,7 @@ fn extract_json_keys(json: &str) -> Vec<String> {
         .and_then(|v| v.as_object().cloned())
         .map(|obj| {
             obj.keys()
-                .map(|k| k.to_lowercase())
+                .map(|k| k.trim().to_lowercase())
                 .filter(|k| !k.is_empty())
                 .collect()
         })
