@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
-use burncloud_database::{create_default_database, Database, DatabaseError};
+use burncloud_database::{create_database_with_url, create_default_database, Database, DatabaseError};
 
 /// API compatibility and regression tests
 /// These tests ensure backward compatibility and API consistency
@@ -46,8 +46,10 @@ async fn test_database_creation_methods() {
 #[tokio::test]
 async fn test_database_operation_consistency() {
     // Test that all database types support the same operations consistently
+    // Use isolated temp-file databases to avoid interference from parallel tests
+    // or BURNCLOUD_FRESH_DB wiping the shared default file.
 
-    let databases = create_test_databases().await;
+    let databases = create_isolated_test_databases().await;
 
     for (db_type, db) in &databases {
         println!("Testing operations on {} database", db_type);
@@ -194,10 +196,11 @@ async fn test_error_type_consistency() {
 async fn test_backward_compatibility() {
     // Test that existing code patterns can be adapted to new API
 
+    // Use an isolated database to avoid interference from parallel tests
+    let db = create_isolated_db("backward_compat").await;
+
     // Pattern 1: Using default database (custom paths no longer supported)
-    // Test with default database instead
-    let default_db_result = Database::new().await;
-    if let Ok(path_db) = default_db_result {
+    if let Ok(path_db) = db {
         // Should work as before
         let result = path_db
             .execute_query("CREATE TABLE test (id INTEGER)")
@@ -209,7 +212,8 @@ async fn test_backward_compatibility() {
     }
 
     // Pattern 2: Default database usage (now simplified)
-    match Database::new().await {
+    let db2 = create_isolated_db("backward_compat2").await;
+    match db2 {
         Ok(default_db) => {
             let result = default_db
                 .execute_query("CREATE TABLE test (id INTEGER)")
@@ -261,7 +265,7 @@ async fn test_api_surface_completeness() {
 async fn test_database_connection_consistency() {
     // Test that DatabaseConnection behaves consistently across all database types
 
-    let databases = create_test_databases().await;
+    let databases = create_isolated_test_databases().await;
 
     for (db_type, db) in &databases {
         if let Ok(connection) = db.get_connection() {
@@ -290,20 +294,45 @@ async fn test_database_connection_consistency() {
 
 // Helper functions
 
-async fn create_test_databases() -> Vec<(String, Database)> {
+/// Create isolated test databases using unique temp files instead of the shared
+/// default database path. This prevents parallel test interference and
+/// BURNCLOUD_FRESH_DB from wiping a database that another test is using.
+async fn create_isolated_test_databases() -> Vec<(String, Database)> {
     let mut databases = vec![];
 
-    // Default location database
-    if let Ok(default_db) = Database::new().await {
-        databases.push(("default_location".to_string(), default_db));
+    if let Ok(db1) = create_isolated_db("ops_test_1").await {
+        databases.push(("isolated_1".to_string(), db1));
     }
 
-    // Create another default database instance for testing
-    if let Ok(default_db2) = create_default_database().await {
-        databases.push(("default_convenience".to_string(), default_db2));
+    if let Ok(db2) = create_isolated_db("ops_test_2").await {
+        databases.push(("isolated_2".to_string(), db2));
     }
 
     databases
+}
+
+/// Create a database at a unique temp-file path to avoid interference.
+fn create_isolated_db(label: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = burncloud_database::Result<Database>> + Send + '_>> {
+    Box::pin(async move {
+        let temp_dir = std::env::temp_dir();
+        let unique_id = std::process::id();
+        let db_path = temp_dir.join(format!("burncloud_test_{}_{}.db", unique_id, label));
+
+        // Clean up any leftover from a previous run
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
+
+        let normalized = db_path.to_string_lossy().replace('\\', "/");
+        let url = format!("sqlite:///{}?mode=rwc", normalized);
+
+        let db = create_database_with_url(&url).await?;
+
+        // Clean up the file when the database is dropped (best-effort)
+        // We rely on the caller to close the db first, then we remove in cleanup.
+
+        Ok(db)
+    })
 }
 
 async fn cleanup_test_databases(databases: Vec<(String, Database)>) {
