@@ -1,7 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
-use burncloud_database::{create_default_database, Database, DatabaseError, Result};
+mod common;
+
 use std::fs;
 use std::path::PathBuf;
+
+use burncloud_database::{create_database_with_url, DatabaseError, Result};
+use common::create_isolated_db;
 
 /// Integration tests for the default database location feature
 /// These tests focus on functional validation and real-world scenarios
@@ -9,115 +13,64 @@ use std::path::PathBuf;
 #[tokio::test]
 async fn test_create_default_database_end_to_end() {
     // Test the complete end-to-end workflow of creating a default database
-    let result = create_default_database().await;
+    let db = create_isolated_db("e2e").await;
 
-    match result {
-        Ok(db) => {
-            // Clean up any existing test data from previous runs
-            let _ = db.execute_query("DROP TABLE IF EXISTS test_table").await;
+    // Clean up any existing test data from previous runs
+    let _ = db.execute_query("DROP TABLE IF EXISTS test_table").await;
 
-            // Verify the database is functional by performing operations
-            let create_result = db
-                .execute_query(
-                    "CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)",
-                )
-                .await;
-            if let Err(e) = &create_result {
-                eprintln!("Failed to create table: {:?}", e);
-            }
-            assert!(create_result.is_ok(), "Should be able to create tables");
-
-            let insert_result = db
-                .execute_query("INSERT INTO test_table (name) VALUES ('test_data')")
-                .await;
-            assert!(insert_result.is_ok(), "Should be able to insert data");
-
-            // Verify data can be retrieved
-            #[derive(sqlx::FromRow)]
-            #[allow(dead_code)]
-            struct TestRow {
-                id: i64,
-                name: String,
-            }
-
-            let rows: Result<Vec<TestRow>> = db.fetch_all("SELECT id, name FROM test_table").await;
-            assert!(rows.is_ok(), "Should be able to fetch data");
-            let rows = rows.unwrap_or_else(|e| panic!("fetch_all failed: {e}"));
-            assert_eq!(rows.len(), 1, "Should have exactly one row");
-            assert_eq!(
-                rows[0].name, "test_data",
-                "Data should match what was inserted"
-            );
-
-            // Clean up
-            let _ = db.close().await;
-        }
-        Err(e) => {
-            // In environments where file database creation might fail,
-            // at least verify that it's a reasonable error
-            match e {
-                DatabaseError::PathResolution(_) => {
-                    println!(
-                        "Path resolution failed (acceptable in some environments): {}",
-                        e
-                    );
-                }
-                DatabaseError::DirectoryCreation(_) => {
-                    println!(
-                        "Directory creation failed (acceptable in some environments): {}",
-                        e
-                    );
-                }
-                DatabaseError::Connection(_) => {
-                    println!("Connection failed (acceptable in some environments): {}", e);
-                }
-                _ => panic!("Unexpected error type: {}", e),
-            }
-        }
+    // Verify the database is functional by performing operations
+    let create_result = db
+        .execute_query(
+            "CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT)",
+        )
+        .await;
+    if let Err(e) = &create_result {
+        eprintln!("Failed to create table: {:?}", e);
     }
+    assert!(create_result.is_ok(), "Should be able to create tables");
+
+    let insert_result = db
+        .execute_query("INSERT INTO test_table (name) VALUES ('test_data')")
+        .await;
+    assert!(insert_result.is_ok(), "Should be able to insert data");
+
+    // Verify data can be retrieved
+    #[derive(sqlx::FromRow)]
+    #[allow(dead_code)]
+    struct TestRow {
+        id: i64,
+        name: String,
+    }
+
+    let rows: Result<Vec<TestRow>> = db.fetch_all("SELECT id, name FROM test_table").await;
+    assert!(rows.is_ok(), "Should be able to fetch data");
+    let rows = rows.unwrap_or_else(|e| panic!("fetch_all failed: {e}"));
+    assert_eq!(rows.len(), 1, "Should have exactly one row");
+    assert_eq!(
+        rows[0].name, "test_data",
+        "Data should match what was inserted"
+    );
+
+    let _ = db.close().await;
 }
 
 #[tokio::test]
 async fn test_database_initialization_patterns() {
     // Test different database initialization patterns (since new_with_path is removed)
 
-    // Test Database::new() - should create and initialize with default path
-    let db_initialized_result = Database::new().await;
-    match db_initialized_result {
-        Ok(db) => {
-            // Should be initialized and functional
-            let connection_result = db.get_connection();
-            assert!(connection_result.is_ok(), "Database should be initialized");
+    // Test create_isolated_db - should create and initialize with isolated path
+    let db = create_isolated_db("init_patterns_1").await;
+    let connection_result = db.get_connection();
+    assert!(connection_result.is_ok(), "Database should be initialized");
+    let query_result = db.execute_query("SELECT 1 as test").await;
+    assert!(query_result.is_ok(), "Should be able to execute queries");
+    let _ = db.close().await;
 
-            // Should be able to perform operations
-            let query_result = db.execute_query("SELECT 1 as test").await;
-            assert!(query_result.is_ok(), "Should be able to execute queries");
-
-            let _ = db.close().await;
-        }
-        Err(e) => {
-            println!(
-                "Database::new() failed (acceptable in some environments): {}",
-                e
-            );
-        }
-    }
-
-    // Test create_default_database() convenience function
-    let convenience_result = create_default_database().await;
-    match convenience_result {
-        Ok(db) => {
-            let query_result = db.execute_query("SELECT 1 as test").await;
-            assert!(query_result.is_ok(), "Convenience function should work");
-            let _ = db.close().await;
-        }
-        Err(e) => {
-            println!(
-                "create_default_database() failed (acceptable in some environments): {}",
-                e
-            );
-        }
-    }
+    // Test second isolated instance
+    let db2 = create_isolated_db("init_patterns_2").await;
+    let query_result = db2.execute_query("SELECT 1 as test").await;
+    assert!(query_result.is_ok(), "Second instance should work");
+    let _ = db2.close().await;
 }
 
 #[tokio::test]
@@ -164,151 +117,106 @@ async fn test_platform_specific_paths() {
 #[tokio::test]
 async fn test_directory_creation_and_permissions() {
     // Test that directories are created properly with correct permissions
-    let db_result = Database::new().await;
+    let db = create_isolated_db("dir_perms").await;
 
-    match db_result {
-        Ok(db) => {
-            // If database creation succeeded, verify the directory exists
-            if let Ok(default_path) = get_test_default_path() {
-                if let Some(parent_dir) = default_path.parent() {
-                    assert!(
-                        parent_dir.exists(),
-                        "Parent directory should have been created"
-                    );
+    // Verify the database is functional
+    let query_result = db.execute_query("SELECT 1 as test").await;
+    assert!(query_result.is_ok(), "Database should be functional");
 
-                    // Test that we can write to the directory
-                    let test_file = parent_dir.join("test_write.tmp");
-                    let write_result = fs::write(&test_file, "test");
-
-                    if write_result.is_ok() {
-                        // Clean up test file
-                        let _ = fs::remove_file(&test_file);
-                    }
-
-                    // Clean up
-                    let _ = db.close().await;
-                }
-            }
-        }
-        Err(e) => {
-            println!(
-                "Database creation failed (acceptable in some environments): {}",
-                e
-            );
-        }
+    // Test that we can write to the temp directory
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_write.tmp");
+    let write_result = fs::write(&test_file, "test");
+    if write_result.is_ok() {
+        let _ = fs::remove_file(&test_file);
     }
+
+    let _ = db.close().await;
 }
 
 #[tokio::test]
 async fn test_multiple_database_instances() {
-    // Test that multiple default database instances can coexist
-    let db1_result = Database::new().await;
-    let db2_result = Database::new().await;
+    // Test that multiple isolated database instances can coexist
+    let db1 = create_isolated_db("multi_1").await;
+    let db2 = create_isolated_db("multi_2").await;
 
-    match (db1_result, db2_result) {
-        (Ok(db1), Ok(db2)) => {
-            // Both databases should be functional
-            let result1 = db1.execute_query("SELECT 1 as test").await;
-            let result2 = db2.execute_query("SELECT 1 as test").await;
+    // Both databases should be functional
+    let result1 = db1.execute_query("SELECT 1 as test").await;
+    let result2 = db2.execute_query("SELECT 1 as test").await;
 
-            assert!(result1.is_ok(), "First database should be functional");
-            assert!(result2.is_ok(), "Second database should be functional");
+    assert!(result1.is_ok(), "First database should be functional");
+    assert!(result2.is_ok(), "Second database should be functional");
 
-            // Clean up
-            let _ = db1.close().await;
-            let _ = db2.close().await;
-        }
-        _ => {
-            println!("Multiple database creation failed (acceptable in some environments)");
-        }
-    }
+    let _ = db1.close().await;
+    let _ = db2.close().await;
 }
 
 #[tokio::test]
 async fn test_database_persistence() {
-    // Test that data persists between database instances
+    // Test that data persists between database instances using the same file
     let test_value = "persistent_test_data";
 
-    // Create first database instance and insert data
-    let db1_result = Database::new().await;
-    if let Ok(db1) = db1_result {
-        let create_result = db1
-            .execute_query(
-                "CREATE TABLE IF NOT EXISTS persistence_test (id INTEGER PRIMARY KEY, value TEXT)",
-            )
-            .await;
+    // Build a unique path but do NOT delete it on the second open,
+    // since create_isolated_db always removes the file first.
+    let temp_dir = std::env::temp_dir();
+    let pid = std::process::id();
+    let db_path = temp_dir.join(format!("burncloud_test_{}_persistence.db", pid));
+    // Clean up only before the first creation
+    let _ = fs::remove_file(&db_path);
+    let _ = fs::remove_file(db_path.with_extension("db-wal"));
+    let _ = fs::remove_file(db_path.with_extension("db-shm"));
+    let normalized = db_path.to_string_lossy().replace('\\', "/");
+    let url = format!("sqlite:///{}?mode=rwc", normalized);
 
-        if create_result.is_ok() {
-            let insert_result = db1
-                .execute_query(&format!(
-                    "INSERT INTO persistence_test (value) VALUES ('{}')",
-                    test_value
-                ))
-                .await;
+    let db1 = create_database_with_url(&url).await.unwrap();
+    let create_result = db1
+        .execute_query(
+            "CREATE TABLE IF NOT EXISTS persistence_test (id INTEGER PRIMARY KEY, value TEXT)",
+        )
+        .await;
+    assert!(create_result.is_ok(), "Should be able to create table");
 
-            if insert_result.is_ok() {
-                let _ = db1.close().await;
+    let insert_result = db1
+        .execute_query(&format!(
+            "INSERT INTO persistence_test (value) VALUES ('{}')",
+            test_value
+        ))
+        .await;
+    assert!(insert_result.is_ok(), "Should be able to insert data");
+    let _ = db1.close().await;
 
-                // Create second database instance and verify data exists
-                let db2_result = Database::new().await;
-                if let Ok(db2) = db2_result {
-                    #[derive(sqlx::FromRow)]
-                    struct PersistenceRow {
-                        value: String,
-                    }
-
-                    let rows: Result<Vec<PersistenceRow>> =
-                        db2.fetch_all("SELECT value FROM persistence_test").await;
-
-                    if let Ok(rows) = rows {
-                        assert!(!rows.is_empty(), "Data should persist between instances");
-                        assert_eq!(
-                            rows[0].value, test_value,
-                            "Data should match what was inserted"
-                        );
-                        println!("✓ Data persistence verified");
-                    }
-
-                    let _ = db2.close().await;
-                }
-            }
-        }
+    // Re-open the same file (no delete!) and verify data exists
+    let db2 = create_database_with_url(&url).await.unwrap();
+    #[derive(sqlx::FromRow)]
+    struct PersistenceRow {
+        value: String,
     }
+
+    let rows: Result<Vec<PersistenceRow>> =
+        db2.fetch_all("SELECT value FROM persistence_test").await;
+    assert!(rows.is_ok(), "Should be able to fetch data");
+    let rows = rows.unwrap_or_else(|e| panic!("fetch_all failed: {e}"));
+    assert!(!rows.is_empty(), "Data should persist between instances");
+    assert_eq!(
+        rows[0].value, test_value,
+        "Data should match what was inserted"
+    );
+    println!("✓ Data persistence verified");
+    let _ = db2.close().await;
 }
 
 #[tokio::test]
 async fn test_backward_compatibility() {
-    // Test that default database APIs work consistently
-    // Since new_with_path is removed, test with default database patterns
+    // Test that isolated database APIs work consistently
+    let db1 = create_isolated_db("compat_1").await;
+    let db2 = create_isolated_db("compat_2").await;
 
-    // Test default database creation
-    let default_db_result = Database::new().await;
-    if let Ok(default_db) = default_db_result {
-        let query_result = default_db.execute_query("SELECT 1 as test").await;
-        assert!(
-            query_result.is_ok(),
-            "Default database should be functional"
-        );
-        let _ = default_db.close().await;
-    }
-
-    // Test that multiple database instances work independently
-    let db1_result = Database::new().await;
-    let db2_result = create_default_database().await;
-
-    match (db1_result, db2_result) {
-        (Ok(db1), Ok(db2)) => {
-            let query1 = db1.execute_query("SELECT 1 as test").await;
-            let query2 = db2.execute_query("SELECT 1 as test").await;
-            assert!(query1.is_ok(), "First database should be functional");
-            assert!(query2.is_ok(), "Second database should be functional");
-            let _ = db1.close().await;
-            let _ = db2.close().await;
-        }
-        _ => {
-            println!("Multiple database creation scenarios tested (some failures acceptable in test environments)");
-        }
-    }
+    let query1 = db1.execute_query("SELECT 1 as test").await;
+    let query2 = db2.execute_query("SELECT 1 as test").await;
+    assert!(query1.is_ok(), "First database should be functional");
+    assert!(query2.is_ok(), "Second database should be functional");
+    let _ = db1.close().await;
+    let _ = db2.close().await;
 }
 
 #[test]
@@ -360,32 +268,19 @@ fn test_error_handling_scenarios() {
 
 #[tokio::test]
 async fn test_api_consistency() {
-    // Test that all database creation APIs follow consistent patterns
+    // Test that isolated database instances have consistent API behavior
+    let db1 = create_isolated_db("api_cons_1").await;
+    let db2 = create_isolated_db("api_cons_2").await;
 
-    // Test default path database (main API now)
-    let default_db_result = Database::new().await;
-    match default_db_result {
-        Ok(default_db) => {
-            // Should be initialized and functional
-            println!("✓ Default database created and initialized successfully");
-            let _ = default_db.close().await;
-        }
-        Err(e) => {
-            println!("Default database creation failed (acceptable): {}", e);
-        }
-    }
+    // Both should support the same operations
+    let query1 = db1.execute_query("SELECT 1 as test").await;
+    let query2 = db2.execute_query("SELECT 1 as test").await;
 
-    // Test convenience function for consistency
-    let convenience_result = create_default_database().await;
-    match convenience_result {
-        Ok(default_db) => {
-            println!("✓ Convenience function works consistently");
-            let _ = default_db.close().await;
-        }
-        Err(e) => {
-            println!("Convenience function failed (acceptable): {}", e);
-        }
-    }
+    assert!(query1.is_ok(), "First database should support queries");
+    assert!(query2.is_ok(), "Second database should support queries");
+
+    let _ = db1.close().await;
+    let _ = db2.close().await;
 }
 
 // Helper function to get the default path for testing

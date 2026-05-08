@@ -1,5 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
-use burncloud_database::{create_database_with_url, create_default_database, Database, DatabaseError};
+mod common;
+
+use burncloud_database::{create_default_database, Database, DatabaseError};
+use common::create_isolated_db;
 
 /// API compatibility and regression tests
 /// These tests ensure backward compatibility and API consistency
@@ -49,7 +52,9 @@ async fn test_database_operation_consistency() {
     // Use isolated temp-file databases to avoid interference from parallel tests
     // or BURNCLOUD_FRESH_DB wiping the shared default file.
 
-    let databases = create_isolated_test_databases().await;
+    let db1 = create_isolated_db("ops_test_1").await;
+    let db2 = create_isolated_db("ops_test_2").await;
+    let databases = vec![("isolated_1".to_string(), db1), ("isolated_2".to_string(), db2)];
 
     for (db_type, db) in &databases {
         println!("Testing operations on {} database", db_type);
@@ -149,7 +154,10 @@ async fn test_database_operation_consistency() {
     }
 
     // Clean up
-    cleanup_test_databases(databases).await;
+    for (db_type, db) in databases {
+        let _ = db.close().await;
+        println!("✓ Cleaned up {} database", db_type);
+    }
 
     println!("✓ All database types support consistent operations");
 }
@@ -265,7 +273,9 @@ async fn test_api_surface_completeness() {
 async fn test_database_connection_consistency() {
     // Test that DatabaseConnection behaves consistently across all database types
 
-    let databases = create_isolated_test_databases().await;
+    let db1 = create_isolated_db("conn_test_1").await;
+    let db2 = create_isolated_db("conn_test_2").await;
+    let databases = vec![("isolated_1".to_string(), db1), ("isolated_2".to_string(), db2)];
 
     for (db_type, db) in &databases {
         if let Ok(connection) = db.get_connection() {
@@ -289,53 +299,6 @@ async fn test_database_connection_consistency() {
         }
     }
 
-    cleanup_test_databases(databases).await;
-}
-
-// Helper functions
-
-/// Create isolated test databases using unique temp files instead of the shared
-/// default database path. This prevents parallel test interference and
-/// BURNCLOUD_FRESH_DB from wiping a database that another test is using.
-async fn create_isolated_test_databases() -> Vec<(String, Database)> {
-    let mut databases = vec![];
-
-    if let Ok(db1) = create_isolated_db("ops_test_1").await {
-        databases.push(("isolated_1".to_string(), db1));
-    }
-
-    if let Ok(db2) = create_isolated_db("ops_test_2").await {
-        databases.push(("isolated_2".to_string(), db2));
-    }
-
-    databases
-}
-
-/// Create a database at a unique temp-file path to avoid interference.
-fn create_isolated_db(label: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = burncloud_database::Result<Database>> + Send + '_>> {
-    Box::pin(async move {
-        let temp_dir = std::env::temp_dir();
-        let unique_id = std::process::id();
-        let db_path = temp_dir.join(format!("burncloud_test_{}_{}.db", unique_id, label));
-
-        // Clean up any leftover from a previous run
-        let _ = std::fs::remove_file(&db_path);
-        let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
-        let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
-
-        let normalized = db_path.to_string_lossy().replace('\\', "/");
-        let url = format!("sqlite:///{}?mode=rwc", normalized);
-
-        let db = create_database_with_url(&url).await?;
-
-        // Clean up the file when the database is dropped (best-effort)
-        // We rely on the caller to close the db first, then we remove in cleanup.
-
-        Ok(db)
-    })
-}
-
-async fn cleanup_test_databases(databases: Vec<(String, Database)>) {
     for (db_type, db) in databases {
         let _ = db.close().await;
         println!("✓ Cleaned up {} database", db_type);
