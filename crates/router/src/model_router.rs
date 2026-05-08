@@ -139,9 +139,21 @@ impl ModelRouter {
                             resolved_model = stripped;
                             p
                         }
-                        None => return Ok(Vec::new()),
+                        None => {
+                            tracing::warn!(
+                                "No candidates for model '{}' in group '{}' — \
+                                 channel_abilities may be missing (date-suffix fallback also missed)",
+                                model_lower, group_lower
+                            );
+                            return Ok(Vec::new());
+                        }
                     }
                 } else {
+                    tracing::warn!(
+                        "No candidates for model '{}' in group '{}' — \
+                         channel_abilities may be missing (no date suffix to strip)",
+                        model_lower, group_lower
+                    );
                     return Ok(Vec::new());
                 }
             }
