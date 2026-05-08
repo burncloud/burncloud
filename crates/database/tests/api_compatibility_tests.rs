@@ -52,8 +52,8 @@ async fn test_database_operation_consistency() {
     // Use isolated temp-file databases to avoid interference from parallel tests
     // or BURNCLOUD_FRESH_DB wiping the shared default file.
 
-    let db1 = create_isolated_db("ops_test_1").await;
-    let db2 = create_isolated_db("ops_test_2").await;
+    let db1 = create_isolated_db("ops_test_1").await.unwrap();
+    let db2 = create_isolated_db("ops_test_2").await.unwrap();
     let databases = vec![("isolated_1".to_string(), db1), ("isolated_2".to_string(), db2)];
 
     for (db_type, db) in &databases {
@@ -273,8 +273,8 @@ async fn test_api_surface_completeness() {
 async fn test_database_connection_consistency() {
     // Test that DatabaseConnection behaves consistently across all database types
 
-    let db1 = create_isolated_db("conn_test_1").await;
-    let db2 = create_isolated_db("conn_test_2").await;
+    let db1 = create_isolated_db("conn_test_1").await.unwrap();
+    let db2 = create_isolated_db("conn_test_2").await.unwrap();
     let databases = vec![("isolated_1".to_string(), db1), ("isolated_2".to_string(), db2)];
 
     for (db_type, db) in &databases {

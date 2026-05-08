@@ -13,7 +13,7 @@ use common::create_isolated_db;
 #[tokio::test]
 async fn test_create_default_database_end_to_end() {
     // Test the complete end-to-end workflow of creating a default database
-    let db = create_isolated_db("e2e").await;
+    let db = create_isolated_db("e2e").await.unwrap();
 
     // Clean up any existing test data from previous runs
     let _ = db.execute_query("DROP TABLE IF EXISTS test_table").await;
@@ -59,7 +59,7 @@ async fn test_database_initialization_patterns() {
     // Test different database initialization patterns (since new_with_path is removed)
 
     // Test create_isolated_db - should create and initialize with isolated path
-    let db = create_isolated_db("init_patterns_1").await;
+    let db = create_isolated_db("init_patterns_1").await.unwrap();
     let connection_result = db.get_connection();
     assert!(connection_result.is_ok(), "Database should be initialized");
     let query_result = db.execute_query("SELECT 1 as test").await;
@@ -67,7 +67,7 @@ async fn test_database_initialization_patterns() {
     let _ = db.close().await;
 
     // Test second isolated instance
-    let db2 = create_isolated_db("init_patterns_2").await;
+    let db2 = create_isolated_db("init_patterns_2").await.unwrap();
     let query_result = db2.execute_query("SELECT 1 as test").await;
     assert!(query_result.is_ok(), "Second instance should work");
     let _ = db2.close().await;
@@ -117,7 +117,7 @@ async fn test_platform_specific_paths() {
 #[tokio::test]
 async fn test_directory_creation_and_permissions() {
     // Test that directories are created properly with correct permissions
-    let db = create_isolated_db("dir_perms").await;
+    let db = create_isolated_db("dir_perms").await.unwrap();
 
     // Verify the database is functional
     let query_result = db.execute_query("SELECT 1 as test").await;
@@ -137,8 +137,8 @@ async fn test_directory_creation_and_permissions() {
 #[tokio::test]
 async fn test_multiple_database_instances() {
     // Test that multiple isolated database instances can coexist
-    let db1 = create_isolated_db("multi_1").await;
-    let db2 = create_isolated_db("multi_2").await;
+    let db1 = create_isolated_db("multi_1").await.unwrap();
+    let db2 = create_isolated_db("multi_2").await.unwrap();
 
     // Both databases should be functional
     let result1 = db1.execute_query("SELECT 1 as test").await;
@@ -208,8 +208,8 @@ async fn test_database_persistence() {
 #[tokio::test]
 async fn test_backward_compatibility() {
     // Test that isolated database APIs work consistently
-    let db1 = create_isolated_db("compat_1").await;
-    let db2 = create_isolated_db("compat_2").await;
+    let db1 = create_isolated_db("compat_1").await.unwrap();
+    let db2 = create_isolated_db("compat_2").await.unwrap();
 
     let query1 = db1.execute_query("SELECT 1 as test").await;
     let query2 = db2.execute_query("SELECT 1 as test").await;
@@ -269,8 +269,8 @@ fn test_error_handling_scenarios() {
 #[tokio::test]
 async fn test_api_consistency() {
     // Test that isolated database instances have consistent API behavior
-    let db1 = create_isolated_db("api_cons_1").await;
-    let db2 = create_isolated_db("api_cons_2").await;
+    let db1 = create_isolated_db("api_cons_1").await.unwrap();
+    let db2 = create_isolated_db("api_cons_2").await.unwrap();
 
     // Both should support the same operations
     let query1 = db1.execute_query("SELECT 1 as test").await;
