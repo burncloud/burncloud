@@ -317,6 +317,10 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
     println!("  Priority:    {}", channel.priority);
     println!("  Weight:      {}", channel.weight);
     println!("  Used Quota:  {}", channel.used_quota);
+    println!(
+        "  Model Mapping: {}",
+        channel.model_mapping.as_deref().unwrap_or("N/A")
+    );
 
     Ok(())
 }

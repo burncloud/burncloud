@@ -2058,6 +2058,39 @@ async fn proxy_logic(
                 }
             }
 
+            // Apply model_mapping: replace the model name in the passthrough body
+            // with the mapped value so the upstream provider receives the correct model name.
+            if let Some(ref mapping_str) = upstream.model_mapping {
+                if let Ok(serde_json::Value::Object(mapping)) =
+                    serde_json::from_str::<serde_json::Value>(mapping_str)
+                {
+                    if let Some(serde_json::Value::String(ref model)) =
+                        passthrough_body.get("model").cloned()
+                    {
+                        let model_lower = model.to_lowercase();
+                        if let Some(mapped) = mapping
+                            .keys()
+                            .find(|k| k.to_lowercase() == model_lower)
+                            .and_then(|k| mapping.get(k))
+                            .and_then(|v| v.as_str())
+                        {
+                            if let serde_json::Value::Object(ref mut body_map) = passthrough_body {
+                                body_map.insert(
+                                    "model".to_string(),
+                                    serde_json::Value::String(mapped.to_string()),
+                                );
+                                tracing::debug!(
+                                    "Applied model_mapping (passthrough) for {}: {} -> {}",
+                                    upstream.name,
+                                    model,
+                                    mapped
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
             // Apply header_override
             let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
 
