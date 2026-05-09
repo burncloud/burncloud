@@ -43,7 +43,8 @@ __pycache__
 /home-current.jpeg
 /.entire
 /scripts
-/*.db-shm 
+/*.db-shm
+*.db-wal
 e2e-screenshots
 .screenshots
 
