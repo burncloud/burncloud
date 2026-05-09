@@ -430,27 +430,37 @@ pub async fn create_router_app(
     // Auto-repair channel_abilities at startup: ensure every enabled channel
     // has complete abilities rows. Handles DB migration gaps and channels
     // re-enabled outside the update path.
-    match ChannelProviderModel::list(&db, 10000, 0).await {
-        Ok(channels) => {
-            let enabled: Vec<_> = channels.iter().filter(|c| c.status == 1).collect();
-            let enabled_count = enabled.len();
-            for channel in enabled {
-                if let Err(e) = ChannelProviderModel::sync_abilities(&db, channel).await {
-                    tracing::warn!(
-                        "startup abilities repair: channel {} sync failed: {e}",
-                        channel.id
-                    );
-                }
+    // Paginated fetch: 1000 per batch so channels beyond 10k are not silently skipped.
+    let page_size: i32 = 1000;
+    let mut offset: i32 = 0;
+    let mut total_enabled: usize = 0;
+    loop {
+        let batch = match ChannelProviderModel::list(&db, page_size, offset).await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!("startup abilities repair: failed to list channels at offset {offset}: {e}");
+                break;
             }
-            tracing::info!(
-                "startup abilities repair: checked {} enabled channels",
-                enabled_count
-            );
+        };
+        if batch.is_empty() {
+            break;
         }
-        Err(e) => {
-            tracing::warn!("startup abilities repair: failed to list channels: {e}");
+        let enabled: Vec<_> = batch.iter().filter(|c| c.status == 1).collect();
+        total_enabled += enabled.len();
+        for channel in enabled {
+            if let Err(e) = ChannelProviderModel::sync_abilities(&db, channel).await {
+                tracing::warn!(
+                    "startup abilities repair: channel {} sync failed: {e}",
+                    channel.id
+                );
+            }
         }
+        offset += page_size;
     }
+    tracing::info!(
+        "startup abilities repair: checked {} enabled channels",
+        total_enabled
+    );
 
     // Channel State Tracker for health monitoring
     let channel_state_tracker = Arc::new(ChannelStateTracker::new());
