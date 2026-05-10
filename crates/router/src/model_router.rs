@@ -271,12 +271,17 @@ impl ModelRouter {
                 let raw = price.input_price.saturating_add(price.output_price);
                 let nano = match burncloud_common::Currency::from_str(&price.currency) {
                     Ok(curr) if curr != burncloud_common::Currency::USD => {
-                        let usd = exchange_rate.convert(
+                        match exchange_rate.convert(
                             raw as f64,
                             curr,
                             burncloud_common::Currency::USD,
-                        );
-                        usd as i64
+                        ) {
+                            Ok(usd) => usd as i64,
+                            Err(e) => {
+                                tracing::warn!("Currency conversion failed: {e}, using raw amount");
+                                raw
+                            }
+                        }
                     }
                     _ => raw,
                 };

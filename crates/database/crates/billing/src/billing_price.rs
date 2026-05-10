@@ -206,6 +206,7 @@ impl BillingPriceModel {
     }
 
     /// Get all prices for a model across all currencies
+    /// `region = None` is normalized to `""` to match rows stored by `upsert()`.
     pub async fn get_all_currencies(
         db: &Database,
         model: &str,
@@ -213,6 +214,8 @@ impl BillingPriceModel {
     ) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        // upsert() normalises None → ""; queries must use the same convention.
+        let region_key = region.unwrap_or("");
 
         let sql = if is_postgres {
             r#"SELECT id, model, currency, input_price, output_price,
@@ -227,7 +230,7 @@ impl BillingPriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = $1 AND region IS NOT DISTINCT FROM $2
+               FROM billing_prices WHERE model = $1 AND region = $2
                ORDER BY currency"#
         } else {
             r#"SELECT id, model, currency, input_price, output_price,
@@ -242,21 +245,20 @@ impl BillingPriceModel {
                       supports_vision, supports_function_calling,
                       voices_pricing, video_pricing, asr_pricing, realtime_pricing, model_type,
                       synced_at, created_at, updated_at
-               FROM billing_prices WHERE model = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+               FROM billing_prices WHERE model = ? AND region = ?
                ORDER BY currency"#
         };
 
         let prices = if is_postgres {
             sqlx::query_as(sql)
                 .bind(model)
-                .bind(region)
+                .bind(region_key)
                 .fetch_all(conn.pool())
                 .await?
         } else {
             sqlx::query_as(sql)
                 .bind(model)
-                .bind(region)
-                .bind(region)
+                .bind(region_key)
                 .fetch_all(conn.pool())
                 .await?
         };
@@ -265,6 +267,7 @@ impl BillingPriceModel {
     }
 
     /// List all prices with pagination
+    /// `region = None` is normalized to `""` to match rows stored by `upsert()`.
     pub async fn list(
         db: &Database,
         limit: i32,
@@ -274,6 +277,8 @@ impl BillingPriceModel {
     ) -> Result<Vec<Price>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        // upsert() normalises None → ""; queries must use the same convention.
+        let region_key = region.unwrap_or("");
 
         let base_select = r#"SELECT id, model, currency, input_price, output_price,
                               cache_read_input_price, cache_creation_input_price,
@@ -288,17 +293,17 @@ impl BillingPriceModel {
                               synced_at, created_at, updated_at"#;
 
         let prices = match (currency, region) {
-            (Some(curr), Some(reg)) => {
+            (Some(curr), Some(_)) => {
                 // Filter by both currency and region
                 let sql = if is_postgres {
                     &format!(
-                        r#"{} FROM billing_prices WHERE currency = $1 AND region IS NOT DISTINCT FROM $2
+                        r#"{} FROM billing_prices WHERE currency = $1 AND region = $2
                        ORDER BY model LIMIT $3 OFFSET $4"#,
                         base_select
                     )
                 } else {
                     &format!(
-                        r#"{} FROM billing_prices WHERE currency = ? AND (region = ? OR (region IS NULL AND ? IS NULL))
+                        r#"{} FROM billing_prices WHERE currency = ? AND region = ?
                        ORDER BY model LIMIT ? OFFSET ?"#,
                         base_select
                     )
@@ -306,7 +311,7 @@ impl BillingPriceModel {
                 if is_postgres {
                     sqlx::query_as(sql)
                         .bind(curr)
-                        .bind(reg)
+                        .bind(region_key)
                         .bind(limit)
                         .bind(offset)
                         .fetch_all(conn.pool())
@@ -314,8 +319,7 @@ impl BillingPriceModel {
                 } else {
                     sqlx::query_as(sql)
                         .bind(curr)
-                        .bind(reg)
-                        .bind(reg)
+                        .bind(region_key)
                         .bind(limit)
                         .bind(offset)
                         .fetch_all(conn.pool())
@@ -344,32 +348,31 @@ impl BillingPriceModel {
                     .fetch_all(conn.pool())
                     .await?
             }
-            (None, Some(reg)) => {
+            (None, Some(_)) => {
                 // Filter by region only
                 let sql = if is_postgres {
                     &format!(
-                        r#"{} FROM billing_prices WHERE region IS NOT DISTINCT FROM $1
+                        r#"{} FROM billing_prices WHERE region = $1
                        ORDER BY model, currency LIMIT $2 OFFSET $3"#,
                         base_select
                     )
                 } else {
                     &format!(
-                        r#"{} FROM billing_prices WHERE (region = ? OR (region IS NULL AND ? IS NULL))
+                        r#"{} FROM billing_prices WHERE region = ?
                        ORDER BY model, currency LIMIT ? OFFSET ?"#,
                         base_select
                     )
                 };
                 if is_postgres {
                     sqlx::query_as(sql)
-                        .bind(reg)
+                        .bind(region_key)
                         .bind(limit)
                         .bind(offset)
                         .fetch_all(conn.pool())
                         .await?
                 } else {
                     sqlx::query_as(sql)
-                        .bind(reg)
-                        .bind(reg)
+                        .bind(region_key)
                         .bind(limit)
                         .bind(offset)
                         .fetch_all(conn.pool())
@@ -804,13 +807,14 @@ impl BillingPriceModel {
             }
             None => {
                 let sql = if is_postgres {
-                    "DELETE FROM billing_prices WHERE model = $1 AND currency = $2 AND region IS NULL"
+                    "DELETE FROM billing_prices WHERE model = $1 AND currency = $2 AND region = $3"
                 } else {
-                    "DELETE FROM billing_prices WHERE model = ? AND currency = ? AND region IS NULL"
+                    "DELETE FROM billing_prices WHERE model = ? AND currency = ? AND region = ?"
                 };
                 sqlx::query(sql)
                     .bind(model)
                     .bind(currency)
+                    .bind("")
                     .execute(conn.pool())
                     .await?
             }

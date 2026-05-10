@@ -349,9 +349,15 @@ pub struct Ability {
     pub group: String,
     pub model: String,
     pub channel_id: i32,
-    pub enabled: bool,
+    pub enabled: i32,
     pub priority: i64,
     pub weight: i32,
+}
+
+impl Ability {
+    pub fn enabled_bool(&self) -> bool {
+        self.enabled != 0
+    }
 }
 
 /// Spec-aligned alias: `channel_abilities` row type.
@@ -418,7 +424,7 @@ pub struct ProtocolConfig {
     /// API version string (e.g., "2024-02-01", "v1")
     pub api_version: String,
     /// Whether this is the default config for the channel type
-    pub is_default: bool,
+    pub is_default: i32,
     /// Chat completions endpoint (supports placeholders like {deployment_id})
     pub chat_endpoint: Option<String>,
     /// Embeddings endpoint
@@ -443,7 +449,7 @@ impl Default for ProtocolConfig {
             id: 0,
             channel_type: 1, // OpenAI
             api_version: "default".to_string(),
-            is_default: true,
+            is_default: 1,
             chat_endpoint: Some("/v1/chat/completions".to_string()),
             embed_endpoint: Some("/v1/embeddings".to_string()),
             models_endpoint: Some("/v1/models".to_string()),

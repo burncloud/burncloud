@@ -469,9 +469,11 @@ impl UserDatabase {
                     .bind(currency)
                     .bind(&recharge.description)
                     .execute(conn.pool())
-                    .await?
-                    .last_insert_id()
-                    .unwrap_or(0) as i32
+                    .await?;
+                let id: i32 = sqlx::query_scalar("SELECT last_insert_rowid()")
+                    .fetch_one(conn.pool())
+                    .await?;
+                id
             }
             "postgres" => {
                 sqlx::query("INSERT INTO user_recharges (user_id, amount, currency, description) VALUES ($1, $2, $3, $4) RETURNING id")

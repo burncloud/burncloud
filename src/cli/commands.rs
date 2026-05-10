@@ -638,6 +638,13 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("user-id")
                                 .long("user-id")
                                 .help("Filter by user ID"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
                         ),
                 )
                 .subcommand(
@@ -975,6 +982,13 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .long("limit")
                                 .default_value("100")
                                 .help("Maximum number of results"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .long("format")
+                                .default_value("table")
+                                .value_parser(["table", "json"])
+                                .help("Output format (table or json)"),
                         ),
                 )
                 .subcommand(

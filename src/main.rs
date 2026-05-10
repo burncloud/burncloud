@@ -11,10 +11,16 @@ fn main() -> Result<()> {
     // Auto-generate MASTER_KEY if missing
     ensure_master_key();
 
+    let args: Vec<String> = env::args().collect();
+
+    // For CLI commands (not server/router), suppress INFO logs on stdout
+    let is_server = args.len() >= 2 && matches!(args[1].as_str(), "server" | "router" | "client");
+    if !is_server {
+        env::set_var("RUST_LOG", "error");
+    }
+
     // 初始化日志（tracing-subscriber + 文件输出）
     let _logging_guards = burncloud_server::logging::init_logging();
-
-    let args: Vec<String> = env::args().collect();
 
     match args.as_slice() {
         [_] => {
