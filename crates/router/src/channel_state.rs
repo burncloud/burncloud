@@ -248,8 +248,19 @@ impl ChannelStateTracker {
             // Check if model is available
             match model_state.status {
                 ModelStatus::Available => {}
-                ModelStatus::RateLimited
-                | ModelStatus::QuotaExhausted
+                ModelStatus::RateLimited => {
+                    // Allow probe if rate_limit_until has expired — prevents deadlock
+                    // where L0 blocks all requests and recovery never happens.
+                    if let Some(rate_limit_until) = model_state.rate_limit_until {
+                        if rate_limit_until > now {
+                            return false; // still within rate limit window
+                        }
+                        // Timer expired — allow probe request to test recovery
+                    } else {
+                        return false; // no timer set, stay blocked
+                    }
+                }
+                ModelStatus::QuotaExhausted
                 | ModelStatus::ModelNotFound
                 | ModelStatus::TemporarilyDown => return false,
             }
@@ -401,13 +412,13 @@ impl ChannelStateTracker {
             model_state.last_error_time = None;
         }
 
-        // Clear rate limit if it has passed
-        if let Some(rate_limit_until) = model_state.rate_limit_until {
+        // Clear rate limit on success — a successful request proves the channel is available
+        if model_state.status == ModelStatus::RateLimited {
+            model_state.status = ModelStatus::Available;
+            model_state.rate_limit_until = None;
+        } else if let Some(rate_limit_until) = model_state.rate_limit_until {
             if rate_limit_until <= Instant::now() {
                 model_state.rate_limit_until = None;
-                if model_state.status == ModelStatus::RateLimited {
-                    model_state.status = ModelStatus::Available;
-                }
             }
         }
 

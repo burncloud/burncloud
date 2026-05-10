@@ -564,7 +564,7 @@ impl RouterDatabase {
 }
 
 /// Get aggregated usage statistics by token key over a time period.
-/// Looks up the user_id from router_tokens, then queries router_logs.
+/// Looks up the user_id from user_api_keys, then queries router_logs.
 pub async fn get_usage_stats_by_token(
     db: &Database,
     token_key: &str,
@@ -575,7 +575,7 @@ pub async fn get_usage_stats_by_token(
 
     let sql = adapt_sql(
         is_postgres,
-        "SELECT user_id FROM router_tokens WHERE token = ? AND status = 'active'",
+        "SELECT user_id FROM user_api_keys WHERE key = ? AND status = 1",
     );
     let user_id: Option<String> = sqlx::query_scalar(&sql)
         .bind(token_key)
