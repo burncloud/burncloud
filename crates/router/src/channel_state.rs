@@ -223,16 +223,19 @@ impl ChannelStateTracker {
 
         // Check channel-level conditions
         if !channel_state.auth_ok {
+            tracing::warn!(channel_id, "is_available=false: auth_ok=false");
             return false;
         }
 
         if channel_state.balance_status == BalanceStatus::Exhausted {
+            tracing::warn!(channel_id, "is_available=false: balance exhausted");
             return false;
         }
 
         // Check account-level rate limit
         if let Some(rate_limit_until) = channel_state.account_rate_limit_until {
             if rate_limit_until > now {
+                tracing::warn!(channel_id, ?rate_limit_until, "is_available=false: account rate limit");
                 return false;
             }
         }
@@ -253,27 +256,56 @@ impl ChannelStateTracker {
                     // where L0 blocks all requests and recovery never happens.
                     if let Some(rate_limit_until) = model_state.rate_limit_until {
                         if rate_limit_until > now {
+                            tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: model RateLimited (timer active)");
                             return false; // still within rate limit window
                         }
                         // Timer expired — allow probe request to test recovery
+                        tracing::info!(channel_id, %model_name, "is_available: model RateLimited but timer expired, allowing probe");
                     } else {
+                        tracing::warn!(channel_id, %model_name, "is_available=false: model RateLimited (no timer set — PERMANENT DEADLOCK)");
                         return false; // no timer set, stay blocked
                     }
                 }
                 ModelStatus::QuotaExhausted
-                | ModelStatus::ModelNotFound
-                | ModelStatus::TemporarilyDown => return false,
+                | ModelStatus::ModelNotFound => {
+                    tracing::warn!(channel_id, %model_name, ?model_state.status, "is_available=false: model status (permanent)");
+                    return false;
+                }
+                ModelStatus::TemporarilyDown => {
+                    // Allow probe if rate_limit_until has expired — prevents deadlock
+                    if let Some(rate_limit_until) = model_state.rate_limit_until {
+                        if rate_limit_until > now {
+                            tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: TemporarilyDown (timer active)");
+                            return false;
+                        }
+                        tracing::info!(channel_id, %model_name, "is_available: TemporarilyDown but timer expired, allowing probe");
+                    } else {
+                        // No timer — use a default backoff (5 minutes from when status was set)
+                        // to avoid permanent deadlock
+                        tracing::warn!(channel_id, %model_name, "is_available=false: TemporarilyDown (no timer set — PERMANENT DEADLOCK)");
+                        return false;
+                    }
+                }
             }
 
             // Check model-level rate limit
             if let Some(rate_limit_until) = model_state.rate_limit_until {
                 if rate_limit_until > now {
+                    tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: model rate_limit_until");
                     return false;
                 }
             }
 
             // Check adaptive rate limiter availability
             if !model_state.adaptive_limit.check_available() {
+                tracing::warn!(
+                    channel_id,
+                    %model_name,
+                    aimd_state = ?model_state.adaptive_limit.state,
+                    aimd_cooldown_until = ?model_state.adaptive_limit.cooldown_until,
+                    aimd_rate_limit_until = ?model_state.adaptive_limit.rate_limit_until,
+                    "is_available=false: AIMD check_available"
+                );
                 return false;
             }
         }
@@ -366,6 +398,8 @@ impl ChannelStateTracker {
                 if let Some(model_name) = model {
                     let model_state = channel_state.get_or_create_model(model_name, channel_id);
                     model_state.status = ModelStatus::TemporarilyDown;
+                    // Set a recovery timer so is_available() can allow probe requests after expiry
+                    model_state.rate_limit_until = Some(now + Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
                     model_state.last_error = Some(error_message.to_string());
                     model_state.last_error_time = Some(now);
                     model_state.failure_count += 1;
