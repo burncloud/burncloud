@@ -51,22 +51,35 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 return Ok(());
             }
 
-            println!(
-                "{:<30} {:>8} {:>15} {:>15} {:>10}",
-                "Model", "Currency", "Input ($/1M)", "Output ($/1M)", "Region"
-            );
-            println!("{}", "-".repeat(80));
+            let format = sub_m
+                .get_one::<String>("format")
+                .map(|s| s.as_str())
+                .unwrap_or("table");
 
-            for price in prices {
-                let region = price.region.as_deref().unwrap_or("-");
-                println!(
-                    "{:<30} {:>8} {:>15.4} {:>15.4} {:>10}",
-                    price.model,
-                    price.currency,
-                    from_nano(price.input_price),
-                    from_nano(price.output_price),
-                    region
-                );
+            match format {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&prices)?;
+                    println!("{}", json);
+                }
+                _ => {
+                    println!(
+                        "{:<30} {:>8} {:>15} {:>15} {:>10}",
+                        "Model", "Currency", "Input ($/1M)", "Output ($/1M)", "Region"
+                    );
+                    println!("{}", "-".repeat(80));
+
+                    for price in prices {
+                        let region = price.region.as_deref().unwrap_or("-");
+                        println!(
+                            "{:<30} {:>8} {:>15.4} {:>15.4} {:>10}",
+                            price.model,
+                            price.currency,
+                            from_nano(price.input_price),
+                            from_nano(price.output_price),
+                            region
+                        );
+                    }
+                }
             }
         }
         Some(("set", sub_m)) => {

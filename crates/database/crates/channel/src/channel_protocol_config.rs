@@ -8,7 +8,7 @@ pub struct ChannelProtocolConfig {
     pub id: i32,
     pub channel_type: i32,
     pub api_version: String,
-    pub is_default: bool,
+    pub is_default: i32,
     pub chat_endpoint: Option<String>,
     pub embed_endpoint: Option<String>,
     pub models_endpoint: Option<String>,
@@ -17,6 +17,12 @@ pub struct ChannelProtocolConfig {
     pub detection_rules: Option<String>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+}
+
+impl ChannelProtocolConfig {
+    pub fn is_default_bool(&self) -> bool {
+        self.is_default != 0
+    }
 }
 
 /// Input for creating/updating a channel protocol config

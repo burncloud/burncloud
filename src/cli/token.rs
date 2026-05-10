@@ -16,6 +16,10 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
             let user_id = sub_m.get_one::<String>("user-id").map(|s| s.as_str());
+            let format = sub_m
+                .get_one::<String>("format")
+                .map(|s| s.as_str())
+                .unwrap_or("table");
 
             let tokens = UserApiKeyModel::list(db, limit, offset, user_id).await?;
 
@@ -24,33 +28,41 @@ pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result
                 return Ok(());
             }
 
-            println!(
-                "{:<52} {:<20} {:<12} {:>12} {:<8} {:>12}",
-                "Key", "Name", "User", "Quota", "Status", "Expired"
-            );
-            println!("{}", "-".repeat(120));
+            match format {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&tokens)?;
+                    println!("{}", json);
+                }
+                _ => {
+                    println!(
+                        "{:<52} {:<20} {:<12} {:>12} {:<8} {:>12}",
+                        "Key", "Name", "User", "Quota", "Status", "Expired"
+                    );
+                    println!("{}", "-".repeat(120));
 
-            for token in tokens {
-                let name = token.name.as_deref().unwrap_or("-");
-                let quota = if token.unlimited_quota {
-                    "unlimited".to_string()
-                } else {
-                    token.remain_quota.to_string()
-                };
-                let status = if token.status == 1 {
-                    "active"
-                } else {
-                    "disabled"
-                };
-                let expired = if token.expired_time == -1 {
-                    "never".to_string()
-                } else {
-                    format!("{}", token.expired_time)
-                };
-                println!(
-                    "{:<52} {:<20} {:<12} {:>12} {:<8} {:>12}",
-                    token.key, name, token.user_id, quota, status, expired
-                );
+                    for token in tokens {
+                        let name = token.name.as_deref().unwrap_or("-");
+                        let quota = if token.unlimited_quota {
+                            "unlimited".to_string()
+                        } else {
+                            token.remain_quota.to_string()
+                        };
+                        let status = if token.status == 1 {
+                            "active"
+                        } else {
+                            "disabled"
+                        };
+                        let expired = if token.expired_time == -1 {
+                            "never".to_string()
+                        } else {
+                            format!("{}", token.expired_time)
+                        };
+                        println!(
+                            "{:<52} {:<20} {:<12} {:>12} {:<8} {:>12}",
+                            token.key, name, token.user_id, quota, status, expired
+                        );
+                    }
+                }
             }
         }
         Some(("create", sub_m)) => {

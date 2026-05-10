@@ -235,22 +235,33 @@ pub async fn cmd_user_recharges(db: &Database, matches: &ArgMatches) -> Result<(
         return Ok(());
     }
 
-    // Table format output
-    println!(
-        "{:<10} {:<15} {:<10} {:<40} {:<20}",
-        "ID", "Amount", "Currency", "Description", "CreatedAt"
-    );
-    println!("{}", "-".repeat(100));
-    for recharge in recharges {
-        // Convert nanodollars to display format
-        let amount = recharge.amount as f64 / 1_000_000_000.0;
-        let currency = recharge.currency.as_deref().unwrap_or("USD");
-        let description = recharge.description.as_deref().unwrap_or("N/A");
-        let created_at = recharge.created_at.as_deref().unwrap_or("N/A");
-        println!(
-            "{:<10} ${:<14.2} {:<10} {:<40} {:<20}",
-            recharge.id, amount, currency, description, created_at
-        );
+    let format = matches
+        .get_one::<String>("format")
+        .map(|s| s.as_str())
+        .unwrap_or("table");
+
+    match format {
+        "json" => {
+            let json = serde_json::to_string_pretty(&recharges)?;
+            println!("{}", json);
+        }
+        _ => {
+            println!(
+                "{:<10} {:<15} {:<10} {:<40} {:<20}",
+                "ID", "Amount", "Currency", "Description", "CreatedAt"
+            );
+            println!("{}", "-".repeat(100));
+            for recharge in recharges {
+                let amount = recharge.amount as f64 / 1_000_000_000.0;
+                let currency = recharge.currency.as_deref().unwrap_or("USD");
+                let description = recharge.description.as_deref().unwrap_or("N/A");
+                let created_at = recharge.created_at.as_deref().unwrap_or("N/A");
+                println!(
+                    "{:<10} ${:<14.2} {:<10} {:<40} {:<20}",
+                    recharge.id, amount, currency, description, created_at
+                );
+            }
+        }
     }
 
     Ok(())
@@ -295,6 +306,13 @@ pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
         ));
     }
 
+    // Verify user exists
+    if UserDatabase::get_user_by_username(db, user_id).await?.is_none()
+        && UserDatabase::get_user_by_id(db, user_id).await?.is_none()
+    {
+        return Err(anyhow::anyhow!("User '{}' not found", user_id));
+    }
+
     // Parse amount (in dollars) and convert to nanodollars
     let amount_dollar: f64 = amount_str
         .parse()
@@ -318,7 +336,7 @@ pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
 
     let recharge_id = UserDatabase::create_recharge(db, &recharge).await?;
 
-    // Get new balance
+    // Get new balance (create_recharge already updated it)
     let new_balance_nano = UserDatabase::update_balance(db, user_id, 0, Some(&currency)).await?;
 
     // Convert nanodollars to display format

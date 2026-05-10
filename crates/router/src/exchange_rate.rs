@@ -66,29 +66,31 @@ impl ExchangeRateService {
     }
 
     /// Convert an amount from one currency to another
-    pub fn convert(&self, amount: f64, from: Currency, to: Currency) -> f64 {
+    pub fn convert(&self, amount: f64, from: Currency, to: Currency) -> anyhow::Result<f64> {
         if from == to {
-            return amount;
+            return Ok(amount);
         }
 
         if let Some(rate) = self.get_rate(from, to) {
-            amount * rate
+            Ok(amount * rate)
         } else {
             // Fallback: try reverse rate
             if let Some(reverse_rate) = self.get_rate(to, from) {
                 if reverse_rate > 0.0 {
-                    amount / reverse_rate
+                    Ok(amount / reverse_rate)
                 } else {
-                    amount
+                    Err(anyhow::anyhow!(
+                        "Invalid reverse exchange rate for {} -> {}",
+                        to,
+                        from
+                    ))
                 }
             } else {
-                // No rate available, return original amount
-                tracing::warn!(
-                    "No exchange rate found for {} -> {}, returning original amount",
+                Err(anyhow::anyhow!(
+                    "No exchange rate found for {} -> {}",
                     from,
                     to
-                );
-                amount
+                ))
             }
         }
     }
@@ -310,7 +312,7 @@ mod tests {
     fn test_convert_same_currency() {
         let service = create_test_service();
 
-        let amount = service.convert(100.0, Currency::USD, Currency::USD);
+        let amount = service.convert(100.0, Currency::USD, Currency::USD).unwrap();
         assert!((amount - 100.0).abs() < 0.001);
     }
 
@@ -333,11 +335,11 @@ mod tests {
 
         service.set_rate(Currency::USD, Currency::CNY, 7.2);
 
-        let amount = service.convert(100.0, Currency::USD, Currency::CNY);
+        let amount = service.convert(100.0, Currency::USD, Currency::CNY).unwrap();
         assert!((amount - 720.0).abs() < 0.001);
 
         // Reverse conversion using reverse rate
-        let amount = service.convert(720.0, Currency::CNY, Currency::USD);
+        let amount = service.convert(720.0, Currency::CNY, Currency::USD).unwrap();
         assert!((amount - 100.0).abs() < 0.001);
     }
 
@@ -345,9 +347,9 @@ mod tests {
     fn test_convert_missing_rate() {
         let service = create_test_service();
 
-        // No rate set, should return original amount
-        let amount = service.convert(100.0, Currency::USD, Currency::EUR);
-        assert!((amount - 100.0).abs() < 0.001);
+        // No rate set, should return error
+        let result = service.convert(100.0, Currency::USD, Currency::EUR);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -397,9 +399,9 @@ mod tests {
         service.set_rate(Currency::EUR, Currency::CNY, 7.75);
 
         // Test each conversion
-        assert!((service.convert(100.0, Currency::USD, Currency::CNY) - 720.0).abs() < 0.001);
-        assert!((service.convert(100.0, Currency::USD, Currency::EUR) - 93.0).abs() < 0.001);
-        assert!((service.convert(100.0, Currency::EUR, Currency::CNY) - 775.0).abs() < 0.001);
+        assert!((service.convert(100.0, Currency::USD, Currency::CNY).unwrap() - 720.0).abs() < 0.001);
+        assert!((service.convert(100.0, Currency::USD, Currency::EUR).unwrap() - 93.0).abs() < 0.001);
+        assert!((service.convert(100.0, Currency::EUR, Currency::CNY).unwrap() - 775.0).abs() < 0.001);
 
         // Verify all rates are stored
         let rates = service.list_rates();
@@ -414,11 +416,11 @@ mod tests {
         service.set_rate(Currency::USD, Currency::CNY, 7.2);
 
         // Forward conversion uses direct rate
-        let forward = service.convert(100.0, Currency::USD, Currency::CNY);
+        let forward = service.convert(100.0, Currency::USD, Currency::CNY).unwrap();
         assert!((forward - 720.0).abs() < 0.001);
 
         // Reverse conversion uses reverse rate calculation
-        let reverse = service.convert(720.0, Currency::CNY, Currency::USD);
+        let reverse = service.convert(720.0, Currency::CNY, Currency::USD).unwrap();
         assert!((reverse - 100.0).abs() < 0.001);
     }
 
@@ -431,16 +433,12 @@ mod tests {
         service.set_rate(Currency::EUR, Currency::USD, 1.08);
 
         // EUR to USD (direct rate exists)
-        let eur_to_usd = service.convert(100.0, Currency::EUR, Currency::USD);
+        let eur_to_usd = service.convert(100.0, Currency::EUR, Currency::USD).unwrap();
         assert!((eur_to_usd - 108.0).abs() < 0.001);
 
-        // EUR to CNY (no direct rate, should return original amount as fallback)
-        // Note: This tests the current behavior where only direct/reverse rates work
+        // EUR to CNY (no direct rate and no reverse rate, should error)
         let eur_to_cny = service.convert(100.0, Currency::EUR, Currency::CNY);
-        // Since there's no direct EUR->CNY rate and we don't do multi-hop,
-        // it returns original amount (current implementation)
-        // In a full implementation, this would be 100 * 1.08 * 7.2 = 777.6
-        assert!((eur_to_cny - 100.0).abs() < 0.001);
+        assert!(eur_to_cny.is_err());
     }
 
     #[test]
@@ -448,7 +446,7 @@ mod tests {
         let service = create_test_service();
         service.set_rate(Currency::USD, Currency::CNY, 7.2);
 
-        let amount = service.convert(0.0, Currency::USD, Currency::CNY);
+        let amount = service.convert(0.0, Currency::USD, Currency::CNY).unwrap();
         assert!((amount - 0.0).abs() < 0.001);
     }
 
@@ -460,13 +458,12 @@ mod tests {
         service.set_rate(Currency::USD, Currency::CNY, -7.2);
 
         // Forward conversion with negative rate should work
-        let amount = service.convert(100.0, Currency::USD, Currency::CNY);
+        let amount = service.convert(100.0, Currency::USD, Currency::CNY).unwrap();
         assert!((amount - (-720.0)).abs() < 0.001);
 
         // Reverse conversion: when reverse_rate is negative (not > 0),
-        // the code returns the original amount as a safety measure
+        // the code returns an error
         let reverse = service.convert(720.0, Currency::CNY, Currency::USD);
-        // Due to safety check (reverse_rate > 0.0), returns original amount
-        assert!((reverse - 720.0).abs() < 0.001);
+        assert!(reverse.is_err());
     }
 }

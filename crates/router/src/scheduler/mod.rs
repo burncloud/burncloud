@@ -321,7 +321,13 @@ pub async fn build_context(
                 let raw = price.input_price as f64 + price.output_price as f64;
                 let price_usd = match burncloud_common::Currency::from_str(&price.currency) {
                     Ok(curr) if curr != burncloud_common::Currency::USD => {
-                        exchange_rate.convert(raw, curr, burncloud_common::Currency::USD)
+                        match exchange_rate.convert(raw, curr, burncloud_common::Currency::USD) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                tracing::warn!("Currency conversion failed: {e}, using raw amount");
+                                raw
+                            }
+                        }
                     }
                     _ => raw,
                 };
