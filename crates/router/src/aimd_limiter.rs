@@ -249,6 +249,9 @@ impl AimdController {
                 if now < cooldown_until {
                     return false;
                 }
+                // Cooldown timer expired — allow probe request through.
+                // Full recovery happens in on_success() when the probe succeeds.
+                // If the probe fails with 429, on_rate_limited() re-enters Cooldown.
             }
         }
 
