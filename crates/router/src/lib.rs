@@ -859,6 +859,30 @@ async fn usage_models_handler(
     }
 }
 
+/// Normalize doubled path prefixes caused by client SDKs that include the
+/// endpoint path in their base_url. For example, when a client sets
+/// base_url = "https://gateway/v1/messages" and the SDK appends "/v1/messages",
+/// the resulting path is "/v1/messages/v1/messages" — this function collapses
+/// it back to "/v1/messages".
+fn normalize_doubled_path(path: &str) -> String {
+    // Known endpoint prefixes that clients may double
+    const PREFIXES: &[&str] = &["/v1/messages", "/v1/chat/completions", "/v1/embeddings"];
+
+    for prefix in PREFIXES {
+        let doubled = format!("{prefix}{prefix}");
+        if path.starts_with(&doubled) {
+            let rest = &path[prefix.len()..];
+            let normalized = format!("{prefix}{rest}");
+            if normalized != path {
+                tracing::debug!(original = %path, normalized = %normalized, "Normalized doubled path prefix");
+            }
+            return normalized;
+        }
+    }
+
+    path.to_string()
+}
+
 /// Inject video_tokens into usage for video models whose responses contain no usage field.
 ///
 /// Used for request-side billing when the upstream response has no token/usage data.
@@ -985,7 +1009,11 @@ async fn proxy_handler(
 ) -> Response {
     let start_time = Instant::now();
     let request_id = Uuid::new_v4().to_string();
-    let path = uri.path().to_string();
+    let raw_path = uri.path().to_string();
+
+    // Normalize doubled path prefixes caused by client SDKs that include
+    // the endpoint path in their base_url (e.g. /v1/messages/v1/messages → /v1/messages).
+    let path = normalize_doubled_path(&raw_path);
 
     // 0. Authenticate User
     // Support "Authorization: Bearer sk-xxx", "x-api-key: sk-xxx" (Anthropic native), and "x-goog-api-key: sk-xxx" (Gemini native)
@@ -1174,6 +1202,8 @@ async fn proxy_handler(
 
     // Extract Seedance / NewApi video generation fields for request-side billing.
     // Seedance's response has no usage field; duration and resolution are in the request body.
+    // Only compute seedance fields for video generation paths — zero them out otherwise
+    // to prevent phantom video_tokens injection on non-video requests.
     let (seedance_duration_secs, seedance_resolution) = if path == "/v1/video/generations" {
         let v = serde_json::from_slice::<serde_json::Value>(&body_bytes).ok();
         let dur = v
@@ -1188,7 +1218,7 @@ async fn proxy_handler(
             .to_string();
         (dur, res)
     } else {
-        (5i64, "720p".to_string())
+        (0i64, "480p".to_string())
     };
 
     // Detect request type for advanced billing
