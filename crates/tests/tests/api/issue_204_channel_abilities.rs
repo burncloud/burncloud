@@ -446,3 +446,81 @@ async fn test_update_preserves_model_mapping() {
         .await
         .unwrap();
 }
+
+/// Test that models field is normalized to lowercase when updating a channel.
+/// This verifies the fix for subtask 1: update() now normalizes models.
+#[tokio::test]
+async fn test_models_normalized_to_lowercase_on_update() {
+    let base_url = common_mod::spawn_app().await;
+    let admin_token = get_admin_token(&base_url).await;
+    let client = TestClient::new(&base_url).with_token(&admin_token);
+
+    // Create a channel with lowercase models
+    let create_resp = client
+        .post(
+            "/console/api/channel",
+            &json!({
+                "type": 1,
+                "key": "sk-test-update-models-lowercase",
+                "name": "update-models-lowercase-channel",
+                "weight": 10,
+                "base_url": "https://api.openai.com",
+                "models": "gpt-4o",
+                "group": "default",
+                "priority": 10
+            }),
+        )
+        .await
+        .unwrap();
+
+    let channel_id = create_resp["data"]["id"].as_i64().unwrap();
+
+    // Update the channel with mixed-case model names (e.g., "GPT-4O, Claude-3-5-Sonnet")
+    let _update_resp = client
+        .put(
+            "/console/api/channel",
+            &json!({
+                "id": channel_id,
+                "type": 1,
+                "key": "sk-test-update-models-lowercase",
+                "name": "update-models-lowercase-channel",
+                "weight": 10,
+                "base_url": "https://api.openai.com",
+                "models": "GPT-4O, Claude-3-5-Sonnet",
+                "group": "default",
+                "priority": 10
+            }),
+        )
+        .await
+        .unwrap();
+
+    // Verify via get_channel that models are normalized to lowercase
+    let get_resp = client
+        .get(&format!("/console/api/channel/{}", channel_id))
+        .await
+        .unwrap();
+    assert_eq!(get_resp["success"], true);
+    let models = get_resp["data"]["models"].as_str().unwrap();
+    assert_eq!(
+        models, "gpt-4o,claude-3-5-sonnet",
+        "models field should be normalized to lowercase after update, got: {models}"
+    );
+
+    // sync-abilities endpoint should work correctly after update
+    let sync_resp = client
+        .post(
+            &format!("/console/api/channel/{}/sync-abilities", channel_id),
+            &json!({}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        sync_resp["success"], true,
+        "sync-abilities endpoint should work correctly after update: {sync_resp}"
+    );
+
+    client
+        .delete(&format!("/console/api/channel/{}", channel_id))
+        .await
+        .unwrap();
+}

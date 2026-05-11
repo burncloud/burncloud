@@ -116,6 +116,17 @@ impl ChannelProviderModel {
             .as_deref()
             .unwrap_or("{}");
 
+        // Normalize models to lowercase — same logic as create() so
+        // channel_providers.models is always consistent regardless of
+        // whether the channel was created or updated.
+        let models_normalized = channel
+            .models
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(",");
+
         let conn = db.get_connection()?;
         let pool = conn.pool();
         let is_postgres = db.kind() == "postgres";
@@ -142,7 +153,7 @@ impl ChannelProviderModel {
             .bind(&channel.name)
             .bind(channel.weight)
             .bind(&channel.base_url)
-            .bind(&channel.models)
+            .bind(&models_normalized)
             .bind(&channel.group)
             .bind(channel.priority)
             .bind(&channel.param_override)
