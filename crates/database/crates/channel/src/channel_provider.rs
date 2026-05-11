@@ -23,6 +23,15 @@ impl ChannelProviderModel {
             .collect::<Vec<_>>()
             .join(",");
 
+        // Normalize group to lowercase for the same reason.
+        channel.group = channel
+            .group
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(",");
+
         let conn = db.get_connection()?;
         let pool = conn.pool();
 
@@ -127,6 +136,15 @@ impl ChannelProviderModel {
             .collect::<Vec<_>>()
             .join(",");
 
+        // Normalize group to lowercase — same reason.
+        let group_normalized = channel
+            .group
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(",");
+
         let conn = db.get_connection()?;
         let pool = conn.pool();
         let is_postgres = db.kind() == "postgres";
@@ -154,7 +172,7 @@ impl ChannelProviderModel {
             .bind(channel.weight)
             .bind(&channel.base_url)
             .bind(&models_normalized)
-            .bind(&channel.group)
+            .bind(&group_normalized)
             .bind(channel.priority)
             .bind(&channel.param_override)
             .bind(&channel.header_override)

@@ -1,5 +1,3 @@
-我看到已经有一个完整的 issue_204 测试文件。让我编写一个新的 E2E 测试文件，专门针对外部服务器运行的真实 E2E 测试场景。
-
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 mod common;
 

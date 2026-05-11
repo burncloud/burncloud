@@ -289,6 +289,15 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .long("model-mapping")
                                 .help("JSON model mapping (e.g., '{\"gpt-4o-mini\": \"gpt-4o\"}')"),
                         ),
+                )
+                .subcommand(
+                    Command::new("sync-abilities")
+                        .about("Sync channel abilities to the routing table")
+                        .arg(
+                            Arg::new("id")
+                                .required(true)
+                                .help("Channel ID to sync abilities for"),
+                        ),
                 ),
         )
         .subcommand(
