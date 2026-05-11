@@ -7,6 +7,22 @@ pub struct ChannelProviderModel;
 
 impl ChannelProviderModel {
     pub async fn create(db: &Database, channel: &mut Channel) -> Result<i32> {
+        // Ensure model_mapping is never NULL — store "{}" instead so
+        // sync_abilities and runtime proxy_logic always have data to read.
+        if channel.model_mapping.is_none() {
+            channel.model_mapping = Some("{}".to_string());
+        }
+
+        // Normalize models to lowercase so channel_abilities lookups (which
+        // also lowercase the query) always match regardless of request casing.
+        channel.models = channel
+            .models
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(",");
+
         let conn = db.get_connection()?;
         let pool = conn.pool();
 
@@ -41,6 +57,11 @@ impl ChannelProviderModel {
         let now = current_timestamp();
         channel.created_time = Some(now);
 
+        let model_mapping_normalized = channel
+            .model_mapping
+            .as_deref()
+            .unwrap_or("{}");
+
         // Use transaction to ensure last_insert_rowid works on the same connection
         let mut tx = pool.begin().await?;
 
@@ -64,7 +85,7 @@ impl ChannelProviderModel {
             .bind(channel.reservation_green)
             .bind(channel.reservation_yellow)
             .bind(channel.reservation_red)
-            .bind(&channel.model_mapping);
+            .bind(model_mapping_normalized);
 
         let id = if db.kind() == "postgres" {
             let row = query.fetch_one(&mut *tx).await?;
@@ -88,6 +109,13 @@ impl ChannelProviderModel {
     }
 
     pub async fn update(db: &Database, channel: &Channel) -> Result<()> {
+        // Ensure model_mapping is never NULL — store "{}" instead so
+        // sync_abilities and runtime proxy_logic always have data to read.
+        let model_mapping_normalized = channel
+            .model_mapping
+            .as_deref()
+            .unwrap_or("{}");
+
         let conn = db.get_connection()?;
         let pool = conn.pool();
         let is_postgres = db.kind() == "postgres";
@@ -126,7 +154,7 @@ impl ChannelProviderModel {
             .bind(channel.reservation_green)
             .bind(channel.reservation_yellow)
             .bind(channel.reservation_red)
-            .bind(&channel.model_mapping)
+            .bind(model_mapping_normalized)
             .bind(channel.id)
             .execute(pool)
             .await?;
@@ -240,6 +268,11 @@ impl ChannelProviderModel {
         let pool = conn.pool();
         let is_postgres = db.kind() == "postgres";
 
+        // Wrap DELETE + INSERT in a transaction so concurrent sync_abilities calls
+        // cannot observe a window where abilities are missing (which would cause
+        // UNIQUE constraint violations or routing misses).
+        let mut tx = pool.begin().await?;
+
         // 1. Delete existing abilities for this channel
         let sql_delete = adapt_sql(
             is_postgres,
@@ -247,12 +280,13 @@ impl ChannelProviderModel {
         );
         sqlx::query(&sql_delete)
             .bind(channel.id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
 
         // 2. Add new abilities
         if channel.status != 1 {
             // If channel disabled, don't add abilities
+            tx.commit().await?;
             return Ok(());
         }
 
@@ -298,16 +332,30 @@ impl ChannelProviderModel {
             .collect();
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
-        let sql_insert = adapt_sql(
-            is_postgres,
-            &format!(
+        let sql_insert = if is_postgres {
+            adapt_sql(
+                is_postgres,
+                &format!(
+                    r#"
+                INSERT INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT ({}, model, channel_id) DO UPDATE SET
+                    enabled = EXCLUDED.enabled,
+                    priority = EXCLUDED.priority,
+                    weight = EXCLUDED.weight
+                "#,
+                    group_col, group_col
+                ),
+            )
+        } else {
+            format!(
                 r#"
-            INSERT INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
+            INSERT OR REPLACE INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
             VALUES (?, ?, ?, ?, ?, ?)
             "#,
                 group_col
-            ),
-        );
+            )
+        };
 
         for model in &all_models {
             for group in &groups {
@@ -324,11 +372,12 @@ impl ChannelProviderModel {
                     .bind(true) // sqlx handles boolean mapping
                     .bind(channel.priority)
                     .bind(channel.weight)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
             }
         }
 
+        tx.commit().await?;
         Ok(())
     }
 }
