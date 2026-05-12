@@ -188,7 +188,13 @@ impl ChannelProviderModel {
             .execute(pool)
             .await?;
 
-        Self::sync_abilities(db, channel).await?;
+        // Sync abilities using normalized values (not original channel object)
+        // to ensure channel_abilities matches what's stored in the database.
+        let mut normalized_channel = channel.clone();
+        normalized_channel.models = models_normalized;
+        normalized_channel.group = group_normalized;
+        normalized_channel.model_mapping = Some(model_mapping_normalized.to_string());
+        Self::sync_abilities(db, &normalized_channel).await?;
         Ok(())
     }
 

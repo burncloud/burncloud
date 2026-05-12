@@ -25,6 +25,25 @@ use tokio::net::TcpListener;
 /// FK schema graph and fails with `no such table: main.user_roles`. Recreating
 /// the table here closes that hole.
 async fn ensure_l1_classifier_tables(pool: &AnyPool) -> anyhow::Result<()> {
+    // Create user_role_bindings first (no FK dependencies) to satisfy the FK
+    // reference from user_accounts when foreign_keys=ON.
+    // Note: user_role_bindings has FKs to user_accounts and user_roles, but
+    // SQLite allows creating a table with FK references to non-existent tables
+    // as long as the referenced tables exist before INSERT.
+    // We create it here before user_accounts/user_roles to avoid the FK check
+    // during INSERT OR REPLACE INTO user_accounts.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_role_bindings (
+            user_id TEXT NOT NULL,
+            role_id TEXT NOT NULL,
+            PRIMARY KEY (user_id, role_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     // Recreate user_roles to satisfy user_role_bindings' FK target — see
     // function-level docs for the rename-migration drop.
     sqlx::query(
