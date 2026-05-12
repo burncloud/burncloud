@@ -12,12 +12,6 @@
 //!
 //! Strategy: create a fresh SQLite database via `create_database_with_url`, which
 //! runs all migrations (0001–0010) and the `schema/rename.rs` data-copy logic.
-//!
-//! **Known issue**: `user_roles` is dropped by `rename.rs` on fresh installs.
-//! Migration 0010 creates `user_roles` (the new name for the old `roles` table),
-//! but `rename.rs` step 1 treats it as the old `user_roles` binding table, copies
-//! its (empty) rows into `user_role_bindings`, then drops it. Tests for `user_roles`
-//! are therefore omitted until rename.rs is fixed to skip when source == target schema.
 
 use burncloud_database::{create_database_with_url, sqlx};
 use sqlx::any::{AnyConnectOptions, AnyPoolOptions};
@@ -70,7 +64,11 @@ async fn test_new_user_tables_exist() {
         table_exists(&db, "user_accounts").await,
         "user_accounts must exist"
     );
-    // user_roles omitted — see module-level known-issue note
+    // user_roles now exists after fixing rename.rs fresh-install detection
+    assert!(
+        table_exists(&db, "user_roles").await,
+        "user_roles must exist (was dropped by rename.rs bug before fix)"
+    );
     assert!(
         table_exists(&db, "user_role_bindings").await,
         "user_role_bindings must exist"

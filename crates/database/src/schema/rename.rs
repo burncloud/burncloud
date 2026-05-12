@@ -26,6 +26,15 @@
 //! Steps 1–2 free the name `user_roles` before step 2 claims it.
 //! Step 4 (recharges) is placed before step 3's DROP so that in PostgreSQL
 //! the FK `recharges.user_id → users.id` is removed before `users` is dropped.
+//!
+//! ## Fresh install handling
+//!
+//! On fresh installs, `0010_rename_tables.sql` creates tables with canonical names
+//! (e.g., `user_roles` for role definitions). The rename logic must detect this to
+//! avoid dropping newly created tables. The detection works by checking if the
+//! source and destination tables have no shared columns — if so, they are different
+//! table types (e.g., new `user_roles` role table vs `user_role_bindings` binding table),
+//! indicating the source was created by 0010, not a legacy table needing migration.
 
 use crate::Result;
 use sqlx::{AnyPool, Row};
@@ -63,6 +72,10 @@ pub(super) async fn migrate_table_renames(pool: &AnyPool, kind: &str) -> Result<
 /// - `old_table` does not exist (migration already completed or never needed).
 /// - `new_table` already contains rows (copy already ran; skip to avoid
 ///   duplicates, but still drop the old table if it remains).
+/// - **Fresh install detection**: if `old_table` and `new_table` have no shared
+///   columns, they are different table types (e.g., new `user_roles` role table
+///   vs `user_role_bindings` binding table), indicating a fresh install where
+///   `old_table` was created by 0010_rename_tables.sql, not a legacy table.
 ///
 /// ## Column mismatch handling
 ///
@@ -79,6 +92,29 @@ async fn copy_and_drop(pool: &AnyPool, kind: &str, old_table: &str, new_table: &
         return;
     }
 
+    // Get column lists for both tables
+    let old_cols = column_names(pool, kind, old_table).await;
+    let new_cols = column_names(pool, kind, new_table).await;
+
+    // Fresh install detection: if old_table and new_table have no shared columns,
+    // they are different table types. This happens when:
+    // - 0010_rename_tables.sql created a new table with the same name as a legacy table
+    //   but with different purpose (e.g., new user_roles role table vs old user_roles binding table)
+    // - The "old_table" is actually the newly created table, not a legacy table needing migration
+    // In this case, skip the entire operation to avoid dropping the newly created table.
+    let shared: Vec<String> = old_cols
+        .iter()
+        .filter(|c| new_cols.iter().any(|n| n.eq_ignore_ascii_case(c)))
+        .cloned()
+        .collect();
+
+    if shared.is_empty() {
+        tracing::info!(
+            "[Rename] Skipping {old_table} → {new_table}: no shared columns indicates fresh install (table created by 0010, not legacy)"
+        );
+        return;
+    }
+
     // Guard: only copy when the destination is still empty to avoid duplicates.
     let new_count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {new_table}"))
         .fetch_one(pool)
@@ -88,31 +124,15 @@ async fn copy_and_drop(pool: &AnyPool, kind: &str, old_table: &str, new_table: &
     if new_count == 0 {
         tracing::info!("[Rename] Migrating data: {old_table} → {new_table}");
 
-        // Intersect source and destination columns so that adding columns to
-        // the new table in later migrations does not break the copy.
-        let old_cols = column_names(pool, kind, old_table).await;
-        let new_cols = column_names(pool, kind, new_table).await;
-        let shared: Vec<String> = old_cols
+        let col_list = shared
             .iter()
-            .filter(|c| new_cols.iter().any(|n| n.eq_ignore_ascii_case(c)))
-            .cloned()
-            .collect();
-
-        if shared.is_empty() {
-            tracing::warn!(
-                "[Rename] No shared columns between {old_table} and {new_table}; skipping copy"
-            );
-        } else {
-            let col_list = shared
-                .iter()
-                .map(|c| quote_ident(c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let insert_sql =
-                format!("INSERT INTO {new_table} ({col_list}) SELECT {col_list} FROM {old_table}");
-            if let Err(e) = sqlx::query(&insert_sql).execute(pool).await {
-                tracing::warn!("[Rename] Copy {old_table} → {new_table} failed: {e}");
-            }
+            .map(|c| quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let insert_sql =
+            format!("INSERT INTO {new_table} ({col_list}) SELECT {col_list} FROM {old_table}");
+        if let Err(e) = sqlx::query(&insert_sql).execute(pool).await {
+            tracing::warn!("[Rename] Copy {old_table} → {new_table} failed: {e}");
         }
     }
 
