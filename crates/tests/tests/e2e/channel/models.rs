@@ -1,5 +1,4 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
-mod common;
 
 use burncloud_tests::TestClient;
 use serde_json::json;
