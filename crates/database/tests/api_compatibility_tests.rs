@@ -1,5 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
+mod common;
+
 use burncloud_database::{create_default_database, Database, DatabaseError};
+use common::create_isolated_db;
 
 /// API compatibility and regression tests
 /// These tests ensure backward compatibility and API consistency
@@ -46,8 +49,12 @@ async fn test_database_creation_methods() {
 #[tokio::test]
 async fn test_database_operation_consistency() {
     // Test that all database types support the same operations consistently
+    // Use isolated temp-file databases to avoid interference from parallel tests
+    // or BURNCLOUD_FRESH_DB wiping the shared default file.
 
-    let databases = create_test_databases().await;
+    let db1 = create_isolated_db("ops_test_1").await.unwrap();
+    let db2 = create_isolated_db("ops_test_2").await.unwrap();
+    let databases = vec![("isolated_1".to_string(), db1), ("isolated_2".to_string(), db2)];
 
     for (db_type, db) in &databases {
         println!("Testing operations on {} database", db_type);
@@ -147,7 +154,10 @@ async fn test_database_operation_consistency() {
     }
 
     // Clean up
-    cleanup_test_databases(databases).await;
+    for (db_type, db) in databases {
+        let _ = db.close().await;
+        println!("✓ Cleaned up {} database", db_type);
+    }
 
     println!("✓ All database types support consistent operations");
 }
@@ -194,10 +204,11 @@ async fn test_error_type_consistency() {
 async fn test_backward_compatibility() {
     // Test that existing code patterns can be adapted to new API
 
+    // Use an isolated database to avoid interference from parallel tests
+    let db = create_isolated_db("backward_compat").await;
+
     // Pattern 1: Using default database (custom paths no longer supported)
-    // Test with default database instead
-    let default_db_result = Database::new().await;
-    if let Ok(path_db) = default_db_result {
+    if let Ok(path_db) = db {
         // Should work as before
         let result = path_db
             .execute_query("CREATE TABLE test (id INTEGER)")
@@ -209,7 +220,8 @@ async fn test_backward_compatibility() {
     }
 
     // Pattern 2: Default database usage (now simplified)
-    match Database::new().await {
+    let db2 = create_isolated_db("backward_compat2").await;
+    match db2 {
         Ok(default_db) => {
             let result = default_db
                 .execute_query("CREATE TABLE test (id INTEGER)")
@@ -261,7 +273,9 @@ async fn test_api_surface_completeness() {
 async fn test_database_connection_consistency() {
     // Test that DatabaseConnection behaves consistently across all database types
 
-    let databases = create_test_databases().await;
+    let db1 = create_isolated_db("conn_test_1").await.unwrap();
+    let db2 = create_isolated_db("conn_test_2").await.unwrap();
+    let databases = vec![("isolated_1".to_string(), db1), ("isolated_2".to_string(), db2)];
 
     for (db_type, db) in &databases {
         if let Ok(connection) = db.get_connection() {
@@ -285,28 +299,6 @@ async fn test_database_connection_consistency() {
         }
     }
 
-    cleanup_test_databases(databases).await;
-}
-
-// Helper functions
-
-async fn create_test_databases() -> Vec<(String, Database)> {
-    let mut databases = vec![];
-
-    // Default location database
-    if let Ok(default_db) = Database::new().await {
-        databases.push(("default_location".to_string(), default_db));
-    }
-
-    // Create another default database instance for testing
-    if let Ok(default_db2) = create_default_database().await {
-        databases.push(("default_convenience".to_string(), default_db2));
-    }
-
-    databases
-}
-
-async fn cleanup_test_databases(databases: Vec<(String, Database)>) {
     for (db_type, db) in databases {
         let _ = db.close().await;
         println!("✓ Cleaned up {} database", db_type);

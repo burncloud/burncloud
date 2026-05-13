@@ -458,11 +458,11 @@ impl Default for UserService {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use burncloud_database::create_default_database;
+    use burncloud_database::create_database_with_url;
 
     #[tokio::test]
     async fn test_register_user() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = create_database_with_url(&format!("sqlite:///tmp/burncloud_test_user_{}.db?mode=rwc", uuid::Uuid::new_v4())).await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -493,7 +493,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_duplicate_user() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = create_database_with_url(&format!("sqlite:///tmp/burncloud_test_user_{}.db?mode=rwc", uuid::Uuid::new_v4())).await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -519,7 +519,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_success() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = create_database_with_url(&format!("sqlite:///tmp/burncloud_test_user_{}.db?mode=rwc", uuid::Uuid::new_v4())).await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -543,7 +543,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_wrong_password() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = create_database_with_url(&format!("sqlite:///tmp/burncloud_test_user_{}.db?mode=rwc", uuid::Uuid::new_v4())).await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();
@@ -567,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_not_found() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
+        let db = create_database_with_url(&format!("sqlite:///tmp/burncloud_test_user_{}.db?mode=rwc", uuid::Uuid::new_v4())).await?;
         UserDatabase::init(&db).await?;
 
         let service = UserService::new();

@@ -10,6 +10,7 @@ pub mod gemini_passthrough;
 pub mod gemini_region_pricing;
 pub mod gemini_regression;
 pub mod gemini_thinking;
+pub mod issue_204_channel_abilities;
 pub mod log;
 pub mod monitor;
 pub mod relay;

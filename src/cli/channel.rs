@@ -179,6 +179,9 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         None => None,
     };
 
+    // Get model mapping (optional)
+    let model_mapping = args.get_one::<String>("model-mapping").cloned();
+
     // Build Channel struct
     let mut channel = Channel {
         id: 0,
@@ -194,7 +197,7 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
         models,
         group: "default".to_string(),
         used_quota: 0,
-        model_mapping: None,
+        model_mapping,
         priority: 0,
         auto_ban: 1,
         other_info: None,
@@ -314,6 +317,10 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
     println!("  Priority:    {}", channel.priority);
     println!("  Weight:      {}", channel.weight);
     println!("  Used Quota:  {}", channel.used_quota);
+    println!(
+        "  Model Mapping: {}",
+        channel.model_mapping.as_deref().unwrap_or("N/A")
+    );
 
     Ok(())
 }
@@ -401,6 +408,14 @@ pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> 
         );
     }
 
+    if let Some(mapping) = args.get_one::<String>("model-mapping") {
+        if mapping.is_empty() {
+            channel.model_mapping = None;
+        } else {
+            channel.model_mapping = Some(mapping.clone());
+        }
+    }
+
     // Save updates
     ChannelProviderModel::update(db, &channel).await?;
 
@@ -443,6 +458,26 @@ pub async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> 
     Ok(())
 }
 
+/// Handle channel sync-abilities command
+pub async fn cmd_channel_sync_abilities(db: &Database, args: &ArgMatches) -> Result<()> {
+    let id: i32 = args
+        .get_one::<String>("id")
+        .ok_or_else(|| anyhow!("Channel ID is required"))?
+        .parse()?;
+
+    // Get the channel
+    let channel = ChannelProviderModel::get_by_id(db, id)
+        .await?
+        .ok_or_else(|| anyhow!("Channel with ID {} not found", id))?;
+
+    // Sync abilities
+    ChannelProviderModel::sync_abilities(db, &channel).await?;
+
+    println!("Channel {} abilities synced successfully", id);
+
+    Ok(())
+}
+
 /// Handle channel command routing
 pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -451,13 +486,15 @@ pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Resu
         Some(("show", sub_m)) => cmd_channel_show(db, sub_m).await,
         Some(("update", sub_m)) => cmd_channel_update(db, sub_m).await,
         Some(("delete", sub_m)) => cmd_channel_delete(db, sub_m).await,
+        Some(("sync-abilities", sub_m)) => cmd_channel_sync_abilities(db, sub_m).await,
         _ => {
             println!("Channel management commands:");
-            println!("  add     Add a new channel");
-            println!("  list    List all channels");
-            println!("  show    Show channel details");
-            println!("  update  Update a channel");
-            println!("  delete  Delete a channel");
+            println!("  add           Add a new channel");
+            println!("  list          List all channels");
+            println!("  show          Show channel details");
+            println!("  update        Update a channel");
+            println!("  delete        Delete a channel");
+            println!("  sync-abilities  Sync channel abilities to routing table");
             println!("\nRun 'burncloud channel <command> --help' for more information.");
             Ok(())
         }

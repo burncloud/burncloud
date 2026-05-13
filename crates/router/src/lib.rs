@@ -289,6 +289,7 @@ async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
             header_override: u.header_override,
             api_version: u.api_version,
             pricing_region: None,
+            model_mapping: None,
         })
         .collect();
 
@@ -425,6 +426,42 @@ pub async fn create_router_app(
     // Circuit breaker: 5 failure threshold, 30s cooldown
     let circuit_breaker = Arc::new(CircuitBreaker::new(CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_COOLDOWN_SECS));
     let model_router = Arc::new(ModelRouter::new(db.clone()));
+
+    // Auto-repair channel_abilities at startup: ensure every enabled channel
+    // has complete abilities rows. Handles DB migration gaps and channels
+    // re-enabled outside the update path.
+    // Paginated fetch: 1000 per batch so channels beyond 10k are not silently skipped.
+    let page_size: i32 = 1000;
+    let mut offset: i32 = 0;
+    let mut total_enabled: usize = 0;
+    loop {
+        let batch = match ChannelProviderModel::list(&db, page_size, offset).await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!("startup abilities repair: failed to list channels at offset {offset}: {e}");
+                break;
+            }
+        };
+        if batch.is_empty() {
+            break;
+        }
+        let enabled: Vec<_> = batch.iter().filter(|c| c.status == 1).collect();
+        total_enabled += enabled.len();
+        for channel in enabled {
+            if let Err(e) = ChannelProviderModel::sync_abilities(&db, channel).await {
+                tracing::warn!(
+                    "startup abilities repair: channel {} sync failed: {e}",
+                    channel.id
+                );
+            }
+        }
+        offset += page_size;
+    }
+    tracing::info!(
+        "startup abilities repair: checked {} enabled channels",
+        total_enabled
+    );
+
     // Channel State Tracker for health monitoring
     let channel_state_tracker = Arc::new(ChannelStateTracker::new());
     // Dynamic Adaptor Factory for protocol adaptation
@@ -1726,12 +1763,13 @@ async fn proxy_logic(
                             header_override: channel.header_override.clone(),
                             api_version: channel.api_version.clone(),
                             pricing_region: channel.pricing_region.clone(),
+                            model_mapping: channel.model_mapping.clone(),
                         });
                     }
                 }
                 Ok(_) => {
-                    tracing::debug!(
-                        "ModelRouter: No candidates for {} (Group: {})",
+                    tracing::warn!(
+                        "ModelRouter: No candidates for model '{}' in group '{}' — channel_abilities may be missing",
                         model, user_group
                     );
                 }
@@ -2060,6 +2098,39 @@ async fn proxy_logic(
                 }
             }
 
+            // Apply model_mapping: replace the model name in the passthrough body
+            // with the mapped value so the upstream provider receives the correct model name.
+            if let Some(ref mapping_str) = upstream.model_mapping {
+                if let Ok(serde_json::Value::Object(mapping)) =
+                    serde_json::from_str::<serde_json::Value>(mapping_str)
+                {
+                    if let Some(serde_json::Value::String(ref model)) =
+                        passthrough_body.get("model").cloned()
+                    {
+                        let model_lower = model.to_lowercase();
+                        if let Some(mapped) = mapping
+                            .keys()
+                            .find(|k| k.to_lowercase() == model_lower)
+                            .and_then(|k| mapping.get(k))
+                            .and_then(|v| v.as_str())
+                        {
+                            if let serde_json::Value::Object(ref mut body_map) = passthrough_body {
+                                body_map.insert(
+                                    "model".to_string(),
+                                    serde_json::Value::String(mapped.to_string()),
+                                );
+                                tracing::debug!(
+                                    "Applied model_mapping (passthrough) for {}: {} -> {}",
+                                    upstream.name,
+                                    model,
+                                    mapped
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
             // Apply header_override
             let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
 
@@ -2384,6 +2455,39 @@ async fn proxy_logic(
                         body_map.insert(k, v);
                     }
                     tracing::debug!("Applied param_override for {}", upstream.name);
+                }
+            }
+        }
+
+        // Apply model_mapping: replace the model name in the request body
+        // with the mapped value so the upstream provider receives the correct model name.
+        if let Some(ref mapping_str) = upstream.model_mapping {
+            if let Ok(serde_json::Value::Object(mapping)) =
+                serde_json::from_str::<serde_json::Value>(mapping_str)
+            {
+                if let Some(serde_json::Value::String(ref model)) =
+                    request_body_json.get("model").cloned()
+                {
+                    let model_lower = model.to_lowercase();
+                    if let Some(mapped) = mapping
+                        .keys()
+                        .find(|k| k.to_lowercase() == model_lower)
+                        .and_then(|k| mapping.get(k))
+                        .and_then(|v| v.as_str())
+                    {
+                        if let serde_json::Value::Object(ref mut body_map) = request_body_json {
+                            body_map.insert(
+                                "model".to_string(),
+                                serde_json::Value::String(mapped.to_string()),
+                            );
+                            tracing::debug!(
+                                "Applied model_mapping for {}: {} -> {}",
+                                upstream.name,
+                                model,
+                                mapped
+                            );
+                        }
+                    }
                 }
             }
         }

@@ -297,6 +297,38 @@ impl From<i32> for ChannelType {
     }
 }
 
+/// Serde module for `model_mapping`: serializes the inner JSON string as a native
+/// JSON value (object/null) and deserializes from either a JSON string or object.
+/// On invalid JSON, serialize emits null instead of the raw string to preserve
+/// the API contract that model_mapping is always a JSON object or null.
+mod model_mapping_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(opt: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match opt {
+            None => serializer.serialize_none(),
+            Some(s) => match serde_json::from_str::<serde_json::Value>(s) {
+                Ok(v) => v.serialize(serializer),
+                Err(_) => serializer.serialize_none(),
+            },
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+        Ok(value.map(|v| match v {
+            serde_json::Value::String(s) => s,
+            other => other.to_string(),
+        }))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Channel {
     pub id: i32,
@@ -313,6 +345,7 @@ pub struct Channel {
     pub models: String, // Comma separated
     pub group: String,  // Comma separated, default "default"
     pub used_quota: i64,
+    #[serde(with = "model_mapping_serde")]
     pub model_mapping: Option<String>, // JSON string
     pub priority: i64,
     pub auto_ban: i32, // 0 or 1

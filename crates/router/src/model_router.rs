@@ -89,6 +89,11 @@ impl ModelRouter {
         let pool = conn.pool();
         let is_postgres = self.db.kind() == "postgres";
 
+        // Normalize to lowercase for consistent matching
+        // (channel_abilities stores model and group in lowercase)
+        let group_lower = group.trim().to_lowercase();
+        let model_lower = model.trim().to_lowercase();
+
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
         // 1. Get max priority
@@ -108,15 +113,50 @@ impl ModelRouter {
             enabled_lit = enabled_lit,
         );
 
+        // Resolve the effective model name for querying channel_abilities.
+        // Try exact match first; on miss, strip date suffixes and retry.
+        let mut resolved_model = model_lower.clone();
         let max_priority: Option<i64> = sqlx::query_scalar(&query)
-            .bind(group)
-            .bind(model)
+            .bind(&group_lower)
+            .bind(&model_lower)
             .fetch_optional(pool)
             .await?;
 
         let priority = match max_priority {
             Some(p) => p,
-            None => return Ok(Vec::new()), // No ability found
+            None => {
+                // Fallback: strip date suffixes from the model name and retry.
+                // Handles patterns like "claude-3-5-sonnet-20241022" → "claude-3-5-sonnet"
+                // and "gpt-4o-2024-08-06" → "gpt-4o".
+                if let Some(stripped) = strip_date_suffix(&model_lower) {
+                    let fallback_priority: Option<i64> = sqlx::query_scalar(&query)
+                        .bind(&group_lower)
+                        .bind(&stripped)
+                        .fetch_optional(pool)
+                        .await?;
+                    match fallback_priority {
+                        Some(p) => {
+                            resolved_model = stripped;
+                            p
+                        }
+                        None => {
+                            tracing::warn!(
+                                "No candidates for model '{}' in group '{}' — \
+                                 channel_abilities may be missing (date-suffix fallback also missed)",
+                                model_lower, group_lower
+                            );
+                            return Ok(Vec::new());
+                        }
+                    }
+                } else {
+                    tracing::warn!(
+                        "No candidates for model '{}' in group '{}' — \
+                         channel_abilities may be missing (no date suffix to strip)",
+                        model_lower, group_lower
+                    );
+                    return Ok(Vec::new());
+                }
+            }
         };
 
         // 2. Get all candidate channel IDs with weights
@@ -134,8 +174,8 @@ impl ModelRouter {
         );
 
         let candidates: Vec<(i32, i32)> = sqlx::query_as::<_, (i32, i64)>(&query_candidates)
-            .bind(group)
-            .bind(model)
+            .bind(&group_lower)
+            .bind(&resolved_model)
             .bind(priority)
             .fetch_all(pool)
             .await?
@@ -374,4 +414,35 @@ impl ModelRouter {
 
         Ok((channels, decision))
     }
+}
+
+/// Strip a date suffix from a model name.
+///
+/// Recognized patterns (input is already lowered by caller):
+/// - `-YYYYMMDD`   e.g. `claude-3-5-sonnet-20241022` → `claude-3-5-sonnet`
+/// - `-YYYY-MM-DD` e.g. `gpt-4o-2024-08-06`         → `gpt-4o`
+///
+/// Returns `None` if no date suffix is found or the stripped name would be empty.
+#[allow(clippy::expect_used)]
+fn strip_date_suffix(model: &str) -> Option<String> {
+    use once_cell::sync::Lazy;
+    static RE_COMPACT: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"-\d{8}$").expect("valid compact-date regex"));
+    static RE_DASHED: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"-\d{4}-\d{2}-\d{2}$").expect("valid dashed-date regex"));
+
+    // Try `-YYYY-MM-DD` first (longer pattern), then `-YYYYMMDD`.
+    if let Some(mat) = RE_DASHED.find(model) {
+        let stripped = &model[..mat.start()];
+        if !stripped.is_empty() {
+            return Some(stripped.to_string());
+        }
+    }
+    if let Some(mat) = RE_COMPACT.find(model) {
+        let stripped = &model[..mat.start()];
+        if !stripped.is_empty() {
+            return Some(stripped.to_string());
+        }
+    }
+    None
 }

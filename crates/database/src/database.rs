@@ -62,12 +62,11 @@ impl Database {
             let fresh_db = std::env::var("BURNCLOUD_FRESH_DB").as_deref() != Ok("0");
             if fresh_db && default_path.exists() {
                 tracing::info!("BURNCLOUD_FRESH_DB: deleting {}", default_path.display());
-                std::fs::remove_file(&default_path).map_err(|e| {
-                    DatabaseError::DirectoryCreation(format!(
-                        "failed to delete {}: {}",
-                        default_path.display(), e
-                    ))
-                })?;
+                // Ignore "not found" — concurrent test may have already deleted it.
+                let _ = std::fs::remove_file(&default_path);
+                // Clean up WAL/SHM sidecar files left by a previous SQLite session.
+                let _ = std::fs::remove_file(default_path.with_extension("db-wal"));
+                let _ = std::fs::remove_file(default_path.with_extension("db-shm"));
             }
 
             let normalized_path = default_path
