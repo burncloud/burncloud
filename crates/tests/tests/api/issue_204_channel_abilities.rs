@@ -10,6 +10,14 @@ fn unique_username(prefix: &str) -> String {
     format!("{prefix}_{}", Uuid::new_v4().as_simple())
 }
 
+fn unique_channel_key() -> String {
+    format!("sk-test-{}", Uuid::new_v4().as_simple())
+}
+
+fn unique_channel_name() -> String {
+    format!("test-channel-{}", Uuid::new_v4().as_simple())
+}
+
 async fn get_admin_token(base_url: &str) -> String {
     let client = reqwest::Client::new();
     let username = unique_username("e2e_204_admin");
@@ -55,13 +63,15 @@ async fn test_sync_abilities_writes_models_keys_and_values() {
     let client = TestClient::new(&base_url).with_token(&admin_token);
 
     // Create a channel with models and model_mapping
+    let channel_key = unique_channel_key();
+    let channel_name = unique_channel_name();
     let create_resp = client
         .post(
             "/console/api/channel",
             &json!({
                 "type": 1,
-                "key": "sk-test-abilities",
-                "name": "abilities-test-channel",
+                "key": channel_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o-latest,astral-3-5-sonnet-20241022",
@@ -141,13 +151,15 @@ async fn test_model_mapping_defaults_to_empty_json() {
     let client = TestClient::new(&base_url).with_token(&admin_token);
 
     // Create a channel WITHOUT model_mapping field
+    let channel_key = unique_channel_key();
+    let channel_name = unique_channel_name();
     let create_resp = client
         .post(
             "/console/api/channel",
             &json!({
                 "type": 1,
-                "key": "sk-test-no-mapping",
-                "name": "no-mapping-channel",
+                "key": channel_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o",
@@ -192,13 +204,15 @@ async fn test_models_normalized_to_lowercase() {
     let client = TestClient::new(&base_url).with_token(&admin_token);
 
     // Create a channel with mixed-case model names
+    let channel_key = unique_channel_key();
+    let channel_name = unique_channel_name();
     let create_resp = client
         .post(
             "/console/api/channel",
             &json!({
                 "type": 1,
-                "key": "sk-test-lowercase",
-                "name": "lowercase-test-channel",
+                "key": channel_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "GPT-4O, Claude-3-5-Sonnet",
@@ -251,13 +265,15 @@ async fn test_sync_abilities_endpoint_after_update() {
     let client = TestClient::new(&base_url).with_token(&admin_token);
 
     // Create a channel with a simple model
+    let channel_key = unique_channel_key();
+    let channel_name = unique_channel_name();
     let create_resp = client
         .post(
             "/console/api/channel",
             &json!({
                 "type": 1,
-                "key": "sk-test-sync-endpoint",
-                "name": "sync-endpoint-channel",
+                "key": channel_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o",
@@ -271,14 +287,15 @@ async fn test_sync_abilities_endpoint_after_update() {
     let channel_id = create_resp["data"]["id"].as_i64().unwrap();
 
     // Update the channel to add a model — PUT is on /console/api/channel with id in body
+    let update_key = unique_channel_key();
     let _update_resp = client
         .put(
             "/console/api/channel",
             &json!({
                 "id": channel_id,
                 "type": 1,
-                "key": "sk-test-sync-endpoint",
-                "name": "sync-endpoint-channel",
+                "key": update_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o,astral-code-latest",
@@ -330,13 +347,15 @@ async fn test_model_mapping_values_in_abilities() {
     let client = TestClient::new(&base_url).with_token(&admin_token);
 
     // Create a channel where model_mapping values have suffixes
+    let channel_key = unique_channel_key();
+    let channel_name = unique_channel_name();
     let create_resp = client
         .post(
             "/console/api/channel",
             &json!({
                 "type": 1,
-                "key": "sk-test-mapping-values",
-                "name": "mapping-values-channel",
+                "key": channel_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o",
@@ -387,13 +406,15 @@ async fn test_update_preserves_model_mapping() {
     let client = TestClient::new(&base_url).with_token(&admin_token);
 
     // Create a channel with model_mapping
+    let channel_key = unique_channel_key();
+    let channel_name = unique_channel_name();
     let create_resp = client
         .post(
             "/console/api/channel",
             &json!({
                 "type": 1,
-                "key": "sk-test-update-mapping",
-                "name": "update-mapping-channel",
+                "key": channel_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o",
@@ -408,14 +429,15 @@ async fn test_update_preserves_model_mapping() {
     let channel_id = create_resp["data"]["id"].as_i64().unwrap();
 
     // Update the channel — PUT is on /console/api/channel with id in body
+    let update_key = unique_channel_key();
     let _update_resp = client
         .put(
             "/console/api/channel",
             &json!({
                 "id": channel_id,
                 "type": 1,
-                "key": "sk-test-update-mapping",
-                "name": "update-mapping-channel-updated",
+                "key": update_key,
+                "name": format!("{}-updated", channel_name),
                 "weight": 20,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o",
@@ -456,13 +478,15 @@ async fn test_models_normalized_to_lowercase_on_update() {
     let client = TestClient::new(&base_url).with_token(&admin_token);
 
     // Create a channel with lowercase models
+    let channel_key = unique_channel_key();
+    let channel_name = unique_channel_name();
     let create_resp = client
         .post(
             "/console/api/channel",
             &json!({
                 "type": 1,
-                "key": "sk-test-update-models-lowercase",
-                "name": "update-models-lowercase-channel",
+                "key": channel_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "gpt-4o",
@@ -476,14 +500,15 @@ async fn test_models_normalized_to_lowercase_on_update() {
     let channel_id = create_resp["data"]["id"].as_i64().unwrap();
 
     // Update the channel with mixed-case model names (e.g., "GPT-4O, Claude-3-5-Sonnet")
+    let update_key = unique_channel_key();
     let _update_resp = client
         .put(
             "/console/api/channel",
             &json!({
                 "id": channel_id,
                 "type": 1,
-                "key": "sk-test-update-models-lowercase",
-                "name": "update-models-lowercase-channel",
+                "key": update_key,
+                "name": channel_name,
                 "weight": 10,
                 "base_url": "https://api.openai.com",
                 "models": "GPT-4O, Claude-3-5-Sonnet",
