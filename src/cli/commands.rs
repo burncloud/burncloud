@@ -4,7 +4,6 @@ use burncloud_database::Database;
 use clap::{Arg, Command};
 use tracing::{error, info};
 
-use super::bundle::handle_bundle_command;
 use super::channel::handle_channel_command;
 use super::currency::handle_currency_command;
 use super::group::handle_group_command;
@@ -60,44 +59,6 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                         .value_name("PATH")
                         .help("Install from local file/directory instead of downloading")
                         .value_parser(clap::value_parser!(String)),
-                )
-                .arg(
-                    Arg::new("bundle")
-                        .long("bundle")
-                        .value_name("DIR")
-                        .help("Use local bundle directory for dependencies (offline mode)")
-                        .value_parser(clap::value_parser!(String)),
-                ),
-        )
-        .subcommand(
-            Command::new("bundle")
-                .about("Manage offline installation bundles")
-                .subcommand_required(true)
-                .subcommand(
-                    Command::new("create")
-                        .about("Create an offline installation bundle")
-                        .arg(
-                            Arg::new("software")
-                                .required(true)
-                                .help("Software ID to bundle (e.g., 'openclaw')"),
-                        )
-                        .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .long("output")
-                                .value_name("DIR")
-                                .help("Output directory for the bundle (default: ./bundles)")
-                                .value_parser(clap::value_parser!(String)),
-                        ),
-                )
-                .subcommand(
-                    Command::new("verify")
-                        .about("Verify bundle integrity")
-                        .arg(
-                            Arg::new("bundle")
-                                .required(true)
-                                .help("Path to the bundle directory to verify"),
-                        ),
                 ),
         )
         .subcommand(
@@ -292,11 +253,27 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 )
                 .subcommand(
                     Command::new("sync-abilities")
-                        .about("Sync channel abilities to the routing table")
+                        .about("Sync single channel abilities to the routing table")
                         .arg(
                             Arg::new("id")
                                 .required(true)
                                 .help("Channel ID to sync abilities for"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("repair-abilities")
+                        .about("Batch repair all channel abilities (including disabled)")
+                        .arg(
+                            Arg::new("dry-run")
+                                .long("dry-run")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Show what would be done without making changes"),
+                        )
+                        .arg(
+                            Arg::new("include-disabled")
+                                .long("include-disabled")
+                                .action(clap::ArgAction::SetTrue)
+                                .help("Also repair disabled channels (default: only enabled)"),
                         ),
                 ),
         )
@@ -1182,9 +1159,6 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("install", sub_m)) => {
             handle_install_command(sub_m).await?;
         }
-        Some(("bundle", sub_m)) => {
-            handle_bundle_command(sub_m).await?;
-        }
         Some(("channel", sub_m)) => {
             let db = Database::new().await?;
             handle_channel_command(&db, sub_m).await?;
@@ -1306,11 +1280,6 @@ pub fn show_help() {
     println!("  burncloud install <software>          - Install software");
     println!("  burncloud install <software> --status - View installation status");
     println!("  burncloud install <software> --auto-deps - Auto-install dependencies");
-    println!();
-    println!("Offline Bundles:");
-    println!("  burncloud bundle create <software> -o <dir> - Create offline bundle");
-    println!("  burncloud bundle verify <bundle-dir>         - Verify bundle");
-    println!("  burncloud install <software> --bundle <dir>  - Install from bundle");
     println!();
     println!("Pricing Management:");
     println!("  burncloud price list          - List model prices");

@@ -140,19 +140,55 @@ impl ModelRouter {
                             p
                         }
                         None => {
+                            // Diagnostic: query what models exist for this group
+                            let existing_models: Vec<String> = sqlx::query_scalar::<_, Option<String>>(
+                                &format!(
+                                    "SELECT model FROM channel_abilities WHERE {} = {} AND enabled = {} ORDER BY model LIMIT 10",
+                                    group_col, ph(is_postgres, 1), enabled_lit
+                                )
+                            )
+                            .bind(&group_lower)
+                            .fetch_all(pool)
+                            .await?
+                            .into_iter()
+                            .flatten()
+                            .collect();
+
                             tracing::warn!(
                                 "No candidates for model '{}' in group '{}' — \
-                                 channel_abilities may be missing (date-suffix fallback also missed)",
-                                model_lower, group_lower
+                                 requested model not found in channel_abilities. \
+                                 Tried: '{}' and '{}' (date-stripped). \
+                                 Available models in group '{}': [{}]. \
+                                 Run 'burncloud channel repair-abilities' to fix missing abilities.",
+                                model, group, model_lower, stripped, group_lower,
+                                existing_models.join(", ")
                             );
                             return Ok(Vec::new());
                         }
                     }
                 } else {
+                    // Diagnostic: query what models exist for this group
+                    let existing_models: Vec<String> = sqlx::query_scalar::<_, Option<String>>(
+                        &format!(
+                            "SELECT model FROM channel_abilities WHERE {} = {} AND enabled = {} ORDER BY model LIMIT 10",
+                            group_col, ph(is_postgres, 1), enabled_lit
+                        )
+                    )
+                    .bind(&group_lower)
+                    .fetch_all(pool)
+                    .await?
+                    .into_iter()
+                    .flatten()
+                    .collect();
+
                     tracing::warn!(
                         "No candidates for model '{}' in group '{}' — \
-                         channel_abilities may be missing (no date suffix to strip)",
-                        model_lower, group_lower
+                         requested model not found in channel_abilities. \
+                         Tried: '{}'. \
+                         Available models in group '{}': [{}]. \
+                         Run 'burncloud channel repair-abilities' to fix missing abilities.",
+                        model, group, model_lower, group_lower,
+                        existing_models.join(", ")
                     );
                     return Ok(Vec::new());
                 }

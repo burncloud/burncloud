@@ -478,6 +478,70 @@ pub async fn cmd_channel_sync_abilities(db: &Database, args: &ArgMatches) -> Res
     Ok(())
 }
 
+/// Handle channel repair-abilities command — batch repair all channels (including disabled).
+/// Unlike startup repair which only processes enabled channels, this command repairs ALL channels.
+pub async fn cmd_channel_repair_abilities(db: &Database, args: &ArgMatches) -> Result<()> {
+    let dry_run = args.get_flag("dry-run");
+    let include_disabled = args.get_flag("include-disabled");
+
+    let page_size: i32 = 1000;
+    let mut offset: i32 = 0;
+    let mut total_channels: usize = 0;
+    let mut repaired: usize = 0;
+    let mut failed: usize = 0;
+
+    println!("Starting channel abilities repair...");
+    if dry_run {
+        println!("(dry-run mode — no changes will be made)");
+    }
+    if include_disabled {
+        println!("Including disabled channels");
+    }
+
+    loop {
+        let batch = ChannelProviderModel::list(db, page_size, offset).await?;
+        if batch.is_empty() {
+            break;
+        }
+
+        for channel in &batch {
+            // Skip disabled channels unless --include-disabled is set
+            if channel.status != 1 && !include_disabled {
+                continue;
+            }
+            total_channels += 1;
+
+            if dry_run {
+                println!("  [dry-run] Would sync channel {} ({})", channel.id, channel.name);
+                repaired += 1;
+            } else {
+                match ChannelProviderModel::sync_abilities(db, channel).await {
+                    Ok(()) => {
+                        println!("  ✓ Channel {} ({}) synced", channel.id, channel.name);
+                        repaired += 1;
+                    }
+                    Err(e) => {
+                        println!("  ✗ Channel {} ({}) failed: {}", channel.id, channel.name, e);
+                        failed += 1;
+                    }
+                }
+            }
+        }
+
+        offset += page_size;
+    }
+
+    println!();
+    println!("Repair complete:");
+    println!("  Total channels processed: {}", total_channels);
+    println!("  Successfully repaired: {}", repaired);
+    if failed > 0 {
+        println!("  Failed: {}", failed);
+    }
+
+    Ok(())
+}
+
 /// Handle channel command routing
 pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
@@ -487,6 +551,7 @@ pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Resu
         Some(("update", sub_m)) => cmd_channel_update(db, sub_m).await,
         Some(("delete", sub_m)) => cmd_channel_delete(db, sub_m).await,
         Some(("sync-abilities", sub_m)) => cmd_channel_sync_abilities(db, sub_m).await,
+        Some(("repair-abilities", sub_m)) => cmd_channel_repair_abilities(db, sub_m).await,
         _ => {
             println!("Channel management commands:");
             println!("  add           Add a new channel");
@@ -494,7 +559,8 @@ pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Resu
             println!("  show          Show channel details");
             println!("  update        Update a channel");
             println!("  delete        Delete a channel");
-            println!("  sync-abilities  Sync channel abilities to routing table");
+            println!("  sync-abilities  Sync single channel abilities");
+            println!("  repair-abilities Batch repair all channel abilities");
             println!("\nRun 'burncloud channel <command> --help' for more information.");
             Ok(())
         }
