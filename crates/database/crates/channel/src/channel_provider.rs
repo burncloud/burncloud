@@ -299,6 +299,54 @@ impl ChannelProviderModel {
             }
         }
 
+        // Insert abilities for model_mapping field (both keys and values)
+        if let Some(model_mapping_str) = &channel.model_mapping {
+            if let Ok(mapping) =
+                serde_json::from_str::<std::collections::HashMap<String, String>>(model_mapping_str)
+            {
+                for (key, value) in &mapping {
+                    // Normalize to lowercase
+                    let key_lower = key.to_lowercase();
+                    let value_lower = value.to_lowercase();
+                    for group in &groups {
+                        // Insert for key (user-facing model name)
+                        tracing::info!(
+                            "ChannelProviderModel: Inserting ability from model_mapping key - Key: {}, Group: {}, ChannelID: {}",
+                            key_lower,
+                            group,
+                            channel.id
+                        );
+                        sqlx::query(&sql_insert)
+                            .bind(group)
+                            .bind(&key_lower)
+                            .bind(channel.id)
+                            .bind(true)
+                            .bind(channel.priority)
+                            .bind(channel.weight)
+                            .execute(pool)
+                            .await?;
+
+                        // Insert for value (actual model name)
+                        tracing::info!(
+                            "ChannelProviderModel: Inserting ability from model_mapping value - Value: {}, Group: {}, ChannelID: {}",
+                            value_lower,
+                            group,
+                            channel.id
+                        );
+                        sqlx::query(&sql_insert)
+                            .bind(group)
+                            .bind(&value_lower)
+                            .bind(channel.id)
+                            .bind(true)
+                            .bind(channel.priority)
+                            .bind(channel.weight)
+                            .execute(pool)
+                            .await?;
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }

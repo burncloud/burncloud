@@ -31,8 +31,9 @@ async fn test_api_health() -> anyhow::Result<()> {
     let client = Client::new();
     let url = format!("http://localhost:{}/console/api/channel", port);
 
+    // Channel endpoints require authentication - expect 401 without token
     let resp = client.get(&url).send().await?;
-    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.status(), 401);
 
     Ok(())
 }
