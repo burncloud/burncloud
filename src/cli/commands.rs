@@ -1157,6 +1157,24 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                                 .value_parser(["table", "json"])
                                 .help("Output format (table or json)"),
                         ),
+                )
+                .subcommand(
+                    Command::new("server")
+                        .about("Monitor server process status")
+                        .arg(
+                            Arg::new("logs")
+                                .long("logs")
+                                .help("Show recent server logs")
+                                .action(clap::ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("tail")
+                                .long("tail")
+                                .value_name("N")
+                                .default_value("50")
+                                .help("Number of log lines to show (default: 50)")
+                                .value_parser(clap::value_parser!(usize)),
+                        ),
                 ),
         );
 
