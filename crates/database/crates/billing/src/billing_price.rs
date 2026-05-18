@@ -1,6 +1,6 @@
 use crate::common::current_timestamp;
 use burncloud_common::types::{Price, PriceInput};
-use burncloud_database::{Database, Result, adapt_sql};
+use burncloud_database::{adapt_sql, Database, Result};
 
 pub struct BillingPriceModel;
 
@@ -249,19 +249,11 @@ impl BillingPriceModel {
                ORDER BY currency"#
         };
 
-        let prices = if is_postgres {
-            sqlx::query_as(sql)
-                .bind(model)
-                .bind(region_key)
-                .fetch_all(conn.pool())
-                .await?
-        } else {
-            sqlx::query_as(sql)
-                .bind(model)
-                .bind(region_key)
-                .fetch_all(conn.pool())
-                .await?
-        };
+        let prices = sqlx::query_as(sql)
+            .bind(model)
+            .bind(region_key)
+            .fetch_all(conn.pool())
+            .await?;
 
         Ok(prices)
     }
@@ -308,23 +300,13 @@ impl BillingPriceModel {
                         base_select
                     )
                 };
-                if is_postgres {
-                    sqlx::query_as(sql)
-                        .bind(curr)
-                        .bind(region_key)
-                        .bind(limit)
-                        .bind(offset)
-                        .fetch_all(conn.pool())
-                        .await?
-                } else {
-                    sqlx::query_as(sql)
-                        .bind(curr)
-                        .bind(region_key)
-                        .bind(limit)
-                        .bind(offset)
-                        .fetch_all(conn.pool())
-                        .await?
-                }
+                sqlx::query_as(sql)
+                    .bind(curr)
+                    .bind(region_key)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(conn.pool())
+                    .await?
             }
             (Some(curr), None) => {
                 // Filter by currency only
@@ -363,21 +345,12 @@ impl BillingPriceModel {
                         base_select
                     )
                 };
-                if is_postgres {
-                    sqlx::query_as(sql)
-                        .bind(region_key)
-                        .bind(limit)
-                        .bind(offset)
-                        .fetch_all(conn.pool())
-                        .await?
-                } else {
-                    sqlx::query_as(sql)
-                        .bind(region_key)
-                        .bind(limit)
-                        .bind(offset)
-                        .fetch_all(conn.pool())
-                        .await?
-                }
+                sqlx::query_as(sql)
+                    .bind(region_key)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(conn.pool())
+                    .await?
             }
             (None, None) => {
                 // No filters
