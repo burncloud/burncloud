@@ -1,9 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::api_client::{
-    ChatMessageRequest, ChatRequest, ChatUsage, RouteTrace, API_CLIENT,
-};
+use crate::api_client::{ChatMessageRequest, ChatRequest, ChatUsage, RouteTrace, API_CLIENT};
 use crate::services::token_service::TokenService;
 
 // --- Public types ---
@@ -221,10 +219,7 @@ impl PlaygroundService {
     }
 
     /// Export conversation history to the specified format.
-    pub fn export_conversation(
-        messages: &[PlaygroundMessage],
-        format: ExportFormat,
-    ) -> String {
+    pub fn export_conversation(messages: &[PlaygroundMessage], format: ExportFormat) -> String {
         match format {
             ExportFormat::Json => serde_json::to_string_pretty(messages).unwrap_or_default(),
             ExportFormat::Markdown => {
@@ -246,7 +241,10 @@ impl PlaygroundService {
     /// Resolve a usable bearer token. Returns the token string if one is available.
     pub async fn resolve_token() -> Option<String> {
         let tokens = TokenService::list().await.ok()?;
-        tokens.into_iter().find(|t| t.status == "active").map(|t| t.token)
+        tokens
+            .into_iter()
+            .find(|t| t.status == "active")
+            .map(|t| t.token)
     }
 
     // --- Private helpers ---

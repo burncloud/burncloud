@@ -17,14 +17,14 @@ pub fn DeployConfig() -> Element {
     let schema = deploy_schema();
 
     let handle_deploy = move |value: serde_json::Value| {
-        let type_ = value["type"].as_str().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+        let type_ = value["type"]
+            .as_str()
+            .and_then(|s| s.parse::<i32>().ok())
+            .unwrap_or(1);
         let key = value["key"].as_str().unwrap_or("").to_string();
         let name = value["name"].as_str().unwrap_or("").to_string();
         let model_id = value["model_id"].as_str().unwrap_or("").to_string();
-        let group = value["group"]
-            .as_str()
-            .unwrap_or("default")
-            .to_string();
+        let group = value["group"].as_str().unwrap_or("default").to_string();
 
         if key.is_empty() || name.is_empty() || model_id.is_empty() {
             toast.error("Please fill in all required fields");

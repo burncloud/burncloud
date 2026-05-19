@@ -93,13 +93,11 @@ pub fn Playground() -> Element {
     let mut error_msg: Signal<Option<String>> = use_signal(|| None);
     let current_model = use_signal(|| "gpt-4o-mini".to_string());
 
-    let channels = use_resource(move || async move {
-        ChannelService::list(0, 50).await.unwrap_or_default()
-    });
+    let channels =
+        use_resource(move || async move { ChannelService::list(0, 50).await.unwrap_or_default() });
 
-    let tokens = use_resource(move || async move {
-        TokenService::list().await.unwrap_or_default()
-    });
+    let tokens =
+        use_resource(move || async move { TokenService::list().await.unwrap_or_default() });
 
     let channel_list = channels.read().clone().unwrap_or_default();
     let active_channels: Vec<_> = channel_list.iter().filter(|c| c.status == 1).collect();
@@ -120,7 +118,9 @@ pub fn Playground() -> Element {
     use_effect(move || {
         let _ = send_trigger();
         let text = input_text.read().clone();
-        if text.is_empty() || sending() { return; }
+        if text.is_empty() || sending() {
+            return;
+        }
 
         // Clear previous error
         error_msg.set(None);
@@ -195,18 +195,25 @@ pub fn Playground() -> Element {
                         route_traces.write().push(trace.clone());
                         // Attach metadata to the assistant message
                         let mut msgs = messages.write();
-                        if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_id_for_result) {
+                        if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_id_for_result)
+                        {
                             msg.metadata = Some(MessageMetadata { trace, usage });
                         }
                     }
                     Err(e) => {
                         let mut msgs = messages.write();
-                        if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_id_for_result) {
+                        if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_id_for_result)
+                        {
                             if !msg.content.is_empty() {
                                 msg.content.push_str("\n\n");
-                                msg.content.push_str(t(*lang.read(), "playground.connection_interrupted"));
+                                msg.content
+                                    .push_str(t(*lang.read(), "playground.connection_interrupted"));
                             } else {
-                                msg.content = t_fmt(*lang.read(), "playground.error_prefix", &[("error", &e.to_string())]);
+                                msg.content = t_fmt(
+                                    *lang.read(),
+                                    "playground.error_prefix",
+                                    &[("error", &e.to_string())],
+                                );
                             }
                         }
                         error_msg.set(Some(e.to_string()));
@@ -217,12 +224,8 @@ pub fn Playground() -> Element {
         } else {
             // Non-streaming: wait for full response
             spawn(async move {
-                let result = PlaygroundService::send_message(
-                    &playground_msgs,
-                    &config,
-                    &bearer,
-                )
-                .await;
+                let result =
+                    PlaygroundService::send_message(&playground_msgs, &config, &bearer).await;
 
                 match result {
                     Ok(send_result) => {
@@ -283,16 +286,28 @@ pub fn Playground() -> Element {
             .collect();
         drop(msgs);
 
-        let mut content = PlaygroundService::export_conversation(&playground_msgs, ExportFormat::Markdown);
+        let mut content =
+            PlaygroundService::export_conversation(&playground_msgs, ExportFormat::Markdown);
         content.push_str(t_fmt(*lang.read(), "playground.export.simulation_notice", &[]).as_str());
 
-        let filename = format!("playground_{}.md", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+        let filename = format!(
+            "playground_{}.md",
+            chrono::Local::now().format("%Y%m%d_%H%M%S")
+        );
         let dir = dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
         let path = dir.join(&filename);
 
         match std::fs::write(&path, &content) {
-            Ok(()) => toast.success(&t_fmt(*lang.read(), "playground.export.success", &[("path", &path.display().to_string())])),
-            Err(e) => toast.error(&t_fmt(*lang.read(), "playground.export.failed", &[("error", &e.to_string())])),
+            Ok(()) => toast.success(&t_fmt(
+                *lang.read(),
+                "playground.export.success",
+                &[("path", &path.display().to_string())],
+            )),
+            Err(e) => toast.error(&t_fmt(
+                *lang.read(),
+                "playground.export.failed",
+                &[("error", &e.to_string())],
+            )),
         }
     };
 

@@ -3,8 +3,8 @@ use dioxus::prelude::*;
 use crate::app::Route;
 use burncloud_client_shared::components::{Sidebar, TitleBar};
 use burncloud_client_shared::use_auth;
-use burncloud_client_shared::DesktopMode;
 use burncloud_client_shared::utils::storage::ClientState;
+use burncloud_client_shared::DesktopMode;
 
 #[component]
 pub fn Layout() -> Element {

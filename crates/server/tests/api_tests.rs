@@ -22,9 +22,7 @@ async fn test_api_health() -> anyhow::Result<()> {
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
             .await
             .expect("Failed to bind test port");
-        axum::serve(listener, app)
-            .await
-            .expect("Server error");
+        axum::serve(listener, app).await.expect("Server error");
     });
     sleep(Duration::from_secs(2)).await;
 
@@ -47,9 +45,7 @@ async fn test_token_api() -> anyhow::Result<()> {
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
             .await
             .expect("Failed to bind test port");
-        axum::serve(listener, app)
-            .await
-            .expect("Server error");
+        axum::serve(listener, app).await.expect("Server error");
     });
     sleep(Duration::from_secs(2)).await;
 

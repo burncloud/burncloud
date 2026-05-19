@@ -2,9 +2,8 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::components::{
-    BCButton, BCModal, ButtonVariant,
-    FormMode, PageHeader, SchemaForm, StatusPill,
-    EmptyState, SkeletonCard, SkeletonVariant,
+    BCButton, BCModal, ButtonVariant, EmptyState, FormMode, PageHeader, SchemaForm, SkeletonCard,
+    SkeletonVariant, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
@@ -73,9 +72,8 @@ pub fn ConnectPage() -> Element {
 
     let aws_schema = aws_connect_schema(*lang.read());
 
-    let mut channels = use_resource(move || async move {
-        ChannelService::list(0, 100).await.unwrap_or_default()
-    });
+    let mut channels =
+        use_resource(move || async move { ChannelService::list(0, 100).await.unwrap_or_default() });
 
     let ch_list = channels.read().clone().unwrap_or_default();
     let loading = channels.read().is_none();
@@ -122,7 +120,11 @@ pub fn ConnectPage() -> Element {
                     }));
                     toast.success(t(*lang.read(), "connect.success.connected"));
                 }
-                Err(e) => toast.error(&t_fmt(*lang.read(), "connect.error.connect_failed", &[("error", &e.to_string())])),
+                Err(e) => toast.error(&t_fmt(
+                    *lang.read(),
+                    "connect.error.connect_failed",
+                    &[("error", &e.to_string())],
+                )),
             }
         });
     };

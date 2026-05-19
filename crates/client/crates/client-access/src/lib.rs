@@ -2,9 +2,8 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::components::{
-    BCButton, BCModal, ButtonVariant,
-    FormMode, PageHeader, SchemaForm, StatusPill,
-    EmptyState, SkeletonCard, SkeletonVariant,
+    BCButton, BCModal, ButtonVariant, EmptyState, FormMode, PageHeader, SchemaForm, SkeletonCard,
+    SkeletonVariant, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::schema::token_schema;
@@ -14,7 +13,7 @@ use dioxus::prelude::*;
 
 fn mask_key(key: &str) -> String {
     if key.len() > 8 {
-        format!("{}...{}", &key[..7], &key[key.len()-4..])
+        format!("{}...{}", &key[..7], &key[key.len() - 4..])
     } else {
         "********".to_string()
     }
@@ -37,16 +36,17 @@ pub fn AccessPage() -> Element {
     let mut form_data = use_signal(|| serde_json::json!({}));
     let toast = use_toast();
 
-    let mut tokens = use_resource(move || async move {
-        TokenService::list().await.unwrap_or_default()
-    });
+    let mut tokens =
+        use_resource(move || async move { TokenService::list().await.unwrap_or_default() });
 
     let token_list = tokens.read().clone().unwrap_or_default();
     let loading = tokens.read().is_none();
 
     let handle_create = move |value: serde_json::Value| {
         let name = value["name"].as_str().unwrap_or("").to_string();
-        if name.is_empty() { return; }
+        if name.is_empty() {
+            return;
+        }
 
         spawn(async move {
             match TokenService::create(&name, None).await {
@@ -58,7 +58,11 @@ pub fn AccessPage() -> Element {
                     form_data.set(serde_json::json!({}));
                     toast.success(t(*lang.read(), "access.token_created"));
                 }
-                Err(e) => toast.error(&t_fmt(*lang.read(), "access.create_failed", &[("error", &e.to_string())])),
+                Err(e) => toast.error(&t_fmt(
+                    *lang.read(),
+                    "access.create_failed",
+                    &[("error", &e.to_string())],
+                )),
             }
         });
     };

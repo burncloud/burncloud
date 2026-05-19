@@ -12,7 +12,10 @@ use std::collections::HashMap;
 
 use burncloud_common::types::Channel;
 
-use super::{CandidateFactors, ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext, RPM_FACTOR_LEARNING};
+use super::{
+    CandidateFactors, ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext,
+    RPM_FACTOR_LEARNING,
+};
 
 /// Small epsilon to avoid division by zero.
 const EPS: f64 = 1e-6;
@@ -59,13 +62,24 @@ impl ChannelScheduler for CombinedScheduler {
 
             let health = f.health.max(0.0);
             let health = if health.is_nan() { 1.0 } else { health };
-            h_min = h_min.min(health); h_max = h_max.max(health);
+            h_min = h_min.min(health);
+            h_max = h_max.max(health);
 
-            let cost = if f.cost.is_finite() && f.cost > 0.0 { f.cost } else { 1.0 };
-            c_min = c_min.min(cost); c_max = c_max.max(cost);
+            let cost = if f.cost.is_finite() && f.cost > 0.0 {
+                f.cost
+            } else {
+                1.0
+            };
+            c_min = c_min.min(cost);
+            c_max = c_max.max(cost);
 
-            let rpm = if f.rpm.is_nan() { RPM_FACTOR_LEARNING } else { f.rpm };
-            r_min = r_min.min(rpm); r_max = r_max.max(rpm);
+            let rpm = if f.rpm.is_nan() {
+                RPM_FACTOR_LEARNING
+            } else {
+                f.rpm
+            };
+            r_min = r_min.min(rpm);
+            r_max = r_max.max(rpm);
 
             raw.push(CandidateFactors { health, cost, rpm });
         }
@@ -85,9 +99,21 @@ impl ChannelScheduler for CombinedScheduler {
         // Compute final scores with inline normalization (no further HashMap lookups)
         let mut scores = HashMap::with_capacity(n);
         for ((ch, admin_w), f) in candidates.iter().zip(raw.iter()) {
-            let h = if h_degen { 0.75 } else { (0.5 + 0.5 * (f.health - h_min) / h_range).clamp(0.5, 1.0) };
-            let c = if c_degen { 0.75 } else { (0.5 + 0.5 * (f.cost - c_min) / c_range).clamp(0.5, 1.0) };
-            let r = if r_degen { 0.75 } else { (0.5 + 0.5 * (f.rpm - r_min) / r_range).clamp(0.5, 1.0) };
+            let h = if h_degen {
+                0.75
+            } else {
+                (0.5 + 0.5 * (f.health - h_min) / h_range).clamp(0.5, 1.0)
+            };
+            let c = if c_degen {
+                0.75
+            } else {
+                (0.5 + 0.5 * (f.cost - c_min) / c_range).clamp(0.5, 1.0)
+            };
+            let r = if r_degen {
+                0.75
+            } else {
+                (0.5 + 0.5 * (f.rpm - r_min) / r_range).clamp(0.5, 1.0)
+            };
 
             let quality = h.powf(w_h) * c.powf(w_c) * r.powf(w_r);
             let final_score = (*admin_w).max(1) as f64 * quality;
@@ -122,8 +148,16 @@ impl ChannelScheduler for CombinedScheduler {
 impl CombinedScheduler {
     /// Compute effective weights, redistributing weight from degenerate dimensions.
     fn effective_weights(&self, h_degen: bool, c_degen: bool, r_degen: bool) -> (f64, f64, f64) {
-        let mut w_h = if h_degen { 0.0 } else { self.config.health_weight };
-        let mut w_c = if c_degen { 0.0 } else { self.config.cost_weight };
+        let mut w_h = if h_degen {
+            0.0
+        } else {
+            self.config.health_weight
+        };
+        let mut w_c = if c_degen {
+            0.0
+        } else {
+            self.config.cost_weight
+        };
         let mut w_r = if r_degen { 0.0 } else { self.config.rpm_weight };
 
         // If all degenerate, fall back to equal weights (1/3 each)
@@ -168,10 +202,11 @@ fn normalize_05(values: &[(i32, f64)]) -> HashMap<i32, f64> {
     if values.is_empty() {
         return HashMap::new();
     }
-    let (min_val, max_val) = values.iter().fold(
-        (f64::INFINITY, f64::NEG_INFINITY),
-        |(min, max), &(_, v)| (min.min(v), max.max(v)),
-    );
+    let (min_val, max_val) = values
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &(_, v)| {
+            (min.min(v), max.max(v))
+        });
     normalize_with_bounds(values, min_val, max_val)
 }
 
@@ -184,9 +219,19 @@ mod tests {
     /// Build context with explicit per-channel factors.
     fn make_ctx_with_factors(factors: Vec<(i32, f64, f64, f64)>) -> SchedulingContext {
         SchedulingContext {
-            factors: factors.into_iter().map(|(id, h, c, r)| {
-                (id, CandidateFactors { health: h, cost: c, rpm: r })
-            }).collect(),
+            factors: factors
+                .into_iter()
+                .map(|(id, h, c, r)| {
+                    (
+                        id,
+                        CandidateFactors {
+                            health: h,
+                            cost: c,
+                            rpm: r,
+                        },
+                    )
+                })
+                .collect(),
         }
     }
 
@@ -194,10 +239,7 @@ mod tests {
     fn test_combined_prefers_healthier() {
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
-        let ctx = make_ctx_with_factors(vec![
-            (1, 0.9, 1.0, 10.0),
-            (2, 0.5, 1.0, 10.0),
-        ]);
+        let ctx = make_ctx_with_factors(vec![(1, 0.9, 1.0, 10.0), (2, 0.5, 1.0, 10.0)]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 1.0,
             cost_weight: 0.0,
@@ -219,8 +261,8 @@ mod tests {
 
         // CN: 100 CNY → cost=1.0/(100/7)=0.07, US: 500 → cost=1/500=0.002
         let ctx = make_ctx_with_factors(vec![
-            (1, 1.0, 0.07, 10.0),   // cheaper (1/14.28)
-            (2, 1.0, 0.002, 10.0),  // more expensive (1/500)
+            (1, 1.0, 0.07, 10.0),  // cheaper (1/14.28)
+            (2, 1.0, 0.002, 10.0), // more expensive (1/500)
         ]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
@@ -238,20 +280,14 @@ mod tests {
     fn test_combined_prefers_higher_rpm() {
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
-        let ctx = make_ctx_with_factors(vec![
-            (1, 1.0, 1.0, 100.0),
-            (2, 1.0, 1.0, 10.0),
-        ]);
+        let ctx = make_ctx_with_factors(vec![(1, 1.0, 1.0, 100.0), (2, 1.0, 1.0, 10.0)]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 0.0,
             rpm_weight: 1.0,
         });
         let scores = scheduler.score(&[c1, c2], &ctx).unwrap();
-        assert!(
-            scores[&1] > scores[&2],
-            "higher RPM should score higher"
-        );
+        assert!(scores[&1] > scores[&2], "higher RPM should score higher");
     }
 
     #[test]
@@ -280,20 +316,14 @@ mod tests {
         c2.0.pricing_region = Some("paid".into());
 
         // Free: price=0 → cost=1.0 (best), Paid: price=100 → cost=1/100=0.01
-        let ctx = make_ctx_with_factors(vec![
-            (1, 1.0, 1.0, 10.0),
-            (2, 1.0, 0.01, 10.0),
-        ]);
+        let ctx = make_ctx_with_factors(vec![(1, 1.0, 1.0, 10.0), (2, 1.0, 0.01, 10.0)]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 1.0,
             rpm_weight: 0.0,
         });
         let scores = scheduler.score(&[c1, c2], &ctx).unwrap();
-        assert!(
-            scores[&1] > scores[&2],
-            "free channel should score higher"
-        );
+        assert!(scores[&1] > scores[&2], "free channel should score higher");
     }
 
     #[test]
@@ -319,10 +349,7 @@ mod tests {
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
         // Channel 1: Stable with high RPM, Channel 2: Cooldown (rpm=0.1)
-        let ctx = make_ctx_with_factors(vec![
-            (1, 1.0, 1.0, 100.0),
-            (2, 1.0, 1.0, 0.1),
-        ]);
+        let ctx = make_ctx_with_factors(vec![(1, 1.0, 1.0, 100.0), (2, 1.0, 1.0, 0.1)]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 0.0,
@@ -340,10 +367,7 @@ mod tests {
         let c1 = make_channel(1, 10);
         let c2 = make_channel(2, 10);
         // Both in Learning state: rpm=1.0 regardless of current_limit
-        let ctx = make_ctx_with_factors(vec![
-            (1, 1.0, 1.0, 1.0),
-            (2, 1.0, 1.0, 1.0),
-        ]);
+        let ctx = make_ctx_with_factors(vec![(1, 1.0, 1.0, 1.0), (2, 1.0, 1.0, 1.0)]);
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,
             cost_weight: 0.0,
@@ -366,10 +390,7 @@ mod tests {
         let mut c2 = make_channel(2, 10);
         c2.0.pricing_region = Some("us".into());
 
-        let ctx = make_ctx_with_factors(vec![
-            (1, 1.0, 0.4, 10.0),
-            (2, 1.0, 0.4, 10.0),
-        ]);
+        let ctx = make_ctx_with_factors(vec![(1, 1.0, 0.4, 10.0), (2, 1.0, 0.4, 10.0)]);
 
         let scheduler = CombinedScheduler::new(SchedulerPolicyConfig {
             health_weight: 0.0,

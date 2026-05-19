@@ -1,13 +1,13 @@
 //! Bundle creation and verification for offline installation
 
 use chrono::Utc;
-use tracing::{info, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
+use tracing::{info, warn};
 
 use crate::error::{InstallerError, InstallerResult};
 use crate::npm::NpmInstaller;

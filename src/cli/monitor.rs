@@ -114,7 +114,14 @@ pub async fn cmd_monitor_server(matches: &ArgMatches) -> Result<()> {
         println!("  Tmux:        No active session");
     }
 
-    println!("  Port 3000:   {}", if status.port_3000_in_use { "In use" } else { "Not in use" });
+    println!(
+        "  Port 3000:   {}",
+        if status.port_3000_in_use {
+            "In use"
+        } else {
+            "Not in use"
+        }
+    );
 
     if let Some(time) = &status.last_log_time {
         println!("  Last Log:    {}", time);
@@ -170,8 +177,8 @@ fn check_server_status() -> Result<ServerStatus> {
     let last_log_time = get_last_log_time()?;
 
     // Calculate uptime if process is running
-    let uptime_seconds = if pid.is_some() {
-        get_process_uptime(pid.unwrap())?
+    let uptime_seconds = if let Some(pid) = pid {
+        get_process_uptime(pid)?
     } else {
         None
     };
@@ -192,18 +199,13 @@ fn check_server_status() -> Result<ServerStatus> {
 
 /// Check if burncloud process is running
 fn check_process_running() -> Result<bool> {
-    let output = StdCommand::new("pgrep")
-        .arg("-x")
-        .arg("burncloud")
-        .output();
+    let output = StdCommand::new("pgrep").arg("-x").arg("burncloud").output();
 
     match output {
         Ok(o) => Ok(!o.stdout.is_empty()),
         Err(_) => {
             // Fallback: check with ps
-            let output = StdCommand::new("ps")
-                .arg("aux")
-                .output()?;
+            let output = StdCommand::new("ps").arg("aux").output()?;
             let stdout = String::from_utf8_lossy(&output.stdout);
             Ok(stdout.contains("burncloud") && !stdout.contains("grep"))
         }
@@ -212,10 +214,7 @@ fn check_process_running() -> Result<bool> {
 
 /// Get burncloud process PID
 fn get_process_pid() -> Result<Option<u32>> {
-    let output = StdCommand::new("pgrep")
-        .arg("-x")
-        .arg("burncloud")
-        .output();
+    let output = StdCommand::new("pgrep").arg("-x").arg("burncloud").output();
 
     match output {
         Ok(o) => {
@@ -262,9 +261,7 @@ fn check_tmux_session() -> Result<Option<String>> {
 
 /// Check if a port is in use
 fn check_port_in_use(port: u16) -> Result<bool> {
-    let output = StdCommand::new("ss")
-        .arg("-tlnp")
-        .output();
+    let output = StdCommand::new("ss").arg("-tlnp").output();
 
     match output {
         Ok(o) => {
@@ -273,9 +270,7 @@ fn check_port_in_use(port: u16) -> Result<bool> {
         }
         Err(_) => {
             // Fallback: try netstat
-            let output = StdCommand::new("netstat")
-                .arg("-tlnp")
-                .output();
+            let output = StdCommand::new("netstat").arg("-tlnp").output();
             match output {
                 Ok(o) => {
                     let stdout = String::from_utf8_lossy(&o.stdout);
@@ -305,9 +300,12 @@ fn get_last_log_time() -> Result<Option<String>> {
     }
 
     // Get the most recent file
-    let latest_file = router_logs
-        .into_iter()
-        .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()).unwrap_or(SystemTime::UNIX_EPOCH));
+    let latest_file = router_logs.into_iter().max_by_key(|e| {
+        e.metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .unwrap_or(SystemTime::UNIX_EPOCH)
+    });
 
     if let Some(file) = latest_file {
         let content = std::fs::read_to_string(file.path())?;
@@ -326,7 +324,9 @@ fn get_last_log_time() -> Result<Option<String>> {
 /// Get process uptime in seconds
 fn get_process_uptime(pid: u32) -> Result<Option<u64>> {
     // Read /proc/<pid>/stat to get process start time
-    let stat_path = std::path::Path::new("/proc").join(pid.to_string()).join("stat");
+    let stat_path = std::path::Path::new("/proc")
+        .join(pid.to_string())
+        .join("stat");
     if !stat_path.exists() {
         return Ok(None);
     }
@@ -398,12 +398,25 @@ fn get_recent_errors() -> Result<Vec<String>> {
         if filename.ends_with(".log") {
             let content = std::fs::read_to_string(entry.path())?;
             for line in content.lines().rev().take(100) {
-                if line.contains("error") || line.contains("Error") || line.contains("ERROR")
-                    || line.contains("panic") || line.contains("Panic")
-                    || line.contains("fatal") || line.contains("Fatal") {
+                if line.contains("error")
+                    || line.contains("Error")
+                    || line.contains("ERROR")
+                    || line.contains("panic")
+                    || line.contains("Panic")
+                    || line.contains("fatal")
+                    || line.contains("Fatal")
+                {
                     // Extract relevant part
                     if let Some(ts) = line.split_whitespace().next() {
-                        errors.push(format!("{}: {}", ts, line.split_whitespace().skip(1).take(5).collect::<Vec<_>>().join(" ")));
+                        errors.push(format!(
+                            "{}: {}",
+                            ts,
+                            line.split_whitespace()
+                                .skip(1)
+                                .take(5)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        ));
                     }
                     if errors.len() >= 5 {
                         break;
@@ -438,9 +451,12 @@ fn show_recent_logs(n: usize) -> Result<()> {
         return Ok(());
     }
 
-    let latest_file = router_logs
-        .into_iter()
-        .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()).unwrap_or(SystemTime::UNIX_EPOCH));
+    let latest_file = router_logs.into_iter().max_by_key(|e| {
+        e.metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .unwrap_or(SystemTime::UNIX_EPOCH)
+    });
 
     if let Some(file) = latest_file {
         let content = std::fs::read_to_string(file.path())?;
@@ -498,7 +514,10 @@ async fn get_today_stats(db: &Database) -> Result<(i64, i64, i64)> {
     let today_start = now - (now % 86400);
 
     let time_filter = if is_postgres {
-        format!("EXTRACT(EPOCH FROM created_at)::BIGINT >= {}", ph(is_postgres, 1))
+        format!(
+            "EXTRACT(EPOCH FROM created_at)::BIGINT >= {}",
+            ph(is_postgres, 1)
+        )
     } else {
         "strftime('%s', created_at) >= CAST(? AS TEXT)".to_string()
     };

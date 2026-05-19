@@ -18,7 +18,9 @@ pub fn ForgotPasswordPage() -> Element {
     let handle_submit = move |_| {
         let mail = email.read().clone();
         if mail.is_empty() {
-            error_msg.set(Some(t(*lang.read(), "forgot_password.error.email_required").to_string()));
+            error_msg.set(Some(
+                t(*lang.read(), "forgot_password.error.email_required").to_string(),
+            ));
             return;
         }
         error_msg.set(None);

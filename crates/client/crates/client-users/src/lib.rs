@@ -1,6 +1,6 @@
 use burncloud_client_shared::components::{
-    BCButton, BCInput, BCModal, ButtonVariant, PageHeader, StatusPill,
-    EmptyState, SkeletonCard, SkeletonVariant,
+    BCButton, BCInput, BCModal, ButtonVariant, EmptyState, PageHeader, SkeletonCard,
+    SkeletonVariant, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::user_service::UserService;
@@ -27,9 +27,8 @@ pub fn UsersPage() -> Element {
     let mut invite_loading = use_signal(|| false);
     let toast = use_toast();
 
-    let mut users = use_resource(move || async move {
-        UserService::list().await.unwrap_or_default()
-    });
+    let mut users =
+        use_resource(move || async move { UserService::list().await.unwrap_or_default() });
 
     let user_list = users.read().clone().unwrap_or_default();
     let loading = users.read().is_none();
@@ -37,12 +36,14 @@ pub fn UsersPage() -> Element {
     let total = user_list.len();
     let active_count = user_list.iter().filter(|u| u.status == 1).count();
 
-    let filtered: Vec<_> = user_list.iter().filter(|&u| {
-        match active_tab().as_str() {
+    let filtered: Vec<_> = user_list
+        .iter()
+        .filter(|&u| match active_tab().as_str() {
             "vip" => u.group == "VIP",
             _ => true,
-        }
-    }).cloned().collect();
+        })
+        .cloned()
+        .collect();
 
     rsx! {
         PageHeader {

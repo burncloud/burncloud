@@ -10,15 +10,15 @@
 //! so callers can reference it under the canonical `{Domain}{Entity}Model` naming.
 
 mod common;
+mod password_reset;
 mod user_account;
 mod user_api_key;
 mod user_recharge;
-mod password_reset;
 
+pub use password_reset::{PasswordResetDatabase, PasswordResetToken};
 pub use user_account::{UserAccount, UserAccountInput};
 pub use user_api_key::{UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
 pub use user_recharge::UserRecharge;
-pub use password_reset::{PasswordResetDatabase, PasswordResetToken};
 
 use burncloud_database::{Database, Result};
 use sqlx::Row;
@@ -183,20 +183,20 @@ impl UserDatabase {
             } else {
                 "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
             };
-            let orphan_rows = sqlx::query(orphan_sql)
-                .fetch_all(conn.pool())
-                .await?;
+            let orphan_rows = sqlx::query(orphan_sql).fetch_all(conn.pool()).await?;
 
             if !orphan_rows.is_empty() {
-                tracing::info!("UserDatabase: assigning roles to {} orphan user(s)", orphan_rows.len());
+                tracing::info!(
+                    "UserDatabase: assigning roles to {} orphan user(s)",
+                    orphan_rows.len()
+                );
                 // First real orphan (non-seed) gets admin; all others get user.
                 let mut first_real = true;
                 for row in orphan_rows.iter() {
                     let user_id: String = row.get(0);
                     let username: String = row.get(1);
                     let pw_hash: Option<String> = row.get(2);
-                    let is_seed = username == "demo-user"
-                        || pw_hash.as_deref() == Some("no-login");
+                    let is_seed = username == "demo-user" || pw_hash.as_deref() == Some("no-login");
                     let role = if !is_seed && first_real {
                         first_real = false;
                         "admin"
@@ -204,7 +204,12 @@ impl UserDatabase {
                         "user"
                     };
                     if let Err(e) = Self::assign_role(db, &user_id, role).await {
-                        tracing::warn!("Failed to assign {} role to orphan user {}: {}", role, user_id, e);
+                        tracing::warn!(
+                            "Failed to assign {} role to orphan user {}: {}",
+                            role,
+                            user_id,
+                            e
+                        );
                     }
                 }
             }
@@ -312,7 +317,11 @@ impl UserDatabase {
         Ok(users)
     }
 
-    pub async fn update_password_hash(db: &Database, user_id: &str, password_hash: &str) -> Result<()> {
+    pub async fn update_password_hash(
+        db: &Database,
+        user_id: &str,
+        password_hash: &str,
+    ) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
             "UPDATE user_accounts SET password_hash = $1 WHERE id = $2"
@@ -362,10 +371,7 @@ impl UserDatabase {
     pub async fn count_users(db: &Database) -> Result<i64> {
         let conn = db.get_connection()?;
         let sql = "SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'";
-        let count: i64 = sqlx::query(sql)
-            .fetch_one(conn.pool())
-            .await?
-            .get(0);
+        let count: i64 = sqlx::query(sql).fetch_one(conn.pool()).await?.get(0);
         Ok(count)
     }
 
@@ -379,10 +385,7 @@ impl UserDatabase {
     pub async fn has_admin_user(db: &Database) -> Result<bool> {
         let conn = db.get_connection()?;
         let sql = "SELECT COUNT(*) FROM user_role_bindings urb JOIN user_roles r ON urb.role_id = r.id JOIN user_accounts u ON urb.user_id = u.id WHERE r.name = 'admin' AND u.username != 'demo-user' AND (u.password_hash IS NULL OR u.password_hash != 'no-login')";
-        let count: i64 = sqlx::query(sql)
-            .fetch_one(conn.pool())
-            .await?
-            .get(0);
+        let count: i64 = sqlx::query(sql).fetch_one(conn.pool()).await?.get(0);
         Ok(count > 0)
     }
 

@@ -1,8 +1,8 @@
 //! npm package installation support
 
-use tracing::info;
 use std::path::Path;
 use std::process::Command;
+use tracing::info;
 
 use crate::error::{InstallerError, InstallerResult};
 use crate::platform::Platform;

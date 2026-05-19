@@ -26,7 +26,10 @@ pub async fn handle_bundle_command(matches: &ArgMatches) -> Result<()> {
 
             let bundle_dir = PathBuf::from(bundle_path);
             let manifest = BundleVerifier::verify(&bundle_dir)?;
-            println!("Bundle verified: {} ({})", manifest.software.name, manifest.software.id);
+            println!(
+                "Bundle verified: {} ({})",
+                manifest.software.name, manifest.software.id
+            );
         }
         _ => {
             println!("Unknown bundle subcommand. Use 'create' or 'verify'.");

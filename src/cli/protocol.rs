@@ -30,7 +30,11 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
 
             for config in configs {
                 let channel_type_name = channel_type_to_name(config.channel_type);
-                let is_default = if config.is_default_bool() { "Yes" } else { "No" };
+                let is_default = if config.is_default_bool() {
+                    "Yes"
+                } else {
+                    "No"
+                };
                 let endpoint = config.chat_endpoint.as_deref().unwrap_or("-");
                 println!(
                     "{:<5} {:<12} {:<18} {:<8} {:<35}",

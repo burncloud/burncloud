@@ -101,17 +101,18 @@ async fn t1_cost_status_roundtrip_all_values() -> anyhow::Result<()> {
         ak.cmp(bk)
     });
 
-    let mut expected: Vec<Option<String>> = values
-        .iter()
-        .map(|v| v.map(|s| s.to_string()))
-        .collect();
+    let mut expected: Vec<Option<String>> =
+        values.iter().map(|v| v.map(|s| s.to_string())).collect();
     expected.sort_by(|a, b| {
         let ak = a.as_deref().unwrap_or("");
         let bk = b.as_deref().unwrap_or("");
         ak.cmp(bk)
     });
 
-    assert_eq!(found, expected, "all cost_status values must survive INSERT → SELECT");
+    assert_eq!(
+        found, expected,
+        "all cost_status values must survive INSERT → SELECT"
+    );
     Ok(())
 }
 
@@ -157,7 +158,10 @@ async fn t2b_preflight_accepts_known_model() -> anyhow::Result<()> {
     let calc = CostCalculator::new(cache);
 
     let result = calc.preflight("billing-obs-test-model", None).await;
-    assert!(result.is_ok(), "preflight should accept a model present in the cache");
+    assert!(
+        result.is_ok(),
+        "preflight should accept a model present in the cache"
+    );
 
     Ok(())
 }
@@ -186,7 +190,11 @@ async fn t3_post_settle_price_missing_roundtrip() -> anyhow::Result<()> {
         .find(|r| r.request_id == "req-t3-post-settle")
         .expect("row should exist");
 
-    assert_eq!(row.cost_status.as_deref(), Some("price_missing"), "cost_status must be 'price_missing'");
+    assert_eq!(
+        row.cost_status.as_deref(),
+        Some("price_missing"),
+        "cost_status must be 'price_missing'"
+    );
     assert_eq!(row.cost, 0, "cost must be 0 for PriceNotFound");
     Ok(())
 }

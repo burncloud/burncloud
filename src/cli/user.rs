@@ -307,7 +307,9 @@ pub async fn cmd_user_topup(db: &Database, matches: &ArgMatches) -> Result<()> {
     }
 
     // Verify user exists
-    if UserDatabase::get_user_by_username(db, user_id).await?.is_none()
+    if UserDatabase::get_user_by_username(db, user_id)
+        .await?
+        .is_none()
         && UserDatabase::get_user_by_id(db, user_id).await?.is_none()
     {
         return Err(anyhow::anyhow!("User '{}' not found", user_id));

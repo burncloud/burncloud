@@ -350,20 +350,18 @@ impl RouterDatabase {
             .fetch_optional(conn.pool())
             .await?;
 
-        Ok(
-            row.map(
-                |(user_id, group, remain_quota, used_quota, order_type, price_cap)| {
-                    TokenValidationInfo {
-                        user_id,
-                        group,
-                        remain_quota,
-                        used_quota,
-                        order_type,
-                        price_cap,
-                    }
-                },
-            ),
-        )
+        Ok(row.map(
+            |(user_id, group, remain_quota, used_quota, order_type, price_cap)| {
+                TokenValidationInfo {
+                    user_id,
+                    group,
+                    remain_quota,
+                    used_quota,
+                    order_type,
+                    price_cap,
+                }
+            },
+        ))
     }
 
     // ============== Group delegations ==============

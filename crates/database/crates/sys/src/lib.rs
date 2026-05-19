@@ -5,14 +5,14 @@
 //! - [`installer`] - Software installation records (InstallerDB)
 //! - [`download`] - Download tasks (SysDownload, DownloadDB)
 
-pub mod setting;
-pub mod installer;
 pub mod download;
+pub mod installer;
+pub mod setting;
 
 // Re-export primary types for convenience
-pub use setting::{SettingDatabase, SysSetting};
-pub use installer::InstallerDB;
 pub use download::{DownloadDB, SysDownload};
+pub use installer::InstallerDB;
+pub use setting::{SettingDatabase, SysSetting};
 
 // Re-export shared DatabaseError for consumers
 pub use burncloud_database::DatabaseError;

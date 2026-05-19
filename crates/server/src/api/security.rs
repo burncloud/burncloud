@@ -96,14 +96,8 @@ struct EventPageResponse {
 
 pub fn security_routes() -> Router<AppState> {
     Router::new()
-        .route(
-            "/console/api/monitor/security",
-            get(security_summary),
-        )
-        .route(
-            "/console/api/monitor/security/events",
-            get(security_events),
-        )
+        .route("/console/api/monitor/security", get(security_summary))
+        .route("/console/api/monitor/security/events", get(security_events))
         .route(
             "/console/api/monitor/security/filters",
             get(security_filters_get).put(security_filters_put),
@@ -116,9 +110,7 @@ pub fn security_routes() -> Router<AppState> {
             "/console/api/monitor/security/circuit-breaker-status",
             get(security_circuit_breaker_status),
         )
-        .layer(axum::middleware::from_fn(
-            crate::api::auth::auth_middleware,
-        ))
+        .layer(axum::middleware::from_fn(crate::api::auth::auth_middleware))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -132,15 +124,16 @@ async fn call_router_internal(path: &str) -> Result<serde_json::Value, String> {
     let url = format!("http://127.0.0.1:{port}{path}");
 
     let client = reqwest::Client::new();
-    let mut req = client
-        .get(&url)
-        .timeout(std::time::Duration::from_secs(5));
+    let mut req = client.get(&url).timeout(std::time::Duration::from_secs(5));
 
     if let Ok(secret) = std::env::var("BURNCLOUD_INTERNAL_SECRET") {
         req = req.header("X-Internal-Secret", secret);
     }
 
-    let resp = req.send().await.map_err(|e| format!("router call failed: {e}"))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("router call failed: {e}"))?;
 
     if resp.status().is_success() {
         resp.json::<serde_json::Value>()
@@ -174,7 +167,10 @@ async fn post_router_internal(
         req = req.header("X-Internal-Secret", secret);
     }
 
-    let resp = req.send().await.map_err(|e| format!("router call failed: {e}"))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("router call failed: {e}"))?;
 
     if resp.status().is_success() {
         resp.json::<serde_json::Value>()
@@ -219,10 +215,8 @@ fn compute_sparkline(logs: &[RouterLog]) -> Vec<u64> {
     for log in logs {
         if let Some(ref ts_str) = log.created_at {
             if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S") {
-                let dt = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                    ts,
-                    chrono::Utc,
-                );
+                let dt =
+                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ts, chrono::Utc);
                 let days_ago = (now - dt).num_days().clamp(0, 6) as usize;
                 buckets[6 - days_ago] += 1;
             }
@@ -245,10 +239,7 @@ fn log_to_risk_event(log: &RouterLog) -> RiskEvent {
         id: log.id,
         time: log.created_at.clone().unwrap_or_default(),
         source: log.user_id.clone().unwrap_or_else(|| "-".into()),
-        target: log
-            .upstream_id
-            .clone()
-            .unwrap_or_else(|| log.path.clone()),
+        target: log.upstream_id.clone().unwrap_or_else(|| log.path.clone()),
         event_type: event_type.into(),
         severity: severity.into(),
         status: if code >= 500 {
@@ -347,11 +338,8 @@ async fn security_filters_get(State(state): State<AppState>) -> impl IntoRespons
             if rows.is_empty() {
                 Json(FilterConfigResponse::from(FilterConfig::default())).into_response()
             } else {
-                let val: String = rows[0]
-                    .try_get("value")
-                    .unwrap_or_default();
-                let config: FilterConfig =
-                    serde_json::from_str(&val).unwrap_or_default();
+                let val: String = rows[0].try_get("value").unwrap_or_default();
+                let config: FilterConfig = serde_json::from_str(&val).unwrap_or_default();
                 Json(FilterConfigResponse::from(config)).into_response()
             }
         }
@@ -432,9 +420,7 @@ async fn security_emergency_circuit_break(
 ///
 /// Proxy to router's internal health endpoint to get circuit breaker states.
 #[tracing::instrument(skip_all)]
-async fn security_circuit_breaker_status(
-    State(_state): State<AppState>,
-) -> impl IntoResponse {
+async fn security_circuit_breaker_status(State(_state): State<AppState>) -> impl IntoResponse {
     match call_router_internal("/console/internal/health").await {
         Ok(data) => {
             let mut resp = serde_json::Map::new();

@@ -25,7 +25,11 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
 
 /// Insert a router_logs row with a specific created_at timestamp.
 /// `created_at` must be an ISO8601 string like "2026-04-28 12:00:00".
-async fn insert_log_with_timestamp(db: &burncloud_database::Database, user_id: &str, created_at: &str) {
+async fn insert_log_with_timestamp(
+    db: &burncloud_database::Database,
+    user_id: &str,
+    created_at: &str,
+) {
     let conn = db.get_connection().unwrap();
     let sql = r#"
         INSERT INTO router_logs

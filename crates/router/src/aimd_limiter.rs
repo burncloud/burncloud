@@ -420,7 +420,10 @@ mod tests {
 
         assert_eq!(limiter.state, RateLimitState::Learning);
         // Limit should be reduced by recovery_ratio (50%)
-        assert!(limiter.current_limit <= (initial_limit as f64 * RATE_LIMIT_REDUCTION_RATIO * 0.5).ceil() as u32);
+        assert!(
+            limiter.current_limit
+                <= (initial_limit as f64 * RATE_LIMIT_REDUCTION_RATIO * 0.5).ceil() as u32
+        );
     }
 
     #[test]

@@ -34,7 +34,11 @@ pub fn TokenManager() -> Element {
                     tokens.set(values);
                 }
                 Err(e) => {
-                    toast.error(&t_fmt(*lang.read(), "settings.tokens.load_failed", &[("error", &e.to_string())]));
+                    toast.error(&t_fmt(
+                        *lang.read(),
+                        "settings.tokens.load_failed",
+                        &[("error", &e.to_string())],
+                    ));
                 }
             }
             loading.set(false);
@@ -66,7 +70,11 @@ pub fn TokenManager() -> Element {
                     }
                 }
                 Err(e) => {
-                    toast.error(&t_fmt(*lang.read(), "settings.tokens.create_failed", &[("error", &e.to_string())]));
+                    toast.error(&t_fmt(
+                        *lang.read(),
+                        "settings.tokens.create_failed",
+                        &[("error", &e.to_string())],
+                    ));
                 }
             }
         });
@@ -92,7 +100,11 @@ pub fn TokenManager() -> Element {
                             .retain(|t| t["token"].as_str() != Some(&token_str));
                     }
                     Err(e) => {
-                        toast.error(&t_fmt(*lang.read(), "settings.tokens.delete_failed", &[("error", &e.to_string())]));
+                        toast.error(&t_fmt(
+                            *lang.read(),
+                            "settings.tokens.delete_failed",
+                            &[("error", &e.to_string())],
+                        ));
                     }
                 }
             });

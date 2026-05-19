@@ -4,7 +4,7 @@ use dioxus_router::Routable;
 
 #[allow(unused_imports)]
 use super::placeholders::{
-    ApiManagement, FinancePage, ChannelPage, ConnectPage, Dashboard, DeployConfig, LogPage,
+    ApiManagement, ChannelPage, ConnectPage, Dashboard, DeployConfig, FinancePage, LogPage,
     NotFoundPage, PlaygroundPage, ServiceMonitor, SystemSettings, UsersPage,
 };
 use super::sidebar::Sidebar;

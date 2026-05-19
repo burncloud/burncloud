@@ -156,11 +156,9 @@ pub struct ChatChunk {
 impl ChatChunk {
     /// Extract the delta content from the first choice, if present.
     pub fn delta_content(&self) -> Option<String> {
-        self.choices.first().and_then(|c| {
-            c.delta
-                .as_ref()
-                .and_then(|d| d.content.clone())
-        })
+        self.choices
+            .first()
+            .and_then(|c| c.delta.as_ref().and_then(|d| d.content.clone()))
     }
 
     /// Check if this is the [DONE] sentinel.
@@ -180,7 +178,9 @@ impl ApiClient {
     /// Server root URL derived from base_url (strips `/console` suffix).
     /// Group routes are mounted at server root without the `/console/api` prefix.
     fn server_root(&self) -> &str {
-        self.base_url.strip_suffix("/console").unwrap_or(&self.base_url)
+        self.base_url
+            .strip_suffix("/console")
+            .unwrap_or(&self.base_url)
     }
 
     /// Build the data-plane URL for chat completions (no /console prefix).
@@ -306,10 +306,7 @@ impl ApiClient {
         let resp = self.client.post(&url).json(group).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Failed to create group: {}",
-                resp.status()
-            ));
+            return Err(anyhow::anyhow!("Failed to create group: {}", resp.status()));
         }
         Ok(())
     }
@@ -319,10 +316,7 @@ impl ApiClient {
         let resp = self.client.delete(&url).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Failed to delete group: {}",
-                resp.status()
-            ));
+            return Err(anyhow::anyhow!("Failed to delete group: {}", resp.status()));
         }
         Ok(())
     }
@@ -410,7 +404,8 @@ impl ApiClient {
             .map_err(|e| format!("响应解析错误: {}", e))?;
 
         if json.success {
-            json.data.ok_or_else(|| "注册成功但未返回用户数据".to_string())
+            json.data
+                .ok_or_else(|| "注册成功但未返回用户数据".to_string())
         } else {
             Err(json.message.unwrap_or_else(|| "注册失败".to_string()))
         }
@@ -422,7 +417,12 @@ impl ApiClient {
             self.base_url, username
         );
 
-        let resp = self.client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
@@ -450,7 +450,10 @@ impl ApiClient {
         if json["success"].as_bool().unwrap_or(false) {
             Ok(())
         } else {
-            Err(json["message"].as_str().unwrap_or("Failed to send reset email").to_string())
+            Err(json["message"]
+                .as_str()
+                .unwrap_or("Failed to send reset email")
+                .to_string())
         }
     }
 
@@ -474,14 +477,22 @@ impl ApiClient {
         if json["success"].as_bool().unwrap_or(false) {
             Ok(())
         } else {
-            Err(json["message"].as_str().unwrap_or("Password reset failed").to_string())
+            Err(json["message"]
+                .as_str()
+                .unwrap_or("Password reset failed")
+                .to_string())
         }
     }
 
     pub async fn oauth_url(&self, provider: &str) -> Result<String, String> {
         let url = format!("{}/api/auth/{provider}", self.base_url);
 
-        let resp = self.client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
@@ -491,7 +502,10 @@ impl ApiClient {
                 .map(|s| s.to_string())
                 .ok_or_else(|| "No OAuth URL in response".to_string())
         } else {
-            Err(json["message"].as_str().unwrap_or("OAuth URL request failed").to_string())
+            Err(json["message"]
+                .as_str()
+                .unwrap_or("OAuth URL request failed")
+                .to_string())
         }
     }
 

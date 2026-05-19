@@ -124,18 +124,14 @@ async fn t1_budget_filters_expensive_channels_and_excludes_none_priced() -> anyh
 #[tokio::test]
 async fn t2_resolve_traffic_class_lands_in_scheduling_request() -> anyhow::Result<()> {
     let (db, _pool, _url) = setup_db().await?;
-    insert_router_token(
-        &db,
-        "tok-color",
-        "u-color",
-        "default",
-        Some("value"),
-        None,
-    )
-    .await?;
+    insert_router_token(&db, "tok-color", "u-color", "default", Some("value"), None).await?;
 
     let color = UserService::resolve_traffic_class(&db, "u-color").await?;
-    assert_eq!(color, TrafficColor::Yellow, "MVP: every user maps to Yellow");
+    assert_eq!(
+        color,
+        TrafficColor::Yellow,
+        "MVP: every user maps to Yellow"
+    );
 
     let req = SchedulingRequest {
         user_id: Some("u-color".into()),
@@ -342,12 +338,12 @@ async fn t5b_layer_decision_and_traffic_color_db_roundtrip() -> anyhow::Result<(
 /// proving the production code path produces the correct observability values.
 #[tokio::test]
 async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
+    use burncloud_database::sqlx;
     use burncloud_router::affinity::AffinityCache;
     use burncloud_router::channel_state::ChannelStateTracker;
     use burncloud_router::exchange_rate::ExchangeRateService;
     use burncloud_router::model_router::{ModelRouter, RouteInputs, RoutingDecision};
     use burncloud_router::SchedulingRequest;
-    use burncloud_database::sqlx;
     use burncloud_service_billing::PriceCache;
 
     let (db, pool, _url) = setup_db().await?;
@@ -455,7 +451,10 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
         affinity_cache: Some(&affinity_cache),
     };
     let (channels2, decision2) = model_router.route_with_scheduler(inputs2).await?;
-    assert!(!channels2.is_empty(), "second call should return candidates");
+    assert!(
+        !channels2.is_empty(),
+        "second call should return candidates"
+    );
     assert_eq!(
         decision2,
         Some(RoutingDecision::AffinityHit),
