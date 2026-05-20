@@ -1,11 +1,14 @@
+use crate::api::auth::Claims;
 use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
+    middleware,
     response::IntoResponse,
     routing::{get, post},
     Router,
 };
+use burncloud_database_user::UserDatabase;
 use burncloud_service_channel::{Channel, ChannelService};
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +39,10 @@ pub struct ChannelDto {
     pub param_override: Option<String>,
     pub header_override: Option<String>,
     pub api_version: Option<String>,
+    /// JSON string mapping user-facing model names to actual model names
+    /// e.g., {"gpt-4": "gpt-4-turbo", "gpt-4o-2024-11-20": "gpt-4o"}
+    #[serde(default)]
+    pub model_mapping: Option<String>,
     // L2 Shaper config (issue #151). Omit to leave channel fail-open.
     #[serde(default)]
     pub rpm_cap: Option<i32>,
@@ -82,7 +89,7 @@ impl ChannelDto {
             models: self.models,
             group: self.group,
             used_quota: 0,
-            model_mapping: None,
+            model_mapping: self.model_mapping,
             priority: self.priority,
             auto_ban: 1,
             other_info: None,
@@ -112,12 +119,34 @@ pub fn routes() -> Router<AppState> {
             "/console/api/channel/{id}",
             get(get_channel).delete(delete_channel),
         )
+        .layer(middleware::from_fn(crate::auth_middleware))
+}
+
+async fn check_admin(state: &AppState, claims: &Claims) -> Result<(), impl IntoResponse> {
+    match UserDatabase::get_user_roles(&state.db, &claims.sub).await {
+        Ok(roles) => {
+            if roles.iter().any(|r| r == "admin") {
+                Ok(())
+            } else {
+                Err(err("Admin access required"))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to get user roles: {}", e);
+            Err(err("Database error"))
+        }
+    }
 }
 
 async fn list_channels(
     State(state): State<AppState>,
+    axum::Extension(claims): axum::Extension<Claims>,
     Query(params): Query<PaginationParams>,
 ) -> impl IntoResponse {
+    if let Err(resp) = check_admin(&state, &claims).await {
+        return resp.into_response();
+    }
+
     let limit = params.limit.clamp(1, 100);
     let offset = params.offset.max(0);
 
@@ -134,8 +163,13 @@ async fn list_channels(
 #[tracing::instrument(skip(state), fields(name = %payload.name))]
 async fn create_channel(
     State(state): State<AppState>,
+    axum::Extension(claims): axum::Extension<Claims>,
     axum::extract::Json(payload): axum::extract::Json<ChannelDto>,
 ) -> impl IntoResponse {
+    if let Err(resp) = check_admin(&state, &claims).await {
+        return resp.into_response();
+    }
+
     let mut channel = payload.into_channel();
     match ChannelService::create(&state.db, &mut channel).await {
         Ok(id) => ok(ChannelCreated { id }).into_response(),
@@ -146,8 +180,13 @@ async fn create_channel(
 #[tracing::instrument(skip(state, payload), fields(name = %payload.name))]
 async fn update_channel(
     State(state): State<AppState>,
+    axum::Extension(claims): axum::Extension<Claims>,
     axum::extract::Json(payload): axum::extract::Json<ChannelDto>,
 ) -> impl IntoResponse {
+    if let Err(resp) = check_admin(&state, &claims).await {
+        return resp.into_response();
+    }
+
     let channel = payload.into_channel();
     if channel.id == 0 {
         return err("id is required").into_response();
@@ -159,14 +198,30 @@ async fn update_channel(
 }
 
 #[tracing::instrument(skip(state))]
-async fn delete_channel(State(state): State<AppState>, Path(id): Path<i32>) -> impl IntoResponse {
+async fn delete_channel(
+    State(state): State<AppState>,
+    axum::Extension(claims): axum::Extension<Claims>,
+    Path(id): Path<i32>,
+) -> impl IntoResponse {
+    if let Err(resp) = check_admin(&state, &claims).await {
+        return resp.into_response();
+    }
+
     match ChannelService::delete(&state.db, id).await {
         Ok(_) => ok(()).into_response(),
         Err(e) => err(e).into_response(),
     }
 }
 
-async fn get_channel(State(state): State<AppState>, Path(id): Path<i32>) -> impl IntoResponse {
+async fn get_channel(
+    State(state): State<AppState>,
+    axum::Extension(claims): axum::Extension<Claims>,
+    Path(id): Path<i32>,
+) -> impl IntoResponse {
+    if let Err(resp) = check_admin(&state, &claims).await {
+        return resp.into_response();
+    }
+
     match ChannelService::get_by_id(&state.db, id).await {
         Ok(Some(c)) => ok(c).into_response(),
         Ok(None) => err("channel not found").into_response(),
