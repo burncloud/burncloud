@@ -43,7 +43,7 @@ use burncloud_service_billing::{
 };
 use channel_state::ChannelStateTracker;
 use circuit_breaker::CircuitBreaker;
-use config::{AuthType, Group, GroupMember, RouteTarget, RouterConfig, Upstream};
+use config::{AuthType, Upstream};
 use futures::stream::StreamExt;
 use http_body_util::BodyExt;
 use limiter::RateLimiter;
@@ -271,56 +271,6 @@ fn build_response_with_header(
         })
 }
 
-async fn load_router_config(db: &Database) -> anyhow::Result<RouterConfig> {
-    // Load Upstreams
-    let db_upstreams = RouterDatabase::get_all_upstreams(db).await?;
-    let upstreams: Vec<Upstream> = db_upstreams
-        .into_iter()
-        .map(|u| Upstream {
-            id: u.id,
-            name: u.name,
-            base_url: u.base_url,
-            api_key: u.api_key,
-            match_path: u.match_path,
-            auth_type: AuthType::from(u.auth_type.as_str()),
-            priority: u.priority,
-            protocol: u.protocol,
-            param_override: u.param_override,
-            header_override: u.header_override,
-            api_version: u.api_version,
-            pricing_region: None,
-        })
-        .collect();
-
-    // Load Groups
-    let db_groups = RouterDatabase::get_all_groups(db).await?;
-    let db_members = RouterDatabase::get_group_members(db).await?;
-
-    let groups = db_groups
-        .into_iter()
-        .map(|g| {
-            let members = db_members
-                .iter()
-                .filter(|m| m.group_id == g.id)
-                .map(|m| GroupMember {
-                    upstream_id: m.upstream_id.clone(),
-                    weight: m.weight,
-                })
-                .collect();
-
-            Group {
-                id: g.id,
-                name: g.name,
-                strategy: g.strategy,
-                match_path: g.match_path,
-                members,
-            }
-        })
-        .collect();
-
-    Ok(RouterConfig { upstreams, groups })
-}
-
 /// Startup helper: load every channel's L2 Shaper config (rpm_cap / tpm_cap /
 /// reservation triple) from `channel_providers` and feed it into
 /// [`rate_budget::InMemoryBudget`]. Channels with `rpm_cap = NULL` (or zero)
@@ -417,7 +367,6 @@ pub async fn create_router_app(
     Router,
     mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
 )> {
-    let config = load_router_config(&db).await?;
     let client = Client::builder().build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
     // Rate limiter: 100 burst, 10 requests/second
@@ -541,7 +490,6 @@ pub async fn create_router_app(
 
     let state = AppState {
         client,
-        config: Arc::new(RwLock::new(config)),
         db, // Arc<Database>
         balancer,
         limiter,
@@ -567,9 +515,6 @@ pub async fn create_router_app(
 
     use burncloud_common::constants::INTERNAL_PREFIX;
 
-    // ...
-
-    let reload_path = format!("{}/reload", INTERNAL_PREFIX);
     let health_path = format!("{}/health", INTERNAL_PREFIX);
     let price_sync_path = format!("{}/prices/sync", INTERNAL_PREFIX);
     let trip_all_path = format!("{}/circuit-breaker/trip-all", INTERNAL_PREFIX);
@@ -578,7 +523,6 @@ pub async fn create_router_app(
     // `/console/{*path}` in the server layer, otherwise LiveView intercepts
     // them and returns HTML instead of JSON.
     let internal_app = Router::new()
-        .route(&reload_path, post(reload_handler))
         .route(&health_path, axum::routing::get(health_status_handler))
         .route(&price_sync_path, post(price_sync_handler))
         .route(&trip_all_path, post(circuit_breaker_trip_all_handler))
@@ -596,27 +540,6 @@ pub async fn create_router_app(
         .with_state(state);
 
     Ok((app, internal_app, force_sync_tx))
-}
-
-// ...
-
-async fn reload_handler(State(state): State<AppState>) -> Response {
-    match load_router_config(&state.db).await {
-        Ok(new_config) => {
-            let mut config_write = state.config.write().await;
-            *config_write = new_config;
-            // Reload scheduler policies
-            {
-                let mut policies = state.scheduler_policies.write().await;
-                *policies = scheduler::load_scheduler_config();
-            }
-            build_response(StatusCode::OK, Body::from("Reloaded"))
-        }
-        Err(e) => build_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(format!("Reload Failed: {e}")),
-        ),
-    }
 }
 
 /// POST /console/internal/prices/sync
@@ -681,8 +604,9 @@ async fn circuit_breaker_trip_all_handler(State(state): State<AppState>) -> Resp
 }
 
 async fn models_handler(State(state): State<AppState>) -> Response {
-    // Fetch all upstreams and groups to list as available "models"
-    // This allows clients like WebUI to auto-discover available backends
+    // Fetch all distinct models from channel_abilities
+    // This shows models that have at least one enabled channel
+    use burncloud_database_channel::ChannelAbilityModel;
 
     let mut model_entries = Vec::new();
     let current_time = std::time::SystemTime::now()
@@ -690,29 +614,15 @@ async fn models_handler(State(state): State<AppState>) -> Response {
         .unwrap_or_default()
         .as_secs();
 
-    if let Ok(upstreams) = RouterDatabase::get_all_upstreams(&state.db).await {
-        for u in upstreams {
+    if let Ok(models) = ChannelAbilityModel::list_distinct_models(&state.db).await {
+        for model in models {
             model_entries.push(serde_json::json!({
-                "id": u.id,
+                "id": model,
                 "object": "model",
                 "created": current_time,
-                "owned_by": "burncloud-router",
+                "owned_by": "burncloud",
                 "permission": [],
-                "root": u.id,
-                "parent": null,
-            }));
-        }
-    }
-
-    if let Ok(groups) = RouterDatabase::get_all_groups(&state.db).await {
-        for g in groups {
-            model_entries.push(serde_json::json!({
-                "id": g.id,
-                "object": "model",
-                "created": current_time,
-                "owned_by": "burncloud-group",
-                "permission": [],
-                "root": g.id,
+                "root": model,
                 "parent": null,
             }));
         }
@@ -1593,9 +1503,7 @@ async fn proxy_logic(
     model_name: Option<&str>,
     request_start_time: Instant,
 ) -> ProxyResult {
-    let config = state.config.read().await;
-
-    // 1. Model Routing (Priority)
+    // Model Routing
     let mut candidates: Vec<Upstream> = Vec::new();
     // L6 Observability: routing decision from route_with_scheduler.
     // Used by the priority chain to compute layer_decision for RouterLog.
@@ -1787,72 +1695,14 @@ async fn proxy_logic(
         tracing::debug!("ProxyLogic: Failed to parse body as JSON");
     }
 
-    // 2. Path Routing (Fallback)
-    if candidates.is_empty() {
-        tracing::debug!(
-            "ProxyLogic: Model routing failed/skipped, trying path routing for {}",
-            path
-        );
-        let route = match config.find_route(path) {
-            Some(r) => r,
-            None => {
-                return ProxyResult {
-                    response: build_response(
-                        StatusCode::NOT_FOUND,
-                        Body::from(format!("No matching upstream found for path: {path}")),
-                    ),
-                    upstream_id: None,
-                    final_status: StatusCode::NOT_FOUND,
-                    pricing_region: None,
-                    video_task_id: None,
-                    shaper_outcome: None,
-                    routing_decision: None,
-                    sched_request_color: shaper_color,
-                    error_type: Some("router_reject".to_string()),
-                };
-            }
-        };
-
-        match route {
-            RouteTarget::Upstream(u) => candidates.push(u.clone()),
-            RouteTarget::Group(g) => {
-                if g.members.is_empty() {
-                    return ProxyResult {
-                        response: build_response(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            Body::from(format!("Group '{}' has no healthy members", g.name)),
-                        ),
-                        upstream_id: None,
-                        final_status: StatusCode::SERVICE_UNAVAILABLE,
-                        pricing_region: None,
-                        video_task_id: None,
-                        shaper_outcome: None,
-                        routing_decision: None,
-                        sched_request_color: shaper_color,
-                        error_type: Some("router_reject".to_string()),
-                    };
-                }
-
-                let start_idx = state.balancer.next_index(&g.id, g.members.len());
-                for i in 0..g.members.len() {
-                    let idx = (start_idx + i) % g.members.len();
-                    let member = &g.members[idx];
-                    if let Some(u) = config.get_upstream(&member.upstream_id) {
-                        candidates.push(u.clone());
-                    }
-                }
-            }
-        };
-    }
-
     if candidates.is_empty() {
         return ProxyResult {
             response: build_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Body::from("Configuration Error: No upstreams available"),
+                StatusCode::NOT_FOUND,
+                Body::from(format!("No matching channel found for path: {path}")),
             ),
             upstream_id: None,
-            final_status: StatusCode::INTERNAL_SERVER_ERROR,
+            final_status: StatusCode::NOT_FOUND,
             pricing_region: None,
             video_task_id: None,
             shaper_outcome: None,

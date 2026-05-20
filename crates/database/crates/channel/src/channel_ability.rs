@@ -112,4 +112,20 @@ impl ChannelAbilityModel {
 
         Ok(abilities)
     }
+
+    /// List all distinct models from channel_abilities
+    ///
+    /// Returns a list of unique model names that have at least one enabled channel.
+    /// Used by /v1/models endpoint to show available models.
+    pub async fn list_distinct_models(db: &Database) -> Result<Vec<String>> {
+        let conn = db.get_connection()?;
+
+        let sql = "SELECT DISTINCT model FROM channel_abilities WHERE enabled = 1 ORDER BY model";
+
+        let models: Vec<(String,)> = sqlx::query_as(sql)
+            .fetch_all(conn.pool())
+            .await?;
+
+        Ok(models.into_iter().map(|(m,)| m).collect())
+    }
 }

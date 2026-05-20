@@ -38,9 +38,7 @@ members = [
     "crates/service/crates/setting",
     "crates/service/crates/inference",
     "crates/service/crates/user",
-    "crates/service/crates/upstream",
     "crates/service/crates/token",
-    "crates/service/crates/group",
     "crates/service/crates/router-log",
     "crates/service/crates/billing",
     "crates/service/crates/channel",
@@ -173,9 +171,7 @@ burncloud-service-monitor = { path = "crates/service/crates/monitor" }
 burncloud-service-setting = { path = "crates/service/crates/setting" }
 burncloud-service-inference = { path = "crates/service/crates/inference" }
 burncloud-service-user = { path = "crates/service/crates/user" }
-burncloud-service-upstream = { path = "crates/service/crates/upstream" }
 burncloud-service-token = { path = "crates/service/crates/token" }
-burncloud-service-group = { path = "crates/service/crates/group" }
 burncloud-service-router-log = { path = "crates/service/crates/router-log" }
 burncloud-service-billing = { path = "crates/service/crates/billing" }
 burncloud-service-channel = { path = "crates/service/crates/channel" }

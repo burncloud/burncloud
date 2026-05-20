@@ -39,6 +39,8 @@ impl From<&str> for AuthType {
     }
 }
 
+/// Internal representation of an upstream channel for request routing.
+/// Populated from `Channel` objects returned by `ModelRouter`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Upstream {
     pub id: String,
@@ -59,86 +61,4 @@ pub struct Upstream {
     pub api_version: Option<String>,
     #[serde(default)]
     pub pricing_region: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GroupMember {
-    pub upstream_id: String,
-    pub weight: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Group {
-    pub id: String,
-    pub name: String,
-    pub strategy: String,
-    pub match_path: String,
-    pub members: Vec<GroupMember>,
-}
-
-#[derive(Debug, Clone)]
-pub enum RouteTarget<'a> {
-    Upstream(&'a Upstream),
-    Group(&'a Group),
-}
-
-impl<'a> RouteTarget<'a> {
-    pub fn match_path(&self) -> &str {
-        match self {
-            RouteTarget::Upstream(u) => &u.match_path,
-            RouteTarget::Group(g) => &g.match_path,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RouterConfig {
-    pub upstreams: Vec<Upstream>,
-    #[serde(default)]
-    pub groups: Vec<Group>,
-}
-
-impl RouterConfig {
-    pub fn find_route(&self, path: &str) -> Option<RouteTarget<'_>> {
-        // Collect all candidates (Upstreams and Groups)
-        let mut candidates: Vec<RouteTarget> = Vec::new();
-
-        for u in &self.upstreams {
-            if path.starts_with(&u.match_path) {
-                candidates.push(RouteTarget::Upstream(u));
-            }
-        }
-
-        for g in &self.groups {
-            if path.starts_with(&g.match_path) {
-                candidates.push(RouteTarget::Group(g));
-            }
-        }
-
-        if candidates.is_empty() {
-            return None;
-        }
-
-        // Sort candidates:
-        // 1. Match Length (Descending) - More specific path wins
-        // 2. Priority (Descending) - Higher priority wins
-        // Note: Groups don't currently have explicit priority field in DB, assuming 0 or default behavior.
-        // We prioritize Upstreams over Groups if length is equal for now, or just by order.
-        candidates.sort_by(|a, b| {
-            let len_cmp = b.match_path().len().cmp(&a.match_path().len());
-            if len_cmp != std::cmp::Ordering::Equal {
-                return len_cmp;
-            }
-            // If lengths equal, prefer Upstream (legacy behavior) or arbitrary stability.
-            // Let's use ID for stability if types differ.
-            std::cmp::Ordering::Equal
-        });
-
-        candidates.first().cloned()
-    }
-
-    // Helper to find upstream by ID (for Group resolution)
-    pub fn get_upstream(&self, id: &str) -> Option<&Upstream> {
-        self.upstreams.iter().find(|u| u.id == id)
-    }
 }

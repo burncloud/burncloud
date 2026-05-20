@@ -5,7 +5,6 @@ use crate::affinity::AffinityCache;
 use crate::balancer::RoundRobinBalancer;
 use crate::channel_state::ChannelStateTracker;
 use crate::circuit_breaker::CircuitBreaker;
-use crate::config::RouterConfig;
 use crate::exchange_rate::ExchangeRateService;
 use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
@@ -32,7 +31,6 @@ pub struct BudgetUpdate {
 #[derive(Clone)]
 pub struct AppState {
     pub client: Client,
-    pub config: Arc<RwLock<RouterConfig>>,
     pub db: Arc<Database>,
     pub balancer: Arc<RoundRobinBalancer>,
     pub limiter: Arc<RateLimiter>,

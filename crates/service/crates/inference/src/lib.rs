@@ -6,8 +6,9 @@ mod error;
 
 pub use error::{InferenceError, Result};
 
+use burncloud_common::types::Channel;
 use burncloud_database::Database;
-use burncloud_database_router::{RouterDatabase, RouterUpstream};
+use burncloud_database_channel::{ChannelAbilityInput, ChannelAbilityModel, ChannelProviderModel};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -185,39 +186,81 @@ impl InferenceService {
         Ok("llama-server".to_string())
     }
 
-    // 注册 Upstream 到 Router 数据库
+    // 注册本地模型到 channel_providers
     async fn register_upstream(&self, db: &Database, config: &InferenceConfig) -> Result<()> {
-        let upstream_id = format!("local-{}", config.model_id);
+        let channel_id_str = format!("local-{}", config.model_id);
         let base_url = format!("http://127.0.0.1:{}", config.port);
 
-        // 构建 Upstream 对象
-        let upstream = RouterUpstream {
-            id: upstream_id.clone(),
+        // 构建 Channel 对象
+        let mut channel = Channel {
+            id: 0, // Will be assigned by database
+            type_: 1, // OpenAI type
+            key: "".to_string(), // 无需鉴权
+            status: 1,
             name: format!("Local: {}", config.model_id),
-            base_url,
-            api_key: "".to_string(),                        // 无需鉴权
-            match_path: "/v1/chat/completions".to_string(), // 默认 OpenAI 兼容路径
-            auth_type: "Bearer".to_string(), // 占位，实际上不需要，但 Router 需要非空
-            priority: 100,                   // 本地模型优先级高
-            protocol: "openai".to_string(),
+            weight: 1,
+            created_time: None,
+            test_time: None,
+            response_time: None,
+            base_url: Some(base_url),
+            models: config.model_id.clone(),
+            group: "default".to_string(),
+            used_quota: 0,
+            model_mapping: None,
+            priority: 100, // 本地模型优先级高
+            auto_ban: 1,
+            other_info: None,
+            tag: Some("local-inference".to_string()),
+            setting: None,
             param_override: None,
             header_override: None,
-            api_version: None,
+            remark: None,
+            api_version: Some("default".to_string()),
+            pricing_region: None,
+            rpm_cap: None,
+            tpm_cap: None,
+            reservation_green: None,
+            reservation_yellow: None,
+            reservation_red: None,
         };
 
-        // Upsert: 先删后插，或者检查是否存在
-        // 这里简单处理：DELETE 然后 INSERT，确保是最新的
-        let _ = RouterDatabase::delete_upstream(db, &upstream_id).await;
-        RouterDatabase::create_upstream(db, &upstream).await?;
+        // 创建 channel
+        let channel_id = ChannelProviderModel::create(db, &mut channel).await
+            .map_err(|e| InferenceError::ProcessSpawnFailed(format!("Failed to create channel: {}", e)))?;
 
-        tracing::info!("Registered local upstream: {}", upstream_id);
+        // 创建 channel_ability
+        let ability = ChannelAbilityInput {
+            group: "default".to_string(),
+            model: config.model_id.clone(),
+            channel_id,
+            enabled: true,
+            priority: 100,
+            weight: 1,
+        };
+        ChannelAbilityModel::create_batch(db, &[ability]).await
+            .map_err(|e| InferenceError::ProcessSpawnFailed(format!("Failed to create ability: {}", e)))?;
+
+        tracing::info!("Registered local channel: {} (ID: {})", channel_id_str, channel_id);
         Ok(())
     }
 
     async fn unregister_upstream(&self, db: &Database, model_id: &str) -> Result<()> {
-        let upstream_id = format!("local-{}", model_id);
-        RouterDatabase::delete_upstream(db, &upstream_id).await?;
-        tracing::info!("Unregistered local upstream: {}", upstream_id);
+        // 查找并删除对应的 channel
+        let channels = ChannelProviderModel::list(db, 1000, 0).await
+            .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
+
+        for channel in channels {
+            if channel.name == format!("Local: {}", model_id) {
+                // 先删除 abilities
+                ChannelAbilityModel::delete_by_channel(db, channel.id).await
+                    .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
+                // 再删除 channel
+                ChannelProviderModel::delete(db, channel.id).await
+                    .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
+                tracing::info!("Unregistered local channel: {}", model_id);
+                break;
+            }
+        }
         Ok(())
     }
 
