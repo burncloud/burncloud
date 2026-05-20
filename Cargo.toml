@@ -108,6 +108,9 @@ aes-gcm = "0.10"
 # Archive
 zip = "0.6"
 
+# Observability
+prometheus = "0.13"
+
 # Testing
 tokio-test = "0.4"
 mockito = "1.7"
