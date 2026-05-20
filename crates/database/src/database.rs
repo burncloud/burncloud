@@ -52,14 +52,12 @@ impl Database {
             let default_path = get_default_database_path()?;
             create_directory_if_not_exists(&default_path)?;
 
-            // BURNCLOUD_FRESH_DB=1 (default for local SQLite): delete the
-            // SQLite file so the next connection starts from a blank database.
-            // Used by CI/verification runners to guarantee a clean state for
-            // first-user-is-admin tests.  Defaults to enabled when no explicit
-            // BURNCLOUD_DATABASE_URL is set (dev/verification scenario).
-            // Production deployments set BURNCLOUD_DATABASE_URL (Postgres) and
-            // are unaffected.  Set BURNCLOUD_FRESH_DB=0 to opt out.
-            let fresh_db = std::env::var("BURNCLOUD_FRESH_DB").as_deref() != Ok("0");
+            // BURNCLOUD_FRESH_DB=1: delete the SQLite file so the next connection
+            // starts from a blank database. Used by CI/verification runners to
+            // guarantee a clean state for first-user-is-admin tests.
+            // Default is to preserve existing data. Set BURNCLOUD_FRESH_DB=1 to
+            // explicitly request a fresh database (dev/CI scenario).
+            let fresh_db = std::env::var("BURNCLOUD_FRESH_DB").as_deref() == Ok("1");
             if fresh_db && default_path.exists() {
                 tracing::info!("BURNCLOUD_FRESH_DB: deleting {}", default_path.display());
                 std::fs::remove_file(&default_path).map_err(|e| {
