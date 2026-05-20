@@ -7,7 +7,6 @@ use tracing::{error, info};
 use super::bundle::handle_bundle_command;
 use super::channel::handle_channel_command;
 use super::currency::handle_currency_command;
-use super::group::handle_group_command;
 use super::install::handle_install_command;
 use super::log::handle_log_command;
 use super::monitor::handle_monitor_command;
@@ -1003,76 +1002,6 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 ),
         )
         .subcommand(
-            Command::new("group")
-                .about("Manage router groups")
-                .subcommand_required(true)
-                .subcommand(
-                    Command::new("create")
-                        .about("Create a new group")
-                        .arg(
-                            Arg::new("name")
-                                .long("name")
-                                .required(true)
-                                .help("Group name"),
-                        )
-                        .arg(
-                            Arg::new("members")
-                                .long("members")
-                                .help("Comma-separated list of upstream IDs to add as members"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("list")
-                        .about("List all groups")
-                        .arg(
-                            Arg::new("format")
-                                .long("format")
-                                .default_value("table")
-                                .value_parser(["table", "json"])
-                                .help("Output format (table or json)"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("show")
-                        .about("Show group details")
-                        .arg(
-                            Arg::new("id")
-                                .required(true)
-                                .help("Group ID"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("delete")
-                        .about("Delete a group")
-                        .arg(
-                            Arg::new("id")
-                                .required(true)
-                                .help("Group ID"),
-                        )
-                        .arg(
-                            Arg::new("yes")
-                                .short('y')
-                                .long("yes")
-                                .action(clap::ArgAction::SetTrue)
-                                .help("Skip confirmation prompt"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("members")
-                        .about("Manage group members")
-                        .arg(
-                            Arg::new("id")
-                                .required(true)
-                                .help("Group ID"),
-                        )
-                        .arg(
-                            Arg::new("set")
-                                .long("set")
-                                .help("Set members (comma-separated, format: upstream_id:weight or upstream_id)"),
-                        ),
-                ),
-        )
-        .subcommand(
             Command::new("log")
                 .about("Manage request logs")
                 .subcommand_required(true)
@@ -1231,11 +1160,6 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("user", sub_m)) => {
             let db = Database::new().await?;
             handle_user_command(&db, sub_m).await?;
-            db.close().await?;
-        }
-        Some(("group", sub_m)) => {
-            let db = Database::new().await?;
-            handle_group_command(&db, sub_m).await?;
             db.close().await?;
         }
         Some(("log", sub_m)) => {

@@ -4,25 +4,17 @@
 //! database initialization functionality.
 //!
 //! # Modules
-//! - [`upstream`] - Upstream/channel configuration (RouterUpstream, RouterUpstreamModel)
 //! - [`token`] - Token management (RouterToken, RouterTokenModel)
-//! - [`group`] - Group management (RouterGroup, RouterGroupModel, RouterGroupMemberModel)
 //! - [`log`] - Router logs, usage stats and balance deduction (RouterLog, RouterLogModel, BalanceModel)
 //! - [`router_video_task`] - Router video task persistence (RouterVideoTask, RouterVideoTaskModel)
 
 use burncloud_database::{adapt_sql, Database, Result};
-use sqlx::Row;
 
-pub mod group;
 pub mod log;
 pub mod router_video_task;
 pub mod token;
-pub mod upstream;
 
 // Re-export common types.
-pub use group::{
-    RouterGroup, RouterGroupMember, RouterGroupMemberModel, RouterGroupModel, RouterGroupRepository,
-};
 pub use log::{
     get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
     BalanceModel, BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, RouterLogModel,
@@ -32,7 +24,6 @@ pub use router_video_task::{RouterVideoTask, RouterVideoTaskModel};
 pub use token::{
     RouterToken, RouterTokenModel, RouterTokenRepository, RouterTokenValidationResult,
 };
-pub use upstream::{RouterUpstream, RouterUpstreamModel, RouterUpstreamRepository};
 
 /// Result of [`RouterDatabase::validate_token_and_get_info`].
 ///
@@ -71,24 +62,9 @@ impl RouterDatabase {
         let conn = db.get_connection()?;
         let kind = db.kind();
 
-        // Table definitions
-        let (upstreams_sql, tokens_sql, groups_sql, members_sql) = match kind.as_str() {
-            "sqlite" => (
-                r#"
-                CREATE TABLE IF NOT EXISTS router_upstreams (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    base_url TEXT NOT NULL,
-                    api_key TEXT NOT NULL,
-                    match_path TEXT NOT NULL,
-                    auth_type TEXT NOT NULL,
-                    priority INTEGER NOT NULL DEFAULT 0,
-                    protocol TEXT NOT NULL DEFAULT 'openai',
-                    param_override TEXT,
-                    header_override TEXT
-                );
-                "#,
-                r#"
+        // Only create router_tokens table (router_upstreams, router_groups removed)
+        let tokens_sql = match kind.as_str() {
+            "sqlite" => r#"
                 CREATE TABLE IF NOT EXISTS router_tokens (
                     token TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -98,40 +74,8 @@ impl RouterDatabase {
                     expired_time INTEGER NOT NULL DEFAULT -1,
                     accessed_time INTEGER NOT NULL DEFAULT 0
                 );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS router_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    strategy TEXT NOT NULL DEFAULT 'round_robin',
-                    match_path TEXT NOT NULL
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS router_group_members (
-                    group_id TEXT NOT NULL,
-                    upstream_id TEXT NOT NULL,
-                    weight INTEGER NOT NULL DEFAULT 1,
-                    PRIMARY KEY (group_id, upstream_id)
-                );
-                "#,
-            ),
-            "postgres" => (
-                r#"
-                CREATE TABLE IF NOT EXISTS router_upstreams (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    base_url TEXT NOT NULL,
-                    api_key TEXT NOT NULL,
-                    match_path TEXT NOT NULL,
-                    auth_type TEXT NOT NULL,
-                    priority INTEGER NOT NULL DEFAULT 0,
-                    protocol TEXT NOT NULL DEFAULT 'openai',
-                    param_override TEXT,
-                    header_override TEXT
-                );
-                "#,
-                r#"
+            "#,
+            "postgres" => r#"
                 CREATE TABLE IF NOT EXISTS router_tokens (
                     token TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -141,50 +85,14 @@ impl RouterDatabase {
                     expired_time BIGINT NOT NULL DEFAULT -1,
                     accessed_time BIGINT NOT NULL DEFAULT 0
                 );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS router_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    strategy TEXT NOT NULL DEFAULT 'round_robin',
-                    match_path TEXT NOT NULL
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS router_group_members (
-                    group_id TEXT NOT NULL,
-                    upstream_id TEXT NOT NULL,
-                    weight INTEGER NOT NULL DEFAULT 1,
-                    PRIMARY KEY (group_id, upstream_id)
-                );
-                "#,
-            ),
+            "#,
             _ => unreachable!("Unsupported database kind"),
         };
 
-        sqlx::query(upstreams_sql).execute(conn.pool()).await?;
         sqlx::query(tokens_sql).execute(conn.pool()).await?;
-        sqlx::query(groups_sql).execute(conn.pool()).await?;
-        sqlx::query(members_sql).execute(conn.pool()).await?;
 
-        // Migrations
+        // Migrations for router_tokens
         if kind == "sqlite" {
-            let _ = sqlx::query(
-                "ALTER TABLE router_upstreams ADD COLUMN priority INTEGER NOT NULL DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_upstreams ADD COLUMN protocol TEXT NOT NULL DEFAULT 'openai'",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN param_override TEXT")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN header_override TEXT")
-                .execute(conn.pool())
-                .await;
             let _ = sqlx::query(
                 "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
             )
@@ -208,61 +116,9 @@ impl RouterDatabase {
             let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0")
                 .execute(conn.pool())
                 .await;
-            // Add api_version column for protocol adaptation
-            let _ = sqlx::query("ALTER TABLE router_upstreams ADD COLUMN api_version TEXT")
-                .execute(conn.pool())
-                .await;
-            // Note: router_logs migration moved to schema.rs for CLI compatibility
-        } else if kind == "postgres" {
-            let _ = sqlx::query(
-                "ALTER TABLE router_upstreams ADD COLUMN IF NOT EXISTS api_version TEXT",
-            )
-            .execute(conn.pool())
-            .await;
-        }
-
-        // Insert default demo data if empty
-        let count: i64 = sqlx::query("SELECT COUNT(*) FROM router_upstreams")
-            .fetch_one(conn.pool())
-            .await?
-            .get(0);
-
-        if count == 0 {
-            sqlx::query(
-                r#"
-                INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, priority, protocol)
-                VALUES
-                ('demo-openai', 'OpenAI Demo', 'https://api.openai.com', 'sk-demo', '/v1/chat/completions', 'Bearer', 0, 'openai'),
-                ('demo-claude', 'Claude Demo', 'https://api.anthropic.com', 'sk-ant-demo', '/v1/messages', 'XApiKey', 0, 'claude')
-                "#
-            )
-            .execute(conn.pool())
-            .await?;
         }
 
         Ok(())
-    }
-
-    // ============== Upstream delegations ==============
-
-    pub async fn get_all_upstreams(db: &Database) -> Result<Vec<RouterUpstream>> {
-        RouterUpstreamModel::get_all(db).await
-    }
-
-    pub async fn get_upstream(db: &Database, id: &str) -> Result<Option<RouterUpstream>> {
-        RouterUpstreamModel::get(db, id).await
-    }
-
-    pub async fn create_upstream(db: &Database, u: &RouterUpstream) -> Result<()> {
-        RouterUpstreamModel::create(db, u).await
-    }
-
-    pub async fn update_upstream(db: &Database, u: &RouterUpstream) -> Result<()> {
-        RouterUpstreamModel::update(db, u).await
-    }
-
-    pub async fn delete_upstream(db: &Database, id: &str) -> Result<()> {
-        RouterUpstreamModel::delete(db, id).await
     }
 
     // ============== Token delegations ==============
@@ -364,45 +220,6 @@ impl RouterDatabase {
                 },
             ),
         )
-    }
-
-    // ============== Group delegations ==============
-
-    pub async fn get_all_groups(db: &Database) -> Result<Vec<RouterGroup>> {
-        RouterGroupModel::get_all(db).await
-    }
-
-    pub async fn get_group_by_id(db: &Database, id: &str) -> Result<Option<RouterGroup>> {
-        RouterGroupModel::get(db, id).await
-    }
-
-    pub async fn create_group(db: &Database, g: &RouterGroup) -> Result<()> {
-        RouterGroupModel::create(db, g).await
-    }
-
-    pub async fn delete_group(db: &Database, id: &str) -> Result<()> {
-        RouterGroupModel::delete(db, id).await
-    }
-
-    // ============== Group member delegations ==============
-
-    pub async fn get_group_members(db: &Database) -> Result<Vec<RouterGroupMember>> {
-        RouterGroupMemberModel::get_all(db).await
-    }
-
-    pub async fn get_group_members_by_group(
-        db: &Database,
-        group_id: &str,
-    ) -> Result<Vec<RouterGroupMember>> {
-        RouterGroupMemberModel::get_by_group(db, group_id).await
-    }
-
-    pub async fn set_group_members(
-        db: &Database,
-        group_id: &str,
-        members: Vec<RouterGroupMember>,
-    ) -> Result<()> {
-        RouterGroupMemberModel::set_for_group(db, group_id, members).await
     }
 
     // ============== Log delegations ==============

@@ -30,11 +30,9 @@ uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }
 burncloud-service-monitor = { workspace = true }
 burncloud-service-user = { workspace = true }
-burncloud-service-group = { workspace = true }
 burncloud-service-token = { workspace = true }
 burncloud-service-router-log = { workspace = true }
 burncloud-service-channel = { workspace = true }
-burncloud-service-upstream = { workspace = true }
 jsonwebtoken = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 chrono = { workspace = true }
