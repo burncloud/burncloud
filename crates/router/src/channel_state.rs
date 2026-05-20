@@ -159,11 +159,7 @@ impl ChannelState {
 
     /// Get or create a ModelState for the given model name.
     /// Uses entry API: single hash lookup for both existing and new entries.
-    fn get_or_create_model(
-        &mut self,
-        model_name: &str,
-        channel_id: i32,
-    ) -> &mut ModelState {
+    fn get_or_create_model(&mut self, model_name: &str, channel_id: i32) -> &mut ModelState {
         use std::collections::hash_map::Entry;
         match self.models.entry(model_name.to_string()) {
             Entry::Occupied(e) => e.into_mut(),
@@ -235,7 +231,11 @@ impl ChannelStateTracker {
         // Check account-level rate limit
         if let Some(rate_limit_until) = channel_state.account_rate_limit_until {
             if rate_limit_until > now {
-                tracing::warn!(channel_id, ?rate_limit_until, "is_available=false: account rate limit");
+                tracing::warn!(
+                    channel_id,
+                    ?rate_limit_until,
+                    "is_available=false: account rate limit"
+                );
                 return false;
             }
         }
@@ -266,8 +266,7 @@ impl ChannelStateTracker {
                         return false; // no timer set, stay blocked
                     }
                 }
-                ModelStatus::QuotaExhausted
-                | ModelStatus::ModelNotFound => {
+                ModelStatus::QuotaExhausted | ModelStatus::ModelNotFound => {
                     tracing::warn!(channel_id, %model_name, ?model_state.status, "is_available=false: model status (permanent)");
                     return false;
                 }
@@ -363,7 +362,8 @@ impl ChannelStateTracker {
                     }
                     RateLimitScope::Model => {
                         if let Some(model_name) = model {
-                            let model_state = channel_state.get_or_create_model(model_name, channel_id);
+                            let model_state =
+                                channel_state.get_or_create_model(model_name, channel_id);
                             model_state.status = ModelStatus::RateLimited;
                             model_state.rate_limit_until = Some(retry_until);
                             model_state.last_error = Some(error_message.to_string());
@@ -378,7 +378,8 @@ impl ChannelStateTracker {
                         channel_state.account_rate_limit_until = Some(retry_until);
                         // Also update model-level adaptive limiter if model is specified
                         if let Some(model_name) = model {
-                            let model_state = channel_state.get_or_create_model(model_name, channel_id);
+                            let model_state =
+                                channel_state.get_or_create_model(model_name, channel_id);
                             model_state.adaptive_limit.on_rate_limited(*retry_after);
                         }
                     }
@@ -399,7 +400,8 @@ impl ChannelStateTracker {
                     let model_state = channel_state.get_or_create_model(model_name, channel_id);
                     model_state.status = ModelStatus::TemporarilyDown;
                     // Set a recovery timer so is_available() can allow probe requests after expiry
-                    model_state.rate_limit_until = Some(now + Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
+                    model_state.rate_limit_until =
+                        Some(now + Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
                     model_state.last_error = Some(error_message.to_string());
                     model_state.last_error_time = Some(now);
                     model_state.failure_count += 1;
@@ -573,7 +575,8 @@ impl ChannelStateTracker {
         }
 
         if model_state.avg_latency_ms > 0.0 {
-            score *= LATENCY_SCORE_MIDPOINT_MS / (LATENCY_SCORE_MIDPOINT_MS + model_state.avg_latency_ms);
+            score *= LATENCY_SCORE_MIDPOINT_MS
+                / (LATENCY_SCORE_MIDPOINT_MS + model_state.avg_latency_ms);
         }
 
         match model_state.status {

@@ -82,10 +82,7 @@ impl ChannelReservation {
     /// Validate sum-to-1.0 (±0.01). Use after loading from DB.
     pub fn is_valid(&self) -> bool {
         let sum = self.green + self.yellow + self.red;
-        (0.99..=1.01).contains(&sum)
-            && self.green >= 0.0
-            && self.yellow >= 0.0
-            && self.red >= 0.0
+        (0.99..=1.01).contains(&sum) && self.green >= 0.0 && self.yellow >= 0.0 && self.red >= 0.0
     }
 
     /// Return the share for a specific color.
@@ -119,12 +116,7 @@ pub trait BudgetBackend: Send + Sync {
     /// Atomically attempt to consume `tokens` RPM (1 unit = 1 request) +
     /// `est_tpm` TPM (estimated tokens for this request).
     /// Returns the outcome — caller checks [`ConsumeOutcome::admitted`].
-    fn try_consume(
-        &self,
-        channel_id: i32,
-        color: TrafficColor,
-        est_tpm: u64,
-    ) -> ConsumeOutcome;
+    fn try_consume(&self, channel_id: i32, color: TrafficColor, est_tpm: u64) -> ConsumeOutcome;
 
     /// Refund (return tokens to the bucket). Used after the response when the
     /// estimated TPM was higher than the actual usage — read `router_logs.cost`
@@ -191,8 +183,7 @@ impl<'a> BudgetGuard<'a> {
     pub fn commit(mut self, actual_tpm: u64) {
         let to_refund = self.est_tpm.saturating_sub(actual_tpm);
         if to_refund > 0 {
-            self.backend
-                .refund(self.channel_id, self.color, to_refund);
+            self.backend.refund(self.channel_id, self.color, to_refund);
         }
         self.committed = true;
         // self drops here — Drop sees `committed = true` and skips full refund.
@@ -271,12 +262,7 @@ impl InMemoryBudget {
 }
 
 impl BudgetBackend for InMemoryBudget {
-    fn try_consume(
-        &self,
-        channel_id: i32,
-        color: TrafficColor,
-        est_tpm: u64,
-    ) -> ConsumeOutcome {
+    fn try_consume(&self, channel_id: i32, color: TrafficColor, est_tpm: u64) -> ConsumeOutcome {
         // Unconfigured channel = unlimited (fail-open during MVP rollout).
         let entry = match self.channels.get(&channel_id) {
             Some(e) => e,

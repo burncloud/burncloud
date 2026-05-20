@@ -6,8 +6,8 @@
 //! This module provides a dynamic adaptor that can be configured at runtime
 //! through protocol configurations stored in the database.
 
-use crate::adaptor::{factory::ChannelAdaptor, generate_chat_id};
 use crate::adaptor::mapping::{apply_mapping, extract_value, RequestMapping, ResponseMapping};
+use crate::adaptor::{factory::ChannelAdaptor, generate_chat_id};
 use async_trait::async_trait;
 use burncloud_common::types::OpenAIChatRequest;
 use reqwest::RequestBuilder;

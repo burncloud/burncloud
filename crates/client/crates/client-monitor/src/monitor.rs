@@ -1,11 +1,9 @@
 use burncloud_client_shared::components::{
-    BCBadge, BadgeVariant, EmptyState, ErrorBanner, PageHeader, Sparkline, StatusPill,
-    SkeletonCard, SkeletonVariant,
+    BCBadge, BadgeVariant, EmptyState, ErrorBanner, PageHeader, SkeletonCard, SkeletonVariant,
+    Sparkline, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt, Language};
-use burncloud_client_shared::monitor_service::{
-    FilterConfig, MonitorService, RiskEvent,
-};
+use burncloud_client_shared::monitor_service::{FilterConfig, MonitorService, RiskEvent};
 use burncloud_client_shared::use_toast;
 use dioxus::prelude::*;
 
@@ -52,15 +50,12 @@ pub fn ServiceMonitor() -> Element {
     let lang = i18n.language;
     let toast = use_toast();
 
-    let mut summary_res = use_resource(move || async move {
-        MonitorService::get_security_summary().await
-    });
-    let mut events_res = use_resource(move || async move {
-        MonitorService::list_risk_events(1, 20).await
-    });
-    let mut filter_res = use_resource(move || async move {
-        MonitorService::get_filter_config().await
-    });
+    let mut summary_res =
+        use_resource(move || async move { MonitorService::get_security_summary().await });
+    let mut events_res =
+        use_resource(move || async move { MonitorService::list_risk_events(1, 20).await });
+    let mut filter_res =
+        use_resource(move || async move { MonitorService::get_filter_config().await });
 
     let mut show_emergency_modal = use_signal(|| false);
     let mut emergency_reason = use_signal(String::new);
@@ -71,12 +66,36 @@ pub fn ServiceMonitor() -> Element {
     let events_loading = events_res.read().is_none();
     let filter_loading = filter_res.read().is_none();
 
-    let summary = summary_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
-    let summary_error = summary_res.read().as_ref().and_then(|r| r.as_ref().err()).cloned();
-    let events_page = events_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
-    let events_error = events_res.read().as_ref().and_then(|r| r.as_ref().err()).cloned();
-    let filter_config = filter_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
-    let filter_error = filter_res.read().as_ref().and_then(|r| r.as_ref().err()).cloned();
+    let summary = summary_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned();
+    let summary_error = summary_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().err())
+        .cloned();
+    let events_page = events_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned();
+    let events_error = events_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().err())
+        .cloned();
+    let filter_config = filter_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned();
+    let filter_error = filter_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().err())
+        .cloned();
 
     let spark_data: Vec<f64> = summary
         .as_ref()
@@ -88,8 +107,18 @@ pub fn ServiceMonitor() -> Element {
     let threat_count = summary.as_ref().map(|s| s.threat_source_count).unwrap_or(0);
     let events: Vec<RiskEvent> = events_page.map(|p| p.data).unwrap_or_default();
 
-    let mut content_filter_enabled = use_signal(|| filter_config.as_ref().map(|c| c.content_filter_enabled).unwrap_or(true));
-    let mut blacklist_enabled = use_signal(|| filter_config.as_ref().map(|c| c.blacklist_enabled).unwrap_or(true));
+    let mut content_filter_enabled = use_signal(|| {
+        filter_config
+            .as_ref()
+            .map(|c| c.content_filter_enabled)
+            .unwrap_or(true)
+    });
+    let mut blacklist_enabled = use_signal(|| {
+        filter_config
+            .as_ref()
+            .map(|c| c.blacklist_enabled)
+            .unwrap_or(true)
+    });
 
     // Sync signals when filter config loads
     if let Some(cfg) = &filter_config {
@@ -102,7 +131,10 @@ pub fn ServiceMonitor() -> Element {
     }
 
     let custom_rules = use_memo(move || {
-        filter_config.as_ref().map(|c| c.custom_rules.clone()).unwrap_or_default()
+        filter_config
+            .as_ref()
+            .map(|c| c.custom_rules.clone())
+            .unwrap_or_default()
     });
 
     let update_filter = move |new_cf: bool, new_bl: bool| {
@@ -128,7 +160,9 @@ pub fn ServiceMonitor() -> Element {
     let handle_emergency = move |_| {
         let reason = emergency_reason().trim().to_string();
         if reason.is_empty() {
-            emergency_error.set(Some(t(*lang.read(), "monitor.emergency.reason_required").to_string()));
+            emergency_error.set(Some(
+                t(*lang.read(), "monitor.emergency.reason_required").to_string(),
+            ));
             return;
         }
         emergency_loading.set(true);
@@ -146,7 +180,11 @@ pub fn ServiceMonitor() -> Element {
                 Err(e) => {
                     emergency_loading.set(false);
                     emergency_error.set(Some(e.clone()));
-                    toast.error(&t_fmt(*lang.read(), "monitor.emergency.execute_failed", &[("error", &e.to_string())]));
+                    toast.error(&t_fmt(
+                        *lang.read(),
+                        "monitor.emergency.execute_failed",
+                        &[("error", &e.to_string())],
+                    ));
                 }
             }
         });

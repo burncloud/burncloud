@@ -7,7 +7,11 @@ pub fn BCModal(
     onclose: EventHandler<()>,
     children: Element,
 ) -> Element {
-    let modal_class = if open { "bc-modal-overlay" } else { "bc-modal-overlay bc-modal-hidden" };
+    let modal_class = if open {
+        "bc-modal-overlay"
+    } else {
+        "bc-modal-overlay bc-modal-hidden"
+    };
 
     rsx! {
         div {

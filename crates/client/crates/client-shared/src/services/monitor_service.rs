@@ -102,7 +102,9 @@ fn extract_data<T: serde::de::DeserializeOwned>(json: &serde_json::Value) -> Res
 }
 
 /// Extract data from a response that may use either `{ data: T }` or flat `T` format.
-fn extract_data_or_flat<T: serde::de::DeserializeOwned>(json: &serde_json::Value) -> Result<T, String> {
+fn extract_data_or_flat<T: serde::de::DeserializeOwned>(
+    json: &serde_json::Value,
+) -> Result<T, String> {
     if let Some(data) = json.get("data") {
         serde_json::from_value(data.clone()).map_err(|e| e.to_string())
     } else {
@@ -169,7 +171,10 @@ impl MonitorService {
 
     pub async fn get_filter_config() -> Result<FilterConfig, String> {
         let port = get_port();
-        let url = format!("http://127.0.0.1:{}/console/api/monitor/security/filters", port);
+        let url = format!(
+            "http://127.0.0.1:{}/console/api/monitor/security/filters",
+            port
+        );
 
         let client = reqwest::Client::new();
         let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
@@ -184,7 +189,10 @@ impl MonitorService {
 
     pub async fn update_filter_config(config: &FilterConfig) -> Result<FilterConfig, String> {
         let port = get_port();
-        let url = format!("http://127.0.0.1:{}/console/api/monitor/security/filters", port);
+        let url = format!(
+            "http://127.0.0.1:{}/console/api/monitor/security/filters",
+            port
+        );
 
         let client = reqwest::Client::new();
         let resp = client

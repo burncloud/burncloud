@@ -68,7 +68,9 @@ fn t1_startup_configure_loads_caps_and_reservations() {
         },
     );
     assert!(budget.is_configured(42));
-    let snap = budget.snapshot(42).expect("snapshot for configured channel");
+    let snap = budget
+        .snapshot(42)
+        .expect("snapshot for configured channel");
     assert_eq!(snap.rpm_cap, 100);
     assert_eq!(snap.tpm_cap, 100_000);
     // Reservations: 40% / 40% / 20% of rpm_cap.
@@ -213,12 +215,7 @@ async fn t8_drop_refunds_full_est_on_timeout_cancel() {
     // guard inside it.
     let budget_for_task = budget.clone();
     let _ = tokio::time::timeout(Duration::from_millis(50), async move {
-        let _guard = BudgetGuard::new(
-            budget_for_task.as_ref(),
-            1,
-            TrafficColor::Yellow,
-            est_tpm,
-        );
+        let _guard = BudgetGuard::new(budget_for_task.as_ref(), 1, TrafficColor::Yellow, est_tpm);
         tokio::time::sleep(Duration::from_secs(60)).await;
     })
     .await;
@@ -297,7 +294,8 @@ async fn seed_channel(
     tpm_cap: Option<i64>,
     reservation: Option<(f64, f64, f64)>,
 ) -> anyhow::Result<()> {
-    let (rg, ry, rr) = reservation.map_or((None, None, None), |(g, y, r)| (Some(g), Some(y), Some(r)));
+    let (rg, ry, rr) =
+        reservation.map_or((None, None, None), |(g, y, r)| (Some(g), Some(y), Some(r)));
     sqlx::query(
         "INSERT INTO channel_providers \
          (id, type, key, status, name, weight, base_url, models, `group`, used_quota, priority, auto_ban, \

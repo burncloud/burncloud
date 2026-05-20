@@ -41,7 +41,10 @@ pub fn StandardCrudPage(
     let mut delete_target_id = use_signal(String::new);
     let mut delete_target_name = use_signal(String::new);
 
-    let entity_label = schema["label"].as_str().unwrap_or(t(*lang.read(), "crud.default_label")).to_string();
+    let entity_label = schema["label"]
+        .as_str()
+        .unwrap_or(t(*lang.read(), "crud.default_label"))
+        .to_string();
 
     // 1. Fetch list data from API
     let endpoint_for_fetch = api_endpoint.clone();
@@ -51,7 +54,11 @@ pub fn StandardCrudPage(
             loading.set(true);
             match API_CLIENT.crud_list(&endpoint).await {
                 Ok(data) => items.set(data),
-                Err(e) => toast.error(&t_fmt(*lang.read(), "common.load_failed", &[("error", &e.to_string())])),
+                Err(e) => toast.error(&t_fmt(
+                    *lang.read(),
+                    "common.load_failed",
+                    &[("error", &e.to_string())],
+                )),
             }
             loading.set(false);
         });
@@ -74,29 +81,24 @@ pub fn StandardCrudPage(
     // 3. Handle table events
     let on_action = {
         let id_field = id_field.clone();
-        move |evt: ActionEvent| {
-            match evt.action_id.as_str() {
-                "edit" => {
-                    form_data.set(evt.row.clone());
-                    form_mode.set(FormMode::Edit);
-                    show_form.set(true);
-                }
-                "delete" => {
-                    let id = evt.row[&id_field]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string();
-                    let name = evt.row["name"]
-                        .as_str()
-                        .or_else(|| evt.row[&id_field].as_str())
-                        .unwrap_or_default()
-                        .to_string();
-                    delete_target_id.set(id);
-                    delete_target_name.set(name);
-                    show_delete_confirm.set(true);
-                }
-                _ => {}
+        move |evt: ActionEvent| match evt.action_id.as_str() {
+            "edit" => {
+                form_data.set(evt.row.clone());
+                form_mode.set(FormMode::Edit);
+                show_form.set(true);
             }
+            "delete" => {
+                let id = evt.row[&id_field].as_str().unwrap_or_default().to_string();
+                let name = evt.row["name"]
+                    .as_str()
+                    .or_else(|| evt.row[&id_field].as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                delete_target_id.set(id);
+                delete_target_name.set(name);
+                show_delete_confirm.set(true);
+            }
+            _ => {}
         }
     };
 
@@ -113,16 +115,28 @@ pub fn StandardCrudPage(
                 saving.set(true);
                 match API_CLIENT.crud_delete(&endpoint, &id).await {
                     Ok(()) => {
-                        toast.success(&t_fmt(*lang.read(), "common.entity_deleted", &[("label", &label), ("name", &name)]));
+                        toast.success(&t_fmt(
+                            *lang.read(),
+                            "common.entity_deleted",
+                            &[("label", &label), ("name", &name)],
+                        ));
                         show_delete_confirm.set(false);
                         // Refresh list
                         match API_CLIENT.crud_list(&endpoint).await {
                             Ok(data) => items.set(data),
-                            Err(e) => toast.error(&t_fmt(*lang.read(), "common.refresh_failed", &[("error", &e.to_string())])),
+                            Err(e) => toast.error(&t_fmt(
+                                *lang.read(),
+                                "common.refresh_failed",
+                                &[("error", &e.to_string())],
+                            )),
                         }
                     }
                     Err(e) => {
-                        toast.error(&t_fmt(*lang.read(), "common.delete_failed", &[("error", &e.to_string())]));
+                        toast.error(&t_fmt(
+                            *lang.read(),
+                            "common.delete_failed",
+                            &[("error", &e.to_string())],
+                        ));
                     }
                 }
                 saving.set(false);
@@ -146,26 +160,35 @@ pub fn StandardCrudPage(
             spawn(async move {
                 saving.set(true);
                 let result = if is_edit {
-                    let id = data[&id_field]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string();
+                    let id = data[&id_field].as_str().unwrap_or_default().to_string();
                     API_CLIENT.crud_update(&endpoint, &id, &data).await
                 } else {
                     API_CLIENT.crud_create(&endpoint, &data).await
                 };
                 match result {
                     Ok(()) => {
-                        toast.success(&t_fmt(*lang.read(), "common.entity_saved", &[("label", &label)]));
+                        toast.success(&t_fmt(
+                            *lang.read(),
+                            "common.entity_saved",
+                            &[("label", &label)],
+                        ));
                         show_form.set(false);
                         // Refresh list
                         match API_CLIENT.crud_list(&endpoint).await {
                             Ok(data) => items.set(data),
-                            Err(e) => toast.error(&t_fmt(*lang.read(), "common.refresh_failed", &[("error", &e.to_string())])),
+                            Err(e) => toast.error(&t_fmt(
+                                *lang.read(),
+                                "common.refresh_failed",
+                                &[("error", &e.to_string())],
+                            )),
                         }
                     }
                     Err(e) => {
-                        toast.error(&t_fmt(*lang.read(), "common.save_failed", &[("error", &e.to_string())]));
+                        toast.error(&t_fmt(
+                            *lang.read(),
+                            "common.save_failed",
+                            &[("error", &e.to_string())],
+                        ));
                     }
                 }
                 saving.set(false);

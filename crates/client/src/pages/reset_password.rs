@@ -25,15 +25,21 @@ pub fn ResetPasswordPage(token: Option<String>) -> Element {
         let pw = new_password.read().clone();
         let cpw = confirm_password.read().clone();
         if pw.is_empty() || cpw.is_empty() {
-            error_msg.set(Some(t(*lang.read(), "reset_password.error.password_required").to_string()));
+            error_msg.set(Some(
+                t(*lang.read(), "reset_password.error.password_required").to_string(),
+            ));
             return;
         }
         if pw != cpw {
-            error_msg.set(Some(t(*lang.read(), "reset_password.error.password_mismatch").to_string()));
+            error_msg.set(Some(
+                t(*lang.read(), "reset_password.error.password_mismatch").to_string(),
+            ));
             return;
         }
         if token_value.is_empty() {
-            error_msg.set(Some(t(*lang.read(), "reset_password.error.invalid_token").to_string()));
+            error_msg.set(Some(
+                t(*lang.read(), "reset_password.error.invalid_token").to_string(),
+            ));
             return;
         }
         error_msg.set(None);

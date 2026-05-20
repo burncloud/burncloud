@@ -118,10 +118,7 @@ impl ModelService {
     }
 
     /// 根据ID查询模型
-    pub async fn get(
-        &self,
-        model_id: &str,
-    ) -> Result<Option<burncloud_database_model::ModelInfo>> {
+    pub async fn get(&self, model_id: &str) -> Result<Option<burncloud_database_model::ModelInfo>> {
         self.db.get_model(model_id).await
     }
 

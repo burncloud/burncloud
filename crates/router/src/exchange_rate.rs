@@ -9,9 +9,9 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use burncloud_common::{scaled_to_rate, Currency};
 #[cfg(test)]
 use burncloud_common::rate_to_scaled;
+use burncloud_common::{scaled_to_rate, Currency};
 use burncloud_database::{sqlx, Database};
 use chrono::{DateTime, Utc};
 
@@ -180,7 +180,8 @@ impl ExchangeRateService {
     /// ```
     pub fn start_sync_task(self: Arc<Self>) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(SYNC_CHECK_INTERVAL_SECS));
+            let mut interval =
+                tokio::time::interval(tokio::time::Duration::from_secs(SYNC_CHECK_INTERVAL_SECS));
 
             loop {
                 interval.tick().await;
@@ -312,7 +313,9 @@ mod tests {
     fn test_convert_same_currency() {
         let service = create_test_service();
 
-        let amount = service.convert(100.0, Currency::USD, Currency::USD).unwrap();
+        let amount = service
+            .convert(100.0, Currency::USD, Currency::USD)
+            .unwrap();
         assert!((amount - 100.0).abs() < 0.001);
     }
 
@@ -335,11 +338,15 @@ mod tests {
 
         service.set_rate(Currency::USD, Currency::CNY, 7.2);
 
-        let amount = service.convert(100.0, Currency::USD, Currency::CNY).unwrap();
+        let amount = service
+            .convert(100.0, Currency::USD, Currency::CNY)
+            .unwrap();
         assert!((amount - 720.0).abs() < 0.001);
 
         // Reverse conversion using reverse rate
-        let amount = service.convert(720.0, Currency::CNY, Currency::USD).unwrap();
+        let amount = service
+            .convert(720.0, Currency::CNY, Currency::USD)
+            .unwrap();
         assert!((amount - 100.0).abs() < 0.001);
     }
 
@@ -399,9 +406,30 @@ mod tests {
         service.set_rate(Currency::EUR, Currency::CNY, 7.75);
 
         // Test each conversion
-        assert!((service.convert(100.0, Currency::USD, Currency::CNY).unwrap() - 720.0).abs() < 0.001);
-        assert!((service.convert(100.0, Currency::USD, Currency::EUR).unwrap() - 93.0).abs() < 0.001);
-        assert!((service.convert(100.0, Currency::EUR, Currency::CNY).unwrap() - 775.0).abs() < 0.001);
+        assert!(
+            (service
+                .convert(100.0, Currency::USD, Currency::CNY)
+                .unwrap()
+                - 720.0)
+                .abs()
+                < 0.001
+        );
+        assert!(
+            (service
+                .convert(100.0, Currency::USD, Currency::EUR)
+                .unwrap()
+                - 93.0)
+                .abs()
+                < 0.001
+        );
+        assert!(
+            (service
+                .convert(100.0, Currency::EUR, Currency::CNY)
+                .unwrap()
+                - 775.0)
+                .abs()
+                < 0.001
+        );
 
         // Verify all rates are stored
         let rates = service.list_rates();
@@ -416,11 +444,15 @@ mod tests {
         service.set_rate(Currency::USD, Currency::CNY, 7.2);
 
         // Forward conversion uses direct rate
-        let forward = service.convert(100.0, Currency::USD, Currency::CNY).unwrap();
+        let forward = service
+            .convert(100.0, Currency::USD, Currency::CNY)
+            .unwrap();
         assert!((forward - 720.0).abs() < 0.001);
 
         // Reverse conversion uses reverse rate calculation
-        let reverse = service.convert(720.0, Currency::CNY, Currency::USD).unwrap();
+        let reverse = service
+            .convert(720.0, Currency::CNY, Currency::USD)
+            .unwrap();
         assert!((reverse - 100.0).abs() < 0.001);
     }
 
@@ -433,7 +465,9 @@ mod tests {
         service.set_rate(Currency::EUR, Currency::USD, 1.08);
 
         // EUR to USD (direct rate exists)
-        let eur_to_usd = service.convert(100.0, Currency::EUR, Currency::USD).unwrap();
+        let eur_to_usd = service
+            .convert(100.0, Currency::EUR, Currency::USD)
+            .unwrap();
         assert!((eur_to_usd - 108.0).abs() < 0.001);
 
         // EUR to CNY (no direct rate and no reverse rate, should error)
@@ -458,7 +492,9 @@ mod tests {
         service.set_rate(Currency::USD, Currency::CNY, -7.2);
 
         // Forward conversion with negative rate should work
-        let amount = service.convert(100.0, Currency::USD, Currency::CNY).unwrap();
+        let amount = service
+            .convert(100.0, Currency::USD, Currency::CNY)
+            .unwrap();
         assert!((amount - (-720.0)).abs() < 0.001);
 
         // Reverse conversion: when reverse_rate is negative (not > 0),

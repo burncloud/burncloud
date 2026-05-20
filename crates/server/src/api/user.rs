@@ -254,7 +254,11 @@ async fn list_recharges(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
 ) -> impl IntoResponse {
-    match state.user_service.list_recharges(&state.db, &claims.sub).await {
+    match state
+        .user_service
+        .list_recharges(&state.db, &claims.sub)
+        .await
+    {
         Ok(recharges) => ok(recharges).into_response(),
         Err(e) => err(e).into_response(),
     }

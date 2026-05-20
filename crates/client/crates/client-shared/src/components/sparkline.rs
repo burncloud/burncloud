@@ -7,7 +7,11 @@ pub fn Sparkline(data: Vec<f64>, tone: Option<String>, sm: Option<bool>) -> Elem
     }
 
     let tone_class = tone.as_deref().unwrap_or("");
-    let size_class = if sm.unwrap_or(false) { "spark sm" } else { "spark" };
+    let size_class = if sm.unwrap_or(false) {
+        "spark sm"
+    } else {
+        "spark"
+    };
 
     if data.len() == 1 {
         let v = data[0];
@@ -21,8 +25,15 @@ pub fn Sparkline(data: Vec<f64>, tone: Option<String>, sm: Option<bool>) -> Elem
         };
     }
 
-    let filtered: Vec<f64> = data.iter()
-        .map(|v| if v.is_nan() || v.is_infinite() { 0.0 } else { *v })
+    let filtered: Vec<f64> = data
+        .iter()
+        .map(|v| {
+            if v.is_nan() || v.is_infinite() {
+                0.0
+            } else {
+                *v
+            }
+        })
         .collect();
 
     let max = filtered.iter().cloned().fold(0.0_f64, f64::max);

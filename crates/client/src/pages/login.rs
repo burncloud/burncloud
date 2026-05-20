@@ -29,7 +29,9 @@ pub fn LoginPage() -> Element {
         let u = email.read().clone();
         let p = pw.read().clone();
         if u.is_empty() || p.is_empty() {
-            login_error.set(Some(t(*lang.read(), "login.error.fill_required").to_string()));
+            login_error.set(Some(
+                t(*lang.read(), "login.error.fill_required").to_string(),
+            ));
             return;
         }
         loading.set(true);
@@ -64,7 +66,9 @@ pub fn LoginPage() -> Element {
                 Err(e) => {
                     loading.set(false);
                     eprintln!("LoginPage: Login error: {}", e);
-                    login_error.set(Some(t(*lang.read(), "login.error.invalid_credentials").to_string()));
+                    login_error.set(Some(
+                        t(*lang.read(), "login.error.invalid_credentials").to_string(),
+                    ));
                 }
             }
         });

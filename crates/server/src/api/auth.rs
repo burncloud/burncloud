@@ -56,8 +56,7 @@ struct AuthData {
 }
 
 fn get_jwt_secret() -> String {
-    env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "default-secret-key-change-in-production".to_string())
+    env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key-change-in-production".to_string())
 }
 
 pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
@@ -167,10 +166,7 @@ async fn forgot_password(
         .await
     {
         Ok(_reset_token) => {
-            tracing::info!(
-                "Password reset token generated for {}",
-                payload.email
-            );
+            tracing::info!("Password reset token generated for {}", payload.email);
             ok(serde_json::json!({ "message": "If the email exists, a reset token has been generated" })).into_response()
         }
         Err(UserServiceError::UserNotFound) => {

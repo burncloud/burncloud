@@ -3,9 +3,7 @@
 //! This module provides metrics collection and exposition for monitoring
 //! the router's performance and health.
 
-use prometheus::{
-    Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, Opts, Registry,
-};
+use prometheus::{Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, Opts, Registry};
 use std::sync::OnceLock;
 
 /// Global metrics registry
@@ -82,10 +80,7 @@ impl Metrics {
         .expect("Failed to create requests_duration_seconds histogram");
 
         let requests_by_model = CounterVec::new(
-            Opts::new(
-                "burncloud_requests_by_model",
-                "Number of requests by model",
-            ),
+            Opts::new("burncloud_requests_by_model", "Number of requests by model"),
             &["model"],
         )
         .expect("Failed to create requests_by_model counter");
@@ -129,10 +124,7 @@ impl Metrics {
         .expect("Failed to create channel_status gauge");
 
         let channel_errors_total = CounterVec::new(
-            Opts::new(
-                "burncloud_channel_errors_total",
-                "Total errors by channel",
-            ),
+            Opts::new("burncloud_channel_errors_total", "Total errors by channel"),
             &["channel_id", "channel_name", "error_type"],
         )
         .expect("Failed to create channel_errors_total counter");

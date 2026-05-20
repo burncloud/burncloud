@@ -34,7 +34,6 @@ async fn test_channel_management_lifecycle() -> anyhow::Result<()> {
     let client = Client::new();
     let base_url = format!("http://localhost:{}/console/api/upstreams", port);
 
-
     // 1. Create Upstream
     let new_upstream = serde_json::json!({
         "id": "test-chan-1",
@@ -149,9 +148,7 @@ async fn test_token_management_lifecycle() -> anyhow::Result<()> {
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
             .await
             .expect("Failed to bind test port");
-        axum::serve(listener, app)
-            .await
-            .expect("Server error");
+        axum::serve(listener, app).await.expect("Server error");
     });
     sleep(Duration::from_secs(2)).await;
 

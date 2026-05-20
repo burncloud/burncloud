@@ -233,10 +233,7 @@ mod tests {
 
     #[test]
     fn sticky_ttl_returns_cached_value_then_drops() {
-        let cache = AffinityCache::with_ttls(
-            Duration::from_millis(50),
-            Duration::from_secs(60),
-        );
+        let cache = AffinityCache::with_ttls(Duration::from_millis(50), Duration::from_secs(60));
         cache.insert("u", "m", 9);
         assert_eq!(cache.lookup("u", "m"), Some(9));
         std::thread::sleep(Duration::from_millis(80));
@@ -246,10 +243,7 @@ mod tests {
 
     #[test]
     fn hard_ttl_removes_entry() {
-        let cache = AffinityCache::with_ttls(
-            Duration::from_millis(20),
-            Duration::from_millis(40),
-        );
+        let cache = AffinityCache::with_ttls(Duration::from_millis(20), Duration::from_millis(40));
         cache.insert("u", "m", 9);
         std::thread::sleep(Duration::from_millis(60));
         let _ = cache.lookup("u", "m");
@@ -294,9 +288,16 @@ mod tests {
 
         // Simulate record_upstream_failure with ServerError → evict
         let ft = crate::circuit_breaker::FailureType::ServerError;
-        assert!(should_evict_on_failure(&ft), "ServerError must trigger evict");
+        assert!(
+            should_evict_on_failure(&ft),
+            "ServerError must trigger evict"
+        );
         cache.evict("session-1", "gpt-4");
-        assert_eq!(cache.lookup("session-1", "gpt-4"), None, "entry must be gone after ServerError evict");
+        assert_eq!(
+            cache.lookup("session-1", "gpt-4"),
+            None,
+            "entry must be gone after ServerError evict"
+        );
     }
 
     #[test]
@@ -308,7 +309,11 @@ mod tests {
         let ft = crate::circuit_breaker::FailureType::Timeout;
         assert!(should_evict_on_failure(&ft), "Timeout must trigger evict");
         cache.evict("session-1", "gpt-4");
-        assert_eq!(cache.lookup("session-1", "gpt-4"), None, "entry must be gone after Timeout evict");
+        assert_eq!(
+            cache.lookup("session-1", "gpt-4"),
+            None,
+            "entry must be gone after Timeout evict"
+        );
     }
 
     #[test]
@@ -317,7 +322,10 @@ mod tests {
         cache.insert("session-1", "gpt-4", 10);
 
         let ft = crate::circuit_breaker::FailureType::ConnectionError;
-        assert!(should_evict_on_failure(&ft), "ConnectionError must trigger evict");
+        assert!(
+            should_evict_on_failure(&ft),
+            "ConnectionError must trigger evict"
+        );
         cache.evict("session-1", "gpt-4");
         assert_eq!(cache.lookup("session-1", "gpt-4"), None);
     }
@@ -331,7 +339,10 @@ mod tests {
             scope: crate::circuit_breaker::RateLimitScope::Account,
             retry_after: Some(60),
         };
-        assert!(!should_evict_on_failure(&ft), "RateLimited must NOT trigger evict");
+        assert!(
+            !should_evict_on_failure(&ft),
+            "RateLimited must NOT trigger evict"
+        );
         // Entry remains
         assert_eq!(cache.lookup("session-1", "gpt-4"), Some(10));
     }
@@ -342,7 +353,10 @@ mod tests {
         cache.insert("session-1", "gpt-4", 10);
 
         let ft = crate::circuit_breaker::FailureType::AuthFailed;
-        assert!(!should_evict_on_failure(&ft), "AuthFailed must NOT trigger evict");
+        assert!(
+            !should_evict_on_failure(&ft),
+            "AuthFailed must NOT trigger evict"
+        );
         assert_eq!(cache.lookup("session-1", "gpt-4"), Some(10));
     }
 
@@ -352,7 +366,10 @@ mod tests {
         cache.insert("session-1", "gpt-4", 10);
 
         let ft = crate::circuit_breaker::FailureType::PaymentRequired;
-        assert!(!should_evict_on_failure(&ft), "PaymentRequired must NOT trigger evict");
+        assert!(
+            !should_evict_on_failure(&ft),
+            "PaymentRequired must NOT trigger evict"
+        );
         assert_eq!(cache.lookup("session-1", "gpt-4"), Some(10));
     }
 
@@ -362,7 +379,10 @@ mod tests {
         cache.insert("session-1", "gpt-4", 10);
 
         let ft = crate::circuit_breaker::FailureType::ModelNotFound;
-        assert!(!should_evict_on_failure(&ft), "ModelNotFound must NOT trigger evict");
+        assert!(
+            !should_evict_on_failure(&ft),
+            "ModelNotFound must NOT trigger evict"
+        );
         assert_eq!(cache.lookup("session-1", "gpt-4"), Some(10));
     }
 
@@ -377,14 +397,25 @@ mod tests {
         assert_eq!(cache.lookup("session-1", "gpt-4"), Some(10));
 
         // Channel 10 fails (ServerError) → evict
-        cb.record_failure_with_type("upstream-10", crate::circuit_breaker::FailureType::ServerError);
+        cb.record_failure_with_type(
+            "upstream-10",
+            crate::circuit_breaker::FailureType::ServerError,
+        );
         cache.evict("session-1", "gpt-4");
-        assert_eq!(cache.lookup("session-1", "gpt-4"), None, "evict must clear old affinity");
+        assert_eq!(
+            cache.lookup("session-1", "gpt-4"),
+            None,
+            "evict must clear old affinity"
+        );
 
         // Failover succeeds on channel 20 → new affinity written
         cb.record_success("upstream-20");
         cache.insert("session-1", "gpt-4", 20);
-        assert_eq!(cache.lookup("session-1", "gpt-4"), Some(20), "failover success must write new channel_id");
+        assert_eq!(
+            cache.lookup("session-1", "gpt-4"),
+            Some(20),
+            "failover success must write new channel_id"
+        );
     }
 
     #[test]
@@ -394,7 +425,11 @@ mod tests {
         // First request (attempt=0) succeeds on channel 10
         // record_upstream_success always inserts (both attempt=0 and attempt>0)
         cache.insert("session-1", "gpt-4", 10);
-        assert_eq!(cache.lookup("session-1", "gpt-4"), Some(10), "first success must establish affinity");
+        assert_eq!(
+            cache.lookup("session-1", "gpt-4"),
+            Some(10),
+            "first success must establish affinity"
+        );
     }
 
     #[test]

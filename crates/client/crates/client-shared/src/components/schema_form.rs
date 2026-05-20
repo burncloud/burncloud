@@ -254,7 +254,10 @@ pub fn validate_schema(
                 _ => false,
             };
             if empty {
-                errors.insert(key.to_string(), t(lang, "schema_form.field_required").to_string());
+                errors.insert(
+                    key.to_string(),
+                    t(lang, "schema_form.field_required").to_string(),
+                );
             }
         }
     }

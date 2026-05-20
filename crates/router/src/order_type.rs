@@ -188,15 +188,19 @@ mod tests {
 
     #[test]
     fn budget_filters_above_cap() {
-        let cands = vec![make_channel(1, 10), make_channel(2, 10), make_channel(3, 10)];
+        let cands = vec![
+            make_channel(1, 10),
+            make_channel(2, 10),
+            make_channel(3, 10),
+        ];
         let order = OrderType::Budget {
             max_price_nanodollars: 1_000_000, // $0.001/M tokens
         };
         let prices = |ch: &Channel| -> Option<i64> {
             match ch.id {
-                1 => Some(500_000),    // cheap → keep
-                2 => Some(2_000_000),  // expensive → drop
-                3 => Some(800_000),    // cheap → keep
+                1 => Some(500_000),   // cheap → keep
+                2 => Some(2_000_000), // expensive → drop
+                3 => Some(800_000),   // cheap → keep
                 _ => None,
             }
         };
@@ -213,7 +217,10 @@ mod tests {
             max_price_nanodollars: 100,
         };
         let kept = order.filter_candidates(cands, |_| Some(1_000_000));
-        assert!(kept.is_empty(), "Budget caller must surface 503 in this case");
+        assert!(
+            kept.is_empty(),
+            "Budget caller must surface 503 in this case"
+        );
     }
 
     #[test]
@@ -238,8 +245,16 @@ mod tests {
             ceiling_nanodollars: 5_000_000,
         };
         assert_eq!(order.tier_of(Some(500_000)), 1, "below target → tier 1");
-        assert_eq!(order.tier_of(Some(3_000_000)), 2, "between target and ceiling → tier 2");
-        assert_eq!(order.tier_of(Some(10_000_000)), 2, "above ceiling → tier 2 (defensive)");
+        assert_eq!(
+            order.tier_of(Some(3_000_000)),
+            2,
+            "between target and ceiling → tier 2"
+        );
+        assert_eq!(
+            order.tier_of(Some(10_000_000)),
+            2,
+            "above ceiling → tier 2 (defensive)"
+        );
         assert_eq!(order.tier_of(None), 0, "unknown price → tier 0");
     }
 

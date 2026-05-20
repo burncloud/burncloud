@@ -1,6 +1,5 @@
 //! Core installer implementation
 
-use tracing::{info, warn};
 use regex::Regex;
 use reqwest::Client;
 use std::collections::HashMap;
@@ -9,6 +8,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::fs;
+use tracing::{info, warn};
 use zip::ZipArchive;
 
 use crate::error::{InstallerError, InstallerResult};

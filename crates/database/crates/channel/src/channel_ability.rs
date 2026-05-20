@@ -122,9 +122,7 @@ impl ChannelAbilityModel {
 
         let sql = "SELECT DISTINCT model FROM channel_abilities WHERE enabled = 1 ORDER BY model";
 
-        let models: Vec<(String,)> = sqlx::query_as(sql)
-            .fetch_all(conn.pool())
-            .await?;
+        let models: Vec<(String,)> = sqlx::query_as(sql).fetch_all(conn.pool()).await?;
 
         Ok(models.into_iter().map(|(m,)| m).collect())
     }

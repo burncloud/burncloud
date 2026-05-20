@@ -1,7 +1,6 @@
 use burncloud_client_shared::billing_service::BillingService;
 use burncloud_client_shared::components::{
-    PageHeader, StatKpi, StatusPill, EmptyState,
-    SkeletonCard, SkeletonVariant, ErrorBanner,
+    EmptyState, ErrorBanner, PageHeader, SkeletonCard, SkeletonVariant, StatKpi, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::channel_service::{Channel, ChannelService};
@@ -64,13 +63,9 @@ pub fn Dashboard() -> Element {
     let token_for_usage = token.clone();
     let token_for_billing = token.clone();
 
-    let metrics = use_resource(move || async move {
-        MonitorService::get_system_metrics().await
-    });
+    let metrics = use_resource(move || async move { MonitorService::get_system_metrics().await });
 
-    let channels = use_resource(move || async move {
-        ChannelService::list(0, 50).await
-    });
+    let channels = use_resource(move || async move { ChannelService::list(0, 50).await });
 
     let usage = use_resource(move || {
         let uid = user_id.clone();
@@ -95,9 +90,7 @@ pub fn Dashboard() -> Element {
         }
     });
 
-    let recent_logs = use_resource(move || async move {
-        LogService::list(10).await
-    });
+    let recent_logs = use_resource(move || async move { LogService::list(10).await });
 
     // Read resource states
     let m = metrics.read().clone();

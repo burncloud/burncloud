@@ -299,9 +299,15 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
     };
 
     let time_filter = if is_postgres {
-        format!("EXTRACT(EPOCH FROM created_at)::BIGINT >= {}", ph(is_postgres, 2))
+        format!(
+            "EXTRACT(EPOCH FROM created_at)::BIGINT >= {}",
+            ph(is_postgres, 2)
+        )
     } else {
-        format!("CAST(strftime('%s', created_at) AS BIGINT) >= {}", ph(is_postgres, 2))
+        format!(
+            "CAST(strftime('%s', created_at) AS BIGINT) >= {}",
+            ph(is_postgres, 2)
+        )
     };
 
     let sql = format!(
@@ -355,7 +361,10 @@ pub async fn get_usage_stats_by_model(
     };
 
     let time_filter = if is_postgres {
-        format!("EXTRACT(EPOCH FROM created_at)::BIGINT >= {}", ph(is_postgres, 2))
+        format!(
+            "EXTRACT(EPOCH FROM created_at)::BIGINT >= {}",
+            ph(is_postgres, 2)
+        )
     } else {
         "strftime('%s', created_at) >= CAST(? AS TEXT)".to_string()
     };
@@ -641,8 +650,7 @@ pub async fn get_billing_summary_for_user(
         ph(is_postgres, 1),
         date_filter
     );
-    let mut null_query = sqlx::query_scalar::<_, i64>(&null_model_sql)
-        .bind(user_id);
+    let mut null_query = sqlx::query_scalar::<_, i64>(&null_model_sql).bind(user_id);
     if date_cast_start {
         null_query = null_query.bind(start.unwrap_or(""));
     }
@@ -670,8 +678,8 @@ pub async fn get_billing_summary_for_user(
         ph(is_postgres, 1),
         date_filter
     );
-    let mut model_query = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(&model_sql)
-        .bind(user_id);
+    let mut model_query =
+        sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(&model_sql).bind(user_id);
     if date_cast_start {
         model_query = model_query.bind(start.unwrap_or(""));
     }

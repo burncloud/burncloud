@@ -165,7 +165,8 @@ impl CircuitBreaker {
                 if new_count >= self.failure_threshold {
                     tracing::warn!(
                         "Circuit Breaker: Upstream {} tripped due to rate limit (Failures: {})",
-                        upstream_id, new_count
+                        upstream_id,
+                        new_count
                     );
                 }
             }
@@ -175,7 +176,8 @@ impl CircuitBreaker {
                 if new_count >= self.failure_threshold {
                     tracing::warn!(
                         "Circuit Breaker: Upstream {} tripped! (Failures: {})",
-                        upstream_id, new_count
+                        upstream_id,
+                        new_count
                     );
                 }
             }
@@ -191,7 +193,9 @@ impl CircuitBreaker {
     pub fn trip_all(&self) -> Vec<String> {
         let mut tripped = Vec::new();
         for mut entry in self.states.iter_mut() {
-            entry.failure_count.store(self.failure_threshold, Ordering::Relaxed);
+            entry
+                .failure_count
+                .store(self.failure_threshold, Ordering::Relaxed);
             entry.last_failure_time = Some(Instant::now());
             entry.failure_type = Some(FailureType::ServerError);
             entry.rate_limit_until = None;

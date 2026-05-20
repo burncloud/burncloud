@@ -4,9 +4,8 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::validate_schema;
 use burncloud_client_shared::components::{
-    BCButton, ButtonVariant, FormMode, SchemaForm,
-    PageHeader, StatusPill, Chip, EmptyState,
-    SkeletonCard, SkeletonVariant,
+    BCButton, ButtonVariant, Chip, EmptyState, FormMode, PageHeader, SchemaForm, SkeletonCard,
+    SkeletonVariant, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt, use_i18n, Language};
 use burncloud_client_shared::schema::channel_schema;
@@ -113,37 +112,82 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
 
     let (final_type, final_base_url, final_models, param_override, header_override) = match type_str
     {
-        "1" => (1, "https://api.openai.com".to_string(), "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string(), None, None),
-        "14" => (14, "https://api.anthropic.com".to_string(), "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string(), None, None),
+        "1" => (
+            1,
+            "https://api.openai.com".to_string(),
+            "gpt-4,gpt-4-turbo,gpt-3.5-turbo".to_string(),
+            None,
+            None,
+        ),
+        "14" => (
+            14,
+            "https://api.anthropic.com".to_string(),
+            "claude-3-opus-20240229,claude-3-sonnet-20240229".to_string(),
+            None,
+            None,
+        ),
         "24" => {
             let auth_type = data["google_auth_type"].as_str().unwrap_or("api_key");
             if auth_type == "vertex" {
                 let mut params = serde_json::Map::new();
-                if let Some(r) = data["google_region"].as_str() { params.insert("region".to_string(), json!(r)); }
-                if let Some(p) = data["google_project_id"].as_str() { if !p.is_empty() { params.insert("project_id".to_string(), json!(p)); } }
-                (41, "https://aiplatform.googleapis.com".to_string(), "gemini-pro,gemini-1.5-pro".to_string(), Some(serde_json::Value::Object(params).to_string()), None)
+                if let Some(r) = data["google_region"].as_str() {
+                    params.insert("region".to_string(), json!(r));
+                }
+                if let Some(p) = data["google_project_id"].as_str() {
+                    if !p.is_empty() {
+                        params.insert("project_id".to_string(), json!(p));
+                    }
+                }
+                (
+                    41,
+                    "https://aiplatform.googleapis.com".to_string(),
+                    "gemini-pro,gemini-1.5-pro".to_string(),
+                    Some(serde_json::Value::Object(params).to_string()),
+                    None,
+                )
             } else {
-                (24, "https://generativelanguage.googleapis.com".to_string(), "gemini-pro,gemini-1.5-pro".to_string(), None, None)
+                (
+                    24,
+                    "https://generativelanguage.googleapis.com".to_string(),
+                    "gemini-pro,gemini-1.5-pro".to_string(),
+                    None,
+                    None,
+                )
             }
         }
         "99" => {
             let region = data["aws_region"].as_str().unwrap_or("us-east-1");
             let base_url = format!("https://bedrock-runtime.{}.amazonaws.com", region);
-            let models = data["aws_model_id"].as_str().unwrap_or("anthropic.claude-sonnet-4-5-20250929-v1:0").to_string();
+            let models = data["aws_model_id"]
+                .as_str()
+                .unwrap_or("anthropic.claude-sonnet-4-5-20250929-v1:0")
+                .to_string();
             let params = json!({"aws_secret_key": data["aws_sk"].as_str().unwrap_or(""), "region": region, "auth_type": "aws_sigv4"});
             (1, base_url, models, Some(params.to_string()), None)
         }
         "98" => {
             let resource = data["azure_resource"].as_str().unwrap_or("");
             let deployment = data["azure_deployment"].as_str().unwrap_or("");
-            let base_url = format!("https://{}.openai.azure.com/openai/deployments/{}", resource, deployment);
+            let base_url = format!(
+                "https://{}.openai.azure.com/openai/deployments/{}",
+                resource, deployment
+            );
             let models = deployment.to_string();
             let params = json!({"api_version": data["azure_api_version"].as_str().unwrap_or("2023-05-15"), "auth_type": "azure_ad"});
             let headers = json!({"api-key": data["azure_key"].as_str().unwrap_or("")});
-            (1, base_url, models, Some(params.to_string()), Some(headers.to_string()))
+            (
+                1,
+                base_url,
+                models,
+                Some(params.to_string()),
+                Some(headers.to_string()),
+            )
         }
         "97" => {
-            let base_url = data["local_url"].as_str().unwrap_or("http://localhost:8080").to_string();
+            let base_url = data["local_url"]
+                .as_str()
+                .unwrap_or("http://localhost:8080")
+                .to_string();
             (1, base_url, "local-model".to_string(), None, None)
         }
         _ => (1, String::new(), String::new(), None, None),
@@ -152,8 +196,11 @@ fn build_channel_from_form(data: &serde_json::Value) -> Channel {
     let final_key = match type_str {
         "24" => {
             let auth_type = data["google_auth_type"].as_str().unwrap_or("api_key");
-            if auth_type == "vertex" { data["google_vertex_key"].as_str().unwrap_or("").to_string() }
-            else { data["google_key"].as_str().unwrap_or("").to_string() }
+            if auth_type == "vertex" {
+                data["google_vertex_key"].as_str().unwrap_or("").to_string()
+            } else {
+                data["google_key"].as_str().unwrap_or("").to_string()
+            }
         }
         "98" => data["azure_key"].as_str().unwrap_or("").to_string(),
         "99" => data["aws_key"].as_str().unwrap_or("").to_string(),
@@ -234,9 +281,7 @@ pub fn ChannelPage() -> Element {
     let mut form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
     let schema = channel_schema();
 
-    let mut channels = use_resource(move || async move {
-        ChannelService::list(0, 200).await
-    });
+    let mut channels = use_resource(move || async move { ChannelService::list(0, 200).await });
 
     let open_create_modal = move |_| {
         form_data.set(serde_json::Value::Object(serde_json::Map::new()));
@@ -246,10 +291,24 @@ pub fn ChannelPage() -> Element {
 
     let channels_ref = channels;
     let mut select_provider = move |p: ProviderType| {
-        let adjectives = vec!["cosmic", "fluent", "quantum", "hyper", "silent", "pure", "rapid", "steady", "active", "neural", "prime", "noble", "swift", "calm", "wild", "bright"];
-        let nouns = vec!["flow", "grid", "core", "nexus", "pulse", "link", "node", "sphere", "spark", "wave", "beam", "edge", "mind", "field", "stream", "gate"];
+        let adjectives = vec![
+            "cosmic", "fluent", "quantum", "hyper", "silent", "pure", "rapid", "steady", "active",
+            "neural", "prime", "noble", "swift", "calm", "wild", "bright",
+        ];
+        let nouns = vec![
+            "flow", "grid", "core", "nexus", "pulse", "link", "node", "sphere", "spark", "wave",
+            "beam", "edge", "mind", "field", "stream", "gate",
+        ];
 
-        let existing_names: Vec<String> = channels_ref.read().as_ref().map(|r| r.as_ref().map(|list| list.iter().map(|c| c.name.clone()).collect()).unwrap_or_default()).unwrap_or_default();
+        let existing_names: Vec<String> = channels_ref
+            .read()
+            .as_ref()
+            .map(|r| {
+                r.as_ref()
+                    .map(|list| list.iter().map(|c| c.name.clone()).collect())
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
         let mut rng = rand::thread_rng();
         let mut generated_name = String::new();
 
@@ -257,8 +316,16 @@ pub fn ChannelPage() -> Element {
             let adj = adjectives.choose(&mut rng).unwrap_or(&"zen");
             let noun = nouns.choose(&mut rng).unwrap_or(&"mode");
             let suffix: u16 = rng.gen_range(100..999);
-            let candidate = format!("{} {} {}", adj[0..1].to_uppercase() + &adj[1..], noun[0..1].to_uppercase() + &noun[1..], suffix);
-            if !existing_names.contains(&candidate) { generated_name = candidate; break; }
+            let candidate = format!(
+                "{} {} {}",
+                adj[0..1].to_uppercase() + &adj[1..],
+                noun[0..1].to_uppercase() + &noun[1..],
+                suffix
+            );
+            if !existing_names.contains(&candidate) {
+                generated_name = candidate;
+                break;
+            }
         }
         if generated_name.is_empty() {
             let suffix: u16 = rng.gen_range(1000..9999);
@@ -275,10 +342,23 @@ pub fn ChannelPage() -> Element {
         obj.insert("weight".to_string(), json!(0));
 
         match p {
-            ProviderType::Aws => { obj.insert("aws_region".to_string(), json!("us-east-1")); obj.insert("aws_model_id".to_string(), json!("anthropic.claude-sonnet-4-5-20250929-v1:0")); }
-            ProviderType::Google => { obj.insert("google_auth_type".to_string(), json!("api_key")); obj.insert("google_region".to_string(), json!("us-central1")); }
-            ProviderType::Azure => { obj.insert("azure_api_version".to_string(), json!("2023-05-15")); }
-            ProviderType::Local => { obj.insert("local_url".to_string(), json!("http://localhost:8080")); }
+            ProviderType::Aws => {
+                obj.insert("aws_region".to_string(), json!("us-east-1"));
+                obj.insert(
+                    "aws_model_id".to_string(),
+                    json!("anthropic.claude-sonnet-4-5-20250929-v1:0"),
+                );
+            }
+            ProviderType::Google => {
+                obj.insert("google_auth_type".to_string(), json!("api_key"));
+                obj.insert("google_region".to_string(), json!("us-central1"));
+            }
+            ProviderType::Azure => {
+                obj.insert("azure_api_version".to_string(), json!("2023-05-15"));
+            }
+            ProviderType::Local => {
+                obj.insert("local_url".to_string(), json!("http://localhost:8080"));
+            }
             _ => {}
         }
 
@@ -293,14 +373,30 @@ pub fn ChannelPage() -> Element {
             is_loading.set(true);
             let current_data = form_data.read().clone();
             let errors = validate_schema(&s, &current_data, *lang.read());
-            if !errors.is_empty() { is_loading.set(false); toast.error(t(*lang.read(), "models.channel.fill_required")); return; }
+            if !errors.is_empty() {
+                is_loading.set(false);
+                toast.error(t(*lang.read(), "models.channel.fill_required"));
+                return;
+            }
 
             let ch = build_channel_from_form(&current_data);
-            let result = if ch.id == 0 { ChannelService::create(&ch).await } else { ChannelService::update(&ch).await };
+            let result = if ch.id == 0 {
+                ChannelService::create(&ch).await
+            } else {
+                ChannelService::update(&ch).await
+            };
 
             match result {
-                Ok(_) => { is_modal_open.set(false); channels.restart(); toast.success(t(*lang.read(), "models.channel.saved")); }
-                Err(e) => toast.error(&t_fmt(*lang.read(), "models.channel.save_failed", &[("error", &e.to_string())])),
+                Ok(_) => {
+                    is_modal_open.set(false);
+                    channels.restart();
+                    toast.success(t(*lang.read(), "models.channel.saved"));
+                }
+                Err(e) => toast.error(&t_fmt(
+                    *lang.read(),
+                    "models.channel.save_failed",
+                    &[("error", &e.to_string())],
+                )),
             }
             is_loading.set(false);
         });
@@ -325,19 +421,27 @@ pub fn ChannelPage() -> Element {
     let active_count = ch_list.iter().filter(|c| c.status == 1).count();
     let throttle_count = ch_list.iter().filter(|c| c.status == 2).count();
     let down_count = ch_list.iter().filter(|c| c.status == 0).count();
-    let maint_count = ch_list.iter().filter(|c| c.status != 0 && c.status != 1 && c.status != 2).count();
+    let maint_count = ch_list
+        .iter()
+        .filter(|c| c.status != 0 && c.status != 1 && c.status != 2)
+        .count();
     let total_weight: i32 = ch_list.iter().map(|c| c.weight).sum();
-    let health_rate = if ch_list.is_empty() { 0.0 } else { active_count as f64 / ch_list.len() as f64 * 100.0 };
+    let health_rate = if ch_list.is_empty() {
+        0.0
+    } else {
+        active_count as f64 / ch_list.len() as f64 * 100.0
+    };
 
-    let filtered: Vec<&Channel> = ch_list.iter().filter(|c| {
-        match active_filter().as_str() {
+    let filtered: Vec<&Channel> = ch_list
+        .iter()
+        .filter(|c| match active_filter().as_str() {
             "ok" => c.status == 1,
             "throttle" => c.status == 2,
             "down" => c.status == 0,
             "maint" => c.status != 0 && c.status != 1 && c.status != 2,
             _ => true,
-        }
-    }).collect();
+        })
+        .collect();
 
     rsx! {
         PageHeader {
