@@ -3,6 +3,9 @@
 //! This module provides metrics collection and exposition for monitoring
 //! the router's performance and health.
 
+// Allow expect() in metrics initialization - these are static metrics that must succeed
+#![allow(clippy::expect_used)]
+
 use prometheus::{Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, Opts, Registry};
 use std::sync::OnceLock;
 

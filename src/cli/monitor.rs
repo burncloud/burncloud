@@ -177,8 +177,8 @@ fn check_server_status() -> Result<ServerStatus> {
     let last_log_time = get_last_log_time()?;
 
     // Calculate uptime if process is running
-    let uptime_seconds = if pid.is_some() {
-        get_process_uptime(pid.unwrap())?
+    let uptime_seconds = if let Some(p) = pid {
+        get_process_uptime(p)?
     } else {
         None
     };

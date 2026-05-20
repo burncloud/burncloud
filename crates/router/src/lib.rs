@@ -3034,11 +3034,12 @@ mod tests {
 }
 
 /// Handler for /internal/metrics endpoint - Prometheus metrics
+#[allow(clippy::expect_used)]
 async fn metrics_handler() -> Response {
     let metrics_output = crate::metrics::export();
     Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "text/plain; version=0.0.4")
         .body(Body::from(metrics_output))
-        .unwrap()
+        .expect("Failed to build metrics response")
 }
