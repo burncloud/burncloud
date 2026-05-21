@@ -12,6 +12,8 @@ serde = { workspace = true }
 reqwest = { workspace = true }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
+burncloud-database-channel = { workspace = true }
+burncloud-common = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
