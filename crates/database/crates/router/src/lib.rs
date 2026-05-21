@@ -64,7 +64,8 @@ impl RouterDatabase {
 
         // Only create router_tokens table (router_upstreams, router_groups removed)
         let tokens_sql = match kind.as_str() {
-            "sqlite" => r#"
+            "sqlite" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS router_tokens (
                     token TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -74,8 +75,10 @@ impl RouterDatabase {
                     expired_time INTEGER NOT NULL DEFAULT -1,
                     accessed_time INTEGER NOT NULL DEFAULT 0
                 );
-            "#,
-            "postgres" => r#"
+            "#
+            }
+            "postgres" => {
+                r#"
                 CREATE TABLE IF NOT EXISTS router_tokens (
                     token TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -85,7 +88,8 @@ impl RouterDatabase {
                     expired_time BIGINT NOT NULL DEFAULT -1,
                     accessed_time BIGINT NOT NULL DEFAULT 0
                 );
-            "#,
+            "#
+            }
             _ => unreachable!("Unsupported database kind"),
         };
 

@@ -193,8 +193,8 @@ impl InferenceService {
 
         // 构建 Channel 对象
         let mut channel = Channel {
-            id: 0, // Will be assigned by database
-            type_: 1, // OpenAI type
+            id: 0,               // Will be assigned by database
+            type_: 1,            // OpenAI type
             key: "".to_string(), // 无需鉴权
             status: 1,
             name: format!("Local: {}", config.model_id),
@@ -225,8 +225,11 @@ impl InferenceService {
         };
 
         // 创建 channel
-        let channel_id = ChannelProviderModel::create(db, &mut channel).await
-            .map_err(|e| InferenceError::ProcessSpawnFailed(format!("Failed to create channel: {}", e)))?;
+        let channel_id = ChannelProviderModel::create(db, &mut channel)
+            .await
+            .map_err(|e| {
+                InferenceError::ProcessSpawnFailed(format!("Failed to create channel: {}", e))
+            })?;
 
         // 创建 channel_ability
         let ability = ChannelAbilityInput {
@@ -237,25 +240,35 @@ impl InferenceService {
             priority: 100,
             weight: 1,
         };
-        ChannelAbilityModel::create_batch(db, &[ability]).await
-            .map_err(|e| InferenceError::ProcessSpawnFailed(format!("Failed to create ability: {}", e)))?;
+        ChannelAbilityModel::create_batch(db, &[ability])
+            .await
+            .map_err(|e| {
+                InferenceError::ProcessSpawnFailed(format!("Failed to create ability: {}", e))
+            })?;
 
-        tracing::info!("Registered local channel: {} (ID: {})", channel_id_str, channel_id);
+        tracing::info!(
+            "Registered local channel: {} (ID: {})",
+            channel_id_str,
+            channel_id
+        );
         Ok(())
     }
 
     async fn unregister_upstream(&self, db: &Database, model_id: &str) -> Result<()> {
         // 查找并删除对应的 channel
-        let channels = ChannelProviderModel::list(db, 1000, 0).await
+        let channels = ChannelProviderModel::list(db, 1000, 0)
+            .await
             .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
 
         for channel in channels {
             if channel.name == format!("Local: {}", model_id) {
                 // 先删除 abilities
-                ChannelAbilityModel::delete_by_channel(db, channel.id).await
+                ChannelAbilityModel::delete_by_channel(db, channel.id)
+                    .await
                     .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
                 // 再删除 channel
-                ChannelProviderModel::delete(db, channel.id).await
+                ChannelProviderModel::delete(db, channel.id)
+                    .await
                     .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
                 tracing::info!("Unregistered local channel: {}", model_id);
                 break;

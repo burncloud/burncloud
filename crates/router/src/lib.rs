@@ -10,6 +10,7 @@ mod circuit_breaker;
 mod config;
 pub mod exchange_rate;
 mod limiter;
+pub mod metrics;
 pub mod model_router;
 pub mod order_type;
 pub mod passthrough;
@@ -522,6 +523,7 @@ pub async fn create_router_app(
     let health_path = format!("{}/health", INTERNAL_PREFIX);
     let price_sync_path = format!("{}/prices/sync", INTERNAL_PREFIX);
     let trip_all_path = format!("{}/circuit-breaker/trip-all", INTERNAL_PREFIX);
+    let metrics_path = format!("{}/metrics", INTERNAL_PREFIX);
 
     // Internal routes that must be registered BEFORE LiveView's catch-all
     // `/console/{*path}` in the server layer, otherwise LiveView intercepts
@@ -530,6 +532,7 @@ pub async fn create_router_app(
         .route(&health_path, axum::routing::get(health_status_handler))
         .route(&price_sync_path, post(price_sync_handler))
         .route(&trip_all_path, post(circuit_breaker_trip_all_handler))
+        .route(&metrics_path, axum::routing::get(metrics_handler))
         .with_state(state.clone());
 
     let app = Router::new()
@@ -3075,4 +3078,15 @@ mod tests {
             "5s 720p fast @ $0.07/s should cost $0.35 = 350_000_000 nanodollars"
         );
     }
+}
+
+/// Handler for /internal/metrics endpoint - Prometheus metrics
+#[allow(clippy::expect_used)]
+async fn metrics_handler() -> Response {
+    let metrics_output = crate::metrics::export();
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/plain; version=0.0.4")
+        .body(Body::from(metrics_output))
+        .expect("Failed to build metrics response")
 }

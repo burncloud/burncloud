@@ -33,6 +33,7 @@ chrono = { workspace = true }
 axum = { workspace = true, features = ["macros"] }
 tower-http = { workspace = true, features = ["trace", "cors"] }
 tracing.workspace = true
+prometheus.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 regex.workspace = true
