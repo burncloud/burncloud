@@ -2018,10 +2018,57 @@ async fn proxy_logic(
                                 }
                             };
 
-                            // Parse usage metadata from response
+                            // Parse response and check for embedded errors
+                            // Some providers (e.g., Xunfei) return HTTP 200 with error in body
                             if let Ok(resp_json) =
                                 serde_json::from_slice::<serde_json::Value>(&resp_bytes)
                             {
+                                // Check for embedded error in HTTP 200 response
+                                // Format: {"error": {...}, "type": "error"} or {"type": "error", ...}
+                                let is_error_response = resp_json.get("type").map(|t| t.as_str() == Some("error")).unwrap_or(false)
+                                    || resp_json.get("error").is_some();
+
+                                if is_error_response {
+                                    let body_str = String::from_utf8_lossy(&resp_bytes);
+                                    let error_info = parse_error_response(&body_str, &upstream.protocol);
+                                    let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
+
+                                    tracing::warn!(
+                                        "Passthrough: {} returned HTTP 200 with embedded error: {}",
+                                        upstream.name,
+                                        error_message
+                                    );
+
+                                    // Record as auth failure if it looks like an auth error
+                                    let failure_type = if error_message.contains("AppIdNoAuth")
+                                        || error_message.contains("NoAuth")
+                                        || error_message.contains("Invalid")
+                                        || error_message.contains("Expired")
+                                        || error_message.contains("expired")
+                                    {
+                                        FailureType::AuthFailed
+                                    } else {
+                                        FailureType::ServerError
+                                    };
+
+                                    record_upstream_failure(
+                                        state, upstream, model_name, failure_type.clone(), error_message,
+                                        &session_id,
+                                    );
+
+                                    // Evict from affinity cache so next request tries a different channel
+                                    if let Some(model) = model_name {
+                                        state.affinity_cache.evict(&session_id, model);
+                                    }
+                                    tracing::info!(
+                                        "Affinity evicted — embedded error in HTTP 200 for {}",
+                                        upstream.name
+                                    );
+
+                                    last_error = error_message.to_string();
+                                    continue; // Try next candidate
+                                }
+
                                 let resp_usage = parse_response_or_default(
                                     get_parser(channel_type).as_ref(),
                                     &resp_json,
