@@ -8,10 +8,7 @@ pub struct ColumnDef {
 }
 
 #[component]
-pub fn PageTable(
-    columns: Vec<ColumnDef>,
-    children: Element,
-) -> Element {
+pub fn PageTable(columns: Vec<ColumnDef>, children: Element) -> Element {
     rsx! {
         table { class: "table",
             thead {

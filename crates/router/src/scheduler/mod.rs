@@ -76,9 +76,7 @@ pub struct SchedulingRequest {
 impl SchedulingRequest {
     /// Returns the affinity key — session_id when present, else user_id.
     pub fn affinity_key(&self) -> Option<&str> {
-        self.session_id
-            .as_deref()
-            .or(self.user_id.as_deref())
+        self.session_id.as_deref().or(self.user_id.as_deref())
     }
 }
 
@@ -130,7 +128,9 @@ impl SchedulerPolicyConfig {
     /// Validate weights: must be non-negative, finite, and at least one positive.
     pub fn validate(&self) -> bool {
         let weights = [self.health_weight, self.cost_weight, self.rpm_weight];
-        weights.iter().all(|w| *w >= 0.0 && w.is_finite() && !w.is_nan())
+        weights
+            .iter()
+            .all(|w| *w >= 0.0 && w.is_finite() && !w.is_nan())
             && weights.iter().any(|w| *w > 0.0)
     }
 }
@@ -259,16 +259,17 @@ pub fn rank_candidates(
     let scores = match catch_unwind(AssertUnwindSafe(|| scheduler.score(&candidates, ctx))) {
         Ok(Ok(map)) => map,
         Ok(Err(e)) => {
-            tracing::warn!("Scheduler '{}' returned error: {e}, falling back to passthrough", scheduler.name());
+            tracing::warn!(
+                "Scheduler '{}' returned error: {e}, falling back to passthrough",
+                scheduler.name()
+            );
             return rank_passthrough(candidates);
         }
         Err(payload) => {
             tracing::error!(
                 "Scheduler '{}' panicked: {}, falling back to passthrough",
                 scheduler.name(),
-                payload
-                    .downcast_ref::<&str>()
-                    .unwrap_or(&"unknown panic")
+                payload.downcast_ref::<&str>().unwrap_or(&"unknown panic")
             );
             return rank_passthrough(candidates);
         }
@@ -317,7 +318,17 @@ pub async fn build_context(
         // Look up price for this channel's region (deduplicated, normalized to USD)
         let region = ch.pricing_region.as_deref().unwrap_or("");
         if let std::collections::hash_map::Entry::Vacant(e) = prices_usd.entry(region) {
-            if let Some(price) = price_cache.get(model, if region.is_empty() { None } else { Some(region) }).await {
+            if let Some(price) = price_cache
+                .get(
+                    model,
+                    if region.is_empty() {
+                        None
+                    } else {
+                        Some(region)
+                    },
+                )
+                .await
+            {
                 let raw = price.input_price as f64 + price.output_price as f64;
                 let price_usd = match burncloud_common::Currency::from_str(&price.currency) {
                     Ok(curr) if curr != burncloud_common::Currency::USD => {
@@ -343,7 +354,11 @@ pub async fn build_context(
         // Pre-compute cost factor (prices already USD-normalized at cache time)
         let cost = {
             let price_usd = prices_usd.get(region).copied().unwrap_or(0.0);
-            if price_usd <= 0.0 { 1.0 } else { 1.0 / price_usd }
+            if price_usd <= 0.0 {
+                1.0
+            } else {
+                1.0 / price_usd
+            }
         };
 
         let rpm = match adaptive.state {
@@ -352,11 +367,7 @@ pub async fn build_context(
             crate::aimd_limiter::RateLimitState::Cooldown => RPM_FACTOR_COOLDOWN,
         };
 
-        factors.insert(ch.id, CandidateFactors {
-            health,
-            cost,
-            rpm,
-        });
+        factors.insert(ch.id, CandidateFactors { health, cost, rpm });
     }
 
     SchedulingContext { factors }
@@ -477,7 +488,10 @@ pub mod tests {
         let result = rank_candidates(c, &ctx, &failing);
         // Should fall back to passthrough ordering (higher weight first)
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].0.id, 2, "fallback should order by weight (10 > 5)");
+        assert_eq!(
+            result[0].0.id, 2,
+            "fallback should order by weight (10 > 5)"
+        );
         assert_eq!(result[1].0.id, 1);
     }
 

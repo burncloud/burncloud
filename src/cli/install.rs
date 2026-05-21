@@ -4,8 +4,8 @@ use anyhow::Result;
 use burncloud_database_sys::InstallerDB;
 use burncloud_installer::{Installer, InstallerConfig};
 use clap::ArgMatches;
-use tracing::error;
 use std::path::PathBuf;
+use tracing::error;
 
 /// Handle install subcommand
 pub async fn handle_install_command(matches: &ArgMatches) -> Result<()> {

@@ -85,9 +85,36 @@ pub fn RegisterPage() -> Element {
     // Password strength calculation
     let pw_len = pw.read().len();
     let strength_bars: [(bool, &str); 4] = [
-        (pw_len >= 3, if pw_len >= 12 { "var(--bc-success)" } else if pw_len >= 9 { "var(--bc-warning)" } else { "var(--bc-danger)" }),
-        (pw_len >= 6, if pw_len >= 12 { "var(--bc-success)" } else if pw_len >= 9 { "var(--bc-warning)" } else { "var(--bc-danger)" }),
-        (pw_len >= 9, if pw_len >= 12 { "var(--bc-success)" } else if pw_len >= 9 { "var(--bc-warning)" } else { "var(--bc-danger)" }),
+        (
+            pw_len >= 3,
+            if pw_len >= 12 {
+                "var(--bc-success)"
+            } else if pw_len >= 9 {
+                "var(--bc-warning)"
+            } else {
+                "var(--bc-danger)"
+            },
+        ),
+        (
+            pw_len >= 6,
+            if pw_len >= 12 {
+                "var(--bc-success)"
+            } else if pw_len >= 9 {
+                "var(--bc-warning)"
+            } else {
+                "var(--bc-danger)"
+            },
+        ),
+        (
+            pw_len >= 9,
+            if pw_len >= 12 {
+                "var(--bc-success)"
+            } else if pw_len >= 9 {
+                "var(--bc-warning)"
+            } else {
+                "var(--bc-danger)"
+            },
+        ),
         (pw_len >= 12, "var(--bc-success)"),
     ];
 

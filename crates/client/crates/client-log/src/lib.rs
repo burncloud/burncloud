@@ -1,6 +1,5 @@
 use burncloud_client_shared::components::{
-    PageHeader, LevelBadge, Chip, EmptyState,
-    SkeletonCard, SkeletonVariant,
+    Chip, EmptyState, LevelBadge, PageHeader, SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::i18n::t;
 use burncloud_client_shared::services::log_service::{LogEntry, LogService};
@@ -9,9 +8,13 @@ use dioxus::document::eval;
 use dioxus::prelude::*;
 
 fn status_level(code: u16) -> String {
-    if code >= 500 { "ERROR".to_string() }
-    else if code >= 400 { "WARN".to_string() }
-    else { "INFO".to_string() }
+    if code >= 500 {
+        "ERROR".to_string()
+    } else if code >= 400 {
+        "WARN".to_string()
+    } else {
+        "INFO".to_string()
+    }
 }
 
 fn is_error(entries: &[LogEntry]) -> i64 {
@@ -19,12 +22,18 @@ fn is_error(entries: &[LogEntry]) -> i64 {
 }
 
 fn is_warn(entries: &[LogEntry]) -> i64 {
-    entries.iter().filter(|e| e.status_code >= 400 && e.status_code < 500).count() as i64
+    entries
+        .iter()
+        .filter(|e| e.status_code >= 400 && e.status_code < 500)
+        .count() as i64
 }
 
 fn avg_latency(entries: &[LogEntry]) -> String {
-    if entries.is_empty() { "—".to_string() } else {
-        let avg: f64 = entries.iter().map(|e| e.latency_ms as f64).sum::<f64>() / entries.len() as f64;
+    if entries.is_empty() {
+        "—".to_string()
+    } else {
+        let avg: f64 =
+            entries.iter().map(|e| e.latency_ms as f64).sum::<f64>() / entries.len() as f64;
         format!("{avg:.0}")
     }
 }
@@ -33,10 +42,14 @@ fn format_thousands(n: i64) -> String {
     let s = n.abs().to_string();
     let mut result = String::new();
     for (i, c) in s.chars().rev().enumerate() {
-        if i > 0 && i % 3 == 0 { result.insert(0, ','); }
+        if i > 0 && i % 3 == 0 {
+            result.insert(0, ',');
+        }
         result.insert(0, c);
     }
-    if n < 0 { result.insert(0, '-'); }
+    if n < 0 {
+        result.insert(0, '-');
+    }
     result
 }
 
@@ -49,9 +62,7 @@ fn csv_escape(s: &str) -> String {
 }
 
 fn generate_csv(entries: &[LogEntry]) -> String {
-    let mut rows = vec![
-        "时间,级别,渠道,方法,路径,状态码,延迟(ms),模型,Token数".to_string()
-    ];
+    let mut rows = vec!["时间,级别,渠道,方法,路径,状态码,延迟(ms),模型,Token数".to_string()];
     for e in entries {
         let ts = csv_escape(e.created_at.as_deref().unwrap_or(&e.request_id));
         let level = csv_escape(&status_level(e.status_code));
@@ -60,13 +71,19 @@ fn generate_csv(entries: &[LogEntry]) -> String {
         let path = csv_escape(&e.path);
         let model = csv_escape(e.model.as_deref().unwrap_or("—"));
         let tokens = e.total_tokens.map_or(String::new(), |t| t.to_string());
-        rows.push(format!("{ts},{level},{upstream},{method},{path},{},{},{model},{tokens}", e.status_code, e.latency_ms));
+        rows.push(format!(
+            "{ts},{level},{upstream},{method},{path},{},{},{model},{tokens}",
+            e.status_code, e.latency_ms
+        ));
     }
     rows.join("\n")
 }
 
 fn trigger_download(csv: &str, filename: &str) {
-    let escaped = csv.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$");
+    let escaped = csv
+        .replace('\\', "\\\\")
+        .replace('`', "\\`")
+        .replace('$', "\\$");
     let js = format!(
         r#"(function() {{
             var blob = new Blob([`{escaped}`], {{ type: 'text/csv;charset=utf-8;' }});
@@ -90,9 +107,7 @@ pub fn LogPage() -> Element {
     let mut active_filter = use_signal(|| "all".to_string());
     let mut search_query = use_signal(String::new);
 
-    let logs = use_resource(move || async move {
-        LogService::list(200).await.unwrap_or_default()
-    });
+    let logs = use_resource(move || async move { LogService::list(200).await.unwrap_or_default() });
 
     let log_list = logs.read().clone().unwrap_or_default();
     let loading = logs.read().is_none();
@@ -100,23 +115,33 @@ pub fn LogPage() -> Element {
     let error_count = is_error(&log_list);
     let warn_count = is_warn(&log_list);
 
-    let filtered_logs: Vec<LogEntry> = log_list.iter().filter(|e| {
-        let level = status_level(e.status_code);
-        let level_match = match active_filter().as_str() {
-            "error" => level == "ERROR",
-            "warn" => level == "WARN",
-            "info" => level == "INFO",
-            "debug" => level == "DEBUG",
-            _ => true,
-        };
-        let q = search_query().to_lowercase();
-        let text_match = if q.is_empty() { true } else {
-            e.path.to_lowercase().contains(&q)
-                || e.upstream_id.as_deref().unwrap_or("").to_lowercase().contains(&q)
-                || e.model.as_deref().unwrap_or("").to_lowercase().contains(&q)
-        };
-        level_match && text_match
-    }).cloned().collect();
+    let filtered_logs: Vec<LogEntry> = log_list
+        .iter()
+        .filter(|e| {
+            let level = status_level(e.status_code);
+            let level_match = match active_filter().as_str() {
+                "error" => level == "ERROR",
+                "warn" => level == "WARN",
+                "info" => level == "INFO",
+                "debug" => level == "DEBUG",
+                _ => true,
+            };
+            let q = search_query().to_lowercase();
+            let text_match = if q.is_empty() {
+                true
+            } else {
+                e.path.to_lowercase().contains(&q)
+                    || e.upstream_id
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&q)
+                    || e.model.as_deref().unwrap_or("").to_lowercase().contains(&q)
+            };
+            level_match && text_match
+        })
+        .cloned()
+        .collect();
 
     let toast = use_toast();
 

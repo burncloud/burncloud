@@ -1,6 +1,6 @@
 use crate::common::current_timestamp;
 use burncloud_common::types::{Price, PriceInput};
-use burncloud_database::{Database, Result, adapt_sql};
+use burncloud_database::{adapt_sql, Database, Result};
 
 pub struct BillingPriceModel;
 

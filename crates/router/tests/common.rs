@@ -91,15 +91,13 @@ async fn ensure_l1_classifier_tables(pool: &AnyPool) -> anyhow::Result<()> {
     )
     .execute(pool)
     .await?;
-    let _ = sqlx::query(
-        "ALTER TABLE router_tokens ADD COLUMN order_type VARCHAR(16) DEFAULT 'value'",
-    )
-    .execute(pool)
-    .await; // ignore duplicate-column error from older test DBs
     let _ =
-        sqlx::query("ALTER TABLE router_tokens ADD COLUMN price_cap_nanodollars BIGINT")
+        sqlx::query("ALTER TABLE router_tokens ADD COLUMN order_type VARCHAR(16) DEFAULT 'value'")
             .execute(pool)
             .await; // ignore duplicate-column error from older test DBs
+    let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN price_cap_nanodollars BIGINT")
+        .execute(pool)
+        .await; // ignore duplicate-column error from older test DBs
 
     Ok(())
 }

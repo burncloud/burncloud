@@ -139,7 +139,11 @@ pub fn GroupManager() -> Element {
                 })
                 .collect();
 
-            if API_CLIENT.update_group_members(&gid, &members).await.is_ok() {
+            if API_CLIENT
+                .update_group_members(&gid, &members)
+                .await
+                .is_ok()
+            {
                 // success toast?
             }
         }

@@ -11,7 +11,12 @@ pub struct PasswordResetToken {
 pub struct PasswordResetDatabase;
 
 impl PasswordResetDatabase {
-    pub async fn create_token(db: &Database, token: &str, user_id: &str, expires_at: &str) -> Result<()> {
+    pub async fn create_token(
+        db: &Database,
+        token: &str,
+        user_id: &str,
+        expires_at: &str,
+    ) -> Result<()> {
         let conn = db.get_connection()?;
         let sql = if db.kind() == "postgres" {
             "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES ($1, $2, $3)"
@@ -53,10 +58,7 @@ impl PasswordResetDatabase {
         } else {
             "UPDATE password_reset_tokens SET used_at = datetime('now') WHERE token = ?"
         };
-        sqlx::query(sql)
-            .bind(token)
-            .execute(conn.pool())
-            .await?;
+        sqlx::query(sql).bind(token).execute(conn.pool()).await?;
         Ok(())
     }
 }

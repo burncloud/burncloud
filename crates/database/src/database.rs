@@ -63,7 +63,8 @@ impl Database {
                 std::fs::remove_file(&default_path).map_err(|e| {
                     DatabaseError::DirectoryCreation(format!(
                         "failed to delete {}: {}",
-                        default_path.display(), e
+                        default_path.display(),
+                        e
                     ))
                 })?;
             }

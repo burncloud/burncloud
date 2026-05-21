@@ -35,12 +35,22 @@ async fn register_user(username: &str, password: &str, email: &str) -> (bool, St
         "password": password,
         "email": email
     });
-    let resp = client().post(&url).json(&body).send().await.expect("register request");
+    let resp = client()
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .expect("register request");
     let data: serde_json::Value = resp.json().await.expect("register response json");
     let success = data["success"].as_bool().unwrap_or(false);
     let token = data["data"]["token"].as_str().unwrap_or("").to_string();
-    let roles = data["data"]["roles"].as_array()
-        .map(|r| r.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+    let roles = data["data"]["roles"]
+        .as_array()
+        .map(|r| {
+            r.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     (success, token, roles)
 }
@@ -51,12 +61,22 @@ async fn login_user(username: &str, password: &str) -> (bool, String, Vec<String
         "username": username,
         "password": password
     });
-    let resp = client().post(&url).json(&body).send().await.expect("login request");
+    let resp = client()
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .expect("login request");
     let data: serde_json::Value = resp.json().await.expect("login response json");
     let success = data["success"].as_bool().unwrap_or(false);
     let token = data["data"]["token"].as_str().unwrap_or("").to_string();
-    let roles = data["data"]["roles"].as_array()
-        .map(|r| r.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+    let roles = data["data"]["roles"]
+        .as_array()
+        .map(|r| {
+            r.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     (success, token, roles)
 }
@@ -112,7 +132,10 @@ async fn e2e_smoke_v04() {
             eprintln!("  PASS  3_login");
         } else {
             failed += 1;
-            eprintln!("  FAIL  3_login: success={success}, jwt_parts={}", parts.len());
+            eprintln!(
+                "  FAIL  3_login: success={success}, jwt_parts={}",
+                parts.len()
+            );
         }
     }
 
@@ -239,7 +262,8 @@ async fn e2e_smoke_v04() {
     // should always get "user" role.
     {
         let second_user = unique_username("e2e_user");
-        let (success, _token, roles) = register_user(&second_user, "QaTest169!", "user@e2e.test").await;
+        let (success, _token, roles) =
+            register_user(&second_user, "QaTest169!", "user@e2e.test").await;
         let has_admin = roles.iter().any(|r| r == "admin");
         let has_user = roles.iter().any(|r| r == "user");
         if success && !has_admin && has_user {

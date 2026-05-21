@@ -29,7 +29,9 @@ impl From<RouterLog> for LogListItem {
     fn from(log: RouterLog) -> Self {
         // Extract model from path if possible (e.g., "/v1/chat/completions" -> "N/A")
         // In most cases, model is in request body, not path
-        let model = log.model.unwrap_or_else(|| extract_model_from_path(&log.path));
+        let model = log
+            .model
+            .unwrap_or_else(|| extract_model_from_path(&log.path));
 
         // Convert nanodollars to dollars
         let cost = log.cost as f64 / 1_000_000_000.0;

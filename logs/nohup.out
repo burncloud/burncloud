@@ -1,0 +1,3 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.54s
+     Running `target/debug/burncloud`
+Starting BurnCloud Server with LiveView (Headless Mode)...

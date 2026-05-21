@@ -220,7 +220,8 @@ impl ModelRouter {
     pub async fn route_with_scheduler(
         &self,
         inputs: RouteInputs<'_>,
-    ) -> std::result::Result<(Vec<Channel>, Option<RoutingDecision>), NoAvailableChannelsError> {
+    ) -> std::result::Result<(Vec<Channel>, Option<RoutingDecision>), NoAvailableChannelsError>
+    {
         let RouteInputs {
             group,
             model,
@@ -232,12 +233,13 @@ impl ModelRouter {
             affinity_cache,
         } = inputs;
 
-        let candidates = self.get_candidates(group, model).await.map_err(|e| {
-            NoAvailableChannelsError {
-                model: model.to_string(),
-                reason: format!("Database error: {e}"),
-            }
-        })?;
+        let candidates =
+            self.get_candidates(group, model)
+                .await
+                .map_err(|e| NoAvailableChannelsError {
+                    model: model.to_string(),
+                    reason: format!("Database error: {e}"),
+                })?;
 
         if candidates.is_empty() {
             return Ok((Vec::new(), None));
@@ -348,21 +350,12 @@ impl ModelRouter {
                 }
                 affinity_hoisted = true;
                 cache.insert(key, model, picked);
-                tracing::debug!(
-                    user = key,
-                    model,
-                    channel = picked,
-                    "affinity_hit"
-                );
+                tracing::debug!(user = key, model, channel = picked, "affinity_hit");
             }
         }
 
         // Limit to top-5 candidates
-        let channels: Vec<Channel> = ranked
-            .into_iter()
-            .take(5)
-            .map(|(ch, _)| ch)
-            .collect();
+        let channels: Vec<Channel> = ranked.into_iter().take(5).map(|(ch, _)| ch).collect();
 
         // Determine which layer made the final decision for rank-0.
         // Decision D8: do NOT split AffinityHit into CacheHit / HrwPick.

@@ -5,8 +5,8 @@
 use bcrypt::{hash, verify, DEFAULT_COST};
 use burncloud_common::TrafficColor;
 use burncloud_database::Database;
-use burncloud_database_user::UserDatabase;
 use burncloud_database_user::PasswordResetDatabase;
+use burncloud_database_user::UserDatabase;
 use dashmap::DashMap;
 
 // Re-export domain types so server can depend on service-user instead of database-user
@@ -128,12 +128,10 @@ impl UserService {
     ///
     /// Uses a TTL cache (5 min, audit decision D13) to avoid per-request DB
     /// queries. Falls back to Yellow on cache miss + DB failure.
-    pub async fn resolve_traffic_class(
-        db: &Database,
-        user_id: &str,
-    ) -> Result<TrafficColor> {
+    pub async fn resolve_traffic_class(db: &Database, user_id: &str) -> Result<TrafficColor> {
         use std::sync::OnceLock;
-        static CACHE: OnceLock<DashMap<String, (TrafficColor, std::time::Instant)>> = OnceLock::new();
+        static CACHE: OnceLock<DashMap<String, (TrafficColor, std::time::Instant)>> =
+            OnceLock::new();
         let cache = CACHE.get_or_init(DashMap::new);
         const TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -389,13 +387,17 @@ impl UserService {
 
         let token = Uuid::new_v4().to_string();
         let expires_at = Utc::now() + Duration::hours(1);
-        PasswordResetDatabase::create_token(db, &token, &user.id, &expires_at.to_rfc3339())
-            .await?;
+        PasswordResetDatabase::create_token(db, &token, &user.id, &expires_at.to_rfc3339()).await?;
 
         Ok(token)
     }
 
-    pub async fn reset_password(&self, db: &Database, token: &str, new_password: &str) -> Result<()> {
+    pub async fn reset_password(
+        &self,
+        db: &Database,
+        token: &str,
+        new_password: &str,
+    ) -> Result<()> {
         let reset_token = PasswordResetDatabase::get_token(db, token)
             .await?
             .ok_or(UserServiceError::InvalidCredentials)?;
@@ -413,8 +415,7 @@ impl UserService {
         let password_hash = hash(new_password, DEFAULT_COST)
             .map_err(|e| UserServiceError::HashError(e.to_string()))?;
 
-        UserDatabase::update_password_hash(db, &reset_token.user_id, &password_hash)
-            .await?;
+        UserDatabase::update_password_hash(db, &reset_token.user_id, &password_hash).await?;
 
         PasswordResetDatabase::mark_used(db, token).await?;
 
@@ -426,8 +427,9 @@ impl UserService {
             "google" => {
                 let client_id = std::env::var("GOOGLE_CLIENT_ID")
                     .map_err(|e| UserServiceError::ConfigError(e.to_string()))?;
-                let redirect_uri = std::env::var("GOOGLE_REDIRECT_URI")
-                    .unwrap_or_else(|_| "http://localhost:8080/console/api/auth/google/callback".to_string());
+                let redirect_uri = std::env::var("GOOGLE_REDIRECT_URI").unwrap_or_else(|_| {
+                    "http://localhost:8080/console/api/auth/google/callback".to_string()
+                });
                 Ok(format!(
                     "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile",
                     client_id, redirect_uri
@@ -436,14 +438,17 @@ impl UserService {
             "github" => {
                 let client_id = std::env::var("GITHUB_CLIENT_ID")
                     .map_err(|e| UserServiceError::ConfigError(e.to_string()))?;
-                let redirect_uri = std::env::var("GITHUB_REDIRECT_URI")
-                    .unwrap_or_else(|_| "http://localhost:8080/console/api/auth/github/callback".to_string());
+                let redirect_uri = std::env::var("GITHUB_REDIRECT_URI").unwrap_or_else(|_| {
+                    "http://localhost:8080/console/api/auth/github/callback".to_string()
+                });
                 Ok(format!(
                     "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user:email",
                     client_id, redirect_uri
                 ))
             }
-            _ => Err(UserServiceError::ConfigError(format!("Unknown OAuth provider: {provider}"))),
+            _ => Err(UserServiceError::ConfigError(format!(
+                "Unknown OAuth provider: {provider}"
+            ))),
         }
     }
 }
