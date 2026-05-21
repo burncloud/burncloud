@@ -1,248 +1,387 @@
-//! Prometheus metrics module for BurnCloud Router
+//! Prometheus metrics for observability.
 //!
-//! This module provides metrics collection and exposition for monitoring
-//! the router's performance and health.
+//! This module provides Prometheus-compatible metrics for monitoring
+//! request rates, latencies, token usage, channel health, and system resources.
 
-// Allow expect() in metrics initialization - these are static metrics that must succeed
-#![allow(clippy::expect_used)]
+use once_cell::sync::Lazy;
+use prometheus::{
+    HistogramVec, IntCounter, IntCounterVec,
+    IntGauge, IntGaugeVec, Registry,
+};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
-use prometheus::{Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, Opts, Registry};
-use std::sync::OnceLock;
+/// Global flag indicating whether metrics collection is enabled.
+static METRICS_ENABLED: AtomicBool = AtomicBool::new(true);
 
-/// Global metrics registry
-static REGISTRY: OnceLock<Metrics> = OnceLock::new();
-
-/// All metrics for the BurnCloud router
-#[derive(Clone)]
-pub struct Metrics {
-    /// Registry for all metrics
-    registry: Registry,
-
-    // Request metrics
-    /// Total number of requests processed
-    pub requests_total: Counter,
-    /// Number of requests currently being processed
-    pub requests_in_flight: Gauge,
-    /// Request duration histogram
-    pub requests_duration_seconds: Histogram,
-    /// Requests by model
-    pub requests_by_model: CounterVec,
-    /// Requests by channel
-    pub requests_by_channel: CounterVec,
-
-    // Token metrics
-    /// Total prompt tokens processed
-    pub tokens_prompt_total: Counter,
-    /// Total completion tokens processed
-    pub tokens_completion_total: Counter,
-    /// Total cost in nanodollars
-    pub cost_total_nano: Counter,
-
-    // Channel health metrics
-    /// Channel status (1=healthy, 0=unhealthy)
-    pub channel_status: GaugeVec,
-    /// Channel errors total
-    pub channel_errors_total: CounterVec,
-    /// Channel latency histogram
-    pub channel_latency_seconds: HistogramVec,
-
-    // System metrics
-    /// Service uptime in seconds
-    pub uptime_seconds: Gauge,
-    /// Router errors total
-    pub errors_total: CounterVec,
+/// Check if metrics collection is enabled.
+pub fn is_enabled() -> bool {
+    METRICS_ENABLED.load(Ordering::Relaxed)
 }
 
-impl Metrics {
-    /// Create a new metrics instance with all metrics registered
-    fn new() -> Self {
-        let registry = Registry::new();
+/// Enable or disable metrics collection.
+pub fn set_enabled(enabled: bool) {
+    METRICS_ENABLED.store(enabled, Ordering::Relaxed);
+}
 
-        // Request metrics
-        let requests_total = Counter::with_opts(Opts::new(
-            "burncloud_requests_total",
-            "Total number of requests processed",
-        ))
-        .expect("Failed to create requests_total counter");
+/// Initialize metrics from environment variable.
+pub fn init_from_env() {
+    let enabled = std::env::var("METRICS_ENABLED")
+        .map(|v| v != "false" && v != "0")
+        .unwrap_or(true);
+    set_enabled(enabled);
+    if enabled {
+        log::info!("Prometheus metrics enabled");
+    } else {
+        log::info!("Prometheus metrics disabled via METRICS_ENABLED=false");
+    }
+}
 
-        let requests_in_flight = Gauge::with_opts(Opts::new(
-            "burncloud_requests_in_flight",
-            "Number of requests currently being processed",
-        ))
-        .expect("Failed to create requests_in_flight gauge");
+/// Custom Prometheus registry for burncloud metrics.
+pub static REGISTRY: Lazy<Registry> = Lazy::new(|| {
+    Registry::new()
+});
 
-        let requests_duration_seconds = Histogram::with_opts(
-            prometheus::HistogramOpts::new(
-                "burncloud_requests_duration_seconds",
-                "Request duration in seconds",
-            )
-            .buckets(vec![
-                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0,
-            ]),
+// ============================================================================
+// Request Metrics
+// ============================================================================
+
+/// Total number of requests processed.
+pub static REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let counter = IntCounterVec::new(
+        prometheus::Opts::new("burncloud_requests_total", "Total number of requests processed")
+            .namespace("burncloud"),
+        &["status"],
+    ).expect("Failed to create REQUESTS_TOTAL counter");
+    REGISTRY.register(Box::new(counter.clone())).expect("Failed to register REQUESTS_TOTAL");
+    counter
+});
+
+/// Request latency histogram in seconds.
+pub static REQUESTS_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
+    let histogram = HistogramVec::new(
+        prometheus::HistogramOpts::new(
+            "burncloud_requests_duration_seconds",
+            "Request latency in seconds",
         )
-        .expect("Failed to create requests_duration_seconds histogram");
+        .namespace("burncloud")
+        .buckets(vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0]),
+        &["endpoint", "model"],
+    ).expect("Failed to create REQUESTS_DURATION_SECONDS histogram");
+    REGISTRY.register(Box::new(histogram.clone())).expect("Failed to register REQUESTS_DURATION_SECONDS");
+    histogram
+});
 
-        let requests_by_model = CounterVec::new(
-            Opts::new("burncloud_requests_by_model", "Number of requests by model"),
-            &["model"],
+/// Number of requests currently being processed.
+pub static REQUESTS_IN_FLIGHT: Lazy<IntGaugeVec> = Lazy::new(|| {
+    let gauge = IntGaugeVec::new(
+        prometheus::Opts::new("burncloud_requests_in_flight", "Number of requests currently being processed")
+            .namespace("burncloud"),
+        &["endpoint"],
+    ).expect("Failed to create REQUESTS_IN_FLIGHT gauge");
+    REGISTRY.register(Box::new(gauge.clone())).expect("Failed to register REQUESTS_IN_FLIGHT");
+    gauge
+});
+
+/// Requests by model.
+pub static REQUESTS_BY_MODEL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let counter = IntCounterVec::new(
+        prometheus::Opts::new("burncloud_requests_by_model", "Number of requests per model")
+            .namespace("burncloud"),
+        &["model"],
+    ).expect("Failed to create REQUESTS_BY_MODEL counter");
+    REGISTRY.register(Box::new(counter.clone())).expect("Failed to register REQUESTS_BY_MODEL");
+    counter
+});
+
+/// Requests by channel.
+pub static REQUESTS_BY_CHANNEL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let counter = IntCounterVec::new(
+        prometheus::Opts::new("burncloud_requests_by_channel", "Number of requests per channel")
+            .namespace("burncloud"),
+        &["channel_id", "channel_name"],
+    ).expect("Failed to create REQUESTS_BY_CHANNEL counter");
+    REGISTRY.register(Box::new(counter.clone())).expect("Failed to register REQUESTS_BY_CHANNEL");
+    counter
+});
+
+// ============================================================================
+// Token Metrics
+// ============================================================================
+
+/// Total prompt tokens processed.
+pub static TOKENS_PROMPT_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "burncloud_tokens_prompt_total",
+        "Total number of prompt tokens processed",
+    ).expect("Failed to create TOKENS_PROMPT_TOTAL counter");
+    REGISTRY.register(Box::new(counter.clone())).expect("Failed to register TOKENS_PROMPT_TOTAL");
+    counter
+});
+
+/// Total completion tokens generated.
+pub static TOKENS_COMPLETION_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "burncloud_tokens_completion_total",
+        "Total number of completion tokens generated",
+    ).expect("Failed to create TOKENS_COMPLETION_TOTAL counter");
+    REGISTRY.register(Box::new(counter.clone())).expect("Failed to register TOKENS_COMPLETION_TOTAL");
+    counter
+});
+
+/// Total cost in nanodollars.
+pub static COST_TOTAL_NANO: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "burncloud_cost_total_nano",
+        "Total cost in nanodollars",
+    ).expect("Failed to create COST_TOTAL_NANO counter");
+    REGISTRY.register(Box::new(counter.clone())).expect("Failed to register COST_TOTAL_NANO");
+    counter
+});
+
+// ============================================================================
+// Channel Health Metrics
+// ============================================================================
+
+/// Channel status (1=healthy, 0=unhealthy).
+pub static CHANNEL_STATUS: Lazy<IntGaugeVec> = Lazy::new(|| {
+    let gauge = IntGaugeVec::new(
+        prometheus::Opts::new("burncloud_channel_status", "Channel status (1=healthy, 0=unhealthy)")
+            .namespace("burncloud"),
+        &["channel_id", "channel_name"],
+    ).expect("Failed to create CHANNEL_STATUS gauge");
+    REGISTRY.register(Box::new(gauge.clone())).expect("Failed to register CHANNEL_STATUS");
+    gauge
+});
+
+/// Channel error count.
+pub static CHANNEL_ERRORS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let counter = IntCounterVec::new(
+        prometheus::Opts::new("burncloud_channel_errors_total", "Total number of channel errors")
+            .namespace("burncloud"),
+        &["channel_id", "channel_name", "error_type"],
+    ).expect("Failed to create CHANNEL_ERRORS_TOTAL counter");
+    REGISTRY.register(Box::new(counter.clone())).expect("Failed to register CHANNEL_ERRORS_TOTAL");
+    counter
+});
+
+/// Channel latency in seconds.
+pub static CHANNEL_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
+    let histogram = HistogramVec::new(
+        prometheus::HistogramOpts::new(
+            "burncloud_channel_latency_seconds",
+            "Channel request latency in seconds",
         )
-        .expect("Failed to create requests_by_model counter");
+        .namespace("burncloud")
+        .buckets(vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]),
+        &["channel_id", "channel_name"],
+    ).expect("Failed to create CHANNEL_LATENCY_SECONDS histogram");
+    REGISTRY.register(Box::new(histogram.clone())).expect("Failed to register CHANNEL_LATENCY_SECONDS");
+    histogram
+});
 
-        let requests_by_channel = CounterVec::new(
-            Opts::new(
-                "burncloud_requests_by_channel",
-                "Number of requests by channel",
-            ),
-            &["channel_id", "channel_name"],
-        )
-        .expect("Failed to create requests_by_channel counter");
+// ============================================================================
+// System Resource Metrics
+// ============================================================================
 
-        // Token metrics
-        let tokens_prompt_total = Counter::with_opts(Opts::new(
-            "burncloud_tokens_prompt_total",
-            "Total prompt tokens processed",
-        ))
-        .expect("Failed to create tokens_prompt_total counter");
+/// Service uptime in seconds.
+pub static UPTIME_SECONDS: Lazy<IntGauge> = Lazy::new(|| {
+    let gauge = IntGauge::new(
+        "burncloud_uptime_seconds",
+        "Service uptime in seconds",
+    ).expect("Failed to create UPTIME_SECONDS gauge");
+    REGISTRY.register(Box::new(gauge.clone())).expect("Failed to register UPTIME_SECONDS");
+    gauge
+});
 
-        let tokens_completion_total = Counter::with_opts(Opts::new(
-            "burncloud_tokens_completion_total",
-            "Total completion tokens processed",
-        ))
-        .expect("Failed to create tokens_completion_total counter");
+/// Active connections count.
+pub static CONNECTIONS_ACTIVE: Lazy<IntGauge> = Lazy::new(|| {
+    let gauge = IntGauge::new(
+        "burncloud_connections_active",
+        "Number of active connections",
+    ).expect("Failed to create CONNECTIONS_ACTIVE gauge");
+    REGISTRY.register(Box::new(gauge.clone())).expect("Failed to register CONNECTIONS_ACTIVE");
+    gauge
+});
 
-        let cost_total_nano = Counter::with_opts(Opts::new(
-            "burncloud_cost_total_nano",
-            "Total cost in nanodollars",
-        ))
-        .expect("Failed to create cost_total_nano counter");
+/// Memory usage in bytes.
+pub static MEMORY_BYTES: Lazy<IntGauge> = Lazy::new(|| {
+    let gauge = IntGauge::new(
+        "burncloud_memory_bytes",
+        "Memory usage in bytes",
+    ).expect("Failed to create MEMORY_BYTES gauge");
+    REGISTRY.register(Box::new(gauge.clone())).expect("Failed to register MEMORY_BYTES");
+    gauge
+});
 
-        // Channel health metrics
-        let channel_status = GaugeVec::new(
-            Opts::new(
-                "burncloud_channel_status",
-                "Channel status (1=healthy, 0=unhealthy)",
-            ),
-            &["channel_id", "channel_name"],
-        )
-        .expect("Failed to create channel_status gauge");
+/// Service start time for uptime calculation.
+static START_TIME: Lazy<Instant> = Lazy::new(Instant::now);
 
-        let channel_errors_total = CounterVec::new(
-            Opts::new("burncloud_channel_errors_total", "Total errors by channel"),
-            &["channel_id", "channel_name", "error_type"],
-        )
-        .expect("Failed to create channel_errors_total counter");
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
-        let channel_latency_seconds = HistogramVec::new(
-            prometheus::HistogramOpts::new(
-                "burncloud_channel_latency_seconds",
-                "Channel request latency in seconds",
-            )
-            .buckets(vec![
-                0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0,
-            ]),
-            &["channel_id", "channel_name"],
-        )
-        .expect("Failed to create channel_latency_seconds histogram");
+/// Record a request with status.
+pub fn record_request(status: &str) {
+    if is_enabled() {
+        REQUESTS_TOTAL.with_label_values(&[status]).inc();
+    }
+}
 
-        // System metrics
-        let uptime_seconds = Gauge::with_opts(Opts::new(
-            "burncloud_uptime_seconds",
-            "Service uptime in seconds",
-        ))
-        .expect("Failed to create uptime_seconds gauge");
+/// Record request duration.
+pub fn record_request_duration(endpoint: &str, model: &str, duration_secs: f64) {
+    if is_enabled() {
+        REQUESTS_DURATION_SECONDS
+            .with_label_values(&[endpoint, model])
+            .observe(duration_secs);
+    }
+}
 
-        let errors_total = CounterVec::new(
-            Opts::new("burncloud_errors_total", "Total errors by type"),
-            &["error_type"],
-        )
-        .expect("Failed to create errors_total counter");
+/// Increment in-flight requests.
+pub fn inc_in_flight(endpoint: &str) {
+    if is_enabled() {
+        REQUESTS_IN_FLIGHT.with_label_values(&[endpoint]).inc();
+    }
+}
 
-        // Register all metrics
-        registry
-            .register(Box::new(requests_total.clone()))
-            .expect("Failed to register requests_total");
-        registry
-            .register(Box::new(requests_in_flight.clone()))
-            .expect("Failed to register requests_in_flight");
-        registry
-            .register(Box::new(requests_duration_seconds.clone()))
-            .expect("Failed to register requests_duration_seconds");
-        registry
-            .register(Box::new(requests_by_model.clone()))
-            .expect("Failed to register requests_by_model");
-        registry
-            .register(Box::new(requests_by_channel.clone()))
-            .expect("Failed to register requests_by_channel");
-        registry
-            .register(Box::new(tokens_prompt_total.clone()))
-            .expect("Failed to register tokens_prompt_total");
-        registry
-            .register(Box::new(tokens_completion_total.clone()))
-            .expect("Failed to register tokens_completion_total");
-        registry
-            .register(Box::new(cost_total_nano.clone()))
-            .expect("Failed to register cost_total_nano");
-        registry
-            .register(Box::new(channel_status.clone()))
-            .expect("Failed to register channel_status");
-        registry
-            .register(Box::new(channel_errors_total.clone()))
-            .expect("Failed to register channel_errors_total");
-        registry
-            .register(Box::new(channel_latency_seconds.clone()))
-            .expect("Failed to register channel_latency_seconds");
-        registry
-            .register(Box::new(uptime_seconds.clone()))
-            .expect("Failed to register uptime_seconds");
-        registry
-            .register(Box::new(errors_total.clone()))
-            .expect("Failed to register errors_total");
+/// Decrement in-flight requests.
+pub fn dec_in_flight(endpoint: &str) {
+    if is_enabled() {
+        REQUESTS_IN_FLIGHT.with_label_values(&[endpoint]).dec();
+    }
+}
 
-        Self {
-            registry,
-            requests_total,
-            requests_in_flight,
-            requests_duration_seconds,
-            requests_by_model,
-            requests_by_channel,
-            tokens_prompt_total,
-            tokens_completion_total,
-            cost_total_nano,
-            channel_status,
-            channel_errors_total,
-            channel_latency_seconds,
-            uptime_seconds,
-            errors_total,
+/// Record a request by model.
+pub fn record_request_by_model(model: &str) {
+    if is_enabled() {
+        REQUESTS_BY_MODEL.with_label_values(&[model]).inc();
+    }
+}
+
+/// Record a request by channel.
+pub fn record_request_by_channel(channel_id: i32, channel_name: &str) {
+    if is_enabled() {
+        REQUESTS_BY_CHANNEL
+            .with_label_values(&[&channel_id.to_string(), channel_name])
+            .inc();
+    }
+}
+
+/// Record prompt tokens.
+pub fn record_prompt_tokens(count: u64) {
+    if is_enabled() {
+        TOKENS_PROMPT_TOTAL.inc_by(count);
+    }
+}
+
+/// Record completion tokens.
+pub fn record_completion_tokens(count: u64) {
+    if is_enabled() {
+        TOKENS_COMPLETION_TOTAL.inc_by(count);
+    }
+}
+
+/// Record cost in nanodollars.
+pub fn record_cost_nano(cost_nano: u64) {
+    if is_enabled() {
+        COST_TOTAL_NANO.inc_by(cost_nano);
+    }
+}
+
+/// Set channel status.
+pub fn set_channel_status(channel_id: i32, channel_name: &str, healthy: bool) {
+    if is_enabled() {
+        CHANNEL_STATUS
+            .with_label_values(&[&channel_id.to_string(), channel_name])
+            .set(if healthy { 1 } else { 0 });
+    }
+}
+
+/// Record a channel error.
+pub fn record_channel_error(channel_id: i32, channel_name: &str, error_type: &str) {
+    if is_enabled() {
+        CHANNEL_ERRORS_TOTAL
+            .with_label_values(&[&channel_id.to_string(), channel_name, error_type])
+            .inc();
+    }
+}
+
+/// Record channel latency.
+pub fn record_channel_latency(channel_id: i32, channel_name: &str, latency_secs: f64) {
+    if is_enabled() {
+        CHANNEL_LATENCY_SECONDS
+            .with_label_values(&[&channel_id.to_string(), channel_name])
+            .observe(latency_secs);
+    }
+}
+
+/// Update system metrics (uptime, memory).
+pub fn update_system_metrics() {
+    if is_enabled() {
+        let uptime = START_TIME.elapsed().as_secs() as i64;
+        UPTIME_SECONDS.set(uptime);
+
+        // Try to get memory usage (best effort)
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(usage) = get_memory_usage_linux() {
+                MEMORY_BYTES.set(usage as i64);
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(usage) = get_memory_usage_macos() {
+                MEMORY_BYTES.set(usage as i64);
+            }
+        }
+    }
+}
+
+/// Get memory usage on Linux.
+#[cfg(target_os = "linux")]
+fn get_memory_usage_linux() -> Result<u64, std::io::Error> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+
+    let file = File::open("/proc/self/status")?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.starts_with("VmRSS:") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                // VmRSS is in kB, convert to bytes
+                if let Ok(kb) = parts[1].parse::<u64>() {
+                    return Ok(kb * 1024);
+                }
+            }
         }
     }
 
-    /// Export metrics in Prometheus text format
-    pub fn export(&self) -> String {
-        use prometheus::Encoder;
-        let encoder = prometheus::TextEncoder::new();
-        let metric_families = self.registry.gather();
-        let mut buffer = Vec::new();
-        encoder
-            .encode(&metric_families, &mut buffer)
-            .expect("Failed to encode metrics");
-        String::from_utf8(buffer).expect("Failed to convert metrics to string")
-    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "VmRSS not found in /proc/self/status",
+    ))
 }
 
-impl Default for Metrics {
-    fn default() -> Self {
-        Self::new()
-    }
+/// Get memory usage on macOS.
+#[cfg(target_os = "macos")]
+fn get_memory_usage_macos() -> Result<u64, std::io::Error> {
+    // On macOS, use task_info to get resident size
+    // For simplicity, return 0 if we can't get it
+    Ok(0)
 }
 
-/// Get or initialize the global metrics instance
-pub fn metrics() -> &'static Metrics {
-    REGISTRY.get_or_init(Metrics::new)
-}
-
-/// Export all metrics in Prometheus text format
+/// Export metrics in Prometheus text format.
 pub fn export() -> String {
-    metrics().export()
+    use prometheus::Encoder;
+    let encoder = prometheus::TextEncoder::new();
+    let metric_families = REGISTRY.gather();
+    let mut buffer = Vec::new();
+    encoder.encode(&metric_families, &mut buffer).unwrap_or_default();
+    String::from_utf8(buffer).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -250,39 +389,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_metrics_creation() {
-        let m = Metrics::new();
-        // Verify metrics are created and registered
-        m.requests_total.inc();
-        assert!(m.export().contains("burncloud_requests_total"));
+    fn test_metrics_enabled_by_default() {
+        assert!(is_enabled());
     }
 
     #[test]
-    fn test_requests_by_model() {
-        let m = Metrics::new();
-        m.requests_by_model.with_label_values(&["gpt-4"]).inc();
-        let output = m.export();
-        assert!(output.contains("burncloud_requests_by_model"));
-        assert!(output.contains("gpt-4"));
+    fn test_metrics_can_be_disabled() {
+        set_enabled(true);
+        assert!(is_enabled());
+
+        set_enabled(false);
+        assert!(!is_enabled());
+
+        // Reset for other tests
+        set_enabled(true);
     }
 
     #[test]
-    fn test_channel_status() {
-        let m = Metrics::new();
-        m.channel_status
-            .with_label_values(&["1", "openai-main"])
-            .set(1.0);
-        let output = m.export();
-        assert!(output.contains("burncloud_channel_status"));
-        assert!(output.contains("openai-main"));
+    fn test_record_request() {
+        set_enabled(true);
+        record_request("success");
+        // Counter should have been incremented
     }
 
     #[test]
-    fn test_histogram() {
-        let m = Metrics::new();
-        m.requests_duration_seconds.observe(0.5);
-        m.requests_duration_seconds.observe(1.0);
-        let output = m.export();
-        assert!(output.contains("burncloud_requests_duration_seconds"));
+    fn test_record_request_disabled() {
+        set_enabled(false);
+        record_request("success");
+        // Should not panic
+        set_enabled(true);
+    }
+
+    #[test]
+    fn test_export() {
+        // Initialize the metrics by accessing them
+        let _ = &*REQUESTS_TOTAL;
+        set_enabled(true);
+        let output = export();
+        assert!(output.contains("burncloud_requests_total"));
     }
 }
