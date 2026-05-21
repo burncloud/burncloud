@@ -89,6 +89,8 @@ Thumbs.db
 
 # Logs
 *.log
+/logs
+nohup*
 
 # Runtime data
 pids
