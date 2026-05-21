@@ -1,18 +1,22 @@
+//! Logging and tracing initialization.
+//!
+//! This module provides:
+//! - Stdout layer controlled by `RUST_LOG` env var
+//! - Per-module file layers (server, service, database, router)
+//! - Daily log rotation with retention via `LOG_MAX_FILES` (default: 7)
+//! - Log directory via `LOG_DIR` env var (default: `./logs`)
+//! - `tracing-log` bridge so existing `log::*!` calls route to tracing
+//! - OpenTelemetry layer for distributed tracing (when configured)
+
 use std::{env, fs};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
     filter::{EnvFilter, Targets},
     layer::SubscriberExt,
-    Layer,
+    Layer, Registry,
 };
 
 /// Initialize the tracing-based logging system.
-///
-/// - Stdout layer controlled by `RUST_LOG` env var
-/// - Per-module file layers (server, service, database, router)
-/// - Daily log rotation with retention via `LOG_MAX_FILES` (default: 7)
-/// - Log directory via `LOG_DIR` env var (default: `./logs`)
-/// - `tracing-log` bridge so existing `log::*!` calls route to tracing
 ///
 /// Returns `WorkerGuard`s that must be held for the program's lifetime.
 pub fn init_logging() -> Vec<WorkerGuard> {
@@ -38,7 +42,13 @@ pub fn init_logging() -> Vec<WorkerGuard> {
     let (router_nb, g) = file_appender(&log_dir, "router", max_files);
     guards.push(g);
 
-    let subscriber = tracing_subscriber::registry()
+    // Try to initialize OpenTelemetry layer (optional)
+    let otel_layer = crate::tracing_otel::init_opentelemetry();
+
+    // Build subscriber with optional OpenTelemetry layer
+    // OpenTelemetry layer must be added first (before filtered layers) to work correctly
+    let subscriber = Registry::default()
+        .with(otel_layer)
         .with(tracing_subscriber::fmt::layer().with_filter(env_filter))
         .with(
             tracing_subscriber::fmt::layer()

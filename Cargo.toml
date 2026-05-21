@@ -134,6 +134,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tracing-log = "0.2"
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["tokio"] }
+tracing-opentelemetry = "0.28"
+
 
 # Internal crates
 burncloud-auto-update = { path = "crates/auto-update" }

@@ -1,5 +1,6 @@
 pub mod api;
 pub mod logging;
+pub mod tracing_otel;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::http::HeaderName;
