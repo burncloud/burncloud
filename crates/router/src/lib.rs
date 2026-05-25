@@ -2106,13 +2106,18 @@ async fn proxy_logic(
                             {
                                 // Check for embedded error in HTTP 200 response
                                 // Format: {"error": {...}, "type": "error"} or {"type": "error", ...}
-                                let is_error_response = resp_json.get("type").map(|t| t.as_str() == Some("error")).unwrap_or(false)
+                                let is_error_response = resp_json
+                                    .get("type")
+                                    .map(|t| t.as_str() == Some("error"))
+                                    .unwrap_or(false)
                                     || resp_json.get("error").is_some();
 
                                 if is_error_response {
                                     let body_str = String::from_utf8_lossy(&resp_bytes);
-                                    let error_info = parse_error_response(&body_str, &upstream.protocol);
-                                    let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
+                                    let error_info =
+                                        parse_error_response(&body_str, &upstream.protocol);
+                                    let error_message =
+                                        error_info.message.as_deref().unwrap_or("Unknown error");
 
                                     tracing::warn!(
                                         "Passthrough: {} returned HTTP 200 with embedded error: {}",
@@ -2133,7 +2138,11 @@ async fn proxy_logic(
                                     };
 
                                     record_upstream_failure(
-                                        state, upstream, model_name, failure_type.clone(), error_message,
+                                        state,
+                                        upstream,
+                                        model_name,
+                                        failure_type.clone(),
+                                        error_message,
                                         &session_id,
                                     );
 
