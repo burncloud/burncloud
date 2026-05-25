@@ -1658,7 +1658,8 @@ async fn proxy_logic(
                     // Filter channels based on request path format
                     // OpenAI format requests (/v1/chat/completions) should only use OpenAI channels
                     // Anthropic format requests (/v1/messages) should only use Anthropic channels
-                    let is_openai_format_path = path.starts_with("/v1/chat/completions") || path.starts_with("/chat/completions");
+                    let is_openai_format_path = path.starts_with("/v1/chat/completions")
+                        || path.starts_with("/chat/completions");
                     let is_anthropic_format_path = path.starts_with("/v1/messages");
 
                     for channel in channels {
@@ -1668,14 +1669,18 @@ async fn proxy_logic(
                         if is_openai_format_path && channel_type != ChannelType::OpenAI {
                             tracing::debug!(
                                 "Skipping channel {} (type {:?}) for OpenAI format path {}",
-                                channel.name, channel_type, path
+                                channel.name,
+                                channel_type,
+                                path
                             );
                             continue;
                         }
                         if is_anthropic_format_path && channel_type != ChannelType::Anthropic {
                             tracing::debug!(
                                 "Skipping channel {} (type {:?}) for Anthropic format path {}",
-                                channel.name, channel_type, path
+                                channel.name,
+                                channel_type,
+                                path
                             );
                             continue;
                         }
@@ -2129,13 +2134,18 @@ async fn proxy_logic(
                             {
                                 // Check for embedded error in HTTP 200 response
                                 // Format: {"error": {...}, "type": "error"} or {"type": "error", ...}
-                                let is_error_response = resp_json.get("type").map(|t| t.as_str() == Some("error")).unwrap_or(false)
+                                let is_error_response = resp_json
+                                    .get("type")
+                                    .map(|t| t.as_str() == Some("error"))
+                                    .unwrap_or(false)
                                     || resp_json.get("error").is_some();
 
                                 if is_error_response {
                                     let body_str = String::from_utf8_lossy(&resp_bytes);
-                                    let error_info = parse_error_response(&body_str, &upstream.protocol);
-                                    let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
+                                    let error_info =
+                                        parse_error_response(&body_str, &upstream.protocol);
+                                    let error_message =
+                                        error_info.message.as_deref().unwrap_or("Unknown error");
 
                                     tracing::warn!(
                                         "Passthrough: {} returned HTTP 200 with embedded error: {}",
@@ -2156,7 +2166,11 @@ async fn proxy_logic(
                                     };
 
                                     record_upstream_failure(
-                                        state, upstream, model_name, failure_type.clone(), error_message,
+                                        state,
+                                        upstream,
+                                        model_name,
+                                        failure_type.clone(),
+                                        error_message,
                                         &session_id,
                                     );
 
