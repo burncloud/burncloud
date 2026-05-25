@@ -1,6 +1,8 @@
 //! Alert service implementation
 
-use crate::channels::{EmailChannel, NotificationChannel, SlackChannel, TelegramChannel, WebhookChannel};
+use crate::channels::{
+    EmailChannel, NotificationChannel, SlackChannel, TelegramChannel, WebhookChannel,
+};
 use crate::rules::AlertRuleEvaluator;
 use crate::types::{Alert, AlertConfig, AlertError, AlertRule, AlertType};
 
@@ -44,7 +46,9 @@ impl AlertService {
         }
 
         Self {
-            evaluator: std::sync::Arc::new(tokio::sync::RwLock::new(AlertRuleEvaluator::new(rules))),
+            evaluator: std::sync::Arc::new(tokio::sync::RwLock::new(AlertRuleEvaluator::new(
+                rules,
+            ))),
             channels,
             config,
         }
@@ -87,7 +91,8 @@ impl AlertService {
                             break;
                         }
                         // Wait before retry
-                        tokio::time::sleep(std::time::Duration::from_millis(100 * attempts as u64)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(100 * attempts as u64))
+                            .await;
                     }
                 }
             }
@@ -101,7 +106,11 @@ impl AlertService {
     }
 
     /// Check and notify in one operation
-    pub async fn check_and_notify(&self, alert_type: &AlertType, value: u64) -> Option<Result<Alert, AlertError>> {
+    pub async fn check_and_notify(
+        &self,
+        alert_type: &AlertType,
+        value: u64,
+    ) -> Option<Result<Alert, AlertError>> {
         let alert = self.check(alert_type, value).await?;
         let result = self.notify(&alert).await.map(|_| alert.clone());
         Some(result)
@@ -133,7 +142,12 @@ impl AlertService {
     }
 
     /// Report channel failure
-    pub async fn report_channel_failure(&self, channel_id: &str, channel_name: &str, failure_count: u64) {
+    pub async fn report_channel_failure(
+        &self,
+        channel_id: &str,
+        channel_name: &str,
+        failure_count: u64,
+    ) {
         let alert_type = AlertType::ChannelFailure {
             channel_id: channel_id.to_string(),
             channel_name: channel_name.to_string(),
@@ -159,7 +173,10 @@ impl AlertService {
     /// Report high memory usage
     pub async fn report_memory_high(&self, usage_percent: u8) {
         let alert_type = AlertType::MemoryHigh { usage_percent };
-        if let Some(Err(e)) = self.check_and_notify(&alert_type, usage_percent as u64).await {
+        if let Some(Err(e)) = self
+            .check_and_notify(&alert_type, usage_percent as u64)
+            .await
+        {
             log::error!("Failed to send memory alert: {}", e);
         }
     }
@@ -206,7 +223,9 @@ mod tests {
         let service = AlertService::with_config(config);
 
         // Below threshold - no alert
-        let result = service.check(&AlertType::QueueBacklog { queue_size: 30 }, 30).await;
+        let result = service
+            .check(&AlertType::QueueBacklog { queue_size: 30 }, 30)
+            .await;
         assert!(result.is_none());
     }
 
@@ -225,7 +244,9 @@ mod tests {
         let service = AlertService::with_config(config);
 
         // Above threshold - alert triggered
-        let result = service.check(&AlertType::QueueBacklog { queue_size: 60 }, 60).await;
+        let result = service
+            .check(&AlertType::QueueBacklog { queue_size: 60 }, 60)
+            .await;
         assert!(result.is_some());
     }
 
@@ -248,7 +269,9 @@ mod tests {
         assert!(alerts.is_empty());
 
         // Trigger alert
-        service.check(&AlertType::MemoryHigh { usage_percent: 85 }, 85).await;
+        service
+            .check(&AlertType::MemoryHigh { usage_percent: 85 }, 85)
+            .await;
 
         // Now should have one active alert
         let alerts = service.get_active_alerts().await;

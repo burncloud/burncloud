@@ -24,7 +24,11 @@ impl AlertRuleEvaluator {
 
     /// Add a new rule
     pub fn add_rule(&mut self, rule: AlertRule) {
-        log::info!("Rule '{}' added for alert type {:?}", rule.name, rule.alert_type);
+        log::info!(
+            "Rule '{}' added for alert type {:?}",
+            rule.name,
+            rule.alert_type
+        );
         self.rules.push(rule);
     }
 
@@ -33,9 +37,15 @@ impl AlertRuleEvaluator {
         // Use discriminant to group alerts of the same type together
         // This ensures MemoryHigh alerts are grouped regardless of the percentage value
         match alert_type {
-            AlertType::ChannelFailure { channel_id, .. } => format!("ChannelFailure:{}", channel_id),
-            AlertType::ChannelHighLatency { channel_id, .. } => format!("ChannelHighLatency:{}", channel_id),
-            AlertType::ChannelQuotaLow { channel_id, .. } => format!("ChannelQuotaLow:{}", channel_id),
+            AlertType::ChannelFailure { channel_id, .. } => {
+                format!("ChannelFailure:{}", channel_id)
+            }
+            AlertType::ChannelHighLatency { channel_id, .. } => {
+                format!("ChannelHighLatency:{}", channel_id)
+            }
+            AlertType::ChannelQuotaLow { channel_id, .. } => {
+                format!("ChannelQuotaLow:{}", channel_id)
+            }
             AlertType::SystemRestart => "SystemRestart".to_string(),
             AlertType::MemoryHigh { .. } => "MemoryHigh".to_string(),
             AlertType::QueueBacklog { .. } => "QueueBacklog".to_string(),
@@ -49,10 +59,9 @@ impl AlertRuleEvaluator {
     /// Evaluate a condition and potentially trigger an alert
     pub fn evaluate(&mut self, alert_type: &AlertType, current_value: u64) -> Option<Alert> {
         // Find matching rule (by discriminant)
-        let rule = self
-            .rules
-            .iter()
-            .find(|r| std::mem::discriminant(&r.alert_type) == std::mem::discriminant(alert_type) && r.enabled)?;
+        let rule = self.rules.iter().find(|r| {
+            std::mem::discriminant(&r.alert_type) == std::mem::discriminant(alert_type) && r.enabled
+        })?;
 
         // Check if threshold is exceeded
         if current_value < rule.threshold {
@@ -116,35 +125,60 @@ impl AlertRuleEvaluator {
     fn generate_message(alert_type: &AlertType, current: u64, threshold: u64) -> String {
         match alert_type {
             AlertType::ChannelFailure { channel_name, .. } => {
-                format!("Channel '{}' has failed {} times (threshold: {})", channel_name, current, threshold)
+                format!(
+                    "Channel '{}' has failed {} times (threshold: {})",
+                    channel_name, current, threshold
+                )
             }
             AlertType::ChannelHighLatency { latency_ms, .. } => {
-                format!("Channel latency is {}ms (threshold: {}ms)", latency_ms, threshold)
+                format!(
+                    "Channel latency is {}ms (threshold: {}ms)",
+                    latency_ms, threshold
+                )
             }
-            AlertType::ChannelQuotaLow { remaining_percent, .. } => {
-                format!("Channel quota is at {}% (threshold: {}%)", remaining_percent, threshold)
+            AlertType::ChannelQuotaLow {
+                remaining_percent, ..
+            } => {
+                format!(
+                    "Channel quota is at {}% (threshold: {}%)",
+                    remaining_percent, threshold
+                )
             }
             AlertType::SystemRestart => "System has restarted unexpectedly".to_string(),
             AlertType::MemoryHigh { usage_percent } => {
-                format!("Memory usage is at {}% (threshold: {}%)", usage_percent, threshold)
+                format!(
+                    "Memory usage is at {}% (threshold: {}%)",
+                    usage_percent, threshold
+                )
             }
             AlertType::QueueBacklog { queue_size } => {
-                format!("Request queue has {} items (threshold: {})", queue_size, threshold)
+                format!(
+                    "Request queue has {} items (threshold: {})",
+                    queue_size, threshold
+                )
             }
             AlertType::UserQuotaExhausted { .. } => {
                 format!("User quota exhausted (threshold: {})", threshold)
             }
-            AlertType::AbnormalTraffic { requests_per_minute } => {
+            AlertType::AbnormalTraffic {
+                requests_per_minute,
+            } => {
                 format!(
                     "Abnormal traffic detected: {} requests/min (threshold: {})",
                     requests_per_minute, threshold
                 )
             }
             AlertType::CostAnomaly { increase_percent } => {
-                format!("Cost increased by {}% (threshold: {}%)", increase_percent, threshold)
+                format!(
+                    "Cost increased by {}% (threshold: {}%)",
+                    increase_percent, threshold
+                )
             }
             AlertType::Custom { name } => {
-                format!("Custom alert '{}' triggered: {} (threshold: {})", name, current, threshold)
+                format!(
+                    "Custom alert '{}' triggered: {} (threshold: {})",
+                    name, current, threshold
+                )
             }
         }
     }
