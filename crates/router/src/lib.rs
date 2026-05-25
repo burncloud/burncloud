@@ -1655,8 +1655,31 @@ async fn proxy_logic(
                     // advances past attempt 0.
                     sched_routing_decision = routing_decision;
 
+                    // Filter channels based on request path format
+                    // OpenAI format requests (/v1/chat/completions) should only use OpenAI channels
+                    // Anthropic format requests (/v1/messages) should only use Anthropic channels
+                    let is_openai_format_path = path.starts_with("/v1/chat/completions") || path.starts_with("/chat/completions");
+                    let is_anthropic_format_path = path.starts_with("/v1/messages");
+
                     for channel in channels {
                         let channel_type = ChannelType::from(channel.type_);
+
+                        // Skip channels that don't match the request format
+                        if is_openai_format_path && channel_type != ChannelType::OpenAI {
+                            tracing::debug!(
+                                "Skipping channel {} (type {:?}) for OpenAI format path {}",
+                                channel.name, channel_type, path
+                            );
+                            continue;
+                        }
+                        if is_anthropic_format_path && channel_type != ChannelType::Anthropic {
+                            tracing::debug!(
+                                "Skipping channel {} (type {:?}) for Anthropic format path {}",
+                                channel.name, channel_type, path
+                            );
+                            continue;
+                        }
+
                         let (auth_type, protocol) = match channel_type {
                             ChannelType::OpenAI => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
                             ChannelType::Anthropic => {
