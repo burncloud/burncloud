@@ -89,6 +89,21 @@ const PROTOCOL_ZAI: &str = "zai";
 /// SSE stream termination marker sent to clients.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 
+/// HTTP client connect timeout (seconds) — TCP connection establishment.
+const HTTP_CONNECT_TIMEOUT_SECS: u64 = 10;
+/// HTTP client request timeout (seconds) — total request duration for non-streaming.
+const HTTP_REQUEST_TIMEOUT_SECS: u64 = 600;
+/// HTTP client streaming timeout (seconds) — max duration for streaming responses.
+/// Note: Streaming timeout is handled by reqwest per-chunk. This constant is for documentation.
+#[allow(dead_code)]
+const HTTP_STREAMING_TIMEOUT_SECS: u64 = 600;
+/// HTTP pool idle timeout (seconds) — time before idle connections are closed.
+const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+/// HTTP pool max idle connections per host.
+const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 100;
+/// HTTP TCP keepalive interval (seconds) — prevents NAT/LB timeout.
+const HTTP_TCP_KEEPALIVE_SECS: u64 = 30;
+
 pub use scheduler::SchedulingRequest;
 pub use state::AppState;
 
@@ -370,7 +385,38 @@ pub async fn create_router_app(
     Router,
     mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
 )> {
-    let client = Client::builder().build()?;
+    let client = Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(
+            std::env::var("HTTP_CONNECT_TIMEOUT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(HTTP_CONNECT_TIMEOUT_SECS),
+        ))
+        .timeout(std::time::Duration::from_secs(
+            std::env::var("HTTP_REQUEST_TIMEOUT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(HTTP_REQUEST_TIMEOUT_SECS),
+        ))
+        .pool_idle_timeout(std::time::Duration::from_secs(
+            std::env::var("HTTP_POOL_IDLE_TIMEOUT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(HTTP_POOL_IDLE_TIMEOUT_SECS),
+        ))
+        .pool_max_idle_per_host(
+            std::env::var("HTTP_POOL_MAX_IDLE_PER_HOST")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(HTTP_POOL_MAX_IDLE_PER_HOST),
+        )
+        .tcp_keepalive(std::time::Duration::from_secs(
+            std::env::var("HTTP_TCP_KEEPALIVE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(HTTP_TCP_KEEPALIVE_SECS),
+        ))
+        .build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
     // Rate limiter: 100 burst, 10 requests/second
     let limiter = Arc::new(RateLimiter::new(100.0, 10.0));
@@ -2106,13 +2152,18 @@ async fn proxy_logic(
                             {
                                 // Check for embedded error in HTTP 200 response
                                 // Format: {"error": {...}, "type": "error"} or {"type": "error", ...}
-                                let is_error_response = resp_json.get("type").map(|t| t.as_str() == Some("error")).unwrap_or(false)
+                                let is_error_response = resp_json
+                                    .get("type")
+                                    .map(|t| t.as_str() == Some("error"))
+                                    .unwrap_or(false)
                                     || resp_json.get("error").is_some();
 
                                 if is_error_response {
                                     let body_str = String::from_utf8_lossy(&resp_bytes);
-                                    let error_info = parse_error_response(&body_str, &upstream.protocol);
-                                    let error_message = error_info.message.as_deref().unwrap_or("Unknown error");
+                                    let error_info =
+                                        parse_error_response(&body_str, &upstream.protocol);
+                                    let error_message =
+                                        error_info.message.as_deref().unwrap_or("Unknown error");
 
                                     tracing::warn!(
                                         "Passthrough: {} returned HTTP 200 with embedded error: {}",
@@ -2133,7 +2184,11 @@ async fn proxy_logic(
                                     };
 
                                     record_upstream_failure(
-                                        state, upstream, model_name, failure_type.clone(), error_message,
+                                        state,
+                                        upstream,
+                                        model_name,
+                                        failure_type.clone(),
+                                        error_message,
                                         &session_id,
                                     );
 
