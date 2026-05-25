@@ -60,6 +60,15 @@ pub fn should_passthrough(
         return PassthroughDecision::Convert;
     }
 
+    // OpenAI channels: passthrough for OpenAI format requests
+    if channel_type == ChannelType::OpenAI {
+        // OpenAI native path: /v1/chat/completions
+        if path.starts_with("/v1/chat/completions") || path.starts_with("/chat/completions") {
+            return PassthroughDecision::Passthrough;
+        }
+        return PassthroughDecision::Convert;
+    }
+
     // Only Gemini/Vertex channels support passthrough
     if channel_type != ChannelType::Gemini && channel_type != ChannelType::VertexAi {
         return PassthroughDecision::Convert;
