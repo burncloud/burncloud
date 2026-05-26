@@ -6,8 +6,8 @@
 use crate::api::response::ok;
 use crate::AppState;
 use axum::{
-    extract::State,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    extract::State,
     response::IntoResponse,
     response::Response,
     routing::get,
@@ -85,11 +85,7 @@ async fn handle_dashboard_socket(socket: WebSocket, _state: AppState) {
             };
 
             let mut sender_guard = sender_clone.lock().await;
-            if sender_guard
-                .send(Message::Text(json.into()))
-                .await
-                .is_err()
-            {
+            if sender_guard.send(Message::Text(json.into())).await.is_err() {
                 tracing::info!("Dashboard WebSocket client disconnected");
                 break;
             }
