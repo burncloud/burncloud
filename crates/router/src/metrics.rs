@@ -39,8 +39,6 @@ pub fn init_from_env() {
 
 pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
 
-
-
 // ======
 // Request Metrics
 // ======
