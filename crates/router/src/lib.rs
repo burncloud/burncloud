@@ -1944,6 +1944,19 @@ async fn proxy_logic(
                     .header("x-api-key", &upstream.api_key)
                     .header("anthropic-version", "2023-06-01");
                 (req, is_stream, false)
+            } else if channel_type == ChannelType::OpenAI {
+                // OpenAI passthrough: forward to base_url + /chat/completions
+                let base = upstream.base_url.trim_end_matches('/');
+                let url = format!("{base}/chat/completions");
+                let is_stream = body_json
+                    .get("stream")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let req = state
+                    .client
+                    .request(method.clone(), &url)
+                    .header("Authorization", format!("Bearer {}", &upstream.api_key));
+                (req, is_stream, false)
             } else {
                 // Gemini passthrough
                 let passthrough_url =

@@ -17,6 +17,7 @@ anyhow = { workspace = true }
 http-body-util.workspace = true
 serde_json = { workspace = true }
 dashmap.workspace = true
+log = { workspace = true }
 
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
