@@ -1,0 +1,26 @@
+[package]
+publish.workspace = true
+name = "burncloud-service-alert"
+version = "0.1.0"
+edition = "2021"
+description = "Alert service for BurnCloud - monitors critical events and sends notifications"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+log.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

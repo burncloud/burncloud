@@ -42,7 +42,6 @@ members = [
     "crates/service/crates/router-log",
     "crates/service/crates/billing",
     "crates/service/crates/channel",
-    "crates/service/crates/cache",
     "crates/tests",
 ]
 
@@ -132,7 +131,6 @@ image = "0.25"
 self_update = { version = "0.42.0", features = ["archive-zip"] }
 systray = "0.4.0"
 tracing = "0.1"
-redis = { version = "0.27", features = ["aio", "tokio-comp", "connection-manager"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tracing-log = "0.2"
@@ -181,6 +179,7 @@ burncloud-service-router-log = { path = "crates/service/crates/router-log" }
 burncloud-service-billing = { path = "crates/service/crates/billing" }
 burncloud-service-channel = { path = "crates/service/crates/channel" }
 burncloud-service-cache = { path = "crates/service/crates/cache" }
+burncloud-service-alert = { path = "crates/service/crates/alert" }
 
 [package]
 name = "burncloud"
