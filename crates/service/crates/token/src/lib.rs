@@ -1,10 +1,10 @@
 //! # BurnCloud Service Token
 //!
 //! Token service layer providing business logic for API token management,
-//! including validation, quota tracking, and CRUD operations.
+//! including validation, quota tracking, CRUD operations, and key rotation.
 
 use burncloud_database::Database;
-use burncloud_database_router::token::RouterTokenModel;
+use burncloud_database_router::token::{RouterTokenModel, TokenRotationResult};
 
 pub use burncloud_database_router::token::{RouterToken, RouterTokenValidationResult};
 
@@ -63,5 +63,40 @@ impl TokenService {
     /// Cost parameter uses i64 nanodollars for precision.
     pub async fn deduct_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
         RouterTokenModel::deduct_quota(db, token, cost).await
+    }
+
+    /// Rotate a token - generates a new key while keeping the old key valid during transition period
+    ///
+    /// # Arguments
+    /// * `db` - Database connection
+    /// * `token` - Current token string
+    /// * `transition_period_hours` - Hours the old key remains valid (default 24 if 0)
+    /// * `revoke_old` - Whether to immediately revoke the old key
+    ///
+    /// # Returns
+    /// * `Ok(TokenRotationResult)` - Contains new token and rotation info
+    /// * `Err(DatabaseError::NotFound)` - Token not found
+    pub async fn rotate(
+        db: &Database,
+        token: &str,
+        transition_period_hours: i32,
+        revoke_old: bool,
+    ) -> Result<TokenRotationResult> {
+        RouterTokenModel::rotate(db, token, transition_period_hours, revoke_old).await
+    }
+
+    /// Revoke old key version immediately
+    pub async fn revoke_old_key(db: &Database, token: &str) -> Result<bool> {
+        RouterTokenModel::revoke_old_key(db, token).await
+    }
+
+    /// Set IP whitelist for a token
+    pub async fn set_ip_whitelist(db: &Database, token: &str, ip_whitelist: &str) -> Result<bool> {
+        RouterTokenModel::set_ip_whitelist(db, token, ip_whitelist).await
+    }
+
+    /// Check if IP is allowed for token
+    pub async fn is_ip_allowed(db: &Database, token: &str, client_ip: &str) -> Result<bool> {
+        RouterTokenModel::is_ip_allowed(db, token, client_ip).await
     }
 }

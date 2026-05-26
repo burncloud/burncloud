@@ -183,6 +183,7 @@ burncloud-service-token = { path = "crates/service/crates/token" }
 burncloud-service-router-log = { path = "crates/service/crates/router-log" }
 burncloud-service-billing = { path = "crates/service/crates/billing" }
 burncloud-service-channel = { path = "crates/service/crates/channel" }
+burncloud-service-alert = { path = "crates/service/crates/alert" }
 
 [package]
 name = "burncloud"

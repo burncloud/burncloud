@@ -23,6 +23,7 @@ pub use log::{
 pub use router_video_task::{RouterVideoTask, RouterVideoTaskModel};
 pub use token::{
     RouterToken, RouterTokenModel, RouterTokenRepository, RouterTokenValidationResult,
+    TokenRotationResult,
 };
 
 /// Result of [`RouterDatabase::validate_token_and_get_info`].

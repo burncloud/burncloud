@@ -36,11 +36,14 @@ pub fn init_from_env() {
 }
 
 /// Custom Prometheus registry for burncloud metrics.
+
 pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
 
-// ============================================================================
+
+
+// ======
 // Request Metrics
-// ============================================================================
+// ======
 
 /// Total number of requests processed.
 pub static REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
@@ -130,9 +133,9 @@ pub static REQUESTS_BY_CHANNEL: Lazy<IntCounterVec> = Lazy::new(|| {
     counter
 });
 
-// ============================================================================
+// ======
 // Token Metrics
-// ============================================================================
+// ======
 
 /// Total prompt tokens processed.
 pub static TOKENS_PROMPT_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
@@ -170,9 +173,9 @@ pub static COST_TOTAL_NANO: Lazy<IntCounter> = Lazy::new(|| {
     counter
 });
 
-// ============================================================================
+// ======
 // Channel Health Metrics
-// ============================================================================
+// ======
 
 /// Channel status (1=healthy, 0=unhealthy).
 pub static CHANNEL_STATUS: Lazy<IntGaugeVec> = Lazy::new(|| {
@@ -226,9 +229,9 @@ pub static CHANNEL_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
     histogram
 });
 
-// ============================================================================
+// ======
 // System Resource Metrics
-// ============================================================================
+// ======
 
 /// Service uptime in seconds.
 pub static UPTIME_SECONDS: Lazy<IntGauge> = Lazy::new(|| {
@@ -266,9 +269,9 @@ pub static MEMORY_BYTES: Lazy<IntGauge> = Lazy::new(|| {
 /// Service start time for uptime calculation.
 static START_TIME: Lazy<Instant> = Lazy::new(Instant::now);
 
-// ============================================================================
+// ======
 // Helper Functions
-// ============================================================================
+// ======
 
 /// Record a request with status.
 pub fn record_request(status: &str) {
