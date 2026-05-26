@@ -1,0 +1,16 @@
+[package]
+publish.workspace = true
+license.workspace = true
+name = "burncloud-database-audit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
