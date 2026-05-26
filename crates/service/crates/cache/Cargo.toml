@@ -1,0 +1,26 @@
+[package]
+publish.workspace = true
+license.workspace = true
+name = "burncloud-service-cache"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burncloud-database.workspace = true
+burncloud-database-router.workspace = true
+burncloud-database-channel.workspace = true
+burncloud-database-billing.workspace = true
+burncloud-common.workspace = true
+redis.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true
