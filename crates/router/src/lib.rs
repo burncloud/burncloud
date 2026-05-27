@@ -923,6 +923,7 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
     )
 }
 
+#[tracing::instrument(skip_all, fields(request_id))]
 async fn proxy_handler(
     State(state): State<AppState>,
     method: Method,
@@ -932,6 +933,8 @@ async fn proxy_handler(
 ) -> Response {
     let start_time = Instant::now();
     let request_id = Uuid::new_v4().to_string();
+    // Record request_id in span for OpenTelemetry tracing
+    tracing::Span::current().record("request_id", &request_id);
     let raw_path = uri.path().to_string();
 
     // Normalize doubled path prefixes caused by client SDKs that include
@@ -1528,7 +1531,7 @@ struct ShaperContext {
     /// `X-Rejected-By: shaper` (audit decision D12).
     rejected_count: u32,
 }
-
+#[tracing::instrument(skip_all, fields(model, channel_id, user_id))]
 #[allow(clippy::too_many_arguments)]
 async fn proxy_logic(
     state: &AppState,
@@ -1545,6 +1548,8 @@ async fn proxy_logic(
     model_name: Option<&str>,
     request_start_time: Instant,
 ) -> ProxyResult {
+    // Record user_id in span for OpenTelemetry tracing
+    tracing::Span::current().record("user_id", user_id);
     // Model Routing
     let mut candidates: Vec<Upstream> = Vec::new();
     // L6 Observability: routing decision from route_with_scheduler.
@@ -1587,6 +1592,8 @@ async fn proxy_logic(
         let model_opt = model_ref.or(gemini_path_model.as_deref());
 
         if let Some(model) = model_opt {
+            // Record model in span for OpenTelemetry tracing
+            tracing::Span::current().record("model", model);
             // Use scheduler-based routing for multi-channel failover
             // Clone the policy for this group, then release the lock immediately.
             // This prevents the lock from being held during SQL queries and async
@@ -1845,6 +1852,8 @@ async fn proxy_logic(
             });
         }
         last_upstream_id = Some(upstream.id.clone());
+        // Record channel_id in span for OpenTelemetry tracing
+        tracing::Span::current().record("channel_id", &upstream.id);
 
         // Update pricing_region for billing to match the actual upstream serving
         selected_pricing_region = upstream.pricing_region.clone();

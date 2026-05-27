@@ -13,6 +13,7 @@ use tracing_subscriber::{
 /// - Daily log rotation with retention via `LOG_MAX_FILES` (default: 7)
 /// - Log directory via `LOG_DIR` env var (default: `./logs`)
 /// - `tracing-log` bridge so existing `log::*!` calls route to tracing
+/// - Optional OpenTelemetry layer for distributed tracing via OTLP
 ///
 /// Returns `WorkerGuard`s that must be held for the program's lifetime.
 pub fn init_logging() -> Vec<WorkerGuard> {
@@ -38,7 +39,11 @@ pub fn init_logging() -> Vec<WorkerGuard> {
     let (router_nb, g) = file_appender(&log_dir, "router", max_files);
     guards.push(g);
 
+    // Try to initialize OpenTelemetry layer (optional)
+    let otlp_layer = crate::telemetry::init_telemetry();
+
     let subscriber = tracing_subscriber::registry()
+        .with(otlp_layer)
         .with(tracing_subscriber::fmt::layer().with_filter(env_filter))
         .with(
             tracing_subscriber::fmt::layer()
