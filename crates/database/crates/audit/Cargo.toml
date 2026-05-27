@@ -1,0 +1,20 @@
+[package]
+publish.workspace = true
+name = "burncloud-database-audit"
+version = "0.1.0"
+edition = "2021"
+authors = ["BurnCloud Team <team@burncloud.com>"]
+description = "Database operations for audit logging in BurnCloud"
+
+[dependencies]
+burncloud-database.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
