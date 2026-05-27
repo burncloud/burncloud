@@ -218,6 +218,7 @@ impl AuditDatabase {
             bind_index += 1;
         }
 
+        let _ = bind_index; // suppress unused warning
         let where_clause = if conditions.is_empty() {
             String::new()
         } else {
@@ -355,6 +356,7 @@ impl AuditDatabase {
             bind_index += 1;
         }
 
+        let _ = bind_index; // suppress unused warning
         let where_clause = if conditions.is_empty() {
             String::new()
         } else {
