@@ -12,6 +12,7 @@ pub mod openapi;
 pub mod response;
 pub mod token;
 pub mod user;
+pub mod cache;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -24,5 +25,6 @@ pub fn routes(state: AppState) -> Router {
         .merge(user::routes())
         .merge(security::security_routes())
         .merge(openapi::routes())
+        .merge(cache::routes())
         .with_state(state)
 }

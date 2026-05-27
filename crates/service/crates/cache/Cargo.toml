@@ -1,0 +1,22 @@
+[package]
+publish.workspace = true
+name = "burncloud-service-cache"
+version = "0.1.0"
+edition = "2021"
+authors = ["BurnCloud Team <team@burncloud.com>"]
+description = "Redis cache integration for BurnCloud"
+
+[dependencies]
+burncloud-database.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+
+# Redis support
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+[lints]
+workspace = true
