@@ -1,5 +1,6 @@
 use crate::AppState;
 pub mod security;
+pub mod websocket;
 
 use axum::Router;
 
@@ -24,5 +25,6 @@ pub fn routes(state: AppState) -> Router {
         .merge(user::routes())
         .merge(security::security_routes())
         .merge(openapi::routes())
+        .merge(websocket::routes())
         .with_state(state)
 }

@@ -37,6 +37,7 @@ jsonwebtoken = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 chrono = { workspace = true }
 dirs = { workspace = true }
+futures-util = "0.3"
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
