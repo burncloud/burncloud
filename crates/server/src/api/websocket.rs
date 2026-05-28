@@ -156,7 +156,11 @@ async fn handle_dashboard_ws(socket: WebSocket, state: AppState) {
     // Send initial metrics immediately
     let initial_metrics = collect_dashboard_metrics(&state).await;
     if let Ok(metrics_json) = serde_json::to_string(&initial_metrics) {
-        if sender.send(Message::Text(metrics_json.into())).await.is_err() {
+        if sender
+            .send(Message::Text(metrics_json.into()))
+            .await
+            .is_err()
+        {
             tracing::warn!("Failed to send initial metrics to WebSocket client");
             ACTIVE_WS_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
             return;
@@ -231,17 +235,17 @@ async fn handle_dashboard_ws(socket: WebSocket, state: AppState) {
             _ = tokio::time::sleep(Duration::from_secs(1)) => {
                 if last_update.elapsed() >= Duration::from_secs(1) {
                     let metrics = collect_dashboard_metrics(&state).await;
-                    
+
                     // Broadcast to all connected clients
                     let _ = get_metrics_channel().send(metrics.clone());
-                    
+
                     // Also send directly to this client
                     if let Ok(metrics_json) = serde_json::to_string(&metrics) {
                         if sender.send(Message::Text(metrics_json.into())).await.is_err() {
                             break;
                         }
                     }
-                    
+
                     last_update = Instant::now();
                 }
             }
@@ -269,10 +273,7 @@ async fn collect_dashboard_metrics(state: &AppState) -> DashboardMetrics {
     // Calculate approximate QPS and RPM
     // These are simplified approximations; real implementation would track
     // requests over sliding time windows
-    let uptime_secs = std::time::Instant::now()
-        .elapsed()
-        .as_secs()
-        .max(1);
+    let uptime_secs = std::time::Instant::now().elapsed().as_secs().max(1);
     let qps = requests_total / uptime_secs;
     let rpm = requests_total.max(1) * 60 / uptime_secs.max(1);
 
@@ -296,13 +297,19 @@ async fn collect_dashboard_metrics(state: &AppState) -> DashboardMetrics {
             cost_total_micro: cost_total_nano / 1000, // Convert nanodollars to microdollars
         },
         channels: ChannelMetrics {
-            healthy: 0, // Placeholder - would query channel state
+            healthy: 0,   // Placeholder - would query channel state
             unhealthy: 0, // Placeholder - would query channel state
-            total: 0, // Placeholder - would query channel count from database
+            total: 0,     // Placeholder - would query channel count from database
         },
         system: SystemResourceMetrics {
-            cpu_usage_percent: system_metrics.as_ref().map(|m| m.cpu.usage_percent).unwrap_or(0.0),
-            memory_usage_percent: system_metrics.as_ref().map(|m| m.memory.usage_percent).unwrap_or(0.0),
+            cpu_usage_percent: system_metrics
+                .as_ref()
+                .map(|m| m.cpu.usage_percent)
+                .unwrap_or(0.0),
+            memory_usage_percent: system_metrics
+                .as_ref()
+                .map(|m| m.memory.usage_percent)
+                .unwrap_or(0.0),
             memory_used_formatted: system_metrics
                 .as_ref()
                 .map(|m| m.memory.used_formatted())
@@ -310,9 +317,8 @@ async fn collect_dashboard_metrics(state: &AppState) -> DashboardMetrics {
             disk_usage_percent: system_metrics
                 .as_ref()
                 .map(|m| {
-                    m.disks.iter()
-                        .map(|d| d.usage_percent)
-                        .sum::<f32>() / m.disks.len().max(1) as f32
+                    m.disks.iter().map(|d| d.usage_percent).sum::<f32>()
+                        / m.disks.len().max(1) as f32
                 })
                 .unwrap_or(0.0),
         },
@@ -325,7 +331,11 @@ fn get_token_metrics() -> (u64, u64, u64) {
     let completion_total = metrics::TOKENS_COMPLETION_TOTAL.get();
     let cost_total_nano = metrics::COST_TOTAL_NANO.get();
 
-    (prompt_total as u64, completion_total as u64, cost_total_nano as u64)
+    (
+        prompt_total as u64,
+        completion_total as u64,
+        cost_total_nano as u64,
+    )
 }
 
 /// Get request metrics from Prometheus counters.
@@ -385,13 +395,13 @@ pub fn broadcast_metrics(metrics: DashboardMetrics) {
 pub fn start_metrics_collection(state: AppState) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(1));
-        
+
         loop {
             interval.tick().await;
-            
+
             // Update system metrics in Prometheus
             metrics::update_system_metrics();
-            
+
             // Collect and broadcast dashboard metrics
             let dashboard_metrics = collect_dashboard_metrics(&state).await;
             broadcast_metrics(dashboard_metrics);
