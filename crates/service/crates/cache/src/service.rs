@@ -79,10 +79,10 @@ impl Default for CacheConfig {
             enabled: std::env::var("CACHE_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
-            token_ttl: 300,        // 5 minutes
-            channel_ttl: 60,       // 1 minute
-            price_ttl: 600,        // 10 minutes
-            quota_ttl: 60,         // 1 minute
+            token_ttl: 300,  // 5 minutes
+            channel_ttl: 60, // 1 minute
+            price_ttl: 600,  // 10 minutes
+            quota_ttl: 60,   // 1 minute
         }
     }
 }
@@ -124,14 +124,15 @@ impl CacheService {
             });
         }
 
-        let redis_url = config.redis_url.as_ref().ok_or_else(|| {
-            CacheError::Connection("REDIS_URL not configured".to_string())
-        })?;
+        let redis_url = config
+            .redis_url
+            .as_ref()
+            .ok_or_else(|| CacheError::Connection("REDIS_URL not configured".to_string()))?;
 
         tracing::info!("Connecting to Redis at {}", redis_url);
-        
-        let client = Client::open(redis_url.as_str())
-            .map_err(|e| CacheError::Connection(e.to_string()))?;
+
+        let client =
+            Client::open(redis_url.as_str()).map_err(|e| CacheError::Connection(e.to_string()))?;
 
         // Test connection
         let mut conn = client
@@ -167,20 +168,20 @@ impl CacheService {
         if !self.is_available().await {
             return Ok(None);
         }
-        
+
         let client = self.client.as_ref().ok_or(CacheError::Disabled)?;
         let conn = client
             .get_connection_manager()
             .await
             .map_err(|e| CacheError::Connection(e.to_string()))?;
-        
+
         Ok(Some(conn))
     }
 
     /// Get a value from cache.
     async fn get<T: DeserializeOwned>(&self, key: &str) -> CacheResult<Option<T>> {
         let conn = self.get_connection().await?;
-        
+
         if let Some(mut conn) = conn {
             let data: Option<String> = conn
                 .get(key)
@@ -200,12 +201,13 @@ impl CacheService {
     /// Set a value in cache with TTL.
     async fn set<T: Serialize>(&self, key: &str, value: &T, ttl: u64) -> CacheResult<()> {
         let conn = self.get_connection().await?;
-        
+
         if let Some(mut conn) = conn {
             let data = serde_json::to_string(value)
                 .map_err(|e| CacheError::Serialization(e.to_string()))?;
 
-            let _: () = conn.set_ex(key, data, ttl)
+            let _: () = conn
+                .set_ex(key, data, ttl)
                 .await
                 .map_err(|e| CacheError::Operation(e.to_string()))?;
         }
@@ -216,9 +218,10 @@ impl CacheService {
     /// Delete a value from cache.
     async fn delete(&self, key: &str) -> CacheResult<()> {
         let conn = self.get_connection().await?;
-        
+
         if let Some(mut conn) = conn {
-            let _: () = conn.del(key)
+            let _: () = conn
+                .del(key)
                 .await
                 .map_err(|e| CacheError::Operation(e.to_string()))?;
         }
@@ -267,7 +270,8 @@ impl CacheService {
 
     /// Cache all channels list.
     pub async fn set_all_channels(&self, channels: &Vec<CachedChannel>) -> CacheResult<()> {
-        self.set(keys::CHANNEL_LIST, channels, self.config.channel_ttl).await
+        self.set(keys::CHANNEL_LIST, channels, self.config.channel_ttl)
+            .await
     }
 
     /// Invalidate channel cache.
@@ -324,7 +328,7 @@ impl CacheService {
     /// Clear all BurnCloud cache keys.
     pub async fn clear_all(&self) -> CacheResult<()> {
         let conn = self.get_connection().await?;
-        
+
         if let Some(mut conn) = conn {
             // Delete all keys matching bc:*
             let keys: Vec<String> = redis::cmd("KEYS")
@@ -334,7 +338,8 @@ impl CacheService {
                 .map_err(|e| CacheError::Operation(e.to_string()))?;
 
             if !keys.is_empty() {
-                let _: () = conn.del(&keys)
+                let _: () = conn
+                    .del(&keys)
                     .await
                     .map_err(|e| CacheError::Operation(e.to_string()))?;
                 tracing::info!("Cleared {} cache keys", keys.len());
@@ -347,7 +352,7 @@ impl CacheService {
     /// Get cache statistics.
     pub async fn stats(&self) -> CacheResult<CacheStats> {
         let conn = self.get_connection().await?;
-        
+
         let mut stats = CacheStats {
             enabled: self.is_available().await,
             connected: false,
@@ -372,16 +377,13 @@ impl CacheService {
                 .query_async(&mut conn)
                 .await
                 .map_err(|e| CacheError::Operation(e.to_string()))?;
-            
+
             // Parse used_memory from INFO output
             for line in info.lines() {
                 if line.starts_with("used_memory:") {
                     let parts: Vec<&str> = line.split(':').collect();
                     if parts.len() >= 2 {
-                        stats.memory_usage = parts[1]
-                            .trim()
-                            .parse()
-                            .unwrap_or(0);
+                        stats.memory_usage = parts[1].trim().parse().unwrap_or(0);
                     }
                 }
             }
@@ -425,7 +427,7 @@ mod tests {
         };
         let cache = CacheService::with_config(config).await.unwrap();
         assert!(!cache.is_available().await);
-        
+
         let result = cache.get_token("test-token").await;
         assert!(result.unwrap().is_none());
     }

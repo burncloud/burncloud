@@ -5,6 +5,7 @@ use axum::Router;
 
 pub mod auth;
 pub mod billing;
+pub mod cache;
 pub mod channel;
 pub mod log;
 pub mod monitor;
@@ -12,7 +13,6 @@ pub mod openapi;
 pub mod response;
 pub mod token;
 pub mod user;
-pub mod cache;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
