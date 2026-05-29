@@ -68,6 +68,7 @@ struct UserSummary {
 pub fn routes() -> Router<AppState> {
     let authenticated = Router::new()
         .route("/console/api/user/recharges", get(list_recharges))
+        .route("/console/api/list_users", get(list_users))
         .layer(middleware::from_fn(crate::auth_middleware));
 
     Router::new()
@@ -75,7 +76,6 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/user/login", post(login))
         .route("/console/api/user/topup", post(topup))
         .route("/console/api/user/check_username", get(check_username))
-        .route("/console/api/list_users", get(list_users))
         .merge(authenticated)
 }
 
