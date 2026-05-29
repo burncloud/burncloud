@@ -88,6 +88,14 @@ const PROTOCOL_GEMINI: &str = "gemini";
 const PROTOCOL_ZAI: &str = "zai";
 /// SSE stream termination marker sent to clients.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
+/// HTTP connection timeout (seconds). Time allowed for establishing TCP connection.
+const HTTP_CONNECT_TIMEOUT_SECS: u64 = 30;
+/// HTTP request timeout (seconds). Total time for request completion (600 minutes).
+const HTTP_REQUEST_TIMEOUT_SECS: u64 = 36000;
+/// HTTP pool idle timeout (seconds). Time before idle connections are closed.
+const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+/// HTTP TCP keepalive interval (seconds).
+const HTTP_TCP_KEEPALIVE_SECS: u64 = 30;
 
 pub use scheduler::SchedulingRequest;
 pub use state::AppState;
@@ -370,7 +378,12 @@ pub async fn create_router_app(
     Router,
     mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
 )> {
-    let client = Client::builder().build()?;
+    let client = Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(HTTP_CONNECT_TIMEOUT_SECS))
+        .timeout(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
+        .pool_idle_timeout(std::time::Duration::from_secs(HTTP_POOL_IDLE_TIMEOUT_SECS))
+        .tcp_keepalive(std::time::Duration::from_secs(HTTP_TCP_KEEPALIVE_SECS))
+        .build()?;
     let balancer = Arc::new(RoundRobinBalancer::new());
     // Rate limiter: 100 burst, 10 requests/second
     let limiter = Arc::new(RateLimiter::new(100.0, 10.0));
