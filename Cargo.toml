@@ -26,6 +26,7 @@ members = [
     "crates/database/crates/router",
     "crates/database/crates/sys",
     "crates/database/crates/user",
+    "crates/database/crates/group",
     "crates/download",
     "crates/download/crates/download-aria2",
     "crates/router",
@@ -42,6 +43,7 @@ members = [
     "crates/service/crates/router-log",
     "crates/service/crates/billing",
     "crates/service/crates/channel",
+    "crates/service/crates/group",
     "crates/tests",
 ]
 
@@ -157,6 +159,7 @@ burncloud-common = { path = "crates/common" }
 burncloud-database = { path = "crates/database" }
 burncloud-database-billing = { path = "crates/database/crates/billing" }
 burncloud-database-channel = { path = "crates/database/crates/channel" }
+burncloud-database-group = { path = "crates/database/crates/group" }
 burncloud-database-model = { path = "crates/database/crates/model" }
 burncloud-database-router = { path = "crates/database/crates/router" }
 burncloud-database-sys = { path = "crates/database/crates/sys" }
@@ -178,6 +181,7 @@ burncloud-service-token = { path = "crates/service/crates/token" }
 burncloud-service-router-log = { path = "crates/service/crates/router-log" }
 burncloud-service-billing = { path = "crates/service/crates/billing" }
 burncloud-service-channel = { path = "crates/service/crates/channel" }
+burncloud-service-group = { path = "crates/service/crates/group" }
 burncloud-service-alert = { path = "crates/service/crates/alert" }
 
 [package]

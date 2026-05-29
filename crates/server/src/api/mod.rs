@@ -6,6 +6,7 @@ use axum::Router;
 pub mod auth;
 pub mod billing;
 pub mod channel;
+pub mod group;
 pub mod log;
 pub mod monitor;
 pub mod openapi;
@@ -18,6 +19,7 @@ pub fn routes(state: AppState) -> Router {
         .merge(auth::routes())
         .merge(billing::routes())
         .merge(channel::routes())
+        .merge(group::routes())
         .merge(token::routes())
         .merge(log::routes())
         .merge(monitor::routes())

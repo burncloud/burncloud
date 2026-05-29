@@ -6,6 +6,7 @@ use axum::http::HeaderName;
 use axum::{routing::get, Router};
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
+use burncloud_database_group::RouterGroupModel;
 use burncloud_database_user::UserDatabase;
 use burncloud_router::create_router_app;
 use burncloud_router::price_sync::SyncResult;
@@ -85,6 +86,7 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
+    RouterGroupModel::init(&db).await?;
     let db = Arc::new(db);
 
     let app = create_app(db, enable_liveview).await?;
