@@ -87,39 +87,22 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
     let client = Client::new();
     let base_url = format!("http://localhost:{}", port);
 
-    // 3. Test GET /console/api/logs
+    // 3. Test GET /console/api/logs - should require authentication
     let resp = client
         .get(format!("{}/console/api/logs", base_url))
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await?;
-    let logs = json["data"].as_array().expect("data should be an array");
+    // Log API now requires authentication - expect 401 without token
+    assert_eq!(resp.status(), 401, "Log API should require authentication");
 
-    // Verify we can find our log
-    let found = logs.iter().any(|l| l["request_id"] == log_entry.request_id);
-    assert!(found, "inserted log not found in API response");
-
-    // 4. Test GET /console/api/usage/{user_id}
+    // 4. Test GET /console/api/usage/{user_id} - should require authentication
     let resp_usage = client
         .get(format!("{}/console/api/usage/test-api-user", base_url))
         .send()
         .await?;
 
-    assert_eq!(resp_usage.status(), 200);
-    let usage: serde_json::Value = resp_usage.json().await?;
-
-    // Check stats
-    let prompt = usage["prompt_tokens"].as_i64().unwrap();
-    let completion = usage["completion_tokens"].as_i64().unwrap();
-    let total = usage["total_tokens"].as_i64().unwrap();
-
-    // Since this is a shared DB, there might be other logs from other runs.
-    // So we assert >= our values.
-    assert!(prompt >= 10);
-    assert!(completion >= 20);
-    assert_eq!(total, prompt + completion);
+    assert_eq!(resp_usage.status(), 401, "Usage API should require authentication");
 
     Ok(())
 }
