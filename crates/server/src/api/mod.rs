@@ -10,6 +10,7 @@ use axum::{
 
 pub mod auth;
 pub mod billing;
+pub mod cache;
 pub mod channel;
 pub mod log;
 pub mod monitor;
@@ -35,6 +36,7 @@ pub fn routes(state: AppState) -> Router {
         .merge(user::routes())
         .merge(security::security_routes())
         .merge(openapi::routes())
+        .merge(cache::routes())
         // Catch-all for any unmatched /console/api/* paths
         // This prevents LiveView from returning HTML for non-existent API endpoints
         .route("/console/api/{*path}", get(api_not_found))
