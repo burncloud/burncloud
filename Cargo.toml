@@ -42,6 +42,7 @@ members = [
     "crates/service/crates/router-log",
     "crates/service/crates/billing",
     "crates/service/crates/channel",
+    "crates/service/crates/cache",
     "crates/tests",
 ]
 
@@ -179,6 +180,7 @@ burncloud-service-router-log = { path = "crates/service/crates/router-log" }
 burncloud-service-billing = { path = "crates/service/crates/billing" }
 burncloud-service-channel = { path = "crates/service/crates/channel" }
 burncloud-service-alert = { path = "crates/service/crates/alert" }
+burncloud-service-cache = { path = "crates/service/crates/cache" }
 
 [package]
 name = "burncloud"
