@@ -35,6 +35,7 @@ burncloud-service-router-log = { workspace = true }
 burncloud-service-channel = { workspace = true }
 burncloud-service-group = { workspace = true }
 burncloud-database-group = { workspace = true }
+burncloud-service-cache = { workspace = true }
 jsonwebtoken = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 chrono = { workspace = true }

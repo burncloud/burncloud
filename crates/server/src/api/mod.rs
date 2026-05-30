@@ -5,6 +5,7 @@ use axum::Router;
 
 pub mod auth;
 pub mod billing;
+pub mod cache;
 pub mod channel;
 pub mod group;
 pub mod log;
@@ -26,5 +27,6 @@ pub fn routes(state: AppState) -> Router {
         .merge(user::routes())
         .merge(security::security_routes())
         .merge(openapi::routes())
+        .merge(cache::routes())
         .with_state(state)
 }

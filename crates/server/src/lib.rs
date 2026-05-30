@@ -10,6 +10,7 @@ use burncloud_database_group::RouterGroupModel;
 use burncloud_database_user::UserDatabase;
 use burncloud_router::create_router_app;
 use burncloud_router::price_sync::SyncResult;
+use burncloud_service_cache::CacheService;
 use burncloud_service_monitor::SystemMonitorService;
 use burncloud_service_user::UserService;
 use std::net::SocketAddr;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub monitor: Arc<SystemMonitorService>,
     pub user_service: Arc<UserService>,
+    pub cache: CacheService,
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
 }
 
@@ -33,6 +35,14 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
     // Start auto collection in background
     let _ = monitor.start_auto_update().await;
 
+    // Initialize cache service (will be disabled if REDIS_URL not set)
+    let cache = CacheService::new().await?;
+    if cache.is_available().await {
+        tracing::info!("Redis cache enabled and connected");
+    } else {
+        tracing::info!("Redis cache disabled");
+    }
+
     // 3. Data Plane Router (Fallback) — must be created first to get force_sync_tx
     let (router_app, internal_app, force_sync_tx) = create_router_app(db.clone()).await?;
 
@@ -40,6 +50,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         db: db.clone(),
         monitor,
         user_service: Arc::new(UserService::new()),
+        cache,
         force_sync_tx,
     };
 
