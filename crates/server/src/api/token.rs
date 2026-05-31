@@ -1,8 +1,7 @@
 use crate::AppState;
 use axum::{
-    extract::{Path, State},
-    middleware,
-    response::{IntoResponse, Json},
+    extract::{Json, Path, State},
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
@@ -54,7 +53,6 @@ pub fn routes() -> Router<AppState> {
             "/console/api/tokens/{token}/ip-whitelist",
             post(set_ip_whitelist),
         )
-        .layer(middleware::from_fn(crate::auth_middleware))
 }
 
 #[tracing::instrument(skip_all)]

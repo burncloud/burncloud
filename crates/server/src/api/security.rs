@@ -110,7 +110,6 @@ pub fn security_routes() -> Router<AppState> {
             "/console/api/monitor/security/circuit-breaker-status",
             get(security_circuit_breaker_status),
         )
-        .layer(axum::middleware::from_fn(crate::api::auth::auth_middleware))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
