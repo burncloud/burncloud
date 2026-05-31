@@ -69,7 +69,14 @@ pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     Ok(token_data.claims)
 }
 
-pub fn routes() -> Router<AppState> {
+/// Public routes - no authentication required
+/// - /api/auth/register - Registration
+/// - /api/auth/login - Login
+/// - /console/api/auth/forgot-password - Forgot password
+/// - /console/api/auth/reset-password - Reset password
+/// - /console/api/auth/google - Google OAuth
+/// - /console/api/auth/github - GitHub OAuth
+pub fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/api/auth/register", post(create_user))
         .route("/api/auth/login", post(login))
@@ -77,6 +84,16 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/auth/reset-password", post(reset_password))
         .route("/console/api/auth/google", get(oauth_google))
         .route("/console/api/auth/github", get(oauth_github))
+}
+
+/// Protected routes - authentication required
+/// Currently empty, but available for future protected auth endpoints
+/// (e.g., logout, change-password)
+pub fn protected_routes() -> Router<AppState> {
+    Router::new()
+    // Add protected auth routes here when needed:
+    // .route("/console/api/auth/logout", post(logout))
+    // .route("/console/api/auth/change-password", post(change_password))
 }
 
 #[tracing::instrument(skip(state, payload), fields(username = %payload.username))]
@@ -220,6 +237,8 @@ async fn oauth_github(State(_state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+/// Authentication middleware for protected routes.
+/// Validates JWT token from Authorization header and injects Claims into request extensions.
 #[tracing::instrument(skip_all)]
 pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
     let auth_header = req

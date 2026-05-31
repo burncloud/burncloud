@@ -3,7 +3,6 @@ use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
     extract::{Extension, Json, Query, State},
-    middleware,
     response::IntoResponse,
     routing::{get, post},
     Router,
@@ -68,8 +67,7 @@ struct UserSummary {
 pub fn routes() -> Router<AppState> {
     let authenticated = Router::new()
         .route("/console/api/user/recharges", get(list_recharges))
-        .route("/console/api/list_users", get(list_users))
-        .layer(middleware::from_fn(crate::auth_middleware));
+        .route("/console/api/list_users", get(list_users));
 
     Router::new()
         .route("/console/api/user/register", post(register))

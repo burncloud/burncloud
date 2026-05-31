@@ -3,7 +3,6 @@ use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
-    middleware,
     response::IntoResponse,
     routing::{get, post},
     Router,
@@ -119,7 +118,6 @@ pub fn routes() -> Router<AppState> {
             "/console/api/channel/{id}",
             get(get_channel).delete(delete_channel),
         )
-        .layer(middleware::from_fn(crate::auth_middleware))
 }
 
 async fn check_admin(state: &AppState, claims: &Claims) -> Result<(), impl IntoResponse> {
