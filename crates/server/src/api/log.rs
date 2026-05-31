@@ -2,6 +2,7 @@ use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
+    middleware,
     response::{IntoResponse, Json, Response},
     routing::get,
     Router,
@@ -42,13 +43,19 @@ struct ApiError {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
+    // Authenticated routes
+    let authenticated = Router::new()
         .route("/console/api/logs", get(list_logs))
         .route("/console/api/usage/{user_id}", get(get_user_usage))
-        .route(
-            "/console/internal/billing/summary",
-            get(billing_summary_handler),
-        )
+        .layer(middleware::from_fn(crate::auth_middleware));
+
+    // Internal routes (with their own authentication)
+    let internal = Router::new().route(
+        "/console/internal/billing/summary",
+        get(billing_summary_handler),
+    );
+
+    Router::new().merge(authenticated).merge(internal)
 }
 
 async fn list_logs(
