@@ -1,7 +1,12 @@
 use crate::AppState;
 pub mod security;
 
-use axum::Router;
+use axum::{
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
 
 pub mod auth;
 pub mod billing;
@@ -13,6 +18,12 @@ pub mod openapi;
 pub mod response;
 pub mod token;
 pub mod user;
+
+/// Fallback handler for unmatched /console/api/* requests
+/// Returns 404 instead of being caught by LiveView's catch-all
+async fn api_not_found() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, "API endpoint not found")
+}
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -26,5 +37,8 @@ pub fn routes(state: AppState) -> Router {
         .merge(security::security_routes())
         .merge(openapi::routes())
         .merge(cache::routes())
+        // Catch-all for any unmatched /console/api/* paths
+        // This prevents LiveView from returning HTML for non-existent API endpoints
+        .route("/console/api/{*path}", get(api_not_found))
         .with_state(state)
 }
