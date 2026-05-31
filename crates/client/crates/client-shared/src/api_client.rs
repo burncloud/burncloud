@@ -189,11 +189,25 @@ impl ApiClient {
         format!("http://localhost:{}/v1/chat/completions", port)
     }
 
+
+    /// Get the stored authentication token from ClientState
+    fn get_auth_token() -> Option<String> {
+        crate::utils::storage::ClientState::load().auth_token
+    }
+
+    /// Add Authorization header if token is available
+    fn with_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some(token) = Self::get_auth_token() {
+            request.header("Authorization", format!("Bearer {}", token))
+        } else {
+            request
+        }
+    }
     // --- Channel Operations ---
 
     pub async fn list_channels(&self) -> Result<Vec<ChannelDto>> {
         let url = format!("{}/channels", self.base_url);
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.with_auth(self.client.get(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -208,7 +222,7 @@ impl ApiClient {
 
     pub async fn create_channel(&self, channel: ChannelDto) -> Result<()> {
         let url = format!("{}/channels", self.base_url);
-        let resp = self.client.post(&url).json(&channel).send().await?;
+        let resp = self.with_auth(self.client.post(&url).json(&channel)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -221,7 +235,7 @@ impl ApiClient {
 
     pub async fn delete_channel(&self, id: &str) -> Result<()> {
         let url = format!("{}/channels/{}", self.base_url, id);
-        let resp = self.client.delete(&url).send().await?;
+        let resp = self.with_auth(self.client.delete(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -236,7 +250,7 @@ impl ApiClient {
 
     pub async fn list_tokens(&self) -> Result<Vec<TokenDto>> {
         let url = format!("{}/api/tokens", self.base_url);
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.with_auth(self.client.get(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to list tokens: {}", resp.status()));
@@ -250,7 +264,7 @@ impl ApiClient {
             "user_id": user_id,
             "quota_limit": quota_limit
         });
-        let resp = self.client.post(&url).json(&body).send().await?;
+        let resp = self.with_auth(self.client.post(&url).json(&body)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to create token: {}", resp.status()));
@@ -267,7 +281,7 @@ impl ApiClient {
 
     pub async fn delete_token(&self, token: &str) -> Result<()> {
         let url = format!("{}/api/tokens/{}", self.base_url, token);
-        let resp = self.client.delete(&url).send().await?;
+        let resp = self.with_auth(self.client.delete(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to delete token: {}", resp.status()));
@@ -280,7 +294,7 @@ impl ApiClient {
         let body = serde_json::json!({
             "status": status
         });
-        let resp = self.client.put(&url).json(&body).send().await?;
+        let resp = self.with_auth(self.client.put(&url).json(&body)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to update token: {}", resp.status()));
@@ -293,7 +307,7 @@ impl ApiClient {
 
     pub async fn list_groups(&self) -> Result<Vec<GroupDto>> {
         let url = format!("{}/groups", self.server_root());
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.with_auth(self.client.get(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to list groups: {}", resp.status()));
@@ -303,7 +317,7 @@ impl ApiClient {
 
     pub async fn create_group(&self, group: &GroupDto) -> Result<()> {
         let url = format!("{}/groups", self.server_root());
-        let resp = self.client.post(&url).json(group).send().await?;
+        let resp = self.with_auth(self.client.post(&url).json(group)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to create group: {}", resp.status()));
@@ -313,7 +327,7 @@ impl ApiClient {
 
     pub async fn delete_group(&self, id: &str) -> Result<()> {
         let url = format!("{}/groups/{}", self.server_root(), id);
-        let resp = self.client.delete(&url).send().await?;
+        let resp = self.with_auth(self.client.delete(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to delete group: {}", resp.status()));
@@ -323,7 +337,7 @@ impl ApiClient {
 
     pub async fn get_group_members(&self, group_id: &str) -> Result<Vec<GroupMemberDto>> {
         let url = format!("{}/groups/{}/members", self.server_root(), group_id);
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.with_auth(self.client.get(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -340,7 +354,7 @@ impl ApiClient {
         members: &[GroupMemberDto],
     ) -> Result<()> {
         let url = format!("{}/groups/{}/members", self.server_root(), group_id);
-        let resp = self.client.put(&url).json(members).send().await?;
+        let resp = self.with_auth(self.client.put(&url).json(members)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -514,7 +528,7 @@ impl ApiClient {
 
     pub async fn crud_list(&self, endpoint: &str) -> Result<Vec<serde_json::Value>> {
         let url = format!("{}/api/{}", self.base_url, endpoint);
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.with_auth(self.client.get(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to list: {}", resp.status()));
@@ -524,7 +538,7 @@ impl ApiClient {
 
     pub async fn crud_create(&self, endpoint: &str, data: &serde_json::Value) -> Result<()> {
         let url = format!("{}/api/{}", self.base_url, endpoint);
-        let resp = self.client.post(&url).json(data).send().await?;
+        let resp = self.with_auth(self.client.post(&url).json(data)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to create: {}", resp.status()));
@@ -539,7 +553,7 @@ impl ApiClient {
         data: &serde_json::Value,
     ) -> Result<()> {
         let url = format!("{}/api/{}/{}", self.base_url, endpoint, id);
-        let resp = self.client.put(&url).json(data).send().await?;
+        let resp = self.with_auth(self.client.put(&url).json(data)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to update: {}", resp.status()));
@@ -549,7 +563,7 @@ impl ApiClient {
 
     pub async fn crud_delete(&self, endpoint: &str, id: &str) -> Result<()> {
         let url = format!("{}/api/{}/{}", self.base_url, endpoint, id);
-        let resp = self.client.delete(&url).send().await?;
+        let resp = self.with_auth(self.client.delete(&url)).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("Failed to delete: {}", resp.status()));
