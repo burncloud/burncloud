@@ -2,7 +2,6 @@ use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    middleware,
     response::{IntoResponse, Json, Response},
     routing::get,
     Router,
@@ -46,8 +45,7 @@ pub fn routes() -> Router<AppState> {
     // Authenticated routes
     let authenticated = Router::new()
         .route("/console/api/logs", get(list_logs))
-        .route("/console/api/usage/{user_id}", get(get_user_usage))
-        .layer(middleware::from_fn(crate::auth_middleware));
+        .route("/console/api/usage/{user_id}", get(get_user_usage));
 
     // Internal routes (with their own authentication)
     let internal = Router::new().route(

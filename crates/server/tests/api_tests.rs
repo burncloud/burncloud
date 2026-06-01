@@ -115,3 +115,32 @@ async fn test_monitor_api_requires_auth() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_cache_api_requires_auth() -> anyhow::Result<()> {
+    let db_arc = test_utils::make_isolated_db().await;
+    let app = create_app(db_arc, false).await?;
+
+    let port = 4004_u16;
+    tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .expect("Failed to bind test port");
+        axum::serve(listener, app).await.expect("Server error");
+    });
+    sleep(Duration::from_secs(2)).await;
+
+    let client = Client::new();
+
+    // Cache stats endpoint should require authentication
+    let stats_url = format!("http://localhost:{}/console/api/cache/stats", port);
+    let resp = client.get(&stats_url).send().await?;
+    assert_eq!(resp.status(), 401, "Cache stats API should require authentication");
+
+    // Cache clear endpoint should require authentication
+    let clear_url = format!("http://localhost:{}/console/api/cache/clear", port);
+    let resp = client.post(&clear_url).send().await?;
+    assert_eq!(resp.status(), 401, "Cache clear API should require authentication");
+
+    Ok(())
+}

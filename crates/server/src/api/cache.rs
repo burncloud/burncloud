@@ -1,4 +1,6 @@
 //! API endpoints for cache management.
+//!
+//! All endpoints are protected by authentication middleware at the API layer.
 
 use crate::api::response::{err, ok};
 use crate::AppState;

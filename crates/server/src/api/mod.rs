@@ -3,6 +3,7 @@ pub mod security;
 
 use axum::{
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::get,
     Router,
@@ -26,8 +27,16 @@ async fn api_not_found() -> impl IntoResponse {
 }
 
 pub fn routes(state: AppState) -> Router {
-    Router::new()
-        .merge(auth::routes())
+    // Public routes - no authentication required
+    // These are auth endpoints that must be accessible without a token
+    let public_routes = Router::new()
+        .merge(auth::public_routes())
+        .with_state(state.clone());
+
+    // Protected routes - authentication required
+    // All /console/api/* endpoints (except public auth routes) require a valid JWT
+    let protected_routes = Router::new()
+        .merge(auth::protected_routes())
         .merge(billing::routes())
         .merge(channel::routes())
         .merge(token::routes())
@@ -40,5 +49,9 @@ pub fn routes(state: AppState) -> Router {
         // Catch-all for any unmatched /console/api/* paths
         // This prevents LiveView from returning HTML for non-existent API endpoints
         .route("/console/api/{*path}", get(api_not_found))
-        .with_state(state)
+        .layer(middleware::from_fn(crate::auth_middleware))
+        .with_state(state);
+
+    // Merge public and protected routes
+    public_routes.merge(protected_routes)
 }

@@ -9,7 +9,6 @@ use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
     extract::{Extension, Query, State},
-    middleware,
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -26,7 +25,6 @@ struct BillingSummaryParams {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/billing/summary", get(billing_summary_handler))
-        .layer(middleware::from_fn(crate::auth_middleware))
 }
 
 async fn billing_summary_handler(
