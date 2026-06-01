@@ -33,7 +33,7 @@ CREATE TABLE channel_abilities_new (
     weight INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER,
     updated_at INTEGER,
-    FOREIGN KEY (channel_id) REFERENCES channels(id)
+    FOREIGN KEY (channel_id) REFERENCES channel_providers(id)
 );
 
 INSERT INTO channel_abilities_new SELECT * FROM channel_abilities;
