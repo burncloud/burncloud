@@ -72,18 +72,18 @@ pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
 /// Public routes - no authentication required
 /// - /api/auth/register - Registration
 /// - /api/auth/login - Login
-/// - /console/api/auth/forgot-password - Forgot password
-/// - /console/api/auth/reset-password - Reset password
-/// - /console/api/auth/google - Google OAuth
-/// - /console/api/auth/github - GitHub OAuth
+/// - /api/auth/forgot-password - Forgot password
+/// - /api/auth/reset-password - Reset password
+/// - /api/auth/google - Google OAuth
+/// - /api/auth/github - GitHub OAuth
 pub fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/api/auth/register", post(create_user))
         .route("/api/auth/login", post(login))
-        .route("/console/api/auth/forgot-password", post(forgot_password))
-        .route("/console/api/auth/reset-password", post(reset_password))
-        .route("/console/api/auth/google", get(oauth_google))
-        .route("/console/api/auth/github", get(oauth_github))
+        .route("/api/auth/forgot-password", post(forgot_password))
+        .route("/api/auth/reset-password", post(reset_password))
+        .route("/api/auth/google", get(oauth_google))
+        .route("/api/auth/github", get(oauth_github))
 }
 
 /// Protected routes - authentication required
