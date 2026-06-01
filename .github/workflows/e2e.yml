@@ -37,7 +37,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       
       - name: Build backend
-        run: cargo build --release -p burncloud-server
+        run: cargo build --release --bin burncloud
       
       - name: Build frontend (web)
         run: |
