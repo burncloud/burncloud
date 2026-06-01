@@ -41,7 +41,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: process.env.E2E_SERVER_COMMAND || '../../target/release/burncloud server',
+    command: process.env.E2E_SERVER_COMMAND || '../../../../target/release/burncloud server',
     url: 'http://localhost:3334/health',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
