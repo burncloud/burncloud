@@ -1508,7 +1508,12 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 .landing-btn-ghost { background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,0.2); }
 .landing-btn-ghost:hover { border-color: rgba(255,255,255,0.45); }
 .landing-btn-dark { background: #000; color: #fff; }
-.landing-btn-dark:hover { background: #1a1a1a; }
+.landing-btn:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
+.landing-btn-light:active { transform: translateY(0); background: rgba(255,255,255,0.85); }
+.landing-btn-ghost:active { border-color: rgba(255,255,255,0.6); }
+.landing-btn-dark:active { background: #333; }
+.landing-btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
 
 /* Hero */
 .landing-hero { position: relative; background: #0A0A0A; color: #FFFFFF; overflow: hidden; padding: 140px 0 100px; }
