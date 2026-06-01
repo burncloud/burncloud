@@ -1,6 +1,13 @@
-# BurnCloud E2E Tests
+# BurnCloud E2E Tests (Playwright)
 
 This directory contains end-to-end (E2E) tests for the BurnCloud web frontend using Playwright.
+
+## Directory Structure
+
+All frontend E2E tests are now unified under `crates/tests/tests/`:
+
+- **Playwright tests**: `crates/tests/tests/e2e-playwright/` (this directory)
+- **Rust E2E tests**: `crates/tests/tests/e2e/` (Dioxus LiveView frontend tests using agent-browser)
 
 ## Prerequisites
 
@@ -11,7 +18,7 @@ This directory contains end-to-end (E2E) tests for the BurnCloud web frontend us
 ## Quick Start
 
 ```bash
-cd tests/e2e
+cd crates/tests/tests/e2e-playwright
 npm install
 npx playwright install
 npm test
@@ -19,9 +26,9 @@ npm test
 
 ## Test Structure
 
-- specs/ - Test files for different features
-- fixtures/ - Test fixtures and helpers
-- utils/ - Utility functions
+- `specs/` - Test files for different features
+- `fixtures/` - Test fixtures and helpers
+- `utils/` - Utility functions
 
 ## Running Tests
 
@@ -35,3 +42,7 @@ npm run test:headed         # Headed mode
 ## CI/CD
 
 Tests run automatically in GitHub Actions on push to main and PRs.
+
+## Related
+
+- Rust E2E tests: `../e2e/` (agent-browser based tests for Dioxus LiveView)
