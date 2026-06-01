@@ -1503,8 +1503,8 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 
 /* Buttons */
 .landing-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; border-radius: 9999px; font-size: 14px; font-weight: 600; transition: all 150ms; cursor: pointer; border: 1px solid transparent; }
-.landing-btn-light { background: #FFFFFF; color: #000; }
-.landing-btn-light:hover { background: rgba(255,255,255,0.92); transform: translateY(-1px); }
+.landing-btn-light { background: #FFFFFF; color: #000 !important; }
+.landing-btn-light:hover { background: rgba(255,255,255,0.92); transform: translateY(-1px); color: #000 !important; }
 .landing-btn-ghost { background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,0.2); }
 .landing-btn-ghost:hover { border-color: rgba(255,255,255,0.45); }
 .landing-btn-dark { background: #000; color: #fff; }
