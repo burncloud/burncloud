@@ -11,6 +11,7 @@
     clippy::redundant_pattern_matching
 )]
 pub mod agent_browser;
+pub mod auth_flow;
 pub mod console_pages;
 pub mod design_tokens;
 pub mod guest_pages;
