@@ -42,8 +42,8 @@ pub fn HomePage() -> Element {
                             a { href: "#docs", {t(*lang.read(), "home.nav.docs")} }
                         }
                         div { class: "landing-nav-cta",
-                            a { class: "landing-btn landing-btn-ghost", href: "#", "GitHub \u{2192}" }
-                            Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", {t(*lang.read(), "home.cta.get_started")} }
+                            a { class: "landing-btn landing-btn-ghost", href: "#", role: "button", aria_label: "View on GitHub", "GitHub \u{2192}" }
+                            Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", aria_label: "Get Started", {t(*lang.read(), "home.cta.get_started")} }
                         }
                     }
                 }
@@ -65,8 +65,8 @@ pub fn HomePage() -> Element {
                             {t(*lang.read(), "home.hero.sub_suffix")}
                         }
                         div { class: "landing-hero-ctas",
-                            a { class: "landing-btn landing-btn-light", href: "#", "$ cargo install burncloud \u{2192}" }
-                            a { class: "landing-btn landing-btn-ghost", href: "#", {t(*lang.read(), "home.cta.read_docs")} }
+                            a { class: "landing-btn landing-btn-light", href: "#", role: "button", aria_label: "Install BurnCloud", "$ cargo install burncloud \u{2192}" }
+                            a { class: "landing-btn landing-btn-ghost", href: "#", role: "button", aria_label: "Read documentation", {t(*lang.read(), "home.cta.read_docs")} }
                         }
                         div { class: "landing-hero-meta",
                             div { class: "item",
@@ -479,8 +479,8 @@ pub fn HomePage() -> Element {
                     h2 { class: "bc-cta-title", {t(*lang.read(), "home.cta.stop_runtime_tax")} br {} {t(*lang.read(), "home.cta.runtime_tax")} }
                     p { class: "bc-cta-desc", {t(*lang.read(), "home.cta.final_sub")} }
                     div { class: "bc-cta-actions",
-                        Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", {t(*lang.read(), "home.cta.get_started")} " \u{2192}" }
-                        a { class: "landing-btn landing-btn-ghost", href: "#", {t(*lang.read(), "home.cta.star_github")} }
+                        Link { to: Route::RegisterPage {}, class: "landing-btn landing-btn-light", aria_label: "Get Started", {t(*lang.read(), "home.cta.get_started")} " \u{2192}" }
+                        a { class: "landing-btn landing-btn-ghost", href: "#", role: "button", aria_label: "Star on GitHub", {t(*lang.read(), "home.cta.star_github")} }
                     }
                 }
             }
