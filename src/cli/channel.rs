@@ -16,7 +16,7 @@ use std::io::{self, Write};
 
 /// Parse channel type from string
 ///
-/// Supports: openai, azure, anthropic, gemini, aws, vertexai, deepseek
+/// Supports: openai, azure, anthropic, gemini, aws, vertexai, deepseek, xunfei
 pub fn parse_channel_type(s: &str) -> Result<ChannelType> {
     match s.to_lowercase().as_str() {
         "openai" => Ok(ChannelType::OpenAI),
@@ -29,8 +29,9 @@ pub fn parse_channel_type(s: &str) -> Result<ChannelType> {
         "newapi" | "new-api" => Ok(ChannelType::NewApi),
         "volcengine" | "volc" => Ok(ChannelType::VolcEngine),
         "doubaovideo" | "doubao-video" | "seedance" => Ok(ChannelType::DoubaoVideo),
+        "xunfei" | "xfyun" => Ok(ChannelType::Xunfei),
         _ => Err(anyhow!(
-            "Unsupported channel type: '{}'. Supported types: openai, azure, anthropic, gemini, aws, vertexai, deepseek, newapi, volcengine, seedance",
+            "Unsupported channel type: '{}'. Supported types: openai, azure, anthropic, gemini, aws, vertexai, deepseek, newapi, volcengine, seedance, xunfei",
             s
         )),
     }
@@ -48,6 +49,7 @@ pub fn get_default_models(channel_type: ChannelType) -> Vec<&'static str> {
         ChannelType::DeepSeek => vec!["deepseek-chat", "deepseek-coder"],
         ChannelType::NewApi => vec![],
         ChannelType::VolcEngine => vec![],
+        ChannelType::Xunfei => vec!["spark-lite", "spark-v2.0", "spark-v3.0", "spark-v3.5", "spark-v4.0"],
         ChannelType::DoubaoVideo => vec![
             "doubao-seedance-2-0-260128",
             "doubao-seedance-2-0-fast-260128",
@@ -86,6 +88,7 @@ pub fn get_channel_type_name(channel_type: ChannelType) -> &'static str {
         ChannelType::DeepSeek => "DeepSeek",
         ChannelType::NewApi => "NewApi",
         ChannelType::VolcEngine => "VolcEngine",
+        ChannelType::Xunfei => "Xunfei",
         ChannelType::DoubaoVideo => "DoubaoVideo",
         _ => "Unknown",
     }

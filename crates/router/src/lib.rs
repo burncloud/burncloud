@@ -2292,16 +2292,22 @@ async fn proxy_logic(
                             error_message,
                             &session_id,
                         );
-                        // 429: try next ranked candidate
-                        if status == StatusCode::TOO_MANY_REQUESTS {
+                        // 429 (rate limit), 401 (auth failed), 402 (payment required):
+                        // try next ranked candidate — other channels may have valid credentials.
+                        if status == StatusCode::TOO_MANY_REQUESTS
+                            || status == StatusCode::UNAUTHORIZED
+                            || status == StatusCode::PAYMENT_REQUIRED
+                        {
                             tracing::warn!(
-                                "Passthrough: {} rate limited, trying next candidate",
-                                upstream.name
+                                "Passthrough: {} returned {}, trying next candidate",
+                                upstream.name,
+                                status.as_u16()
                             );
+                            last_error = error_message.to_string();
                             continue;
                         }
 
-                        // 4xx response: actual usage = 0. budget_guard drops
+                        // Other 4xx response: actual usage = 0. budget_guard drops
                         // on return → full est_tpm refund (no commit).
                         let et = match failure_type {
                             FailureType::AuthFailed => "auth_failed",
