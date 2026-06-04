@@ -18,6 +18,7 @@ pub mod console_pages;
 pub mod design_tokens;
 pub mod guest_pages;
 pub mod login_flow;
+pub mod monitor_flow;
 pub mod navigation;
 pub mod settings_interactions;
 
