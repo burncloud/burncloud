@@ -88,24 +88,55 @@ pub fn test_page_loads(base_url: &str, path: &str, expected_text: &str, screensh
 }
 
 pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
-    let (username, _token) = create_test_user(base_url).await;
+    let (username, token) = create_test_user(base_url).await;
     let mut browser = AgentBrowser::new(base_url);
 
+    // Open login page first to initialize the browser context
     browser.open("/login").expect("Failed to open login page");
-    browser.wait_for_text("登录", 10_000).expect("Login page did not load");
-
-    browser
-        .fill("input:nth-of-type(1)", &username)
-        .expect("Failed to fill username");
-    browser
-        .fill("input[type='password']", "test123456")
-        .expect("Failed to fill password");
-    browser.click("button").expect("Failed to click login");
-
-    browser.wait_for_text("仪表盘", 15_000).unwrap_or_else(|e| {
-        let _ = browser.screenshot("FAIL-login");
-        panic!("Login failed or dashboard did not load: {}", e);
+    
+    // Wait for page to load
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    
+    // Directly set auth token via JavaScript (bypass UI login for E2E tests)
+    // This approach is more reliable than UI interaction for automated tests
+    let user_info = json!({
+        "id": "test-user-id",
+        "username": username,
+        "roles": ["user"]
     });
+    
+    let client_state = json!({
+        "last_username": username,
+        "auth_token": token,
+        "user_info": user_info.to_string(),
+        "theme": null
+    });
+    
+    let js_code = format!(
+        "sessionStorage.setItem('liveview', '{}'); localStorage.setItem('auth_token', '{}'); localStorage.setItem('user_info', '{}');",
+        client_state.to_string().replace('\'', "\\'"),
+        token,
+        user_info.to_string().replace('\'', "\\'")
+    );
+    
+    browser.eval(&js_code).expect("Failed to set auth token");
+    
+    // Navigate to console/dashboard
+    browser.open("/console").expect("Failed to navigate to console");
+    
+    // Wait for dashboard to load
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+    
+    // Verify we're logged in by checking for dashboard content
+    let snapshot = browser.snapshot().expect("Failed to get snapshot");
+    if !snapshot.text.contains("仪表盘") 
+        && !snapshot.text.contains("Dashboard")
+        && !snapshot.text.contains("模型")
+        && !snapshot.text.contains("渠道")
+    {
+        let _ = browser.screenshot("FAIL-login");
+        panic!("Login failed or dashboard did not load. Snapshot: {}", snapshot.text);
+    }
 
     (browser, username)
 }

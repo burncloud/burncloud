@@ -35,6 +35,13 @@ pub async fn spawn_app() -> String {
     // Load .env
     dotenv().ok();
 
+    // 0. Check E2E_BASE_URL environment variable first
+    if let Ok(base_url) = env::var("E2E_BASE_URL") {
+        println!("TEST: Using E2E_BASE_URL from env: {}", base_url);
+        wait_for_server(&base_url).await;
+        return base_url;
+    }
+
     let handle = SERVER_HANDLE.get_or_init(|| {
         // 1. Check default port 3000
         if is_port_open(3000) {
