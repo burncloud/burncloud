@@ -11,6 +11,7 @@
     clippy::redundant_pattern_matching
 )]
 pub mod agent_browser;
+pub mod api_key_flow;
 pub mod auth_flow;
 pub mod channel_flow;
 pub mod console_pages;
@@ -91,8 +92,12 @@ pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
     browser.open("/login").expect("Failed to open login page");
     browser.wait_for_text("登录", 10_000).expect("Login page did not load");
 
-    browser.fill("input:nth-of-type(1)", &username).expect("Failed to fill username");
-    browser.fill("input[type='password']", "test123456").expect("Failed to fill password");
+    browser
+        .fill("input:nth-of-type(1)", &username)
+        .expect("Failed to fill username");
+    browser
+        .fill("input[type='password']", "test123456")
+        .expect("Failed to fill password");
     browser.click("button").expect("Failed to click login");
 
     browser.wait_for_text("仪表盘", 15_000).unwrap_or_else(|e| {
