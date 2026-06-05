@@ -255,7 +255,7 @@ async fn test_login_navigation_from_home() {
     let mut browser = AgentBrowser::new(&base_url);
     browser.open("/").expect("Failed to open home page");
     browser
-        .wait_for_text("One Interface", 10_000)
+        .wait_for_text("下一代 AI 网关", 10_000)
         .expect("Home page did not load");
 
     // Click Sign In link

@@ -17,8 +17,8 @@ use super::*;
 async fn test_home_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    // Home page shows heading "One Interface. Every Intelligence."
-    test_page_loads(&base_url, "/", "One Interface", "home");
+    // Home page shows heading "下一代 AI 网关"
+    test_page_loads(&base_url, "/", "下一代 AI 网关", "home");
 }
 
 #[tokio::test]
@@ -35,8 +35,8 @@ async fn test_login_page_loads() {
 async fn test_register_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    // Register page shows "开始体验" button
-    test_page_loads(&base_url, "/register", "开始体验", "register");
+    // Register page shows "创建账户" button
+    test_page_loads(&base_url, "/register", "创建账户", "register");
 }
 
 #[tokio::test]
@@ -48,18 +48,18 @@ async fn test_login_navigation_from_home() {
     let mut browser = AgentBrowser::new(&base_url);
     browser.open("/").expect("Failed to open home page");
     browser
-        .wait_for_text("Sign In", 10_000)
+        .wait_for_text("Get Started", 10_000)
         .expect("Home page did not load");
 
-    // Click Sign In link
+    // Click Get Started link (goes to register page)
     browser
-        .click_by_name("link:Sign In", 5_000)
-        .expect("Failed to click Sign In");
+        .click_by_name("link:Get Started", 5_000)
+        .expect("Failed to click Get Started");
     browser
-        .wait_for_text("请输入密码", 10_000)
-        .expect("Did not navigate to login page");
+        .wait_for_text("创建账户", 10_000)
+        .expect("Did not navigate to register page");
 
-    let _ = browser.screenshot("home-to-login-nav");
+    let _ = browser.screenshot("home-to-register-nav");
 }
 
 #[tokio::test]
@@ -79,7 +79,7 @@ async fn test_register_navigation_from_login() {
         .click_by_name("link:注册", 5_000)
         .expect("Failed to click register link");
     browser
-        .wait_for_text("开始体验", 10_000)
+        .wait_for_text("创建账户", 10_000)
         .expect("Did not navigate to register page");
 
     let _ = browser.screenshot("login-to-register-nav");

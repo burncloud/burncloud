@@ -46,7 +46,7 @@ async fn test_primary_color_token() {
     let mut browser = AgentBrowser::new(&base_url);
     browser.open("/").expect("Failed to open home page");
     browser
-        .wait_for_text("One Interface", 10_000)
+        .wait_for_text("下一代 AI 网关", 10_000)
         .expect("Home page did not load");
 
     // Check CSS variable --bc-primary via JS eval (with retry for late CSS injection)
@@ -77,7 +77,7 @@ async fn test_no_fluent_blue() {
     let mut browser = AgentBrowser::new(&base_url);
     browser.open("/").expect("Failed to open home page");
     browser
-        .wait_for_text("One Interface", 10_000)
+        .wait_for_text("下一代 AI 网关", 10_000)
         .expect("Home page did not load");
 
     let result = eval_with_retry(
@@ -143,7 +143,7 @@ async fn test_button_styles() {
     let mut browser = AgentBrowser::new(&base_url);
     browser.open("/").expect("Failed to open home page");
     browser
-        .wait_for_text("One Interface", 10_000)
+        .wait_for_text("下一代 AI 网关", 10_000)
         .expect("Home page did not load");
 
     // Check that button elements exist on the page
