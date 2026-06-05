@@ -397,7 +397,7 @@ impl ApiClient {
         password: &str,
         email: Option<&str>,
     ) -> Result<LoginResponse, String> {
-        let url = format!("{}/api/user/register", self.base_url);
+        let url = format!("{}/api/auth/register", self.base_url);
         let body = serde_json::json!({
             "username": username,
             "password": password,
