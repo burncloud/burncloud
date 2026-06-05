@@ -84,16 +84,13 @@ async fn test_register_success_flow() {
         .fill("input:nth-of-type(5)", "test123456")
         .expect("Failed to fill confirm password");
 
-    // Check the terms checkbox
-    browser
-        .click("input[type='checkbox']")
-        .or_else(|_| browser.click("checkbox"))
+    // Check the terms checkbox using Dioxus-compatible click
+    dioxus_click_checkbox(&mut browser, "input[type='checkbox']")
         .expect("Failed to check terms");
 
-    // Submit registration
-    browser
-        .click("button[type='submit']")
-        .or_else(|_| browser.click("button"))
+    // Submit registration using Dioxus-compatible click
+    dioxus_click(&mut browser, "button.landing-btn-dark")
+        .or_else(|_| dioxus_click(&mut browser, "button"))
         .expect("Failed to click register");
 
     // Wait for dashboard (auto-login after registration)
@@ -140,16 +137,13 @@ async fn test_register_duplicate_username() {
         .fill("input:nth-of-type(5)", "test123456")
         .expect("Failed to fill confirm password");
 
-    // Check the terms checkbox
-    browser
-        .click("input[type='checkbox']")
-        .or_else(|_| browser.click("checkbox"))
+    // Check the terms checkbox using Dioxus-compatible click
+    dioxus_click_checkbox(&mut browser, "input[type='checkbox']")
         .expect("Failed to check terms");
 
-    // Submit registration
-    browser
-        .click("button[type='submit']")
-        .or_else(|_| browser.click("button"))
+    // Submit registration using Dioxus-compatible click
+    dioxus_click(&mut browser, "button.landing-btn-dark")
+        .or_else(|_| dioxus_click(&mut browser, "button"))
         .expect("Failed to click register");
 
     // Wait for error message or stay on register page
@@ -219,10 +213,9 @@ async fn test_login_invalid_credentials_error() {
         .fill("input[type='password']", "wrong_password_xyz")
         .expect("Failed to fill password");
 
-    // Submit
-    browser
-        .click("button[type='submit']")
-        .or_else(|_| browser.click("button"))
+    // Submit using Dioxus-compatible click
+    dioxus_click(&mut browser, "button.landing-btn-dark")
+        .or_else(|_| dioxus_click(&mut browser, "button"))
         .expect("Failed to click login");
 
     // Wait for error indication

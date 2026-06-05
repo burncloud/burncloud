@@ -37,6 +37,62 @@ pub fn setup_browser() -> Option<()> {
     Some(())
 }
 
+/// Click a button in Dioxus LiveView using dispatchEvent.
+/// Dioxus uses custom event handling via data-dioxus-id attributes.
+/// Standard .click() methods don't trigger Dioxus event handlers correctly.
+pub fn dioxus_click(browser: &mut AgentBrowser, selector: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let js = format!(
+        r#"
+        (function() {{
+            const btn = document.querySelector("{selector}");
+            if (btn) {{
+                btn.dispatchEvent(new MouseEvent('click', {{ 
+                    bubbles: true, 
+                    cancelable: true, 
+                    view: window 
+                }}));
+                return 'dispatched';
+            }}
+            return 'not_found';
+        }})()
+        "#,
+        selector = selector
+    );
+    let result = browser.eval(&js)?;
+    if result.as_str() == Some("dispatched") {
+        Ok(())
+    } else {
+        Err(format!("Element not found with selector: {}", selector).into())
+    }
+}
+
+/// Click a checkbox in Dioxus LiveView using dispatchEvent.
+pub fn dioxus_click_checkbox(browser: &mut AgentBrowser, selector: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let js = format!(
+        r#"
+        (function() {{
+            const checkbox = document.querySelector("{selector}");
+            if (checkbox) {{
+                checkbox.dispatchEvent(new MouseEvent('click', {{ 
+                    bubbles: true, 
+                    cancelable: true, 
+                    view: window 
+                }}));
+                return 'dispatched';
+            }}
+            return 'not_found';
+        }})()
+        "#,
+        selector = selector
+    );
+    let result = browser.eval(&js)?;
+    if result.as_str() == Some("dispatched") {
+        Ok(())
+    } else {
+        Err(format!("Checkbox not found with selector: {}", selector).into())
+    }
+}
+
 pub async fn create_test_user(base_url: &str) -> (String, String) {
     let username = format!(
         "e2e_test_{}",
