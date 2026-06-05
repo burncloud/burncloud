@@ -57,7 +57,7 @@ async fn test_register_success_flow() {
     // Navigate to register page
     browser.open("/register").expect("Failed to open register page");
     browser
-        .wait_for_text("注册", 10_000)
+        .wait_for_text("创建账户", 10_000)
         .expect("Register page did not load");
 
     // Generate unique username
@@ -106,7 +106,7 @@ async fn test_register_duplicate_username() {
     // Navigate to register page
     browser.open("/register").expect("Failed to open register page");
     browser
-        .wait_for_text("注册", 10_000)
+        .wait_for_text("创建账户", 10_000)
         .expect("Register page did not load");
 
     // Try to register with the same username
@@ -338,7 +338,7 @@ async fn test_register_form_validation_password_mismatch() {
     let mut browser = AgentBrowser::new(&base_url);
     browser.open("/register").expect("Failed to open register page");
     browser
-        .wait_for_text("注册", 10_000)
+        .wait_for_text("创建账户", 10_000)
         .expect("Register page did not load");
 
     let username = format!(
