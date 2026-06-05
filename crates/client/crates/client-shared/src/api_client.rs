@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 // Global singleton for API Client, configured for localhost by default
 pub static API_CLIENT: Lazy<ApiClient> = Lazy::new(|| {
     let port = burncloud_common::constants::DEFAULT_PORT;
-    ApiClient::new(&format!("http://localhost:{}/console", port))
+    ApiClient::new(&format!("http://localhost:{}", port))
 });
 
 #[derive(Clone)]
