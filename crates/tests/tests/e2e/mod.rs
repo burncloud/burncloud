@@ -57,6 +57,9 @@ pub async fn create_test_user(base_url: &str) -> (String, String) {
         .expect("Failed to create test user");
 
     let body: serde_json::Value = resp.json().await.expect("Failed to parse register response");
+    
+    // Debug: print registration response
+    eprintln!("Register response for {}: {}", username, body);
 
     if body["success"].as_bool() != Some(true) {
         let login_resp = client
@@ -107,14 +110,39 @@ pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
         .fill("input:nth-of-type(2)", password)
         .expect("Failed to fill password");
     
-    // Submit login
+    // Submit login - use button text "登录" for more specific targeting
     browser
-        .click("button[type='submit']")
+        .click_by_name("button:登录", 5_000)
+        .or_else(|_| browser.click("button[type='submit']"))
         .or_else(|_| browser.click("button"))
         .expect("Failed to click login");
     
-    // Wait for redirect to dashboard
-    std::thread::sleep(std::time::Duration::from_millis(3000));
+    // Wait for redirect to dashboard (LiveView needs more time)
+    // Check periodically for dashboard content
+    let mut logged_in = false;
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let snapshot = browser.snapshot().expect("Failed to get snapshot");
+        if snapshot.text.contains("仪表盘") 
+            || snapshot.text.contains("Dashboard")
+            || snapshot.text.contains("模型")
+            || snapshot.text.contains("渠道")
+        {
+            logged_in = true;
+            break;
+        }
+        // Check for error messages
+        if snapshot.text.contains("登录失败") || snapshot.text.contains("用户不存在") {
+            let _ = browser.screenshot("FAIL-login-error");
+            panic!("Login failed with error on page");
+        }
+    }
+    
+    if !logged_in {
+        let snapshot = browser.snapshot().expect("Failed to get snapshot");
+        let _ = browser.screenshot("FAIL-login-debug");
+        panic!("Login did not complete within 10 seconds. Page shows: {}", snapshot.text);
+    }
     
     // Verify we're logged in by checking for dashboard content
     let snapshot = browser.snapshot().expect("Failed to get snapshot");
