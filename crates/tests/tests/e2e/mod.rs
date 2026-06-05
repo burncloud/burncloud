@@ -101,21 +101,65 @@ pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
     // Wait for page to load
     std::thread::sleep(std::time::Duration::from_millis(500));
     
-    // Fill login form - login page accepts username or email in the first field
-    // We use username since that's what we registered with
+    // Fill login form using snapshot refs (more reliable for LiveView DOM structure)
+    // First get snapshot to find correct refs
+    let snap = browser.snapshot().expect("Failed to get initial snapshot");
+    let refs = snap.refs.as_object().expect("Refs should be object");
+    
+    // Find username input (textbox with placeholder "you@burncloud.com")
+    let username_ref = refs.iter()
+        .find(|(_, info)| {
+            info.get("role").and_then(|r| r.as_str()) == Some("textbox")
+                && info.get("name").and_then(|n| n.as_str()).unwrap_or("").contains("you@burncloud.com")
+        })
+        .map(|(ref_id, _)| ref_id.as_str())
+        .expect("Username input not found");
+    
+    // Find password input (textbox with no visible placeholder, second textbox)
+    let password_ref = refs.iter()
+        .find(|(_, info)| {
+            info.get("role").and_then(|r| r.as_str()) == Some("textbox")
+                && !info.get("name").and_then(|n| n.as_str()).unwrap_or("").contains("you@burncloud.com")
+        })
+        .map(|(ref_id, _)| ref_id.as_str())
+        .expect("Password input not found");
+    
     browser
-        .fill("input:nth-of-type(1)", &username)
+        .fill(username_ref, &username)
         .expect("Failed to fill username");
     browser
-        .fill("input:nth-of-type(2)", password)
+        .fill(password_ref, password)
         .expect("Failed to fill password");
     
-    // Submit login - use button text "登录" for more specific targeting
-    browser
-        .click_by_name("button:登录", 5_000)
-        .or_else(|_| browser.click("button[type='submit']"))
-        .or_else(|_| browser.click("button"))
-        .expect("Failed to click login");
+    // Submit login - Dioxus LiveView requires dispatchEvent instead of .click()
+    // This is because Dioxus uses custom event handling via data-dioxus-id attributes
+    let click_result = browser.eval(
+        r#"
+        (function() {
+            const btn = document.querySelector('button.landing-btn-dark');
+            if (btn) {
+                btn.dispatchEvent(new MouseEvent('click', { 
+                    bubbles: true, 
+                    cancelable: true, 
+                    view: window 
+                }));
+                return 'dispatched';
+            }
+            return 'not_found';
+        })()
+        "#
+    );
+    
+    // Verify the dispatchEvent was executed
+    if let Ok(ref result) = click_result {
+        if result.as_str() == Some("dispatched") {
+            log::debug!("dispatchEvent click executed successfully");
+        } else {
+            // Fallback: try standard click methods (won't work for Dioxus but try anyway)
+            let _ = browser.click("button.landing-btn-dark");
+            let _ = browser.click("button");
+        }
+    }
     
     // Wait for redirect to dashboard (LiveView needs more time)
     // Check periodically for dashboard content
