@@ -368,7 +368,7 @@ impl ApiClient {
     // --- Auth Operations ---
 
     pub async fn login(&self, username: &str, password: &str) -> Result<LoginResponse, String> {
-        let url = format!("{}/api/user/login", self.base_url);
+        let url = format!("{}/api/auth/login", self.server_root());
         let body = serde_json::json!({
             "username": username,
             "password": password

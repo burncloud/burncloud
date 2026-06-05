@@ -88,44 +88,33 @@ pub fn test_page_loads(base_url: &str, path: &str, expected_text: &str, screensh
 }
 
 pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
-    let (username, token) = create_test_user(base_url).await;
+    let (username, _token) = create_test_user(base_url).await;
+    let password = "test123456"; // Fixed password used in create_test_user
     let mut browser = AgentBrowser::new(base_url);
 
-    // Open login page first to initialize the browser context
+    // Open login page and perform actual login via UI
     browser.open("/login").expect("Failed to open login page");
     
     // Wait for page to load
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     
-    // Directly set auth token via JavaScript (bypass UI login for E2E tests)
-    // This approach is more reliable than UI interaction for automated tests
-    let user_info = json!({
-        "id": "test-user-id",
-        "username": username,
-        "roles": ["user"]
-    });
+    // Fill login form - login page accepts username or email in the first field
+    // We use username since that's what we registered with
+    browser
+        .fill("input:nth-of-type(1)", &username)
+        .expect("Failed to fill username");
+    browser
+        .fill("input:nth-of-type(2)", password)
+        .expect("Failed to fill password");
     
-    let client_state = json!({
-        "last_username": username,
-        "auth_token": token,
-        "user_info": user_info.to_string(),
-        "theme": null
-    });
+    // Submit login
+    browser
+        .click("button[type='submit']")
+        .or_else(|_| browser.click("button"))
+        .expect("Failed to click login");
     
-    let js_code = format!(
-        "sessionStorage.setItem('liveview', '{}'); localStorage.setItem('auth_token', '{}'); localStorage.setItem('user_info', '{}');",
-        client_state.to_string().replace('\'', "\\'"),
-        token,
-        user_info.to_string().replace('\'', "\\'")
-    );
-    
-    browser.eval(&js_code).expect("Failed to set auth token");
-    
-    // Navigate to console/dashboard
-    browser.open("/console").expect("Failed to navigate to console");
-    
-    // Wait for dashboard to load
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    // Wait for redirect to dashboard
+    std::thread::sleep(std::time::Duration::from_millis(3000));
     
     // Verify we're logged in by checking for dashboard content
     let snapshot = browser.snapshot().expect("Failed to get snapshot");
