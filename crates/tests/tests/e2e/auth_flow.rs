@@ -67,15 +67,28 @@ async fn test_register_success_flow() {
     );
 
     // Fill registration form
+    // Form fields: username, company, email, password, confirm_password
     browser
         .fill("input:nth-of-type(1)", &username)
         .expect("Failed to fill username");
     browser
-        .fill("input[type='email']", &format!("{}@test.burncloud.dev", username))
+        .fill("input:nth-of-type(2)", "Test Company")
+        .expect("Failed to fill company");
+    browser
+        .fill("input:nth-of-type(3)", &format!("{}@test.burncloud.dev", username))
         .expect("Failed to fill email");
     browser
-        .fill("input[type='password']", "test123456")
+        .fill("input:nth-of-type(4)", "test123456")
         .expect("Failed to fill password");
+    browser
+        .fill("input:nth-of-type(5)", "test123456")
+        .expect("Failed to fill confirm password");
+
+    // Check the terms checkbox
+    browser
+        .click("input[type='checkbox']")
+        .or_else(|_| browser.click("checkbox"))
+        .expect("Failed to check terms");
 
     // Submit registration
     browser
@@ -110,15 +123,28 @@ async fn test_register_duplicate_username() {
         .expect("Register page did not load");
 
     // Try to register with the same username
+    // Form fields: username, company, email, password, confirm_password
     browser
         .fill("input:nth-of-type(1)", &existing_username)
         .expect("Failed to fill username");
     browser
-        .fill("input[type='email']", &format!("{}@test2.burncloud.dev", existing_username))
+        .fill("input:nth-of-type(2)", "Test Company")
+        .expect("Failed to fill company");
+    browser
+        .fill("input:nth-of-type(3)", &format!("{}@test2.burncloud.dev", existing_username))
         .expect("Failed to fill email");
     browser
-        .fill("input[type='password']", "test123456")
+        .fill("input:nth-of-type(4)", "test123456")
         .expect("Failed to fill password");
+    browser
+        .fill("input:nth-of-type(5)", "test123456")
+        .expect("Failed to fill confirm password");
+
+    // Check the terms checkbox
+    browser
+        .click("input[type='checkbox']")
+        .or_else(|_| browser.click("checkbox"))
+        .expect("Failed to check terms");
 
     // Submit registration
     browser
@@ -346,17 +372,30 @@ async fn test_register_form_validation_password_mismatch() {
         &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
     );
 
-    // Fill form (if there's a confirm password field, this would test mismatch)
+    // Fill form (password mismatch test)
+    // Form fields: username, company, email, password, confirm_password
     browser
         .fill("input:nth-of-type(1)", &username)
         .expect("Failed to fill username");
     browser
-        .fill("input[type='email']", &format!("{}@test.burncloud.dev", username))
-        .expect("Failed to fill email");
-    // Short password that might fail validation
+        .fill("input:nth-of-type(2)", "Test Company")
+        .expect("Failed to fill company");
     browser
-        .fill("input[type='password']", "123")
+        .fill("input:nth-of-type(3)", &format!("{}@test.burncloud.dev", username))
+        .expect("Failed to fill email");
+    // Password with mismatch (test validation)
+    browser
+        .fill("input:nth-of-type(4)", "test123456")
         .expect("Failed to fill password");
+    browser
+        .fill("input:nth-of-type(5)", "different123")
+        .expect("Failed to fill confirm password (mismatch)");
+
+    // Check the terms checkbox
+    browser
+        .click("input[type='checkbox']")
+        .or_else(|_| browser.click("checkbox"))
+        .expect("Failed to check terms");
 
     browser
         .click("button[type='submit']")
