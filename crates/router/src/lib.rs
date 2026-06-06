@@ -1108,9 +1108,14 @@ async fn proxy_handler(
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(e) => {
-            return build_response(
+            return build_response_with_header(
                 StatusCode::BAD_REQUEST,
-                Body::from(format!("Body Read Error: {e}")),
+                "content-type",
+                "application/json",
+                Body::from(format!(
+                    r#"{{"error":{{"message":"Body Read Error: {}","type":"invalid_request_error","code":"body_read_error"}}}}"#,
+                    e
+                )),
             )
         }
     };
@@ -2960,9 +2965,14 @@ async fn proxy_logic(
     }
 
     ProxyResult {
-        response: build_response(
+        response: build_response_with_header(
             StatusCode::BAD_GATEWAY,
-            Body::from(format!("All upstreams failed. Last error: {last_error}")),
+            "content-type",
+            "application/json",
+            Body::from(format!(
+                r#"{{"error":{{"message":"All upstreams failed. Last error: {}","type":"upstream_error","code":"all_upstreams_failed"}}}}"#,
+                last_error
+            )),
         ),
         upstream_id: None,
         final_status: StatusCode::BAD_GATEWAY,
