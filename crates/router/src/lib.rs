@@ -1991,22 +1991,9 @@ async fn proxy_logic(
                     .header("anthropic-version", "2023-06-01");
                 (req, is_stream, false)
             } else if channel_type == ChannelType::OpenAI {
-                // OpenAI passthrough: forward to base_url + /v1/chat/completions
+                // OpenAI passthrough: forward to base_url + /chat/completions
                 let base = upstream.base_url.trim_end_matches('/');
-                // Preserve the full path: /v1/chat/completions for chat, /v1/embeddings for embeddings
-                let url = if path.starts_with("/v1/chat/completions") || path.starts_with("/chat/completions") {
-                    // Chat completions endpoint
-                    format!("{base}/v1/chat/completions")
-                } else if path.starts_with("/v1/embeddings") || path.starts_with("/embeddings") {
-                    // Embeddings endpoint
-                    format!("{base}/v1/embeddings")
-                } else if path.starts_with("/v1/") {
-                    // Other /v1/* paths - preserve the path
-                    format!("{base}{path}")
-                } else {
-                    // Fallback: add /v1 prefix if missing
-                    format!("{base}/v1{path}")
-                };
+                let url = format!("{base}/chat/completions");
                 let is_stream = body_json
                     .get("stream")
                     .and_then(|v| v.as_bool())
