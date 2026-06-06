@@ -139,17 +139,45 @@ async fn e2e_smoke_v04() {
         }
     }
 
-    // Step 4: Add upstream channel (reuse admin user from step 2)
+    // Step 4: Add upstream channel (use existing admin user or newly created user)
     let admin_token = {
-        let (_, token, _) = login_user(&admin_user, "QaTest169!").await;
+        // Try existing admin users first
+        let existing_admins = vec![
+            ("testadmin2", "TestAdmin123!"),
+            ("testadmin", "TestAdmin123!"),
+            ("admin", "Admin123!"),
+        ];
+        
+        let mut token = String::new();
+        let mut found_admin = false;
+        
+        for (username, password) in existing_admins {
+            let (success, t, _) = login_user(username, password).await;
+            if success && !t.is_empty() {
+                token = t;
+                found_admin = true;
+                eprintln!("  INFO  Using existing admin user: {username}");
+                break;
+            }
+        }
+        
+        // If no existing admin, use the newly created user (might have admin role on fresh DB)
+        if !found_admin {
+            let (_, t, _) = login_user(&admin_user, "QaTest169!").await;
+            token = t;
+            eprintln!("  INFO  Using newly created user: {admin_user}");
+        }
+        
         token
     };
     {
         let url = format!("{}/console/api/channel", base_url());
+        let api_key = std::env::var("TEST_OPENAI_API_KEY")
+            .expect("TEST_OPENAI_API_KEY must be set for E2E test");
         let body = serde_json::json!({
             "name": "qa-burncloud-channel",
             "type": 1,
-            "key": "sk-e8ll28SgjcRul7m27rTFo9qpBAlDmei9K4eOPMSeLZpJ9pkk",
+            "key": api_key,
             "base_url": "https://ai.burncloud.com",
             "models": "gpt-4o-mini",
             "group": "default",
