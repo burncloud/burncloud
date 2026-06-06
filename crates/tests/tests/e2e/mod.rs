@@ -18,6 +18,7 @@ pub mod console_pages;
 pub mod design_tokens;
 pub mod guest_pages;
 pub mod login_flow;
+pub mod models_flow;
 pub mod monitor_flow;
 pub mod navigation;
 pub mod settings_interactions;
@@ -253,6 +254,92 @@ pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
     {
         let _ = browser.screenshot("FAIL-login");
         panic!("Login failed or dashboard did not load. Snapshot: {}", snapshot.text);
+    }
+
+    (browser, username)
+}
+
+/// Login as an admin user (testadmin2) for tests requiring admin privileges.
+/// This is needed because create_test_user() creates users with "user" role,
+/// which cannot access admin-only pages like /console/users, /console/dashboard, etc.
+pub async fn login_as_admin(base_url: &str) -> (AgentBrowser, String) {
+    let username = "testadmin2".to_string();
+    let password = "TestAdmin123!".to_string();
+    let mut browser = AgentBrowser::new(base_url);
+
+    // Open login page
+    browser.open("/login").expect("Failed to open login page");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    
+    // Get snapshot to find refs
+    let snap = browser.snapshot().expect("Failed to get initial snapshot");
+    let refs = snap.refs.as_object().expect("Refs should be object");
+    
+    // Find username input
+    let username_ref = refs.iter()
+        .find(|(_, info)| {
+            info.get("role").and_then(|r| r.as_str()) == Some("textbox")
+                && info.get("name").and_then(|n| n.as_str()).unwrap_or("").contains("you@burncloud.com")
+        })
+        .map(|(ref_id, _)| ref_id.as_str())
+        .expect("Username input not found");
+    
+    // Find password input
+    let password_ref = refs.iter()
+        .find(|(_, info)| {
+            info.get("role").and_then(|r| r.as_str()) == Some("textbox")
+                && !info.get("name").and_then(|n| n.as_str()).unwrap_or("").contains("you@burncloud.com")
+        })
+        .map(|(ref_id, _)| ref_id.as_str())
+        .expect("Password input not found");
+
+    browser.fill(username_ref, &username).expect("Failed to fill username");
+    browser.fill(password_ref, &password).expect("Failed to fill password");
+    
+    // Submit login
+    let click_result = browser.eval(
+        r#"
+        (function() {
+            const btn = document.querySelector('button.landing-btn-dark');
+            if (btn) {
+                btn.dispatchEvent(new MouseEvent('click', { 
+                    bubbles: true, 
+                    cancelable: true, 
+                    view: window 
+                }));
+                return 'dispatched';
+            }
+            return 'not_found';
+        })()
+        "#
+    );
+    
+    if let Ok(ref result) = click_result {
+        if result.as_str() != Some("dispatched") {
+            let _ = browser.click("button.landing-btn-dark");
+            let _ = browser.click("button");
+        }
+    }
+    
+    // Wait for redirect
+    let mut logged_in = false;
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let snapshot = browser.snapshot().expect("Failed to get snapshot");
+        if snapshot.text.contains("仪表盘") || snapshot.text.contains("Dashboard") || snapshot.text.contains("模型") {
+            logged_in = true;
+            break;
+        }
+        if snapshot.text.contains("登录失败") || snapshot.text.contains("用户不存在") {
+            let _ = browser.screenshot("FAIL-admin-login-error");
+            panic!("Admin login failed - testadmin2 user may not exist or password incorrect");
+        }
+    }
+    
+    if !logged_in {
+        let snapshot = browser.snapshot().expect("Failed to get snapshot");
+        let _ = browser.screenshot("FAIL-admin-login-debug");
+        panic!("Admin login did not complete within 10 seconds. Page shows: {}", snapshot.text);
     }
 
     (browser, username)

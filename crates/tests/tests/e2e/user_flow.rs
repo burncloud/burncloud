@@ -32,7 +32,7 @@ use super::*;
 async fn test_user_list_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, username) = login_browser(&base_url).await;
+    let (mut browser, username) = login_as_admin(&base_url).await;
 
     // Navigate to users page
     browser
@@ -65,7 +65,7 @@ async fn test_user_list_page_loads() {
 async fn test_user_list_table_structure() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -100,7 +100,7 @@ async fn test_user_list_table_structure() {
 async fn test_topup_button_visible() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -131,7 +131,7 @@ async fn test_topup_button_visible() {
 async fn test_topup_modal_opens() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -170,7 +170,7 @@ async fn test_topup_modal_opens() {
 async fn test_topup_modal_quick_buttons() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser.open("/console/users").expect("Failed to open users page");
     browser
@@ -207,7 +207,7 @@ async fn test_topup_modal_quick_buttons() {
 async fn test_user_status_display() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -241,7 +241,7 @@ async fn test_user_status_display() {
 async fn test_user_balance_format() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -272,7 +272,7 @@ async fn test_user_balance_format() {
 async fn test_invite_user_button() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -307,7 +307,7 @@ async fn test_invite_user_button() {
 async fn test_invite_user_modal() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser.open("/console/users").expect("Failed to open users page");
     browser
@@ -351,7 +351,7 @@ async fn test_invite_user_modal() {
 async fn test_user_page_kpi_stats() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -385,7 +385,7 @@ async fn test_user_page_kpi_stats() {
 async fn test_user_list_tabs() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
 
     browser
         .open("/console/users")
@@ -419,7 +419,7 @@ async fn test_user_list_tabs() {
 async fn test_topup_flow_e2e() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _username) = login_browser(&base_url).await;
+    let (mut browser, _username) = login_as_admin(&base_url).await;
 
     // Navigate to users page
     browser

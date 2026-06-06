@@ -17,7 +17,7 @@ use super::*;
 async fn test_dashboard_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
     // Already on dashboard after login, verify heading
     browser
         .wait_for_text("企业控制台", 10_000)
@@ -90,7 +90,7 @@ async fn test_monitor_page_loads() {
 async fn test_logs_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
     browser.open("/console/logs").expect("Failed to open logs");
     browser
         .wait_for_text("Logs", 10_000)
@@ -103,7 +103,7 @@ async fn test_logs_page_loads() {
 async fn test_users_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
     browser
         .open("/console/users")
         .expect("Failed to open users");
@@ -163,7 +163,7 @@ async fn test_connect_page_loads() {
 async fn test_playground_page_loads() {
     let _ = setup_browser().expect("agent-browser required");
     let base_url = common::spawn_app().await;
-    let (mut browser, _) = login_browser(&base_url).await;
+    let (mut browser, _) = login_as_admin(&base_url).await;
     browser
         .open("/console/playground")
         .expect("Failed to open playground");
