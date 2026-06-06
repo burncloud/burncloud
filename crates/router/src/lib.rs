@@ -569,9 +569,11 @@ pub async fn create_router_app(
 async fn price_sync_handler(State(state): State<AppState>) -> Response {
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if state.force_sync_tx.send(reply_tx).await.is_err() {
-        return build_response(
+        return build_response_with_header(
             StatusCode::SERVICE_UNAVAILABLE,
-            Body::from("Price sync task is not running"),
+            "content-type",
+            "application/json",
+            Body::from(r#"{"error":{"message":"Price sync task is not running","type":"server_error"}}"#),
         );
     }
     match tokio::time::timeout(
@@ -596,13 +598,17 @@ async fn price_sync_handler(State(state): State<AppState>) -> Response {
                 Body::from(body),
             )
         }
-        Ok(Err(_)) => build_response(
+        Ok(Err(_)) => build_response_with_header(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from("Price sync task dropped the reply channel"),
+            "content-type",
+            "application/json",
+            Body::from(r#"{"error":{"message":"Price sync task dropped the reply channel","type":"server_error"}}"#),
         ),
-        Err(_) => build_response(
+        Err(_) => build_response_with_header(
             StatusCode::GATEWAY_TIMEOUT,
-            Body::from("Price sync timed out after 60 seconds"),
+            "content-type",
+            "application/json",
+            Body::from(r#"{"error":{"message":"Price sync timed out after 60 seconds","type":"timeout_error"}}"#),
         ),
     }
 }
@@ -963,9 +969,11 @@ async fn proxy_handler(
     let user_token = match user_auth {
         Some(token) => token.to_string(),
         None => {
-            return build_response(
+            return build_response_with_header(
                 StatusCode::UNAUTHORIZED,
-                Body::from("Unauthorized: Missing Bearer Token"),
+                "content-type",
+                "application/json",
+                Body::from(r#"{"error":{"message":"Unauthorized: Missing Bearer Token","type":"authentication_error","code":"missing_token"}}"#),
             );
         }
     };
@@ -1088,9 +1096,11 @@ async fn proxy_handler(
 
     // Rate Limiting Check
     if !state.limiter.check(&user_id, 1.0) {
-        return build_response(
+        return build_response_with_header(
             StatusCode::TOO_MANY_REQUESTS,
-            Body::from("Too Many Requests"),
+            "content-type",
+            "application/json",
+            Body::from(r#"{"error":{"message":"Too Many Requests","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#),
         );
     }
 
@@ -1098,9 +1108,14 @@ async fn proxy_handler(
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(e) => {
-            return build_response(
+            return build_response_with_header(
                 StatusCode::BAD_REQUEST,
-                Body::from(format!("Body Read Error: {e}")),
+                "content-type",
+                "application/json",
+                Body::from(format!(
+                    r#"{{"error":{{"message":"Body Read Error: {}","type":"invalid_request_error","code":"body_read_error"}}}}"#,
+                    e
+                )),
             )
         }
     };
@@ -1786,10 +1801,20 @@ async fn proxy_logic(
     }
 
     if candidates.is_empty() {
+        // Return proper Anthropic-style error for Claude Code compatibility
+        let error_body = serde_json::json!({
+            "error": {
+                "type": "invalid_request_error",
+                "message": format!("No matching channel found for path: {}", path),
+                "code": "no_available_channel"
+            }
+        });
         return ProxyResult {
-            response: build_response(
+            response: build_response_with_header(
                 StatusCode::NOT_FOUND,
-                Body::from(format!("No matching channel found for path: {path}")),
+                "content-type",
+                "application/json",
+                Body::from(error_body.to_string()),
             ),
             upstream_id: None,
             final_status: StatusCode::NOT_FOUND,
@@ -1971,22 +1996,9 @@ async fn proxy_logic(
                     .header("anthropic-version", "2023-06-01");
                 (req, is_stream, false)
             } else if channel_type == ChannelType::OpenAI {
-                // OpenAI passthrough: forward to base_url + /v1/chat/completions
+                // OpenAI passthrough: forward to base_url + /chat/completions
                 let base = upstream.base_url.trim_end_matches('/');
-                // Preserve the full path: /v1/chat/completions for chat, /v1/embeddings for embeddings
-                let url = if path.starts_with("/v1/chat/completions") || path.starts_with("/chat/completions") {
-                    // Chat completions endpoint
-                    format!("{base}/v1/chat/completions")
-                } else if path.starts_with("/v1/embeddings") || path.starts_with("/embeddings") {
-                    // Embeddings endpoint
-                    format!("{base}/v1/embeddings")
-                } else if path.starts_with("/v1/") {
-                    // Other /v1/* paths - preserve the path
-                    format!("{base}{path}")
-                } else {
-                    // Fallback: add /v1 prefix if missing
-                    format!("{base}/v1{path}")
-                };
+                let url = format!("{base}/chat/completions");
                 let is_stream = body_json
                     .get("stream")
                     .and_then(|v| v.as_bool())
@@ -2953,9 +2965,14 @@ async fn proxy_logic(
     }
 
     ProxyResult {
-        response: build_response(
+        response: build_response_with_header(
             StatusCode::BAD_GATEWAY,
-            Body::from(format!("All upstreams failed. Last error: {last_error}")),
+            "content-type",
+            "application/json",
+            Body::from(format!(
+                r#"{{"error":{{"message":"All upstreams failed. Last error: {}","type":"upstream_error","code":"all_upstreams_failed"}}}}"#,
+                last_error
+            )),
         ),
         upstream_id: None,
         final_status: StatusCode::BAD_GATEWAY,
