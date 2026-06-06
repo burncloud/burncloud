@@ -166,7 +166,10 @@ fn record_upstream_failure(
     // pin the user to a sick channel for too long.
     let should_evict = matches!(
         &failure_type,
-        FailureType::ServerError | FailureType::Timeout | FailureType::ConnectionError
+        FailureType::ServerError
+            | FailureType::Timeout
+            | FailureType::ConnectionError
+            | FailureType::EmptyResponse
     );
     if should_evict {
         if let Some(model) = model_name {
@@ -197,6 +200,44 @@ fn record_upstream_success(
     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
     if let Some(model) = model_name {
         state.affinity_cache.insert(session_id, model, channel_id);
+    }
+}
+
+/// Check for empty response (zero tokens) and handle as failure if detected.
+///
+/// Returns `true` if empty response was detected (caller should continue to next candidate),
+/// `false` if response has valid tokens (caller should proceed normally).
+fn check_empty_response(
+    state: &AppState,
+    upstream: &Upstream,
+    model_name: Option<&str>,
+    session_id: &str,
+    token_counter: &UnifiedTokenCounter,
+) -> bool {
+    let usage = token_counter.get_usage();
+    if usage.is_empty() {
+        tracing::warn!(
+            channel_id = %upstream.id,
+            model = ?model_name,
+            "Empty response (zero tokens) detected, treating as failure"
+        );
+
+        // Record failure to circuit breaker and channel state
+        record_upstream_failure(
+            state,
+            upstream,
+            model_name,
+            FailureType::EmptyResponse,
+            "Empty response with zero tokens",
+            session_id,
+        );
+
+        // Note: We already called record_upstream_success earlier, which updated
+        // affinity to this channel. The record_upstream_failure will evict affinity,
+        // so the next request will not be stuck on this bad channel.
+        true // Empty response detected
+    } else {
+        false // Response has tokens
     }
 }
 
@@ -2342,6 +2383,7 @@ async fn proxy_logic(
                             FailureType::ServerError => "upstream_error",
                             FailureType::Timeout => "timeout",
                             FailureType::ConnectionError => "upstream_error",
+                            FailureType::EmptyResponse => "empty_response",
                         };
                         return ProxyResult {
                             response: build_response_with_header(
@@ -2752,6 +2794,13 @@ async fn proxy_logic(
                     if let Some(g) = budget_guard.take() {
                         g.commit(commit_tpm);
                     }
+
+                    // Check for empty response (zero tokens) - only for non-streaming
+                    // Empty response indicates a problem with the channel, should try next candidate
+                    if check_empty_response(state, upstream, model_name, &session_id, &token_counter) {
+                        continue; // Try next candidate
+                    }
+
                     return ProxyResult {
                         response: build_response_with_header(
                             status,
@@ -2881,6 +2930,7 @@ async fn proxy_logic(
                         FailureType::ServerError => "upstream_error",
                         FailureType::Timeout => "timeout",
                         FailureType::ConnectionError => "upstream_error",
+                        FailureType::EmptyResponse => "empty_response",
                     };
                     return ProxyResult {
                         response: build_response_with_header(

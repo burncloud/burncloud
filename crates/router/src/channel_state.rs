@@ -24,6 +24,10 @@ const LATENCY_SCORE_MIDPOINT_MS: f64 = 100.0;
 
 /// Default retry duration when no retry_after is provided (seconds).
 const DEFAULT_RATE_LIMIT_RETRY_SECS: u64 = 60;
+/// Base cooldown for transient errors (seconds).
+const BASE_COOLDOWN_SECS: u64 = 60;
+/// Maximum cooldown cap (seconds) - 30 minutes.
+const MAX_COOLDOWN_SECS: u64 = 1800;
 /// Exponential moving average smoothing factor for latency tracking.
 const LATENCY_EMA_ALPHA: f64 = 0.2;
 
@@ -394,17 +398,53 @@ impl ChannelStateTracker {
                     model_state.failure_count += 1;
                 }
             }
+            FailureType::EmptyResponse => {
+                // Empty response (HTTP 200 but zero tokens) - treat as transient error
+                if let Some(model_name) = model {
+                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
+                    model_state.failure_count += 1;
+
+                    // Exponential backoff for empty responses
+                    let multiplier = 1u64 << model_state.failure_count.min(5);
+                    let cooldown_secs = (BASE_COOLDOWN_SECS * multiplier).min(MAX_COOLDOWN_SECS);
+
+                    model_state.status = ModelStatus::TemporarilyDown;
+                    model_state.rate_limit_until = Some(now + Duration::from_secs(cooldown_secs));
+                    model_state.last_error = Some(error_message.to_string());
+                    model_state.last_error_time = Some(now);
+
+                    tracing::debug!(
+                        channel_id,
+                        %model_name,
+                        failure_count = model_state.failure_count,
+                        cooldown_secs,
+                        "Empty response recorded with exponential backoff"
+                    );
+                }
+            }
             FailureType::ServerError | FailureType::Timeout | FailureType::ConnectionError => {
                 // These are transient errors, just update the model state if available
                 if let Some(model_name) = model {
                     let model_state = channel_state.get_or_create_model(model_name, channel_id);
+                    model_state.failure_count += 1;
+
+                    // Exponential backoff: cooldown grows with consecutive failures
+                    // 60s -> 120s -> 240s -> 480s -> 960s -> 1800s (capped)
+                    let multiplier = 1u64 << model_state.failure_count.min(5); // max 2^5 = 32
+                    let cooldown_secs = (BASE_COOLDOWN_SECS * multiplier).min(MAX_COOLDOWN_SECS);
+
                     model_state.status = ModelStatus::TemporarilyDown;
-                    // Set a recovery timer so is_available() can allow probe requests after expiry
-                    model_state.rate_limit_until =
-                        Some(now + Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
+                    model_state.rate_limit_until = Some(now + Duration::from_secs(cooldown_secs));
                     model_state.last_error = Some(error_message.to_string());
                     model_state.last_error_time = Some(now);
-                    model_state.failure_count += 1;
+
+                    tracing::debug!(
+                        channel_id,
+                        %model_name,
+                        failure_count = model_state.failure_count,
+                        cooldown_secs,
+                        "Transient error recorded with exponential backoff"
+                    );
                 }
             }
         }
@@ -442,8 +482,10 @@ impl ChannelStateTracker {
 
         // If the model was temporarily down, restore it to available
         // (successful request indicates the issue is resolved)
+        // Also reset failure_count to clear exponential backoff penalty
         if model_state.status == ModelStatus::TemporarilyDown {
             model_state.status = ModelStatus::Available;
+            model_state.failure_count = 0; // Reset failure count on recovery
             model_state.last_error = None;
             model_state.last_error_time = None;
         }

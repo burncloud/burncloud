@@ -63,57 +63,67 @@ impl UsageParser for OpenAIParser {
     }
 
     fn parse_streaming_chunk(&self, chunk: &str) -> Result<Option<UnifiedUsage>, ParseError> {
-        let line = chunk.trim();
-        if !line.starts_with("data: ") {
-            return Ok(None);
-        }
-        let data = &line[6..];
-        if data.trim() == "[DONE]" {
-            return Ok(None);
-        }
+        // Handle multi-line SSE chunks - each line may contain a "data: {...}" entry
+        for line in chunk.lines() {
+            let line = line.trim();
+            if !line.starts_with("data: ") {
+                continue;
+            }
+            let data = &line[6..];
+            if data.trim() == "[DONE]" {
+                continue;
+            }
 
-        let json: Value = serde_json::from_str(data)?;
-        let Some(usage) = json.get("usage") else {
-            return Ok(None);
-        };
+            // Try to parse JSON, skip lines that don't parse
+            let json: Value = match serde_json::from_str(data) {
+                Ok(v) => v,
+                Err(_) => continue, // Skip malformed lines
+            };
 
-        // Only process chunks that carry usage info
-        let input = usage
-            .get("prompt_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        let output = usage
-            .get("completion_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        if input == 0 && output == 0 {
-            return Ok(None);
-        }
+            let Some(usage) = json.get("usage") else {
+                continue;
+            };
 
-        let mut u = UnifiedUsage {
-            input_tokens: input,
-            output_tokens: output,
-            ..Default::default()
-        };
-
-        if let Some(details) = usage.get("prompt_tokens_details") {
-            u.cache_read_tokens = details
-                .get("cached_tokens")
+            // Only process chunks that carry usage info
+            let input = usage
+                .get("prompt_tokens")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-            u.audio_input_tokens = details
-                .get("audio_tokens")
+            let output = usage
+                .get("completion_tokens")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-        }
-        if let Some(details) = usage.get("completion_tokens_details") {
-            u.audio_output_tokens = details
-                .get("audio_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            if input == 0 && output == 0 {
+                continue;
+            }
+
+            let mut u = UnifiedUsage {
+                input_tokens: input,
+                output_tokens: output,
+                ..Default::default()
+            };
+
+            if let Some(details) = usage.get("prompt_tokens_details") {
+                u.cache_read_tokens = details
+                    .get("cached_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                u.audio_input_tokens = details
+                    .get("audio_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+            }
+            if let Some(details) = usage.get("completion_tokens_details") {
+                u.audio_output_tokens = details
+                    .get("audio_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+            }
+
+            return Ok(Some(u));
         }
 
-        Ok(Some(u))
+        Ok(None)
     }
 }
 
@@ -188,5 +198,28 @@ mod tests {
         let parser = OpenAIParser;
         let line = r#"data: {"usage":{"prompt_tokens":0,"completion_tokens":0}}"#;
         assert!(parser.parse_streaming_chunk(line).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_parse_streaming_chunk_multiline() {
+        // SSE chunk may contain multiple lines
+        let parser = OpenAIParser;
+        let chunk = r#"data: {"choices":[{"delta":{"content":"hi"}}]}
+data: {"usage":{"prompt_tokens":10,"completion_tokens":20}}"#;
+        let u = parser.parse_streaming_chunk(chunk).unwrap().unwrap();
+        assert_eq!(u.input_tokens, 10);
+        assert_eq!(u.output_tokens, 20);
+    }
+
+    #[test]
+    fn test_parse_streaming_chunk_multiline_with_malformed() {
+        // Should skip malformed lines and find usage in valid line
+        let parser = OpenAIParser;
+        let chunk = r#"data: {"choices":[{"delta":{"content":"hi"}}]}
+data: malformed json here
+data: {"usage":{"prompt_tokens":15,"completion_tokens":25}}"#;
+        let u = parser.parse_streaming_chunk(chunk).unwrap().unwrap();
+        assert_eq!(u.input_tokens, 15);
+        assert_eq!(u.output_tokens, 25);
     }
 }
