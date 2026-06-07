@@ -2500,35 +2500,13 @@ async fn proxy_logic(
                                 .chain(futures::stream::once(async move {
                                     // Check for empty response after stream ends
                                     if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
-                                        tracing::warn!(
+                                        // Empty response may be valid (e.g., user stop, simple ack)
+                                        // Only log debug message, do not penalize the channel
+                                        tracing::debug!(
                                             channel_id = %upstream_id_str,
                                             model = ?model_name_clone,
-                                            "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                            "Empty streaming response (zero tokens) detected, not penalizing channel"
                                         );
-
-                                        // Record failure to circuit breaker and channel state
-                                        state_clone.circuit_breaker.record_failure_with_type(
-                                            &upstream_id_str,
-                                            FailureType::EmptyResponse,
-                                        );
-                                        state_clone.channel_state_tracker.record_error(
-                                            channel_id,
-                                            model_name_clone.as_deref(),
-                                            &FailureType::EmptyResponse,
-                                            "Empty streaming response with zero tokens",
-                                        );
-
-                                        // Evict affinity so next request tries different channel
-                                        if let Some(model) = &model_name_clone {
-                                            state_clone.affinity_cache.evict(&session_id_clone, model);
-                                            tracing::debug!(
-                                                session_id = %session_id_clone,
-                                                model = %model,
-                                                channel_id,
-                                                "Affinity evicted — empty streaming response for {}",
-                                                upstream_name
-                                            );
-                                        }
                                     }
                                     // Return empty bytes to not affect the stream
                                     Ok(axum::body::Bytes::new())
@@ -3072,33 +3050,13 @@ async fn proxy_logic(
                         // Add post-stream check for empty response
                         let done = futures::stream::once(async move {
                             if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
-                                tracing::warn!(
+                                // Empty response may be valid (e.g., user stop, simple ack)
+                                // Only log debug message, do not penalize the channel
+                                tracing::debug!(
                                     channel_id = %upstream_id_str,
                                     model = ?model_name_clone,
-                                    "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                    "Empty streaming response (zero tokens) detected, not penalizing channel"
                                 );
-
-                                state_clone.circuit_breaker.record_failure_with_type(
-                                    &upstream_id_str,
-                                    FailureType::EmptyResponse,
-                                );
-                                state_clone.channel_state_tracker.record_error(
-                                    channel_id,
-                                    model_name_clone.as_deref(),
-                                    &FailureType::EmptyResponse,
-                                    "Empty streaming response with zero tokens",
-                                );
-
-                                if let Some(model) = &model_name_clone {
-                                    state_clone.affinity_cache.evict(&session_id_clone, model);
-                                    tracing::debug!(
-                                        session_id = %session_id_clone,
-                                        model = %model,
-                                        channel_id,
-                                        "Affinity evicted — empty streaming response for {}",
-                                        upstream_name
-                                    );
-                                }
                             }
                             Ok(axum::body::Bytes::new())
                         });
@@ -3186,35 +3144,13 @@ async fn proxy_logic(
                         let done = futures::stream::once(async move {
                             // Check for empty response after stream ends
                             if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
-                                tracing::warn!(
+                                // Empty response may be valid (e.g., user stop, simple ack)
+                                // Only log debug message, do not penalize the channel
+                                tracing::debug!(
                                     channel_id = %upstream_id_str,
                                     model = ?model_name_clone,
-                                    "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                    "Empty streaming response (zero tokens) detected, not penalizing channel"
                                 );
-
-                                // Record failure to circuit breaker and channel state
-                                state_clone.circuit_breaker.record_failure_with_type(
-                                    &upstream_id_str,
-                                    FailureType::EmptyResponse,
-                                );
-                                state_clone.channel_state_tracker.record_error(
-                                    channel_id,
-                                    model_name_clone.as_deref(),
-                                    &FailureType::EmptyResponse,
-                                    "Empty streaming response with zero tokens",
-                                );
-
-                                // Evict affinity so next request tries different channel
-                                if let Some(model) = &model_name_clone {
-                                    state_clone.affinity_cache.evict(&session_id_clone, model);
-                                    tracing::debug!(
-                                        session_id = %session_id_clone,
-                                        model = %model,
-                                        channel_id,
-                                        "Affinity evicted — empty streaming response for {}",
-                                        upstream_name
-                                    );
-                                }
                             }
                             Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
                         });
