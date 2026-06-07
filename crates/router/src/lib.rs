@@ -22,6 +22,71 @@ mod state;
 pub mod stream_parser;
 pub mod token_counter;
 
+
+// ============================================================
+// Empty Response Counter - Track consecutive empty responses
+// ============================================================
+use std::sync::RwLock as StdRwLock;
+use std::collections::HashMap;
+
+/// Maximum consecutive empty responses before marking as failure
+const EMPTY_RESPONSE_THRESHOLD: u32 = 3;
+
+/// Counter for tracking consecutive empty responses per channel.
+/// Uses sliding window: only penalizes after threshold consecutive failures.
+pub struct EmptyResponseCounter {
+    counters: StdRwLock<HashMap<String, u32>>,
+    threshold: u32,
+}
+
+impl EmptyResponseCounter {
+    pub fn new() -> Self {
+        Self {
+            counters: StdRwLock::new(HashMap::new()),
+            threshold: EMPTY_RESPONSE_THRESHOLD,
+        }
+    }
+
+    /// Record an empty response. Returns true if threshold exceeded (should penalize).
+    pub fn record_empty(&self, channel_id: &str) -> bool {
+        let mut counters = self.counters.write().unwrap();
+        let count = counters.entry(channel_id.to_string()).or_insert(0);
+        *count += 1;
+        let exceeded = *count >= self.threshold;
+        if exceeded {
+            tracing::warn!(
+                channel_id = channel_id,
+                count = *count,
+                threshold = self.threshold,
+                "Consecutive empty responses exceeded threshold, marking as failure"
+            );
+        } else {
+            tracing::debug!(
+                channel_id = channel_id,
+                count = *count,
+                threshold = self.threshold,
+                "Empty response recorded, not yet at threshold"
+            );
+        }
+        exceeded
+    }
+
+    /// Reset counter on successful response (non-empty).
+    pub fn reset(&self, channel_id: &str) {
+        let mut counters = self.counters.write().unwrap();
+        if let Some(count) = counters.get_mut(channel_id) {
+            if *count > 0 {
+                tracing::debug!(
+                    channel_id = channel_id,
+                    previous_count = *count,
+                    "Resetting empty response counter after successful response"
+                );
+                *count = 0;
+            }
+        }
+    }
+}
+
 use axum::{
     body::Body,
     extract::State,
@@ -797,6 +862,7 @@ pub async fn create_router_app(
         billing_post_settle_price_missing_count,
         budget_update_tx,
         request_log_storage_policy,
+        empty_response_counter: Arc::new(EmptyResponseCounter::new()),
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -2462,7 +2528,7 @@ async fn proxy_logic(
                             // Clone state and upstream info for post-stream empty response check
                             let state_clone = state.clone();
                             let upstream_id_str = upstream.id.clone();
-                            let upstream_name = upstream.name.clone();
+                            let _upstream_name = upstream.name.clone();
                             let model_name_clone = model_name.map(|s| s.to_string());
                             let session_id_clone = session_id.to_string();
                             let channel_id: i32 = upstream.id.parse().unwrap_or(0);
@@ -2500,35 +2566,30 @@ async fn proxy_logic(
                                 .chain(futures::stream::once(async move {
                                     // Check for empty response after stream ends
                                     if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
-                                        tracing::warn!(
-                                            channel_id = %upstream_id_str,
-                                            model = ?model_name_clone,
-                                            "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
-                                        );
-
-                                        // Record failure to circuit breaker and channel state
-                                        state_clone.circuit_breaker.record_failure_with_type(
-                                            &upstream_id_str,
-                                            FailureType::EmptyResponse,
-                                        );
-                                        state_clone.channel_state_tracker.record_error(
-                                            channel_id,
-                                            model_name_clone.as_deref(),
-                                            &FailureType::EmptyResponse,
-                                            "Empty streaming response with zero tokens",
-                                        );
-
-                                        // Evict affinity so next request tries different channel
-                                        if let Some(model) = &model_name_clone {
-                                            state_clone.affinity_cache.evict(&session_id_clone, model);
-                                            tracing::debug!(
-                                                session_id = %session_id_clone,
-                                                model = %model,
-                                                channel_id,
-                                                "Affinity evicted — empty streaming response for {}",
-                                                upstream_name
+                                        // Use sliding window counter: only penalize after consecutive empty responses
+                                        let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
+                                        
+                                        if should_penalize {
+                                            // Threshold exceeded - record failure
+                                            state_clone.circuit_breaker.record_failure_with_type(
+                                                &upstream_id_str,
+                                                FailureType::EmptyResponse,
                                             );
+                                            state_clone.channel_state_tracker.record_error(
+                                                channel_id,
+                                                model_name_clone.as_deref(),
+                                                &FailureType::EmptyResponse,
+                                                "Consecutive empty streaming responses exceeded threshold",
+                                            );
+
+                                            // Evict affinity so next request tries different channel
+                                            if let Some(model) = &model_name_clone {
+                                                state_clone.affinity_cache.evict(&session_id_clone, model);
+                                            }
                                         }
+                                    } else {
+                                        // Successful response - reset the counter
+                                        state_clone.empty_response_counter.reset(&upstream_id_str);
                                     }
                                     // Return empty bytes to not affect the stream
                                     Ok(axum::body::Bytes::new())
