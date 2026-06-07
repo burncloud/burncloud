@@ -724,6 +724,188 @@ pub async fn get_billing_summary_for_user(
     })
 }
 
+/// Storage policy for request logs (controls verbosity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum StoragePolicy {
+    /// Full request/response recording (dev/debug environments)
+    #[default]
+    Full,
+    /// Metadata only, no body content (production default)
+    Summary,
+    /// Skip recording entirely (high traffic)
+    None,
+}
+
+impl StoragePolicy {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Summary => "summary",
+            Self::None => "none",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "full" => Self::Full,
+            "summary" => Self::Summary,
+            "none" => Self::None,
+            _ => Self::Summary, // Default to summary for unknown values
+        }
+    }
+}
+
+/// Detailed request/response log for debugging.
+/// Linked to router_logs via request_id foreign key.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct RouterRequestLog {
+    pub id: i64,
+    pub request_id: String,
+
+    // Request information (sanitized)
+    #[sqlx(default)]
+    pub request_body: Option<String>,        // JSON string (may be truncated)
+    #[sqlx(default)]
+    pub request_body_truncated: bool,
+    #[sqlx(default)]
+    pub request_headers: Option<String>,     // JSON string (sanitized)
+
+    // Response information
+    #[sqlx(default)]
+    pub response_body: Option<String>,       // JSON string (may be truncated)
+    #[sqlx(default)]
+    pub response_body_truncated: bool,
+    #[sqlx(default)]
+    pub response_status: Option<i32>,
+
+    // Streaming response summary
+    #[sqlx(default)]
+    pub stream_chunk_count: i32,
+    #[sqlx(default)]
+    pub stream_first_chunk_latency_ms: Option<i64>,
+    #[sqlx(default)]
+    pub stream_last_chunk_latency_ms: Option<i64>,
+
+    // Routing decision information
+    #[sqlx(default)]
+    pub candidates: Option<String>,          // JSON array string
+    #[sqlx(default)]
+    pub candidates_count: i32,
+    #[sqlx(default)]
+    pub affinity_key: Option<String>,
+    #[sqlx(default)]
+    pub affinity_hit_channel_id: Option<i32>,
+    #[sqlx(default)]
+    pub failover_history: Option<String>,     // JSON array string
+
+    // Storage policy
+    #[sqlx(default)]
+    pub storage_policy: String,
+    #[sqlx(default)]
+    pub created_at: Option<String>,
+}
+
+/// Failover attempt record for debugging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailoverAttempt {
+    pub attempt: u32,
+    pub channel_id: String,
+    pub channel_name: String,
+    pub error: Option<String>,
+    pub latency_ms: u64,
+}
+
+/// Candidate channel information for logging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateInfo {
+    pub id: String,
+    pub name: String,
+    pub protocol: String,
+    pub priority: i32,
+}
+
+pub struct RouterRequestLogModel;
+
+impl RouterRequestLogModel {
+    /// Insert a new request log entry
+    pub async fn insert(db: &Database, log: &RouterRequestLog) -> Result<()> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = format!(
+            r#"
+            INSERT INTO router_request_logs
+            (request_id, request_body, request_body_truncated, request_headers,
+             response_body, response_body_truncated, response_status,
+             stream_chunk_count, stream_first_chunk_latency_ms, stream_last_chunk_latency_ms,
+             candidates, candidates_count, affinity_key, affinity_hit_channel_id,
+             failover_history, storage_policy)
+            VALUES ({})
+            "#,
+            phs(is_postgres, 16)
+        );
+
+        sqlx::query(&sql)
+            .bind(&log.request_id)
+            .bind(&log.request_body)
+            .bind(log.request_body_truncated)
+            .bind(&log.request_headers)
+            .bind(&log.response_body)
+            .bind(log.response_body_truncated)
+            .bind(log.response_status)
+            .bind(log.stream_chunk_count)
+            .bind(log.stream_first_chunk_latency_ms)
+            .bind(log.stream_last_chunk_latency_ms)
+            .bind(&log.candidates)
+            .bind(log.candidates_count)
+            .bind(&log.affinity_key)
+            .bind(log.affinity_hit_channel_id)
+            .bind(&log.failover_history)
+            .bind(&log.storage_policy)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get request log by request_id
+    pub async fn get_by_request_id(db: &Database, request_id: &str) -> Result<Option<RouterRequestLog>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = format!(
+            "SELECT * FROM router_request_logs WHERE request_id = {}",
+            ph(is_postgres, 1)
+        );
+
+        let log = sqlx::query_as::<_, RouterRequestLog>(&sql)
+            .bind(request_id)
+            .fetch_optional(conn.pool())
+            .await?;
+
+        Ok(log)
+    }
+
+    /// Delete request logs older than a threshold (for cleanup)
+    pub async fn delete_old_logs(db: &Database, days: i32) -> Result<u64> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+
+        let sql = if is_postgres {
+            "DELETE FROM router_request_logs WHERE created_at < NOW() - INTERVAL '1 day' * $1"
+        } else {
+            "DELETE FROM router_request_logs WHERE datetime(created_at) < datetime('now', '-' || ? || ' days')"
+        };
+
+        let result = sqlx::query(sql)
+            .bind(days)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+}
+
 /// Balance operations for dual-currency deduction
 pub struct BalanceModel;
 

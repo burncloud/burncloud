@@ -17,8 +17,9 @@ pub mod token;
 // Re-export common types.
 pub use log::{
     get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
-    BalanceModel, BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, RouterLogModel,
-    UsageStats,
+    BalanceModel, BillingModelSummary, BillingSummary, CandidateInfo, FailoverAttempt,
+    ModelUsageStats, RouterLog, RouterLogModel, RouterRequestLog, RouterRequestLogModel,
+    StoragePolicy, UsageStats,
 };
 pub use router_video_task::{RouterVideoTask, RouterVideoTaskModel};
 pub use token::{
@@ -248,6 +249,23 @@ impl RouterDatabase {
 
     pub async fn get_usage_by_user(db: &Database, user_id: &str) -> Result<(i64, i64)> {
         RouterLogModel::get_usage_by_user(db, user_id).await
+    }
+
+    // ============== Request Log delegations ==============
+
+    pub async fn insert_request_log(db: &Database, log: &RouterRequestLog) -> Result<()> {
+        RouterRequestLogModel::insert(db, log).await
+    }
+
+    pub async fn get_request_log_by_id(
+        db: &Database,
+        request_id: &str,
+    ) -> Result<Option<RouterRequestLog>> {
+        RouterRequestLogModel::get_by_request_id(db, request_id).await
+    }
+
+    pub async fn delete_old_request_logs(db: &Database, days: i32) -> Result<u64> {
+        RouterRequestLogModel::delete_old_logs(db, days).await
     }
 
     // ============== Balance delegations ==============

@@ -36,7 +36,8 @@ use burncloud_common::TrafficColor;
 use burncloud_database::Database;
 use burncloud_database_channel::ChannelProviderModel;
 use burncloud_database_router::{
-    RouterDatabase, RouterLog, RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel,
+    CandidateInfo, FailoverAttempt, RouterDatabase, RouterLog, RouterRequestLog,
+    RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel, StoragePolicy,
 };
 use burncloud_service_billing::{
     get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
@@ -100,6 +101,54 @@ const HTTP_TCP_KEEPALIVE_SECS: u64 = 30;
 pub use scheduler::SchedulingRequest;
 pub use state::AppState;
 
+/// Data collected during request processing for router_request_logs table.
+/// Populated by proxy_logic and sent asynchronously to the database.
+#[derive(Debug, Clone, Default)]
+struct RequestLogData {
+    /// Request body (may be truncated/sanitized)
+    request_body: Option<String>,
+    request_body_truncated: bool,
+    /// Sanitized request headers
+    request_headers: Option<String>,
+    /// Response body (may be truncated)
+    response_body: Option<String>,
+    response_body_truncated: bool,
+    /// Candidate channels considered
+    candidates: Vec<CandidateInfo>,
+    /// Number of candidates (for quick queries)
+    candidates_count: i32,
+    /// Affinity cache key (session_id + model)
+    affinity_key: Option<String>,
+    /// Channel ID from affinity cache hit (if any)
+    affinity_hit_channel_id: Option<i32>,
+    /// Failover attempts with errors
+    failover_history: Vec<FailoverAttempt>,
+    /// Streaming response summary
+    stream_chunk_count: u32,
+    stream_first_chunk_latency_ms: Option<u64>,
+    stream_last_chunk_latency_ms: Option<u64>,
+}
+
+/// Record a failover attempt to the request log data.
+/// Call this before `continue` in the failover loop.
+fn record_failover_attempt(
+    log_data: &mut Option<RequestLogData>,
+    attempt: u32,
+    upstream: &Upstream,
+    error: Option<&str>,
+    latency_ms: u64,
+) {
+    if let Some(data) = log_data {
+        data.failover_history.push(FailoverAttempt {
+            attempt,
+            channel_id: upstream.id.clone(),
+            channel_name: upstream.name.clone(),
+            error: error.map(|s| s.to_string()),
+            latency_ms,
+        });
+    }
+}
+
 /// Named return type for [`proxy_logic`] — replaces the previous 8-tuple.
 ///
 /// Each field is self-documenting; adding a new field only requires updating
@@ -123,6 +172,9 @@ struct ProxyResult {
     /// Error classification for RouterLog: "upstream_error", "timeout",
     /// "auth_failed", "rate_limit", "router_reject", or None for success.
     error_type: Option<String>,
+    /// Detailed request log data for router_request_logs table.
+    /// Only populated when storage_policy != StoragePolicy::None.
+    request_log_data: Option<RequestLogData>,
 }
 
 #[derive(serde::Deserialize)]
@@ -266,6 +318,149 @@ fn classify_upstream_error(
         StatusCode::NOT_FOUND => FailureType::ModelNotFound,
         _ if status.is_server_error() => FailureType::ServerError,
         _ => FailureType::ServerError,
+    }
+}
+
+// ============== Request Log Sanitization (Issue #334) ==============
+
+/// Maximum size for request/response body logging (64KB).
+/// Bodies larger than this are truncated.
+const MAX_LOG_BODY_SIZE: usize = 64 * 1024;
+
+/// Sensitive header names that should be redacted in logs.
+const SENSITIVE_HEADERS: &[&str] = &[
+    "authorization",
+    "api-key",
+    "x-api-key",
+    "x-auth-token",
+    "cookie",
+    "set-cookie",
+];
+
+/// Sensitive JSON fields that should be redacted in request bodies.
+const SENSITIVE_FIELDS: &[&str] = &[
+    "api_key",
+    "apiKey",
+    "api-key",
+    "key",
+    "token",
+    "password",
+    "secret",
+    "authorization",
+];
+
+/// Sanitize request body for logging: remove sensitive fields, truncate if too large.
+/// Returns (sanitized_body, was_truncated).
+fn sanitize_request_body(body_bytes: &[u8]) -> (Option<String>, bool) {
+    if body_bytes.is_empty() {
+        return (None, false);
+    }
+
+    // Try to parse as JSON for field redaction
+    let body_str = String::from_utf8_lossy(body_bytes);
+
+    // Check if body is too large
+    let truncated = body_bytes.len() > MAX_LOG_BODY_SIZE;
+
+    if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&body_str) {
+        // Redact sensitive fields
+        redact_sensitive_fields(&mut json);
+
+        let sanitized = if truncated {
+            // Truncate the JSON string representation
+            let json_str = json.to_string();
+            format!("{}... [TRUNCATED: {} bytes total]",
+                &json_str[..json_str.len().min(MAX_LOG_BODY_SIZE)],
+                body_bytes.len())
+        } else {
+            json.to_string()
+        };
+        (Some(sanitized), truncated)
+    } else {
+        // Not valid JSON, treat as plain text
+        let sanitized = if truncated {
+            format!("{}... [TRUNCATED: {} bytes total]",
+                &body_str[..body_str.len().min(MAX_LOG_BODY_SIZE)],
+                body_bytes.len())
+        } else {
+            body_str.to_string()
+        };
+        (Some(sanitized), truncated)
+    }
+}
+
+/// Recursively redact sensitive fields in a JSON value.
+fn redact_sensitive_fields(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for key in map.keys().cloned().collect::<Vec<_>>() {
+                let key_lower = key.to_lowercase();
+                if SENSITIVE_FIELDS.iter().any(|f| key_lower.contains(&f.to_lowercase())) {
+                    map.insert(key, serde_json::Value::String("***REDACTED***".to_string()));
+                } else if let Some(nested) = map.get_mut(&key) {
+                    redact_sensitive_fields(nested);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                redact_sensitive_fields(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Sanitize request headers for logging: remove sensitive headers.
+fn sanitize_request_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    if headers.is_empty() {
+        return None;
+    }
+
+    let mut sanitized_map = serde_json::Map::new();
+    for (name, value) in headers {
+        let name_str = name.as_str().to_lowercase();
+        if SENSITIVE_HEADERS.iter().any(|h| name_str.contains(h)) {
+            sanitized_map.insert(name.to_string(), serde_json::Value::String("***REDACTED***".to_string()));
+        } else if let Ok(v) = value.to_str() {
+            sanitized_map.insert(name.to_string(), serde_json::Value::String(v.to_string()));
+        }
+    }
+
+    if sanitized_map.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(sanitized_map).to_string())
+    }
+}
+
+/// Sanitize response body for logging: truncate if too large.
+fn sanitize_response_body(body: &[u8]) -> (Option<String>, bool) {
+    if body.is_empty() {
+        return (None, false);
+    }
+
+    let truncated = body.len() > MAX_LOG_BODY_SIZE;
+    let body_str = String::from_utf8_lossy(body);
+
+    // Try to parse as JSON for prettier output
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body_str) {
+        let json_str = json.to_string();
+        if truncated {
+            (Some(format!("{}... [TRUNCATED: {} bytes total]",
+                &json_str[..json_str.len().min(MAX_LOG_BODY_SIZE)],
+                body.len())), true)
+        } else {
+            (Some(json_str), false)
+        }
+    } else {
+        if truncated {
+            (Some(format!("{}... [TRUNCATED: {} bytes total]",
+                &body_str[..body_str.len().min(MAX_LOG_BODY_SIZE)],
+                body.len())), true)
+        } else {
+            (Some(body_str.to_string()), false)
+        }
     }
 }
 
@@ -485,6 +680,22 @@ pub async fn create_router_app(
     let billing_preflight_rejected_count = Arc::new(AtomicU64::new(0));
     let billing_post_settle_price_missing_count = Arc::new(AtomicU64::new(0));
 
+    // Request log storage policy: read REQUEST_LOG_STORAGE_POLICY env var (default: summary).
+    // Values: "full" (complete request/response), "summary" (metadata only), "none" (disabled).
+    let request_log_storage_policy = match std::env::var("REQUEST_LOG_STORAGE_POLICY")
+        .unwrap_or_else(|_| "summary".to_string())
+        .to_lowercase()
+        .as_str()
+    {
+        "full" => StoragePolicy::Full,
+        "none" => StoragePolicy::None,
+        _ => StoragePolicy::Summary, // Default to summary for unknown values
+    };
+    tracing::info!(
+        policy = ?request_log_storage_policy,
+        "Request log storage policy configured"
+    );
+
     // AIMD → InMemoryBudget feedback channel (capacity=1, latest-wins debounce).
     // When the adaptive limiter learns a new RPM limit, it sends an update here;
     // a background task reconfigures the budget bucket (audit decision D6/D10).
@@ -547,6 +758,20 @@ pub async fn create_router_app(
         }
     });
 
+    // Setup Async Request Log Channel (detailed request/response logging)
+    let (request_log_tx, mut request_log_rx) = mpsc::channel::<RouterRequestLog>(LOG_CHANNEL_BUFFER);
+    let db_for_request_logger = db.clone();
+
+    // Spawn Request Logging Task
+    tokio::spawn(async move {
+        tracing::info!("Request logging task started");
+        while let Some(log) = request_log_rx.recv().await {
+            if let Err(e) = RouterDatabase::insert_request_log(&db_for_request_logger, &log).await {
+                tracing::error!("Failed to insert request log: {}", e);
+            }
+        }
+    });
+
     let state = AppState {
         client,
         db, // Arc<Database>
@@ -554,6 +779,7 @@ pub async fn create_router_app(
         limiter,
         circuit_breaker,
         log_tx,
+        request_log_tx,
         model_router,
         channel_state_tracker,
         adaptor_factory,
@@ -570,6 +796,7 @@ pub async fn create_router_app(
         billing_preflight_rejected_count,
         billing_post_settle_price_missing_count,
         budget_update_tx,
+        request_log_storage_policy,
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -1492,7 +1719,7 @@ async fn proxy_handler(
 
     let log = RouterLog {
         id: 0, // Auto-generated by database
-        request_id,
+        request_id: request_id.clone(),
         user_id: Some(user_id.clone()),
         path,
         upstream_id: result.upstream_id,
@@ -1534,6 +1761,42 @@ async fn proxy_handler(
             cost,
             "billing log channel full or closed — request cost NOT recorded"
         );
+    }
+
+    // Send detailed request log (Issue #334)
+    // Only send if we have data and storage policy is not 'none'
+    if let Some(log_data) = result.request_log_data {
+        let request_log = RouterRequestLog {
+            id: 0,
+            request_id: request_id.clone(),
+            request_body: log_data.request_body,
+            request_body_truncated: log_data.request_body_truncated,
+            request_headers: log_data.request_headers,
+            response_body: log_data.response_body,
+            response_body_truncated: log_data.response_body_truncated,
+            response_status: Some(result.final_status.as_u16() as i32),
+            stream_chunk_count: log_data.stream_chunk_count as i32,
+            stream_first_chunk_latency_ms: log_data.stream_first_chunk_latency_ms.map(|v| v as i64),
+            stream_last_chunk_latency_ms: log_data.stream_last_chunk_latency_ms.map(|v| v as i64),
+            candidates: if log_data.candidates.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_string(&log_data.candidates).unwrap_or_else(|_| "[]".to_string()))
+            },
+            candidates_count: log_data.candidates_count,
+            affinity_key: log_data.affinity_key,
+            affinity_hit_channel_id: log_data.affinity_hit_channel_id,
+            failover_history: if log_data.failover_history.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_string(&log_data.failover_history).unwrap_or_else(|_| "[]".to_string()))
+            },
+            storage_policy: state.request_log_storage_policy.as_str().to_string(),
+            created_at: None,
+        };
+
+        // Use try_send to avoid blocking if channel is full
+        let _ = state.request_log_tx.try_send(request_log);
     }
 
     // Deduct quota (non-blocking)
@@ -1614,6 +1877,24 @@ async fn proxy_logic(
     model_name: Option<&str>,
     request_start_time: Instant,
 ) -> ProxyResult {
+    // Initialize request log data collection (Issue #334)
+    // Only collect detailed data when storage policy is not 'none'
+    let should_collect_detailed_log = state.request_log_storage_policy != StoragePolicy::None;
+    let mut request_log_data = if should_collect_detailed_log {
+        // Sanitize request body: remove sensitive fields, truncate if too large
+        let (request_body, request_body_truncated) = sanitize_request_body(&body_bytes);
+        // Sanitize request headers: remove authorization, api-key, etc.
+        let request_headers = sanitize_request_headers(&_headers);
+        Some(RequestLogData {
+            request_body,
+            request_body_truncated,
+            request_headers,
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+
     // Model Routing
     let mut candidates: Vec<Upstream> = Vec::new();
     // L6 Observability: routing decision from route_with_scheduler.
@@ -1831,6 +2112,7 @@ async fn proxy_logic(
                         routing_decision: None,
                         sched_request_color: shaper_color,
                         error_type: Some("router_reject".to_string()),
+                        request_log_data: None,
                     };
                 }
             }
@@ -1865,6 +2147,7 @@ async fn proxy_logic(
             routing_decision: None,
             sched_request_color: shaper_color,
             error_type: Some("router_reject".to_string()),
+                        request_log_data: None,
         };
     }
 
@@ -1896,6 +2179,7 @@ async fn proxy_logic(
                     routing_decision: None,
                     sched_request_color: shaper_color,
                     error_type: Some("router_reject".to_string()),
+                        request_log_data: None,
                 };
             } else {
                 tracing::warn!(model = %model, "Preflight billing check failed — non-strict mode, allowing request: {e}");
@@ -1915,6 +2199,26 @@ async fn proxy_logic(
         rejected_count: 0,
     };
     let total_candidates = candidates.len();
+
+    // Record candidates for request log (Issue #334)
+    if let Some(ref mut log_data) = request_log_data {
+        log_data.candidates = candidates.iter().map(|u| CandidateInfo {
+            id: u.id.clone(),
+            name: u.name.clone(),
+            protocol: u.protocol.clone(),
+            priority: u.priority,
+        }).collect();
+        log_data.candidates_count = candidates.len() as i32;
+
+        // Record affinity key and hit
+        log_data.affinity_key = Some(session_id.clone());
+        // Check if we have an affinity hit (first candidate was from affinity cache)
+        if let Some(ref decision) = sched_routing_decision {
+            if matches!(decision, model_router::RoutingDecision::AffinityHit) {
+                log_data.affinity_hit_channel_id = candidates.first().and_then(|c| c.id.parse().ok());
+            }
+        }
+    }
 
     for (attempt, upstream) in candidates.iter().enumerate() {
         // L5 Failover: override routing decision when attempt > 0.
@@ -1955,6 +2259,14 @@ async fn proxy_logic(
                     est_tpm = shaper_ctx.est_tpm,
                     "L2 Shaper rejected candidate {}, trying next", upstream.name
                 );
+                // Record failover attempt (Issue #334)
+                record_failover_attempt(
+                    &mut request_log_data,
+                    attempt as u32,
+                    upstream,
+                    Some("L2 Shaper rejected"),
+                    0,
+                );
                 continue;
             }
             budget_guard = Some(BudgetGuard::new(
@@ -1971,6 +2283,14 @@ async fn proxy_logic(
         if !state.circuit_breaker.allow_request(&upstream.id) {
             tracing::debug!("Skipping upstream {} (Circuit Open)", upstream.name);
             last_error = format!("Circuit Breaker Open for {}", upstream.name);
+            // Record failover attempt (Issue #334)
+            record_failover_attempt(
+                &mut request_log_data,
+                attempt as u32,
+                upstream,
+                Some(&last_error),
+                0, // No latency - never sent to upstream
+            );
             // budget_guard drops here → full est_tpm refund (request never
             // reached upstream, so the reservation is returned to the bucket).
             continue;
@@ -2139,25 +2459,80 @@ async fn proxy_logic(
                             let body_stream = resp.bytes_stream();
                             let counter_clone = Arc::clone(&token_counter);
 
+                            // Clone state and upstream info for post-stream empty response check
+                            let state_clone = state.clone();
+                            let upstream_id_str = upstream.id.clone();
+                            let upstream_name = upstream.name.clone();
+                            let model_name_clone = model_name.map(|s| s.to_string());
+                            let session_id_clone = session_id.to_string();
+                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+
                             let parser = get_parser(channel_type);
-                            let stream = body_stream.map(move |chunk_result| match chunk_result {
-                                Ok(bytes) => {
-                                    let text = String::from_utf8_lossy(&bytes);
 
-                                    // Parse token usage from Gemini streaming response
-                                    if let Some(u) = parse_chunk_or_default(
-                                        parser.as_ref(),
-                                        &text,
-                                        "passthrough",
-                                    ) {
-                                        counter_clone.set_from_usage(&u);
+                            // Track if we've seen any tokens during streaming
+                            let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                            let seen_tokens_clone = Arc::clone(&seen_tokens);
+
+                            let stream = body_stream
+                                .map(move |chunk_result| {
+                                    match chunk_result {
+                                        Ok(bytes) => {
+                                            let text = String::from_utf8_lossy(&bytes);
+
+                                            // Parse token usage from Gemini streaming response
+                                            if let Some(u) = parse_chunk_or_default(
+                                                parser.as_ref(),
+                                                &text,
+                                                "passthrough",
+                                            ) {
+                                                if !u.is_empty() {
+                                                    seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                                }
+                                                counter_clone.set_from_usage(&u);
+                                            }
+
+                                            // Pass through raw bytes (Gemini native format)
+                                            Ok(bytes)
+                                        }
+                                        Err(e) => Err(std::io::Error::other(e)),
                                     }
+                                })
+                                .chain(futures::stream::once(async move {
+                                    // Check for empty response after stream ends
+                                    if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
+                                        tracing::warn!(
+                                            channel_id = %upstream_id_str,
+                                            model = ?model_name_clone,
+                                            "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                        );
 
-                                    // Pass through raw bytes (Gemini native format)
-                                    Ok(bytes)
-                                }
-                                Err(e) => Err(std::io::Error::other(e)),
-                            });
+                                        // Record failure to circuit breaker and channel state
+                                        state_clone.circuit_breaker.record_failure_with_type(
+                                            &upstream_id_str,
+                                            FailureType::EmptyResponse,
+                                        );
+                                        state_clone.channel_state_tracker.record_error(
+                                            channel_id,
+                                            model_name_clone.as_deref(),
+                                            &FailureType::EmptyResponse,
+                                            "Empty streaming response with zero tokens",
+                                        );
+
+                                        // Evict affinity so next request tries different channel
+                                        if let Some(model) = &model_name_clone {
+                                            state_clone.affinity_cache.evict(&session_id_clone, model);
+                                            tracing::debug!(
+                                                session_id = %session_id_clone,
+                                                model = %model,
+                                                channel_id,
+                                                "Affinity evicted — empty streaming response for {}",
+                                                upstream_name
+                                            );
+                                        }
+                                    }
+                                    // Return empty bytes to not affect the stream
+                                    Ok(axum::body::Bytes::new())
+                                }));
 
                             // L2 Shaper success: upstream accepted the request.
                             // commit(est_tpm) refunds 0 and marks committed so
@@ -2190,6 +2565,7 @@ async fn proxy_logic(
                                 routing_decision: sched_routing_decision.clone(),
                                 sched_request_color: shaper_color,
                                 error_type: None,
+                            request_log_data: None,
                             };
                         } else {
                             // Non-streaming passthrough
@@ -2305,6 +2681,7 @@ async fn proxy_logic(
                                 routing_decision: sched_routing_decision.clone(),
                                 sched_request_color: shaper_color,
                                 error_type: None,
+                            request_log_data: None,
                             };
                         }
                     } else {
@@ -2333,6 +2710,7 @@ async fn proxy_logic(
                                     routing_decision: sched_routing_decision.clone(),
                                     sched_request_color: shaper_color,
                                     error_type: Some("upstream_error".to_string()),
+                        request_log_data: None,
                                 };
                             }
                         };
@@ -2403,6 +2781,7 @@ async fn proxy_logic(
                             routing_decision: sched_routing_decision.clone(),
                             sched_request_color: shaper_color,
                             error_type: Some(et.to_string()),
+                            request_log_data: None,
                         };
                     }
                 }
@@ -2645,6 +3024,7 @@ async fn proxy_logic(
                                 routing_decision: sched_routing_decision.clone(),
                                 sched_request_color: shaper_color,
                                 error_type: None,
+                            request_log_data: None,
                             };
                         }
                         // L2 Shaper success: OpenAI streaming path — keep est_tpm
@@ -2652,12 +3032,92 @@ async fn proxy_logic(
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
                         }
+
+                        // Handle OpenAI streaming with empty response detection
+                        let body_stream = resp.bytes_stream();
+                        let counter_clone = Arc::clone(&token_counter);
+                        let parser = get_parser(channel_type);
+
+                        // Clone state and upstream info for post-stream empty response check
+                        let state_clone = state.clone();
+                        let upstream_id_str = upstream.id.clone();
+                        let upstream_name = upstream.name.clone();
+                        let model_name_clone = model_name.map(|s| s.to_string());
+                        let session_id_clone = session_id.to_string();
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+
+                        // Track if we've seen any tokens during streaming
+                        let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let seen_tokens_clone = Arc::clone(&seen_tokens);
+
+                        let stream = body_stream.map(move |chunk_result| {
+                            match chunk_result {
+                                Ok(bytes) => {
+                                    let text = String::from_utf8_lossy(&bytes);
+                                    if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "stream") {
+                                        if !u.is_empty() {
+                                            seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                        }
+                                        match parser.provider_name() {
+                                            "anthropic" => counter_clone.accumulate(&u),
+                                            _ => counter_clone.set_from_usage(&u),
+                                        }
+                                    }
+                                    Ok(bytes)
+                                }
+                                Err(e) => Err(std::io::Error::other(e)),
+                            }
+                        });
+
+                        // Add post-stream check for empty response
+                        let done = futures::stream::once(async move {
+                            if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
+                                tracing::warn!(
+                                    channel_id = %upstream_id_str,
+                                    model = ?model_name_clone,
+                                    "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                );
+
+                                state_clone.circuit_breaker.record_failure_with_type(
+                                    &upstream_id_str,
+                                    FailureType::EmptyResponse,
+                                );
+                                state_clone.channel_state_tracker.record_error(
+                                    channel_id,
+                                    model_name_clone.as_deref(),
+                                    &FailureType::EmptyResponse,
+                                    "Empty streaming response with zero tokens",
+                                );
+
+                                if let Some(model) = &model_name_clone {
+                                    state_clone.affinity_cache.evict(&session_id_clone, model);
+                                    tracing::debug!(
+                                        session_id = %session_id_clone,
+                                        model = %model,
+                                        channel_id,
+                                        "Affinity evicted — empty streaming response for {}",
+                                        upstream_name
+                                    );
+                                }
+                            }
+                            Ok(axum::body::Bytes::new())
+                        });
+
+                        let final_stream = stream.chain(done);
+
                         return ProxyResult {
-                            response: handle_response_with_token_parsing(
-                                resp,
-                                &token_counter,
-                                channel_type,
-                            ),
+                            response: Response::builder()
+                                .status(status)
+                                .header("content-type", "text/event-stream")
+                                .header("cache-control", "no-cache")
+                                .header("connection", "keep-alive")
+                                .body(Body::from_stream(final_stream))
+                                .unwrap_or_else(|_| {
+                                    build_response(
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        Body::from("Failed to build streaming response"),
+                                    )
+                                }),
                             upstream_id: last_upstream_id,
                             final_status: status,
                             pricing_region: selected_pricing_region.clone(),
@@ -2669,6 +3129,7 @@ async fn proxy_logic(
                             routing_decision: sched_routing_decision.clone(),
                             sched_request_color: shaper_color,
                             error_type: None,
+                            request_log_data: None,
                         };
                     }
 
@@ -2679,33 +3140,82 @@ async fn proxy_logic(
                         let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
 
-                        let stream = body_stream.map(move |chunk_result| match chunk_result {
-                            Ok(bytes) => {
-                                let text = String::from_utf8_lossy(&bytes);
+                        // Clone state and upstream info for post-stream empty response check
+                        let state_clone = state.clone();
+                        let upstream_id_str = upstream.id.clone();
+                        let upstream_name = upstream.name.clone();
+                        let model_name_clone = model_name.map(|s| s.to_string());
+                        let session_id_clone = session_id.to_string();
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
 
-                                // Parse token usage from streaming response
-                                // Anthropic sends incremental events; others send cumulative totals
-                                if let Some(u) =
-                                    parse_chunk_or_default(parser.as_ref(), &text, "stream")
-                                {
-                                    match parser.provider_name() {
-                                        "anthropic" => counter_clone.accumulate(&u),
-                                        _ => counter_clone.set_from_usage(&u),
+                        // Track if we've seen any tokens during streaming
+                        let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let seen_tokens_clone = Arc::clone(&seen_tokens);
+
+                        let stream = body_stream.map(move |chunk_result| {
+                            match chunk_result {
+                                Ok(bytes) => {
+                                    let text = String::from_utf8_lossy(&bytes);
+
+                                    // Parse token usage from streaming response
+                                    // Anthropic sends incremental events; others send cumulative totals
+                                    if let Some(u) =
+                                        parse_chunk_or_default(parser.as_ref(), &text, "stream")
+                                    {
+                                        if !u.is_empty() {
+                                            seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                        }
+                                        match parser.provider_name() {
+                                            "anthropic" => counter_clone.accumulate(&u),
+                                            _ => counter_clone.set_from_usage(&u),
+                                        }
+                                    }
+
+                                    if let Some(converted) =
+                                        adaptor_clone.convert_stream_response(&text)
+                                    {
+                                        Ok(axum::body::Bytes::from(converted))
+                                    } else {
+                                        Ok(axum::body::Bytes::new())
                                     }
                                 }
-
-                                if let Some(converted) =
-                                    adaptor_clone.convert_stream_response(&text)
-                                {
-                                    Ok(axum::body::Bytes::from(converted))
-                                } else {
-                                    Ok(axum::body::Bytes::new())
-                                }
+                                Err(e) => Err(std::io::Error::other(e)),
                             }
-                            Err(e) => Err(std::io::Error::other(e)),
                         });
 
-                        let done = futures::stream::once(async {
+                        let done = futures::stream::once(async move {
+                            // Check for empty response after stream ends
+                            if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
+                                tracing::warn!(
+                                    channel_id = %upstream_id_str,
+                                    model = ?model_name_clone,
+                                    "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                );
+
+                                // Record failure to circuit breaker and channel state
+                                state_clone.circuit_breaker.record_failure_with_type(
+                                    &upstream_id_str,
+                                    FailureType::EmptyResponse,
+                                );
+                                state_clone.channel_state_tracker.record_error(
+                                    channel_id,
+                                    model_name_clone.as_deref(),
+                                    &FailureType::EmptyResponse,
+                                    "Empty streaming response with zero tokens",
+                                );
+
+                                // Evict affinity so next request tries different channel
+                                if let Some(model) = &model_name_clone {
+                                    state_clone.affinity_cache.evict(&session_id_clone, model);
+                                    tracing::debug!(
+                                        session_id = %session_id_clone,
+                                        model = %model,
+                                        channel_id,
+                                        "Affinity evicted — empty streaming response for {}",
+                                        upstream_name
+                                    );
+                                }
+                            }
                             Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
                         });
                         let final_stream = stream.chain(done);
@@ -2739,6 +3249,7 @@ async fn proxy_logic(
                             routing_decision: sched_routing_decision.clone(),
                             sched_request_color: shaper_color,
                             error_type: None,
+                            request_log_data: None,
                         };
                     }
 
@@ -2819,6 +3330,7 @@ async fn proxy_logic(
                         routing_decision: sched_routing_decision.clone(),
                         sched_request_color: shaper_color,
                         error_type: None,
+                            request_log_data: None,
                     };
                 } else {
                     // Handle non-success responses (4xx errors)
@@ -2843,6 +3355,7 @@ async fn proxy_logic(
                                 routing_decision: sched_routing_decision.clone(),
                                 sched_request_color: shaper_color,
                                 error_type: Some("upstream_error".to_string()),
+                        request_log_data: None,
                             };
                         }
                     };
@@ -2950,6 +3463,7 @@ async fn proxy_logic(
                         routing_decision: sched_routing_decision.clone(),
                         sched_request_color: shaper_color,
                         error_type: Some(et.to_string()),
+                            request_log_data: None,
                     };
                 }
             }
@@ -3011,6 +3525,7 @@ async fn proxy_logic(
             routing_decision: sched_routing_decision.clone(),
             sched_request_color: shaper_color,
             error_type: Some("router_reject".to_string()),
+                        request_log_data: None,
         };
     }
 
@@ -3036,47 +3551,8 @@ async fn proxy_logic(
         routing_decision: sched_routing_decision.clone(),
         sched_request_color: shaper_color,
         error_type: Some("upstream_error".to_string()),
+                        request_log_data: None,
     }
-}
-
-/// Handle streaming response with token parsing for OpenAI protocol
-fn handle_response_with_token_parsing(
-    resp: reqwest::Response,
-    token_counter: &Arc<UnifiedTokenCounter>,
-    channel_type: ChannelType,
-) -> Response {
-    let status = resp.status();
-    let mut response_builder = Response::builder().status(status);
-
-    if let Some(headers_mut) = response_builder.headers_mut() {
-        for (k, v) in resp.headers() {
-            headers_mut.insert(k, v.clone());
-        }
-    }
-
-    let counter_clone = Arc::clone(token_counter);
-    let parser = get_parser(channel_type);
-    let stream = resp.bytes_stream();
-
-    let mapped_stream = stream.map(move |chunk_result| match chunk_result {
-        Ok(bytes) => {
-            let text = String::from_utf8_lossy(&bytes);
-            if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "stream") {
-                match parser.provider_name() {
-                    "anthropic" => counter_clone.accumulate(&u),
-                    _ => counter_clone.set_from_usage(&u),
-                }
-            }
-            Ok(bytes)
-        }
-        Err(e) => Err(std::io::Error::other(e)),
-    });
-
-    let body = Body::from_stream(mapped_stream);
-
-    response_builder
-        .body(body)
-        .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
 #[cfg(test)]
