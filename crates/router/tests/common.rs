@@ -216,6 +216,100 @@ pub async fn ensure_error_type_column(pool: &AnyPool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Ensure the `channel_providers` and `channel_abilities` tables exist.
+/// These tables supersede the deprecated `router_upstreams`, `router_groups`,
+/// and `router_group_members` tables.
+#[allow(dead_code)]
+pub async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> {
+    // Create channel_providers if not exists
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS channel_providers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type INTEGER DEFAULT 0,
+            key TEXT NOT NULL,
+            status INTEGER DEFAULT 1,
+            name TEXT,
+            weight INTEGER DEFAULT 0,
+            base_url TEXT DEFAULT '',
+            models TEXT,
+            `group` TEXT DEFAULT 'default',
+            used_quota BIGINT DEFAULT 0,
+            priority BIGINT DEFAULT 0,
+            auto_ban INTEGER DEFAULT 1,
+            rpm_cap INTEGER,
+            tpm_cap BIGINT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create channel_abilities if not exists
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS channel_abilities (
+            `group` TEXT NOT NULL,
+            model TEXT NOT NULL,
+            channel_id INTEGER NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            priority INTEGER DEFAULT 0,
+            weight INTEGER DEFAULT 0,
+            PRIMARY KEY (`group`, model, channel_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Insert a channel for testing.
+/// Creates entries in both `channel_providers` and `channel_abilities`.
+#[allow(dead_code)]
+pub async fn insert_test_channel(
+    pool: &AnyPool,
+    channel_id: i32,
+    name: &str,
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    group: &str,
+) -> anyhow::Result<()> {
+    ensure_channel_tables(pool).await?;
+
+    sqlx::query(
+        r#"
+        INSERT OR REPLACE INTO channel_providers
+        (id, type, key, status, name, weight, base_url, models, `group`, priority)
+        VALUES (?, 0, ?, 1, ?, 1, ?, ?, ?, 0)
+        "#,
+    )
+    .bind(channel_id)
+    .bind(api_key)
+    .bind(name)
+    .bind(base_url)
+    .bind(model)
+    .bind(group)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT OR REPLACE INTO channel_abilities (`group`, model, channel_id, enabled, priority, weight)
+        VALUES (?, ?, ?, 1, 0, 1)
+        "#,
+    )
+    .bind(group)
+    .bind(model)
+    .bind(channel_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     // Use a unique temp file per test to avoid SQLite lock contention when tests run in parallel.
     let tmp = tempfile::NamedTempFile::new()?;
