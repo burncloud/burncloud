@@ -2139,25 +2139,80 @@ async fn proxy_logic(
                             let body_stream = resp.bytes_stream();
                             let counter_clone = Arc::clone(&token_counter);
 
+                            // Clone state and upstream info for post-stream empty response check
+                            let state_clone = state.clone();
+                            let upstream_id_str = upstream.id.clone();
+                            let upstream_name = upstream.name.clone();
+                            let model_name_clone = model_name.map(|s| s.to_string());
+                            let session_id_clone = session_id.to_string();
+                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+
                             let parser = get_parser(channel_type);
-                            let stream = body_stream.map(move |chunk_result| match chunk_result {
-                                Ok(bytes) => {
-                                    let text = String::from_utf8_lossy(&bytes);
 
-                                    // Parse token usage from Gemini streaming response
-                                    if let Some(u) = parse_chunk_or_default(
-                                        parser.as_ref(),
-                                        &text,
-                                        "passthrough",
-                                    ) {
-                                        counter_clone.set_from_usage(&u);
+                            // Track if we've seen any tokens during streaming
+                            let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                            let seen_tokens_clone = Arc::clone(&seen_tokens);
+
+                            let stream = body_stream
+                                .map(move |chunk_result| {
+                                    match chunk_result {
+                                        Ok(bytes) => {
+                                            let text = String::from_utf8_lossy(&bytes);
+
+                                            // Parse token usage from Gemini streaming response
+                                            if let Some(u) = parse_chunk_or_default(
+                                                parser.as_ref(),
+                                                &text,
+                                                "passthrough",
+                                            ) {
+                                                if !u.is_empty() {
+                                                    seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                                }
+                                                counter_clone.set_from_usage(&u);
+                                            }
+
+                                            // Pass through raw bytes (Gemini native format)
+                                            Ok(bytes)
+                                        }
+                                        Err(e) => Err(std::io::Error::other(e)),
                                     }
+                                })
+                                .chain(futures::stream::once(async move {
+                                    // Check for empty response after stream ends
+                                    if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
+                                        tracing::warn!(
+                                            channel_id = %upstream_id_str,
+                                            model = ?model_name_clone,
+                                            "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                        );
 
-                                    // Pass through raw bytes (Gemini native format)
-                                    Ok(bytes)
-                                }
-                                Err(e) => Err(std::io::Error::other(e)),
-                            });
+                                        // Record failure to circuit breaker and channel state
+                                        state_clone.circuit_breaker.record_failure_with_type(
+                                            &upstream_id_str,
+                                            FailureType::EmptyResponse,
+                                        );
+                                        state_clone.channel_state_tracker.record_error(
+                                            channel_id,
+                                            model_name_clone.as_deref(),
+                                            &FailureType::EmptyResponse,
+                                            "Empty streaming response with zero tokens",
+                                        );
+
+                                        // Evict affinity so next request tries different channel
+                                        if let Some(model) = &model_name_clone {
+                                            state_clone.affinity_cache.evict(&session_id_clone, model);
+                                            tracing::debug!(
+                                                session_id = %session_id_clone,
+                                                model = %model,
+                                                channel_id,
+                                                "Affinity evicted — empty streaming response for {}",
+                                                upstream_name
+                                            );
+                                        }
+                                    }
+                                    // Return empty bytes to not affect the stream
+                                    Ok(axum::body::Bytes::new())
+                                }));
 
                             // L2 Shaper success: upstream accepted the request.
                             // commit(est_tpm) refunds 0 and marks committed so
@@ -2652,12 +2707,92 @@ async fn proxy_logic(
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
                         }
+
+                        // Handle OpenAI streaming with empty response detection
+                        let body_stream = resp.bytes_stream();
+                        let counter_clone = Arc::clone(&token_counter);
+                        let parser = get_parser(channel_type);
+
+                        // Clone state and upstream info for post-stream empty response check
+                        let state_clone = state.clone();
+                        let upstream_id_str = upstream.id.clone();
+                        let upstream_name = upstream.name.clone();
+                        let model_name_clone = model_name.map(|s| s.to_string());
+                        let session_id_clone = session_id.to_string();
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+
+                        // Track if we've seen any tokens during streaming
+                        let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let seen_tokens_clone = Arc::clone(&seen_tokens);
+
+                        let stream = body_stream.map(move |chunk_result| {
+                            match chunk_result {
+                                Ok(bytes) => {
+                                    let text = String::from_utf8_lossy(&bytes);
+                                    if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "stream") {
+                                        if !u.is_empty() {
+                                            seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                        }
+                                        match parser.provider_name() {
+                                            "anthropic" => counter_clone.accumulate(&u),
+                                            _ => counter_clone.set_from_usage(&u),
+                                        }
+                                    }
+                                    Ok(bytes)
+                                }
+                                Err(e) => Err(std::io::Error::other(e)),
+                            }
+                        });
+
+                        // Add post-stream check for empty response
+                        let done = futures::stream::once(async move {
+                            if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
+                                tracing::warn!(
+                                    channel_id = %upstream_id_str,
+                                    model = ?model_name_clone,
+                                    "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                );
+
+                                state_clone.circuit_breaker.record_failure_with_type(
+                                    &upstream_id_str,
+                                    FailureType::EmptyResponse,
+                                );
+                                state_clone.channel_state_tracker.record_error(
+                                    channel_id,
+                                    model_name_clone.as_deref(),
+                                    &FailureType::EmptyResponse,
+                                    "Empty streaming response with zero tokens",
+                                );
+
+                                if let Some(model) = &model_name_clone {
+                                    state_clone.affinity_cache.evict(&session_id_clone, model);
+                                    tracing::debug!(
+                                        session_id = %session_id_clone,
+                                        model = %model,
+                                        channel_id,
+                                        "Affinity evicted — empty streaming response for {}",
+                                        upstream_name
+                                    );
+                                }
+                            }
+                            Ok(axum::body::Bytes::new())
+                        });
+
+                        let final_stream = stream.chain(done);
+
                         return ProxyResult {
-                            response: handle_response_with_token_parsing(
-                                resp,
-                                &token_counter,
-                                channel_type,
-                            ),
+                            response: Response::builder()
+                                .status(status)
+                                .header("content-type", "text/event-stream")
+                                .header("cache-control", "no-cache")
+                                .header("connection", "keep-alive")
+                                .body(Body::from_stream(final_stream))
+                                .unwrap_or_else(|_| {
+                                    build_response(
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        Body::from("Failed to build streaming response"),
+                                    )
+                                }),
                             upstream_id: last_upstream_id,
                             final_status: status,
                             pricing_region: selected_pricing_region.clone(),
@@ -2679,33 +2814,82 @@ async fn proxy_logic(
                         let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
 
-                        let stream = body_stream.map(move |chunk_result| match chunk_result {
-                            Ok(bytes) => {
-                                let text = String::from_utf8_lossy(&bytes);
+                        // Clone state and upstream info for post-stream empty response check
+                        let state_clone = state.clone();
+                        let upstream_id_str = upstream.id.clone();
+                        let upstream_name = upstream.name.clone();
+                        let model_name_clone = model_name.map(|s| s.to_string());
+                        let session_id_clone = session_id.to_string();
+                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
 
-                                // Parse token usage from streaming response
-                                // Anthropic sends incremental events; others send cumulative totals
-                                if let Some(u) =
-                                    parse_chunk_or_default(parser.as_ref(), &text, "stream")
-                                {
-                                    match parser.provider_name() {
-                                        "anthropic" => counter_clone.accumulate(&u),
-                                        _ => counter_clone.set_from_usage(&u),
+                        // Track if we've seen any tokens during streaming
+                        let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let seen_tokens_clone = Arc::clone(&seen_tokens);
+
+                        let stream = body_stream.map(move |chunk_result| {
+                            match chunk_result {
+                                Ok(bytes) => {
+                                    let text = String::from_utf8_lossy(&bytes);
+
+                                    // Parse token usage from streaming response
+                                    // Anthropic sends incremental events; others send cumulative totals
+                                    if let Some(u) =
+                                        parse_chunk_or_default(parser.as_ref(), &text, "stream")
+                                    {
+                                        if !u.is_empty() {
+                                            seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                        }
+                                        match parser.provider_name() {
+                                            "anthropic" => counter_clone.accumulate(&u),
+                                            _ => counter_clone.set_from_usage(&u),
+                                        }
+                                    }
+
+                                    if let Some(converted) =
+                                        adaptor_clone.convert_stream_response(&text)
+                                    {
+                                        Ok(axum::body::Bytes::from(converted))
+                                    } else {
+                                        Ok(axum::body::Bytes::new())
                                     }
                                 }
-
-                                if let Some(converted) =
-                                    adaptor_clone.convert_stream_response(&text)
-                                {
-                                    Ok(axum::body::Bytes::from(converted))
-                                } else {
-                                    Ok(axum::body::Bytes::new())
-                                }
+                                Err(e) => Err(std::io::Error::other(e)),
                             }
-                            Err(e) => Err(std::io::Error::other(e)),
                         });
 
-                        let done = futures::stream::once(async {
+                        let done = futures::stream::once(async move {
+                            // Check for empty response after stream ends
+                            if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
+                                tracing::warn!(
+                                    channel_id = %upstream_id_str,
+                                    model = ?model_name_clone,
+                                    "Empty streaming response (zero tokens) detected after stream ended, treating as failure"
+                                );
+
+                                // Record failure to circuit breaker and channel state
+                                state_clone.circuit_breaker.record_failure_with_type(
+                                    &upstream_id_str,
+                                    FailureType::EmptyResponse,
+                                );
+                                state_clone.channel_state_tracker.record_error(
+                                    channel_id,
+                                    model_name_clone.as_deref(),
+                                    &FailureType::EmptyResponse,
+                                    "Empty streaming response with zero tokens",
+                                );
+
+                                // Evict affinity so next request tries different channel
+                                if let Some(model) = &model_name_clone {
+                                    state_clone.affinity_cache.evict(&session_id_clone, model);
+                                    tracing::debug!(
+                                        session_id = %session_id_clone,
+                                        model = %model,
+                                        channel_id,
+                                        "Affinity evicted — empty streaming response for {}",
+                                        upstream_name
+                                    );
+                                }
+                            }
                             Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
                         });
                         let final_stream = stream.chain(done);
@@ -3037,46 +3221,6 @@ async fn proxy_logic(
         sched_request_color: shaper_color,
         error_type: Some("upstream_error".to_string()),
     }
-}
-
-/// Handle streaming response with token parsing for OpenAI protocol
-fn handle_response_with_token_parsing(
-    resp: reqwest::Response,
-    token_counter: &Arc<UnifiedTokenCounter>,
-    channel_type: ChannelType,
-) -> Response {
-    let status = resp.status();
-    let mut response_builder = Response::builder().status(status);
-
-    if let Some(headers_mut) = response_builder.headers_mut() {
-        for (k, v) in resp.headers() {
-            headers_mut.insert(k, v.clone());
-        }
-    }
-
-    let counter_clone = Arc::clone(token_counter);
-    let parser = get_parser(channel_type);
-    let stream = resp.bytes_stream();
-
-    let mapped_stream = stream.map(move |chunk_result| match chunk_result {
-        Ok(bytes) => {
-            let text = String::from_utf8_lossy(&bytes);
-            if let Some(u) = parse_chunk_or_default(parser.as_ref(), &text, "stream") {
-                match parser.provider_name() {
-                    "anthropic" => counter_clone.accumulate(&u),
-                    _ => counter_clone.set_from_usage(&u),
-                }
-            }
-            Ok(bytes)
-        }
-        Err(e) => Err(std::io::Error::other(e)),
-    });
-
-    let body = Body::from_stream(mapped_stream);
-
-    response_builder
-        .body(body)
-        .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
 #[cfg(test)]
