@@ -2460,12 +2460,12 @@ async fn proxy_logic(
                             let counter_clone = Arc::clone(&token_counter);
 
                             // Clone state and upstream info for post-stream empty response check
-                            let state_clone = state.clone();
+                            let _state_clone = state.clone();
                             let upstream_id_str = upstream.id.clone();
-                            let upstream_name = upstream.name.clone();
+                            let _upstream_name = upstream.name.clone();
                             let model_name_clone = model_name.map(|s| s.to_string());
-                            let session_id_clone = session_id.to_string();
-                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                            let _session_id_clone = session_id.to_string();
+                            let _channel_id: i32 = upstream.id.parse().unwrap_or(0);
 
                             let parser = get_parser(channel_type);
 
@@ -3017,12 +3017,12 @@ async fn proxy_logic(
                         let parser = get_parser(channel_type);
 
                         // Clone state and upstream info for post-stream empty response check
-                        let state_clone = state.clone();
+                        let _state_clone = state.clone();
                         let upstream_id_str = upstream.id.clone();
-                        let upstream_name = upstream.name.clone();
+                        let _upstream_name = upstream.name.clone();
                         let model_name_clone = model_name.map(|s| s.to_string());
-                        let session_id_clone = session_id.to_string();
-                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        let _session_id_clone = session_id.to_string();
+                        let _channel_id: i32 = upstream.id.parse().unwrap_or(0);
 
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -3099,12 +3099,12 @@ async fn proxy_logic(
                         let parser = get_parser(channel_type);
 
                         // Clone state and upstream info for post-stream empty response check
-                        let state_clone = state.clone();
+                        let _state_clone = state.clone();
                         let upstream_id_str = upstream.id.clone();
-                        let upstream_name = upstream.name.clone();
+                        let _upstream_name = upstream.name.clone();
                         let model_name_clone = model_name.map(|s| s.to_string());
-                        let session_id_clone = session_id.to_string();
-                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        let _session_id_clone = session_id.to_string();
+                        let _channel_id: i32 = upstream.id.parse().unwrap_or(0);
 
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
