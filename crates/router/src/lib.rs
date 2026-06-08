@@ -1156,6 +1156,18 @@ fn normalize_doubled_path(path: &str) -> String {
     // Known endpoint prefixes that clients may double
     const PREFIXES: &[&str] = &["/v1/messages", "/v1/chat/completions", "/v1/embeddings"];
 
+    // Handle /v1/v1/* -> /v1/* (client base_url includes /v1 prefix)
+    // This happens when client configures base_url="http://host:port/v1" 
+    // and SDK appends "/v1/messages" → "/v1/v1/messages"
+    if path.starts_with("/v1/v1/") {
+        let rest = &path[4..]; // Skip first "/v1"
+        let normalized = format!("/v1{}", rest);
+        tracing::debug!(original = %path, normalized = %normalized, "Normalized /v1/v1 path prefix");
+        return normalized;
+    } else if path == "/v1/v1" {
+        return "/v1".to_string();
+    }
+
     for prefix in PREFIXES {
         let doubled = format!("{prefix}{prefix}");
         if path.starts_with(&doubled) {
