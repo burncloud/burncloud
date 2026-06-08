@@ -2524,7 +2524,10 @@ async fn proxy_logic(
                     }
 
                     if status.is_success() {
-                        record_upstream_success(state, upstream, model_name, &session_id);
+                        // For streaming responses, delay recording success until we confirm non-empty response
+                        if !is_stream {
+                            record_upstream_success(state, upstream, model_name, &session_id);
+                        }
 
                         let channel_id: i32 = upstream.id.parse().unwrap_or(0);
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
@@ -2644,8 +2647,13 @@ async fn proxy_logic(
                                             }
                                         }
                                     } else {
-                                        // Successful response - reset the counter
+                                        // Successful response - reset the counter and record success
                                         state_clone.empty_response_counter.reset(&upstream_id_str);
+                                        // Now we can safely record success for the streaming response
+                                        state_clone.circuit_breaker.record_success(&upstream_id_str);
+                                        if let Some(model) = &model_name_clone {
+                                            state_clone.affinity_cache.insert(&session_id_clone, model, channel_id);
+                                        }
                                     }
                                     // Return empty bytes to not affect the stream
                                     Ok(axum::body::Bytes::new())
@@ -3040,7 +3048,10 @@ async fn proxy_logic(
                 }
 
                 if resp.status().is_success() {
-                    record_upstream_success(state, upstream, model_name, &session_id);
+                    // For streaming responses, delay recording success until we confirm non-empty response
+                    if !is_stream {
+                        record_upstream_success(state, upstream, model_name, &session_id);
+                    }
                     let status = resp.status();
 
                     // Parse rate limit info from response headers
@@ -3254,8 +3265,13 @@ async fn proxy_logic(
                                     );
                                 }
                             } else {
-                                // Successful response - reset the counter
+                                // Successful response - reset the counter and record success
                                 state_clone.empty_response_counter.reset(&upstream_id_str);
+                                // Now we can safely record success for the streaming response
+                                state_clone.circuit_breaker.record_success(&upstream_id_str);
+                                if let Some(model) = &model_name_clone {
+                                    state_clone.affinity_cache.insert(&session_id_clone, model, channel_id);
+                                }
                             }
                             Ok(axum::body::Bytes::new())
                         });
@@ -3409,8 +3425,13 @@ async fn proxy_logic(
                                     );
                                 }
                             } else {
-                                // Successful response - reset the counter
+                                // Successful response - reset the counter and record success
                                 state_clone.empty_response_counter.reset(&upstream_id_str);
+                                // Now we can safely record success for the streaming response
+                                state_clone.circuit_breaker.record_success(&upstream_id_str);
+                                if let Some(model) = &model_name_clone {
+                                    state_clone.affinity_cache.insert(&session_id_clone, model, channel_id);
+                                }
                             }
                             Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
                         });
