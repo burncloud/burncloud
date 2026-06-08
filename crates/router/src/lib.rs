@@ -1197,26 +1197,25 @@ fn normalize_doubled_path(path: &str) -> String {
     const PREFIXES: &[&str] = &["/v1/messages", "/v1/chat/completions", "/v1/embeddings"];
 
     // Handle /v1/v1/* -> /v1/* (client base_url includes /v1 prefix)
-    // This happens when client configures base_url="http://host:port/v1" 
-    // and SDK appends "/v1/messages" → "/v1/v1/messages"
+    // Example: client sets base_url="http://host:port/v1" and SDK appends "/v1/messages"
+    // Result: "/v1/v1/messages" -> "/v1/messages"
     if path.starts_with("/v1/v1/") {
-        let rest = &path[4..]; // Skip first "/v1"
-        let normalized = format!("/v1{}", rest);
-        tracing::debug!(original = %path, normalized = %normalized, "Normalized /v1/v1 path prefix");
-        return normalized;
+        let rest = &path[3..]; // Skip "/v1" -> "/v1" // Skip first "/v1", keep "/v1/messages"
+        tracing::debug!(original = %path, normalized = %rest, "Normalized /v1/v1 path prefix");
+        return rest.to_string();
     } else if path == "/v1/v1" {
         return "/v1".to_string();
     }
 
+    // Handle doubled endpoint paths: /v1/messages/v1/messages -> /v1/messages
+    // This happens when client base_url already includes the endpoint path (e.g., "https://gateway/v1/messages")
+    // and SDK appends the same endpoint again.
     for prefix in PREFIXES {
         let doubled = format!("{prefix}{prefix}");
-        if path.starts_with(&doubled) {
-            let rest = &path[prefix.len()..];
-            let normalized = format!("{prefix}{rest}");
-            if normalized != path {
-                tracing::debug!(original = %path, normalized = %normalized, "Normalized doubled path prefix");
-            }
-            return normalized;
+        if path == doubled {
+            // Exact match: /v1/messages/v1/messages -> /v1/messages
+            tracing::debug!(original = %path, normalized = %prefix, "Normalized doubled endpoint path");
+            return prefix.to_string();
         }
     }
 
