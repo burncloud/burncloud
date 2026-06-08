@@ -413,6 +413,21 @@ const SENSITIVE_FIELDS: &[&str] = &[
     "secret",
     "authorization",
 ];
+/// Safely cut a string at a UTF-8 character boundary.
+/// Returns a string slice that is at most max_bytes long.
+fn safe_cut(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    
+    // Find the character boundary at or before max_bytes
+    let mut boundary = max_bytes;
+    while boundary > 0 && !s.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    
+    &s[..boundary]
+}
 
 /// Sanitize request body for logging: remove sensitive fields, truncate if too large.
 /// Returns (sanitized_body, was_truncated).
@@ -435,7 +450,7 @@ fn sanitize_request_body(body_bytes: &[u8]) -> (Option<String>, bool) {
             // Truncate the JSON string representation
             let json_str = json.to_string();
             format!("{}... [TRUNCATED: {} bytes total]",
-                &json_str[..json_str.len().min(MAX_LOG_BODY_SIZE)],
+                safe_cut(&json_str, MAX_LOG_BODY_SIZE),
                 body_bytes.len())
         } else {
             json.to_string()
@@ -445,7 +460,7 @@ fn sanitize_request_body(body_bytes: &[u8]) -> (Option<String>, bool) {
         // Not valid JSON, treat as plain text
         let sanitized = if truncated {
             format!("{}... [TRUNCATED: {} bytes total]",
-                &body_str[..body_str.len().min(MAX_LOG_BODY_SIZE)],
+                safe_cut(&body_str, MAX_LOG_BODY_SIZE),
                 body_bytes.len())
         } else {
             body_str.to_string()
@@ -513,7 +528,7 @@ fn sanitize_response_body(body: &[u8]) -> (Option<String>, bool) {
         let json_str = json.to_string();
         if truncated {
             (Some(format!("{}... [TRUNCATED: {} bytes total]",
-                &json_str[..json_str.len().min(MAX_LOG_BODY_SIZE)],
+                safe_cut(&json_str, MAX_LOG_BODY_SIZE),
                 body.len())), true)
         } else {
             (Some(json_str), false)
@@ -521,7 +536,7 @@ fn sanitize_response_body(body: &[u8]) -> (Option<String>, bool) {
     } else {
         if truncated {
             (Some(format!("{}... [TRUNCATED: {} bytes total]",
-                &body_str[..body_str.len().min(MAX_LOG_BODY_SIZE)],
+                safe_cut(&body_str, MAX_LOG_BODY_SIZE),
                 body.len())), true)
         } else {
             (Some(body_str.to_string()), false)
