@@ -2494,7 +2494,7 @@ async fn proxy_logic(
                                         Ok(bytes) => {
                                             let text = String::from_utf8_lossy(&bytes);
 
-                                            // Parse token usage from Gemini streaming response
+                                            // Parse token usage from streaming response
                                             if let Some(u) = parse_chunk_or_default(
                                                 parser.as_ref(),
                                                 &text,
@@ -2505,8 +2505,37 @@ async fn proxy_logic(
                                                 }
                                                 counter_clone.set_from_usage(&u);
                                             }
+                                            
+                                            // Also check for actual content in the stream (not just usage)
+                                            // This handles cases where usage is sent separately at the end
+                                            // or not sent at all (some providers do not send usage in streams)
+                                            if !seen_tokens_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                                                // Check for content in SSE format: data: {"choices":[{"delta":{"content":"..."}}]}
+                                                for line in text.lines() {
+                                                    let line = line.trim();
+                                                    if !line.starts_with("data: ") {
+                                                        continue;
+                                                    }
+                                                    let data = &line[6..];
+                                                    if data.trim() == "[DONE]" {
+                                                        continue;
+                                                    }
+                                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                                        if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                                                            for choice in choices {
+                                                                if let Some(delta) = choice.get("delta") {
+                                                                    if delta.get("content").and_then(|c| c.as_str()).is_some() {
+                                                                        seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                                                        break;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
 
-                                            // Pass through raw bytes (Gemini native format)
+                                            // Pass through raw bytes
                                             Ok(bytes)
                                         }
                                         Err(e) => Err(std::io::Error::other(e)),
@@ -3078,6 +3107,32 @@ async fn proxy_logic(
                                             _ => counter_clone.set_from_usage(&u),
                                         }
                                     }
+                                    
+                                    // Also check for actual content in the stream (not just usage)
+                                    if !seen_tokens_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                                        for line in text.lines() {
+                                            let line = line.trim();
+                                            if !line.starts_with("data: ") {
+                                                continue;
+                                            }
+                                            let data = &line[6..];
+                                            if data.trim() == "[DONE]" {
+                                                continue;
+                                            }
+                                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                                if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                                                    for choice in choices {
+                                                        if let Some(delta) = choice.get("delta") {
+                                                            if delta.get("content").and_then(|c| c.as_str()).is_some() {
+                                                                seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     Ok(bytes)
                                 }
                                 Err(e) => Err(std::io::Error::other(e)),
@@ -3183,6 +3238,32 @@ async fn proxy_logic(
                                         match parser.provider_name() {
                                             "anthropic" => counter_clone.accumulate(&u),
                                             _ => counter_clone.set_from_usage(&u),
+                                        }
+                                    }
+                                    
+                                    // Also check for actual content in the stream (not just usage)
+                                    if !seen_tokens_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                                        for line in text.lines() {
+                                            let line = line.trim();
+                                            if !line.starts_with("data: ") {
+                                                continue;
+                                            }
+                                            let data = &line[6..];
+                                            if data.trim() == "[DONE]" {
+                                                continue;
+                                            }
+                                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                                if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                                                    for choice in choices {
+                                                        if let Some(delta) = choice.get("delta") {
+                                                            if delta.get("content").and_then(|c| c.as_str()).is_some() {
+                                                                seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
