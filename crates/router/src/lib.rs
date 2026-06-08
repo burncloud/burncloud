@@ -3243,7 +3243,7 @@ async fn proxy_logic(
                                 }
                             } else {
                                 // Successful response - reset the counter
-                                state_clone.empty_response_counter.record_success(&upstream_id_str);
+                                state_clone.empty_response_counter.reset(&upstream_id_str);
                             }
                             Ok(axum::body::Bytes::new())
                         });
@@ -3398,7 +3398,7 @@ async fn proxy_logic(
                                 }
                             } else {
                                 // Successful response - reset the counter
-                                state_clone.empty_response_counter.record_success(&upstream_id_str);
+                                state_clone.empty_response_counter.reset(&upstream_id_str);
                             }
                             Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
                         });
