@@ -371,6 +371,7 @@ fn check_empty_response(
     session_id: &str,
     token_counter: &UnifiedTokenCounter,
 ) -> bool {
+    let upstream_id_str = upstream.id.clone();
     let usage = token_counter.get_usage();
     if usage.is_empty() {
         tracing::warn!(
@@ -379,21 +380,28 @@ fn check_empty_response(
             "Empty response (zero tokens) detected, treating as failure"
         );
 
-        // Record failure to circuit breaker and channel state
-        record_upstream_failure(
-            state,
-            upstream,
-            model_name,
-            FailureType::EmptyResponse,
-            "Empty response with zero tokens",
-            session_id,
-        );
+        // Record to sliding window counter for non-streaming responses
+        let should_penalize = state.empty_response_counter.record_empty(&upstream_id_str);
+
+        // Only record failure if threshold exceeded (sliding window logic)
+        if should_penalize {
+            record_upstream_failure(
+                state,
+                upstream,
+                model_name,
+                FailureType::EmptyResponse,
+                "Empty response with zero tokens",
+                session_id,
+            );
+        }
 
         // Note: We already called record_upstream_success earlier, which updated
         // affinity to this channel. The record_upstream_failure will evict affinity,
         // so the next request will not be stuck on this bad channel.
         true // Empty response detected
     } else {
+        // Successful response - reset the counter
+        state.empty_response_counter.reset(&upstream_id_str);
         false // Response has tokens
     }
 }
@@ -2812,6 +2820,11 @@ async fn proxy_logic(
                                     "passthrough",
                                 );
                                 token_counter.set_from_usage(&resp_usage);
+                            }
+                            // Check for empty response (zero tokens) - non-streaming passthrough
+                            // Empty response indicates a problem with the channel, should try next candidate
+                            if check_empty_response(state, upstream, model_name, &session_id, &token_counter) {
+                                continue; // Try next candidate
                             }
 
                             // L2 Shaper success — non-streaming passthrough.
