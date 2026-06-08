@@ -53,7 +53,16 @@ impl EmptyResponseCounter {
         let count = counters.entry(channel_id.to_string()).or_insert(0);
         *count += 1;
         let exceeded = *count >= self.threshold;
-        if exceeded {
+        
+        // Warning when approaching threshold (threshold - 1)
+        if *count == self.threshold - 1 {
+            tracing::warn!(
+                channel_id = channel_id,
+                count = *count,
+                threshold = self.threshold,
+                "Empty response counter approaching threshold - consider monitoring channel"
+            );
+        } else if exceeded {
             tracing::warn!(
                 channel_id = channel_id,
                 count = *count,
@@ -84,6 +93,37 @@ impl EmptyResponseCounter {
                 *count = 0;
             }
         }
+    }
+
+    /// Get current counter value for a channel (for monitoring/admin purposes).
+    pub fn get_count(&self, channel_id: &str) -> u32 {
+        let counters = self.counters.read().unwrap();
+        counters.get(channel_id).copied().unwrap_or(0)
+    }
+
+    /// Force reset counter for a channel (admin override).
+    /// Returns the previous count value.
+    pub fn force_reset(&self, channel_id: &str) -> u32 {
+        let mut counters = self.counters.write().unwrap();
+        let previous_count = counters.remove(channel_id).unwrap_or(0);
+        if previous_count > 0 {
+            tracing::info!(
+                channel_id = channel_id,
+                previous_count = previous_count,
+                "Admin forced reset of empty response counter"
+            );
+        }
+        previous_count
+    }
+
+    /// Get all channels with non-zero counters (for monitoring).
+    pub fn get_all_counts(&self) -> Vec<(String, u32)> {
+        let counters = self.counters.read().unwrap();
+        counters
+            .iter()
+            .filter(|(_, &count)| count > 0)
+            .map(|(k, &v)| (k.clone(), v))
+            .collect()
     }
 }
 
