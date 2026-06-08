@@ -2821,6 +2821,11 @@ async fn proxy_logic(
                                 );
                                 token_counter.set_from_usage(&resp_usage);
                             }
+                            // Check for empty response (zero tokens) - non-streaming passthrough
+                            // Empty response indicates a problem with the channel, should try next candidate
+                            if check_empty_response(state, upstream, model_name, &session_id, &token_counter) {
+                                continue; // Try next candidate
+                            }
 
                             // L2 Shaper success — non-streaming passthrough.
                             // Use actual_tpm from parsed usage (audit decision D9 —
