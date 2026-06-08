@@ -10,6 +10,7 @@ use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
 use crate::price_sync::SyncResult;
 use crate::rate_budget::InMemoryBudget;
+use crate::EmptyResponseCounter;
 use crate::scheduler::SchedulerPolicyMap;
 use burncloud_database::Database;
 use burncloud_database_router::{RouterLog, RouterRequestLog, StoragePolicy};
@@ -73,4 +74,6 @@ pub struct AppState {
     /// Storage policy for request logs: full (complete bodies), summary (metadata only), none.
     /// Default is summary for production; full for dev/debug.
     pub request_log_storage_policy: StoragePolicy,
+    /// Counter for consecutive empty responses per channel (sliding window).
+    pub empty_response_counter: Arc<EmptyResponseCounter>,
 }
