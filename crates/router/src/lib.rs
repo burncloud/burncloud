@@ -3984,3 +3984,7 @@ async fn metrics_handler() -> Response {
         .body(Body::from(metrics_output))
         .expect("Failed to build metrics response")
 }
+pub mod response_quality;
+pub mod smart_circuit_breaker;
+pub mod channel_health_manager;
+pub mod health_probe;
