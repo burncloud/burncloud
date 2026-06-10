@@ -926,6 +926,7 @@ pub async fn create_router_app(
         budget_update_tx,
         request_log_storage_policy,
         empty_response_counter: Arc::new(EmptyResponseCounter::new()),
+        channel_health_manager: Arc::new(crate::channel_health_manager::ChannelHealthManager::new())
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -3988,3 +3989,128 @@ pub mod response_quality;
 pub mod smart_circuit_breaker;
 pub mod channel_health_manager;
 pub mod health_probe;
+
+/// Check response quality using the new ResponseQuality system.
+/// 
+/// This replaces the simple empty response check with a more sophisticated
+/// quality detection that considers:
+/// - Empty responses (zero tokens)
+/// - Partial responses
+/// - Malformed responses
+/// - Upstream errors
+/// 
+/// Returns the response quality and whether the response should be treated as a failure.
+fn check_response_quality(
+    state: &AppState,
+    upstream: &Upstream,
+    model_name: Option<&str>,
+    session_id: &str,
+    response_body: &str,
+    status_code: axum::http::StatusCode,
+    headers: &axum::http::HeaderMap,
+) -> (crate::response_quality::ResponseQuality, bool) {
+    use crate::response_quality::ResponseQuality;
+    use crate::response_quality::ResponseQualityDetector;
+    use crate::response_quality::UpstreamErrorType;
+    use crate::response_quality::RateLimitScope as UpstreamRateLimitScope;
+    
+    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+    let model = model_name.unwrap_or("unknown");
+    let http_status: u16 = status_code.as_u16();
+    
+    // Detect response quality using the detector
+    let detector = ResponseQualityDetector::new();
+    let quality = detector.detect(http_status, headers, response_body, 0, false, "openai");
+    
+    // Process response through health manager (records to circuit breaker)
+    state.channel_health_manager.process_response(
+        channel_id, model, http_status, headers, response_body, 0, false, "openai",
+    );
+    
+    let upstream_id_str = upstream.id.clone();
+    
+    match quality {
+        ResponseQuality::Healthy { .. } => {
+            // Reset empty response counter
+            state.empty_response_counter.reset(&upstream_id_str);
+            (quality, false)
+        }
+        ResponseQuality::Partial { .. } => {
+            // Partial response - not a failure but degraded
+            state.empty_response_counter.reset(&upstream_id_str);
+            (quality, false)
+        }
+        ResponseQuality::Empty { .. } => {
+            // Empty response - treat as failure
+            tracing::warn!(
+                channel_id = %upstream.id,
+                model = ?model_name,
+                "Empty response detected (new quality system)"
+            );
+            
+            let should_penalize = state.empty_response_counter.record_empty(&upstream_id_str);
+            if should_penalize {
+                record_upstream_failure(
+                    state,
+                    upstream,
+                    model_name,
+                    FailureType::EmptyResponse,
+                    "Empty response with zero tokens",
+                    session_id,
+                );
+            }
+            (quality, true)
+        }
+        ResponseQuality::Malformed { .. } => {
+            // Malformed response - treat as failure
+            tracing::warn!(
+                channel_id = %upstream.id,
+                model = ?model_name,
+                "Malformed response detected"
+            );
+            
+            record_upstream_failure(
+                state,
+                upstream,
+                model_name,
+                FailureType::ServerError,
+                "Malformed response",
+                session_id,
+            );
+            (quality, true)
+        }
+        ResponseQuality::UpstreamError { ref error_type, .. } => {
+            // Upstream error - treat as failure
+            let failure_type = match error_type {
+                UpstreamErrorType::RateLimited { ref scope, ref retry_after } => {
+                    FailureType::RateLimited {
+                        scope: match scope {
+                            UpstreamRateLimitScope::Account => crate::circuit_breaker::RateLimitScope::Account,
+                            UpstreamRateLimitScope::Model => crate::circuit_breaker::RateLimitScope::Model,
+                            UpstreamRateLimitScope::Unknown => crate::circuit_breaker::RateLimitScope::Unknown,
+                        },
+                        retry_after: retry_after.clone(),
+                    }
+                }
+                UpstreamErrorType::AuthFailed => FailureType::AuthFailed,
+                UpstreamErrorType::ModelNotFound => FailureType::ModelNotFound,
+                UpstreamErrorType::PaymentRequired => FailureType::PaymentRequired,
+                UpstreamErrorType::ServerError => FailureType::ServerError,
+                UpstreamErrorType::GatewayError => FailureType::ConnectionError,
+                UpstreamErrorType::Timeout => FailureType::Timeout,
+                UpstreamErrorType::ConnectionError => FailureType::ConnectionError,
+                UpstreamErrorType::Overloaded { .. } => FailureType::ServerError,
+            };
+            
+            record_upstream_failure(
+                state,
+                upstream,
+                model_name,
+                failure_type,
+                "Upstream error",
+                session_id,
+            );
+            (quality, true)
+        }
+    }
+}

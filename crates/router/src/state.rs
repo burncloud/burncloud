@@ -12,6 +12,7 @@ use crate::price_sync::SyncResult;
 use crate::rate_budget::InMemoryBudget;
 use crate::EmptyResponseCounter;
 use crate::scheduler::SchedulerPolicyMap;
+use crate::channel_health_manager::ChannelHealthManager;
 use burncloud_database::Database;
 use burncloud_database_router::{RouterLog, RouterRequestLog, StoragePolicy};
 use burncloud_service_billing::{CostCalculator, PriceCache};
@@ -76,4 +77,7 @@ pub struct AppState {
     pub request_log_storage_policy: StoragePolicy,
     /// Counter for consecutive empty responses per channel (sliding window).
     pub empty_response_counter: Arc<EmptyResponseCounter>,
+    /// NEW: Smart Channel Health Manager
+    /// Integrates response quality detection with circuit breaker decisions
+    pub channel_health_manager: Arc<ChannelHealthManager>,
 }
