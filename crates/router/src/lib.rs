@@ -2557,6 +2557,7 @@ async fn proxy_logic(
             match req_builder.send().await {
                 Ok(resp) => {
                     let status = resp.status();
+                    let resp_headers = resp.headers().clone();
 
                     if status.is_server_error() {
                         last_error = format!("Upstream returned {status}");
@@ -2822,9 +2823,27 @@ async fn proxy_logic(
                                 );
                                 token_counter.set_from_usage(&resp_usage);
                             }
-                            // Check for empty response (zero tokens) - non-streaming passthrough
-                            // Empty response indicates a problem with the channel, should try next candidate
-                            if check_empty_response(state, upstream, model_name, &session_id, &token_counter) {
+                            
+                            // Check response quality using the new quality detection system
+                            // This replaces simple empty check with comprehensive quality analysis
+                            let body_str = String::from_utf8_lossy(&resp_bytes);
+                            let (quality, is_failure) = check_response_quality(
+                                state,
+                                upstream,
+                                model_name,
+                                &session_id,
+                                &body_str,
+                                status,
+                                &resp_headers,
+                            );
+                            
+                            if is_failure {
+                                tracing::warn!(
+                                    channel_id = %upstream.id,
+                                    model = ?model_name,
+                                    quality = ?quality,
+                                    "Response quality check failed for passthrough"
+                                );
                                 continue; // Try next candidate
                             }
 
@@ -3576,9 +3595,25 @@ async fn proxy_logic(
                         g.commit(commit_tpm);
                     }
 
-                    // Check for empty response (zero tokens) - only for non-streaming
-                    // Empty response indicates a problem with the channel, should try next candidate
-                    if check_empty_response(state, upstream, model_name, &session_id, &token_counter) {
+                    // Check response quality using the new quality detection system
+                    // This replaces simple empty check with comprehensive quality analysis
+                    let (quality, is_failure) = check_response_quality(
+                        state,
+                        upstream,
+                        model_name,
+                        &session_id,
+                        &response_body,
+                        status,
+                        &resp_headers,
+                    );
+                    
+                    if is_failure {
+                        tracing::warn!(
+                            channel_id = %upstream.id,
+                            model = ?model_name,
+                            quality = ?quality,
+                            "Response quality check failed for non-streaming main path"
+                        );
                         continue; // Try next candidate
                     }
 
@@ -4017,6 +4052,8 @@ fn check_response_quality(
     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
     let model = model_name.unwrap_or("unknown");
     let http_status: u16 = status_code.as_u16();
+    
+    tracing::info!("check_response_quality called for channel={}, model={}, status={}", channel_id, model, http_status);
     
     // Detect response quality using the detector
     let detector = ResponseQualityDetector::new();
