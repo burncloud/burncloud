@@ -2725,7 +2725,7 @@ async fn proxy_logic(
                                     .unwrap_or_else(|_| {
                                         build_response(
                                             StatusCode::INTERNAL_SERVER_ERROR,
-                                            Body::from("Failed to build streaming response"),
+                                            Body::from(r#"{"error":{"message":"Failed to build streaming response","type":"internal_error","code":"stream_build_failed"}}"#),
                                         )
                                     }),
                                 upstream_id: last_upstream_id,
@@ -2892,9 +2892,14 @@ async fn proxy_logic(
                                 // upstream but actual usage = 0. Let
                                 // budget_guard drop → full est_tpm refund.
                                 return ProxyResult {
-                                    response: build_response(
+                                    response: build_response_with_header(
                                         status,
-                                        Body::from(last_error.clone()),
+                                        "content-type",
+                                        "application/json",
+                                        Body::from(format!(
+                                            r#"{{"error":{{"message":"{}","type":"upstream_error","code":"read_error"}}}}"#,
+                                            last_error
+                                        )),
                                     ),
                                     upstream_id: last_upstream_id,
                                     final_status: status,
@@ -3360,7 +3365,7 @@ async fn proxy_logic(
                                 .unwrap_or_else(|_| {
                                     build_response(
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        Body::from("Failed to build streaming response"),
+                                        Body::from(r#"{"error":{"message":"Failed to build streaming response","type":"internal_error","code":"stream_build_failed"}}"#),
                                     )
                                 }),
                             upstream_id: last_upstream_id,
@@ -3524,7 +3529,7 @@ async fn proxy_logic(
                                 .unwrap_or_else(|_| {
                                     build_response(
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        Body::from("Failed to build streaming response"),
+                                        Body::from(r#"{"error":{"message":"Failed to build streaming response","type":"internal_error","code":"stream_build_failed"}}"#),
                                     )
                                 }),
                             upstream_id: last_upstream_id,
@@ -3648,7 +3653,15 @@ async fn proxy_logic(
                             // → full est_tpm refund (request reached upstream
                             // but no actual usage was billed).
                             return ProxyResult {
-                                response: build_response(status, Body::from(last_error.clone())),
+                                response: build_response_with_header(
+                                        status,
+                                        "content-type",
+                                        "application/json",
+                                        Body::from(format!(
+                                            r#"{{"error":{{"message":"{}","type":"upstream_error","code":"read_error"}}}}"#,
+                                            last_error
+                                        )),
+                                    ),
                                 upstream_id: last_upstream_id,
                                 final_status: status,
                                 pricing_region: selected_pricing_region.clone(),
@@ -4057,11 +4070,19 @@ fn check_response_quality(
     
     // Detect response quality using the detector
     let detector = ResponseQualityDetector::new();
-    let quality = detector.detect(http_status, headers, response_body, 0, false, "openai");
+    
+    // Determine channel_type based on upstream protocol
+    let channel_type = match upstream.protocol.as_str() {
+        "claude" | "anthropic" => "anthropic",
+        "gemini" | "vertex" => "gemini",
+        _ => "openai",
+    };
+    
+    let quality = detector.detect(http_status, headers, response_body, 0, false, channel_type);
     
     // Process response through health manager (records to circuit breaker)
     state.channel_health_manager.process_response(
-        channel_id, model, http_status, headers, response_body, 0, false, "openai",
+        channel_id, model, http_status, headers, response_body, 0, false, channel_type,
     );
     
     let upstream_id_str = upstream.id.clone();
