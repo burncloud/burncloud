@@ -1,4 +1,4 @@
--- Migration 0017: Router request logs table (SQLite)
+-- Migration 0018: Router request logs table (SQLite)
 -- Stores detailed request/response data for debugging and auditing.
 -- Linked to router_logs via request_id foreign key.
 

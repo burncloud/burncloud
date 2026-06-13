@@ -81,9 +81,25 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
         version: "0013_alter_router_logs_add_cost_status",
         sql: include_str!("../migrations/sqlite/0013_alter_router_logs_add_cost_status.sql"),
     },
-    Migration {
+        Migration {
         version: "0014_alter_router_logs_add_error_type",
         sql: include_str!("../migrations/sqlite/0014_alter_router_logs_add_error_type.sql"),
+    },
+    Migration {
+        version: "0015_monthly_quota",
+        sql: include_str!("../migrations/sqlite/0015_monthly_quota.sql"),
+    },
+    Migration {
+        version: "0016_token_rotation",
+        sql: include_str!("../migrations/sqlite/0016_token_rotation.sql"),
+    },
+    Migration {
+        version: "0017_fix_bool_columns",
+        sql: include_str!("../migrations/sqlite/0017_fix_bool_columns.sql"),
+    },
+    Migration {
+        version: "0018_router_request_logs",
+        sql: include_str!("../migrations/sqlite/0018_router_request_logs.sql"),
     },
 ];
 
@@ -144,9 +160,25 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
         version: "0013_alter_router_logs_add_cost_status",
         sql: include_str!("../migrations/postgres/0013_alter_router_logs_add_cost_status.sql"),
     },
-    Migration {
+        Migration {
         version: "0014_alter_router_logs_add_error_type",
         sql: include_str!("../migrations/postgres/0014_alter_router_logs_add_error_type.sql"),
+    },
+    Migration {
+        version: "0015_monthly_quota",
+        sql: include_str!("../migrations/postgres/0015_monthly_quota.sql"),
+    },
+    Migration {
+        version: "0016_token_rotation",
+        sql: include_str!("../migrations/postgres/0016_token_rotation.sql"),
+    },
+    Migration {
+        version: "0017_fix_bool_columns",
+        sql: include_str!("../migrations/postgres/0017_fix_bool_columns.sql"),
+    },
+    Migration {
+        version: "0018_router_request_logs",
+        sql: include_str!("../migrations/postgres/0018_router_request_logs.sql"),
     },
 ];
 
