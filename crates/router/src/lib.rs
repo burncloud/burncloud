@@ -3254,6 +3254,15 @@ async fn proxy_logic(
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let seen_tokens_clone = Arc::clone(&seen_tokens);
+                        
+                        // Track if SSE error was detected during streaming
+                        let sse_error_detected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let sse_error_detected_clone = Arc::clone(&sse_error_detected);
+                        let sse_error_is_auth = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let sse_error_is_auth_clone = Arc::clone(&sse_error_is_auth);
+                        
+                        // Clone for stream closure (original will be used in done closure)
+                        let upstream_id_str_for_stream = upstream_id_str.clone();
 
                         let stream = body_stream.map(move |chunk_result| {
                             match chunk_result {
@@ -3269,7 +3278,7 @@ async fn proxy_logic(
                                         }
                                     }
                                     
-                                    // Also check for actual content in the stream (not just usage)
+                                    // Check for SSE errors and content in the stream
                                     if !seen_tokens_clone.load(std::sync::atomic::Ordering::Relaxed) {
                                         for line in text.lines() {
                                             let line = line.trim();
@@ -3281,7 +3290,37 @@ async fn proxy_logic(
                                                 continue;
                                             }
                                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                                                if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                                                // Check for SSE error response (e.g., AppIdNoAuthError from Xunfei)
+                                                if let Some(error) = json.get("error") {
+                                                    let error_msg = error.get("message")
+                                                        .and_then(|m| m.as_str())
+                                                        .unwrap_or("Unknown SSE error");
+                                                    let error_code = error.get("code")
+                                                        .and_then(|c| c.as_u64())
+                                                        .unwrap_or(400) as u16;
+                                                    
+                                                    // Check if this is an auth error
+                                                    let msg_lower = error_msg.to_lowercase();
+                                                    let is_auth_error = msg_lower.contains("auth") 
+                                                        || msg_lower.contains("appid") 
+                                                        || msg_lower.contains("unauthorized")
+                                                        || msg_lower.contains("invalid key")
+                                                        || error_code == 401;
+                                                    
+                                                    tracing::error!(
+                                                        channel_id = %upstream_id_str_for_stream,
+                                                        error_code,
+                                                        error_msg,
+                                                        is_auth = is_auth_error,
+                                                        "SSE streaming error detected"
+                                                    );
+                                                    
+                                                    // Set error flags for done closure to handle
+                                                    sse_error_detected_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                                    sse_error_is_auth_clone.store(is_auth_error, std::sync::atomic::Ordering::Relaxed);
+                                                }
+                                                // Then check for actual content in the stream
+                                                else if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
                                                     for choice in choices {
                                                         if let Some(delta) = choice.get("delta") {
                                                             if delta.get("content").and_then(|c| c.as_str()).is_some() {
@@ -3401,6 +3440,15 @@ async fn proxy_logic(
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let seen_tokens_clone = Arc::clone(&seen_tokens);
+                        
+                        // Track if SSE error was detected during streaming
+                        let sse_error_detected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let sse_error_detected_clone = Arc::clone(&sse_error_detected);
+                        let sse_error_is_auth = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let sse_error_is_auth_clone = Arc::clone(&sse_error_is_auth);
+                        
+                        // Clone for stream closure (original will be used in done closure)
+                        let upstream_id_str_for_stream = upstream_id_str.clone();
 
                         let stream = body_stream.map(move |chunk_result| {
                             match chunk_result {
@@ -3421,7 +3469,7 @@ async fn proxy_logic(
                                         }
                                     }
                                     
-                                    // Also check for actual content in the stream (not just usage)
+                                    // Check for SSE errors and content in the stream
                                     if !seen_tokens_clone.load(std::sync::atomic::Ordering::Relaxed) {
                                         for line in text.lines() {
                                             let line = line.trim();
@@ -3433,7 +3481,37 @@ async fn proxy_logic(
                                                 continue;
                                             }
                                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                                                if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                                                // Check for SSE error response (e.g., AppIdNoAuthError from Xunfei)
+                                                if let Some(error) = json.get("error") {
+                                                    let error_msg = error.get("message")
+                                                        .and_then(|m| m.as_str())
+                                                        .unwrap_or("Unknown SSE error");
+                                                    let error_code = error.get("code")
+                                                        .and_then(|c| c.as_u64())
+                                                        .unwrap_or(400) as u16;
+                                                    
+                                                    // Check if this is an auth error
+                                                    let msg_lower = error_msg.to_lowercase();
+                                                    let is_auth_error = msg_lower.contains("auth") 
+                                                        || msg_lower.contains("appid") 
+                                                        || msg_lower.contains("unauthorized")
+                                                        || msg_lower.contains("invalid key")
+                                                        || error_code == 401;
+                                                    
+                                                    tracing::error!(
+                                                        channel_id = %upstream_id_str_for_stream,
+                                                        error_code,
+                                                        error_msg,
+                                                        is_auth = is_auth_error,
+                                                        "SSE streaming error detected"
+                                                    );
+                                                    
+                                                    // Set error flags for done closure to handle
+                                                    sse_error_detected_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                                                    sse_error_is_auth_clone.store(is_auth_error, std::sync::atomic::Ordering::Relaxed);
+                                                }
+                                                // Then check for actual content in the stream
+                                                else if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
                                                     for choice in choices {
                                                         if let Some(delta) = choice.get("delta") {
                                                             if delta.get("content").and_then(|c| c.as_str()).is_some() {
@@ -3460,8 +3538,42 @@ async fn proxy_logic(
                         });
 
                         let done = futures::stream::once(async move {
+                            // Check for SSE error first (takes priority over empty response)
+                            if sse_error_detected.load(std::sync::atomic::Ordering::Relaxed) {
+                                // SSE error was detected during streaming
+                                let is_auth = sse_error_is_auth.load(std::sync::atomic::Ordering::Relaxed);
+                                let failure_type = if is_auth {
+                                    FailureType::AuthFailed
+                                } else {
+                                    FailureType::ServerError
+                                };
+                                
+                                tracing::warn!(
+                                    channel_id = %upstream_id_str,
+                                    model = ?model_name_clone,
+                                    ?failure_type,
+                                    "SSE streaming error - recording failure to circuit breaker"
+                                );
+                                
+                                // Record failure with correct type (AuthFailed triggers 30-min cooldown)
+                                state_clone.circuit_breaker.record_failure_with_type(
+                                    &upstream_id_str,
+                                    failure_type.clone(),
+                                );
+                                state_clone.channel_state_tracker.record_error(
+                                    channel_id,
+                                    model_name_clone.as_deref(),
+                                    &failure_type,
+                                    "SSE streaming error detected",
+                                );
+                                
+                                // Evict affinity
+                                if let Some(model) = &model_name_clone {
+                                    state_clone.affinity_cache.evict(&session_id_clone, model);
+                                }
+                            }
                             // Check for empty response after stream ends with sliding window counter
-                            if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
+                            else if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
                                 // Use sliding window counter: only penalize after consecutive empty responses
                                 let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
                                 
