@@ -17,11 +17,16 @@ pub mod passthrough;
 pub mod price_sync;
 pub mod rate_budget;
 pub mod response_parser;
+pub mod response_quality;
 mod scheduler;
+mod stream_peek;
 mod state;
 pub mod stream_parser;
 pub mod token_counter;
 
+/// Peek first chunk timeout (seconds). Used to detect immediate errors (auth, rate limit).
+/// Set to same as request timeout - rely on TCP keepalive for server crash detection.
+const PEEK_FIRST_CHUNK_TIMEOUT_SECS: u64 = 36000;
 
 // ============================================================
 // Empty Response Counter - Track consecutive empty responses
@@ -2600,8 +2605,54 @@ async fn proxy_logic(
 
                         // Handle streaming vs non-streaming passthrough
                         if is_stream {
-                            // Stream passthrough - directly forward Gemini SSE format
+                            // Peek first chunk to detect errors before sending HTTP response
+                            let peek_timeout = std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
+                            let mut peek_error_handled = false;
                             let body_stream = resp.bytes_stream();
+                            
+                            let body_stream = {
+                                let body_stream_for_peek = body_stream;
+                                match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
+                                    crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                                        if let Some((error_code, error_msg, is_auth)) = 
+                                            crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
+                                            let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
+                                            tracing::warn!(channel_id = %upstream.id, error_code = error_code, error_msg = error_msg, ?failure_type, "SSE error in first chunk (Passthrough) - retrying");
+                                            state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
+                                            state.channel_state_tracker.record_error(upstream.id.parse().unwrap_or(0), model_name.as_deref(), &failure_type, &format!("SSE error: {}", error_msg));
+                                            if let Some(model) = model_name { state.affinity_cache.evict(&session_id.to_string(), model); }
+                                            last_error = format!("SSE error {}: {}", error_code, error_msg);
+                                            peek_error_handled = true;
+                                            futures::stream::empty::<Result<axum::body::Bytes, reqwest::Error>>().boxed()
+                                        } else {
+                                            let first_chunk_stream = futures::stream::once(async move { Ok(first_chunk) });
+                                            first_chunk_stream.chain(remaining_stream).boxed()
+                                        }
+                                    }
+                                    crate::stream_peek::PeekResult::Empty => {
+                                        tracing::warn!(channel_id = %upstream.id, "Empty first chunk (Passthrough) - retrying");
+                                        state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                        last_error = "Empty response".to_string();
+                                        peek_error_handled = true;
+                                        futures::stream::empty().boxed()
+                                    }
+                                    crate::stream_peek::PeekResult::Error(e) => {
+                                        tracing::error!(channel_id = %upstream.id, error = ?e, "Peek error (Passthrough)");
+                                        state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::ServerError);
+                                        last_error = format!("Network error: {}", e);
+                                        peek_error_handled = true;
+                                        futures::stream::empty().boxed()
+                                    }
+                                    crate::stream_peek::PeekResult::Timeout { stream } => {
+                                        tracing::info!(channel_id = %upstream.id, "Peek timeout (Passthrough) - proceeding");
+                                        stream
+                                    }
+                                }
+                            };
+                            
+                            if peek_error_handled { continue; }
+                            
+                            let counter_clone = Arc::clone(&token_counter);
                             let counter_clone = Arc::clone(&token_counter);
 
                             // Clone state and upstream info for post-stream empty response check
@@ -3238,8 +3289,74 @@ async fn proxy_logic(
                             g.commit(shaper_ctx.est_tpm);
                         }
 
-                        // Handle OpenAI streaming with empty response detection
+                        // Peek first chunk to detect errors before sending HTTP response
+                        // This allows retry on auth errors instead of sending error to user
+                        let peek_timeout = std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
+                        let mut peek_error_handled = false;
                         let body_stream = resp.bytes_stream();
+                        
+                        // Peek and check for errors
+                        let body_stream = {
+                            let body_stream_for_peek = body_stream;
+                            match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
+                                crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                                    if let Some((error_code, error_msg, is_auth)) = 
+                                        crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
+                                        // Error detected - record and mark for retry
+                                        let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
+                                        tracing::warn!(
+                                            channel_id = %upstream.id,
+                                            error_code = error_code,
+                                            error_msg = error_msg,
+                                            ?failure_type,
+                                            "SSE error in first chunk (OpenAI) - retrying"
+                                        );
+                                        state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
+                                        state.channel_state_tracker.record_error(
+                                            upstream.id.parse().unwrap_or(0),
+                                            model_name.as_deref(),
+                                            &failure_type,
+                                            &format!("SSE error: {}", error_msg),
+                                        );
+                                        if let Some(model) = model_name {
+                                            state.affinity_cache.evict(&session_id.to_string(), model);
+                                        }
+                                        last_error = format!("SSE error {}: {}", error_code, error_msg);
+                                        peek_error_handled = true;
+                                        // Return empty stream since we will continue anyway
+                                        futures::stream::empty::<Result<axum::body::Bytes, reqwest::Error>>().boxed()
+                                    } else {
+                                        // No error - prepend first chunk
+                                        let first_chunk_stream = futures::stream::once(async move { Ok(first_chunk) });
+                                        first_chunk_stream.chain(remaining_stream).boxed()
+                                    }
+                                }
+                                crate::stream_peek::PeekResult::Empty => {
+                                    tracing::warn!(channel_id = %upstream.id, "Empty first chunk (OpenAI) - retrying");
+                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    last_error = "Empty response".to_string();
+                                    peek_error_handled = true;
+                                    futures::stream::empty().boxed()
+                                }
+                                crate::stream_peek::PeekResult::Error(e) => {
+                                    tracing::error!(channel_id = %upstream.id, error = ?e, "Peek error (OpenAI)");
+                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    last_error = format!("Network error: {}", e);
+                                    peek_error_handled = true;
+                                    futures::stream::empty().boxed()
+                                }
+                                crate::stream_peek::PeekResult::Timeout { stream } => {
+                                    tracing::info!(channel_id = %upstream.id, "Peek timeout (OpenAI) - proceeding");
+                                    stream
+                                }
+                            }
+                        };
+                        
+                        // If peek detected an error, skip this channel and try next
+                        if peek_error_handled {
+                            continue;
+                        }
+                        
                         let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
 
@@ -3422,9 +3539,70 @@ async fn proxy_logic(
                         };
                     }
 
-                    // Handle Streaming for non-OpenAI
+                    // Handle Streaming for non-OpenAI with peek
                     if is_stream {
+                        // Peek first chunk to detect errors before sending HTTP response
+                        let peek_timeout = std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
+                        let mut peek_error_handled = false;
                         let body_stream = resp.bytes_stream();
+                        
+                        let body_stream = {
+                            let body_stream_for_peek = body_stream;
+                            match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
+                                crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                                    if let Some((error_code, error_msg, is_auth)) = 
+                                        crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
+                                        let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
+                                        tracing::warn!(
+                                            channel_id = %upstream.id,
+                                            error_code = error_code,
+                                            error_msg = error_msg,
+                                            ?failure_type,
+                                            "SSE error in first chunk (non-OpenAI) - retrying"
+                                        );
+                                        state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
+                                        state.channel_state_tracker.record_error(
+                                            upstream.id.parse().unwrap_or(0),
+                                            model_name.as_deref(),
+                                            &failure_type,
+                                            &format!("SSE error: {}", error_msg),
+                                        );
+                                        if let Some(model) = model_name {
+                                            state.affinity_cache.evict(&session_id.to_string(), model);
+                                        }
+                                        last_error = format!("SSE error {}: {}", error_code, error_msg);
+                                        peek_error_handled = true;
+                                        futures::stream::empty::<Result<axum::body::Bytes, reqwest::Error>>().boxed()
+                                    } else {
+                                        let first_chunk_stream = futures::stream::once(async move { Ok(first_chunk) });
+                                        first_chunk_stream.chain(remaining_stream).boxed()
+                                    }
+                                }
+                                crate::stream_peek::PeekResult::Empty => {
+                                    tracing::warn!(channel_id = %upstream.id, "Empty first chunk (non-OpenAI) - retrying");
+                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    last_error = "Empty response".to_string();
+                                    peek_error_handled = true;
+                                    futures::stream::empty().boxed()
+                                }
+                                crate::stream_peek::PeekResult::Error(e) => {
+                                    tracing::error!(channel_id = %upstream.id, error = ?e, "Peek error (non-OpenAI)");
+                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    last_error = format!("Network error: {}", e);
+                                    peek_error_handled = true;
+                                    futures::stream::empty().boxed()
+                                }
+                                crate::stream_peek::PeekResult::Timeout { stream } => {
+                                    tracing::info!(channel_id = %upstream.id, "Peek timeout (non-OpenAI) - proceeding");
+                                    stream
+                                }
+                            }
+                        };
+                        
+                        if peek_error_handled {
+                            continue;
+                        }
+                        
                         let adaptor_clone = Arc::clone(&adaptor);
                         let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
@@ -4145,7 +4323,6 @@ async fn metrics_handler() -> Response {
         .body(Body::from(metrics_output))
         .expect("Failed to build metrics response")
 }
-pub mod response_quality;
 pub mod smart_circuit_breaker;
 pub mod channel_health_manager;
 pub mod health_probe;
