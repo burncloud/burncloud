@@ -2614,6 +2614,7 @@ async fn proxy_logic(
                                 let body_stream_for_peek = body_stream;
                                 match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
                                     crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                                    tracing::debug!(channel_id = %upstream.id, chunk_len = first_chunk.len(), "Peek: got first chunk, checking for SSE error");
                                         if let Some((error_code, error_msg, is_auth)) = 
                                             crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
                                             let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
@@ -3300,6 +3301,7 @@ async fn proxy_logic(
                             let body_stream_for_peek = body_stream;
                             match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
                                 crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                                    tracing::debug!(channel_id = %upstream.id, chunk_len = first_chunk.len(), "Peek: got first chunk, checking for SSE error");
                                     if let Some((error_code, error_msg, is_auth)) = 
                                         crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
                                         // Error detected - record and mark for retry
@@ -3550,6 +3552,7 @@ async fn proxy_logic(
                             let body_stream_for_peek = body_stream;
                             match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
                                 crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                                    tracing::debug!(channel_id = %upstream.id, chunk_len = first_chunk.len(), "Peek: got first chunk, checking for SSE error");
                                     if let Some((error_code, error_msg, is_auth)) = 
                                         crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
                                         let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
