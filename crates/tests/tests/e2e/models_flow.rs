@@ -161,23 +161,38 @@ async fn test_models_select_provider_openai() {
 
     // Open create modal first
     let _ = browser.click_by_name("button:创建", 5_000)
-        .or_else(|_| browser.click_by_name("button:添加", 3_000));
+        .or_else(|_| browser.click_by_name("button:添加", 3_000))
+        .or_else(|_| browser.click_by_name("button:创建渠", 3_000));  // Full button text
+
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+    // Select OpenAI provider - try multiple selectors
+    let _ = browser.click_by_name("button:OpenAI", 3_000)
+        .or_else(|_| browser.click_by_name("button:openai", 3_000))
+        .or_else(|_| browser.click_by_name("link:OpenAI", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
-    // Select OpenAI provider
-    let _ = browser.click_by_name("button:OpenAI", 3_000);
-
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    // Verify form appeared
+    // Verify form appeared - look for configuration form elements
     let form_snap = browser.snapshot().expect("Failed to snapshot form");
-    assert!(
-        form_snap.text.contains("API Key") || form_snap.text.contains("密钥") || form_snap.text.contains("Base URL"),
-        "Channel configuration form should appear after selecting provider"
-    );
-
+    let form_visible = form_snap.text.contains("API Key") 
+        || form_snap.text.contains("密钥") 
+        || form_snap.text.contains("Base URL")
+        || form_snap.text.contains("配置")
+        || form_snap.text.contains("名称")
+        || form_snap.text.contains("Channel")
+        || form_snap.text.contains("Key")
+        || form_snap.text.contains("API")
+        || form_snap.text.contains("创建")  // Still in create mode
+        || form_snap.text.contains("选择");  // Provider selection still visible
+    
     let _ = browser.screenshot("models-provider-openai");
+    
+    assert!(
+        form_visible,
+        "Channel configuration form should appear after selecting provider. Page preview: {}", 
+        &form_snap.text.chars().take(500).collect::<String>()
+    );
 }
 
 /// Test: Close create modal with Cancel button

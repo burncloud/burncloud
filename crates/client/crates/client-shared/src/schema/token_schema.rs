@@ -8,27 +8,27 @@ use serde_json::json;
 pub fn token_schema() -> serde_json::Value {
     json!({
         "entity_type": "token",
-        "label": "schema.token.label",
+        "label": "Token",
         "fields": [
             {
                 "key": "token",
-                "label": "schema.token.field.token.label",
+                "label": "Token",
                 "type": "text",
                 "required": false,
                 "readonly": true,
                 "visibility": "table_only"
             },
             {
-                "key": "user_id",
-                "label": "schema.token.field.user_id.label",
+                "key": "name",
+                "label": "名称 / Name",
                 "type": "text",
                 "required": true,
-                "placeholder": "e.g. user-123",
+                "placeholder": "e.g. My API Key",
                 "visibility": "form_only"
             },
             {
                 "key": "quota_limit",
-                "label": "schema.token.field.quota_limit.label",
+                "label": "配额 / Quota",
                 "type": "number",
                 "required": false,
                 "default": -1,
@@ -36,7 +36,7 @@ pub fn token_schema() -> serde_json::Value {
             },
             {
                 "key": "used_quota",
-                "label": "schema.token.field.used_quota.label",
+                "label": "已用 / Used",
                 "type": "number",
                 "required": false,
                 "readonly": true,
@@ -44,7 +44,7 @@ pub fn token_schema() -> serde_json::Value {
             },
             {
                 "key": "status",
-                "label": "schema.token.field.status.label",
+                "label": "状态 / Status",
                 "type": "text",
                 "required": false,
                 "readonly": true,
@@ -52,14 +52,14 @@ pub fn token_schema() -> serde_json::Value {
             }
         ],
         "table_columns": [
-            {"key": "token", "label": "schema.token.field.token.label", "render": "monospace"},
-            {"key": "user_id", "label": "schema.token.field.user_id.label", "render": "text"},
-            {"key": "status", "label": "schema.token.field.status.label", "render": "status_badge", "active_value": "active"},
-            {"key": "used_quota", "label": "schema.token.field.used_quota.label", "render": "text"},
-            {"key": "quota_limit", "label": "schema.token.field.quota_limit.label", "render": "text"}
+            {"key": "token", "label": "Token", "render": "monospace"},
+            {"key": "name", "label": "名称 / Name", "render": "text"},
+            {"key": "status", "label": "状态 / Status", "render": "status_badge", "active_value": "active"},
+            {"key": "used_quota", "label": "已用 / Used", "render": "text"},
+            {"key": "quota_limit", "label": "配额 / Quota", "render": "text"}
         ],
         "form_sections": [
-            {"title": "schema.token.section.label", "fields": ["user_id", "quota_limit"]}
+            {"title": "Token", "fields": ["name", "quota_limit"]}
         ]
     })
 }
