@@ -191,6 +191,27 @@ impl ResponseQualityDetector {
             };
         }
 
+        // 2.5. Check for SSE streaming error (HTTP 200 with error in data: {...})
+        // Some providers (e.g., Xunfei) return errors via SSE format with HTTP 200
+        if body.starts_with("data: ") {
+            let json_str = &body[6..];
+            if json_str.trim() != "[DONE]" {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(error) = json.get("error") {
+                        // Extract error details
+                        let error_message = error
+                            .get("message")
+                            .and_then(|m| m.as_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "Upstream error in SSE response".to_string());
+                        let error_code = error.get("code").and_then(|c| c.as_u64()).map(|c| c as u16).unwrap_or(400);
+                        let error_type = self.classify_sse_error_code(error_code, &error_message);
+                        return ResponseQuality::UpstreamError { code: error_code, message: error_message, error_type };
+                    }
+                }
+            }
+        }
+
         // 3. Try to parse tokens from response
         match self.parse_tokens(body, channel_type) {
             Ok(tokens) if tokens >= self.config.min_valid_tokens => {
@@ -297,6 +318,35 @@ impl ResponseQualityDetector {
             message,
             error_type,
         }
+    }
+
+    /// Classify SSE error based on error code and message.
+    fn classify_sse_error_code(&self, error_code: u16, error_message: &str) -> UpstreamErrorType {
+        let msg_lower = error_message.to_lowercase();
+        
+        // Check for specific error patterns
+        if msg_lower.contains("rate limit") || msg_lower.contains("rate_limit") || error_code == 429 {
+            return UpstreamErrorType::RateLimited { scope: RateLimitScope::Unknown, retry_after: None };
+        }
+        if msg_lower.contains("auth") || msg_lower.contains("appid") || msg_lower.contains("unauthorized") || msg_lower.contains("invalid key") {
+            return UpstreamErrorType::AuthFailed;
+        }
+        if msg_lower.contains("quota") || msg_lower.contains("payment") || msg_lower.contains("billing") {
+            return UpstreamErrorType::PaymentRequired;
+        }
+        if msg_lower.contains("not found") || (msg_lower.contains("model") && msg_lower.contains("not")) {
+            return UpstreamErrorType::ModelNotFound;
+        }
+        if msg_lower.contains("overloaded") || msg_lower.contains("capacity") {
+            return UpstreamErrorType::Overloaded { retry_after: None };
+        }
+        if msg_lower.contains("timeout") {
+            return UpstreamErrorType::Timeout;
+        }
+        if msg_lower.contains("connection") || msg_lower.contains("network") {
+            return UpstreamErrorType::ConnectionError;
+        }
+        UpstreamErrorType::ServerError
     }
 
     /// Parse token count from response body based on provider format.
@@ -709,4 +759,42 @@ mod tests {
         };
         assert_eq!(ResponseQualityDetector::quality_to_health_score(&rate_limited), 0.3);
     }
+}
+
+/// Check if a raw SSE chunk contains an error.
+/// Returns Some((error_code, error_message, is_auth_error)) if an error is found.
+pub fn check_sse_error_in_chunk(chunk: &[u8]) -> Option<(u16, String, bool)> {
+    let text = String::from_utf8_lossy(chunk);
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.starts_with("data: ") {
+            continue;
+        }
+        let data = &line[6..];
+        if data.trim() == "[DONE]" {
+            continue;
+        }
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+            if let Some(error) = json.get("error") {
+                let error_msg = error.get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown SSE error")
+                    .to_string();
+                let error_code = error.get("code")
+                    .and_then(|c| c.as_u64())
+                    .unwrap_or(400) as u16;
+                
+                // Check if this is an auth error
+                let msg_lower = error_msg.to_lowercase();
+                let is_auth_error = msg_lower.contains("auth") 
+                    || msg_lower.contains("appid") 
+                    || msg_lower.contains("unauthorized")
+                    || msg_lower.contains("invalid key")
+                    || error_code == 401;
+                
+                return Some((error_code, error_msg, is_auth_error));
+            }
+        }
+    }
+    None
 }
