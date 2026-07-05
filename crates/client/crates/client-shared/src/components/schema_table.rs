@@ -66,7 +66,7 @@ fn render_cell(col: &serde_json::Value, row: &serde_json::Value) -> Element {
         "datetime" => {
             let text = value_to_string(val);
             rsx! {
-                span { class: "text-secondary", "{text}" }
+                span { class: "text-bc-text-secondary", "{text}" }
             }
         }
         _ => {
@@ -120,14 +120,14 @@ pub fn SchemaTable(
                             {
                                 let label = col["label"].as_str().unwrap_or("");
                                 rsx! {
-                                    th { class: "text-left text-caption font-semibold text-secondary px-md py-sm",
+                                    th { class: "text-left text-caption font-semibold text-bc-text-secondary px-md py-sm",
                                         "{label}"
                                     }
                                 }
                             }
                         }
                         if has_actions {
-                            th { class: "text-right text-caption font-semibold text-secondary px-md py-sm",
+                            th { class: "text-right text-caption font-semibold text-bc-text-secondary px-md py-sm",
                                 "操作"
                             }
                         }
@@ -138,7 +138,7 @@ pub fn SchemaTable(
                         tr {
                             td {
                                 colspan: "{columns.len() + usize::from(has_actions)}",
-                                class: "text-center py-lg text-secondary",
+                                class: "text-center py-lg text-bc-text-secondary",
                                 "加载中..."
                             }
                         }
@@ -146,7 +146,7 @@ pub fn SchemaTable(
                         tr {
                             td {
                                 colspan: "{columns.len() + usize::from(has_actions)}",
-                                class: "text-center py-lg text-secondary",
+                                class: "text-center py-lg text-bc-text-secondary",
                                 "暂无数据"
                             }
                         }

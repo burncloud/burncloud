@@ -31,7 +31,7 @@ pub fn BCModal(
                 onclick: |e| e.stop_propagation(),
 
                 div { class: "flex items-center justify-between p-lg border-b border-[var(--bc-border)] shrink-0",
-                    h3 { class: "text-subtitle font-bold text-primary m-0", "{title}" }
+                    h3 { class: "text-subtitle font-bold text-bc-text m-0", "{title}" }
                     button {
                         class: "btn-subtle w-8 h-8 flex items-center justify-center rounded-full text-lg",
                         onclick: move |_| onclose.call(()),

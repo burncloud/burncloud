@@ -28,7 +28,7 @@ pub fn BCCard(
         div { class: "{variant_class} {interactive_class} p-lg {class}",
             if let Some(h) = header {
                 div { class: "flex items-center justify-between mb-md",
-                    h3 { class: "text-subtitle font-semibold text-primary", "{h}" }
+                    h3 { class: "text-subtitle font-semibold text-bc-text", "{h}" }
                 }
             }
             {children}

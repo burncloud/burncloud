@@ -1,6 +1,6 @@
 use burncloud_client_shared::components::{
-    BCBadge, BadgeVariant, EmptyState, ErrorBanner, PageHeader, SkeletonCard, SkeletonVariant,
-    Sparkline, StatusPill,
+    BCBadge, BCModal, BadgeVariant, EmptyState, ErrorBanner, PageHeader, SkeletonCard,
+    SkeletonVariant, Sparkline, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt, Language};
 use burncloud_client_shared::monitor_service::{FilterConfig, MonitorService, RiskEvent};
@@ -204,69 +204,45 @@ pub fn ServiceMonitor() -> Element {
             },
         }
 
-        // Emergency circuit break modal
-        {rsx! {
-            div {
-                class: "fixed inset-0 z-50 flex items-center justify-center",
-                style: if show_emergency_modal() { "--bc-dynamic-display:flex" } else { "--bc-dynamic-display:none" },
-
-                div {
-                    class: "bc-modal-backdrop",
+        BCModal {
+            open: show_emergency_modal(),
+            title: t(*lang.read(), "monitor.emergency.confirm_title").to_string(),
+            onclose: move |_| show_emergency_modal.set(false),
+            footer: rsx! {
+                button {
+                    class: "btn btn-secondary",
                     onclick: move |_| show_emergency_modal.set(false),
+                    disabled: emergency_loading(),
+                    {t(*lang.read(), "common.cancel")}
                 }
+                button {
+                    class: "btn btn-danger",
+                    onclick: handle_emergency,
+                    disabled: emergency_loading(),
+                    if emergency_loading() { {t(*lang.read(), "monitor.emergency.executing")} } else { {t(*lang.read(), "monitor.emergency.confirm")} }
+                }
+            },
 
-                div {
-                    class: "bc-card-solid relative z-10 w-full max-w-lg mx-md animate-scale-in",
-                    onclick: |e| e.stop_propagation(),
+            div { class: "bc-modal-warning",
+                {t(*lang.read(), "monitor.emergency.warning")}
+            }
 
-                    div { class: "flex items-center justify-between p-lg border-b border-[var(--bc-border)]",
-                        h3 { class: "text-subtitle font-bold text-primary m-0", {t(*lang.read(), "monitor.emergency.confirm_title")} }
-                        button {
-                            class: "btn-subtle w-8 h-8 flex items-center justify-center rounded-full text-lg",
-                            onclick: move |_| show_emergency_modal.set(false),
-                            "✕"
-                        }
-                    }
-
-                    div { class: "p-lg",
-                        div { class: "bc-modal-warning",
-                            {t(*lang.read(), "monitor.emergency.warning")}
-                        }
-
-                        div { class: "bc-modal-form-row",
-                            label { class: "bc-modal-form-label", {t(*lang.read(), "monitor.emergency.reason_label")} }
-                            input {
-                                class: "bc-input w-full",
-                                r#type: "text",
-                                value: "{emergency_reason}",
-                                oninput: move |e| emergency_reason.set(e.value()),
-                                placeholder: t(*lang.read(), "monitor.emergency.reason_placeholder"),
-                                disabled: emergency_loading(),
-                            }
-                        }
-
-                        if let Some(err) = emergency_error() {
-                            div { class: "bc-error-text mb-md", "{err}" }
-                        }
-
-                        div { class: "bc-flex-row-end",
-                            button {
-                                class: "btn btn-secondary",
-                                onclick: move |_| show_emergency_modal.set(false),
-                                disabled: emergency_loading(),
-                                {t(*lang.read(), "common.cancel")}
-                            }
-                            button {
-                                class: "btn btn-danger",
-                                onclick: handle_emergency,
-                                disabled: emergency_loading(),
-                                if emergency_loading() { {t(*lang.read(), "monitor.emergency.executing")} } else { {t(*lang.read(), "monitor.emergency.confirm")} }
-                            }
-                        }
-                    }
+            div { class: "bc-modal-form-row",
+                label { class: "bc-modal-form-label", {t(*lang.read(), "monitor.emergency.reason_label")} }
+                input {
+                    class: "bc-input w-full",
+                    r#type: "text",
+                    value: "{emergency_reason}",
+                    oninput: move |e| emergency_reason.set(e.value()),
+                    placeholder: t(*lang.read(), "monitor.emergency.reason_placeholder"),
+                    disabled: emergency_loading(),
                 }
             }
-        }}
+
+            if let Some(err) = emergency_error() {
+                div { class: "bc-error-text mb-md", "{err}" }
+            }
+        }
 
         div { class: "page-content flex flex-col bc-gap-6",
 
@@ -357,10 +333,10 @@ pub fn ServiceMonitor() -> Element {
                                 div { class: "row-card outlined p-md",
                                     key: "{event.id}",
                                     div { class: "flex items-center gap-lg",
-                                        span { class: "mono bc-font-11 text-tertiary", "{event.time}" }
+                                        span { class: "mono bc-font-11 text-bc-text-tertiary", "{event.time}" }
                                         div { class: "flex flex-col bc-gap-xs",
                                             span { class: "bc-font-13 font-semibold", "{event.event_type}" }
-                                            span { class: "mono bc-font-11 text-tertiary", "Source: {event.source} → {event.target} ({event.detail})" }
+                                            span { class: "mono bc-font-11 text-bc-text-tertiary", "Source: {event.source} → {event.target} ({event.detail})" }
                                         }
                                     }
                                     {severity_pill(&event.severity)}

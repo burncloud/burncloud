@@ -53,7 +53,7 @@ pub fn BCInput(
                 }
                 if is_password {
                     button {
-                        class: "flex-shrink-0 flex items-center justify-center w-10 h-full text-secondary hover:text-primary transition-colors cursor-pointer bg-transparent border-none",
+                        class: "flex-shrink-0 flex items-center justify-center w-10 h-full text-bc-text-secondary hover:text-bc-text transition-colors cursor-pointer bg-transparent border-none",
                         r#type: "button",
                         tabindex: "-1",
                         onclick: move |_| show_password.set(!show_password()),

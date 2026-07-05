@@ -1,3 +1,4 @@
+pub mod console_sidebar;
 pub mod aurora_background;
 pub mod bc_badge;
 pub mod bc_button;
@@ -27,6 +28,7 @@ pub mod status_pill;
 pub mod title_bar;
 pub mod toast;
 
+pub use console_sidebar::{ConsoleNav, ConsoleSidebar, NavId};
 pub use aurora_background::{AuroraBackground, AuroraVariant};
 pub use bc_badge::*;
 pub use bc_button::*;

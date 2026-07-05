@@ -1,7 +1,7 @@
 // JSON Schema-driven UI — serde_json::Value is the schema wire format; no typed alternative.
 #![allow(clippy::disallowed_types)]
 
-use burncloud_client_shared::components::{FormMode, SchemaForm};
+use burncloud_client_shared::components::{FormMode, PageHeader, SchemaForm};
 use burncloud_client_shared::schema::deploy_schema;
 use burncloud_client_shared::services::deploy_service::{DeployRequest, DeployService};
 use burncloud_client_shared::use_toast;
@@ -59,14 +59,14 @@ pub fn DeployConfig() -> Element {
     };
 
     rsx! {
-        div { class: "flex flex-col h-full p-lg",
-            // Header
-            div { class: "mb-xl",
-                h1 { class: "text-title font-bold text-primary mb-sm", "Model Deployment" }
-                p { class: "text-secondary", "Deploy new models from various sources." }
-            }
+        PageHeader {
+            title: "Model Deployment".to_string(),
+            subtitle: Some("Deploy new models from various sources.".to_string()),
+            subtitle_class: None,
+            actions: None,
+        }
 
-            // Form
+        div { class: "page-content",
             div { class: "max-w-2xl p-xl rounded-xl bc-card-solid",
                 SchemaForm {
                     schema: schema.clone(),

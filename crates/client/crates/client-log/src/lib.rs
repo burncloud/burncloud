@@ -196,14 +196,14 @@ pub fn LogPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.error_count")} }
-                        div { class: "stat-value text-danger",
+                        div { class: "stat-value text-bc-danger",
                             "{format_thousands(error_count)}"
                         }
                         span { class: "stat-foot down", "↑ 18 in last hour" }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", {t(*lang.read(), "log.kpi.warn_count")} }
-                        div { class: "stat-value text-warning",
+                        div { class: "stat-value text-bc-warning",
                             "{format_thousands(warn_count)}"
                         }
                         span { class: "stat-foot", {t(*lang.read(), "log.kpi.channels_degraded")} }

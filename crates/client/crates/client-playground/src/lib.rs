@@ -321,14 +321,14 @@ pub fn Playground() -> Element {
             },
         }
 
-        // Error banner
-        if let Some(err) = error_msg() {
-            div { class: "bc-error-banner-warning mb-sm",
-                "{err}"
+        div { class: "page-content flex flex-col flex-1 min-h-0 gap-sm",
+            if let Some(err) = error_msg() {
+                div { class: "bc-error-banner-warning",
+                    "{err}"
+                }
             }
-        }
 
-        div { class: "bc-playground-layout",
+            div { class: "bc-playground-layout flex-1 min-h-0",
             // Config rail
             div { class: "bc-config-rail",
                 // Channel selector
@@ -375,7 +375,7 @@ pub fn Playground() -> Element {
                 // Model display
                 div { class: "config-row",
                     label { class: "config-label", {t(*lang.read(), "playground.model")} }
-                    div { class: "mono bc-body-13px text-secondary",
+                    div { class: "mono bc-body-13px text-bc-text-secondary",
                         "{current_model}"
                     }
                 }
@@ -396,7 +396,7 @@ pub fn Playground() -> Element {
                                 }
                             },
                         }
-                        span { class: "mono bc-body-13px text-secondary bc-temp-value", "{temperature():.1}" }
+                        span { class: "mono bc-body-13px text-bc-text-secondary bc-temp-value", "{temperature():.1}" }
                     }
                 }
 
@@ -445,7 +445,7 @@ pub fn Playground() -> Element {
             div { class: "bc-conversation-area",
                 div { role: "log", aria_live: "polite", class: "bc-conversation-log",
                     if msg_list.is_empty() {
-                        div { class: "flex items-center justify-center h-full text-secondary",
+                        div { class: "flex items-center justify-center h-full text-bc-text-secondary",
                             {t(*lang.read(), "playground.start_conversation")}
                         }
                     } else {
@@ -521,6 +521,7 @@ pub fn Playground() -> Element {
                     }
                 }
             }
+        }
         }
     }
 }

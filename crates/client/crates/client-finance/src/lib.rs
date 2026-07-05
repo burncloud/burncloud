@@ -239,10 +239,10 @@ pub fn Finance() -> Element {
                                         // Amount is in nanodollars (9 decimal precision)
                                         "{format_usd(r.amount as f64 / 1e9)}"
                                     }
-                                    td { class: "text-secondary",
+                                    td { class: "text-bc-text-secondary",
                                         {r.description.as_deref().unwrap_or("—")}
                                     }
-                                    td { class: "mono text-secondary",
+                                    td { class: "mono text-bc-text-secondary",
                                         {r.created_at.as_deref().unwrap_or("—")}
                                     }
                                 }

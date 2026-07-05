@@ -7,9 +7,9 @@ pub fn NotFoundPage(segments: Vec<String>) -> Element {
     let navigator = use_navigator();
 
     rsx! {
-        div { class: "flex flex-col items-center justify-center h-full",
-            h1 { class: "text-display font-bold mb-lg text-primary", "404" }
-            p { class: "text-subtitle text-secondary mb-xxxl", "页面未找到 (Page Not Found)" }
+        div { class: "page-content flex flex-col items-center justify-center h-full",
+            h1 { class: "text-display font-bold mb-lg text-bc-text", "404" }
+            p { class: "text-subtitle text-bc-text-secondary mb-xxxl", "页面未找到 (Page Not Found)" }
             BCButton {
                 variant: ButtonVariant::Primary,
                 onclick: move |_| {
