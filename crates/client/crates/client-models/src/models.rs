@@ -4,7 +4,7 @@
 use burncloud_client_shared::channel_service::{Channel, ChannelService};
 use burncloud_client_shared::components::validate_schema;
 use burncloud_client_shared::components::{
-    BCButton, ButtonVariant, Chip, EmptyState, FormMode, PageHeader, SchemaForm, SkeletonCard,
+    BCButton, BCModal, ButtonVariant, Chip, EmptyState, FormMode, PageHeader, SchemaForm, SkeletonCard,
     SkeletonVariant, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt, use_i18n, Language};
@@ -289,6 +289,11 @@ pub fn ChannelPage() -> Element {
         is_modal_open.set(true);
     };
 
+    let close_create_modal = move |_| {
+        is_modal_open.set(false);
+        modal_step.set(0);
+    };
+
     let channels_ref = channels;
     let mut select_provider = move |p: ProviderType| {
         let adjectives = vec![
@@ -389,6 +394,7 @@ pub fn ChannelPage() -> Element {
             match result {
                 Ok(_) => {
                     is_modal_open.set(false);
+                    modal_step.set(0);
                     channels.restart();
                     toast.success(t(*lang.read(), "models.channel.saved"));
                 }
@@ -608,125 +614,86 @@ pub fn ChannelPage() -> Element {
             }
         }
 
-        // Create/edit modal
-        if is_modal_open() {
-            div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4",
-                div {
-                    class: "absolute inset-0 transition-opacity bc-modal-overlay",
-                    onclick: move |_| is_modal_open.set(false)
+        // Create / edit channel — standard BCModal (two-step wizard)
+        BCModal {
+            open: is_modal_open(),
+            wide: true,
+            title: if modal_step() == 0 {
+                t(*lang.read(), "models.channel.select_provider").to_string()
+            } else {
+                t(*lang.read(), "models.channel.configure").to_string()
+            },
+            onclose: close_create_modal,
+            footer: rsx! {
+                if modal_step() == 1 {
+                    BCButton {
+                        variant: ButtonVariant::Ghost,
+                        onclick: move |_| modal_step.set(0),
+                        {t(*lang.read(), "models.channel.prev_step")}
+                    }
                 }
-
-                div {
-                    class: "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden animate-scale-in pointer-events-auto overscroll-contain bc-modal-card",
-                    onclick: |e| e.stop_propagation(),
-
-                    div { class: "flex justify-between items-center px-md py-sm sm:px-lg sm:py-md border-b shrink-0 bc-modal-header-bg",
-                        h3 { class: "text-subtitle font-bold text-primary tracking-tight",
-                            {if modal_step() == 0 { t(*lang.read(), "models.channel.select_provider").to_string() } else { t(*lang.read(), "models.channel.configure").to_string() }}
-                        }
+                BCButton {
+                    variant: ButtonVariant::Secondary,
+                    onclick: move |_| {
+                        is_modal_open.set(false);
+                        modal_step.set(0);
+                    },
+                    {t(*lang.read(), "common.cancel")}
+                }
+                if modal_step() == 1 {
+                    BCButton {
+                        variant: ButtonVariant::Primary,
+                        loading: is_loading(),
+                        onclick: handle_save,
+                        {t(*lang.read(), "models.channel.save")}
+                    }
+                }
+            },
+            if modal_step() == 0 {
+                div { class: "grid grid-cols-2 sm:grid-cols-3 gap-md",
+                    for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
                         button {
-                            class: "btn btn-sm btn-circle btn-ghost text-secondary",
-                            onclick: move |_| is_modal_open.set(false),
-                            "✕"
+                            class: "pick-card card-interactive flex flex-col items-center justify-center gap-md p-lg h-36",
+                            onclick: move |_| select_provider(p),
+                            div { class: "text-secondary",
+                                {p.icon()}
+                            }
+                            span { class: "font-medium text-caption text-secondary", "{p.name()}" }
                         }
                     }
-
-                    div { class: "flex-1 overflow-y-auto p-md sm:p-lg min-h-0 overscroll-y-contain",
-                        if modal_step() == 0 {
-                            div { class: "grid grid-cols-2 sm:grid-cols-3 gap-md",
-                                for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
-                                    button {
-                                        class: "bc-card-solid group flex flex-col items-center justify-center gap-md p-lg h-36 transition-all duration-300 ease-out cursor-pointer",
-                                        onclick: move |_| select_provider(p),
-                                        div { class: "text-secondary group-hover:text-primary transition-colors duration-300 transform group-hover:scale-110",
-                                            {p.icon()}
-                                        }
-                                        span { class: "font-medium text-caption text-secondary group-hover:text-primary", "{p.name()}" }
-                                    }
-                                }
-                            }
-                        } else {
-                            SchemaForm {
-                                schema: schema.clone(),
-                                data: form_data,
-                                mode: FormMode::Create,
-                                show_actions: false,
-                                on_submit: move |v| { form_data.set(v); }
-                            }
-                        }
-                    }
-
-                    div { class: "flex justify-end gap-md px-lg py-md border-t shrink-0 bc-modal-footer-bg",
-                        if modal_step() == 1 {
-                            BCButton {
-                                variant: ButtonVariant::Ghost,
-                                onclick: move |_| modal_step.set(0),
-                                {t(*lang.read(), "models.channel.prev_step")}
-                            }
-                        }
-                        BCButton {
-                            variant: ButtonVariant::Ghost,
-                            onclick: move |_| is_modal_open.set(false),
-                            {t(*lang.read(), "common.cancel")}
-                        }
-                        if modal_step() == 1 {
-                            BCButton {
-                                class: "btn-neutral text-white shadow-md",
-                                loading: is_loading(),
-                                onclick: handle_save,
-                                {t(*lang.read(), "models.channel.save")}
-                            }
-                        }
-                    }
+                }
+            } else {
+                SchemaForm {
+                    schema: schema.clone(),
+                    data: form_data,
+                    mode: FormMode::Create,
+                    show_actions: false,
+                    on_submit: move |v| { form_data.set(v); }
                 }
             }
         }
 
-        // Delete confirmation modal
-        if is_delete_modal_open() {
-            div { class: "fixed inset-0 z-[9999] flex items-center justify-center p-md",
-                div {
-                    class: "absolute inset-0 transition-opacity bc-modal-overlay",
-                    onclick: move |_| is_delete_modal_open.set(false)
+        // Delete confirmation — standard BCModal
+        BCModal {
+            open: is_delete_modal_open(),
+            title: t(*lang.read(), "models.channel.delete_confirm_title").to_string(),
+            onclose: move |_| is_delete_modal_open.set(false),
+            footer: rsx! {
+                BCButton {
+                    variant: ButtonVariant::Secondary,
+                    onclick: move |_| is_delete_modal_open.set(false),
+                    {t(*lang.read(), "common.cancel")}
                 }
-
-                div {
-                    class: "relative w-full max-w-md overflow-hidden animate-scale-in bc-modal-card",
-                    onclick: |e| e.stop_propagation(),
-
-                    div { class: "flex items-center gap-md px-lg py-lg border-b bc-danger-header",
-                        div { class: "w-12 h-12 rounded-full flex items-center justify-center bc-danger-light-bg",
-                            svg { class: "w-6 h-6 text-danger", fill: "none", view_box: "0 0 24 24", stroke: "currentColor", stroke_width: "2",
-                                path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" }
-                            }
-                        }
-                        div { class: "flex-1",
-                            h3 { class: "text-subtitle font-bold text-primary", {t(*lang.read(), "models.channel.delete_confirm_title")} }
-                            p { class: "text-caption text-secondary mt-xs", {t(*lang.read(), "models.channel.cannot_undo")} }
-                        }
-                    }
-
-                    div { class: "px-lg py-md",
-                        p { class: "text-secondary",
-                            {t(*lang.read(), "models.channel.delete_confirm_msg")}
-                            span { class: "font-semibold text-primary", "{delete_channel_name()}" }
-                            {t(*lang.read(), "models.channel.delete_confirm_suffix")}
-                        }
-                    }
-
-                    div { class: "flex justify-end gap-md px-lg py-md border-t bc-modal-footer-bg",
-                        BCButton {
-                            variant: ButtonVariant::Ghost,
-                            onclick: move |_| is_delete_modal_open.set(false),
-                            {t(*lang.read(), "common.cancel")}
-                        }
-                        BCButton {
-                            class: "btn-error text-white shadow-md",
-                            onclick: handle_confirm_delete,
-                            {t(*lang.read(), "models.channel.delete_confirm_title")}
-                        }
-                    }
+                BCButton {
+                    variant: ButtonVariant::Danger,
+                    onclick: handle_confirm_delete,
+                    {t(*lang.read(), "models.channel.delete_confirm_title")}
                 }
+            },
+            p { class: "text-secondary",
+                {t(*lang.read(), "models.channel.delete_confirm_msg")}
+                span { class: "font-semibold text-primary", " {delete_channel_name()}" }
+                {t(*lang.read(), "models.channel.delete_confirm_suffix")}
             }
         }
     }

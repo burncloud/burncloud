@@ -1,6 +1,7 @@
 // HTTP service — API response parsing — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
+use crate::utils::auth_http::with_auth;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -38,7 +39,10 @@ impl ChannelService {
     pub async fn list(page: usize, limit: usize) -> Result<Vec<Channel>, String> {
         let url = format!("{}?page={}&limit={}", Self::get_base_url(), page, limit);
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
@@ -56,9 +60,7 @@ impl ChannelService {
     pub async fn create(channel: &Channel) -> Result<(), String> {
         let url = Self::get_base_url();
         let client = reqwest::Client::new();
-        let resp = client
-            .post(&url)
-            .json(channel)
+        let resp = with_auth(client.post(&url).json(channel))
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -73,9 +75,7 @@ impl ChannelService {
     pub async fn update(channel: &Channel) -> Result<(), String> {
         let url = Self::get_base_url();
         let client = reqwest::Client::new();
-        let resp = client
-            .put(&url)
-            .json(channel)
+        let resp = with_auth(client.put(&url).json(channel))
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -89,8 +89,7 @@ impl ChannelService {
     pub async fn delete(id: i64) -> Result<(), String> {
         let url = format!("{}/{}", Self::get_base_url(), id);
         let client = reqwest::Client::new();
-        let resp = client
-            .delete(&url)
+        let resp = with_auth(client.delete(&url))
             .send()
             .await
             .map_err(|e| e.to_string())?;

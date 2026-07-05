@@ -2,6 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use crate::api_client::{LoginResponse, API_CLIENT};
+use crate::auth_context::CurrentUser;
 use crate::utils::storage::ClientState;
 
 pub struct AuthService;
@@ -25,7 +26,23 @@ impl AuthService {
         password: &str,
         email: Option<&str>,
     ) -> Result<LoginResponse, String> {
-        API_CLIENT.register(username, password, email).await
+        let result = API_CLIENT.register(username, password, email).await;
+
+        if let Ok(ref response) = result {
+            let mut state = ClientState::load();
+            state.auth_token = Some(response.token.clone());
+            state.user_info = Some(
+                serde_json::to_string(&CurrentUser {
+                    id: response.id.clone(),
+                    username: response.username.clone(),
+                    roles: response.roles.clone(),
+                })
+                .unwrap_or_default(),
+            );
+            state.save();
+        }
+
+        result
     }
 
     pub async fn check_username_availability(username: &str) -> Result<bool, String> {

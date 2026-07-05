@@ -211,7 +211,7 @@ pub fn ServiceMonitor() -> Element {
                 style: if show_emergency_modal() { "--bc-dynamic-display:flex" } else { "--bc-dynamic-display:none" },
 
                 div {
-                    class: "absolute inset-0 bg-[rgba(0,0,0,0.4)] backdrop-blur-sm",
+                    class: "bc-modal-backdrop",
                     onclick: move |_| show_emergency_modal.set(false),
                 }
 

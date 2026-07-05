@@ -245,7 +245,26 @@ pub fn ConnectPage() -> Element {
                                                 td { class: "mono text-caption", "{ch.models}" }
                                                 td { class: "mono text-caption text-secondary", "{ch.base_url}" }
                                                 td { class: "text-right",
-                                                    button { class: "btn btn-ghost bc-text-danger font-semibold", {t(*lang.read(), "connect.col.delete")} }
+                                                    button {
+                                                        class: "btn btn-ghost bc-text-danger font-semibold",
+                                                        onclick: {
+                                                            let delete_id = ch.id;
+                                                            let delete_name = ch.name.clone();
+                                                            move |_| {
+                                                                let name = delete_name.clone();
+                                                                spawn(async move {
+                                                                    match ChannelService::delete(delete_id).await {
+                                                                        Ok(_) => {
+                                                                            channels.restart();
+                                                                            toast.success(&format!("Deleted {name}"));
+                                                                        }
+                                                                        Err(e) => toast.error(&format!("Delete failed: {e}")),
+                                                                    }
+                                                                });
+                                                            }
+                                                        },
+                                                        {t(*lang.read(), "connect.col.delete")}
+                                                    }
                                                 }
                                             }
                                         }
@@ -261,7 +280,11 @@ pub fn ConnectPage() -> Element {
                                     span { class: "lead-title", {t(*lang.read(), "connect.pool.lead_title")} }
                                     span { class: "lead-sub", {t(*lang.read(), "connect.pool.lead_sub")} }
                                 }
-                                button { class: "btn btn-secondary", {t(*lang.read(), "connect.pool.add")} }
+                                button {
+                                    class: "btn btn-secondary",
+                                    onclick: move |_| show_add_modal.set(true),
+                                    {t(*lang.read(), "connect.pool.add")}
+                                }
                             }
 
                             // Featured pool card
@@ -294,7 +317,11 @@ pub fn ConnectPage() -> Element {
                                         div { class: "bc-eyebrow", "My Balance" }
                                         div { class: "bc-pool-value-brand", "$ 12.50" }
                                     }
-                                    button { class: "btn btn-ghost", {t(*lang.read(), "connect.pool.configure")} }
+                                    button {
+                                        class: "btn btn-ghost",
+                                        onclick: move |_| toast.info("Pool configuration is not available yet"),
+                                        {t(*lang.read(), "connect.pool.configure")}
+                                    }
                                 }
                             }
 
@@ -336,8 +363,23 @@ pub fn ConnectPage() -> Element {
             title: t(*lang.read(), "connect.modal.title").to_string(),
             open: show_add_modal(),
             onclose: move |_| show_add_modal.set(false),
+            footer: rsx! {
+                BCButton {
+                    variant: ButtonVariant::Secondary,
+                    onclick: move |_| show_add_modal.set(false),
+                    {t(*lang.read(), "common.cancel")}
+                }
+                BCButton {
+                    variant: ButtonVariant::Primary,
+                    onclick: move |_| {
+                        let data = form_data.read().clone();
+                        handle_add_aws(data);
+                    },
+                    {t(*lang.read(), "connect.modal.submit")}
+                }
+            },
 
-            div { class: "flex flex-col gap-lg p-lg",
+            div { class: "flex flex-col gap-lg",
                 p { class: "text-secondary text-caption",
                     {t(*lang.read(), "connect.modal.description")}
                 }
@@ -348,22 +390,6 @@ pub fn ConnectPage() -> Element {
                     mode: FormMode::Create,
                     show_actions: false,
                     on_submit: handle_add_aws,
-                }
-
-                div { class: "flex justify-end gap-md mt-md",
-                    BCButton {
-                        variant: ButtonVariant::Secondary,
-                        onclick: move |_| show_add_modal.set(false),
-                        {t(*lang.read(), "common.cancel")}
-                    }
-                    BCButton {
-                        variant: ButtonVariant::Primary,
-                        onclick: move |_| {
-                            let data = form_data.read().clone();
-                            handle_add_aws(data);
-                        },
-                        {t(*lang.read(), "connect.modal.submit")}
-                    }
                 }
             }
         }
@@ -381,6 +407,7 @@ fn MarketplaceCard(
 ) -> Element {
     let i18n = burncloud_client_shared::i18n::use_i18n();
     let lang = i18n.language;
+    let toast = use_toast();
 
     rsx! {
         div { class: "pick-card",
@@ -397,7 +424,11 @@ fn MarketplaceCard(
             }
             div { class: "bc-marketplace-footer",
                 span { class: "bc-font-11 text-secondary", "trust ", span { class: "mono font-semibold text-primary", "{trust}" } }
-                button { class: "btn btn-ghost bc-btn-xs", {t(*lang.read(), "connect.marketplace.connect")} }
+                button {
+                    class: "btn btn-ghost bc-btn-xs",
+                    onclick: move |_| toast.info("Marketplace connection is not available yet"),
+                    {t(*lang.read(), "connect.marketplace.connect")}
+                }
             }
         }
     }

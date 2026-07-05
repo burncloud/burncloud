@@ -984,60 +984,52 @@ html, body {
     display: none !important;
 }
 
-/* Show scrollbars on hover for scrollable containers */
-html .overflow-y-auto:hover::-webkit-scrollbar,
-html .overflow-x-auto:hover::-webkit-scrollbar,
-html .overflow-y-scroll:hover::-webkit-scrollbar,
-html .overflow-x-scroll:hover::-webkit-scrollbar {
+/* Show scrollbars while the pointer is anywhere in the window (incl. title bar) */
+html:hover .overflow-y-auto::-webkit-scrollbar,
+html:hover .overflow-x-auto::-webkit-scrollbar,
+html:hover .overflow-y-scroll::-webkit-scrollbar,
+html:hover .overflow-x-scroll::-webkit-scrollbar {
     width: 6px !important;
     height: 6px !important;
     display: block !important;
 }
 
-html .overflow-y-auto:hover::-webkit-scrollbar-track,
-html .overflow-x-auto:hover::-webkit-scrollbar-track,
-html .overflow-y-scroll:hover::-webkit-scrollbar-track,
-html .overflow-x-scroll:hover::-webkit-scrollbar-track {
+html:hover .overflow-y-auto::-webkit-scrollbar-track,
+html:hover .overflow-x-auto::-webkit-scrollbar-track,
+html:hover .overflow-y-scroll::-webkit-scrollbar-track,
+html:hover .overflow-x-scroll::-webkit-scrollbar-track {
     background: transparent !important;
     display: block !important;
 }
 
-html .overflow-y-auto:hover::-webkit-scrollbar-thumb,
-html .overflow-x-auto:hover::-webkit-scrollbar-thumb,
-html .overflow-y-scroll:hover::-webkit-scrollbar-thumb,
-html .overflow-x-scroll:hover::-webkit-scrollbar-thumb {
+html:hover .overflow-y-auto::-webkit-scrollbar-thumb,
+html:hover .overflow-x-auto::-webkit-scrollbar-thumb,
+html:hover .overflow-y-scroll::-webkit-scrollbar-thumb,
+html:hover .overflow-x-scroll::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.2) !important;
     display: block !important;
     transition: background 0.2s ease !important;
 }
 
-html .overflow-y-auto:hover::-webkit-scrollbar-thumb:hover,
-html .overflow-x-auto:hover::-webkit-scrollbar-thumb:hover,
-html .overflow-y-scroll:hover::-webkit-scrollbar-thumb:hover,
-html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
+html .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+html .overflow-x-auto::-webkit-scrollbar-thumb:hover,
+html .overflow-y-scroll::-webkit-scrollbar-thumb:hover,
+html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 0, 0, 0.4) !important;
 }
 
-/* Show scrollbar on any element hover */
-*:hover::-webkit-scrollbar {
-    width: 6px !important;
-    height: 6px !important;
-    display: block !important;
+[data-theme="dark"] html:hover .overflow-y-auto::-webkit-scrollbar-thumb,
+[data-theme="dark"] html:hover .overflow-x-auto::-webkit-scrollbar-thumb,
+[data-theme="dark"] html:hover .overflow-y-scroll::-webkit-scrollbar-thumb,
+[data-theme="dark"] html:hover .overflow-x-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25) !important;
 }
 
-*:hover::-webkit-scrollbar-track {
-    background: transparent !important;
-    display: block !important;
-}
-
-*:hover::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.15) !important;
-    display: block !important;
-    transition: background 0.2s ease !important;
-}
-
-*:hover::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.3) !important;
+[data-theme="dark"] html .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] html .overflow-x-auto::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] html .overflow-y-scroll::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1061,6 +1053,83 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 /* Desktop window regions */
 .app-drag-region { -webkit-app-region: drag; }
 .app-no-drag { -webkit-app-region: no-drag; }
+
+/* Windows 11 title bar — transparent overlay; icons use contrast halo (no blend mode) */
+.bc-titlebar {
+    height: 32px;
+    flex-shrink: 0;
+    background: transparent;
+    border-bottom: none;
+}
+
+.bc-window-controls {
+    display: inline-flex;
+    align-items: stretch;
+    height: 32px;
+}
+
+.bc-window-control {
+    width: 46px;
+    height: 32px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    cursor: default;
+    transition: background var(--bc-transition-fast);
+}
+
+.bc-win-icon {
+    font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+    /* Win11 caption color on light chrome; white halo keeps icons readable on dark hero */
+    color: #1d1d1f;
+    text-shadow:
+        0 0 3px rgba(255, 255, 255, 0.95),
+        0 0 1px rgba(255, 255, 255, 0.85),
+        0 1px 1px rgba(0, 0, 0, 0.12);
+}
+
+.bc-window-control:hover {
+    background: rgba(127, 127, 127, 0.18);
+}
+
+.bc-window-control:active {
+    background: rgba(127, 127, 127, 0.28);
+}
+
+.bc-window-control.danger:hover,
+.bc-window-control.danger:active {
+    background: #c42b1c;
+}
+
+.bc-window-control.danger:hover .bc-win-icon,
+.bc-window-control.danger:active .bc-win-icon {
+    color: #fff;
+    text-shadow: none;
+}
+
+[data-theme="dark"] .bc-win-icon {
+    color: #f3f3f3;
+    text-shadow:
+        0 0 3px rgba(0, 0, 0, 0.9),
+        0 0 1px rgba(0, 0, 0, 0.75),
+        0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+.bc-window-control:focus-visible {
+    outline: 2px solid rgba(0, 95, 184, 0.55);
+    outline-offset: -2px;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    JIT Shims (Tailwind v2 static compatibility)
@@ -1437,9 +1506,11 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 /* BCInput password */
 .bc-input-password { padding-right: 40px; }
 
-/* BCModal */
-.bc-modal-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+/* BCModal — full-screen container (content sits above .bc-modal-backdrop) */
+.bc-modal-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: var(--bc-space-md); }
 .bc-modal-hidden { display: none; }
+/* Dimmed overlay when modal panel is a direct child (legacy users top-up pattern) */
+.bc-modal-overlay:has(> .bc-modal) { background: rgba(0, 0, 0, 0.30); }
 
 /* Schema table */
 .bc-mono-cell { font-family: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace; font-size: var(--bc-font-sm); }
@@ -2080,8 +2151,8 @@ html .overflow-x-scroll:hover::-webkit-scrollbar-thumb:hover {
 .table tr:hover td { background: var(--bc-bg-hover); }
 .table .mono { font-family: var(--bc-font-mono); font-size: 13px; color: var(--bc-text-secondary); }
 
-/* Modal */
-.bc-modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.30); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 100; }
+/* Modal backdrop — dim layer only; no backdrop-filter (WebView2 blurs modal content) */
+.bc-modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.30); z-index: 0; }
 .bc-modal { width: 480px; background: var(--bc-bg-card-solid); border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,0.20); overflow: hidden; }
 .bc-modal-header { padding: 20px 24px; border-bottom: 1px solid var(--bc-border); display:flex; align-items:center; justify-content:space-between; }
 .bc-modal-body { padding: 24px; display:flex; flex-direction:column; gap: 16px; }

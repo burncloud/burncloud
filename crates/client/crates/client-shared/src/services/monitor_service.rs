@@ -1,6 +1,6 @@
-// HTTP service — API response parsing — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
+use crate::utils::auth_http::with_auth;
 use serde::{Deserialize, Serialize};
 
 // ── Existing DTOs ─────────────────────────────────────────────────────────
@@ -124,7 +124,10 @@ impl MonitorService {
         let url = format!("http://127.0.0.1:{}/console/api/monitor", port);
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
@@ -141,7 +144,10 @@ impl MonitorService {
         let url = format!("http://127.0.0.1:{}/console/api/monitor/security", port);
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
@@ -159,7 +165,10 @@ impl MonitorService {
         );
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
@@ -177,7 +186,10 @@ impl MonitorService {
         );
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
@@ -195,9 +207,7 @@ impl MonitorService {
         );
 
         let client = reqwest::Client::new();
-        let resp = client
-            .put(&url)
-            .json(config)
+        let resp = with_auth(client.put(&url).json(config))
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -218,12 +228,14 @@ impl MonitorService {
         );
 
         let client = reqwest::Client::new();
-        let resp = client
-            .post(&url)
-            .json(&EmergencyBreakRequest { reason })
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let resp = with_auth(
+            client
+                .post(&url)
+                .json(&EmergencyBreakRequest { reason }),
+        )
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));
@@ -241,7 +253,10 @@ impl MonitorService {
         );
 
         let client = reqwest::Client::new();
-        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let resp = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
             return Err(format!("API Error: {}", resp.status()));

@@ -64,7 +64,7 @@ pub fn BCButton(
             class: "{base_class} {variant_class} {size_class} {class} {loading_class}",
             r#type: "{btn_type}",
             onclick: move |e| if !loading && !disabled { onclick.call(e) },
-            disabled: "{loading || disabled}",
+            disabled: loading || disabled,
             if loading {
                 span { class: "loading loading-spinner loading-xs me-2", role: "status" }
                 " "

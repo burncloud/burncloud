@@ -12,7 +12,6 @@ use axum::{
 use burncloud_service_user::UserServiceError;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
-use std::env;
 
 #[derive(Deserialize)]
 pub struct RegisterDto {
@@ -56,7 +55,7 @@ struct AuthData {
 }
 
 fn get_jwt_secret() -> String {
-    env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key-change-in-production".to_string())
+    burncloud_common::constants::jwt_secret()
 }
 
 pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
@@ -262,5 +261,23 @@ pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Respo
             Ok(next.run(req).await)
         }
         Err(_) => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::verify_jwt;
+    use burncloud_service_user::UserService;
+
+    #[test]
+    fn verify_jwt_accepts_tokens_signed_by_user_service() {
+        let service = UserService::new();
+        let auth = service
+            .generate_token("user-1", "alice")
+            .expect("token generation");
+
+        let claims = verify_jwt(&auth.token).expect("middleware must accept UserService JWT");
+        assert_eq!(claims.sub, "user-1");
+        assert_eq!(claims.username, "alice");
     }
 }

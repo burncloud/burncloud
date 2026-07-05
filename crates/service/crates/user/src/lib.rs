@@ -93,7 +93,7 @@ impl UserService {
             #[cfg(debug_assertions)]
             {
                 tracing::warn!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
-                "burncloud-default-secret-change-in-production".to_string()
+                burncloud_common::constants::DEFAULT_JWT_SECRET.to_string()
             }
         });
 

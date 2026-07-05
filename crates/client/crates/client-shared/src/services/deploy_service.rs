@@ -1,3 +1,4 @@
+use crate::utils::auth_http::with_auth;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,9 +40,7 @@ impl DeployService {
             .build()
             .map_err(|e| e.to_string())?;
 
-        let resp = client
-            .post(Self::get_base_url())
-            .json(req)
+        let resp = with_auth(client.post(Self::get_base_url()).json(req))
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
