@@ -78,6 +78,7 @@ impl AgentBrowser {
         let start = Instant::now();
         let output = Command::new(agent_browser_bin())
             .args(&full_args)
+            // Headless mode for automated testing
             .env("AGENT_BROWSER_ARGS", "--headless=new,--no-sandbox")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

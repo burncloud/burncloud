@@ -8,6 +8,8 @@
 //! run).  All migration SQL is written to be idempotent so that existing
 //! databases which pre-date the migration framework are upgraded safely.
 
+mod sqlite_0017;
+
 use crate::{Database, DatabaseError, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -31,75 +33,75 @@ struct Migration {
 const MIGRATIONS_SQLITE: &[Migration] = &[
     Migration {
         version: "0001_initial_schema",
-        sql: include_str!("../migrations/sqlite/0001_initial_schema.sql"),
+        sql: include_str!("../../migrations/sqlite/0001_initial_schema.sql"),
     },
     Migration {
         version: "0002_alter_channels_add_columns",
-        sql: include_str!("../migrations/sqlite/0002_alter_channels_add_columns.sql"),
+        sql: include_str!("../../migrations/sqlite/0002_alter_channels_add_columns.sql"),
     },
     Migration {
         version: "0003_alter_router_logs_add_columns",
-        sql: include_str!("../migrations/sqlite/0003_alter_router_logs_add_columns.sql"),
+        sql: include_str!("../../migrations/sqlite/0003_alter_router_logs_add_columns.sql"),
     },
     Migration {
         version: "0004_alter_router_logs_add_cost_columns",
-        sql: include_str!("../migrations/sqlite/0004_alter_router_logs_add_cost_columns.sql"),
+        sql: include_str!("../../migrations/sqlite/0004_alter_router_logs_add_cost_columns.sql"),
     },
     Migration {
         version: "0005_alter_prices_add_multimodal",
-        sql: include_str!("../migrations/sqlite/0005_alter_prices_add_multimodal.sql"),
+        sql: include_str!("../../migrations/sqlite/0005_alter_prices_add_multimodal.sql"),
     },
     Migration {
         version: "0006_alter_users_add_currency_balance",
-        sql: include_str!("../migrations/sqlite/0006_alter_users_add_currency_balance.sql"),
+        sql: include_str!("../../migrations/sqlite/0006_alter_users_add_currency_balance.sql"),
     },
     Migration {
         version: "0007_alter_tiered_pricing_add_columns",
-        sql: include_str!("../migrations/sqlite/0007_alter_tiered_pricing_add_columns.sql"),
+        sql: include_str!("../../migrations/sqlite/0007_alter_tiered_pricing_add_columns.sql"),
     },
     Migration {
         version: "0008_alter_prices_add_extended",
-        sql: include_str!("../migrations/sqlite/0008_alter_prices_add_extended.sql"),
+        sql: include_str!("../../migrations/sqlite/0008_alter_prices_add_extended.sql"),
     },
     Migration {
         version: "0009_router_tables",
-        sql: include_str!("../migrations/sqlite/0009_router_tables.sql"),
+        sql: include_str!("../../migrations/sqlite/0009_router_tables.sql"),
     },
     Migration {
         version: "0010_rename_tables",
-        sql: include_str!("../migrations/sqlite/0010_rename_tables.sql"),
+        sql: include_str!("../../migrations/sqlite/0010_rename_tables.sql"),
     },
     Migration {
         version: "0011_alter_router_mvp_columns",
-        sql: include_str!("../migrations/sqlite/0011_alter_router_mvp_columns.sql"),
+        sql: include_str!("../../migrations/sqlite/0011_alter_router_mvp_columns.sql"),
     },
     Migration {
         version: "0012_password_reset_and_google_id",
-        sql: include_str!("../migrations/sqlite/0012_password_reset_and_google_id.sql"),
+        sql: include_str!("../../migrations/sqlite/0012_password_reset_and_google_id.sql"),
     },
     Migration {
         version: "0013_alter_router_logs_add_cost_status",
-        sql: include_str!("../migrations/sqlite/0013_alter_router_logs_add_cost_status.sql"),
+        sql: include_str!("../../migrations/sqlite/0013_alter_router_logs_add_cost_status.sql"),
     },
-        Migration {
+    Migration {
         version: "0014_alter_router_logs_add_error_type",
-        sql: include_str!("../migrations/sqlite/0014_alter_router_logs_add_error_type.sql"),
+        sql: include_str!("../../migrations/sqlite/0014_alter_router_logs_add_error_type.sql"),
     },
     Migration {
         version: "0015_monthly_quota",
-        sql: include_str!("../migrations/sqlite/0015_monthly_quota.sql"),
+        sql: include_str!("../../migrations/sqlite/0015_monthly_quota.sql"),
     },
     Migration {
         version: "0016_token_rotation",
-        sql: include_str!("../migrations/sqlite/0016_token_rotation.sql"),
+        sql: include_str!("../../migrations/sqlite/0016_token_rotation.sql"),
     },
     Migration {
         version: "0017_fix_bool_columns",
-        sql: include_str!("../migrations/sqlite/0017_fix_bool_columns.sql"),
+        sql: include_str!("../../migrations/sqlite/0017_fix_bool_columns.sql"),
     },
     Migration {
         version: "0018_router_request_logs",
-        sql: include_str!("../migrations/sqlite/0018_router_request_logs.sql"),
+        sql: include_str!("../../migrations/sqlite/0018_router_request_logs.sql"),
     },
 ];
 
@@ -110,75 +112,75 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
 const MIGRATIONS_POSTGRES: &[Migration] = &[
     Migration {
         version: "0001_initial_schema",
-        sql: include_str!("../migrations/postgres/0001_initial_schema.sql"),
+        sql: include_str!("../../migrations/postgres/0001_initial_schema.sql"),
     },
     Migration {
         version: "0002_alter_channels_add_columns",
-        sql: include_str!("../migrations/postgres/0002_alter_channels_add_columns.sql"),
+        sql: include_str!("../../migrations/postgres/0002_alter_channels_add_columns.sql"),
     },
     Migration {
         version: "0003_alter_router_logs_add_columns",
-        sql: include_str!("../migrations/postgres/0003_alter_router_logs_add_columns.sql"),
+        sql: include_str!("../../migrations/postgres/0003_alter_router_logs_add_columns.sql"),
     },
     Migration {
         version: "0004_alter_router_logs_add_cost_columns",
-        sql: include_str!("../migrations/postgres/0004_alter_router_logs_add_cost_columns.sql"),
+        sql: include_str!("../../migrations/postgres/0004_alter_router_logs_add_cost_columns.sql"),
     },
     Migration {
         version: "0005_alter_prices_add_multimodal",
-        sql: include_str!("../migrations/postgres/0005_alter_prices_add_multimodal.sql"),
+        sql: include_str!("../../migrations/postgres/0005_alter_prices_add_multimodal.sql"),
     },
     Migration {
         version: "0006_alter_users_add_currency_balance",
-        sql: include_str!("../migrations/postgres/0006_alter_users_add_currency_balance.sql"),
+        sql: include_str!("../../migrations/postgres/0006_alter_users_add_currency_balance.sql"),
     },
     Migration {
         version: "0007_alter_tiered_pricing_add_columns",
-        sql: include_str!("../migrations/postgres/0007_alter_tiered_pricing_add_columns.sql"),
+        sql: include_str!("../../migrations/postgres/0007_alter_tiered_pricing_add_columns.sql"),
     },
     Migration {
         version: "0008_alter_prices_add_extended",
-        sql: include_str!("../migrations/postgres/0008_alter_prices_add_extended.sql"),
+        sql: include_str!("../../migrations/postgres/0008_alter_prices_add_extended.sql"),
     },
     Migration {
         version: "0009_router_tables",
-        sql: include_str!("../migrations/postgres/0009_router_tables.sql"),
+        sql: include_str!("../../migrations/postgres/0009_router_tables.sql"),
     },
     Migration {
         version: "0010_rename_tables",
-        sql: include_str!("../migrations/postgres/0010_rename_tables.sql"),
+        sql: include_str!("../../migrations/postgres/0010_rename_tables.sql"),
     },
     Migration {
         version: "0011_alter_router_mvp_columns",
-        sql: include_str!("../migrations/postgres/0011_alter_router_mvp_columns.sql"),
+        sql: include_str!("../../migrations/postgres/0011_alter_router_mvp_columns.sql"),
     },
     Migration {
         version: "0012_password_reset_and_google_id",
-        sql: include_str!("../migrations/postgres/0012_password_reset_and_google_id.sql"),
+        sql: include_str!("../../migrations/postgres/0012_password_reset_and_google_id.sql"),
     },
     Migration {
         version: "0013_alter_router_logs_add_cost_status",
-        sql: include_str!("../migrations/postgres/0013_alter_router_logs_add_cost_status.sql"),
+        sql: include_str!("../../migrations/postgres/0013_alter_router_logs_add_cost_status.sql"),
     },
-        Migration {
+    Migration {
         version: "0014_alter_router_logs_add_error_type",
-        sql: include_str!("../migrations/postgres/0014_alter_router_logs_add_error_type.sql"),
+        sql: include_str!("../../migrations/postgres/0014_alter_router_logs_add_error_type.sql"),
     },
     Migration {
         version: "0015_monthly_quota",
-        sql: include_str!("../migrations/postgres/0015_monthly_quota.sql"),
+        sql: include_str!("../../migrations/postgres/0015_monthly_quota.sql"),
     },
     Migration {
         version: "0016_token_rotation",
-        sql: include_str!("../migrations/postgres/0016_token_rotation.sql"),
+        sql: include_str!("../../migrations/postgres/0016_token_rotation.sql"),
     },
     Migration {
         version: "0017_fix_bool_columns",
-        sql: include_str!("../migrations/postgres/0017_fix_bool_columns.sql"),
+        sql: include_str!("../../migrations/postgres/0017_fix_bool_columns.sql"),
     },
     Migration {
         version: "0018_router_request_logs",
-        sql: include_str!("../migrations/postgres/0018_router_request_logs.sql"),
+        sql: include_str!("../../migrations/postgres/0018_router_request_logs.sql"),
     },
 ];
 
@@ -224,7 +226,13 @@ impl MigrationRunner {
                 continue;
             }
 
-            Self::apply(pool, migration, &kind).await?;
+            if migration.version == "0017_fix_bool_columns" && kind == "sqlite" {
+                sqlite_0017::apply(pool).await?;
+            } else {
+                Self::apply_sql(pool, migration).await?;
+            }
+
+            Self::mark_applied(pool, migration.version, &kind).await?;
         }
 
         Ok(())
@@ -249,9 +257,8 @@ impl MigrationRunner {
         count > 0
     }
 
-    /// Execute every SQL statement in the migration file, then record the
-    /// migration as applied.
-    async fn apply(pool: &sqlx::AnyPool, migration: &Migration, kind: &str) -> Result<()> {
+    /// Execute every SQL statement in the migration file.
+    async fn apply_sql(pool: &sqlx::AnyPool, migration: &Migration) -> Result<()> {
         for raw_stmt in migration.sql.split(';') {
             // Strip comments and whitespace; skip blank segments.
             let stmt: String = raw_stmt
@@ -284,22 +291,24 @@ impl MigrationRunner {
             }
         }
 
-        // Record the migration as successfully applied.
+        Ok(())
+    }
+
+    async fn mark_applied(pool: &sqlx::AnyPool, version: &str, kind: &str) -> Result<()> {
         let now = current_timestamp();
         if kind == "postgres" {
             sqlx::query("INSERT INTO _schema_migrations (version, applied_at) VALUES ($1, $2)")
-                .bind(migration.version)
+                .bind(version)
                 .bind(now)
                 .execute(pool)
                 .await?;
         } else {
             sqlx::query("INSERT INTO _schema_migrations (version, applied_at) VALUES (?, ?)")
-                .bind(migration.version)
+                .bind(version)
                 .bind(now)
                 .execute(pool)
                 .await?;
         }
-
         Ok(())
     }
 }

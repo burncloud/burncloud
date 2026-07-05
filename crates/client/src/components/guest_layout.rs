@@ -327,13 +327,13 @@ pub fn GuestLayout() -> Element {
         }
 
         div { class: "h-screen w-screen overflow-hidden flex flex-col bg-base-100 text-base-content relative", "data-theme": "light",
-            // Floating TitleBar (Draggable)
-            div { class: "absolute top-0 left-0 w-full z-50",
-                TitleBar {}
+            div { class: "absolute top-0 left-0 w-full z-50 pointer-events-none",
+                div { class: "pointer-events-auto",
+                    TitleBar {}
+                }
             }
 
-            // Main Content (Centered)
-            main { class: "flex-1 flex flex-col relative z-0 overflow-y-auto",
+            main { class: "flex-1 flex flex-col relative z-0 overflow-y-auto min-h-0",
                 Outlet::<Route> {}
             }
         }

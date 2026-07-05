@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
-use burncloud_client_shared::components::{Sidebar, TitleBar};
+use crate::components::sidebar::Sidebar;
+use burncloud_client_shared::components::TitleBar;
 use burncloud_client_shared::use_auth;
 use burncloud_client_shared::utils::storage::ClientState;
 use burncloud_client_shared::DesktopMode;
@@ -11,7 +12,6 @@ pub fn Layout() -> Element {
     let auth = use_auth();
     let navigator = use_navigator();
     let is_desktop = try_use_context::<DesktopMode>().is_some();
-    let top_padding = if is_desktop { "pt-8" } else { "pt-0" };
 
     let client_state = ClientState::load();
     let theme = client_state.theme.unwrap_or_default();
@@ -49,26 +49,30 @@ pub fn Layout() -> Element {
         }
 
         // Main App Container
-        div { class: "flex h-screen w-screen bg-base-100 text-base-content overflow-hidden select-none relative", "data-theme": "{theme_str}",
+        div { class: "relative flex flex-col h-screen w-screen bg-base-100 text-base-content overflow-hidden select-none", "data-theme": "{theme_str}",
 
-            // Floating TitleBar (Z-Index 50)
-            div { class: "absolute top-0 left-0 w-full z-50 pointer-events-none",
-                div { class: "pointer-events-auto",
-                    TitleBar {}
+            if is_desktop {
+                div { class: "absolute top-0 left-0 w-full z-50 pointer-events-none",
+                    div { class: "pointer-events-auto",
+                        TitleBar {}
+                    }
                 }
             }
 
-            // Sidebar Panel
-            div { class: "w-64 flex-shrink-0 flex flex-col border-r border-base-300/50 bg-base-200/50 backdrop-blur-xl {top_padding}",
-                div { class: "flex-1 overflow-y-auto px-2 py-4",
-                    Sidebar {}
-                }
-            }
+            div { class: "flex flex-1 min-h-0 overflow-hidden w-full",
 
-            // Main Content Panel
-            div { class: "flex-1 flex flex-col bg-base-100 relative min-w-0 {top_padding}",
-                main { class: "flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-10",
-                    Outlet::<Route> {}
+                // Sidebar Panel
+                div { class: "w-64 flex-shrink-0 flex flex-col border-r border-base-300/50 bg-base-200/50 backdrop-blur-xl",
+                    div { class: "flex-1 overflow-y-auto px-2 py-4",
+                        Sidebar {}
+                    }
+                }
+
+                // Main Content Panel
+                div { class: "flex-1 flex flex-col bg-base-100 relative min-w-0",
+                    main { class: "flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-10",
+                        Outlet::<Route> {}
+                    }
                 }
             }
         }

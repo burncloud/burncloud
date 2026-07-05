@@ -193,13 +193,12 @@ fn CreateChannelModal(on_close: EventHandler<()>, on_create: EventHandler<()>) -
         div { class: "fixed inset-0 z-50 flex items-center justify-center p-md",
             // Backdrop
             div {
-                class: "absolute inset-0",
-                style: "background: rgba(0, 0, 0, 0.40); backdrop-filter: blur(4px);",
+                class: "absolute inset-0 bc-modal-backdrop",
                 onclick: move |_| on_close.call(())
             }
 
             // Modal panel
-            div { class: "bc-card-solid relative w-full overflow-hidden",
+            div { class: "bc-card-solid relative z-10 w-full overflow-hidden",
                 style: "max-width: 560px; box-shadow: var(--bc-shadow-xl);",
                 // Header
                 div { class: "flex justify-between items-center px-lg py-md border-b",

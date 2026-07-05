@@ -119,12 +119,8 @@ async fn wait_for_server(url: &str) {
     let client = Client::new();
     for _ in 0..120 {
         // 60s timeout (price sync can take ~30s on first run)
-        if client
-            .get(format!("{}/api/status", url))
-            .send()
-            .await
-            .is_ok()
-        {
+        // Use /health endpoint which doesn't require auth
+        if client.get(format!("{}/health", url)).send().await.is_ok() {
             return;
         }
         tokio::time::sleep(Duration::from_millis(500)).await;

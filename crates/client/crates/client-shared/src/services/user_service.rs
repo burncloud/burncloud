@@ -1,6 +1,6 @@
-// HTTP service — API response parsing — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
+use crate::utils::auth_http::with_auth;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -42,7 +42,10 @@ impl UserService {
         // we might need a way to pass the current user's context.
         // For MVP, we'll try a simple GET.
 
-        let resp = client.get(&url).send().await.map_err(|e| {
+        let resp = with_auth(client.get(&url))
+            .send()
+            .await
+            .map_err(|e| {
             let err = e.to_string();
             println!("UserService: Network error: {}", err);
             err
@@ -71,9 +74,7 @@ impl UserService {
             "password": password
         });
 
-        let resp = client
-            .post(&url)
-            .json(&body)
+        let resp = with_auth(client.post(&url).json(&body))
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -99,9 +100,7 @@ impl UserService {
             body["currency"] = serde_json::json!(c);
         }
 
-        let resp = client
-            .post(&url)
-            .json(&body)
+        let resp = with_auth(client.post(&url).json(&body))
             .send()
             .await
             .map_err(|e| e.to_string())?;
