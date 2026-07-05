@@ -243,7 +243,7 @@ pub fn ConnectPage() -> Element {
                                                 }
                                                 td { class: "font-semibold", "{ch.name}" }
                                                 td { class: "mono text-caption", "{ch.models}" }
-                                                td { class: "mono text-caption text-secondary", "{ch.base_url}" }
+                                                td { class: "mono text-caption text-bc-text-secondary", "{ch.base_url}" }
                                                 td { class: "text-right",
                                                     button {
                                                         class: "btn btn-ghost bc-text-danger font-semibold",
@@ -296,7 +296,7 @@ pub fn ConnectPage() -> Element {
                                             h3 { class: "bc-h3", {t(*lang.read(), "connect.pool.skynet_title")} }
                                             span { class: "pill success text-xxs", {t(*lang.read(), "connect.pool.official")} }
                                         }
-                                        div { class: "mono text-caption text-secondary mt-xs", "https://pool.skynet-ops.io" }
+                                        div { class: "mono text-caption text-bc-text-secondary mt-xs", "https://pool.skynet-ops.io" }
                                     }
                                 }
 
@@ -327,7 +327,7 @@ pub fn ConnectPage() -> Element {
 
                             // Marketplace
                             div { class: "bc-indent-left",
-                                div { class: "config-label mb-md text-secondary font-bold", {t(*lang.read(), "connect.pool.available")} }
+                                div { class: "config-label mb-md text-bc-text-secondary font-bold", {t(*lang.read(), "connect.pool.available")} }
                                 div { class: "bc-grid-3 gap-md",
                                     MarketplaceCard { provider: "AWS", region: "us-east-1", latency: "12ms", price: "0.002", trust: 99, nodes: 312 }
                                     MarketplaceCard { provider: "Azure", region: "japan-east", latency: "88ms", price: "0.0018", trust: 95, nodes: 128 }
@@ -380,7 +380,7 @@ pub fn ConnectPage() -> Element {
             },
 
             div { class: "flex flex-col gap-lg",
-                p { class: "text-secondary text-caption",
+                p { class: "bc-detail-line m-0",
                     {t(*lang.read(), "connect.modal.description")}
                 }
 
@@ -415,15 +415,15 @@ fn MarketplaceCard(
                 div {
                     span { class: "pill neutral text-xxs", "{provider}" }
                     h3 { class: "bc-font-13 font-bold bc-mt-6", "{region}" }
-                    div { class: "mono text-xxs text-tertiary bc-mt-2", "{latency} · {nodes} nodes" }
+                    div { class: "mono text-xxs text-bc-text-tertiary bc-mt-2", "{latency} · {nodes} nodes" }
                 }
                 div { class: "text-right",
                     div { class: "bc-font-13 font-bold bc-text-brand", "${price}" }
-                    div { class: "text-xxs text-tertiary", "/ 1K tok" }
+                    div { class: "text-xxs text-bc-text-tertiary", "/ 1K tok" }
                 }
             }
             div { class: "bc-marketplace-footer",
-                span { class: "bc-font-11 text-secondary", "trust ", span { class: "mono font-semibold text-primary", "{trust}" } }
+                span { class: "bc-font-11 text-bc-text-secondary", "trust ", span { class: "mono font-semibold text-bc-text", "{trust}" } }
                 button {
                     class: "btn btn-ghost bc-btn-xs",
                     onclick: move |_| toast.info("Marketplace connection is not available yet"),

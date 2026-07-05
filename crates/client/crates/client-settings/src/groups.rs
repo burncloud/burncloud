@@ -195,7 +195,7 @@ pub fn GroupManager() -> Element {
                                                 "🗑️"
                                             }
                                         }
-                                        div { class: "text-caption text-secondary", "{group.match_path}" }
+                                        div { class: "text-caption text-bc-text-secondary", "{group.match_path}" }
                                     }
                                 }
                             })}
@@ -214,7 +214,7 @@ pub fn GroupManager() -> Element {
 
                         // Current Members
                         div { class: "mb-lg",
-                            h4 { class: "text-caption font-bold text-secondary mb-sm", {t(*lang.read(), "settings.groups.current_members")} }
+                            h4 { class: "text-caption font-bold text-bc-text-secondary mb-sm", {t(*lang.read(), "settings.groups.current_members")} }
                             div { class: "flex flex-col gap-sm",
                                 {selected_group_members().iter().map(|member| {
                                     let uid1 = member.upstream_id.clone();
@@ -252,7 +252,7 @@ pub fn GroupManager() -> Element {
                                     }
                                 })}
                                 if selected_group_members().is_empty() {
-                                    div { class: "text-secondary text-center p-md italic",
+                                    div { class: "text-bc-text-secondary text-center p-md italic",
                                         {t(*lang.read(), "settings.groups.no_members")}
                                     }
                                 }
@@ -261,7 +261,7 @@ pub fn GroupManager() -> Element {
 
                         // Add Member
                         div { class: "mb-lg",
-                            h4 { class: "text-caption font-bold text-secondary mb-sm", {t(*lang.read(), "settings.groups.add_member")} }
+                            h4 { class: "text-caption font-bold text-bc-text-secondary mb-sm", {t(*lang.read(), "settings.groups.add_member")} }
                             div { class: "flex gap-sm add-member-wrap",
                                 for channel in all_channels() {
                                     if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
@@ -278,7 +278,7 @@ pub fn GroupManager() -> Element {
                             button { class: "btn btn-primary", onclick: save_members, {t(*lang.read(), "settings.groups.save_changes")} }
                         }
                     } else {
-                        div { class: "flex items-center justify-center h-full text-secondary", {t(*lang.read(), "settings.groups.select_group_hint")} }
+                        div { class: "flex items-center justify-center h-full text-bc-text-secondary", {t(*lang.read(), "settings.groups.select_group_hint")} }
                     }
                 }
             }

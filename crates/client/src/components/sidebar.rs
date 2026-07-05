@@ -1,126 +1,31 @@
 use crate::app::Route;
-use burncloud_client_shared::components::logo::Logo;
-use burncloud_client_shared::i18n::{t, use_i18n};
+use burncloud_client_shared::components::console_sidebar::{ConsoleNav, ConsoleSidebar, NavId};
 use dioxus::prelude::*;
-use dioxus_router::components::Link;
-use dioxus_router::hooks::use_route;
 
-#[derive(Props, Clone, PartialEq)]
-struct SidebarItemProps {
-    to: Route,
-    label: String,
-    icon_path: &'static str,
-}
+struct AppConsoleNav;
 
-#[component]
-fn SidebarItem(props: SidebarItemProps) -> Element {
-    let route = use_route::<Route>();
-    let active = route == props.to;
+impl ConsoleNav for AppConsoleNav {
+    type Route = Route;
 
-    rsx! {
-        Link {
-            to: props.to,
-            class: format!("nav-item {}", if active { "active" } else { "" }),
-            div { class: format!("icon {}", if active { "text-on-accent" } else { "opacity-70" }),
-                svg {
-                    fill: "none",
-                    view_box: "0 0 24 24",
-                    stroke: "currentColor",
-                    stroke_width: "2",
-                    path {
-                        stroke_linecap: "round",
-                        stroke_linejoin: "round",
-                        d: props.icon_path,
-                    }
-                }
-            }
-            span { "{props.label}" }
+    fn nav_route(id: NavId) -> Route {
+        match id {
+            NavId::Dashboard => Route::Dashboard {},
+            NavId::Channel => Route::ChannelPage {},
+            NavId::Connect => Route::ConnectPage {},
+            NavId::Access => Route::AccessPage {},
+            NavId::Playground => Route::PlaygroundPage {},
+            NavId::Monitor => Route::ServiceMonitor {},
+            NavId::Logs => Route::LogPage {},
+            NavId::Users => Route::UsersPage {},
+            NavId::Finance => Route::FinancePage {},
+            NavId::Settings => Route::SystemSettings {},
         }
     }
 }
 
 #[component]
 pub fn Sidebar() -> Element {
-    let i18n = use_i18n();
-    let lang = *i18n.language.read();
-
     rsx! {
-        div { class: "flex flex-col h-full gap-6 select-none pt-4",
-            div { class: "px-6 pb-2",
-                div { class: "flex items-center gap-3",
-                    Logo { class: "w-8 h-8 fill-current" }
-                    div { class: "flex flex-col",
-                        span { class: "text-base font-semibold tracking-tight leading-none text-base-content", "BurnCloud" }
-                        span { class: "text-[11px] font-medium text-base-content/40 uppercase tracking-widest leading-none mt-1", "Enterprise" }
-                    }
-                }
-            }
-
-            div { class: "flex flex-col gap-1",
-                div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "Core" }
-                SidebarItem {
-                    to: Route::Dashboard {},
-                    label: t(lang, "nav.dashboard").to_string(),
-                    icon_path: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
-                }
-                SidebarItem {
-                    to: Route::ChannelPage {},
-                    label: t(lang, "models.channel.title").to_string(),
-                    icon_path: "M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z",
-                }
-                SidebarItem {
-                    to: Route::ConnectPage {},
-                    label: "Connect".to_string(),
-                    icon_path: "M13 10V3L4 14h7v7l9-11h-7z",
-                }
-                SidebarItem {
-                    to: Route::AccessPage {},
-                    label: t(lang, "nav.api").to_string(),
-                    icon_path: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z",
-                }
-            }
-
-            div { class: "flex flex-col gap-1",
-                div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "Apps" }
-                SidebarItem {
-                    to: Route::PlaygroundPage {},
-                    label: t(lang, "playground.title").to_string(),
-                    icon_path: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",
-                }
-            }
-
-            div { class: "flex flex-col gap-1",
-                div { class: "px-6 text-[11px] font-semibold text-base-content/40 uppercase tracking-widest mb-2 mt-2", "Operations" }
-                SidebarItem {
-                    to: Route::ServiceMonitor {},
-                    label: t(lang, "nav.monitor").to_string(),
-                    icon_path: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
-                }
-                SidebarItem {
-                    to: Route::LogPage {},
-                    label: "Logs".to_string(),
-                    icon_path: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
-                }
-                SidebarItem {
-                    to: Route::UsersPage {},
-                    label: t(lang, "nav.users").to_string(),
-                    icon_path: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z",
-                }
-                SidebarItem {
-                    to: Route::FinancePage {},
-                    label: "Billing".to_string(),
-                    icon_path: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
-                }
-            }
-
-            div { class: "mt-auto flex flex-col gap-1 pb-4",
-                div { class: "divider my-2 opacity-50" }
-                SidebarItem {
-                    to: Route::SystemSettings {},
-                    label: t(lang, "nav.settings").to_string(),
-                    icon_path: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
-                }
-            }
-        }
+        ConsoleSidebar::<AppConsoleNav> {}
     }
 }

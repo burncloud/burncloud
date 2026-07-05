@@ -128,22 +128,22 @@ pub fn UsersPage() -> Element {
                                 th { {t(*lang.read(), "users.col.balance")} }
                                 th { {t(*lang.read(), "users.col.group")} }
                                 th { {t(*lang.read(), "users.col.status")} }
-                                th { style: "text-align:right", {t(*lang.read(), "users.col.actions")} }
+                                th { class: "text-right", {t(*lang.read(), "users.col.actions")} }
                             }
                         }
                         tbody {
                             for u in filtered {
                                 tr {
                                     key: "{u.id}",
-                                    td { span { class: "mono", style: "font-size:12px", "{u.id}" } }
-                                    td { style: "font-weight:600", "{u.username}" }
+                                    td { span { class: "mono bc-font-11", "{u.id}" } }
+                                    td { class: "font-semibold", "{u.username}" }
                                     td { span { class: "pill neutral", "{u.role}" } }
-                                    td { class: "mono", style: "color:var(--bc-text-primary); font-variant-numeric:tabular-nums",
+                                    td { class: "mono bc-tabular-primary",
                                         "{format_nano_to_cny(u.balance_cny)}"
                                     }
                                     td {
                                         if u.group == "VIP" {
-                                            span { class: "pill", style: "background:var(--bc-primary-light); color:var(--bc-primary)", "VIP" }
+                                            span { class: "pill vip", "VIP" }
                                         } else {
                                             span { class: "pill neutral", "{u.group}" }
                                         }
@@ -154,10 +154,9 @@ pub fn UsersPage() -> Element {
                                             label: if u.status == 1 { Some("Active".to_string()) } else { Some("Disabled".to_string()) },
                                         }
                                     }
-                                    td { style: "text-align:right",
+                                    td { class: "text-right",
                                         button {
-                                            class: "btn btn-ghost",
-                                            style: "color:var(--bc-primary); font-weight:600",
+                                            class: "btn btn-ghost bc-btn-primary-text",
                                             onclick: move |_| {
                                                 show_topup.set(Some(u.id.clone()));
                                                 topup_username.set(u.username.clone());
@@ -175,82 +174,80 @@ pub fn UsersPage() -> Element {
         }
 
         // Top-up modal
-        if let Some(_uid) = show_topup() {
-            div { class: "bc-modal-overlay", onclick: move |_| show_topup.set(None),
-                div { class: "bc-modal", style: "width:440px", onclick: move |e| e.stop_propagation(),
-                    div { class: "bc-modal-header",
-                        span { class: "bc-modal-title", {t(*lang.read(), "users.topup_modal.title")} }
-                        button { class: "btn-icon", onclick: move |_| show_topup.set(None), "✕" }
-                    }
-                    div { class: "bc-modal-body",
-                        div { style: "display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--bc-bg-hover); border-radius:8px",
-                            span { style: "font-size:12px; color:var(--bc-text-secondary)", {t(*lang.read(), "users.topup_modal.target_account")} }
-                            span { style: "font-weight:600", "{topup_username()}" }
+        BCModal {
+            title: t(*lang.read(), "users.topup_modal.title").to_string(),
+            open: show_topup().is_some(),
+            onclose: move |_| show_topup.set(None),
+            footer: rsx! {
+                BCButton {
+                    variant: ButtonVariant::Ghost,
+                    onclick: move |_| show_topup.set(None),
+                    {t(*lang.read(), "common.cancel")}
+                }
+                BCButton {
+                    variant: ButtonVariant::Black,
+                    loading: topup_loading(),
+                    disabled: topup_loading(),
+                    onclick: move |_| {
+                        let amount = topup_amount();
+                        if amount <= 0 {
+                            toast.error(t(*lang.read(), "users.topup_modal.invalid_amount"));
+                            return;
                         }
-
-                        div { style: "margin-top:16px",
-                            label { class: "input-label", {t(*lang.read(), "users.topup_modal.amount")} }
-                            div { class: "input",
-                                input {
-                                    r#type: "number",
-                                    placeholder: "0.00",
-                                    value: if topup_amount() > 0 { format!("{}", topup_amount()) } else { String::new() },
-                                    oninput: move |e| topup_amount.set(e.value().parse().unwrap_or(0)),
+                        let uid = match show_topup() {
+                            Some(id) => id,
+                            None => return,
+                        };
+                        let amount_nano = amount * 1_000_000_000;
+                        topup_loading.set(true);
+                        spawn(async move {
+                            match UserService::topup(&uid, amount_nano, Some("CNY")).await {
+                                Ok(_) => {
+                                    topup_loading.set(false);
+                                    show_topup.set(None);
+                                    users.restart();
+                                    toast.success(t(*lang.read(), "users.topup_modal.success"));
+                                }
+                                Err(e) => {
+                                    topup_loading.set(false);
+                                    toast.error(&t_fmt(*lang.read(), "users.topup_modal.failed", &[("error", &e.to_string())]));
                                 }
                             }
-                        }
+                        });
+                    },
+                    {if topup_loading() { t(*lang.read(), "users.topup_modal.processing") } else { t(*lang.read(), "users.topup_modal.confirm") }}
+                }
+            },
 
-                        div { style: "display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px",
-                            button {
-                                class: "btn btn-secondary",
-                                onclick: move |_| topup_amount.set(100),
-                                "¥100"
-                            }
-                            button {
-                                class: "btn btn-secondary",
-                                onclick: move |_| topup_amount.set(500),
-                                "¥500"
-                            }
-                            button {
-                                class: "btn btn-secondary",
-                                onclick: move |_| topup_amount.set(1000),
-                                "¥1000"
-                            }
-                        }
+            div { class: "flex flex-col gap-md",
+                div { class: "bc-modal-info-row",
+                    span { class: "bc-text-sm-secondary", {t(*lang.read(), "users.topup_modal.target_account")} }
+                    span { class: "font-semibold", "{topup_username()}" }
+                }
+
+                BCInput {
+                    label: Some(t(*lang.read(), "users.topup_modal.amount").to_string()),
+                    r#type: "number".to_string(),
+                    placeholder: "0.00".to_string(),
+                    value: if topup_amount() > 0 { format!("{}", topup_amount()) } else { String::new() },
+                    oninput: move |e: FormEvent| topup_amount.set(e.value().parse().unwrap_or(0)),
+                }
+
+                div { class: "bc-grid-3col",
+                    button {
+                        class: "btn btn-secondary",
+                        onclick: move |_| topup_amount.set(100),
+                        "¥100"
                     }
-                    div { class: "bc-modal-footer",
-                        button { class: "btn btn-ghost", onclick: move |_| show_topup.set(None), {t(*lang.read(), "common.cancel")} }
-                        button { class: "btn btn-black",
-                            disabled: topup_loading(),
-                            onclick: move |_| {
-                                let amount = topup_amount();
-                                if amount <= 0 {
-                                    toast.error(t(*lang.read(), "users.topup_modal.invalid_amount"));
-                                    return;
-                                }
-                                let uid = match show_topup() {
-                                    Some(id) => id,
-                                    None => return,
-                                };
-                                let amount_nano = amount * 1_000_000_000;
-                                topup_loading.set(true);
-                                spawn(async move {
-                                    match UserService::topup(&uid, amount_nano, Some("CNY")).await {
-                                        Ok(_) => {
-                                            topup_loading.set(false);
-                                            show_topup.set(None);
-                                            users.restart();
-                                            toast.success(t(*lang.read(), "users.topup_modal.success"));
-                                        }
-                                        Err(e) => {
-                                            topup_loading.set(false);
-                                            toast.error(&t_fmt(*lang.read(), "users.topup_modal.failed", &[("error", &e.to_string())]));
-                                        }
-                                    }
-                                });
-                            },
-                            {if topup_loading() { t(*lang.read(), "users.topup_modal.processing") } else { t(*lang.read(), "users.topup_modal.confirm") }}
-                        }
+                    button {
+                        class: "btn btn-secondary",
+                        onclick: move |_| topup_amount.set(500),
+                        "¥500"
+                    }
+                    button {
+                        class: "btn btn-secondary",
+                        onclick: move |_| topup_amount.set(1000),
+                        "¥1000"
                     }
                 }
             }
@@ -263,7 +260,7 @@ pub fn UsersPage() -> Element {
             onclose: move |_| show_invite.set(false),
 
             div { class: "flex flex-col gap-lg",
-                div { style: "font-size:12px; color:var(--bc-text-secondary)", {t(*lang.read(), "users.invite_modal.desc")} }
+                p { class: "bc-text-sm-secondary m-0", {t(*lang.read(), "users.invite_modal.desc")} }
 
                 BCInput {
                     label: Some(t(*lang.read(), "users.invite_modal.username_label").to_string()),

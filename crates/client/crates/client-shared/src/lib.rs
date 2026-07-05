@@ -1,5 +1,6 @@
 #![allow(clippy::disallowed_types)]
 pub mod api_client;
+pub mod app_styles;
 pub mod auth_context;
 pub mod components;
 pub mod i18n;
@@ -9,6 +10,7 @@ pub mod styles;
 pub mod utils;
 
 pub use api_client::*;
+pub use app_styles::{liveview_style_tags, AppStyles, TAILWIND_CSS};
 pub use auth_context::{use_auth, use_init_auth, AuthContext, CurrentUser};
 pub use components::toast::{use_init_toast, use_toast, ToastContainer, ToastManager};
 pub use components::*;

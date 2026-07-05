@@ -7,14 +7,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // DaisyUI-compat base-* theme colors mapped to burncloud tokens.
-        // Use RGB channel form so Tailwind can generate /opacity variants
-        // (bg-base-100/80, text-base-content/40, ...).
-        "base-50":      "rgb(250 250 252 / <alpha-value>)",
-        "base-100":     "rgb(255 255 255 / <alpha-value>)",
-        "base-200":     "rgb(245 245 247 / <alpha-value>)",
-        "base-300":     "rgb(229 229 234 / <alpha-value>)",
-        "base-content": "rgb(29 29 31 / <alpha-value>)",
+        // Semantic BurnCloud tokens — use bg-bc-canvas, text-bc-text, etc.
         "bc-primary": "var(--bc-primary)",
         "bc-primary-hover": "var(--bc-primary-hover)",
         "bc-primary-active": "var(--bc-primary-active)",

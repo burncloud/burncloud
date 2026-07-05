@@ -119,7 +119,7 @@ pub fn SystemSettings() -> Element {
                         div { class: "settings-theme-row",
                             div {
                                 div { class: "text-body font-medium", "{t(*lang, \"settings.general.theme_title\")}" }
-                                div { class: "text-caption text-secondary mt-xs", "{t(*lang, \"settings.general.theme_desc\")}" }
+                                div { class: "text-caption text-bc-text-secondary mt-xs", "{t(*lang, \"settings.general.theme_desc\")}" }
                             }
                             div { class: "flex gap-sm",
                                 {

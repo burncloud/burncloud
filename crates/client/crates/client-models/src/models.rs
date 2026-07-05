@@ -655,10 +655,10 @@ pub fn ChannelPage() -> Element {
                         button {
                             class: "pick-card card-interactive flex flex-col items-center justify-center gap-md p-lg h-36",
                             onclick: move |_| select_provider(p),
-                            div { class: "text-secondary",
+                            div { class: "text-bc-text-secondary",
                                 {p.icon()}
                             }
-                            span { class: "font-medium text-caption text-secondary", "{p.name()}" }
+                            span { class: "font-medium text-caption text-bc-text-secondary", "{p.name()}" }
                         }
                     }
                 }
@@ -690,9 +690,9 @@ pub fn ChannelPage() -> Element {
                     {t(*lang.read(), "models.channel.delete_confirm_title")}
                 }
             },
-            p { class: "text-secondary",
+            p { class: "text-bc-text-secondary",
                 {t(*lang.read(), "models.channel.delete_confirm_msg")}
-                span { class: "font-semibold text-primary", " {delete_channel_name()}" }
+                span { class: "font-semibold text-bc-text", " {delete_channel_name()}" }
                 {t(*lang.read(), "models.channel.delete_confirm_suffix")}
             }
         }

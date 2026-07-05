@@ -34,7 +34,7 @@ pub fn BCPagination(page: usize, total_pages: usize, on_change: EventHandler<usi
                 onclick: move |_| on_change.call(page - 1),
                 "Prev"
             }
-            span { class: "text-caption text-secondary", "Page {page} of {total_pages}" }
+            span { class: "text-caption text-bc-text-secondary", "Page {page} of {total_pages}" }
             button {
                 class: "btn btn-secondary",
                 disabled: page >= total_pages,

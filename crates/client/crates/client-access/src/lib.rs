@@ -131,7 +131,7 @@ pub fn AccessPage() -> Element {
                                         }
                                         div { class: "flex items-center gap-xs",
                                             button {
-                                                class: "btn-icon text-tertiary",
+                                                class: "btn-icon text-bc-text-tertiary",
                                                 onclick: move |_| {
                                                     let id = tk_id_for_del.clone();
                                                     delete_token_id.set(id);
@@ -154,9 +154,24 @@ pub fn AccessPage() -> Element {
             title: t(*lang.read(), "access.create_modal.title").to_string(),
             open: show_create(),
             onclose: move |_| show_create.set(false),
+            footer: rsx! {
+                BCButton {
+                    variant: ButtonVariant::Ghost,
+                    onclick: move |_| show_create.set(false),
+                    {t(*lang.read(), "common.cancel")}
+                }
+                BCButton {
+                    variant: ButtonVariant::Black,
+                    onclick: move |_| {
+                        let data = form_data.read().clone();
+                        handle_create(data);
+                    },
+                    {t(*lang.read(), "access.create_modal.submit")}
+                }
+            },
 
-            div { class: "flex flex-col gap-lg p-lg",
-                div { class: "bc-hint-text mt-xs", {t(*lang.read(), "access.create_modal.desc")} }
+            div { class: "flex flex-col gap-lg",
+                p { class: "bc-hint-text m-0", {t(*lang.read(), "access.create_modal.desc")} }
 
                 SchemaForm {
                     schema: schema.clone(),
@@ -169,22 +184,6 @@ pub fn AccessPage() -> Element {
                 div { class: "bc-warning-banner",
                     span { class: "bc-hint-text", {t(*lang.read(), "access.create_modal.warning")} }
                 }
-
-                div { class: "flex justify-end gap-md mt-md",
-                    BCButton {
-                        variant: ButtonVariant::Ghost,
-                        onclick: move |_| show_create.set(false),
-                        {t(*lang.read(), "common.cancel")}
-                    }
-                    BCButton {
-                        variant: ButtonVariant::Black,
-                        onclick: move |_| {
-                            let data = form_data.read().clone();
-                            handle_create(data);
-                        },
-                        {t(*lang.read(), "access.create_modal.submit")}
-                    }
-                }
             }
         }
 
@@ -193,13 +192,21 @@ pub fn AccessPage() -> Element {
             title: t(*lang.read(), "access.result_modal.title").to_string(),
             open: show_result(),
             onclose: move |_| show_result.set(false),
+            footer: rsx! {
+                BCButton {
+                    variant: ButtonVariant::Black,
+                    class: "w-full".to_string(),
+                    onclick: move |_| show_result.set(false),
+                    {t(*lang.read(), "access.result_modal.saved")}
+                }
+            },
 
             div { class: "bc-result-modal-body",
                 div { class: "bc-success-circle",
                     "✓"
                 }
                 h3 { class: "bc-heading-22px", {t(*lang.read(), "access.result_modal.heading")} }
-                p { class: "bc-body-13px text-secondary",
+                p { class: "bc-body-13px text-bc-text-secondary",
                     {t(*lang.read(), "access.result_modal.copy_prompt_1")}
                     br {}
                     {t(*lang.read(), "access.result_modal.copy_prompt_2")}
@@ -222,13 +229,6 @@ pub fn AccessPage() -> Element {
                         "📋"
                     }
                 }
-
-                BCButton {
-                    variant: ButtonVariant::Black,
-                    class: "width-full mt-md",
-                    onclick: move |_| show_result.set(false),
-                    {t(*lang.read(), "access.result_modal.saved")}
-                }
             }
         }
 
@@ -237,47 +237,47 @@ pub fn AccessPage() -> Element {
             title: t(*lang.read(), "access.delete_modal.title").to_string(),
             open: show_delete(),
             onclose: move |_| show_delete.set(false),
+            footer: rsx! {
+                BCButton {
+                    variant: ButtonVariant::Ghost,
+                    onclick: move |_| show_delete.set(false),
+                    {t(*lang.read(), "common.cancel")}
+                }
+                BCButton {
+                    class: "btn btn-danger".to_string(),
+                    onclick: move |_| {
+                        let id = delete_token_id();
+                        spawn(async move {
+                            match TokenService::delete(&id).await {
+                                Ok(_) => {
+                                    tokens.restart();
+                                    toast.success(t(*lang.read(), "access.delete_modal.revoked"));
+                                }
+                                Err(e) => toast.error(&t_fmt(*lang.read(), "access.delete_modal.revoke_failed", &[("error", &e.to_string())])),
+                            }
+                        });
+                        show_delete.set(false);
+                    },
+                    {t(*lang.read(), "access.delete_modal.confirm")}
+                }
+            },
 
-            div { class: "flex flex-col",
+            div { class: "flex flex-col gap-md",
                 div { class: "bc-danger-banner",
                     div { class: "bc-danger-circle",
                         "🛡"
                     }
                     div {
                         div { class: "text-subtitle font-bold", {t(*lang.read(), "access.delete_modal.heading")} }
-                        div { class: "bc-body-13px text-secondary mt-xs", {t(*lang.read(), "access.delete_modal.cannot_undo")} }
+                        div { class: "bc-body-13px text-bc-text-secondary mt-xs", {t(*lang.read(), "access.delete_modal.cannot_undo")} }
                     }
                 }
                 div { class: "bc-delete-warning-body",
                     {t(*lang.read(), "access.delete_modal.confirm_msg")}
                     br {}
                     {t(*lang.read(), "access.delete_modal.impact_prefix")}
-                    span { class: "text-danger font-bold", {t(*lang.read(), "access.delete_modal.impact_highlight")} }
+                    span { class: "text-bc-danger font-bold", {t(*lang.read(), "access.delete_modal.impact_highlight")} }
                     {t(*lang.read(), "access.delete_modal.impact_suffix")}
-                }
-                div { class: "flex justify-end gap-md p-md",
-                    BCButton {
-                        variant: ButtonVariant::Ghost,
-                        onclick: move |_| show_delete.set(false),
-                        {t(*lang.read(), "common.cancel")}
-                    }
-                    BCButton {
-                        class: "btn btn-danger",
-                        onclick: move |_| {
-                            let id = delete_token_id();
-                            spawn(async move {
-                                match TokenService::delete(&id).await {
-                                    Ok(_) => {
-                                        tokens.restart();
-                                        toast.success(t(*lang.read(), "access.delete_modal.revoked"));
-                                    }
-                                    Err(e) => toast.error(&t_fmt(*lang.read(), "access.delete_modal.revoke_failed", &[("error", &e.to_string())])),
-                                }
-                            });
-                            show_delete.set(false);
-                        },
-                        {t(*lang.read(), "access.delete_modal.confirm")}
-                    }
                 }
             }
         }

@@ -66,7 +66,7 @@ pub fn BCButton(
             onclick: move |e| if !loading && !disabled { onclick.call(e) },
             disabled: loading || disabled,
             if loading {
-                span { class: "loading loading-spinner loading-xs me-2", role: "status" }
+                span { class: "bc-spinner bc-spinner--xs me-2", role: "status" }
                 " "
             }
             {children}

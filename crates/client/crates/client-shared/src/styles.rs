@@ -1,8 +1,10 @@
 /// BurnCloud Design System CSS — Apple-inspired visual language.
 ///
-/// Single source of truth for all design tokens (`--bc-*` CSS variables),
-/// base element styles, component styles, and utility classes.
-/// Loaded via `<style>{DESIGN_SYSTEM_CSS}</style>` in both guest and authenticated layouts.
+/// Single source of truth for design tokens (`--bc-*`), component styles (`.btn-*`, `.bc-*`),
+/// and semantic utilities. Layout/spacing responsive classes come from Tailwind (`tailwind.css`).
+///
+/// In the desktop / LiveView app, load order is fixed by `AppStyles`:
+/// `tailwind.css` → `DESIGN_SYSTEM_CSS` → SVG defaults.
 pub const DESIGN_SYSTEM_CSS: &str = r#"
 /* ═══════════════════════════════════════════════════════════════════
    BurnCloud Design System — Apple-inspired
@@ -665,44 +667,18 @@ html, body {
 .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
 
 /* ═══════════════════════════════════════════════════════════════════
-   Layout Helpers
+   Layout Helpers (BurnCloud-specific — not Tailwind duplicates)
    ═══════════════════════════════════════════════════════════════════ */
-
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.flex-1 { flex: 1; }
-.w-full { width: 100%; }
-.h-full { height: 100%; }
-.grid { display: grid; }
-.overflow-hidden { overflow: hidden; }
-.overflow-x-auto { overflow-x: auto; }
-.overflow-y-auto { overflow-y: auto; }
 
 .border-t { border-top: 1px solid var(--bc-border); }
 .border-b { border-bottom: 1px solid var(--bc-border); }
-
-.text-left { text-align: left; }
-.text-center { text-align: center; }
-.text-right { text-align: right; }
-.cursor-pointer { cursor: pointer; }
 .min-height-200 { min-height: 200px; }
 
-.items-center { align-items: center; }
-.items-start { align-items: flex-start; }
-.justify-between { justify-content: space-between; }
-.justify-center { justify-content: center; }
-
-/* Responsive overrides — these must come after the non-responsive rules above
-   to fix cascade order: DESIGN_SYSTEM_CSS loads after Tailwind, so Tailwind's
-   @media responsive variants would otherwise be overridden by the flat rules above. */
-@media (min-width: 640px) {
-    .sm\:flex-row { flex-direction: row; }
-}
-@media (min-width: 768px) {
-    .md\:flex-row { flex-direction: row; }
-    .md\:items-start { align-items: flex-start; }
-    .md\:text-left { text-align: left; }
-    .md\:justify-start { justify-content: flex-start; }
+.sidebar-divider {
+    height: 1px;
+    background: var(--bc-border);
+    margin: 0.5rem 1rem;
+    opacity: 0.5;
 }
 
 /* Spacing Utilities */
@@ -760,6 +736,7 @@ html, body {
 .text-xxs { font-size: 10px; }
 .text-xxxs { font-size: 8px; }
 
+/* Legacy text color aliases — prefer Tailwind `text-bc-text*` in RSX */
 .text-primary { color: var(--bc-text-primary); }
 .text-secondary { color: var(--bc-text-secondary); }
 .text-tertiary { color: var(--bc-text-tertiary); }
@@ -775,57 +752,18 @@ html, body {
    App Layout
    ═══════════════════════════════════════════════════════════════════ */
 
-.app-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--bc-bg-canvas);
-    overflow: hidden;
-    overscroll-behavior: none;
-}
-
-.app-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-}
-
-.sidebar {
-    width: 250px;
-    background: var(--bc-bg-card-solid);
-    border-right: 1px solid var(--bc-border);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-}
-
-.main-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.title-bar {
-    height: 48px;
-    background: var(--bc-bg-card-solid);
-    border-bottom: 1px solid var(--bc-border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 var(--bc-space-4);
-    flex-shrink: 0;
-    -webkit-app-region: drag;
-}
-
-.title-bar button { -webkit-app-region: no-drag; }
-
 .page-header {
     padding: var(--bc-space-5) var(--bc-space-6);
     background: var(--bc-bg-card-solid);
     border-bottom: 1px solid var(--bc-border);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
+
+.page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.page-sub { font-size: 13px; color: var(--bc-text-secondary); margin-top: 2px; }
 
 .page-content {
     flex: 1;
@@ -1132,47 +1070,11 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   JIT Shims (Tailwind v2 static compatibility)
+   Scrollbar + theme
    ═══════════════════════════════════════════════════════════════════ */
 
 :root {
     --scrollbar-width: 0px !important;
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bc-bg-canvas: #1D1D1F;
-        --bc-bg-card: rgba(44, 44, 46, 0.85);
-        --bc-bg-card-solid: #2C2C2E;
-        --bc-bg-elevated: #3A3A3C;
-        --bc-bg-hover: rgba(255, 255, 255, 0.06);
-        --bc-bg-selected: rgba(255, 255, 255, 0.10);
-        --bc-bg-input: rgba(44, 44, 46, 0.90);
-
-        --bc-text-primary: #FFFFFF;
-        --bc-text-secondary: #AEAEB2;
-        --bc-text-tertiary: #8E8E93;
-        --bc-text-disabled: #636366;
-
-        --bc-border: rgba(255, 255, 255, 0.10);
-        --bc-border-hover: rgba(255, 255, 255, 0.18);
-        --bc-border-focus: rgba(0, 122, 255, 0.60);
-
-        --bc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.20);
-        --bc-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
-        --bc-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.30);
-        --bc-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.35);
-        --bc-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.40);
-    }
-
-    .bc-input { color: #ffffff; }
-    .bc-input:hover { background: rgba(255, 255, 255, 0.08); }
-    .bc-input:focus {
-        background: rgba(255, 255, 255, 0.12);
-        box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.30);
-    }
-    .bc-input::placeholder { color: rgba(255, 255, 255, 0.4); }
 }
 
 /* Manual dark mode toggle via [data-theme="dark"] */
@@ -1904,18 +1806,13 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   DaisyUI Replacements
-   Minimal re-implementations of the DaisyUI classes still referenced
-   across the codebase, so daisyui.css can be removed entirely.
-   All values come from --bc-* design tokens.
+   Legacy DaisyUI class aliases (migrate to bc-* over time)
    ═══════════════════════════════════════════════════════════════════ */
 
-/* Loading spinner — replaces `loading loading-spinner loading-{xs,sm,md,lg}` */
-.loading {
+/* Spinner */
+.bc-spinner {
     display: inline-block;
     vertical-align: middle;
-}
-.loading-spinner {
     width: 20px;
     height: 20px;
     border: 2px solid var(--bc-border);
@@ -1923,46 +1820,13 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
     border-radius: 9999px;
     animation: bc-spin 0.7s linear infinite;
 }
-.loading-xs { width: 12px; height: 12px; border-width: 2px; }
-.loading-sm { width: 16px; height: 16px; border-width: 2px; }
-.loading-md { width: 24px; height: 24px; border-width: 3px; }
-.loading-lg { width: 40px; height: 40px; border-width: 4px; }
+.bc-spinner--xs { width: 12px; height: 12px; }
+.bc-spinner--sm { width: 16px; height: 16px; }
+.bc-spinner--md { width: 24px; height: 24px; border-width: 3px; }
+.bc-spinner--lg { width: 40px; height: 40px; border-width: 4px; }
 @keyframes bc-spin { to { transform: rotate(360deg); } }
 
-/* Toggle switch — replaces `toggle toggle-success toggle-sm` */
-.toggle {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 40px;
-    height: 22px;
-    background: var(--bc-border);
-    border-radius: 9999px;
-    position: relative;
-    cursor: pointer;
-    transition: background var(--bc-transition-fast);
-    flex-shrink: 0;
-    margin: 0;
-}
-.toggle::before {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 18px;
-    height: 18px;
-    background: var(--bc-bg-card-solid);
-    border-radius: 9999px;
-    box-shadow: var(--bc-shadow-xs);
-    transition: transform var(--bc-transition-fast);
-}
-.toggle:checked { background: var(--bc-primary); }
-.toggle:checked::before { transform: translateX(18px); }
-.toggle-success:checked { background: var(--bc-success); }
-.toggle-sm { width: 32px; height: 18px; }
-.toggle-sm::before { width: 14px; height: 14px; }
-.toggle-sm:checked::before { transform: translateX(14px); }
-
-/* Select bordered — replaces `select select-bordered select-sm select-primary` */
+/* Form fields (legacy Daisy aliases — client-api) */
 .select {
     display: block;
     width: 100%;
@@ -2021,11 +1885,17 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
     box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
 }
 
-/* Form control / label — replaces `form-control`, `label`, `label-text` */
+/* Form field stack */
+.bc-field,
 .form-control {
     display: flex;
     flex-direction: column;
     gap: var(--bc-space-1);
+}
+.bc-field-label,
+.label-text {
+    font-size: var(--bc-font-sm);
+    color: var(--bc-text-primary);
 }
 .label {
     display: flex;
@@ -2033,60 +1903,14 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
     justify-content: space-between;
     padding: var(--bc-space-1) 0;
 }
-.label-text {
+.bc-input-group.bc-mono-sm .bc-input-native {
+    font-family: var(--bc-font-mono);
     font-size: var(--bc-font-sm);
-    color: var(--bc-text-primary);
 }
-
-/* Alert — replaces `alert alert-info alert-warning alert-success alert-error` */
-.alert {
-    display: flex;
-    align-items: center;
-    gap: var(--bc-space-2);
-    padding: var(--bc-space-3) var(--bc-space-4);
-    border-radius: var(--bc-radius-md);
-    border: 1px solid transparent;
-    font-size: var(--bc-font-base);
+.select.bc-mono-sm {
+    font-family: var(--bc-font-mono);
+    font-size: var(--bc-font-sm);
 }
-.alert-info    { background: var(--bc-info-light);    color: var(--bc-info);    border-color: var(--bc-info); }
-.alert-warning { background: var(--bc-warning-light); color: var(--bc-warning); border-color: var(--bc-warning); }
-.alert-success { background: var(--bc-success-light); color: var(--bc-success); border-color: var(--bc-success); }
-.alert-error   { background: var(--bc-danger-light);  color: var(--bc-danger);  border-color: var(--bc-danger); }
-
-/* Join — replaces `join` + `join-item` (segmented button groups) */
-.join { display: inline-flex; align-items: stretch; }
-.join > .join-item { border-radius: 0; }
-.join > .join-item:first-child {
-    border-top-left-radius: var(--bc-radius-sm);
-    border-bottom-left-radius: var(--bc-radius-sm);
-}
-.join > .join-item:last-child {
-    border-top-right-radius: var(--bc-radius-sm);
-    border-bottom-right-radius: var(--bc-radius-sm);
-}
-.join > .join-item + .join-item { margin-left: -1px; }
-
-/* Tooltip — replaces `tooltip tooltip-{top,bottom,left,right}` */
-.tooltip { position: relative; }
-.tooltip::after {
-    content: attr(data-tip);
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: var(--bc-space-1) var(--bc-space-2);
-    background: #1D1D1F;
-    color: #FFFFFF;
-    font-size: var(--bc-font-xs);
-    border-radius: var(--bc-radius-xs);
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--bc-transition-fast);
-    z-index: 1000;
-}
-.tooltip:hover::after { opacity: 1; }
-.tooltip-bottom::after { top: calc(100% + 4px); }
-.tooltip-top::after    { bottom: calc(100% + 4px); }
 
 /* Button modifiers — extends `.btn` already defined above */
 .btn-circle {
@@ -2100,20 +1924,6 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 }
 .btn-xs { height: 26px; padding: 0 10px; font-size: var(--bc-font-xs); border-radius: var(--bc-radius-xs); }
 .btn-sm { height: 32px; padding: 0 14px; font-size: var(--bc-font-sm); }
-
-/* Badge — replaces `badge badge-ghost badge-xs` */
-.badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px var(--bc-space-2);
-    border-radius: 9999px;
-    font-size: var(--bc-font-xs);
-    font-weight: 500;
-    background: var(--bc-bg-hover);
-    color: var(--bc-text-secondary);
-}
-.badge-ghost  { background: var(--bc-bg-hover); color: var(--bc-text-secondary); }
-.badge-xs     { padding: 1px 6px; font-size: 10px; }
 
 /* ═══════════════════════════════════════════════════════════════════
    Page-level helpers — from design kit styles.css
@@ -2131,17 +1941,6 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 .stat-pill.success { color: var(--bc-success); background: var(--bc-success-light); }
 .stat-pill.danger { color: var(--bc-danger); background: var(--bc-danger-light); }
 .stat-pill.muted { color: var(--bc-text-tertiary); }
-
-/* Page layout rhythm */
-.page-header {
-  background: var(--bc-bg-card-solid);
-  border-bottom: 1px solid var(--bc-border);
-  padding: 20px 24px;
-  display: flex; align-items: center; gap: 16px;
-}
-.page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
-.page-sub { font-size: 13px; color: var(--bc-text-secondary); margin-top: 2px; }
-.page-content { padding: 24px; overflow-y: auto; }
 
 /* Table */
 .table { width: 100%; border-collapse: collapse; background: var(--bc-bg-card-solid); border: 1px solid var(--bc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
@@ -2295,7 +2094,6 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 .bc-border-color { border-color: var(--bc-border); }
 
 /* Color utilities */
-.bc-text-danger { color: var(--bc-danger); }
 .bc-text-primary { color: var(--bc-text-primary); }
 
 /* Monospace font utility */
@@ -2383,8 +2181,7 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 /* Password meter dynamic background */
 .bc-dynamic-bg { background: var(--bc-dynamic-bg); }
 
-/* API page header bar */
-.bc-api-header { background: var(--bc-bg-card-solid); border-color: var(--bc-border); }
+.bc-sticky-header { position: sticky; top: 0; z-index: 40; border-bottom: 1px solid var(--bc-border); }
 .bc-api-table-header { background: var(--bc-bg-hover); }
 
 /* API channel row hover */
@@ -2393,17 +2190,7 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 /* API empty state icon */
 .bc-empty-channel-icon { width: 64px; height: 64px; border-radius: var(--bc-radius-full); background: var(--bc-bg-hover); }
 
-/* API modal */
-.bc-api-modal { max-width: 560px; box-shadow: var(--bc-shadow-xl); }
-.bc-api-modal-header { background: var(--bc-bg-hover); border-color: var(--bc-border); }
-.bc-api-modal-footer { background: var(--bc-bg-hover); border-color: var(--bc-border); }
-
-/* API modal backdrop */
-.bc-api-backdrop { background: rgba(0, 0, 0, 0.40); backdrop-filter: blur(4px); }
-
 /* Error banner */
-
-/* ── Dashboard & Models: semantic utility classes ── */
 .bc-grid-channel-log { display: grid; grid-template-columns: 1.45fr 1fr; gap: var(--bc-space-6); }
 .bc-grid-2 { grid-template-columns: 1fr 1fr; }
 .bc-text-3xl { font-size: 32px; }
@@ -2523,9 +2310,6 @@ html .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
 
 /* Info tip box */
 .bc-info-tip { margin-top: 16px; padding: 16px; font-size: 12px; line-height: 1.6; background: var(--bc-info-light); color: var(--bc-info); border-radius: 12px; }
-
-/* Status dot (8px round indicator) */
-.bc-status-dot { width: 8px; height: 8px; border-radius: 99px; }
 
 /* Dynamic style slots (--bc-dynamic-* pattern) */
 .bc-dynamic-color { color: var(--bc-dynamic-color); }
