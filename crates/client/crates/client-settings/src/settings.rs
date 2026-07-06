@@ -5,7 +5,8 @@ use crate::groups::GroupManager;
 use crate::tokens::TokenManager;
 use burncloud_client_shared::components::{FormMode, PageHeader, SchemaForm};
 use burncloud_client_shared::i18n::{t, use_i18n, Language};
-use burncloud_client_shared::utils::storage::{ClientState, Theme};
+use burncloud_client_shared::utils::storage::Theme;
+use burncloud_client_shared::use_theme;
 use dioxus::prelude::*;
 
 /// General settings schema
@@ -50,6 +51,8 @@ pub fn SystemSettings() -> Element {
     let mut active_tab = use_signal(|| "general");
     let mut i18n = use_i18n();
     let lang = i18n.language.read();
+    let theme_ctx = use_theme();
+    let current_theme = theme_ctx.theme.read().clone();
 
     // Settings form data
     let lang_val = match *lang {
@@ -122,38 +125,20 @@ pub fn SystemSettings() -> Element {
                                 div { class: "text-caption text-bc-text-secondary mt-xs", "{t(*lang, \"settings.general.theme_desc\")}" }
                             }
                             div { class: "flex gap-sm",
-                                {
-                                    let cs = ClientState::load();
-                                    let ct = cs.theme.clone().unwrap_or_default();
-                                    rsx! {
-                                        button {
-                                            class: if ct == Theme::Light { "tab active" } else { "tab" },
-                                            onclick: move |_| {
-                                                let mut s = ClientState::load();
-                                                s.theme = Some(Theme::Light);
-                                                s.save();
-                                            },
-                                            "{t(*lang, \"settings.general.theme_light\")}"
-                                        }
-                                        button {
-                                            class: if ct == Theme::Dark { "tab active" } else { "tab" },
-                                            onclick: move |_| {
-                                                let mut s = ClientState::load();
-                                                s.theme = Some(Theme::Dark);
-                                                s.save();
-                                            },
-                                            "{t(*lang, \"settings.general.theme_dark\")}"
-                                        }
-                                        button {
-                                            class: if ct == Theme::System { "tab active" } else { "tab" },
-                                            onclick: move |_| {
-                                                let mut s = ClientState::load();
-                                                s.theme = Some(Theme::System);
-                                                s.save();
-                                            },
-                                            "{t(*lang, \"settings.general.theme_system\")}"
-                                        }
-                                    }
+                                button {
+                                    class: if current_theme == Theme::Light { "tab active" } else { "tab" },
+                                    onclick: move |_| theme_ctx.set_theme(Theme::Light),
+                                    "{t(*lang, \"settings.general.theme_light\")}"
+                                }
+                                button {
+                                    class: if current_theme == Theme::Dark { "tab active" } else { "tab" },
+                                    onclick: move |_| theme_ctx.set_theme(Theme::Dark),
+                                    "{t(*lang, \"settings.general.theme_dark\")}"
+                                }
+                                button {
+                                    class: if current_theme == Theme::System { "tab active" } else { "tab" },
+                                    onclick: move |_| theme_ctx.set_theme(Theme::System),
+                                    "{t(*lang, \"settings.general.theme_system\")}"
                                 }
                             }
                         }

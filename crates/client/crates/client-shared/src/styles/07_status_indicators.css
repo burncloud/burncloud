@@ -1,0 +1,26 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Status Indicators
+   ═══════════════════════════════════════════════════════════════════ */
+
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--bc-space-1);
+    font-size: var(--bc-font-sm);
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-running .status-dot {
+    background: var(--bc-success);
+    animation: pulse 2s infinite;
+}
+
+.status-stopped .status-dot { background: var(--bc-danger); }
+.status-pending .status-dot { background: var(--bc-warning); }
+

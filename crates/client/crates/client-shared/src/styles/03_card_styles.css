@@ -1,0 +1,44 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Card Styles
+   ═══════════════════════════════════════════════════════════════════ */
+
+.card {
+    background: var(--bc-bg-card-solid);
+    border-radius: var(--bc-radius-sm);
+    box-shadow: var(--bc-shadow-sm);
+    border: 1px solid var(--bc-border);
+    transition: all var(--bc-transition-normal);
+}
+
+.card:hover {
+    background: var(--bc-bg-card-solid);
+    box-shadow: var(--bc-shadow-md);
+}
+
+.card-interactive { cursor: pointer; }
+.card-interactive:hover { transform: translateY(-1px); }
+.card-interactive:active { transform: translateY(0); }
+
+/* BC Card Variants */
+.bc-card-solid {
+    background: var(--bc-bg-card-solid);
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-radius-md);
+    box-shadow: var(--bc-shadow-sm);
+}
+
+.bc-card-glass {
+    background: var(--bc-bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--bc-radius-2xl);
+    box-shadow: var(--bc-shadow-sm);
+}
+
+.bc-card-outlined {
+    background: transparent;
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-radius-md);
+}
+

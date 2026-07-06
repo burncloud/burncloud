@@ -1,10 +1,10 @@
 # BurnCloud Design Tokens
 
-**权威定义**:`crates/client/crates/client-shared/src/styles.rs`
+**权威定义**:`crates/client/crates/client-shared/src/styles/00_burncloud_design_system_apple_inspired.css`（`styles/mod.rs` 拼接）
 **命名空间**:`--bc-*`
-**数值**:以 `styles.rs` 为准,本文件只列命名与用途
+**数值**:以 `styles/00_*.css` 为准,本文件只列命名与用途
 
-> 这是一份**速查表**,不是定义。改 Token 请改 `styles.rs`,本文件随之更新命名。
+> 这是一份**速查表**,不是定义。改 Token 请改 `styles/00_burncloud_design_system_apple_inspired.css`,本文件随之更新命名。
 
 ---
 
@@ -110,4 +110,4 @@ div { style: "color: #007AFF; padding: 16px;" }
 div { class: "text-[var(--bc-primary)] p-[var(--bc-space-4)]" }
 ```
 
-新增 Token 必须先进 `styles.rs`,再更新本文件,再被使用。
+新增 Token 必须先进 `styles/00_*.css`,再更新本文件,再被使用。

@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+use crate::components::{BCButton, ButtonVariant};
+
 #[component]
 pub fn BCModal(
     #[props(default)] open: bool,
@@ -32,8 +34,9 @@ pub fn BCModal(
 
                 div { class: "flex items-center justify-between p-lg border-b border-[var(--bc-border)] shrink-0",
                     h3 { class: "text-subtitle font-bold text-bc-text m-0", "{title}" }
-                    button {
-                        class: "btn-subtle w-8 h-8 flex items-center justify-center rounded-full text-lg",
+                    BCButton {
+                        variant: ButtonVariant::Ghost,
+                        class: "btn-subtle w-8 h-8 flex items-center justify-center rounded-full text-lg".to_string(),
                         onclick: move |_| onclose.call(()),
                         "✕"
                     }

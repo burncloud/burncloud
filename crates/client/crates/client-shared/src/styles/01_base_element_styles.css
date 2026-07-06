@@ -1,0 +1,19 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Base Element Styles
+   ═══════════════════════════════════════════════════════════════════ */
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--bc-font-family);
+    font-size: var(--bc-font-base);
+    color: var(--bc-text-primary);
+    background-color: var(--bc-bg-canvas);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+    -ms-scroll-chaining: none;
+}
+

@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+use crate::components::{BCButton, ButtonVariant};
+
 #[component]
 pub fn BCTable(
     #[props(default)] class: String,
@@ -28,15 +30,15 @@ pub fn BCTable(
 pub fn BCPagination(page: usize, total_pages: usize, on_change: EventHandler<usize>) -> Element {
     rsx! {
         div { class: "flex items-center gap-sm",
-            button {
-                class: "btn btn-secondary",
+            BCButton {
+                variant: ButtonVariant::Secondary,
                 disabled: page <= 1,
                 onclick: move |_| on_change.call(page - 1),
                 "Prev"
             }
             span { class: "text-caption text-bc-text-secondary", "Page {page} of {total_pages}" }
-            button {
-                class: "btn btn-secondary",
+            BCButton {
+                variant: ButtonVariant::Secondary,
                 disabled: page >= total_pages,
                 onclick: move |_| on_change.call(page + 1),
                 "Next"

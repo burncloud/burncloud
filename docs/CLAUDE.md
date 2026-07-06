@@ -71,6 +71,25 @@ impl GroupService {
 | 数据模型规范 | `docs/code/MODEL.md` |
 | 错误处理 | `docs/code/ERROR.md` |
 | 完整 copy-paste 模板 | `docs/code/TEMPLATES.md` |
+| **UI 规范（必读）** | `docs/ui/system.md` |
+| UI 组件白名单 | `docs/ui/components.md` |
+| UI 页面模板 | `docs/ui/pages.md` |
+| UI Token 速查 | `docs/ui/tokens.md` |
+
+---
+
+## UI 关键约定（控制台 `/console/*`）
+
+| 约定 | 正确 | 错误 |
+|------|------|------|
+| 按钮 | `BCButton` + `ButtonVariant` | `class: "btn btn-primary"` |
+| 输入 | `BCInput` / `SchemaForm` | 裸 `.input` |
+| 弹窗 | `BCModal` | 自写 overlay |
+| 页面骨架 | `PageHeader` + `page-content` | 自拼 header |
+| 文案 | `t(lang, "key")` | 硬编码中英字符串 |
+| 参考实现 | `client-access/src/lib.rs` | `client-api/`（遗留废弃） |
+
+改 `crates/client/**` 前必读 `docs/ui/` 全套；Cursor 规则见 `.cursor/rules/ui-design-system.mdc`。
 
 ---
 
@@ -107,4 +126,6 @@ crates/
 `Cargo.toml`、`Cargo.lock`、`README.md`、`clippy.toml`、`deny.toml`、`.cargo/`、`.github/`、`.gitignore`、`.gitattributes`、`.env.example`
 
 不在此列表的根目录新增项一律 reject。
+
+**严禁修改 `.gitignore`**：Agent 不得新增、删除或改写根目录 `.gitignore` 的任何条目。若有忽略文件/目录的需求，在 PR 或任务说明中写明，由维护者手动处理。
 

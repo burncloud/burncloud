@@ -1,0 +1,143 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Scrollbar + theme
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+    --scrollbar-width: 0px !important;
+}
+
+/* Manual dark mode: explicit dark or system + prefers-color-scheme */
+[data-theme="dark"] {
+    --bc-bg-canvas: #1D1D1F;
+    --bc-bg-card: rgba(44, 44, 46, 0.85);
+    --bc-bg-card-solid: #2C2C2E;
+    --bc-bg-elevated: #3A3A3C;
+    --bc-bg-hover: rgba(255, 255, 255, 0.06);
+    --bc-bg-selected: rgba(255, 255, 255, 0.10);
+    --bc-bg-input: rgba(44, 44, 46, 0.90);
+
+    --bc-text-primary: #FFFFFF;
+    --bc-text-secondary: #AEAEB2;
+    --bc-text-tertiary: #8E8E93;
+    --bc-text-disabled: #636366;
+
+    --bc-border: rgba(255, 255, 255, 0.10);
+    --bc-border-hover: rgba(255, 255, 255, 0.18);
+    --bc-border-focus: rgba(0, 122, 255, 0.60);
+
+    --bc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.20);
+    --bc-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+    --bc-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.30);
+    --bc-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.35);
+    --bc-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.40);
+
+    --bc-btn-black-bg: #FFFFFF;
+    --bc-btn-black-text: #000000;
+    --bc-btn-black-hover: #F5F5F7;
+    --bc-btn-black-active: #E5E5EA;
+
+    --bc-success-light: rgba(52, 199, 89, 0.15);
+    --bc-warning-light: rgba(255, 149, 0, 0.15);
+    --bc-danger-light: rgba(255, 59, 48, 0.15);
+    --bc-info-light: rgba(90, 200, 250, 0.15);
+    --bc-primary-light: rgba(0, 122, 255, 0.15);
+}
+
+/* Dark-mode overrides for hardcoded white backgrounds */
+[data-theme="dark"] .page-header,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .card,
+[data-theme="dark"] .row-card,
+[data-theme="dark"] .pick-card,
+[data-theme="dark"] .chip,
+[data-theme="dark"] .table,
+[data-theme="dark"] .table th,
+[data-theme="dark"] .bc-modal {
+    background: var(--bc-bg-card-solid);
+}
+[data-theme="dark"] .pill.neutral {
+    background: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .input:focus-within {
+    border-color: #fff;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+[data-theme="dark"] .sev-low {
+    background: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .empty-icon {
+    background: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .skeleton {
+    background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.06) 75%);
+    background-size: 200% 100%;
+}
+
+/* System theme: follow OS color scheme (pairs with data-theme="system" on Layout) */
+@media (prefers-color-scheme: dark) {
+    [data-theme="system"] {
+        --bc-bg-canvas: #1D1D1F;
+        --bc-bg-card: rgba(44, 44, 46, 0.85);
+        --bc-bg-card-solid: #2C2C2E;
+        --bc-bg-elevated: #3A3A3C;
+        --bc-bg-hover: rgba(255, 255, 255, 0.06);
+        --bc-bg-selected: rgba(255, 255, 255, 0.10);
+        --bc-bg-input: rgba(44, 44, 46, 0.90);
+
+        --bc-text-primary: #FFFFFF;
+        --bc-text-secondary: #AEAEB2;
+        --bc-text-tertiary: #8E8E93;
+        --bc-text-disabled: #636366;
+
+        --bc-border: rgba(255, 255, 255, 0.10);
+        --bc-border-hover: rgba(255, 255, 255, 0.18);
+        --bc-border-focus: rgba(0, 122, 255, 0.60);
+
+        --bc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.20);
+        --bc-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+        --bc-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.30);
+        --bc-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.35);
+        --bc-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.40);
+
+        --bc-btn-black-bg: #FFFFFF;
+        --bc-btn-black-text: #000000;
+        --bc-btn-black-hover: #F5F5F7;
+        --bc-btn-black-active: #E5E5EA;
+
+        --bc-success-light: rgba(52, 199, 89, 0.15);
+        --bc-warning-light: rgba(255, 149, 0, 0.15);
+        --bc-danger-light: rgba(255, 59, 48, 0.15);
+        --bc-info-light: rgba(90, 200, 250, 0.15);
+        --bc-primary-light: rgba(0, 122, 255, 0.15);
+    }
+
+    [data-theme="system"] .page-header,
+    [data-theme="system"] .stat-card,
+    [data-theme="system"] .card,
+    [data-theme="system"] .row-card,
+    [data-theme="system"] .pick-card,
+    [data-theme="system"] .chip,
+    [data-theme="system"] .table,
+    [data-theme="system"] .table th,
+    [data-theme="system"] .bc-modal {
+        background: var(--bc-bg-card-solid);
+    }
+    [data-theme="system"] .pill.neutral {
+        background: rgba(255, 255, 255, 0.08);
+    }
+    [data-theme="system"] .input:focus-within {
+        border-color: #fff;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+    }
+    [data-theme="system"] .sev-low {
+        background: rgba(255, 255, 255, 0.08);
+    }
+    [data-theme="system"] .empty-icon {
+        background: rgba(255, 255, 255, 0.08);
+    }
+    [data-theme="system"] .skeleton {
+        background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.06) 75%);
+        background-size: 200% 100%;
+    }
+}
+

@@ -26,7 +26,9 @@ pub fn BCButton(
     #[props(default)] size: ButtonSize,
     #[props(default)] loading: bool,
     #[props(default)] disabled: bool,
+    #[props(default)] title: String,
     #[props(default)] class: String,
+    #[props(default)] style: String,
     #[props(default)] onclick: EventHandler<MouseEvent>,
     children: Element,
     #[props(default)] r#type: Option<String>,
@@ -62,9 +64,11 @@ pub fn BCButton(
     rsx! {
         button {
             class: "{base_class} {variant_class} {size_class} {class} {loading_class}",
+            style: "{style}",
             r#type: "{btn_type}",
             onclick: move |e| if !loading && !disabled { onclick.call(e) },
             disabled: loading || disabled,
+            title: "{title}",
             if loading {
                 span { class: "bc-spinner bc-spinner--xs me-2", role: "status" }
                 " "

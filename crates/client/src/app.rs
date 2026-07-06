@@ -76,6 +76,8 @@ pub fn App() -> Element {
     burncloud_client_shared::use_init_toast();
     // Initialize Auth Context
     burncloud_client_shared::use_init_auth();
+    // Theme (console layout reads data-theme from this)
+    burncloud_client_shared::use_init_theme();
 
     rsx! {
         burncloud_client_shared::ToastContainer {}

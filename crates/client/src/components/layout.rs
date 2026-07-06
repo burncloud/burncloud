@@ -5,7 +5,7 @@ use crate::components::app_styles::AppStyles;
 use crate::components::sidebar::Sidebar;
 use burncloud_client_shared::components::TitleBar;
 use burncloud_client_shared::use_auth;
-use burncloud_client_shared::utils::storage::ClientState;
+use burncloud_client_shared::use_theme;
 use burncloud_client_shared::DesktopMode;
 
 #[component]
@@ -13,10 +13,8 @@ pub fn Layout() -> Element {
     let auth = use_auth();
     let navigator = use_navigator();
     let is_desktop = try_use_context::<DesktopMode>().is_some();
-
-    let client_state = ClientState::load();
-    let theme = client_state.theme.unwrap_or_default();
-    let theme_str = theme.as_str();
+    let theme_ctx = use_theme();
+    let theme_str = theme_ctx.data_theme_attr();
 
     use_effect(move || {
         if !auth.is_authenticated() {

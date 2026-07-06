@@ -7,6 +7,7 @@ pub mod i18n;
 pub mod schema;
 pub mod services;
 pub mod styles;
+pub mod theme_context;
 pub mod utils;
 
 pub use api_client::*;
@@ -22,6 +23,7 @@ pub use services::monitor_service;
 pub use services::token_service;
 pub use services::usage_service;
 pub use services::user_service;
+pub use theme_context::{use_init_theme, use_theme, ThemeContext};
 pub use styles::*;
 pub use utils::*;
 

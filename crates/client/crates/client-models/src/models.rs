@@ -460,9 +460,13 @@ pub fn ChannelPage() -> Element {
                         placeholder: t(*lang.read(), "models.channel.search_placeholder"),
                     }
                 }
-                button { class: "btn btn-secondary", onclick: move |_| channels.restart(), {t(*lang.read(), "models.channel.filter")} }
                 BCButton {
-                    class: "btn-primary",
+                    variant: ButtonVariant::Secondary,
+                    onclick: move |_| channels.restart(),
+                    {t(*lang.read(), "models.channel.filter")}
+                }
+                BCButton {
+                    variant: ButtonVariant::Primary,
                     onclick: open_create_modal,
                     {t(*lang.read(), "models.channel.create")}
                 }
@@ -562,7 +566,7 @@ pub fn ChannelPage() -> Element {
                         description: Some(t(*lang.read(), "models.channel.empty_desc").to_string()),
                         cta: Some(rsx! {
                             BCButton {
-                                class: "btn-black",
+                                variant: ButtonVariant::Black,
                                 onclick: open_create_modal,
                                 {t(*lang.read(), "models.channel.create")}
                             }

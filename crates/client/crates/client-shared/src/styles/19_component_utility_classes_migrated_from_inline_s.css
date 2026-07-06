@@ -1,0 +1,65 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Component utility classes (migrated from inline styles)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Dynamic style slots (--bc-dynamic-* pattern) */
+.bc-dynamic-width { width: var(--bc-dynamic-width); }
+.bc-dynamic-color { color: var(--bc-dynamic-color); }
+
+/* Empty state */
+.empty-title { font-size: var(--bc-font-md); font-weight: 600; color: var(--bc-text-primary); }
+.empty-desc { font-size: 13px; color: var(--bc-text-secondary); }
+
+/* Stat KPI */
+.stat-footer-row { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--bc-space-3); margin-top: var(--bc-space-1); }
+.stat-chart-wrap { flex: 1; max-width: 140px; }
+
+/* Level badge mono */
+.level-badge-mono { font-family: var(--bc-font-mono); font-size: 11px; padding: 2px 8px; letter-spacing: 0.04em; }
+
+/* BCInput password */
+.bc-input-password { padding-right: 40px; }
+
+/* BCModal — full-screen container (content sits above .bc-modal-backdrop) */
+.bc-modal-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: var(--bc-space-md); }
+.bc-modal-hidden { display: none; }
+/* Dimmed overlay when modal panel is a direct child (legacy users top-up pattern) */
+.bc-modal-overlay:has(> .bc-modal) { background: rgba(0, 0, 0, 0.30); }
+
+/* Schema table */
+.bc-mono-cell { font-family: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace; font-size: var(--bc-font-sm); }
+.bc-badge-compact { padding: var(--bc-space-1) var(--bc-space-2); border-radius: var(--bc-radius-full); font-size: var(--bc-font-xs); }
+.bc-action-btn { min-height: auto; padding: var(--bc-space-1) var(--bc-space-2); color: var(--bc-dynamic-color); }
+
+/* Aurora grid */
+.aurora-grid { background-image: radial-gradient(circle at 1px 1px, #1D1D1F 1px, transparent 0); background-size: 40px 40px; }
+
+/* Sparkline dynamic */
+.spark-single { width: 6px; height: 100%; border-radius: 50%; opacity: 0.85; }
+.spark .bar { height: var(--bc-dynamic-height, 100%); opacity: var(--bc-dynamic-opacity, 0.85); }
+
+/* Groups page */
+.groups-layout { grid-template-columns: 1fr 2fr; }
+.group-item-selected { background: var(--bc-primary-light); border-radius: var(--bc-radius-md); border: 1px solid var(--bc-primary); }
+.group-item-default { background: var(--bc-bg-hover); border-radius: var(--bc-radius-md); border: 1px solid transparent; }
+.btn-danger-sm { color: var(--bc-danger); min-height: auto; padding: var(--bc-space-1); }
+.member-row { background: var(--bc-bg-card-solid); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md); }
+.weight-input { padding: 0 var(--bc-space-1); width: 64px; text-align: center; min-height: auto; }
+.add-member-wrap { flex-wrap: wrap; }
+.add-member-btn { padding: var(--bc-space-1) var(--bc-space-3); font-size: var(--bc-font-sm); }
+
+/* Settings page */
+.settings-card { max-width: 640px; }
+.settings-theme-row { display: flex; justify-content: space-between; align-items: center; padding-top: var(--bc-space-4); border-top: 1px solid var(--bc-border); }
+
+/* Log page */
+.log-search-input { width: 240px; }
+.log-col-time { width: 200px; }
+.log-col-level { width: 80px; }
+.log-col-channel { width: 160px; }
+.log-cell-secondary { font-size: var(--bc-font-sm); color: var(--bc-text-secondary); }
+.log-cell-primary { font-size: 13px; color: var(--bc-text-primary); }
+
+/* Gap utility (legacy — prefer Tailwind gap-8) */
+.gap-xxxl { gap: var(--bc-space-8); }
+

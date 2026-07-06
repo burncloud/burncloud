@@ -51,7 +51,7 @@ pub fn UsersPage() -> Element {
             subtitle: Some(t(*lang.read(), "users.subtitle").to_string()),
             actions: rsx! {
                 BCButton {
-                    class: "btn-black",
+                    variant: ButtonVariant::Black,
                     onclick: move |_| {
                         invite_username.set(String::new());
                         invite_password.set(String::new());
@@ -155,8 +155,9 @@ pub fn UsersPage() -> Element {
                                         }
                                     }
                                     td { class: "text-right",
-                                        button {
-                                            class: "btn btn-ghost bc-btn-primary-text",
+                                        BCButton {
+                                            variant: ButtonVariant::Ghost,
+                                            class: "bc-btn-primary-text".to_string(),
                                             onclick: move |_| {
                                                 show_topup.set(Some(u.id.clone()));
                                                 topup_username.set(u.username.clone());
@@ -234,18 +235,18 @@ pub fn UsersPage() -> Element {
                 }
 
                 div { class: "bc-grid-3col",
-                    button {
-                        class: "btn btn-secondary",
+                    BCButton {
+                        variant: ButtonVariant::Secondary,
                         onclick: move |_| topup_amount.set(100),
                         "¥100"
                     }
-                    button {
-                        class: "btn btn-secondary",
+                    BCButton {
+                        variant: ButtonVariant::Secondary,
                         onclick: move |_| topup_amount.set(500),
                         "¥500"
                     }
-                    button {
-                        class: "btn btn-secondary",
+                    BCButton {
+                        variant: ButtonVariant::Secondary,
                         onclick: move |_| topup_amount.set(1000),
                         "¥1000"
                     }
