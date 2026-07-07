@@ -1,0 +1,109 @@
+/* ═══════════════════════════════════════════════════════════════════
+   macOS Window Control Colors
+   ═══════════════════════════════════════════════════════════════════ */
+
+.bg-macos-red { background-color: #FF5F56; }
+.border-macos-red { border-color: #E0443E; }
+.text-macos-red-dark { color: #4E0002; }
+
+.bg-macos-yellow { background-color: #FFBD2E; }
+.border-macos-yellow { border-color: #E1A325; }
+.text-macos-yellow-dark { color: #594119; }
+
+.bg-macos-green { background-color: #27C93F; }
+.border-macos-green { border-color: #1FA22E; }
+.text-macos-green-dark { color: #0A5016; }
+
+.shadow-glow-green { box-shadow: 0 0 8px rgba(34,197,94,0.6); }
+
+/* Desktop window regions */
+.app-drag-region { -webkit-app-region: drag; }
+.app-no-drag { -webkit-app-region: no-drag; }
+
+/* Windows 11 title bar — transparent overlay; icons use contrast halo (no blend mode) */
+.bc-titlebar {
+    height: 32px;
+    flex-shrink: 0;
+    background: transparent;
+    border-bottom: none;
+}
+
+.bc-window-controls {
+    display: inline-flex;
+    align-items: stretch;
+    height: 32px;
+}
+
+.bc-window-control {
+    width: 46px;
+    height: 32px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    cursor: default;
+    transition: background var(--bc-transition-fast);
+}
+
+.bc-win-icon {
+    font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+    /* Win11 caption color on light chrome; white halo keeps icons readable on dark hero */
+    color: #1d1d1f;
+    text-shadow:
+        0 0 3px rgba(255, 255, 255, 0.95),
+        0 0 1px rgba(255, 255, 255, 0.85),
+        0 1px 1px rgba(0, 0, 0, 0.12);
+}
+
+.bc-window-control:hover {
+    background: rgba(127, 127, 127, 0.18);
+}
+
+.bc-window-control:active {
+    background: rgba(127, 127, 127, 0.28);
+}
+
+.bc-window-control.danger:hover,
+.bc-window-control.danger:active {
+    background: #c42b1c;
+}
+
+.bc-window-control.danger:hover .bc-win-icon,
+.bc-window-control.danger:active .bc-win-icon {
+    color: #fff;
+    text-shadow: none;
+}
+
+[data-theme="dark"] .bc-win-icon {
+    color: #f3f3f3;
+    text-shadow:
+        0 0 3px rgba(0, 0, 0, 0.9),
+        0 0 1px rgba(0, 0, 0, 0.75),
+        0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+    [data-theme="system"] .bc-win-icon {
+        color: #f3f3f3;
+        text-shadow:
+            0 0 3px rgba(0, 0, 0, 0.9),
+            0 0 1px rgba(0, 0, 0, 0.75),
+            0 1px 1px rgba(0, 0, 0, 0.35);
+    }
+}
+
+.bc-window-control:focus-visible {
+    outline: 2px solid rgba(0, 95, 184, 0.55);
+    outline-offset: -2px;
+}
+

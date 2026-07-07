@@ -1,6 +1,6 @@
 use burncloud_client_shared::components::{
-    BCBadge, BCModal, BadgeVariant, EmptyState, ErrorBanner, PageHeader, SkeletonCard,
-    SkeletonVariant, Sparkline, StatusPill,
+    BCBadge, BCButton, BCModal, BadgeVariant, ButtonVariant, EmptyState, ErrorBanner, PageHeader,
+    SkeletonCard, SkeletonVariant, Sparkline, StatusPill,
 };
 use burncloud_client_shared::i18n::{t, t_fmt, Language};
 use burncloud_client_shared::monitor_service::{FilterConfig, MonitorService, RiskEvent};
@@ -195,9 +195,16 @@ pub fn ServiceMonitor() -> Element {
             title: t(*lang.read(), "monitor.title"),
             subtitle: Some(t(*lang.read(), "monitor.subtitle").to_string()),
             actions: rsx! {
-                button { class: "btn btn-secondary", disabled: true, title: t(*lang.read(), "monitor.blacklist_mgmt_tooltip"), {t(*lang.read(), "monitor.blacklist_mgmt")} }
-                button {
-                    class: "btn btn-danger bc-btn-emergency",
+                BCButton {
+                    variant: ButtonVariant::Secondary,
+                    disabled: true,
+                    onclick: |_| {},
+                    title: t(*lang.read(), "monitor.blacklist_mgmt_tooltip"),
+                    {t(*lang.read(), "monitor.blacklist_mgmt")}
+                }
+                BCButton {
+                    variant: ButtonVariant::Danger,
+                    class: "bc-btn-emergency".to_string(),
                     onclick: move |_| show_emergency_modal.set(true),
                     {t(*lang.read(), "monitor.emergency.button")}
                 }
@@ -209,16 +216,16 @@ pub fn ServiceMonitor() -> Element {
             title: t(*lang.read(), "monitor.emergency.confirm_title").to_string(),
             onclose: move |_| show_emergency_modal.set(false),
             footer: rsx! {
-                button {
-                    class: "btn btn-secondary",
-                    onclick: move |_| show_emergency_modal.set(false),
+                BCButton {
+                    variant: ButtonVariant::Secondary,
                     disabled: emergency_loading(),
+                    onclick: move |_| show_emergency_modal.set(false),
                     {t(*lang.read(), "common.cancel")}
                 }
-                button {
-                    class: "btn btn-danger",
-                    onclick: handle_emergency,
+                BCButton {
+                    variant: ButtonVariant::Danger,
                     disabled: emergency_loading(),
+                    onclick: handle_emergency,
                     if emergency_loading() { {t(*lang.read(), "monitor.emergency.executing")} } else { {t(*lang.read(), "monitor.emergency.confirm")} }
                 }
             },

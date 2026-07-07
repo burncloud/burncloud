@@ -1,7 +1,7 @@
 // UI settings — HTTP response parsing — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
-use burncloud_client_shared::components::{FormMode, SchemaForm};
+use burncloud_client_shared::components::{BCButton, ButtonVariant, FormMode, SchemaForm};
 use burncloud_client_shared::i18n::t;
 use burncloud_client_shared::schema::group_schema;
 use burncloud_client_shared::{GroupDto, GroupMemberDto, API_CLIENT};
@@ -186,8 +186,10 @@ pub fn GroupManager() -> Element {
                                         onclick: move |_| select_group(gid1.clone()),
                                         div { class: "flex justify-between items-center",
                                             span { class: "font-medium", "{group.name}" }
-                                            button { class: "btn btn-subtle btn-danger-sm",
-                                                onclick: move |e| {
+                                            BCButton {
+                                                class: "btn-subtle btn-danger-sm".to_string(),
+                                                variant: ButtonVariant::Danger,
+                                                onclick: move |e: MouseEvent| {
                                                     e.stop_propagation();
                                                     let id = gid2.clone();
                                                     spawn(async move { delete_group(id).await; });
@@ -243,7 +245,9 @@ pub fn GroupManager() -> Element {
                                                         selected_group_members.set(members);
                                                     }
                                                 }
-                                                button { class: "btn btn-subtle btn-danger-sm",
+                                                BCButton {
+                                                    class: "btn-subtle btn-danger-sm".to_string(),
+                                                    variant: ButtonVariant::Danger,
                                                     onclick: move |_| remove_member(uid2.clone()),
                                                     "✕"
                                                 }
@@ -265,7 +269,9 @@ pub fn GroupManager() -> Element {
                             div { class: "flex gap-sm add-member-wrap",
                                 for channel in all_channels() {
                                     if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
-                                        button { class: "btn btn-secondary add-member-btn",
+                                        BCButton {
+                                            class: "add-member-btn".to_string(),
+                                            variant: ButtonVariant::Secondary,
                                             onclick: move |_| add_member(channel.id.clone()),
                                             "+ {channel.name}"
                                         }
@@ -275,7 +281,11 @@ pub fn GroupManager() -> Element {
                         }
 
                         div { class: "flex justify-end",
-                            button { class: "btn btn-primary", onclick: save_members, {t(*lang.read(), "settings.groups.save_changes")} }
+                            BCButton {
+                                variant: ButtonVariant::Primary,
+                                onclick: save_members,
+                                {t(*lang.read(), "settings.groups.save_changes")}
+                            }
                         }
                     } else {
                         div { class: "flex items-center justify-center h-full text-bc-text-secondary", {t(*lang.read(), "settings.groups.select_group_hint")} }

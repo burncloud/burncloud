@@ -4,7 +4,7 @@
 
 use dioxus::prelude::*;
 
-use crate::components::{BCBadge, BCTable, BadgeVariant};
+use crate::components::{BCBadge, BCButton, BCTable, BadgeVariant, ButtonVariant};
 
 /// 渲染单个单元格
 fn render_cell(col: &serde_json::Value, row: &serde_json::Value) -> Element {
@@ -174,9 +174,10 @@ pub fn SchemaTable(
                                                             let act_color = act.color.clone();
                                                             let row_data = row.clone();
                                                             rsx! {
-                                                                button {
-                                                                    class: "btn btn-subtle text-caption bc-action-btn",
+                                                                BCButton {
+                                                                    class: "btn-subtle text-caption bc-action-btn".to_string(),
                                                                     style: "--bc-dynamic-color:{act_color}",
+                                                                    variant: ButtonVariant::Ghost,
                                                                     onclick: move |e: MouseEvent| {
                                                                         e.stop_propagation();
                                                                         on_action.call(ActionEvent {

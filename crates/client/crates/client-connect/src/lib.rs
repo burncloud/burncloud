@@ -136,7 +136,7 @@ pub fn ConnectPage() -> Element {
             subtitle_class: Some("mono".to_string()),
             actions: rsx! {
                 BCButton {
-                    class: "btn-primary",
+                    variant: ButtonVariant::Primary,
                     onclick: move |_| show_add_modal.set(true),
                     {t(*lang.read(), "connect.add_local")}
                 }
@@ -212,7 +212,7 @@ pub fn ConnectPage() -> Element {
                                     description: Some(t(*lang.read(), "connect.local.empty_desc").to_string()),
                                     cta: Some(rsx! {
                                         BCButton {
-                                            class: "btn-secondary",
+                                            variant: ButtonVariant::Secondary,
                                             onclick: move |_| show_add_modal.set(true),
                                             {t(*lang.read(), "connect.local.connect_aws")}
                                         }
@@ -245,8 +245,9 @@ pub fn ConnectPage() -> Element {
                                                 td { class: "mono text-caption", "{ch.models}" }
                                                 td { class: "mono text-caption text-bc-text-secondary", "{ch.base_url}" }
                                                 td { class: "text-right",
-                                                    button {
-                                                        class: "btn btn-ghost bc-text-danger font-semibold",
+                                                    BCButton {
+                                                        variant: ButtonVariant::Ghost,
+                                                        class: "bc-text-danger font-semibold".to_string(),
                                                         onclick: {
                                                             let delete_id = ch.id;
                                                             let delete_name = ch.name.clone();
@@ -280,8 +281,8 @@ pub fn ConnectPage() -> Element {
                                     span { class: "lead-title", {t(*lang.read(), "connect.pool.lead_title")} }
                                     span { class: "lead-sub", {t(*lang.read(), "connect.pool.lead_sub")} }
                                 }
-                                button {
-                                    class: "btn btn-secondary",
+                                BCButton {
+                                    variant: ButtonVariant::Secondary,
                                     onclick: move |_| show_add_modal.set(true),
                                     {t(*lang.read(), "connect.pool.add")}
                                 }
@@ -317,8 +318,8 @@ pub fn ConnectPage() -> Element {
                                         div { class: "bc-eyebrow", "My Balance" }
                                         div { class: "bc-pool-value-brand", "$ 12.50" }
                                     }
-                                    button {
-                                        class: "btn btn-ghost",
+                                    BCButton {
+                                        variant: ButtonVariant::Ghost,
                                         onclick: move |_| toast.info("Pool configuration is not available yet"),
                                         {t(*lang.read(), "connect.pool.configure")}
                                     }
@@ -424,8 +425,9 @@ fn MarketplaceCard(
             }
             div { class: "bc-marketplace-footer",
                 span { class: "bc-font-11 text-bc-text-secondary", "trust ", span { class: "mono font-semibold text-bc-text", "{trust}" } }
-                button {
-                    class: "btn btn-ghost bc-btn-xs",
+                BCButton {
+                    variant: ButtonVariant::Ghost,
+                    class: "bc-btn-xs".to_string(),
                     onclick: move |_| toast.info("Marketplace connection is not available yet"),
                     {t(*lang.read(), "connect.marketplace.connect")}
                 }

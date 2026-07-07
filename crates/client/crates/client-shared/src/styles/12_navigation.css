@@ -1,0 +1,40 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Navigation
+   ═══════════════════════════════════════════════════════════════════ */
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--bc-space-3);
+    padding: var(--bc-space-3) var(--bc-space-4);
+    color: var(--bc-text-secondary);
+    text-decoration: none;
+    border-radius: var(--bc-radius-md);
+    margin: 0 var(--bc-space-2);
+    transition: all var(--bc-transition-fast);
+    user-select: none;
+}
+
+.nav-item:hover {
+    background: var(--bc-bg-hover);
+    color: var(--bc-text-primary);
+    transform: translateX(4px);
+}
+
+.nav-item:active {
+    background: var(--bc-bg-selected);
+    transform: translateX(2px) scale(0.98);
+}
+
+.nav-item.active {
+    background: var(--bc-primary);
+    color: var(--bc-text-on-accent);
+    box-shadow: var(--bc-shadow-sm);
+}
+
+.nav-item .icon {
+    font-size: 16px;
+    width: 16px;
+    text-align: center;
+}
+

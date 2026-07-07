@@ -1,5 +1,5 @@
 use burncloud_client_shared::components::{
-    Chip, EmptyState, LevelBadge, PageHeader, SkeletonCard, SkeletonVariant,
+    BCButton, ButtonVariant, Chip, EmptyState, LevelBadge, PageHeader, SkeletonCard, SkeletonVariant,
 };
 use burncloud_client_shared::i18n::t;
 use burncloud_client_shared::services::log_service::{LogEntry, LogService};
@@ -160,8 +160,8 @@ pub fn LogPage() -> Element {
                 {
                     let filtered_snapshot = filtered_logs.clone();
                     rsx! {
-                        button {
-                            class: "btn btn-secondary",
+                        BCButton {
+                            variant: ButtonVariant::Secondary,
                             onclick: move |_| {
                                 if filtered_snapshot.is_empty() {
                                     toast.error(t(*lang.read(), "log.export.no_data"));

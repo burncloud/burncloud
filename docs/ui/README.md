@@ -1,10 +1,12 @@
 # BurnCloud 设计文档
 
-这是 BurnCloud 的设计宪法 —— 3 份文件,各管一件事。
+这是 BurnCloud 的设计宪法 —— **5 份文件**,各管一件事。
 
 | 文件 | 是什么 | 什么时候看 |
 | --- | --- | --- |
 | [`system.md`](./system.md) | **基础规范**(地基) | 写 UI、提 PR 前 |
+| [`components.md`](./components.md) | **组件白名单** + 正反例 | 用按钮/表单/弹窗时 |
+| [`pages.md`](./pages.md) | **页面模板** (A–E) | 新建页面时 |
 | [`tokens.md`](./tokens.md) | **Token 速查表** | 找颜色 / 字号 / 间距时 |
 | `README.md`(本文件) | 索引 + 3 分钟概览 | 第一次来 |
 
@@ -45,23 +47,32 @@ PR review:对照 checklist 自查
 
 ### 技术栈
 
-Dioxus 0.7.2(Rust)+ RSX + Tailwind + DaisyUI + `client-shared` 组件库。
-Token 权威定义:`crates/client/crates/client-shared/src/styles.rs`。
+Dioxus(Rust) + RSX + Tailwind(布局) + `styles/*.css`(组件皮肤) + `client-shared` 组件库。
+Token 权威定义:`crates/client/crates/client-shared/src/styles/00_burncloud_design_system_apple_inspired.css`（见 `styles/mod.rs`）。
+组件 API 见 [`components.md`](./components.md)。
 
 ---
 
 ## 如何使用这套文档
 
+- **新建页面**:先读 [`pages.md`](./pages.md) 选模板,再读 [`components.md`](./components.md)
 - **写代码时**:打开 [`tokens.md`](./tokens.md) 找 Token 名
 - **提 PR 前**:对照 [`system.md`](./system.md) §3 的 checklist 自查
-- **新人 onboarding**:从本文件开始,10 分钟读完全部 3 份
+- **AI / Agent**:Cursor 规则 `.cursor/rules/ui-design-system.mdc` 会指向本目录
+- **新人 onboarding**:从本文件开始,约 15 分钟读完全部 5 份
 
 ---
 
 ## 维护规则
 
-- 改 Token 数值 → 改 `styles.rs`,**不**改文档(文档只列命名)
-- 改 Token 命名 → 同步改 `tokens.md`
+- 改 Token 数值 → 改 `styles/00_burncloud_design_system_apple_inspired.css`（**不**改 `tokens.md` 里的数值）
+- 改 Token 命名 → 同步改 `tokens.md` 与 `00_*.css`
+- 改组件皮肤（按钮/输入/弹窗等）→ 改 `styles/` 对应片段（`04_button_styles.css` 等）
 - 改硬性要求 → 改 `system.md`
+- 新增/重命名组件 → 同步改 `components.md`
+- 新增页面类型 → 同步改 `pages.md`
+- 重组样式：运行 `crates/client/crates/client-shared/scripts/split_styles.py`（仅当从单体 CSS 重新切分时需要）
 
-> **每份文件只有一个主人。**
+`styles.rs` 已拆为 `styles/mod.rs` + `styles/*.css`，由 `DESIGN_SYSTEM_CSS` 拼接注入 `AppStyles`。
+
+> **每份文件只有一个主人。** 勿在 `crates/client/crates/client-api/docs/` 写 UI 规范(已废弃)。

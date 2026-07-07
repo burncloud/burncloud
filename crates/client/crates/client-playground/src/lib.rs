@@ -1,5 +1,5 @@
 use burncloud_client_shared::api_client::{ChatUsage, RouteTrace};
-use burncloud_client_shared::components::PageHeader;
+use burncloud_client_shared::components::{BCButton, ButtonVariant, PageHeader};
 use burncloud_client_shared::i18n::{t, t_fmt};
 use burncloud_client_shared::services::channel_service::ChannelService;
 use burncloud_client_shared::services::playground_service::{
@@ -316,8 +316,8 @@ pub fn Playground() -> Element {
             title: t(*lang.read(), "playground.title"),
             subtitle: Some(t(*lang.read(), "playground.subtitle").to_string()),
             actions: rsx! {
-                button { class: "btn btn-secondary", onclick: on_clear, {t(*lang.read(), "playground.clear")} }
-                button { class: "btn btn-secondary", onclick: on_export, {t(*lang.read(), "playground.export")} }
+                BCButton { variant: ButtonVariant::Secondary, onclick: on_clear, {t(*lang.read(), "playground.clear")} }
+                BCButton { variant: ButtonVariant::Secondary, onclick: on_export, {t(*lang.read(), "playground.export")} }
             },
         }
 
@@ -481,8 +481,8 @@ pub fn Playground() -> Element {
                             },
                         }
                     }
-                    button {
-                        class: "btn btn-primary",
+                    BCButton {
+                        variant: ButtonVariant::Primary,
                         disabled: sending(),
                         onclick: move |_| send_trigger += 1,
                         if sending() { {t(*lang.read(), "playground.generating")} } else { {t(*lang.read(), "playground.send")} }

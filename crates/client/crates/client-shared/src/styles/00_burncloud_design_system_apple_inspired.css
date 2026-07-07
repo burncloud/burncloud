@@ -1,0 +1,189 @@
+/* ═══════════════════════════════════════════════════════════════════
+   BurnCloud Design System — Apple-inspired
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+    /* ── Brand Colors ── */
+    --bc-primary: #007AFF;
+    --bc-primary-hover: #0077ED;
+    --bc-primary-active: #0066D6;
+    --bc-primary-light: rgba(0, 122, 255, 0.10);
+    --bc-primary-dark: #5856D6;
+    --bc-primary-dark-hover: #6E6AE8;
+
+    /* ── Component Specific ── */
+    --bc-btn-black-bg: #000000;
+    --bc-btn-black-text: #FFFFFF;
+    --bc-btn-black-hover: #1A1A1A;
+    --bc-btn-black-active: #333333;
+
+    /* ── Semantic Colors ── */
+    --bc-success: #34C759;
+    --bc-success-light: rgba(52, 199, 89, 0.10);
+    --bc-warning: #FF9500;
+    --bc-warning-light: rgba(255, 149, 0, 0.10);
+    --bc-danger: #FF3B30;
+    --bc-danger-light: rgba(255, 59, 48, 0.10);
+    --bc-info: #5AC8FA;
+    --bc-info-light: rgba(90, 200, 250, 0.10);
+
+    /* ── Neutral Colors ── */
+    --bc-bg-canvas: #F5F5F7;
+    --bc-bg-card: rgba(255, 255, 255, 0.85);
+    --bc-bg-card-solid: #FFFFFF;
+    --bc-bg-elevated: #FFFFFF;
+    --bc-bg-hover: rgba(0, 0, 0, 0.04);
+    --bc-bg-selected: rgba(0, 0, 0, 0.08);
+    --bc-bg-input: rgba(255, 255, 255, 0.90);
+
+    /* ── Text Colors ── */
+    --bc-text-primary: #1D1D1F;
+    --bc-text-secondary: #86868B;
+    --bc-text-tertiary: #AEAEB2;
+    --bc-text-on-accent: #FFFFFF;
+    --bc-text-disabled: #C7C7CC;
+
+    /* ── Border Colors ── */
+    --bc-border: rgba(0, 0, 0, 0.08);
+    --bc-border-hover: rgba(0, 0, 0, 0.15);
+    --bc-border-focus: rgba(0, 122, 255, 0.50);
+
+    /* ── Overlay Colors ── */
+    --bc-overlay-bg: rgba(0, 0, 0, 0.30);
+    --bc-overlay-bg-heavy: rgba(0, 0, 0, 0.60);
+
+    /* ── Code / Log Colors ── */
+    --bc-bg-code: #1e1e1e;
+    --bc-text-code: #d4d4d4;
+    --bc-log-time: #808080;
+    --bc-log-info: #4fc1ff;
+    --bc-log-warn: #dcdcaa;
+    --bc-log-err: #f48771;
+
+    /* ── Radius Scale ── */
+    --bc-radius-xs: 4px;
+    --bc-radius-sm: 8px;
+    --bc-radius-md: 12px;
+    --bc-radius-lg: 16px;
+    --bc-radius-xl: 24px;
+    --bc-radius-2xl: 32px;
+    --bc-radius-full: 9999px;
+
+    /* ── Shadow Scale ── */
+    --bc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --bc-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --bc-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --bc-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.16);
+    --bc-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.20);
+    --bc-shadow-primary: 0 10px 30px -5px rgba(0, 122, 255, 0.35);
+
+    /* ── Typography Scale ── */
+    --bc-font-xs: 10px;
+    --bc-font-sm: 12px;
+    --bc-font-base: 14px;
+    --bc-font-md: 15px;
+    --bc-font-lg: 17px;
+    --bc-font-xl: 20px;
+    --bc-font-2xl: 28px;
+    --bc-font-3xl: 40px;
+
+    /* ── Spacing Scale ── */
+    --bc-space-1: 4px;
+    --bc-space-2: 8px;
+    --bc-space-3: 12px;
+    --bc-space-4: 16px;
+    --bc-space-5: 20px;
+    --bc-space-6: 24px;
+    --bc-space-8: 32px;
+    --bc-space-10: 40px;
+    --bc-space-12: 48px;
+
+    /* ── Animation ── */
+    --bc-transition-fast: 150ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --bc-transition-normal: 250ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --bc-transition-slow: 350ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --bc-transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* ── Font Family ── */
+    --bc-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+    --bc-font-mono: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace;
+
+    /* ── Extended Typography Scale ── */
+    --bc-font-11: 11px;
+    --bc-font-13: 13px;
+    --bc-font-16: 16px;
+    --bc-font-19: 19px;
+    --bc-font-22: 22px;
+    --bc-font-24: 24px;
+    --bc-font-32: 32px;
+    --bc-font-42: 42px;
+    --bc-font-56: 56px;
+    --bc-font-64: 64px;
+    --bc-font-72: 72px;
+
+    /* ── Extended Spacing Scale ── */
+    --bc-space-7: 28px;
+    --bc-space-9: 36px;
+
+    /* ── Landing Page Colors ── */
+    --bc-landing-orange: #FF6B3D;
+    --bc-landing-orange-dark: #C2410C;
+    --bc-landing-warm-bg: #FFF5F0;
+    --bc-landing-warm-bg-end: #FFFBF7;
+    --bc-landing-warm-border: #FFD9C2;
+    --bc-term-red: #FF5F57;
+    --bc-term-yellow: #FEBC2E;
+    --bc-term-green: #28C840;
+
+    /* ── Dynamic Style Slots ── */
+    --bc-dynamic-height: 0%;
+    --bc-dynamic-width: auto;
+    --bc-dynamic-color: inherit;
+    --bc-dynamic-bg: transparent;
+    --bc-dynamic-border-color: inherit;
+    --bc-dynamic-opacity: 1;
+    --bc-dynamic-display: block;
+    --bc-dynamic-avatar-bg: transparent;
+    --bc-dynamic-avatar-color: inherit;
+    --bc-dynamic-provider-color: var(--bc-primary);
+
+    /* ── Legacy Aliases (deprecated — do not add new references; use --bc-* only) ── */
+    --accent-color: var(--bc-primary);
+    --accent-light1: #4DA3FF;
+    --accent-dark1: #0062CC;
+    --text-primary: var(--bc-text-primary);
+    --text-secondary: var(--bc-text-secondary);
+    --text-tertiary: var(--bc-text-tertiary);
+    --text-disabled: var(--bc-text-disabled);
+    --text-on-accent: var(--bc-text-on-accent);
+    --bg-canvas: var(--bc-bg-canvas);
+    --bg-card: var(--bc-bg-card-solid);
+    --bg-card-hover: var(--bc-bg-hover);
+    --bg-card-selected: var(--bc-bg-selected);
+    --neutral-quaternary: var(--bc-border);
+    --neutral-quinary: var(--bc-border-hover);
+    --neutral-secondary: #F3F2F1;
+    --radius-large: var(--bc-radius-sm);
+    --radius-medium: var(--bc-radius-md);
+    --radius-small: var(--bc-radius-xs);
+    --radius-xlarge: var(--bc-radius-md);
+    --spacing-xs: var(--bc-space-1);
+    --spacing-sm: var(--bc-space-2);
+    --spacing-md: var(--bc-space-3);
+    --spacing-lg: var(--bc-space-4);
+    --spacing-xl: var(--bc-space-5);
+    --spacing-xxl: var(--bc-space-6);
+    --spacing-xxxl: var(--bc-space-8);
+    --font-size-caption: var(--bc-font-sm);
+    --font-size-body: var(--bc-font-base);
+    --font-size-subtitle: var(--bc-font-lg);
+    --font-size-title: var(--bc-font-xl);
+    --font-size-large-title: var(--bc-font-2xl);
+    --font-size-display: var(--bc-font-3xl);
+    --animation-fast: 150ms;
+    --animation-normal: 250ms;
+    --animation-slow: 350ms;
+    --animation-curve: cubic-bezier(0.25, 0.1, 0.25, 1);
+    --font-family: var(--bc-font-family);
+}
+

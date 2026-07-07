@@ -1,0 +1,23 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Log Viewer
+   ═══════════════════════════════════════════════════════════════════ */
+
+.log-viewer {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Cascadia Code', 'Fira Code', 'Monaco', 'Consolas', monospace;
+    padding: var(--bc-space-4);
+    border-radius: var(--bc-radius-md);
+    height: 300px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.log-entry { margin-bottom: 2px; }
+.log-timestamp { color: #808080; }
+.log-level-info { color: #4fc1ff; }
+.log-level-warn { color: #ffcc02; }
+.log-level-error { color: #f85149; }
+.log-level-debug { color: #a5a5a5; }
+

@@ -1,5 +1,11 @@
 # CSS 设计系统文档
 
+> **⚠️ 已废弃 (Deprecated)**  
+> 本文档为遗留 `client-api` dev shell 所用，**不是**主应用规范。  
+> **唯一权威 UI 文档**: [`docs/ui/`](../../../../docs/ui/README.md)（`system.md` / `components.md` / `pages.md` / `tokens.md`）。
+
+---
+
 ## 设计系统概述
 
 BurnCloud Client API 采用模块化、原子化的 CSS 设计系统，提供一致性的视觉体验和高效的样式管理。设计系统基于实用优先（Utility-First）的方法，结合现代化的设计原则。

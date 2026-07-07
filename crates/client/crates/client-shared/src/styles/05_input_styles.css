@@ -1,0 +1,131 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Input Styles
+   ═══════════════════════════════════════════════════════════════════ */
+
+.input {
+    display: block;
+    width: 100%;
+    padding: var(--bc-space-2) var(--bc-space-3);
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-radius-md);
+    font-family: var(--bc-font-family);
+    font-size: var(--bc-font-base);
+    color: var(--bc-text-primary);
+    background: var(--bc-bg-card-solid);
+    transition: all var(--bc-transition-fast);
+}
+
+/* When .input is used as a flex wrapper (div.input > input), match design-kit style */
+.input.sm { height: 36px; padding: 0 12px; border-radius: var(--bc-radius-sm); }
+.input.sm input { font-size: 13px; }
+.input input { flex:1; border:none; outline:none; background: transparent; font-size: 15px; font-family: inherit; color: var(--bc-text-primary); }
+.input input::placeholder { color: var(--bc-text-tertiary); }
+.input:focus-within { border-color: #000; box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
+
+.input:hover { border-color: var(--bc-border-hover); }
+
+.input:focus {
+    outline: none;
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 1px var(--bc-primary);
+}
+
+.input:disabled {
+    color: var(--bc-text-disabled);
+    background: var(--bc-bg-hover);
+    cursor: not-allowed;
+}
+
+/* BCInput - Modern Input with Physics */
+
+.bc-input-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #6E6E73;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.bc-input {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 48px;
+    font-family: var(--bc-font-family);
+    background: var(--bc-bg-card-solid);
+    border: 1px solid #E5E5E5;
+    border-radius: var(--bc-radius-md);
+    transition: border-color 200ms cubic-bezier(0.33, 0, 0.67, 1),
+                box-shadow 200ms cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+.bc-input:hover { border-color: #D4D4D4; }
+
+.bc-input-group:focus-within .bc-input {
+    outline: none;
+    background: var(--bc-bg-card-solid);
+    border-color: #000000;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+.bc-input.bc-input-error {
+    border-color: var(--bc-danger);
+    box-shadow: 0 0 0 3px var(--bc-danger-light);
+}
+
+.bc-input-native {
+    width: 100%;
+    height: 100%;
+    padding: 0 16px;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 15px;
+    color: #1D1D1F;
+    letter-spacing: -0.01em;
+}
+.bc-input-native::placeholder {
+    color: #B0B0B5;
+    font-weight: 400;
+}
+.bc-input-native:focus { outline: none; }
+
+/* Hide browser's built-in password reveal/clear buttons */
+.bc-input-native::-ms-reveal,
+.bc-input-native::-ms-clear {
+    display: none;
+}
+
+.bc-input-error-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+.bc-input-error-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--bc-danger);
+}
+.bc-input-error-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--bc-danger);
+}
+
+.bc-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* BC Badge Variants */
+.bc-badge-success { background: var(--bc-success-light); color: var(--bc-success); }
+.bc-badge-warning { background: var(--bc-warning-light); color: var(--bc-warning); }
+.bc-badge-danger { background: var(--bc-danger-light); color: var(--bc-danger); }
+.bc-badge-info { background: var(--bc-info-light); color: var(--bc-info); }
+.bc-badge-neutral { background: var(--bc-bg-hover); color: var(--bc-text-secondary); }
+

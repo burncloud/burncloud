@@ -1,0 +1,29 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Typography
+   ═══════════════════════════════════════════════════════════════════ */
+
+.text-caption { font-size: var(--bc-font-sm); }
+.text-body { font-size: var(--bc-font-base); }
+.text-subtitle { font-size: var(--bc-font-lg); }
+.text-title { font-size: var(--bc-font-xl); }
+.text-large-title { font-size: var(--bc-font-2xl); }
+.text-display { font-size: var(--bc-font-3xl); }
+
+.text-xxl { font-size: 32px; }
+.text-xxxl { font-size: 48px; }
+.text-xxs { font-size: 10px; }
+.text-xxxs { font-size: 8px; }
+
+/* Legacy text color aliases — prefer Tailwind `text-bc-text*` in RSX */
+.text-primary { color: var(--bc-text-primary); }
+.text-secondary { color: var(--bc-text-secondary); }
+.text-tertiary { color: var(--bc-text-tertiary); }
+.text-danger { color: var(--bc-danger); }
+.text-warning { color: var(--bc-warning); }
+.text-disabled { color: var(--bc-text-disabled); }
+
+.font-normal { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+

@@ -1,0 +1,117 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Schema form selectors (.select / .textarea) + shared modifiers
+   Used by SchemaForm; prefer BCInput for new console fields.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Spinner */
+.bc-spinner {
+    display: inline-block;
+    vertical-align: middle;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--bc-border);
+    border-top-color: var(--bc-primary);
+    border-radius: 9999px;
+    animation: bc-spin 0.7s linear infinite;
+}
+.bc-spinner--xs { width: 12px; height: 12px; }
+.bc-spinner--sm { width: 16px; height: 16px; }
+.bc-spinner--md { width: 24px; height: 24px; border-width: 3px; }
+.bc-spinner--lg { width: 40px; height: 40px; border-width: 4px; }
+@keyframes bc-spin { to { transform: rotate(360deg); } }
+
+/* Form fields (legacy Daisy aliases — client-api) */
+.select {
+    display: block;
+    width: 100%;
+    padding: 0 36px 0 12px;
+    height: 38px;
+    font-size: var(--bc-font-base);
+    font-family: inherit;
+    color: var(--bc-text-primary);
+    background: var(--bc-bg-card-solid);
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-radius-sm);
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2386868B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    transition: border-color var(--bc-transition-fast), box-shadow var(--bc-transition-fast);
+}
+.select:hover { border-color: var(--bc-border-hover); }
+.select:focus, .select.select-primary:focus {
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+.select-sm { height: 32px; font-size: var(--bc-font-sm); padding-right: 32px; }
+
+/* Textarea bordered — replaces `textarea textarea-bordered` */
+.textarea {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    font-size: var(--bc-font-base);
+    font-family: inherit;
+    color: var(--bc-text-primary);
+    background: var(--bc-bg-card-solid);
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-radius-sm);
+    outline: none;
+    resize: vertical;
+    transition: border-color var(--bc-transition-fast), box-shadow var(--bc-transition-fast);
+}
+.textarea:hover { border-color: var(--bc-border-hover); }
+.textarea:focus {
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+/* Input modifiers — `.input` is defined in 05_input_styles.css */
+.input-primary:focus {
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+/* Form field stack */
+.bc-field,
+.form-control {
+    display: flex;
+    flex-direction: column;
+    gap: var(--bc-space-1);
+}
+.bc-field-label,
+.label-text {
+    font-size: var(--bc-font-sm);
+    color: var(--bc-text-primary);
+}
+.label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--bc-space-1) 0;
+}
+.bc-input-group.bc-mono-sm .bc-input-native {
+    font-family: var(--bc-font-mono);
+    font-size: var(--bc-font-sm);
+}
+.select.bc-mono-sm {
+    font-family: var(--bc-font-mono);
+    font-size: var(--bc-font-sm);
+}
+
+/* Button modifiers — extends `.btn` already defined above */
+.btn-circle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.btn-xs { height: 26px; padding: 0 10px; font-size: var(--bc-font-xs); border-radius: var(--bc-radius-xs); }
+.btn-sm { height: 32px; padding: 0 14px; font-size: var(--bc-font-sm); }
+

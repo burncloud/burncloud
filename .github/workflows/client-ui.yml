@@ -1,0 +1,23 @@
+name: Client UI Conventions
+
+on:
+  pull_request:
+    paths:
+      - 'crates/client/**'
+      - 'docs/ui/**'
+
+permissions:
+  contents: read
+
+jobs:
+  ui-conventions:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check console button conventions
+        run: bash scripts/check-ui-conventions.sh

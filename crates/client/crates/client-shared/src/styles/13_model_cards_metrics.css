@@ -1,0 +1,59 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Model Cards & Metrics
+   ═══════════════════════════════════════════════════════════════════ */
+
+.model-card { padding: var(--bc-space-4); }
+
+.model-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--bc-space-3);
+}
+
+.model-title {
+    display: flex;
+    align-items: center;
+    gap: var(--bc-space-3);
+    font-size: var(--bc-font-lg);
+    font-weight: 600;
+}
+
+.model-actions {
+    display: flex;
+    gap: var(--bc-space-2);
+}
+
+.model-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--bc-space-3);
+    color: var(--bc-text-secondary);
+    font-size: var(--bc-font-sm);
+}
+
+.metric-card {
+    padding: var(--bc-space-4);
+    background: var(--bc-bg-card-solid);
+    border-radius: var(--bc-radius-sm);
+    border: 1px solid var(--bc-border);
+}
+
+.metric-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--bc-space-3);
+}
+
+.metric-value {
+    font-size: var(--bc-font-xl);
+    font-weight: 600;
+    color: var(--bc-text-primary);
+}
+
+.metric-label {
+    font-size: var(--bc-font-sm);
+    color: var(--bc-text-secondary);
+}
+

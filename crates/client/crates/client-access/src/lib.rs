@@ -74,7 +74,7 @@ pub fn AccessPage() -> Element {
             title: t(*lang.read(), "access.title"),
             actions: rsx! {
                 BCButton {
-                    class: "btn-black",
+                    variant: ButtonVariant::Black,
                     onclick: move |_| show_create.set(true),
                     {t(*lang.read(), "access.create_new")}
                 }
@@ -93,7 +93,7 @@ pub fn AccessPage() -> Element {
                     description: Some(t(*lang.read(), "access.empty_desc").to_string()),
                     cta: Some(rsx! {
                         BCButton {
-                            class: "btn-primary",
+                            variant: ButtonVariant::Primary,
                             onclick: move |_| show_create.set(true),
                             {t(*lang.read(), "access.create_first")}
                         }
@@ -244,7 +244,7 @@ pub fn AccessPage() -> Element {
                     {t(*lang.read(), "common.cancel")}
                 }
                 BCButton {
-                    class: "btn btn-danger".to_string(),
+                    variant: ButtonVariant::Danger,
                     onclick: move |_| {
                         let id = delete_token_id();
                         spawn(async move {
