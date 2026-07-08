@@ -5,6 +5,9 @@ pub struct TokenService;
 
 impl TokenService {
     pub async fn list() -> Result<Vec<TokenDto>> {
+        if let Some(tokens) = crate::e2e_mock::tokens() {
+            return Ok(tokens);
+        }
         API_CLIENT.list_tokens().await
     }
 

@@ -68,7 +68,17 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
         .route("/console", html_handler.clone())
         .route("/console/", html_handler.clone())
         // Use a single wildcard to handle all /console/* paths including undefined ones (404s)
-        .route("/console/{*path}", html_handler.clone())
+        .route("/console/{*path}", html_handler.clone());
+
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    let app = app
+        .route("/preview/home", html_handler.clone())
+        .route("/preview/login", html_handler.clone())
+        .route("/preview/console", html_handler.clone())
+        .route("/preview/console/", html_handler.clone())
+        .route("/preview/console/{*path}", html_handler.clone());
+
+    let app = app
         .route(
             "/favicon.ico",
             axum::routing::get(|| async {

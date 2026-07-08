@@ -50,7 +50,7 @@
 
 /* Settings page */
 .settings-card { max-width: 640px; }
-.settings-theme-row { display: flex; justify-content: space-between; align-items: center; padding-top: var(--bc-space-4); border-top: 1px solid var(--bc-border); }
+.settings-theme-row { display: flex; justify-content: space-between; align-items: center; gap: var(--bc-space-4); padding-top: var(--bc-space-4); border-top: 1px solid var(--bc-border); flex-wrap: wrap; }
 
 /* Log page */
 .log-search-input { width: 240px; }

@@ -3,6 +3,7 @@ pub mod billing;
 pub mod connect;
 pub mod dashboard;
 pub mod deploy;
+pub mod e2e_preview;
 pub mod forgot_password;
 pub mod home;
 pub mod login;

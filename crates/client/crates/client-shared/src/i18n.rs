@@ -37,6 +37,11 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
         (Language::Zh, "nav.deploy") => "部署配置",
         (Language::En, "nav.deploy") => "Deployment",
 
+        (Language::Zh, "deploy.title") => "模型部署",
+        (Language::En, "deploy.title") => "Model Deployment",
+        (Language::Zh, "deploy.subtitle") => "从多种来源部署新模型渠道",
+        (Language::En, "deploy.subtitle") => "Deploy new models from various sources.",
+
         (Language::Zh, "nav.monitor") => "监控日志",
         (Language::En, "nav.monitor") => "Monitor",
 
@@ -532,6 +537,8 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
         // Access
         (Language::Zh, "access.title") => "访问凭证",
         (Language::En, "access.title") => "Access Keys",
+        (Language::Zh, "access.subtitle") => "管理 API 密钥与访问配额",
+        (Language::En, "access.subtitle") => "Manage API keys and access quotas",
         (Language::Zh, "access.create_new") => "创建新凭证",
         (Language::En, "access.create_new") => "Create New Key",
         (Language::Zh, "access.token_created") => "凭证已创建",
@@ -756,6 +763,14 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
         // Settings - General
         (Language::Zh, "settings.general.language_label") => "语言",
         (Language::En, "settings.general.language_label") => "Language",
+        (Language::Zh, "settings.subtitle") => "配置系统偏好与外观",
+        (Language::En, "settings.subtitle") => "Configure system preferences",
+        (Language::Zh, "settings.tab.general") => "通用",
+        (Language::En, "settings.tab.general") => "General",
+        (Language::Zh, "settings.tab.groups") => "分组",
+        (Language::En, "settings.tab.groups") => "Groups",
+        (Language::Zh, "settings.tab.tokens") => "令牌",
+        (Language::En, "settings.tab.tokens") => "Tokens",
         (Language::Zh, "settings.general.language_zh") => "中文",
         (Language::En, "settings.general.language_zh") => "Chinese",
         (Language::Zh, "settings.general.theme_title") => "外观主题",
@@ -887,6 +902,12 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
         (Language::Zh, "reset_password.back_to_login") => "返回登录",
         (Language::En, "reset_password.back_to_login") => "Back to Login",
 
+        // Schema form
+        (Language::Zh, "schema_form.field_required") => "此字段为必填项",
+        (Language::En, "schema_form.field_required") => "This field is required",
+        (Language::Zh, "schema_form.submit") => "提交",
+        (Language::En, "schema_form.submit") => "Submit",
+
         // Default to key if not found
         (_, _) => {
             // Fallback to English or return key itself
@@ -901,6 +922,34 @@ pub fn t(lang: Language, key: &'static str) -> &'static str {
                 _ => key,
             }
         }
+    }
+}
+
+/// Resolve JSON-schema label/placeholder keys at runtime (non-static keys from schema defs).
+pub fn t_schema(lang: Language, key: &str) -> String {
+    if key.is_empty() || !key.contains('.') || key.contains(' ') {
+        return key.to_string();
+    }
+    match (lang, key) {
+        (Language::Zh, "schema.deploy.label") => "模型部署".into(),
+        (Language::En, "schema.deploy.label") => "Model Deployment".into(),
+        (Language::Zh, "schema.deploy.field.type.label") => "提供商类型".into(),
+        (Language::En, "schema.deploy.field.type.label") => "Provider Type".into(),
+        (Language::Zh, "schema.deploy.field.name.label") => "渠道名称".into(),
+        (Language::En, "schema.deploy.field.name.label") => "Channel Name".into(),
+        (Language::Zh, "schema.deploy.field.key.label") => "API 密钥".into(),
+        (Language::En, "schema.deploy.field.key.label") => "API Key".into(),
+        (Language::Zh, "schema.deploy.field.group.label") => "分组".into(),
+        (Language::En, "schema.deploy.field.group.label") => "Group".into(),
+        (Language::Zh, "schema.deploy.section.label") => "部署配置".into(),
+        (Language::En, "schema.deploy.section.label") => "Deployment".into(),
+        (Language::Zh, "schema.token.label") => "访问凭证".into(),
+        (Language::En, "schema.token.label") => "Access Key".into(),
+        (Language::Zh, "schema.token.field.token.label") => "凭证名称".into(),
+        (Language::En, "schema.token.field.token.label") => "Key Name".into(),
+        (Language::Zh, "schema.token.section.label") => "新建凭证".into(),
+        (Language::En, "schema.token.section.label") => "New Key".into(),
+        _ => key.to_string(),
     }
 }
 

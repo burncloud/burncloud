@@ -48,7 +48,7 @@ fn render_cell(col: &serde_json::Value, row: &serde_json::Value) -> Element {
                 text.split(separator).collect()
             };
             rsx! {
-                div { class: "flex flex-wrap gap-xs",
+                div { class: "flex flex-wrap gap-bc-1",
                     for tag in tags {
                         span { class: "bc-badge-neutral bc-badge-compact",
                             "{tag}"
@@ -120,14 +120,14 @@ pub fn SchemaTable(
                             {
                                 let label = col["label"].as_str().unwrap_or("");
                                 rsx! {
-                                    th { class: "text-left text-caption font-semibold text-bc-text-secondary px-md py-sm",
+                                    th { class: "text-left text-caption font-semibold text-bc-text-secondary px-bc-3 py-bc-2",
                                         "{label}"
                                     }
                                 }
                             }
                         }
                         if has_actions {
-                            th { class: "text-right text-caption font-semibold text-bc-text-secondary px-md py-sm",
+                            th { class: "text-right text-caption font-semibold text-bc-text-secondary px-bc-3 py-bc-2",
                                 "操作"
                             }
                         }
@@ -138,7 +138,7 @@ pub fn SchemaTable(
                         tr {
                             td {
                                 colspan: "{columns.len() + usize::from(has_actions)}",
-                                class: "text-center py-lg text-bc-text-secondary",
+                                class: "text-center py-bc-4 text-bc-text-secondary",
                                 "加载中..."
                             }
                         }
@@ -146,7 +146,7 @@ pub fn SchemaTable(
                         tr {
                             td {
                                 colspan: "{columns.len() + usize::from(has_actions)}",
-                                class: "text-center py-lg text-bc-text-secondary",
+                                class: "text-center py-bc-4 text-bc-text-secondary",
                                 "暂无数据"
                             }
                         }
@@ -159,14 +159,14 @@ pub fn SchemaTable(
                                 let has_acts = has_actions;
                                 rsx! {
                                     tr {
-                                        class: "border-t border-[var(--bc-border)] hover:bg-[var(--bc-bg-hover)] cursor-pointer",
+                                        class: "border-t border-bc-border hover:bg-bc-hover cursor-pointer",
                                         onclick: move |_| on_row_click.call(row_clone.clone()),
                                         for col in cols.iter() {
                                             {render_cell(col, row)}
                                         }
                                         if has_acts {
-                                            td { class: "text-right px-md py-sm",
-                                                div { class: "flex gap-sm justify-end",
+                                            td { class: "text-right px-bc-3 py-bc-2",
+                                                div { class: "flex gap-bc-2 justify-end",
                                                     for act in acts.iter() {
                                                         {
                                                             let act_id = act.action_id.clone();

@@ -11,6 +11,8 @@ authors = ["burncloud contributors"]
 [features]
 default = []
 desktop = ["dioxus/desktop"]
+# Opt-in: compile /preview/* routes + service mock intercept (still inactive until preview shell mounts).
+e2e-preview = []
 
 [dependencies]
 dioxus = { workspace = true, features = ["signals", "hooks", "html", "macro", "launch"] }

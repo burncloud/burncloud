@@ -20,7 +20,10 @@
 .input.sm input { font-size: 13px; }
 .input input { flex:1; border:none; outline:none; background: transparent; font-size: 15px; font-family: inherit; color: var(--bc-text-primary); }
 .input input::placeholder { color: var(--bc-text-tertiary); }
-.input:focus-within { border-color: #000; box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
+.input:focus-within {
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px var(--bc-primary-light);
+}
 
 .input:hover { border-color: var(--bc-border-hover); }
 
@@ -42,7 +45,7 @@
     display: block;
     font-size: 11px;
     font-weight: 600;
-    color: #6E6E73;
+    color: var(--bc-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 8px;
@@ -55,19 +58,19 @@
     height: 48px;
     font-family: var(--bc-font-family);
     background: var(--bc-bg-card-solid);
-    border: 1px solid #E5E5E5;
+    border: 1px solid var(--bc-border);
     border-radius: var(--bc-radius-md);
     transition: border-color 200ms cubic-bezier(0.33, 0, 0.67, 1),
                 box-shadow 200ms cubic-bezier(0.33, 0, 0.67, 1);
 }
 
-.bc-input:hover { border-color: #D4D4D4; }
+.bc-input:hover { border-color: var(--bc-border-hover); }
 
 .bc-input-group:focus-within .bc-input {
     outline: none;
     background: var(--bc-bg-card-solid);
-    border-color: #000000;
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+    border-color: var(--bc-primary);
+    box-shadow: 0 0 0 3px var(--bc-primary-light);
 }
 
 .bc-input.bc-input-error {
@@ -84,11 +87,11 @@
     outline: none;
     font-family: inherit;
     font-size: 15px;
-    color: #1D1D1F;
+    color: var(--bc-text-primary);
     letter-spacing: -0.01em;
 }
 .bc-input-native::placeholder {
-    color: #B0B0B5;
+    color: var(--bc-text-tertiary);
     font-weight: 400;
 }
 .bc-input-native:focus { outline: none; }

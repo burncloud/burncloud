@@ -143,7 +143,7 @@ pub fn ConnectPage() -> Element {
             },
         }
 
-        div { class: "page-content flex flex-col bc-gap-7",
+        div { class: "page-content flex flex-col gap-bc-7",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {
@@ -158,7 +158,7 @@ pub fn ConnectPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "Network Capacity" }
-                        div { class: "stat-value bc-text-brand", "1.2 PFlops" }
+                        div { class: "stat-value text-bc-primary", "1.2 PFlops" }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", "Pool Balance" }
@@ -192,7 +192,7 @@ pub fn ConnectPage() -> Element {
                 }
 
                 if active_tab() == "local" {
-                    div { class: "flex flex-col bc-gap-7 mt-xxl",
+                    div { class: "flex flex-col gap-bc-7 mt-bc-6",
                         // Local resources
                         div {
                             div { class: "section-h lg",
@@ -275,7 +275,7 @@ pub fn ConnectPage() -> Element {
                         }
 
                         // Connected pools
-                        div { class: "mt-xxl border-t",
+                        div { class: "mt-bc-6 border-t",
                             div { class: "section-h lg",
                                 div { class: "lead",
                                     span { class: "lead-title", {t(*lang.read(), "connect.pool.lead_title")} }
@@ -289,32 +289,32 @@ pub fn ConnectPage() -> Element {
                             }
 
                             // Featured pool card
-                            div { class: "row-card p-xl mb-xxl",
-                                div { class: "flex items-center gap-lg",
+                            div { class: "row-card p-bc-5 mb-bc-6",
+                                div { class: "flex items-center gap-bc-4",
                                     div { class: "bc-icon-circle bc-icon-circle-brand bc-font-emoji", "🌐" }
                                     div {
-                                        div { class: "flex items-center gap-sm",
+                                        div { class: "flex items-center gap-bc-2",
                                             h3 { class: "bc-h3", {t(*lang.read(), "connect.pool.skynet_title")} }
-                                            span { class: "pill success text-xxs", {t(*lang.read(), "connect.pool.official")} }
+                                            span { class: "pill success text-caption", {t(*lang.read(), "connect.pool.official")} }
                                         }
-                                        div { class: "mono text-caption text-bc-text-secondary mt-xs", "https://pool.skynet-ops.io" }
+                                        div { class: "mono text-caption text-bc-text-secondary mt-bc-1", "https://pool.skynet-ops.io" }
                                     }
                                 }
 
-                                div { class: "flex items-center bc-gap-8",
+                                div { class: "flex items-center gap-bc-8",
                                     div { class: "bc-pool-metric",
                                         div { class: "bc-eyebrow", "Status" }
-                                        div { class: "bc-font-13 font-medium bc-mt-2 bc-text-success", {t(*lang.read(), "connect.pool.connected")} }
+                                        div { class: "bc-font-13 font-medium mt-bc-2 bc-text-success", {t(*lang.read(), "connect.pool.connected")} }
                                     }
                                     div { class: "bc-pool-metric",
                                         div { class: "bc-eyebrow", "Latency" }
-                                        div { class: "bc-font-13 font-medium bc-mt-2", "45ms" }
+                                        div { class: "bc-font-13 font-medium mt-bc-2", "45ms" }
                                     }
                                     div { class: "bc-pool-metric",
                                         div { class: "bc-eyebrow", "Capacity" }
-                                        div { class: "bc-font-13 font-medium bc-mt-2", "842 Nodes" }
+                                        div { class: "bc-font-13 font-medium mt-bc-2", "842 Nodes" }
                                     }
-                                    div { class: "bc-pl-6 bc-border-l",
+                                    div { class: "pl-bc-6 bc-border-l",
                                         div { class: "bc-eyebrow", "My Balance" }
                                         div { class: "bc-pool-value-brand", "$ 12.50" }
                                     }
@@ -328,8 +328,8 @@ pub fn ConnectPage() -> Element {
 
                             // Marketplace
                             div { class: "bc-indent-left",
-                                div { class: "config-label mb-md text-bc-text-secondary font-bold", {t(*lang.read(), "connect.pool.available")} }
-                                div { class: "bc-grid-3 gap-md",
+                                div { class: "config-label mb-bc-3 text-bc-text-secondary font-bold", {t(*lang.read(), "connect.pool.available")} }
+                                div { class: "bc-grid-3 gap-bc-3",
                                     MarketplaceCard { provider: "AWS", region: "us-east-1", latency: "12ms", price: "0.002", trust: 99, nodes: 312 }
                                     MarketplaceCard { provider: "Azure", region: "japan-east", latency: "88ms", price: "0.0018", trust: 95, nodes: 128 }
                                     MarketplaceCard { provider: "AWS", region: "eu-central-1", latency: "115ms", price: "0.0021", trust: 98, nodes: 240 }
@@ -338,7 +338,7 @@ pub fn ConnectPage() -> Element {
                         }
                     }
                 } else if active_tab() == "net" {
-                    div { class: "mt-xxl",
+                    div { class: "mt-bc-6",
                         EmptyState {
                             icon: rsx! { span { class: "bc-font-emoji", "🌐" } },
                             title: t(*lang.read(), "connect.network.loading").to_string(),
@@ -347,7 +347,7 @@ pub fn ConnectPage() -> Element {
                         }
                     }
                 } else {
-                    div { class: "mt-xxl",
+                    div { class: "mt-bc-6",
                         EmptyState {
                             icon: rsx! { span { class: "bc-font-emoji", "📄" } },
                             title: t(*lang.read(), "connect.billing.empty_title").to_string(),
@@ -380,7 +380,7 @@ pub fn ConnectPage() -> Element {
                 }
             },
 
-            div { class: "flex flex-col gap-lg",
+            div { class: "flex flex-col gap-bc-4",
                 p { class: "bc-detail-line m-0",
                     {t(*lang.read(), "connect.modal.description")}
                 }
@@ -414,13 +414,13 @@ fn MarketplaceCard(
         div { class: "pick-card",
             div { class: "flex justify-between items-start",
                 div {
-                    span { class: "pill neutral text-xxs", "{provider}" }
-                    h3 { class: "bc-font-13 font-bold bc-mt-6", "{region}" }
-                    div { class: "mono text-xxs text-bc-text-tertiary bc-mt-2", "{latency} · {nodes} nodes" }
+                    span { class: "pill neutral text-caption", "{provider}" }
+                    h3 { class: "bc-font-13 font-bold mt-bc-6", "{region}" }
+                    div { class: "mono text-caption text-bc-text-tertiary mt-bc-2", "{latency} · {nodes} nodes" }
                 }
                 div { class: "text-right",
-                    div { class: "bc-font-13 font-bold bc-text-brand", "${price}" }
-                    div { class: "text-xxs text-bc-text-tertiary", "/ 1K tok" }
+                    div { class: "bc-font-13 font-bold text-bc-primary", "${price}" }
+                    div { class: "text-caption text-bc-text-tertiary", "/ 1K tok" }
                 }
             }
             div { class: "bc-marketplace-footer",

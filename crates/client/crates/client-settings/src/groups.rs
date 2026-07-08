@@ -150,10 +150,10 @@ pub fn GroupManager() -> Element {
     };
 
     rsx! {
-        div { class: "flex flex-col gap-lg",
+        div { class: "flex flex-col gap-bc-4",
             // Create
-            div { class: "card flat p-xl",
-                div { class: "section-h lg mb-md",
+            div { class: "card flat p-bc-5",
+                div { class: "section-h lg mb-bc-3",
                     div { class: "lead",
                         span { class: "lead-title", {t(*lang.read(), "settings.groups.new_group")} }
                     }
@@ -163,26 +163,26 @@ pub fn GroupManager() -> Element {
                     data: form_data,
                     mode: FormMode::Create,
                     show_actions: false,
-                    class: "flex flex-row gap-md items-end",
+                    class: "flex flex-row gap-bc-3 items-end",
                     on_submit: handle_create,
                 }
             }
 
-            div { class: "grid gap-lg groups-layout",
+            div { class: "grid gap-bc-4 groups-layout",
                 // Group List
-                div { class: "card flat h-full p-xl",
-                    div { class: "section-h lg mb-md",
+                div { class: "card flat h-full p-bc-5",
+                    div { class: "section-h lg mb-bc-3",
                         div { class: "lead",
                             span { class: "lead-title", {t(*lang.read(), "settings.groups.group_list")} }
                         }
                     }
-                        div { class: "flex flex-col gap-sm",
+                        div { class: "flex flex-col gap-bc-2",
                             {groups().iter().map(|group| {
                                 let gid1 = group.id.clone();
                                 let gid2 = group.id.clone();
                                 rsx! {
                                     div {
-                                        class: if selected_group_id() == Some(group.id.clone()) {{ "p-sm cursor-pointer group-item-selected" }} else {{ "p-sm cursor-pointer group-item-default" }},
+                                        class: if selected_group_id() == Some(group.id.clone()) {{ "p-bc-2 cursor-pointer group-item-selected" }} else {{ "p-bc-2 cursor-pointer group-item-default" }},
                                         onclick: move |_| select_group(gid1.clone()),
                                         div { class: "flex justify-between items-center",
                                             span { class: "font-medium", "{group.name}" }
@@ -205,9 +205,9 @@ pub fn GroupManager() -> Element {
                     }
 
                 // Member Editor
-                div { class: "card flat p-xl",
+                div { class: "card flat p-bc-5",
                     if let Some(gid) = selected_group_id() {
-                        div { class: "section-h lg mb-lg",
+                        div { class: "section-h lg mb-bc-4",
                             div { class: "lead",
                                 span { class: "lead-title", {t(*lang.read(), "settings.groups.edit_members")} }
                                 span { class: "lead-sub mono", "{gid}" }
@@ -215,14 +215,14 @@ pub fn GroupManager() -> Element {
                         }
 
                         // Current Members
-                        div { class: "mb-lg",
-                            h4 { class: "text-caption font-bold text-bc-text-secondary mb-sm", {t(*lang.read(), "settings.groups.current_members")} }
-                            div { class: "flex flex-col gap-sm",
+                        div { class: "mb-bc-4",
+                            h4 { class: "text-caption font-bold text-bc-text-secondary mb-bc-2", {t(*lang.read(), "settings.groups.current_members")} }
+                            div { class: "flex flex-col gap-bc-2",
                                 {selected_group_members().iter().map(|member| {
                                     let uid1 = member.upstream_id.clone();
                                     let uid2 = member.upstream_id.clone();
                                     rsx! {
-                                        div { class: "flex items-center justify-between p-sm member-row",
+                                        div { class: "flex items-center justify-between p-bc-2 member-row",
                                             span {
                                                 if let Some(ch) = all_channels().iter().find(|c| c.id == member.upstream_id) {
                                                     "{ch.name}"
@@ -230,7 +230,7 @@ pub fn GroupManager() -> Element {
                                                     "{member.upstream_id}"
                                                 }
                                             }
-                                            div { class: "flex gap-sm items-center",
+                                            div { class: "flex gap-bc-2 items-center",
                                                 span { class: "text-caption", {t(*lang.read(), "settings.groups.weight")} }
                                                 input { class: "input weight-input",
                                                     r#type: "number",
@@ -256,7 +256,7 @@ pub fn GroupManager() -> Element {
                                     }
                                 })}
                                 if selected_group_members().is_empty() {
-                                    div { class: "text-bc-text-secondary text-center p-md italic",
+                                    div { class: "text-bc-text-secondary text-center p-bc-3 italic",
                                         {t(*lang.read(), "settings.groups.no_members")}
                                     }
                                 }
@@ -264,9 +264,9 @@ pub fn GroupManager() -> Element {
                         }
 
                         // Add Member
-                        div { class: "mb-lg",
-                            h4 { class: "text-caption font-bold text-bc-text-secondary mb-sm", {t(*lang.read(), "settings.groups.add_member")} }
-                            div { class: "flex gap-sm add-member-wrap",
+                        div { class: "mb-bc-4",
+                            h4 { class: "text-caption font-bold text-bc-text-secondary mb-bc-2", {t(*lang.read(), "settings.groups.add_member")} }
+                            div { class: "flex gap-bc-2 add-member-wrap",
                                 for channel in all_channels() {
                                     if !selected_group_members().iter().any(|m| m.upstream_id == channel.id) {
                                         BCButton {

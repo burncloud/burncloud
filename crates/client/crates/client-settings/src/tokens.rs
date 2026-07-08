@@ -112,11 +112,11 @@ pub fn TokenManager() -> Element {
     };
 
     rsx! {
-        div { class: "flex flex-col gap-lg",
+        div { class: "flex flex-col gap-bc-4",
             // Create form
             div { class: "bc-card-solid",
-                div { class: "p-lg",
-                    h3 { class: "text-subtitle font-semibold mb-md", {t(*lang.read(), "settings.tokens.generate_new")} }
+                div { class: "p-bc-4",
+                    h3 { class: "text-subtitle font-semibold mb-bc-3", {t(*lang.read(), "settings.tokens.generate_new")} }
                     SchemaForm {
                         schema: schema.clone(),
                         data: form_data,
@@ -128,8 +128,8 @@ pub fn TokenManager() -> Element {
 
             // Token list
             div { class: "bc-card-solid",
-                div { class: "p-lg",
-                    h3 { class: "text-subtitle font-semibold mb-md", {t(*lang.read(), "settings.tokens.token_list")} }
+                div { class: "p-bc-4",
+                    h3 { class: "text-subtitle font-semibold mb-bc-3", {t(*lang.read(), "settings.tokens.token_list")} }
                     SchemaTable {
                         schema: schema.clone(),
                         data: tokens(),

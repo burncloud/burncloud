@@ -22,6 +22,10 @@ pub struct LogService;
 
 impl LogService {
     pub async fn list(limit: usize) -> Result<Vec<LogEntry>, String> {
+        if let Some(logs) = crate::e2e_mock::logs() {
+            let take = limit.min(logs.len());
+            return Ok(logs.into_iter().take(take).collect());
+        }
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/console/api/logs?limit={}", port, limit);
 

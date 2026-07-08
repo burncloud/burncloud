@@ -1,7 +1,7 @@
 //! BurnCloud design system CSS — assembled from `styles/*.css`.
 //!
 //! - **Tokens & component skin**: edit fragments here (not scattered in pages).
-//! - **Layout**: prefer Tailwind utilities in RSX (`flex`, `gap-3`, `text-bc-text`).
+//! - **Layout**: prefer Tailwind utilities in RSX (`flex`, `gap-bc-4`, `text-bc-text`) — see `docs/ui/naming.md`
 //! - **Rules**: `docs/ui/system.md` · **Maintenance**: `docs/ui/README.md`
 
 pub const DESIGN_SYSTEM_CSS: &str = concat!(

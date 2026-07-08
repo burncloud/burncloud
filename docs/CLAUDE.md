@@ -72,6 +72,7 @@ impl GroupService {
 | 错误处理 | `docs/code/ERROR.md` |
 | 完整 copy-paste 模板 | `docs/code/TEMPLATES.md` |
 | **UI 规范（必读）** | `docs/ui/system.md` |
+| UI CSS / Tailwind 命名 | `docs/ui/naming.md` |
 | UI 组件白名单 | `docs/ui/components.md` |
 | UI 页面模板 | `docs/ui/pages.md` |
 | UI Token 速查 | `docs/ui/tokens.md` |
@@ -82,6 +83,7 @@ impl GroupService {
 
 | 约定 | 正确 | 错误 |
 |------|------|------|
+| 间距 / 颜色 class | `gap-bc-4`, `text-bc-text-secondary` | `gap-md`, `gap-3`, 硬编码 hex |
 | 按钮 | `BCButton` + `ButtonVariant` | `class: "btn btn-primary"` |
 | 输入 | `BCInput` / `SchemaForm` | 裸 `.input` |
 | 弹窗 | `BCModal` | 自写 overlay |

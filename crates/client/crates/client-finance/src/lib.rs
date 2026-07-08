@@ -117,7 +117,7 @@ pub fn Finance() -> Element {
             subtitle: Some(t(*lang.read(), "finance.subtitle").to_string()),
         }
 
-        div { class: "page-content flex flex-col gap-xxxl",
+        div { class: "page-content flex flex-col gap-bc-8",
             // Error banners
             if let Some(ref err) = billing_error {
                 ErrorBanner {
@@ -140,7 +140,7 @@ pub fn Finance() -> Element {
                     SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                 } else if billing_summary.is_none() && billing_error.is_none() {
                     EmptyState {
-                        icon: rsx! { span { class: "text-xxl", "💰" } },
+                        icon: rsx! { span { class: "bc-font-emoji", "💰" } },
                         title: t(*lang.read(), "finance.empty.billing_title").to_string(),
                         description: Some(t(*lang.read(), "finance.empty.billing_desc").to_string()),
                         cta: None,
@@ -215,7 +215,7 @@ pub fn Finance() -> Element {
 
                 if recharge_list.is_empty() {
                     EmptyState {
-                        icon: rsx! { span { class: "text-xxl", "💳" } },
+                        icon: rsx! { span { class: "bc-font-emoji", "💳" } },
                         title: t(*lang.read(), "finance.empty.recharge_title").to_string(),
                         description: Some(t(*lang.read(), "finance.empty.recharge_desc").to_string()),
                         cta: None,

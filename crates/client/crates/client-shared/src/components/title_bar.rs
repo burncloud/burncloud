@@ -32,7 +32,7 @@ pub fn TitleBar() -> Element {
             div { class: "bc-titlebar w-full flex items-center justify-between select-none app-drag-region",
 
                 if cfg!(target_os = "macos") {
-                    div { class: "flex items-center gap-2 app-no-drag group pl-3",
+                    div { class: "flex items-center gap-bc-2 app-no-drag group pl-bc-3",
                         button {
                             class: "w-3 h-3 rounded-full bg-macos-red border border-macos-red flex items-center justify-center text-xxxs text-macos-red-dark opacity-100 hover:opacity-100",
                             onclick: move |_| mac_close.set_visible(false),
