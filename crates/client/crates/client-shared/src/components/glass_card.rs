@@ -67,7 +67,7 @@ pub fn GlassCard(
 
     rsx! {
         div {
-            class: "{blur_class} {bg_class} border {border_class} rounded-[32px] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.12)] relative overflow-hidden {class}",
+            class: "{blur_class} {bg_class} border {border_class} rounded-bc-2xl shadow-bc-lg relative overflow-hidden {class}",
 
             // Glossy reflection effect (top highlight)
             div {

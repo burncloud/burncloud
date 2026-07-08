@@ -466,14 +466,14 @@ pub fn ChannelPage() -> Element {
                     {t(*lang.read(), "models.channel.filter")}
                 }
                 BCButton {
-                    variant: ButtonVariant::Primary,
+                    variant: ButtonVariant::Black,
                     onclick: open_create_modal,
                     {t(*lang.read(), "models.channel.create")}
                 }
             },
         }
 
-        div { class: "page-content flex flex-col gap-xl",
+        div { class: "page-content flex flex-col gap-bc-5",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {
@@ -497,12 +497,19 @@ pub fn ChannelPage() -> Element {
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", {t(*lang.read(), "models.channel.kpi.rpm")} }
-                        div { class: "stat-value", "—" }
-                        span { class: "stat-foot up", "↑ 8.2% vs 1h ago" }
+                        div { class: "stat-value muted", "—" }
+                        span { class: "stat-foot muted", "—" }
                     }
                     div { class: "stat-card",
                         span { class: "stat-eyebrow", {t(*lang.read(), "models.channel.kpi.health")} }
-                        div { class: "stat-value success",
+                        div {
+                            class: if health_rate >= 80.0 {
+                                "stat-value success"
+                            } else if health_rate > 0.0 {
+                                "stat-value"
+                            } else {
+                                "stat-value muted"
+                            },
                             "{health_rate:.0}%"
                         }
                         span { class: "stat-foot", {t_fmt(*lang.read(), "models.channel.kpi.throttle_down", &[("throttle", &throttle_count.to_string()), ("down", &down_count.to_string())])} }
@@ -654,10 +661,10 @@ pub fn ChannelPage() -> Element {
                 }
             },
             if modal_step() == 0 {
-                div { class: "grid grid-cols-2 sm:grid-cols-3 gap-md",
+                div { class: "grid grid-cols-2 sm:grid-cols-3 gap-bc-3",
                     for p in [ProviderType::OpenAI, ProviderType::Anthropic, ProviderType::Google, ProviderType::Aws, ProviderType::Azure, ProviderType::Local] {
                         button {
-                            class: "pick-card card-interactive flex flex-col items-center justify-center gap-md p-lg h-36",
+                            class: "pick-card card-interactive flex flex-col items-center justify-center gap-bc-3 p-bc-4 h-36",
                             onclick: move |_| select_provider(p),
                             div { class: "text-bc-text-secondary",
                                 {p.icon()}

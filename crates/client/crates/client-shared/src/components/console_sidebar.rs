@@ -180,20 +180,20 @@ where
     let lang = *i18n.language.read();
 
     rsx! {
-        div { class: "flex flex-col h-full gap-6 select-none pt-4",
-            div { class: "px-6 pb-2",
-                div { class: "flex items-center gap-3",
+        div { class: "flex flex-col h-full gap-bc-6 select-none pt-bc-4",
+            div { class: "px-bc-6 pb-bc-2",
+                div { class: "flex items-center gap-bc-3",
                     Logo { class: "w-8 h-8 fill-current" }
                     div { class: "flex flex-col",
-                        span { class: "text-base font-semibold tracking-tight leading-none text-bc-text", "BurnCloud" }
-                        span { class: "text-[11px] font-medium text-bc-text-tertiary uppercase tracking-widest leading-none mt-1", "Enterprise" }
+                        span { class: "text-body font-semibold tracking-tight leading-none text-bc-text", "BurnCloud" }
+                        span { class: "text-caption font-medium text-bc-text-tertiary uppercase tracking-widest leading-none mt-bc-1", "Enterprise" }
                     }
                 }
             }
 
             for (section, items) in NAV_ITEMS {
-                div { class: "flex flex-col gap-1",
-                    div { class: "px-6 text-[11px] font-semibold text-bc-text-tertiary uppercase tracking-widest mb-2 mt-2",
+                div { class: "flex flex-col gap-bc-1",
+                    div { class: "px-bc-6 text-caption font-semibold text-bc-text-tertiary uppercase tracking-widest mb-bc-2 mt-bc-2",
                         "{section.title()}"
                     }
                     for item in *items {
@@ -206,8 +206,8 @@ where
                 }
             }
 
-            div { class: "mt-auto flex flex-col gap-1 pb-4",
-                div { class: "sidebar-divider my-2" }
+            div { class: "mt-auto flex flex-col gap-bc-1 pb-bc-4",
+                div { class: "sidebar-divider my-bc-2" }
                 SidebarItemLink::<N::Route> {
                     to: N::nav_route(NavId::Settings),
                     label: t(lang, "nav.settings").to_string(),

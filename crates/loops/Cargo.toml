@@ -1,0 +1,24 @@
+[package]
+license.workspace = true
+name = "burncloud-loops"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Agent-driven optimization loops (CSS, aesthetic) with categorized gates and structured logs"
+
+[[bin]]
+name = "burncloud-loop"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono = { workspace = true }
+clap = { workspace = true }
+regex = "1.11"
+reqwest = { workspace = true, features = ["blocking", "rustls-tls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+walkdir = "2.5"
+
+[lints]
+workspace = true

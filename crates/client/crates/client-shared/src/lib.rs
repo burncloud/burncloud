@@ -2,6 +2,7 @@
 pub mod api_client;
 pub mod app_styles;
 pub mod auth_context;
+pub mod e2e_mock;
 pub mod components;
 pub mod i18n;
 pub mod schema;

@@ -19,6 +19,12 @@ use crate::pages::{
     settings::SystemSettings,
     user::UsersPage,
 };
+#[cfg(any(debug_assertions, feature = "e2e-preview"))]
+use crate::pages::e2e_preview::{
+    PreviewAccessPage, PreviewDashboardPage, PreviewFinancePage, PreviewHomePage,
+    PreviewLoginPage, PreviewModelsPage, PreviewMonitorPage, PreviewPlaygroundPage,
+    PreviewSettingsPage,
+};
 use burncloud_client_register::RegisterPage;
 #[cfg(feature = "desktop")]
 use burncloud_client_shared::DesktopMode;
@@ -41,6 +47,33 @@ pub enum Route {
     #[route("/reset-password?:token")]
     ResetPasswordPage { token: Option<String> },
     #[end_layout]
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/home")]
+    PreviewHomePage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/login")]
+    PreviewLoginPage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/console/dashboard")]
+    PreviewDashboardPage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/console/models")]
+    PreviewModelsPage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/console/access")]
+    PreviewAccessPage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/console/settings")]
+    PreviewSettingsPage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/console/finance")]
+    PreviewFinancePage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/console/monitor")]
+    PreviewMonitorPage {},
+    #[cfg(any(debug_assertions, feature = "e2e-preview"))]
+    #[route("/preview/console/playground")]
+    PreviewPlaygroundPage {},
     #[layout(Layout)]
     #[route("/console/dashboard")]
     Dashboard {},

@@ -247,11 +247,11 @@ pub fn ServiceMonitor() -> Element {
             }
 
             if let Some(err) = emergency_error() {
-                div { class: "bc-error-text mb-md", "{err}" }
+                div { class: "bc-error-text mb-bc-3", "{err}" }
             }
         }
 
-        div { class: "page-content flex flex-col bc-gap-6",
+        div { class: "page-content flex flex-col gap-bc-6",
 
             // Security HUD: 4-col grid, security score spans 2
             div { class: "stats-grid cols-4",
@@ -274,11 +274,11 @@ pub fn ServiceMonitor() -> Element {
                         div { class: "bc-score-glow bc-dynamic-bg bc-dynamic-opacity", }
                         div { class: "bc-score-body",
                             span { class: "stat-eyebrow", {t(*lang.read(), "monitor.score.current")} }
-                            div { class: "flex items-baseline gap-lg",
+                            div { class: "flex items-baseline gap-bc-4",
                                 span { class: "bc-score-value bc-dynamic-color", "{score}" }
                                 span { class: "bc-score-label bc-dynamic-color", "{score_label(score, *lang.read())}" }
                             }
-                            div { class: "flex items-center gap-sm bc-mt-6",
+                            div { class: "flex items-center gap-bc-2 mt-bc-6",
                                 span { class: "bc-eyebrow", "7d" }
                                 Sparkline { data: spark_data, tone: Some("success".to_string()), sm: Some(true) }
                             }
@@ -311,14 +311,14 @@ pub fn ServiceMonitor() -> Element {
             }
 
             // Two-column: threat feed | filters
-            div { class: "bc-grid-2-1 bc-gap-6",
+            div { class: "bc-grid-2-1 gap-bc-6",
                 // Threat feed
                 div {
                     div { class: "section-h",
                         span { class: "lead-title", {t(*lang.read(), "monitor.threat_feed.title")} }
                     }
                     if events_loading {
-                        div { class: "flex flex-col gap-sm",
+                        div { class: "flex flex-col gap-bc-2",
                             SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                             SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
                             SkeletonCard { variant: Some(SkeletonVariant::Kpi) }
@@ -335,13 +335,13 @@ pub fn ServiceMonitor() -> Element {
                             description: Some(t(*lang.read(), "monitor.events.empty_desc").to_string()),
                         }
                     } else {
-                        div { class: "flex flex-col gap-sm",
+                        div { class: "flex flex-col gap-bc-2",
                             for event in events.iter() {
-                                div { class: "row-card outlined p-md",
+                                div { class: "row-card outlined p-bc-3",
                                     key: "{event.id}",
-                                    div { class: "flex items-center gap-lg",
+                                    div { class: "flex items-center gap-bc-4",
                                         span { class: "mono bc-font-11 text-bc-text-tertiary", "{event.time}" }
-                                        div { class: "flex flex-col bc-gap-xs",
+                                        div { class: "flex flex-col gap-bc-1",
                                             span { class: "bc-font-13 font-semibold", "{event.event_type}" }
                                             span { class: "mono bc-font-11 text-bc-text-tertiary", "Source: {event.source} → {event.target} ({event.detail})" }
                                         }
@@ -366,11 +366,11 @@ pub fn ServiceMonitor() -> Element {
                             on_retry: None,
                         }
                     } else {
-                        div { class: "flex flex-col gap-md",
+                        div { class: "flex flex-col gap-bc-3",
                             // Content filter
                             div { class: "row-card outlined",
                                 style: if !content_filter_enabled() { "--bc-dynamic-opacity:0.6" } else { "" },
-                                div { class: "flex items-center gap-md",
+                                div { class: "flex items-center gap-bc-3",
                                     span { class: "bc-status-dot",
                                         style: "--bc-dynamic-bg:{filter_dot_bg(content_filter_enabled())}",
                                     }
@@ -392,7 +392,7 @@ pub fn ServiceMonitor() -> Element {
                             // Blacklist
                             div { class: "row-card outlined",
                                 style: if !blacklist_enabled() { "--bc-dynamic-opacity:0.6" } else { "" },
-                                div { class: "flex items-center gap-md",
+                                div { class: "flex items-center gap-bc-3",
                                     span { class: "bc-status-dot",
                                         style: "--bc-dynamic-bg:{filter_dot_bg(blacklist_enabled())}",
                                     }

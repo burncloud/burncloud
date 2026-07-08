@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════
    Layout Helpers (BurnCloud-specific — not Tailwind duplicates)
-   Legacy: .gap-md / .p-xxxl etc. — existing pages only.
-   New console pages: prefer Tailwind (gap-3, p-6) + text-bc-* per docs/ui/components.md
+   DEPRECATED for new code — use Tailwind gap-bc-* / p-bc-* per docs/ui/naming.md
+   Legacy: .gap-md / .p-xxxl etc. — existing pages only; do not add new usages.
    ═══════════════════════════════════════════════════════════════════ */
 
 .border-t { border-top: 1px solid var(--bc-border); }

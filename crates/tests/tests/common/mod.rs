@@ -43,13 +43,19 @@ pub async fn spawn_app() -> String {
     }
 
     let handle = SERVER_HANDLE.get_or_init(|| {
-        // 1. Check default port 3000
-        if is_port_open(3000) {
+        // 1. Reuse port 3000 only when not forcing an isolated test server
+        let force_spawn = env::var("E2E_FORCE_SPAWN")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if !force_spawn && is_port_open(3000) {
             println!("TEST: Reusing existing server at http://127.0.0.1:3000");
             return ServerHandle {
                 base_url: "http://127.0.0.1:3000".to_string(),
                 process: None,
             };
+        }
+        if force_spawn {
+            println!("TEST: E2E_FORCE_SPAWN set — spawning dedicated server (skip :3000 reuse)");
         }
 
         // 2. Locate Binary
@@ -116,12 +122,24 @@ fn get_free_port() -> u16 {
 }
 
 async fn wait_for_server(url: &str) {
-    let client = Client::new();
-    for _ in 0..120 {
+    let client = Client::builder()
+        .no_proxy()
+        .build()
+        .expect("reqwest client");
+    for i in 0..120 {
         // 60s timeout (price sync can take ~30s on first run)
         // Use /health endpoint which doesn't require auth
-        if client.get(format!("{}/health", url)).send().await.is_ok() {
+        if client
+            .get(format!("{}/health", url))
+            .send()
+            .await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+        {
             return;
+        }
+        if i > 0 && i % 10 == 0 {
+            eprintln!("TEST: waiting for server at {url} ({i}/120)");
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }

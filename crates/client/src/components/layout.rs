@@ -48,7 +48,7 @@ pub fn Layout() -> Element {
             div { class: "flex flex-1 min-h-0 overflow-hidden w-full",
 
                 div { class: "w-64 shrink-0 flex flex-col border-r border-bc-border/50 bg-bc-canvas/80 backdrop-blur-xl",
-                    div { class: "flex-1 overflow-y-auto px-2 py-4",
+                    div { class: "flex-1 overflow-y-auto px-bc-2 py-bc-4",
                         Sidebar {}
                     }
                 }

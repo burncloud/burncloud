@@ -197,12 +197,12 @@ pub fn StandardCrudPage(
     };
 
     rsx! {
-        div { class: "flex flex-col gap-6 p-6 animate-fade-in",
+        div { class: "flex flex-col gap-bc-6 p-bc-6 animate-fade-in",
             // Header: Title & New Button
             div { class: "flex justify-between items-center",
                 div {
-                    h1 { class: "text-2xl font-bold tracking-tight", "{entity_label}" }
-                    p { class: "text-muted-foreground", "Manage and monitor your {entity_label}." }
+                    h1 { class: "text-title font-bold tracking-tight", "{entity_label}" }
+                    p { class: "text-bc-text-secondary", "Manage and monitor your {entity_label}." }
                 }
                 BCButton {
                     variant: ButtonVariant::Primary,
@@ -216,10 +216,10 @@ pub fn StandardCrudPage(
             }
 
             // Body: The Table or Empty State
-            div { class: "bg-card border rounded-xl overflow-hidden shadow-sm",
+            div { class: "bg-bc-card border rounded-bc-md overflow-hidden shadow-bc-sm",
                 if !*loading.read() && items.read().is_empty() {
                     EmptyState {
-                        icon: rsx! { span { class: "text-xxl", "📭" } },
+                        icon: rsx! { span { class: "bc-font-emoji", "📭" } },
                         title: t_fmt(*lang.read(), "crud.no_entity", &[("label", &entity_label)]),
                         description: Some(t_fmt(*lang.read(), "crud.create_first", &[("label", &entity_label)])),
                         cta: None,
@@ -262,12 +262,12 @@ pub fn StandardCrudPage(
                 onclose: move |_| show_delete_confirm.set(false),
 
                 div { role: "dialog", aria_modal: "true",
-                    p { class: "mb-lg",
+                    p { class: "mb-bc-4",
                         {t_fmt(*lang.read(), "common.delete_confirm_msg", &[("label", &entity_label)])}
                         span { class: "font-bold", "{delete_target_name}" }
                         {t(*lang.read(), "common.delete_confirm_suffix")}
                     }
-                    div { class: "flex justify-end gap-sm",
+                    div { class: "flex justify-end gap-bc-2",
                         BCButton {
                             variant: ButtonVariant::Secondary,
                             onclick: move |_| show_delete_confirm.set(false),

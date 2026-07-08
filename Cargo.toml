@@ -44,6 +44,7 @@ members = [
     "crates/service/crates/channel",
     "crates/service/crates/cache",
     "crates/tests",
+    "crates/loops",
 ]
 
 [workspace.package]

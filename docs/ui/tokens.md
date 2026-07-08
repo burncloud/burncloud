@@ -67,6 +67,34 @@
 
 `--bc-space-1` → `2` → `3` → `4` → `5` → `6` → `8` → `10` → `12`
 
+### Tailwind 映射（控制台 RSX 首选）
+
+配置见 [`crates/client/tailwind.config.js`](../../crates/client/tailwind.config.js) `theme.extend.spacing`。命名规则见 [`naming.md`](./naming.md)。
+
+| Token | 像素 | Tailwind 示例 | 遗留（勿新增） |
+| --- | --- | --- | --- |
+| `--bc-space-1` | 4px | `gap-bc-1`, `p-bc-1` | `gap-xs`, `p-xs` |
+| `--bc-space-2` | 8px | `gap-bc-2`, `mb-bc-2` | `gap-sm`, `mb-sm` |
+| `--bc-space-3` | 12px | `gap-bc-3`, `p-bc-3` | `gap-md`, `p-md` |
+| `--bc-space-4` | 16px | `gap-bc-4`, `p-bc-4` | `gap-lg`, `p-lg` |
+| `--bc-space-5` | 20px | `gap-bc-5`, `p-bc-5` | `gap-xl`, `p-xl` |
+| `--bc-space-6` | 24px | `gap-bc-6`, `p-bc-6` | `p-xxl`, `bc-gap-6` |
+| `--bc-space-8` | 32px | `gap-bc-8`, `p-bc-8` | `p-xxxl` |
+| `--bc-space-10` | 40px | `p-bc-10` | — |
+| `--bc-space-12` | 48px | `p-bc-12` | — |
+
+### 颜色 Tailwind 映射
+
+| Token | Tailwind 示例 |
+| --- | --- |
+| `--bc-text-primary` | `text-bc-text` |
+| `--bc-text-secondary` | `text-bc-text-secondary` |
+| `--bc-primary` | `text-bc-primary`, `bg-bc-primary` |
+| `--bc-bg-canvas` | `bg-bc-canvas` |
+| `--bc-border` | `border-bc-border` |
+
+完整列表见 `tailwind.config.js` `theme.extend.colors`。
+
 ---
 
 ## 圆角
@@ -106,8 +134,11 @@
 // ❌ 硬编码
 div { style: "color: #007AFF; padding: 16px;" }
 
-// ✅ 走 Token
+// ✅ RSX 首选：Tailwind bc-* 映射（见 naming.md）
+div { class: "text-bc-primary p-bc-4" }
+
+// ✅ 底层等价写法（迁移期允许，新代码优先上一行）
 div { class: "text-[var(--bc-primary)] p-[var(--bc-space-4)]" }
 ```
 
-新增 Token 必须先进 `styles/00_*.css`,再更新本文件,再被使用。
+新增 Token 必须先进 `styles/00_*.css`,再更新本文件与 [`naming.md`](./naming.md),再被使用。

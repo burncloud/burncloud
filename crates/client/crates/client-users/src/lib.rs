@@ -62,7 +62,7 @@ pub fn UsersPage() -> Element {
             },
         }
 
-        div { class: "page-content bc-flex-col-gap-xl",
+        div { class: "page-content flex flex-col gap-bc-6",
             // KPI strip
             div { class: "stats-grid",
                 if loading {
@@ -220,7 +220,7 @@ pub fn UsersPage() -> Element {
                 }
             },
 
-            div { class: "flex flex-col gap-md",
+            div { class: "flex flex-col gap-bc-3",
                 div { class: "bc-modal-info-row",
                     span { class: "bc-text-sm-secondary", {t(*lang.read(), "users.topup_modal.target_account")} }
                     span { class: "font-semibold", "{topup_username()}" }
@@ -260,7 +260,7 @@ pub fn UsersPage() -> Element {
             open: show_invite(),
             onclose: move |_| show_invite.set(false),
 
-            div { class: "flex flex-col gap-lg",
+            div { class: "flex flex-col gap-bc-4",
                 p { class: "bc-text-sm-secondary m-0", {t(*lang.read(), "users.invite_modal.desc")} }
 
                 BCInput {
@@ -279,7 +279,7 @@ pub fn UsersPage() -> Element {
                     oninput: move |e: FormEvent| invite_password.set(e.value()),
                 }
 
-                div { class: "flex justify-end gap-md mt-md",
+                div { class: "flex justify-end gap-bc-3 mt-bc-3",
                     BCButton {
                         variant: ButtonVariant::Ghost,
                         onclick: move |_| show_invite.set(false),

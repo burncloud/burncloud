@@ -54,3 +54,4 @@ if ($violations -gt 0) {
 }
 
 Write-Host "Console UI button conventions OK"
+exit 0

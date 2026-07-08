@@ -120,6 +120,9 @@ impl MonitorService {
     // ── Existing methods ──────────────────────────────────────────────
 
     pub async fn get_system_metrics() -> Result<SystemMetrics, String> {
+        if let Some(metrics) = crate::e2e_mock::system_metrics() {
+            return Ok(metrics);
+        }
         let port = get_port();
         let url = format!("http://127.0.0.1:{}/console/api/monitor", port);
 
@@ -140,6 +143,9 @@ impl MonitorService {
     // ── Security API methods ──────────────────────────────────────────
 
     pub async fn get_security_summary() -> Result<SecuritySummary, String> {
+        if let Some(summary) = crate::e2e_mock::security_summary() {
+            return Ok(summary);
+        }
         let port = get_port();
         let url = format!("http://127.0.0.1:{}/console/api/monitor/security", port);
 
@@ -158,6 +164,10 @@ impl MonitorService {
     }
 
     pub async fn list_risk_events(page: i32, page_size: i32) -> Result<RiskEventPage, String> {
+        if let Some(events) = crate::e2e_mock::risk_events() {
+            let _ = (page, page_size);
+            return Ok(events);
+        }
         let port = get_port();
         let url = format!(
             "http://127.0.0.1:{}/console/api/monitor/security/events?page={page}&page_size={page_size}",
@@ -179,6 +189,9 @@ impl MonitorService {
     }
 
     pub async fn get_filter_config() -> Result<FilterConfig, String> {
+        if let Some(config) = crate::e2e_mock::filter_config() {
+            return Ok(config);
+        }
         let port = get_port();
         let url = format!(
             "http://127.0.0.1:{}/console/api/monitor/security/filters",
