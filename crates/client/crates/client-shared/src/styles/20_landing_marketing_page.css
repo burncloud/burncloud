@@ -13,7 +13,7 @@
 .landing-nav-inner { display: flex; align-items: center; justify-content: space-between; }
 .landing-brand { display: flex; align-items: center; gap: 10px; color: #FFFFFF; font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
 .landing-brand-mark { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #FF6B3D, #FF3B30); display: flex; align-items: center; justify-content: center; color: #FFFFFF; font-weight: 800; font-size: 14px; }
-.landing-nav-links { display: flex; gap: 32px; font-size: 14px; color: rgba(255,255,255,0.72); }
+.landing-nav-links { display: flex; gap: 40px; font-size: 14px; color: rgba(255,255,255,0.72); }
 .landing-nav-links a:hover { color: #FFFFFF; }
 .landing-nav-cta { display: flex; gap: 12px; align-items: center; }
 
@@ -21,8 +21,8 @@
 .landing-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; border-radius: 9999px; font-size: 14px; font-weight: 600; transition: all 150ms; cursor: pointer; border: 1px solid transparent; }
 .landing-btn-light { background: #FFFFFF; color: #000 !important; }
 .landing-btn-light:hover { background: rgba(255,255,255,0.92); transform: translateY(-1px); color: #000 !important; }
-.landing-btn-ghost { background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,0.2); }
-.landing-btn-ghost:hover { border-color: rgba(255,255,255,0.45); }
+.landing-btn-ghost { background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,0.35); }
+.landing-btn-ghost:hover { border-color: rgba(255,255,255,0.55); }
 .landing-btn-dark { background: #000; color: #fff; }
 .landing-btn:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
 .landing-btn-light:active { transform: translateY(0); background: rgba(255,255,255,0.85); }
@@ -35,14 +35,14 @@
 .landing-hero { position: relative; background: #0A0A0A; color: #FFFFFF; overflow: hidden; padding: 140px 0 100px; }
 .landing-hero::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(circle at 18% 28%, rgba(255,107,61,0.18) 0%, transparent 38%), radial-gradient(circle at 82% 72%, rgba(0,122,255,0.16) 0%, transparent 42%); pointer-events: none; }
 .landing-hero::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px); background-size: 56px 56px; mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 80%); -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 80%); pointer-events: none; }
-.landing-hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+.landing-hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
 
 .landing-eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.78); margin-bottom: 24px; }
 .landing-eyebrow .pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bc-success); box-shadow: 0 0 8px var(--bc-success); }
 
-.landing-hero-title { font-size: 72px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.02; margin: 0 0 24px; color: #FFFFFF; }
+.landing-hero-title { font-size: 72px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 24px; color: #FFFFFF; }
 .landing-hero-title .grad { background-image: linear-gradient(135deg, #FF6B3D 0%, #FF3B30 50%, #FF9500 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
-.landing-hero-sub { font-size: 19px; line-height: 1.55; color: rgba(255,255,255,0.7); margin: 0 0 36px; max-width: 520px; }
+.landing-hero-sub { font-size: 19px; line-height: 1.65; color: rgba(255,255,255,0.7); margin: 0 0 36px; max-width: 520px; }
 .landing-hero-ctas { display: flex; gap: 12px; }
 .landing-hero-meta { display: flex; gap: 24px; margin-top: 48px; font-size: 13px; color: rgba(255,255,255,0.5); }
 .landing-hero-meta .item { display: flex; align-items: center; gap: 8px; }

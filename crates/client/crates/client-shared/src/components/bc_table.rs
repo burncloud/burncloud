@@ -18,7 +18,7 @@ pub fn BCTable(
                 }
             }
             if let Some(pag) = pagination {
-                div { class: "p-md border-t border-[var(--bc-border)] flex justify-end items-center gap-sm",
+                div { class: "p-bc-3 border-t border-bc-border flex justify-end items-center gap-bc-2",
                     {pag}
                 }
             }
@@ -29,7 +29,7 @@ pub fn BCTable(
 #[component]
 pub fn BCPagination(page: usize, total_pages: usize, on_change: EventHandler<usize>) -> Element {
     rsx! {
-        div { class: "flex items-center gap-sm",
+        div { class: "flex items-center gap-bc-2",
             BCButton {
                 variant: ButtonVariant::Secondary,
                 disabled: page <= 1,

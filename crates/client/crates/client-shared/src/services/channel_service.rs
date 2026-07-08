@@ -37,6 +37,10 @@ impl ChannelService {
     }
 
     pub async fn list(page: usize, limit: usize) -> Result<Vec<Channel>, String> {
+        if let Some(channels) = crate::e2e_mock::channels() {
+            let _ = (page, limit);
+            return Ok(channels);
+        }
         let url = format!("{}?page={}&limit={}", Self::get_base_url(), page, limit);
         let client = reqwest::Client::new();
         let resp = with_auth(client.get(&url))

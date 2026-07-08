@@ -88,8 +88,7 @@ pub fn LoginPage() -> Element {
                     }
                 }
 
-                // Center content
-                div {
+                div { class: "login-brand-body",
                     div { class: "login-brand-eyebrow", "The Next-Gen AI Gateway" }
                     h1 { class: "login-brand-headline",
                         "Upgrade the"
@@ -100,21 +99,17 @@ pub fn LoginPage() -> Element {
                         "Rust-native LLM aggregation. MB-level footprint, smart load balancing, OpenAI-compatible API. One binary, every model."
                     }
                 }
-
-                // Version
-                div { class: "login-brand-version",
-                    "v0.3.1 \u{00b7} build 2026.04.27 \u{00b7} burncloud.io"
-                }
             }
 
             // --- RIGHT: FORM PANEL (50%) ---
             main { class: "login-form",
-                div { class: "mb-xxxl",
-                    h2 { class: "login-form-title", {t(*lang.read(), "login.form.title")} }
-                    div { class: "login-form-subtitle", {t(*lang.read(), "login.form.subtitle")} }
-                }
+                div { class: "login-form-inner",
+                    div { class: "login-form-header",
+                        h2 { class: "login-form-title", {t(*lang.read(), "login.form.title")} }
+                        p { class: "login-form-subtitle", {t(*lang.read(), "login.form.subtitle")} }
+                    }
 
-                div { class: "flex flex-col gap-xl",
+                    div { class: "login-form-fields",
                     // Email field
                     div {
                         label { class: "login-input-label", {t(*lang.read(), "login.form.email_label")} }
@@ -130,7 +125,7 @@ pub fn LoginPage() -> Element {
 
                     // Password field
                     div {
-                        div { class: "flex items-center justify-between mb-sm",
+                        div { class: "flex items-center justify-between mb-bc-2",
                             label { class: "login-input-label m-0", {t(*lang.read(), "login.form.password_label")} }
                             a { class: "login-forgot-link",
                                 onclick: move |_| { navigator.push(Route::ForgotPasswordPage {}); },
@@ -173,7 +168,7 @@ pub fn LoginPage() -> Element {
 
                     // OAuth buttons
                     div { class: "login-social-grid",
-                        button { class: "landing-btn login-social-btn",
+                        button { class: "login-social-btn",
                             onclick: move |_| {
                                 spawn(async move {
                                     if let Ok(url) = AuthService::get_oauth_url("google").await {
@@ -183,9 +178,9 @@ pub fn LoginPage() -> Element {
                                     }
                                 });
                             },
-                            span { class: "login-social-letter font-bold mr-sm", "G" } " Google"
+                            span { class: "login-social-icon-text", "G" } " Google"
                         }
-                        button { class: "landing-btn login-social-btn",
+                        button { class: "login-social-btn",
                             onclick: move |_| {
                                 spawn(async move {
                                     if let Ok(url) = AuthService::get_oauth_url("github").await {
@@ -207,6 +202,7 @@ pub fn LoginPage() -> Element {
                         {t(*lang.read(), "login.form.no_account")}
                         Link { to: Route::RegisterPage {}, class: "login-footer-link", {t(*lang.read(), "login.form.free_register")} }
                     }
+                }
                 }
             }
         }

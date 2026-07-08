@@ -38,6 +38,10 @@ impl BillingService {
     /// Fetch billing summary from the public `/api/billing/summary` endpoint.
     /// `token` is the JWT Bearer token for authentication.
     pub async fn get_billing_summary(token: &str) -> Result<BillingSummary, String> {
+        if let Some(summary) = crate::e2e_mock::billing_summary() {
+            let _ = token;
+            return Ok(summary);
+        }
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/api/billing/summary", port);
 

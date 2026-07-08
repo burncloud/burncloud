@@ -13,7 +13,10 @@
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
+
+static SESSION_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Debug, Deserialize)]
 struct RawResponse {
@@ -46,6 +49,7 @@ pub struct SnapshotResult {
 pub struct AgentBrowser {
     base_url: String,
     screenshot_dir: String,
+    session: String,
     last_snapshot: Option<String>,
 }
 
@@ -53,24 +57,58 @@ impl AgentBrowser {
     pub fn new(base_url: &str) -> Self {
         // Use absolute path for screenshots since agent-browser runs in a
         // different working directory than the test process.
-        let screenshot_dir = std::env::current_dir()
-            .unwrap_or_default()
-            .join("target/e2e-screenshots")
-            .to_string_lossy()
-            .to_string();
+        let screenshot_dir = std::env::var("AESTHETIC_ARTIFACTS_DIR")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| std::env::var("CSS_VISUAL_ARTIFACTS_DIR").ok())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|cwd| cwd.join("target/e2e-screenshots").to_string_lossy().to_string())
+            })
+            .unwrap_or_else(|| "target/e2e-screenshots".to_string());
         // Ensure directory exists
         let _ = std::fs::create_dir_all(&screenshot_dir);
+        let n = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let session = format!("burncloud-{}-{n}", std::process::id());
         Self {
             base_url: base_url.to_string(),
             screenshot_dir,
+            session,
             last_snapshot: None,
         }
+    }
+
+    fn is_daemon_error(text: &str) -> bool {
+        text.contains("Daemon process exited")
+            || text.contains("Failed to bind TCP")
+            || text.contains("\"success\":false")
+    }
+
+    fn body_contains_any(&mut self, expected: &[&str]) -> bool {
+        let needles: Vec<&str> = expected.to_vec();
+        let js = format!(
+            r#"(function() {{
+                const t = document.body?.innerText || '';
+                const needles = {needles:?};
+                return needles.some(n => t.includes(n));
+            }})()"#
+        );
+        self.eval(&js)
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     /// Execute a single agent-browser command with JSON output.
     /// Uses a 30s timeout to prevent hangs.
     fn exec(&self, args: &[&str]) -> Result<BrowserResponse> {
-        let mut full_args: Vec<String> = vec!["--json".to_string()];
+        let mut full_args: Vec<String> = vec![
+            "--json".to_string(),
+            "--session".to_string(),
+            self.session.clone(),
+        ];
         for a in args {
             full_args.push(a.to_string());
         }
@@ -78,6 +116,7 @@ impl AgentBrowser {
         let start = Instant::now();
         let output = Command::new(agent_browser_bin())
             .args(&full_args)
+            .env("AGENT_BROWSER_SESSION", &self.session)
             // Headless mode for automated testing
             .env("AGENT_BROWSER_ARGS", "--headless=new,--no-sandbox")
             .stdout(Stdio::piped())
@@ -122,7 +161,11 @@ impl AgentBrowser {
     /// Navigate to a URL path (relative to base_url).
     pub fn open(&mut self, path: &str) -> Result<BrowserResponse> {
         let url = format!("{}{}", self.base_url, path);
-        self.exec(&["open", &url])
+        let resp = self.exec(&["open", &url])?;
+        let _ = self.exec(&["wait", "--load", "domcontentloaded"]);
+        // LiveView hydrates over WebSocket after the HTML shell loads.
+        std::thread::sleep(Duration::from_millis(800));
+        Ok(resp)
     }
 
     /// Click an element by selector.
@@ -178,8 +221,23 @@ impl AgentBrowser {
     /// Get the accessibility tree snapshot.
     pub fn snapshot(&mut self) -> Result<SnapshotResult> {
         let resp = self.exec(&["snapshot", "-i"])?;
+        if Self::is_daemon_error(&resp.raw_stdout) {
+            let _ = self.exec(&["close"]);
+            std::thread::sleep(Duration::from_millis(300));
+            let retry = self.exec(&["snapshot", "-i"])?;
+            let parsed = Self::parse_snapshot_response(retry)?;
+            self.last_snapshot = Some(parsed.text.clone());
+            return Ok(parsed);
+        }
+        let parsed = Self::parse_snapshot_response(resp)?;
+        self.last_snapshot = Some(parsed.text.clone());
+        Ok(parsed)
+    }
 
-        // Parse snapshot from response data
+    fn parse_snapshot_response(resp: BrowserResponse) -> Result<SnapshotResult> {
+        if Self::is_daemon_error(&resp.raw_stdout) {
+            bail!("agent-browser daemon error: {}", resp.raw_stdout);
+        }
         if let Some(data) = &resp.data {
             let text = data
                 .get("snapshot")
@@ -187,11 +245,9 @@ impl AgentBrowser {
                 .unwrap_or("")
                 .to_string();
             let refs = data.get("refs").cloned().unwrap_or(serde_json::Value::Null);
-            self.last_snapshot = Some(text.clone());
             Ok(SnapshotResult { text, refs })
         } else {
             let text = resp.raw_stdout.clone();
-            self.last_snapshot = Some(text.clone());
             Ok(SnapshotResult {
                 text,
                 refs: serde_json::Value::Null,
@@ -199,21 +255,28 @@ impl AgentBrowser {
         }
     }
 
-    /// Wait for specific text to appear in the accessibility tree.
-    /// Polls every 500ms until text appears or timeout is reached.
-    ///
-    /// Essential for Dioxus LiveView: the HTML page is a shell that renders
-    /// content via WebSocket after page load.
-    pub fn wait_for_text(&mut self, expected: &str, timeout_ms: u64) -> Result<SnapshotResult> {
+    /// Wait for any of the given strings to appear in the accessibility tree.
+    /// One snapshot per poll (OR semantics).
+    pub fn wait_for_any_text(
+        &mut self,
+        expected: &[&str],
+        timeout_ms: u64,
+    ) -> Result<SnapshotResult> {
         let start = Instant::now();
         loop {
+            if self.body_contains_any(expected) {
+                let result = self.snapshot()?;
+                self.last_snapshot = Some(result.text.clone());
+                return Ok(result);
+            }
             let result = self.snapshot()?;
-            if result.text.contains(expected) {
+            if expected.iter().any(|t| result.text.contains(t)) {
+                self.last_snapshot = Some(result.text.clone());
                 return Ok(result);
             }
             if start.elapsed().as_millis() as u64 > timeout_ms {
                 bail!(
-                    "Timeout waiting for '{}' ({}ms). Last snapshot: {}",
+                    "Timeout waiting for any of {:?} ({}ms). Last snapshot: {}",
                     expected,
                     timeout_ms,
                     self.last_snapshot.as_deref().unwrap_or("<empty>")
@@ -223,10 +286,26 @@ impl AgentBrowser {
         }
     }
 
+    /// Wait for specific text to appear in the accessibility tree.
+    /// Polls every 500ms until text appears or timeout is reached.
+    ///
+    /// Essential for Dioxus LiveView: the HTML page is a shell that renders
+    /// content via WebSocket after page load.
+    pub fn wait_for_text(&mut self, expected: &str, timeout_ms: u64) -> Result<SnapshotResult> {
+        self.wait_for_any_text(&[expected], timeout_ms)
+    }
+
     /// Take a screenshot and save to the screenshot directory.
     pub fn screenshot(&self, name: &str) -> Result<()> {
         let path = format!("{}/{}.png", self.screenshot_dir, name);
         self.exec(&["screenshot", &path])?;
+        Ok(())
+    }
+
+    /// Full-page screenshot (viewport + scrollable content).
+    pub fn screenshot_full(&self, name: &str) -> Result<()> {
+        let path = format!("{}/{}.png", self.screenshot_dir, name);
+        self.exec(&["screenshot", "--full", &path])?;
         Ok(())
     }
 
@@ -256,12 +335,7 @@ impl AgentBrowser {
 
 impl Drop for AgentBrowser {
     fn drop(&mut self) {
-        // Navigate to about:blank instead of closing the daemon.
-        // The agent-browser daemon is shared across tests; closing it kills
-        // the Chrome process and forces every subsequent test to cold-start
-        // a new browser (5-10s overhead). Navigating away is enough to
-        // release page resources.
-        let _ = self.exec(&["open", "about:blank"]);
+        let _ = self.exec(&["close"]);
     }
 }
 
@@ -272,6 +346,28 @@ pub fn is_agent_browser_available() -> bool {
 
 /// Find the agent-browser binary path, trying multiple strategies.
 fn find_agent_browser_binary() -> Option<String> {
+    // Windows: prefer the native .exe — npm's agent-browser.cmd breaks `eval` JS with `{` `}`.
+    #[cfg(windows)]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let exe_path = format!(
+                "{}\\npm\\node_modules\\agent-browser\\bin\\agent-browser-win32-x64.exe",
+                appdata
+            );
+            if std::path::Path::new(&exe_path).exists()
+                && Command::new(&exe_path)
+                    .arg("--version")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            {
+                return Some(exe_path);
+            }
+        }
+    }
+
     // Strategy 1: Try direct command (works on Unix, sometimes Windows)
     if Command::new("agent-browser")
         .arg("--version")
@@ -284,7 +380,7 @@ fn find_agent_browser_binary() -> Option<String> {
         return Some("agent-browser".to_string());
     }
 
-    // Strategy 2: On Windows, try .cmd wrapper
+    // Strategy 2: On Windows, try .cmd wrapper (last resort — eval JS may fail)
     #[cfg(windows)]
     {
         if Command::new("agent-browser.cmd")

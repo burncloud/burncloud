@@ -321,7 +321,7 @@ pub fn Playground() -> Element {
             },
         }
 
-        div { class: "page-content flex flex-col flex-1 min-h-0 gap-sm",
+        div { class: "page-content flex flex-col flex-1 min-h-0 gap-bc-2",
             if let Some(err) = error_msg() {
                 div { class: "bc-error-banner-warning",
                     "{err}"
@@ -382,7 +382,7 @@ pub fn Playground() -> Element {
 
                 div { class: "config-row",
                     label { class: "config-label", "Temperature" }
-                    div { class: "flex items-center gap-md",
+                    div { class: "flex items-center gap-bc-3",
                         input {
                             r#type: "range",
                             min: "0",
@@ -417,25 +417,27 @@ pub fn Playground() -> Element {
 
                 div { class: "config-row",
                     label { class: "config-label", {t(*lang.read(), "playground.options")} }
-                    label { class: "bc-option-row",
-                        span { {t(*lang.read(), "playground.stream_response")} }
-                        label { class: "switch",
-                            input { r#type: "checkbox", checked: stream_mode(), onchange: move |e| stream_mode.set(e.checked()) }
-                            span { class: "switch-track" }
+                    div { class: "bc-option-rows",
+                        label { class: "bc-option-row",
+                            span { {t(*lang.read(), "playground.stream_response")} }
+                            span { class: "switch",
+                                input { r#type: "checkbox", checked: stream_mode(), onchange: move |e| stream_mode.set(e.checked()) }
+                                span { class: "switch-track" }
+                            }
                         }
-                    }
-                    label { class: "bc-option-row",
-                        span { {t(*lang.read(), "playground.show_reasoning")} }
-                        label { class: "switch",
-                            input { r#type: "checkbox", checked: show_reasoning(), onchange: move |e| show_reasoning.set(e.checked()) }
-                            span { class: "switch-track" }
+                        label { class: "bc-option-row",
+                            span { {t(*lang.read(), "playground.show_reasoning")} }
+                            span { class: "switch",
+                                input { r#type: "checkbox", checked: show_reasoning(), onchange: move |e| show_reasoning.set(e.checked()) }
+                                span { class: "switch-track" }
+                            }
                         }
-                    }
-                    label { class: "bc-option-row",
-                        span { {t(*lang.read(), "playground.json_mode")} }
-                        label { class: "switch",
-                            input { r#type: "checkbox", checked: json_mode(), onchange: move |e| json_mode.set(e.checked()) }
-                            span { class: "switch-track" }
+                        label { class: "bc-option-row",
+                            span { {t(*lang.read(), "playground.json_mode")} }
+                            span { class: "switch",
+                                input { r#type: "checkbox", checked: json_mode(), onchange: move |e| json_mode.set(e.checked()) }
+                                span { class: "switch-track" }
+                            }
                         }
                     }
                 }
@@ -455,7 +457,7 @@ pub fn Playground() -> Element {
                                     "{role_label(&msg.role)}"
                                 }
                                 div { class: "flex-1",
-                                    div { class: "config-label mb-xs", "{msg.role}" }
+                                    div { class: "config-label mb-bc-1", "{msg.role}" }
                                     div { class: "bc-msg-content",
                                         "{msg.content}"
                                     }
@@ -492,7 +494,7 @@ pub fn Playground() -> Element {
 
             // Token meter
             div { class: "bc-token-meter",
-                label { class: "config-label bc-mb-0", "Usage · this session" }
+                label { class: "config-label mb-0", "Usage · this session" }
 
                 div { class: "stat-card bc-stat-compact",
                     span { class: "stat-eyebrow", "TOKENS" }

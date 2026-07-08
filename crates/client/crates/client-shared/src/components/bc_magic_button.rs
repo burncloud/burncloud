@@ -28,7 +28,7 @@ pub fn BCMagicButton(
             onclick: move |e| if !is_disabled { onclick.call(e) },
             disabled: is_disabled,
             if loading {
-                span { class: "animate-spin mr-2 h-5 w-5 border-2 border-white border-t-transparent rounded-full" }
+                span { class: "animate-spin mr-bc-2 h-5 w-5 border-2 border-white border-t-transparent rounded-full" }
             }
             {children}
         }

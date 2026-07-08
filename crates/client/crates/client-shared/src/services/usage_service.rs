@@ -30,6 +30,10 @@ impl UsageService {
     /// `token` is the JWT Bearer token for authentication.
     /// The server extracts user_id from the JWT claims, so no user_id parameter is needed.
     pub async fn list_recharges(token: &str) -> Result<Vec<Recharge>, String> {
+        if let Some(items) = crate::e2e_mock::recharges() {
+            let _ = token;
+            return Ok(items);
+        }
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/console/api/user/recharges", port);
 
@@ -56,6 +60,10 @@ impl UsageService {
     /// Get usage statistics for a specific user.
     /// `token` is the JWT Bearer token for authentication.
     pub async fn get_user_usage(user_id: &str, token: &str) -> Result<UsageStats, String> {
+        if let Some(stats) = crate::e2e_mock::usage_stats() {
+            let _ = (user_id, token);
+            return Ok(stats);
+        }
         let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         let url = format!("http://127.0.0.1:{}/console/api/usage/{}", port, user_id);
 

@@ -69,6 +69,7 @@ module.exports = {
         "bc-4": "var(--bc-space-4)",
         "bc-5": "var(--bc-space-5)",
         "bc-6": "var(--bc-space-6)",
+        "bc-7": "var(--bc-space-7)",
         "bc-8": "var(--bc-space-8)",
         "bc-10": "var(--bc-space-10)",
         "bc-12": "var(--bc-space-12)",

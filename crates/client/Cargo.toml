@@ -13,6 +13,8 @@ default = ["desktop"]
 desktop = ["dioxus/desktop", "dep:image", "burncloud-client-shared/desktop"]
 web = ["dioxus/web"]
 liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
+# Compile /preview/* routes (still opt-in at runtime until navigated).
+e2e-preview = ["burncloud-client-shared/e2e-preview"]
 
 [dependencies]
 burncloud-common = { workspace = true }

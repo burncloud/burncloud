@@ -83,33 +83,32 @@ pub fn SystemSettings() -> Element {
     rsx! {
         PageHeader {
             title: "{t(*lang, \"nav.settings\")}",
-            subtitle: Some("Configure system preferences".to_string()),
+            subtitle: Some(t(*lang, "settings.subtitle").to_string()),
         }
 
         div { class: "page-content",
             // Tab Navigation
-            div { class: "tabs mb-xxxl",
+            div { class: "tabs mb-bc-8",
                 button {
                     class: if active_tab() == "general" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("general"),
-                    "General"
+                    {t(*lang, "settings.tab.general")}
                 }
 
                 button {
                     class: if active_tab() == "groups" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("groups"),
-                    "Groups"
+                    {t(*lang, "settings.tab.groups")}
                 }
                 button {
                     class: if active_tab() == "tokens" { "tab active" } else { "tab" },
                     onclick: move |_| active_tab.set("tokens"),
-                    "Tokens"
+                    {t(*lang, "settings.tab.tokens")}
                 }
             }
 
             if active_tab() == "general" {
-                div { class: "card flat p-xxxl settings-card",
-                    div { class: "flex flex-col gap-xxxl",
+                div { class: "settings-card flex flex-col gap-bc-8",
                         SchemaForm {
                             schema: settings_schema_val.clone(),
                             data: settings_data,
@@ -122,27 +121,26 @@ pub fn SystemSettings() -> Element {
                         div { class: "settings-theme-row",
                             div {
                                 div { class: "text-body font-medium", "{t(*lang, \"settings.general.theme_title\")}" }
-                                div { class: "text-caption text-bc-text-secondary mt-xs", "{t(*lang, \"settings.general.theme_desc\")}" }
+                                div { class: "text-caption text-bc-text-secondary mt-bc-1", "{t(*lang, \"settings.general.theme_desc\")}" }
                             }
-                            div { class: "flex gap-sm",
+                            div { class: "flex flex-wrap gap-bc-2 shrink-0",
                                 button {
-                                    class: if current_theme == Theme::Light { "tab active" } else { "tab" },
+                                    class: if current_theme == Theme::Light { "chip active" } else { "chip" },
                                     onclick: move |_| theme_ctx.set_theme(Theme::Light),
                                     "{t(*lang, \"settings.general.theme_light\")}"
                                 }
                                 button {
-                                    class: if current_theme == Theme::Dark { "tab active" } else { "tab" },
+                                    class: if current_theme == Theme::Dark { "chip active" } else { "chip" },
                                     onclick: move |_| theme_ctx.set_theme(Theme::Dark),
                                     "{t(*lang, \"settings.general.theme_dark\")}"
                                 }
                                 button {
-                                    class: if current_theme == Theme::System { "tab active" } else { "tab" },
+                                    class: if current_theme == Theme::System { "chip active" } else { "chip" },
                                     onclick: move |_| theme_ctx.set_theme(Theme::System),
                                     "{t(*lang, \"settings.general.theme_system\")}"
                                 }
                             }
                         }
-                    }
                 }
 
             } else if active_tab() == "groups" {

@@ -1,7 +1,7 @@
 // Dynamic form rendering from JSON schema — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
-use crate::i18n::{t, use_i18n, Language};
+use crate::i18n::{t, t_schema, use_i18n, Language};
 use dioxus::prelude::*;
 use std::collections::HashMap;
 
@@ -59,11 +59,12 @@ fn render_field(
     mut data: Signal<serde_json::Value>,
     readonly: bool,
     errors: Signal<HashMap<String, String>>,
+    lang: Language,
 ) -> Element {
     let key = field["key"].as_str().unwrap_or("").to_string();
-    let label = field["label"].as_str().unwrap_or("").to_string();
+    let label = t_schema(lang, field["label"].as_str().unwrap_or(""));
     let field_type = field["type"].as_str().unwrap_or("text");
-    let placeholder = field["placeholder"].as_str().unwrap_or("").to_string();
+    let placeholder = t_schema(lang, field["placeholder"].as_str().unwrap_or(""));
     let visibility = field["visibility"].as_str().unwrap_or("both");
     let field_readonly = field["readonly"].as_bool().unwrap_or(false) || readonly;
 
@@ -178,7 +179,7 @@ fn render_field(
             let checked = value_str == "true" || value_str == "1";
             let key_c = key.clone();
             rsx! {
-                div { class: "bc-input-group flex items-center gap-sm",
+                div { class: "bc-input-group flex items-center gap-bc-2",
                     if !label.is_empty() {
                         label { class: "bc-input-label", "{label}" }
                     }
@@ -320,12 +321,12 @@ pub fn SchemaForm(
     };
 
     rsx! {
-        div { class: "flex flex-col gap-md {class}",
+        div { class: "flex flex-col gap-bc-3 {class}",
             for (i, field) in fields.iter().enumerate() {
-                {render_field(i, field, data, is_readonly, errors)}
+                {render_field(i, field, data, is_readonly, errors, *lang_signal.read())}
             }
             if show_actions && !is_readonly {
-                div { class: "flex gap-sm justify-end",
+                div { class: "flex gap-bc-2 justify-end pt-bc-4 mt-bc-2",
                     BCButton {
                         variant: ButtonVariant::Primary,
                         loading: disabled,

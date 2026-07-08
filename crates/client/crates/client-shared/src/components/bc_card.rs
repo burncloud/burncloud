@@ -25,9 +25,9 @@ pub fn BCCard(
     let interactive_class = if interactive { "card-interactive" } else { "" };
 
     rsx! {
-        div { class: "{variant_class} {interactive_class} p-lg {class}",
+        div { class: "{variant_class} {interactive_class} p-bc-4 {class}",
             if let Some(h) = header {
-                div { class: "flex items-center justify-between mb-md",
+                div { class: "flex items-center justify-between mb-bc-3",
                     h3 { class: "text-subtitle font-semibold text-bc-text", "{h}" }
                 }
             }

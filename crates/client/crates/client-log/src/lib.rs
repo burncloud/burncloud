@@ -177,7 +177,7 @@ pub fn LogPage() -> Element {
             },
         }
 
-        div { class: "page-content flex flex-col gap-xxxl",
+        div { class: "page-content flex flex-col gap-bc-8",
             // KPI strip
             div { class: "stats-grid cols-4",
                 if loading {

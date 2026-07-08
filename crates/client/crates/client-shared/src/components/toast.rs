@@ -113,7 +113,7 @@ pub fn ToastContainer() -> Element {
     let current_toasts = toasts.read();
 
     rsx! {
-        div { class: "fixed top-md right-md z-[9999] flex flex-col gap-sm pointer-events-none",
+        div { class: "fixed top-bc-3 right-bc-3 z-[9999] flex flex-col gap-bc-2 pointer-events-none",
             {current_toasts.iter().map(|toast| {
                 let id = toast.id.clone();
                 let toast_class = match toast.type_ {
@@ -125,7 +125,7 @@ pub fn ToastContainer() -> Element {
                 rsx! {
                     div {
                         key: "{toast.id}",
-                        class: "pointer-events-auto flex items-center gap-sm px-lg py-md rounded-md shadow-md animate-slide-up cursor-pointer {toast_class}",
+                        class: "pointer-events-auto flex items-center gap-bc-2 px-bc-4 py-bc-3 rounded-bc-sm shadow-md animate-slide-up cursor-pointer {toast_class}",
                         onclick: move |_| toast_manager.remove(&id),
                         span { class: "font-semibold",
                             match toast.type_ {

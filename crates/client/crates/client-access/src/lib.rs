@@ -72,6 +72,7 @@ pub fn AccessPage() -> Element {
     rsx! {
         PageHeader {
             title: t(*lang.read(), "access.title"),
+            subtitle: Some(t(*lang.read(), "access.subtitle").to_string()),
             actions: rsx! {
                 BCButton {
                     variant: ButtonVariant::Black,
@@ -81,40 +82,40 @@ pub fn AccessPage() -> Element {
             },
         }
 
-        div { class: "page-content flex flex-col gap-lg",
+        div { class: "page-content flex flex-col gap-bc-4 flex-1 min-h-0 min-w-0",
             if loading {
                 SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 SkeletonCard { variant: Some(SkeletonVariant::Row) }
                 SkeletonCard { variant: Some(SkeletonVariant::Row) }
             } else if token_list.is_empty() {
                 EmptyState {
-                    icon: rsx! { span { class: "text-display", "🔑" } },
+                    icon: rsx! { span { class: "text-large-title", "🔑" } },
                     title: t(*lang.read(), "access.empty_title").to_string(),
                     description: Some(t(*lang.read(), "access.empty_desc").to_string()),
                     cta: Some(rsx! {
                         BCButton {
-                            variant: ButtonVariant::Primary,
+                            variant: ButtonVariant::Black,
                             onclick: move |_| show_create.set(true),
                             {t(*lang.read(), "access.create_first")}
                         }
                     }),
                 }
             } else {
-                div { class: "grid gap-md",
+                div { class: "grid gap-bc-3",
                     for tk in token_list {
                         {
                             let tk_id = tk.token.clone();
                             let tk_id_for_del = tk.token.clone();
                             let _tk_id_for_copy = tk.token.clone();
                             rsx! {
-                                div { key: "{tk_id}", class: "row-card p-xl",
-                                    div { class: "flex items-start justify-between gap-lg",
-                                        div { class: "flex items-start gap-lg",
-                                            div { class: "bc-icon-box",
+                                div { key: "{tk_id}", class: "row-card p-bc-5",
+                                    div { class: "flex items-center justify-between gap-bc-4 min-w-0",
+                                        div { class: "flex items-center gap-bc-4 min-w-0",
+                                            div { class: "bc-icon-box shrink-0",
                                                 span { class: "text-title", "🔑" }
                                             }
-                                            div { class: "flex flex-col gap-xs",
-                                                div { class: "flex items-center gap-sm",
+                                            div { class: "flex flex-col gap-bc-1 min-w-0",
+                                                div { class: "flex items-center gap-bc-2 flex-wrap",
                                                     span { class: "text-subtitle font-bold", "API Key" }
                                                     StatusPill {
                                                         value: if tk.status == "active" { "ok".to_string() } else { "neutral".to_string() },
@@ -129,7 +130,7 @@ pub fn AccessPage() -> Element {
                                                 }
                                             }
                                         }
-                                        div { class: "flex items-center gap-xs",
+                                        div { class: "flex items-center gap-bc-1 shrink-0",
                                             button {
                                                 class: "btn-icon text-bc-text-tertiary",
                                                 onclick: move |_| {
@@ -170,7 +171,7 @@ pub fn AccessPage() -> Element {
                 }
             },
 
-            div { class: "flex flex-col gap-lg",
+            div { class: "flex flex-col gap-bc-4",
                 p { class: "bc-hint-text m-0", {t(*lang.read(), "access.create_modal.desc")} }
 
                 SchemaForm {
@@ -262,14 +263,14 @@ pub fn AccessPage() -> Element {
                 }
             },
 
-            div { class: "flex flex-col gap-md",
+            div { class: "flex flex-col gap-bc-3",
                 div { class: "bc-danger-banner",
                     div { class: "bc-danger-circle",
                         "🛡"
                     }
                     div {
                         div { class: "text-subtitle font-bold", {t(*lang.read(), "access.delete_modal.heading")} }
-                        div { class: "bc-body-13px text-bc-text-secondary mt-xs", {t(*lang.read(), "access.delete_modal.cannot_undo")} }
+                        div { class: "bc-body-13px text-bc-text-secondary mt-bc-1", {t(*lang.read(), "access.delete_modal.cannot_undo")} }
                     }
                 }
                 div { class: "bc-delete-warning-body",

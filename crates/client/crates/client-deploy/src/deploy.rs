@@ -2,6 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use burncloud_client_shared::components::{FormMode, PageHeader, SchemaForm};
+use burncloud_client_shared::i18n::{t, use_i18n};
 use burncloud_client_shared::schema::deploy_schema;
 use burncloud_client_shared::services::deploy_service::{DeployRequest, DeployService};
 use burncloud_client_shared::use_toast;
@@ -9,6 +10,8 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn DeployConfig() -> Element {
+    let i18n = use_i18n();
+    let lang = i18n.language;
     let form_data = use_signal(|| serde_json::Value::Object(serde_json::Map::new()));
     let mut is_deploying = use_signal(|| false);
     let nav = use_navigator();
@@ -60,14 +63,14 @@ pub fn DeployConfig() -> Element {
 
     rsx! {
         PageHeader {
-            title: "Model Deployment".to_string(),
-            subtitle: Some("Deploy new models from various sources.".to_string()),
+            title: t(*lang.read(), "deploy.title").to_string(),
+            subtitle: Some(t(*lang.read(), "deploy.subtitle").to_string()),
             subtitle_class: None,
             actions: None,
         }
 
         div { class: "page-content",
-            div { class: "max-w-2xl p-xl rounded-xl bc-card-solid",
+            div { class: "max-w-2xl p-bc-5 pb-bc-8 rounded-bc-md bc-card-solid",
                 SchemaForm {
                     schema: schema.clone(),
                     data: form_data,

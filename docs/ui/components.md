@@ -1,7 +1,7 @@
 # BurnCloud UI 组件白名单
 
 **权威实现**: `crates/client/crates/client-shared/src/components/`
-**硬性规则**: 见 [`system.md`](./system.md) R1–R4
+**硬性规则**: 见 [`system.md`](./system.md) R1–R4 · 命名见 [`naming.md`](./naming.md)
 
 > 控制台页面**必须**使用本文件列出的组件。禁止在业务页新建一次性按钮 / 输入框 / 弹窗样式。
 
@@ -131,22 +131,27 @@ if loading {
 
 ## 布局与样式分工
 
+完整命名规则见 [`naming.md`](./naming.md)。摘要:
+
 | 层 | 负责 | 示例 |
 |----|------|------|
-| **Tailwind**（`tailwind.css`） | 布局、flex、宽高、overflow | `flex`, `gap-3`, `w-64`, `min-h-0` |
-| **Token**（`styles/*.css`） | 颜色、组件皮肤 | `--bc-primary`，组件内 `.btn-primary` |
-| **RSX class** | 组合布局类 + `text-bc-text` 等 Tailwind 映射 | `class: "flex gap-3 text-bc-text"` |
+| **Tailwind 结构** | flex / grid / 尺寸 / overflow | `flex`, `min-h-0`, `w-full`, `overflow-y-auto` |
+| **Tailwind `bc-` 语义** | 间距 / 颜色 / 圆角(绑 `--bc-*`) | `gap-bc-4`, `text-bc-text-secondary`, `rounded-bc-md` |
+| **组件 / 皮肤** | `BC*`、`styles/*.css` | `BCButton`, `page-content`, `.btn-primary`(仅组件内) |
 
 ```rust
-// ✅ 布局用 Tailwind，颜色用 bc-* 映射
-div { class: "flex flex-col gap-3 text-bc-text-secondary" }
+// ✅ 控制台标准写法
+div { class: "flex flex-col gap-bc-4 text-bc-text-secondary" }
 
 // ❌ 硬编码
 div { style: "color: #86868B; gap: 12px;" }
 
-// ⚠️ 遗留间距类（旧代码仍有 gap-md / p-xxxl）；新代码优先 Tailwind gap-3、p-6
-div { class: "flex flex-col gap-md" }  // 维护中，新页勿新增
+// ❌ 新代码禁止：遗留间距、未绑 token 的 Tailwind 默认档
+div { class: "flex flex-col gap-md" }   // 旧代码可有，新页勿增
+div { class: "flex flex-col gap-3" }    // 未映射 --bc-space-*
 ```
+
+遗留类 `gap-md` / `p-lg` 与规范类对照表见 [`naming.md` §5](./naming.md#5-遗留类--规范类映射迁移用)。
 
 ---
 
@@ -169,4 +174,4 @@ div { class: "flex flex-col gap-md" }  // 维护中，新页勿新增
 2. 样式只加在 `styles/` 对应片段或复用已有 `.btn-*` / `.bc-*`
 3. 在 `components/mod.rs` 导出
 4. 更新本文件一行说明
-5. PR 对照 [`system.md`](./system.md) checklist
+5. PR 对照 [`system.md`](./system.md) checklist 与 [`naming.md`](./naming.md)

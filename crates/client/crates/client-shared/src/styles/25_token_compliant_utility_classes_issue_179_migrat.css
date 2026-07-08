@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════
    Token-compliant utility classes (Issue #179 migration)
+   DEPRECATED for new spacing/color utilities — use Tailwind *-bc-* per docs/ui/naming.md
    ═══════════════════════════════════════════════════════════════════ */
 
 /* Gap scale extensions */
