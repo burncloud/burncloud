@@ -613,10 +613,24 @@ async fn test_price_sync_e2e() {
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
 
     // 1. Trigger forced price sync
-    let sync_res = admin
-        .post("/console/internal/prices/sync", &json!({}))
+    let internal_secret = std::env::var("BURNCLOUD_INTERNAL_SECRET")
+        .expect("BURNCLOUD_INTERNAL_SECRET must be set for internal API tests");
+    let sync_response = reqwest::Client::new()
+        .post(format!("{base_url}/console/internal/prices/sync"))
+        .header("x-internal-secret", internal_secret)
+        .json(&json!({}))
+        .send()
         .await
         .expect("price sync call failed");
+    assert!(
+        sync_response.status().is_success(),
+        "price sync returned {}",
+        sync_response.status()
+    );
+    let sync_res: Value = sync_response
+        .json()
+        .await
+        .expect("price sync response was not JSON");
 
     let models_synced = sync_res["models_synced"].as_i64().unwrap_or(0);
     let source = sync_res["source"].as_str().unwrap_or("unknown").to_string();

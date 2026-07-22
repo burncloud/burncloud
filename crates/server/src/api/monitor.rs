@@ -3,8 +3,7 @@ use crate::AppState;
 use axum::{extract::State, response::IntoResponse, routing::get, Router};
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/console/api/monitor", get(get_system_metrics))
+    Router::new().route("/console/api/monitor", get(get_system_metrics))
 }
 
 async fn get_system_metrics(State(state): State<AppState>) -> impl IntoResponse {

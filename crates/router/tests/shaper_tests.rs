@@ -459,6 +459,11 @@ async fn t9_unconfigured_channel_increments_fail_open_count() -> anyhow::Result<
     // Check /console/internal/health — fail_open_count must be ≥ 1.
     let health_resp = client
         .get(format!("http://127.0.0.1:{port}/console/internal/health"))
+        .header(
+            "x-internal-secret",
+            std::env::var("BURNCLOUD_INTERNAL_SECRET")
+                .unwrap_or_else(|_| "burncloud-test-internal-secret".to_string()),
+        )
         .send()
         .await?;
     assert_eq!(health_resp.status().as_u16(), 200);

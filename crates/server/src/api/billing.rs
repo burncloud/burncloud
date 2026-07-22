@@ -23,8 +23,7 @@ struct BillingSummaryParams {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/billing/summary", get(billing_summary_handler))
+    Router::new().route("/api/billing/summary", get(billing_summary_handler))
 }
 
 async fn billing_summary_handler(

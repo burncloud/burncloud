@@ -10,10 +10,19 @@ use burncloud_database_router::{
 };
 use tempfile::NamedTempFile;
 
+fn sqlite_url(path: &std::path::Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) && !normalized.starts_with('/') {
+        format!("sqlite:///{}?mode=rwc", normalized)
+    } else {
+        format!("sqlite://{}?mode=rwc", normalized)
+    }
+}
+
 /// Create an isolated SQLite test database with all required tables.
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
-    let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
+    let url = sqlite_url(tmp.path());
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));

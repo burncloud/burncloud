@@ -121,10 +121,10 @@ Response:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `JWT_SECRET` | `burncloud-default-secret-change-in-production` | **Must be changed in production.** Secret key for signing JWT tokens. |
-| `BURNCLOUD_INTERNAL_SECRET` | *(none)* | Shared secret for internal API endpoints. Optional. |
-| `DATABASE_URL` | `sqlite:burncloud.db` | Database connection string. |
+| `BURNCLOUD_INTERNAL_SECRET` | *(unset)* | Shared secret required by internal control-plane endpoints. |
+| `BURNCLOUD_DATABASE_URL` | local SQLite database in `~/.burncloud/data.db` | Database connection string. |
 | `PORT` | `3000` | Server listening port. |
-| `HOST` | `0.0.0.0` | Server listening host. |
+| `HOST` | `127.0.0.1` | Server listening host. Set `0.0.0.0` only when the service must accept direct external connections. |
 | `RUST_LOG` | `info` | Log level (`debug`, `info`, `warn`, `error`). |
 
 ## Using with OpenAI SDK
@@ -149,6 +149,10 @@ response = client.chat.completions.create(
 
 If built with the `liveview` feature, the web dashboard is available at `http://localhost:3000/`.
 
+## Debian Deployment
+
+For a native Debian service, see [Debian deployment](debian-deployment.md). It includes the required packages, a systemd unit, and an Nginx configuration that preserves the LiveView WebSocket upgrade.
+
 ## Docker Deployment
 
 ### Quick Start with Docker Compose
@@ -157,10 +161,13 @@ The project includes a `docker-compose.yml` that sets up BurnCloud with PostgreS
 
 ```bash
 # 1. Set JWT_SECRET (required)
-echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
+cat > .env <<EOF
+JWT_SECRET=$(openssl rand -hex 32)
+BURNCLOUD_INTERNAL_SECRET=$(openssl rand -hex 32)
+EOF
 
 # 2. Build and start
-docker compose up -d
+docker compose -f deploy/docker-compose.yml up -d
 
 # 3. Verify
 curl http://localhost:8080/health
@@ -204,7 +211,7 @@ To use a different PostgreSQL password or port, modify `docker-compose.yml` or o
 
 ```bash
 # Override PostgreSQL credentials
-POSTGRES_PASSWORD=mysecurepass docker compose up -d
+POSTGRES_PASSWORD=mysecurepass docker compose -f deploy/docker-compose.yml up -d
 ```
 
 To change the BurnCloud port mapping:

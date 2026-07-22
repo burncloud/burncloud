@@ -1,3 +1,6 @@
+// Prompt artifacts aggregate heterogeneous external JSON that has no stable domain schema.
+#![allow(clippy::disallowed_types)]
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

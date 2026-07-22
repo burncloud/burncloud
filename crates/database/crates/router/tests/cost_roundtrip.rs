@@ -21,6 +21,15 @@ use burncloud_database::create_database_with_url;
 use burncloud_database_router::{RouterDatabase, RouterLog, RouterLogModel};
 use tempfile::NamedTempFile;
 
+fn sqlite_url(path: &std::path::Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) && !normalized.starts_with('/') {
+        format!("sqlite:///{}?mode=rwc", normalized)
+    } else {
+        format!("sqlite://{}?mode=rwc", normalized)
+    }
+}
+
 /// Create an isolated SQLite test database backed by a temp file.
 ///
 /// SQLite `:memory:` fails with connection pools because each pool connection
@@ -32,7 +41,7 @@ use tempfile::NamedTempFile;
 /// `router_tokens` which `RouterLogModel::insert` updates for quota deduction.
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
-    let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
+    let url = sqlite_url(tmp.path());
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));

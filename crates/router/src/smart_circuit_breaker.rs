@@ -588,8 +588,6 @@ mod tests {
     }
 
     #[test]
-
-    #[test]
     fn test_multi_level_breaker() {
         let config = SmartCircuitBreakerConfig {
             min_requests: 5,

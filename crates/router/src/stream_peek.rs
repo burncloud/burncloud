@@ -90,6 +90,7 @@ pub fn check_sse_error_in_chunk(chunk: &[u8]) -> Option<(u16, String, bool)> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

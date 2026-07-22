@@ -1,16 +1,21 @@
 use dioxus::prelude::*;
 use dioxus_router::components::Outlet;
 
-use crate::app::Route;
+use crate::app::{should_inject_styles, ExternalStylesProvided, Route};
 use crate::components::app_styles::AppStyles;
-use burncloud_client_shared::components::TitleBar;
+use burncloud_client_shared::{components::TitleBar, DesktopMode};
 
 #[component]
 pub fn GuestLayout() -> Element {
+    let is_desktop = try_use_context::<DesktopMode>().is_some();
+    let external_styles = try_use_context::<ExternalStylesProvided>().is_some();
+
     rsx! {
-        head {
-            link { rel: "icon", href: "favicon.ico" }
-            AppStyles {}
+        if should_inject_styles(is_desktop, external_styles) {
+            head {
+                link { rel: "icon", href: "favicon.ico" }
+                AppStyles {}
+            }
         }
 
         div { class: "h-screen w-screen overflow-hidden flex flex-col bg-bc-canvas text-bc-text relative", "data-theme": "light",

@@ -14,7 +14,7 @@ mod common;
 use burncloud_common::dollars_to_nano;
 use burncloud_database::sqlx;
 use burncloud_database_billing::{BillingPriceModel, PriceInput};
-use common::{setup_db, start_test_server};
+use common::{insert_test_channel, setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
@@ -110,7 +110,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         axum::serve(
             listener,
             axum::Router::new().route(
-                "/anything",
+                "/v1/chat/completions",
                 axum::routing::post(|body: String| async move {
                     // Echo back in a format that looks like what we might expect, or just return success
                     // For Claude adaptor verification, we want to see the request body was transformed.
@@ -118,7 +118,13 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
                     println!("MOCK RECEIVED: {}", body);
                     // Return a dummy Claude-like response so conversion doesn't fail
                     serde_json::json!({
-                        "content": [ { "text": "Mock Claude Response" } ]
+                        "id": "msg_test",
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Mock Claude Response"}],
+                        "model": "claude-3-opus",
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 1, "output_tokens": 2}
                     })
                     .to_string()
                 }),
@@ -128,33 +134,11 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         .unwrap_or_else(|e| panic!("Mock server error: {e}"));
     });
 
-    let id = "claude-adaptor-test";
+    let id = 30_141;
     let name = "claude-3-opus";
     let base_url = format!("http://localhost:{}", mock_port);
-    let match_path = "/anything";
-    let auth_type = "Claude";
     let api_key = "sk-ant-mock-key";
-
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET 
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            protocol = excluded.protocol
-        "#,
-    )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .bind("claude") // Force protocol to claude
-    .execute(&pool)
-    .await?;
+    insert_test_channel(&pool, id, 14, name, &base_url, api_key, name, "default").await?;
 
     // Seed a price for claude-3-opus so the preflight billing check passes.
     sqlx::query(
@@ -168,7 +152,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}/anything", port);
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
 
     let openai_body = json!({
         "model": "claude-3-opus", // Will be passed through or mapped

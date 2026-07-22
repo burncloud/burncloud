@@ -15,16 +15,33 @@
 
 use burncloud_database::{create_database_with_url, sqlx};
 use sqlx::any::{AnyConnectOptions, AnyPoolOptions};
+use std::path::PathBuf;
 use std::str::FromStr;
-use tempfile::NamedTempFile;
+use tempfile::{tempdir, TempDir};
 
-async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("failed to create temp file"));
-    let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
+async fn create_test_db() -> (burncloud_database::Database, TempDir) {
+    let tmp = tempdir().unwrap_or_else(|_| panic!("failed to create temp directory"));
+    let path = tmp.path().join("test.db");
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));
     (db, tmp)
+}
+
+fn temp_db_path() -> (TempDir, PathBuf) {
+    let tmp = tempdir().unwrap_or_else(|_| panic!("failed to create temp directory"));
+    let path = tmp.path().join("migration.db");
+    (tmp, path)
+}
+
+fn sqlite_url(path: &std::path::Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) && !normalized.starts_with('/') {
+        format!("sqlite:///{}?mode=rwc", normalized)
+    } else {
+        format!("sqlite://{}?mode=rwc", normalized)
+    }
 }
 
 /// Helper: check that a table exists in SQLite.
@@ -675,7 +692,7 @@ async fn test_all_migrations_recorded() {
 /// Helper: connect directly to a SQLite file with raw sqlx (no migration framework).
 async fn raw_sqlite_pool(path: &std::path::Path) -> sqlx::AnyPool {
     sqlx::any::install_default_drivers();
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let options = AnyConnectOptions::from_str(&url)
         .unwrap_or_else(|e| panic!("parse sqlite url failed: {e}"));
     AnyPoolOptions::new()
@@ -879,8 +896,7 @@ async fn create_old_schema(pool: &sqlx::AnyPool) {
 
 #[tokio::test]
 async fn test_data_migration_users_to_user_accounts() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     // Phase 1: create old schema and insert data
     {
@@ -899,7 +915,7 @@ async fn test_data_migration_users_to_user_accounts() {
     }
 
     // Phase 2: run migrations
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -928,8 +944,7 @@ async fn test_data_migration_users_to_user_accounts() {
 
 #[tokio::test]
 async fn test_data_migration_channels_to_channel_providers() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -946,7 +961,7 @@ async fn test_data_migration_channels_to_channel_providers() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -968,8 +983,7 @@ async fn test_data_migration_channels_to_channel_providers() {
 
 #[tokio::test]
 async fn test_data_migration_abilities_to_channel_abilities() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -986,7 +1000,7 @@ async fn test_data_migration_abilities_to_channel_abilities() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1008,8 +1022,7 @@ async fn test_data_migration_abilities_to_channel_abilities() {
 
 #[tokio::test]
 async fn test_data_migration_tokens_to_user_api_keys() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1026,7 +1039,7 @@ async fn test_data_migration_tokens_to_user_api_keys() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1050,8 +1063,7 @@ async fn test_data_migration_tokens_to_user_api_keys() {
 
 #[tokio::test]
 async fn test_data_migration_prices_to_billing_prices() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1070,7 +1082,7 @@ async fn test_data_migration_prices_to_billing_prices() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1093,8 +1105,7 @@ async fn test_data_migration_prices_to_billing_prices() {
 
 #[tokio::test]
 async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1111,7 +1122,7 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1133,8 +1144,7 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
 
 #[tokio::test]
 async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1151,7 +1161,7 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1175,8 +1185,7 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
 
 #[tokio::test]
 async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1193,7 +1202,7 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1216,8 +1225,7 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
 
 #[tokio::test]
 async fn test_data_migration_video_tasks_to_router_video_tasks() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1234,7 +1242,7 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1257,8 +1265,7 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
 
 #[tokio::test]
 async fn test_data_migration_setting_to_sys_settings() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1272,7 +1279,7 @@ async fn test_data_migration_setting_to_sys_settings() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1293,8 +1300,7 @@ async fn test_data_migration_setting_to_sys_settings() {
 
 #[tokio::test]
 async fn test_data_migration_downloads_to_sys_downloads() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1311,7 +1317,7 @@ async fn test_data_migration_downloads_to_sys_downloads() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1333,8 +1339,7 @@ async fn test_data_migration_downloads_to_sys_downloads() {
 
 #[tokio::test]
 async fn test_data_migration_installations_to_sys_installations() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1351,7 +1356,7 @@ async fn test_data_migration_installations_to_sys_installations() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1373,8 +1378,7 @@ async fn test_data_migration_installations_to_sys_installations() {
 
 #[tokio::test]
 async fn test_data_migration_preserves_multiple_rows() {
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1394,7 +1398,7 @@ async fn test_data_migration_preserves_multiple_rows() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1423,8 +1427,7 @@ async fn test_data_migration_preserves_multiple_rows() {
 async fn test_data_migration_cross_domain() {
     // Verify that data from different domains (user_, channel_, billing_, sys_)
     // all migrate correctly in a single migration run.
-    let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("temp file"));
-    let path = tmp.path().to_path_buf();
+    let (_tmp, path) = temp_db_path();
 
     {
         let pool = raw_sqlite_pool(&path).await;
@@ -1463,7 +1466,7 @@ async fn test_data_migration_cross_domain() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));

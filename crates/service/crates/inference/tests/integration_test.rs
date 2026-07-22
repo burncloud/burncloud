@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use burncloud_database::create_default_database;
+use burncloud_database_channel::ChannelProviderModel;
 use burncloud_database_router::RouterDatabase;
 use burncloud_service_inference::{InferenceConfig, InferenceService, InstanceStatus};
 use std::env;
@@ -57,13 +58,17 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
 
     // 4. 验证数据库注册 (Task 11.2 Key Validation)
     println!(">>> Verifying Database Registration...");
-    let upstream_id = format!("local-{}", model_id);
-    let upstream = RouterDatabase::get_upstream(&db, &upstream_id).await?;
+    let upstream = ChannelProviderModel::list(&db, 1000, 0)
+        .await?
+        .into_iter()
+        .find(|channel| channel.name == format!("Local: {}", model_id));
 
     assert!(upstream.is_some(), "Upstream should be registered in DB");
     let u = upstream.unwrap_or_else(|| panic!("upstream should exist after is_some() check"));
-    assert_eq!(u.base_url, format!("http://127.0.0.1:{}", port));
-    assert_eq!(u.match_path, "/v1/chat/completions");
+    let expected_base_url = format!("http://127.0.0.1:{}", port);
+    assert_eq!(u.base_url.as_deref(), Some(expected_base_url.as_str()));
+    assert_eq!(u.models, model_id);
+    assert_eq!(u.tag.as_deref(), Some("local-inference"));
     println!(">>> Database registration verified: {:?}", u);
 
     // 稍微等待一下，模拟运行
@@ -83,7 +88,10 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
 
     // 6. 验证数据库清理 (Task 11.2 Key Validation)
     println!(">>> Verifying Database Cleanup...");
-    let upstream_after = RouterDatabase::get_upstream(&db, &upstream_id).await?;
+    let upstream_after = ChannelProviderModel::list(&db, 1000, 0)
+        .await?
+        .into_iter()
+        .find(|channel| channel.name == format!("Local: {}", model_id));
     assert!(
         upstream_after.is_none(),
         "Upstream should be removed from DB after stop"

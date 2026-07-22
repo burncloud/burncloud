@@ -101,6 +101,35 @@ pub enum Route {
     NotFoundPage { segments: Vec<String> },
 }
 
+/// Marker used by the LiveView shell to avoid injecting the stylesheet twice.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ExternalStylesProvided;
+
+pub(crate) fn should_inject_styles(is_desktop: bool, external_styles: bool) -> bool {
+    is_desktop || (cfg!(feature = "web") && !external_styles)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_inject_styles;
+
+    #[test]
+    fn desktop_always_injects_styles() {
+        assert!(should_inject_styles(true, false));
+    }
+
+    #[test]
+    fn externally_injected_styles_are_not_duplicated() {
+        assert!(!should_inject_styles(false, true));
+    }
+
+    #[cfg(feature = "web")]
+    #[test]
+    fn web_mode_injects_styles_when_shell_does_not() {
+        assert!(should_inject_styles(false, false));
+    }
+}
+
 #[component]
 pub fn App() -> Element {
     // Initialize i18n context
@@ -152,6 +181,11 @@ pub fn launch_gui_with_tray() {
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)
         .launch(AppWithTray);
+}
+
+#[cfg(feature = "web")]
+pub fn launch_web() {
+    dioxus::LaunchBuilder::web().launch(App);
 }
 
 #[cfg(all(feature = "desktop", target_os = "windows"))]

@@ -19,6 +19,31 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
+fn with_internal_secret(
+    request: reqwest::RequestBuilder,
+    secret: Option<&str>,
+) -> reqwest::RequestBuilder {
+    match secret.filter(|value| !value.trim().is_empty()) {
+        Some(secret) => request.header("x-internal-secret", secret),
+        None => request,
+    }
+}
+
+fn server_base_url(server_url: Option<&str>, port: Option<&str>) -> String {
+    if let Some(url) = server_url.filter(|url| !url.trim().is_empty()) {
+        let url = url.trim().trim_end_matches('/');
+        if !url.is_empty() {
+            return url.to_string();
+        }
+    }
+
+    let port = port
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .filter(|value| *value != 0)
+        .unwrap_or(3000);
+    format!("http://127.0.0.1:{port}")
+}
+
 /// Helper to convert f64 dollars to i64 nanodollars
 fn to_nano(price: f64) -> i64 {
     dollars_to_nano(price)
@@ -1208,8 +1233,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             // Notify running server to refresh its in-memory price cache.
             // If the server is not running this is a no-op (warning only).
-            let server_url = std::env::var("BURNCLOUD_SERVER_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+            let server_url = server_base_url(
+                std::env::var("BURNCLOUD_SERVER_URL").ok().as_deref(),
+                std::env::var("PORT").ok().as_deref(),
+            );
             let sync_endpoint = format!(
                 "{}/console/internal/prices/sync",
                 server_url.trim_end_matches('/')
@@ -1217,7 +1244,12 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let notify_client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(60))
                 .build()?;
-            match notify_client.post(&sync_endpoint).send().await {
+            let internal_secret = std::env::var("BURNCLOUD_INTERNAL_SECRET").ok();
+            let notify_request = with_internal_secret(
+                notify_client.post(&sync_endpoint),
+                internal_secret.as_deref(),
+            );
+            match notify_request.send().await {
                 Ok(resp) if resp.status().is_success() => {
                     println!("✅ Server price cache refreshed.");
                 }
@@ -1391,4 +1423,68 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{server_base_url, with_internal_secret};
+
+    #[test]
+    fn price_sync_uses_configured_port() {
+        assert_eq!(
+            server_base_url(None, Some("8080")),
+            "http://127.0.0.1:8080"
+        );
+    }
+
+    #[test]
+    fn price_sync_prefers_explicit_server_url() {
+        assert_eq!(
+            server_base_url(Some("https://gateway.example/"), Some("8080")),
+            "https://gateway.example"
+        );
+    }
+
+    #[test]
+    fn price_sync_trims_port_value() {
+        assert_eq!(server_base_url(None, Some(" 8080 ")), "http://127.0.0.1:8080");
+    }
+
+    #[test]
+    fn price_sync_blank_url_falls_back_to_port() {
+        assert_eq!(
+            server_base_url(Some("  "), Some("8081")),
+            "http://127.0.0.1:8081"
+        );
+    }
+
+    #[test]
+    fn internal_request_includes_configured_secret() {
+        let request = with_internal_secret(
+            reqwest::Client::new().post("http://localhost/internal"),
+            Some("test-secret"),
+        )
+        .build()
+        .expect("request should build");
+
+        assert_eq!(
+            request
+                .headers()
+                .get("x-internal-secret")
+                .and_then(|value| value.to_str().ok()),
+            Some("test-secret")
+        );
+    }
+
+    #[test]
+    fn internal_request_omits_blank_secret() {
+        let request = with_internal_secret(
+            reqwest::Client::new().post("http://localhost/internal"),
+            Some("  "),
+        )
+        .build()
+        .expect("request should build");
+
+        assert!(!request.headers().contains_key("x-internal-secret"));
+    }
 }

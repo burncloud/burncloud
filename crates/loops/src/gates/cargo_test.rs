@@ -1,3 +1,6 @@
+// Gate output combines heterogeneous test and timing data before writing JSON artifacts.
+#![allow(clippy::disallowed_types)]
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

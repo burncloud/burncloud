@@ -104,8 +104,8 @@ Key configuration options:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | 3000 |
-| `HOST` | Server host | 0.0.0.0 |
-| `DATABASE_URL` | Database connection | sqlite:burncloud.db |
+| `HOST` | Server host | 127.0.0.1 |
+| `BURNCLOUD_DATABASE_URL` | Database connection | local SQLite database in the service user's home directory |
 | `RUST_LOG` | Log level | info |
 
 ### Basic Usage

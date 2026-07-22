@@ -446,8 +446,15 @@ impl ResponseQualityDetector {
 
     /// Parse tokens from Gemini format response.
     fn parse_gemini_tokens(&self, body: &str) -> Result<u32, String> {
-        let json: serde_json::Value = serde_json::from_str(body)
+        let mut json: serde_json::Value = serde_json::from_str(body)
             .map_err(|e| format!("JSON parse error: {e}"))?;
+
+        // Vertex streamGenerateContent may return a JSON array even for a
+        // non-streaming client request. Inspect the first response object just
+        // as the Vertex/Gemini adaptor does during response conversion.
+        if let Some(first) = json.as_array().and_then(|items| items.first()).cloned() {
+            json = first;
+        }
 
         // Check for error
         if json.get("error").is_some() {
@@ -685,6 +692,20 @@ mod tests {
             }
             _ => panic!("Expected Healthy quality"),
         }
+    }
+
+    #[test]
+    fn test_detect_healthy_vertex_array_response() {
+        let detector = ResponseQualityDetector::new();
+        let headers = HeaderMap::new();
+        let body = r#"[{"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}]"#;
+
+        let quality = detector.detect(200, &headers, body, 100, false, "vertex");
+
+        assert!(matches!(
+            quality,
+            ResponseQuality::Healthy { tokens: 1, .. }
+        ));
     }
 
     #[test]

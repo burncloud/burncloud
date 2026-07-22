@@ -271,6 +271,7 @@ pub async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> {
 pub async fn insert_test_channel(
     pool: &AnyPool,
     channel_id: i32,
+    channel_type: i32,
     name: &str,
     base_url: &str,
     api_key: &str,
@@ -283,15 +284,24 @@ pub async fn insert_test_channel(
         r#"
         INSERT OR REPLACE INTO channel_providers
         (id, type, key, status, name, weight, base_url, models, `group`, priority)
-        VALUES (?, 0, ?, 1, ?, 1, ?, ?, ?, 0)
+        VALUES (?, ?, ?, 1, ?, 1, ?, ?, ?, 0)
         "#,
     )
     .bind(channel_id)
+    .bind(channel_type)
     .bind(api_key)
     .bind(name)
     .bind(base_url)
     .bind(model)
     .bind(group)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO billing_prices \
+         (model, currency, input_price, output_price, region) VALUES (?, 'USD', 1, 1, '')",
+    )
+    .bind(model)
     .execute(pool)
     .await?;
 
@@ -333,6 +343,9 @@ pub async fn start_test_server(port: u16, db_url: &str) {
             "MASTER_KEY",
             "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
         );
+    }
+    if std::env::var("BURNCLOUD_INTERNAL_SECRET").is_err() {
+        std::env::set_var("BURNCLOUD_INTERNAL_SECRET", "burncloud-test-internal-secret");
     }
 
     // Use the URL directly so concurrent tests don't interfere via a shared env var.
@@ -379,6 +392,18 @@ pub async fn start_mock_upstream(listener: TcpListener) {
         }
 
         serde_json::json!({
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "mock response"},
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 1,
+                "completion_tokens": 1,
+                "total_tokens": 2
+            },
             "method": method.to_string(),
             "url": uri.to_string(),
             "headers": header_map,

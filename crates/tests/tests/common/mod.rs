@@ -192,9 +192,11 @@ pub async fn insert_mock_price(model: &str) {
         .map(|h| h.base_url.clone())
         .unwrap_or_default();
     if !base_url.is_empty() {
-        let _ = reqwest::Client::new()
-            .post(format!("{}/console/internal/prices/sync", base_url))
-            .send()
-            .await;
+        let mut request = reqwest::Client::new()
+            .post(format!("{}/console/internal/prices/sync", base_url));
+        if let Ok(secret) = std::env::var("BURNCLOUD_INTERNAL_SECRET") {
+            request = request.header("x-internal-secret", secret);
+        }
+        let _ = request.send().await;
     }
 }

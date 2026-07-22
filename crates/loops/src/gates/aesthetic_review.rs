@@ -1,3 +1,6 @@
+// Aesthetic review artifacts are intentionally schemaless JSON produced by external tools.
+#![allow(clippy::disallowed_types)]
+
 use serde_json::Value;
 use std::path::Path;
 

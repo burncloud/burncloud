@@ -29,7 +29,7 @@ async fn test_user_management_lifecycle() -> anyhow::Result<()> {
         "email": format!("{}@example.com", username)
     });
 
-    let res = client.post("/console/api/user/register", &body).await?;
+    let res = client.post("/api/auth/register", &body).await?;
     assert!(res["success"].as_bool().unwrap_or(false));
     let _user_id = res["data"]["id"].as_str().unwrap();
 
@@ -38,14 +38,17 @@ async fn test_user_management_lifecycle() -> anyhow::Result<()> {
         "username": username,
         "password": password
     });
-    let login_res = client.post("/console/api/user/login", &login_body).await?;
+    let login_res = client.post("/api/auth/login", &login_body).await?;
     assert!(login_res["success"].as_bool().unwrap_or(false));
     assert_eq!(login_res["data"]["username"], username);
     assert!(!login_res["data"]["token"].is_null());
 
-    // 4. List Users (Should contain the new user)
-    // List users might require admin permission in future, but currently open.
-    let list_res = client.get("/console/api/list_users").await?;
+    // 4. List Users with the JWT returned by login.
+    let token = login_res["data"]["token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("login response did not include a token"))?;
+    let authenticated_client = TestClient::new(&base_url).with_token(token);
+    let list_res = authenticated_client.get("/console/api/list_users").await?;
     assert!(list_res["success"].as_bool().unwrap_or(false));
     let users = list_res["data"].as_array().unwrap();
 

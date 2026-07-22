@@ -31,8 +31,11 @@ const PEEK_FIRST_CHUNK_TIMEOUT_SECS: u64 = 36000;
 // ============================================================
 // Empty Response Counter - Track consecutive empty responses
 // ============================================================
-use std::sync::RwLock as StdRwLock;
 use std::collections::HashMap;
+use std::sync::{
+    RwLock as StdRwLock, RwLockReadGuard as StdRwLockReadGuard,
+    RwLockWriteGuard as StdRwLockWriteGuard,
+};
 
 /// Maximum consecutive empty responses before marking as failure
 const EMPTY_RESPONSE_THRESHOLD: u32 = 3;
@@ -52,9 +55,23 @@ impl EmptyResponseCounter {
         }
     }
 
+    fn read_counters(&self) -> StdRwLockReadGuard<'_, HashMap<String, u32>> {
+        self.counters.read().unwrap_or_else(|poisoned| {
+            tracing::warn!("Recovering poisoned empty-response counter read lock");
+            poisoned.into_inner()
+        })
+    }
+
+    fn write_counters(&self) -> StdRwLockWriteGuard<'_, HashMap<String, u32>> {
+        self.counters.write().unwrap_or_else(|poisoned| {
+            tracing::warn!("Recovering poisoned empty-response counter write lock");
+            poisoned.into_inner()
+        })
+    }
+
     /// Record an empty response. Returns true if threshold exceeded (should penalize).
     pub fn record_empty(&self, channel_id: &str) -> bool {
-        let mut counters = self.counters.write().unwrap();
+        let mut counters = self.write_counters();
         let count = counters.entry(channel_id.to_string()).or_insert(0);
         *count += 1;
         let exceeded = *count >= self.threshold;
@@ -87,7 +104,7 @@ impl EmptyResponseCounter {
 
     /// Reset counter on successful response (non-empty).
     pub fn reset(&self, channel_id: &str) {
-        let mut counters = self.counters.write().unwrap();
+        let mut counters = self.write_counters();
         if let Some(count) = counters.get_mut(channel_id) {
             if *count > 0 {
                 tracing::debug!(
@@ -102,14 +119,14 @@ impl EmptyResponseCounter {
 
     /// Get current counter value for a channel (for monitoring/admin purposes).
     pub fn get_count(&self, channel_id: &str) -> u32 {
-        let counters = self.counters.read().unwrap();
+        let counters = self.read_counters();
         counters.get(channel_id).copied().unwrap_or(0)
     }
 
     /// Force reset counter for a channel (admin override).
     /// Returns the previous count value.
     pub fn force_reset(&self, channel_id: &str) -> u32 {
-        let mut counters = self.counters.write().unwrap();
+        let mut counters = self.write_counters();
         let previous_count = counters.remove(channel_id).unwrap_or(0);
         if previous_count > 0 {
             tracing::info!(
@@ -123,7 +140,7 @@ impl EmptyResponseCounter {
 
     /// Get all channels with non-zero counters (for monitoring).
     pub fn get_all_counts(&self) -> Vec<(String, u32)> {
-        let counters = self.counters.read().unwrap();
+        let counters = self.read_counters();
         counters
             .iter()
             .filter(|(_, &count)| count > 0)
@@ -134,8 +151,9 @@ impl EmptyResponseCounter {
 
 use axum::{
     body::Body,
-    extract::State,
+    extract::{Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri},
+    middleware::{self, Next},
     response::Response,
     routing::post,
     Router,
@@ -196,6 +214,7 @@ const SEEDANCE_DEFAULT_RESOLUTION: &str = "720p";
 const PROTOCOL_OPENAI: &str = "openai";
 const PROTOCOL_CLAUDE: &str = "claude";
 const PROTOCOL_GEMINI: &str = "gemini";
+const PROTOCOL_VERTEX: &str = "vertex";
 const PROTOCOL_ZAI: &str = "zai";
 /// SSE stream termination marker sent to clients.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
@@ -949,6 +968,7 @@ pub async fn create_router_app(
         .route(&price_sync_path, post(price_sync_handler))
         .route(&trip_all_path, post(circuit_breaker_trip_all_handler))
         .route(&metrics_path, axum::routing::get(metrics_handler))
+        .layer(middleware::from_fn(require_internal_secret))
         .with_state(state.clone());
 
     let app = Router::new()
@@ -965,10 +985,34 @@ pub async fn create_router_app(
     Ok((app, internal_app, force_sync_tx))
 }
 
+/// Protect control-plane routes that are mounted outside the JWT middleware.
+///
+/// These routes are also reachable through the public listener in Docker and
+/// reverse-proxy deployments, so relying on a firewall is not sufficient.
+async fn require_internal_secret(
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let expected = std::env::var("BURNCLOUD_INTERNAL_SECRET")
+        .ok()
+        .filter(|secret| !secret.trim().is_empty())
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let provided = request
+        .headers()
+        .get("x-internal-secret")
+        .and_then(|value| value.to_str().ok());
+
+    if provided.is_some_and(|secret| secret == expected) {
+        Ok(next.run(request).await)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
 /// POST /console/internal/prices/sync
 ///
 /// Triggers an immediate forced price sync. Waits up to 60 seconds for completion.
-/// Internal-only; no auth required (server is assumed behind firewall).
+/// Internal-only; protected by `require_internal_secret`.
 async fn price_sync_handler(State(state): State<AppState>) -> Response {
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if state.force_sync_tx.send(reply_tx).await.is_err() {
@@ -2153,25 +2197,11 @@ async fn proxy_logic(
 
                     for channel in channels {
                         let channel_type = ChannelType::from(channel.type_);
-                        // Path-based channel filtering (Issue #263)
-                        // OpenAI format requests should only go to OpenAI-type channels
-                        // Anthropic format requests should only go to Anthropic-type channels
-                        let is_openai_path = path.starts_with("/v1/chat/completions")
-                            || path.starts_with("/v1/completions")
-                            || path.starts_with("/v1/embeddings");
+                        // Native provider paths must stay on their matching channel type.
+                        // OpenAI-compatible paths intentionally allow every supported type
+                        // because the adaptor layer converts those requests downstream.
                         let is_anthropic_path = path.starts_with("/v1/messages");
 
-                        // Skip channel if path format does not match channel type
-                        if is_openai_path
-                            && !matches!(channel_type, ChannelType::OpenAI | ChannelType::Zai)
-                        {
-                            tracing::debug!(
-                                "Skipping {:?} channel for OpenAI format path: {}",
-                                channel_type,
-                                path
-                            );
-                            continue;
-                        }
                         if is_anthropic_path && !matches!(channel_type, ChannelType::Anthropic) {
                             tracing::debug!(
                                 "Skipping {:?} channel for Anthropic format path: {}",
@@ -2186,8 +2216,11 @@ async fn proxy_logic(
                             ChannelType::Anthropic => {
                                 (AuthType::Claude, PROTOCOL_CLAUDE.to_string())
                             }
-                            ChannelType::Gemini | ChannelType::VertexAi => {
+                            ChannelType::Gemini => {
                                 (AuthType::GoogleAI, PROTOCOL_GEMINI.to_string())
+                            }
+                            ChannelType::VertexAi => {
+                                (AuthType::GoogleAI, PROTOCOL_VERTEX.to_string())
                             }
                             ChannelType::Zai => (AuthType::Bearer, PROTOCOL_ZAI.to_string()),
                             _ => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
@@ -2654,7 +2687,6 @@ async fn proxy_logic(
                             if peek_error_handled { continue; }
                             
                             let counter_clone = Arc::clone(&token_counter);
-                            let counter_clone = Arc::clone(&token_counter);
 
                             // Clone state and upstream info for post-stream empty response check
                             let state_clone = state.clone();
@@ -2890,6 +2922,7 @@ async fn proxy_logic(
                             );
                             
                             if is_failure {
+                                last_error = format!("Upstream response quality check failed: {quality:?}");
                                 tracing::warn!(
                                     channel_id = %upstream.id,
                                     model = ?model_name,
@@ -3864,6 +3897,12 @@ async fn proxy_logic(
                         token_counter.set_from_usage(&resp_usage);
                     }
 
+                    // Quality detection must inspect the provider-native payload. The
+                    // adaptor output below is OpenAI-shaped, so parsing it as the
+                    // original provider would incorrectly classify valid responses.
+                    let quality_response_body = serde_json::to_string(&resp_json)
+                        .unwrap_or_else(|_| "{}".to_string());
+
                     let response_body = if let Some(converted) =
                         adaptor.convert_response(resp_json.clone(), &upstream.name)
                     {
@@ -3900,12 +3939,13 @@ async fn proxy_logic(
                         upstream,
                         model_name,
                         &session_id,
-                        &response_body,
+                        &quality_response_body,
                         status,
                         &resp_headers,
                     );
                     
                     if is_failure {
+                        last_error = format!("Upstream response quality check failed: {quality:?}");
                         tracing::warn!(
                             channel_id = %upstream.id,
                             model = ?model_name,

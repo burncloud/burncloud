@@ -9,9 +9,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-#[cfg(test)]
-use burncloud_common::rate_to_scaled;
-use burncloud_common::{scaled_to_rate, Currency};
+use burncloud_common::{rate_to_scaled, scaled_to_rate, Currency};
 use burncloud_database::{sqlx, Database};
 use chrono::{DateTime, Utc};
 
@@ -40,7 +38,6 @@ impl CachedRate {
     }
 
     /// Create a new CachedRate from f64 rate
-    #[cfg(test)]
     pub(crate) fn from_rate(rate: f64) -> Self {
         Self {
             rate_nano: rate_to_scaled(rate),
@@ -105,7 +102,6 @@ impl ExchangeRateService {
     }
 
     /// Set an exchange rate in the cache (f64 input)
-    #[cfg(test)]
     pub(crate) fn set_rate(&self, from: Currency, to: Currency, rate: f64) {
         self.rates.insert((from, to), CachedRate::from_rate(rate));
     }
@@ -227,26 +223,22 @@ impl ExchangeRateService {
             .build()?;
 
         let response = client.get(api_url).send().await?;
-        let json: serde_json::Value = response.json().await?;
+        let rates: std::collections::HashMap<String, f64> = response.json().await?;
 
         // Parse rates from API response
         // Expected format: {"USD_CNY": 7.2, "EUR_USD": 1.08}
-        if let Some(obj) = json.as_object() {
-            for (key, value) in obj {
-                if let (Some(from), Some(to)) = (key.split('_').next(), key.split('_').nth(1)) {
-                    if let (Ok(from_currency), Ok(to_currency), Some(rate)) = (
-                        Currency::from_str(from),
-                        Currency::from_str(to),
-                        value.as_f64(),
-                    ) {
-                        self.set_rate(from_currency, to_currency, rate);
-                        tracing::info!(
-                            "Updated rate: {} -> {} = {}",
-                            from_currency,
-                            to_currency,
-                            rate
-                        );
-                    }
+        for (pair, rate) in rates {
+            if let Some((from, to)) = pair.split_once('_') {
+                if let (Ok(from_currency), Ok(to_currency)) =
+                    (Currency::from_str(from), Currency::from_str(to))
+                {
+                    self.set_rate(from_currency, to_currency, rate);
+                    tracing::info!(
+                        "Updated rate: {} -> {} = {}",
+                        from_currency,
+                        to_currency,
+                        rate
+                    );
                 }
             }
         }
@@ -266,47 +258,46 @@ impl ExchangeRateService {
 )]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::ops::Deref;
+    use tempfile::NamedTempFile;
 
-    static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    struct TestService {
+        service: ExchangeRateService,
+        _db_file: NamedTempFile,
+    }
+
+    impl Deref for TestService {
+        type Target = ExchangeRateService;
+
+        fn deref(&self) -> &Self::Target {
+            &self.service
+        }
+    }
 
     /// Create a mock database for testing
     /// Since ExchangeRateService tests only use in-memory cache, we can use a minimal mock
-    fn create_test_service() -> ExchangeRateService {
-        // Lock to ensure tests run serially to avoid DB conflicts
-        let _lock = TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| panic!("failed to acquire test mutex: {e}"));
-
-        use burncloud_database::Database;
+    fn create_test_service() -> TestService {
+        use burncloud_database::create_database_with_url;
         use std::sync::Arc;
 
-        // Use tokio runtime to create database with unique path
+        let db_file = NamedTempFile::new()
+            .unwrap_or_else(|e| panic!("failed to create test database file: {e}"));
+        let normalized = db_file.path().to_string_lossy().replace('\\', "/");
+        let url = if cfg!(windows) && !normalized.starts_with('/') {
+            format!("sqlite:///{}?mode=rwc", normalized)
+        } else {
+            format!("sqlite://{}?mode=rwc", normalized)
+        };
+
         let rt = tokio::runtime::Runtime::new()
             .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"));
-        let db = rt.block_on(async {
-            // Generate unique database path to avoid conflicts between tests
-            let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-            let pid = std::process::id();
-            let db_path = format!("/tmp/burncloud_test_exch_{}_{}.db", pid, test_id);
-
-            // Remove existing test db if exists
-            let _ = std::fs::remove_file(&db_path);
-
-            // Set environment variable for database path
-            std::env::set_var(
-                "BURNCLOUD_DATABASE_URL",
-                format!("sqlite://{}?mode=rwc", db_path),
-            );
-
-            let db = Database::new()
-                .await
-                .unwrap_or_else(|e| panic!("failed to create test database: {e}"));
-            db
-        });
-        ExchangeRateService::new(Arc::new(db))
+        let db = rt
+            .block_on(create_database_with_url(&url))
+            .unwrap_or_else(|e| panic!("failed to create test database: {e}"));
+        TestService {
+            service: ExchangeRateService::new(Arc::new(db)),
+            _db_file: db_file,
+        }
     }
 
     #[test]

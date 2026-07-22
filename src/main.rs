@@ -107,13 +107,18 @@ fn ensure_master_key() {
     let key: [u8; 32] = rand::random();
     let hex_key = hex::encode(key);
 
-    // Locate .env: prefer CWD (where dotenvy reads), fall back to exe dir
-    let env_path = std::fs::canonicalize(".env").unwrap_or_else(|_| {
-        env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join(".env")))
-            .unwrap_or_else(|| Path::new(".env").to_path_buf())
-    });
+    // Locate .env: prefer CWD (where dotenvy reads), even before the file exists.
+    // This keeps service deployments from attempting to write beside a read-only binary.
+    let env_path = env::current_dir()
+        .map(|dir| dir.join(".env"))
+        .or_else(|_| {
+            env::current_exe().and_then(|path| {
+                path.parent()
+                    .map(|dir| dir.join(".env"))
+                    .ok_or_else(|| std::io::Error::other("executable has no parent directory"))
+            })
+        })
+        .unwrap_or_else(|_| Path::new(".env").to_path_buf());
 
     // Replace or append MASTER_KEY line in .env
     let line = format!("MASTER_KEY={hex_key}");

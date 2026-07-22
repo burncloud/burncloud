@@ -1,5 +1,5 @@
 # ── Stage 1: Build ──────────────────────────────────────────────
-FROM rust:1.80-slim AS builder
+FROM rust:1.88-slim AS builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
@@ -45,7 +45,7 @@ RUN cargo build --release 2>/dev/null || true
 # Now copy the real source and build
 COPY . .
 
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # ── Stage 2: Runtime ───────────────────────────────────────────
 FROM debian:bookworm-slim

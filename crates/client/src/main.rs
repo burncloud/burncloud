@@ -3,7 +3,8 @@ fn main() {
     burncloud_client::launch_gui_with_tray();
 }
 
-#[cfg(feature = "web")]
+// `--all-features` enables both platforms; use desktop as the native default.
+#[cfg(all(feature = "web", not(feature = "desktop")))]
 fn main() {
     burncloud_client::launch_web();
 }
