@@ -19,12 +19,21 @@ use burncloud_database::Database;
 #[cfg(feature = "liveview")]
 use dioxus_liveview::LiveViewPool;
 #[cfg(feature = "liveview")]
+use dioxus::prelude::{use_context_provider, Element};
+#[cfg(feature = "liveview")]
 use std::str::FromStr;
 #[cfg(feature = "liveview")]
 use std::sync::Arc;
 
 #[cfg(feature = "liveview")]
 use burncloud_common::constants::WS_PATH;
+
+#[cfg(feature = "liveview")]
+#[dioxus::prelude::component]
+fn LiveViewApp() -> Element {
+    use_context_provider(|| app::ExternalStylesProvided);
+    app::App()
+}
 
 #[cfg(feature = "liveview")]
 pub fn liveview_router(_db: Arc<Database>) -> Router {
@@ -96,7 +105,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                     _ = view
                         .launch(
                             dioxus_liveview::axum_socket(socket),
-                            app::App as fn() -> dioxus::prelude::Element,
+                            LiveViewApp as fn() -> dioxus::prelude::Element,
                         )
                         .await;
                 })

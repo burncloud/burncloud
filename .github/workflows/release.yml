@@ -315,9 +315,9 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ needs.create-release.result }}" -eq "success") {
-            echo "? Release ${{ needs.check-version.outputs.version }} created successfully!"
-            echo "?? Windows binaries are now available for download."
+            echo "✅ Release ${{ needs.check-version.outputs.version }} created successfully!"
+            echo "🎉 Windows binaries are now available for download."
           } else {
-            echo "? Release creation failed."
+            echo "❌ Release creation failed."
             exit 1
           }

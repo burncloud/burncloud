@@ -851,7 +851,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("rate")
                                 .long("rate")
                                 .required(true)
-                                .help("Exchange rate (e.g., 7.2 for USD?CNY)"),
+                                .help("Exchange rate (e.g., 7.2 for USD→CNY)"),
                         ),
                 )
                 .subcommand(
@@ -1202,15 +1202,15 @@ fn handle_update_command(check_only: bool) -> Result<()> {
         println!("Checking for updates...");
         match updater.sync_check_for_updates() {
             Ok(true) => {
-                println!("? New version available!");
+                println!("✅ New version available!");
                 println!("Run 'burncloud update' to update to the latest version");
             }
             Ok(false) => {
-                println!("? Already up to date");
+                println!("✅ Already up to date");
             }
             Err(e) => {
                 error!("Update check failed: {}", e);
-                println!("? Update check failed: {}", e);
+                println!("❌ Update check failed: {}", e);
                 let (github_url, gitee_url) = updater.get_download_links();
                 println!("You can manually download the latest version from:");
                 println!("  GitHub: {}", github_url);
@@ -1222,12 +1222,12 @@ fn handle_update_command(check_only: bool) -> Result<()> {
         println!("Updating BurnCloud...");
         match updater.sync_update() {
             Ok(_) => {
-                println!("? Update successful!");
+                println!("✅ Update successful!");
                 println!("Please restart the application to use the new version");
             }
             Err(e) => {
                 error!("Update failed: {}", e);
-                println!("? Update failed: {}", e);
+                println!("❌ Update failed: {}", e);
                 let (github_url, gitee_url) = updater.get_download_links();
                 println!("You can manually download the latest version from:");
                 println!("  GitHub: {}", github_url);

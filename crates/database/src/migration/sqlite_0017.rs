@@ -1,4 +1,4 @@
-//! SQLite migration 0017 ? repair missing channel tables and coerce BOOLEAN ? INTEGER.
+//! SQLite migration 0017 — repair missing channel tables and coerce BOOLEAN → INTEGER.
 //!
 //! Some databases reached 0017 without `channel_protocol_configs` (partial 0010 apply or
 //! legacy installs that only had `protocol_configs`).  The old SQL migration assumed the
@@ -194,7 +194,7 @@ async fn fix_bool_column(
     sqlx::query(&copy_sql)
         .execute(&mut *transaction)
         .await
-        .map_err(|e| DatabaseError::Migration(format!("copy {table} ? {temp}: {e}")))?;
+        .map_err(|e| DatabaseError::Migration(format!("copy {table} → {temp}: {e}")))?;
 
     sqlx::query(&format!("DROP TABLE {table}"))
         .execute(&mut *transaction)

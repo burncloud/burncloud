@@ -136,6 +136,19 @@ This note records the fixes made while validating the Windows local build.
     - Remove a duplicate `Arc::clone` in the passthrough streaming hot path that
       was immediately shadowed and performed an unnecessary atomic operation.
 
+23. Web stylesheet delivery modes
+    - Files: `crates/client/src/app.rs`, `crates/client/src/components/layout.rs`,
+      `crates/client/src/components/guest_layout.rs`, and `crates/client/src/lib.rs`.
+    - Restore stylesheet injection for the standalone Web build while keeping the
+      LiveView shell's externally supplied stylesheet as the single source. Desktop
+      builds continue to inject their local stylesheet.
+
+24. Price-cache sync endpoint overrides
+    - File: `src/cli/price.rs`.
+    - Give `BURNCLOUD_SERVER_URL` precedence over the local default and honor
+      `PORT` when the price command notifies the running server. Explicit URLs are
+      normalized and invalid ports fall back to port 3000.
+
 ## Verification
 
 Run from a Visual Studio Developer PowerShell with the Rust toolchain on `PATH`:
@@ -167,6 +180,12 @@ Results on Windows/MSVC:
 - Locked auto-update tests: passed (3 tests).
 - Locked router library tests: passed (198 tests).
 - Focused locked root-binary Clippy: passed with baseline warnings.
+- Pure Web client tests: 4 passed with `--no-default-features --features web`.
+- LiveView client compile: passed with `--no-default-features --features liveview`.
+- Latest root CLI tests: 11 passed with `--offline --locked`.
+- Latest router library tests: 198 passed with `--offline --locked`.
+- Latest database tests: 88 passed with `--offline --locked`.
+- Latest root-binary Clippy: passed with baseline warnings only.
 - CLI probes: `burncloud --version` reports `0.1.17`; `--version` and `--help`
   both exit with status 0.
 - Release metadata gate: root package version resolved as `0.1.17` from the

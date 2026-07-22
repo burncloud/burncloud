@@ -1,4 +1,4 @@
-# Getting Started ? BurnCloud Self-Hosted Gateway
+# Getting Started — BurnCloud Self-Hosted Gateway
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ Response:
 }
 ```
 
-Save the `token` ? you'll need it for all authenticated requests.
+Save the `token` — you'll need it for all authenticated requests.
 
 ### 3. Add an Upstream Channel
 
@@ -72,7 +72,7 @@ curl -s -X POST http://localhost:3000/console/api/channel \
 
 ### 4. Make Your First API Call
 
-Use the BurnCloud gateway just like you'd use OpenAI directly ? just change the `base_url`:
+Use the BurnCloud gateway just like you'd use OpenAI directly — just change the `base_url`:
 
 ```bash
 curl -s -X POST http://localhost:3000/v1/chat/completions \
@@ -184,10 +184,10 @@ The `docker-compose.yml` defines two services:
 
 Key environment variables in the compose file:
 
-- `HOST=0.0.0.0` ? Required in containers to accept external connections
-- `PORT=8080` ? Service port (mapped to host port 8080)
-- `JWT_SECRET` ? **Must be set** in `.env` file before starting
-- `BURNCLOUD_DATABASE_URL` ? PostgreSQL connection string pointing to the `postgres` service
+- `HOST=0.0.0.0` — Required in containers to accept external connections
+- `PORT=8080` — Service port (mapped to host port 8080)
+- `JWT_SECRET` — **Must be set** in `.env` file before starting
+- `BURNCLOUD_DATABASE_URL` — PostgreSQL connection string pointing to the `postgres` service
 
 ### Standalone Docker
 
@@ -227,7 +227,7 @@ ports:
 ### "Invalid token" on API calls
 
 - Verify you're using the JWT token from registration/login, not your upstream API key.
-- Tokens expire based on `JWT_SECRET` ? if you restart with a different secret, all existing tokens become invalid.
+- Tokens expire based on `JWT_SECRET` — if you restart with a different secret, all existing tokens become invalid.
 - Ensure the `Authorization: Bearer <token>` header is set correctly (no extra spaces, `Bearer` capitalized).
 
 ### Server starts but API returns 401
@@ -255,7 +255,7 @@ ports:
 ### Dashboard shows "Not authenticated"
 
 - The dashboard requires login. Register a user first (Step 2).
-- If the dashboard page loads but data shows errors, your JWT token may have expired ? log in again.
+- If the dashboard page loads but data shows errors, your JWT token may have expired — log in again.
 
 ## Next Steps
 

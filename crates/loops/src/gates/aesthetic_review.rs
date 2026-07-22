@@ -62,12 +62,12 @@ pub fn run_aesthetic_review_scoped(
 
     if !review_path.exists() {
         errors.push(format!(
-            "missing {} ? run aesthetic-metrics first, then agent fills review.json",
+            "missing {} — run aesthetic-metrics first, then agent fills review.json",
             review_path.display()
         ));
     }
     if !manifest_path.exists() {
-        errors.push("missing manifest.json ? run aesthetic-metrics first".to_string());
+        errors.push("missing manifest.json — run aesthetic-metrics first".to_string());
     }
 
     if let Ok(text) = std::fs::read_to_string(&manifest_path) {

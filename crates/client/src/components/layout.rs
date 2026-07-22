@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::app::Route;
+use crate::app::{should_inject_styles, ExternalStylesProvided, Route};
 use crate::components::app_styles::AppStyles;
 use crate::components::sidebar::Sidebar;
 use burncloud_client_shared::components::TitleBar;
@@ -13,6 +13,7 @@ pub fn Layout() -> Element {
     let auth = use_auth();
     let navigator = use_navigator();
     let is_desktop = try_use_context::<DesktopMode>().is_some();
+    let external_styles = try_use_context::<ExternalStylesProvided>().is_some();
     let theme_ctx = use_theme();
     let theme_str = theme_ctx.data_theme_attr();
 
@@ -31,7 +32,7 @@ pub fn Layout() -> Element {
     }
 
     rsx! {
-        if is_desktop {
+        if should_inject_styles(is_desktop, external_styles) {
             head {
                 AppStyles {}
             }

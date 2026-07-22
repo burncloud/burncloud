@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         env::set_var("RUST_LOG", "error");
     }
 
-    // ??????tracing-subscriber + ?????
+    // 初始化日志（tracing-subscriber + 文件输出）
     let _logging_guards = burncloud_server::logging::init_logging();
 
     match args.as_slice() {
@@ -70,13 +70,13 @@ fn main() -> Result<()> {
                     run_async_server()?;
                 }
                 _ => {
-                    // ??????
+                    // 处理其他命令
                     run_async_cli(&args[1..])?;
                 }
             }
         }
         [] => {
-            // ????? (????????)
+            // 空参数数组 (理论上不应该发生)
             crate::cli::commands::show_help();
         }
     }
@@ -147,7 +147,7 @@ fn ensure_master_key() {
     };
 
     match std::fs::write(&env_path, content) {
-        Ok(_) => eprintln!("Generated MASTER_KEY ? {}", env_path.display()),
+        Ok(_) => eprintln!("Generated MASTER_KEY → {}", env_path.display()),
         Err(e) => eprintln!("Warning: failed to write .env: {e}"),
     }
 

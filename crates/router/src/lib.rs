@@ -1,4 +1,4 @@
-// Router core ? LLM request/response handling ? Value required; no feasible typed alternative.
+// Router core — LLM request/response handling — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
 mod adaptor;
@@ -278,7 +278,7 @@ fn record_failover_attempt(
     }
 }
 
-/// Named return type for [`proxy_logic`] ? replaces the previous 8-tuple.
+/// Named return type for [`proxy_logic`] — replaces the previous 8-tuple.
 ///
 /// Each field is self-documenting; adding a new field only requires updating
 /// this struct + the `RouterLog` construction site, not every return point.
@@ -325,7 +325,7 @@ fn json_error_body(message: impl std::fmt::Display) -> Body {
 /// Affinity eviction policy (P0-1): ServerError, Timeout, and ConnectionError
 /// evict the affinity entry immediately so the next request re-picks via HRW
 /// instead of pinning to a sick channel. AuthFailed, PaymentRequired,
-/// RateLimited, and ModelNotFound do NOT evict ? they are not upstream
+/// RateLimited, and ModelNotFound do NOT evict — they are not upstream
 /// health problems and the affined channel may still be the best choice.
 fn record_upstream_failure(
     state: &AppState,
@@ -359,7 +359,7 @@ fn record_upstream_failure(
                 session_id,
                 model,
                 channel_id,
-                "Affinity evicted ? upstream failure {:?} for {}",
+                "Affinity evicted — upstream failure {:?} for {}",
                 failure_type,
                 upstream.name
             );
@@ -432,7 +432,7 @@ fn check_empty_response(
 
 /// Classify an upstream HTTP error into a [`FailureType`] for circuit breaker
 /// and channel state tracking. Shared by passthrough and converted paths
-/// (audit decision D12 ? DRY).
+/// (audit decision D12 — DRY).
 fn classify_upstream_error(
     status: StatusCode,
     headers: &HeaderMap,
@@ -674,7 +674,7 @@ fn build_response_with_header(
 /// Startup helper: load every channel's L2 Shaper config (rpm_cap / tpm_cap /
 /// reservation triple) from `channel_providers` and feed it into
 /// [`rate_budget::InMemoryBudget`]. Channels with `rpm_cap = NULL` (or zero)
-/// stay unconfigured ? they'll fail-open at request time, and that count is
+/// stay unconfigured — they'll fail-open at request time, and that count is
 /// surfaced via `tracing::warn!` here and `fail_open_count` at runtime.
 ///
 /// **Fail-open on error.** A DB outage or query failure is logged and ignored:
@@ -687,7 +687,7 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
         Err(e) => {
             tracing::error!(
                 error = %e,
-                "rate_budget: failed to acquire DB connection at startup ? all channels will fail-open"
+                "rate_budget: failed to acquire DB connection at startup — all channels will fail-open"
             );
             return;
         }
@@ -713,7 +713,7 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
         Err(e) => {
             tracing::error!(
                 error = %e,
-                "rate_budget: failed to query channel_providers at startup ? all channels will fail-open"
+                "rate_budget: failed to query channel_providers at startup — all channels will fail-open"
             );
             return;
         }
@@ -726,7 +726,7 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
     for (id, rpm_cap, tpm_cap, res_g, res_y, res_r) in rows {
         match (rpm_cap, tpm_cap) {
             (Some(rpm), Some(tpm)) if rpm > 0 && tpm > 0 => {
-                // Per-color shares: NULL ? migration default (0.4/0.4/0.2).
+                // Per-color shares: NULL → migration default (0.4/0.4/0.2).
                 // `configure` itself validates sum-to-1.0 and falls back to
                 // default if invalid (FM8 fix in subtask 4).
                 let reservation = rate_budget::ChannelReservation {
@@ -791,7 +791,7 @@ pub async fn create_router_app(
     let price_cache = burncloud_service_billing::PriceCache::load(&db)
         .await
         .unwrap_or_else(|e| {
-            tracing::warn!("Failed to load price cache at startup: {e} ? using empty cache");
+            tracing::warn!("Failed to load price cache at startup: {e} — using empty cache");
             burncloud_service_billing::PriceCache::empty()
         });
     let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
@@ -817,7 +817,7 @@ pub async fn create_router_app(
     // reservation columns added in migration 0011).
     let rate_budget = Arc::new(rate_budget::InMemoryBudget::new());
     // Eager-load every channel's cap from DB at startup. DB failures here
-    // are logged and ignored ? router must boot even if shaper config is
+    // are logged and ignored — router must boot even if shaper config is
     // unavailable. Channels with rpm_cap = NULL stay unconfigured (fail-open).
     configure_rate_budget_from_db(&db, rate_budget.as_ref()).await;
     // Counter for fail-open admissions (unconfigured channels). Surfaced
@@ -848,7 +848,7 @@ pub async fn create_router_app(
         "Request log storage policy configured"
     );
 
-    // AIMD ? InMemoryBudget feedback channel (capacity=1, latest-wins debounce).
+    // AIMD → InMemoryBudget feedback channel (capacity=1, latest-wins debounce).
     // When the adaptive limiter learns a new RPM limit, it sends an update here;
     // a background task reconfigures the budget bucket (audit decision D6/D10).
     let (budget_update_tx, mut budget_update_rx) = mpsc::channel::<state::BudgetUpdate>(1);
@@ -1179,7 +1179,7 @@ async fn extract_token_user(
     }
 }
 
-/// GET /api/v1/usage ? overall usage for the authenticated token holder.
+/// GET /api/v1/usage — overall usage for the authenticated token holder.
 async fn usage_handler(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
     let user_id = match extract_token_user(&state, &headers).await {
         Ok(id) => id,
@@ -1208,7 +1208,7 @@ async fn usage_handler(State(state): State<AppState>, headers: axum::http::Heade
     }
 }
 
-/// GET /api/v1/usage/models ? usage broken down by model for the authenticated token holder.
+/// GET /api/v1/usage/models — usage broken down by model for the authenticated token holder.
 async fn usage_models_handler(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -1248,7 +1248,7 @@ async fn usage_models_handler(
 /// Normalize doubled path prefixes caused by client SDKs that include the
 /// endpoint path in their base_url. For example, when a client sets
 /// base_url = "https://gateway/v1/messages" and the SDK appends "/v1/messages",
-/// the resulting path is "/v1/messages/v1/messages" ? this function collapses
+/// the resulting path is "/v1/messages/v1/messages" — this function collapses
 /// it back to "/v1/messages".
 fn normalize_doubled_path(path: &str) -> String {
     // Known endpoint prefixes that clients may double
@@ -1333,7 +1333,7 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
     // Iterates `channel_states` (the known-channel set tracked by the
     // channel_state_tracker) and calls the public `BudgetBackend::snapshot`
     // API. Channels with `rpm_cap = NULL` (unconfigured) return `None` and
-    // are filtered out ? the `fail_open_count` field surfaces their volume.
+    // are filtered out — the `fail_open_count` field surfaces their volume.
     let budget_snapshots: Vec<serde_json::Value> = channel_states
         .iter()
         .filter_map(|(ch_id, _)| {
@@ -1412,7 +1412,7 @@ async fn proxy_handler(
     let raw_path = uri.path().to_string();
 
     // Normalize doubled path prefixes caused by client SDKs that include
-    // the endpoint path in their base_url (e.g. /v1/messages/v1/messages ? /v1/messages).
+    // the endpoint path in their base_url (e.g. /v1/messages/v1/messages → /v1/messages).
     let path = normalize_doubled_path(&raw_path);
 
     // 0. Authenticate User
@@ -1619,7 +1619,7 @@ async fn proxy_handler(
 
     // Extract Seedance / NewApi video generation fields for request-side billing.
     // Seedance's response has no usage field; duration and resolution are in the request body.
-    // Only compute seedance fields for video generation paths ? zero them out otherwise
+    // Only compute seedance fields for video generation paths — zero them out otherwise
     // to prevent phantom video_tokens injection on non-video requests.
     let (seedance_duration_secs, seedance_resolution) = if path == "/v1/video/generations" {
         let v = serde_json::from_slice::<serde_json::Value>(&body_bytes).ok();
@@ -1669,7 +1669,7 @@ async fn proxy_handler(
 
     // Video task polling: GET /v1/videos/{task_id}
     // Must be handled before proxy_logic because GET requests have no model field for routing.
-    // Look up the task_id ? channel_id mapping saved during the original POST.
+    // Look up the task_id → channel_id mapping saved during the original POST.
     if method == Method::GET && path.starts_with("/v1/videos/") {
         let task_id = path.trim_start_matches("/v1/videos/");
 
@@ -1809,7 +1809,7 @@ async fn proxy_handler(
     };
     let usage = inject_video_tokens_if_empty(result.final_status, usage, veo_tokens, "veo");
 
-    // Seedance request-side billing: inject video_tokens from duration ? resolution_weight
+    // Seedance request-side billing: inject video_tokens from duration × resolution_weight
     let resolution_weight: i64 = if seedance_resolution == "720p" {
         SEEDANCE_RESOLUTION_WEIGHT_HD
     } else {
@@ -1839,7 +1839,7 @@ async fn proxy_handler(
                     (total, result.breakdown, Some("ok".to_string()))
                 }
                 Err(burncloud_service_billing::BillingError::PriceNotFound(m)) => {
-                    tracing::warn!(model = %m, "PriceNotFound ? no price configured for this model");
+                    tracing::warn!(model = %m, "PriceNotFound — no price configured for this model");
                     state
                         .billing_post_settle_price_missing_count
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1859,9 +1859,9 @@ async fn proxy_handler(
         (0, Default::default(), None)
     };
 
-    // Warn if cost is non-zero but model is unknown ? reconciliation data will be degraded
+    // Warn if cost is non-zero but model is unknown — reconciliation data will be degraded
     if model_name.is_none() && cost > 0 {
-        tracing::warn!(cost, %request_id, "cost > 0 but model unknown ? reconciliation data degraded");
+        tracing::warn!(cost, %request_id, "cost > 0 but model unknown — reconciliation data degraded");
     }
 
     // L6 Observability: compute layer_decision via priority chain (issue #152).
@@ -1949,7 +1949,7 @@ async fn proxy_handler(
     if state.log_tx.send(log).await.is_err() {
         tracing::error!(
             cost,
-            "billing log channel full or closed ? request cost NOT recorded"
+            "billing log channel full or closed — request cost NOT recorded"
         );
     }
 
@@ -2096,7 +2096,7 @@ async fn proxy_logic(
     let mut selected_pricing_region: Option<String>;
 
     // L2 Shaper: pre-compute est_tpm from `max_tokens` in the request body.
-    // TODO(phase 2.5 #151): per-adaptor est_tpm refinement ? 4096 may grossly
+    // TODO(phase 2.5 #151): per-adaptor est_tpm refinement — 4096 may grossly
     //   underestimate Anthropic (200k+ caps) or overestimate small embedding
     //   requests. Refine using adaptor-specific defaults + historical regression.
     let est_tpm: u64 = serde_json::from_slice::<serde_json::Value>(&body_bytes)
@@ -2135,10 +2135,10 @@ async fn proxy_logic(
                 let policies = state.scheduler_policies.read().await;
                 policies.get(&user_group.to_lowercase()).cloned()
             };
-            // Lock released here ? before SQL queries in route_with_scheduler
+            // Lock released here — before SQL queries in route_with_scheduler
 
             // L1 Classifier: resolve color via service-user (audit decision
-            // E-D3 ? router stays color-agnostic), build OrderType from the
+            // E-D3 — router stays color-agnostic), build OrderType from the
             // token's router_tokens columns, and carry user_id into the
             // request so L3 Affinity (HRW) gets a real stickiness key.
             // session_id stays None until conversation tracking lands.
@@ -2146,7 +2146,7 @@ async fn proxy_logic(
                 .await
                 .unwrap_or_else(|e| {
                     tracing::warn!(
-                        "L1 Classifier: resolve_traffic_class failed for user_id={}: {} ? falling back to TrafficColor::Yellow",
+                        "L1 Classifier: resolve_traffic_class failed for user_id={}: {} — falling back to TrafficColor::Yellow",
                         user_id, e
                     );
                     TrafficColor::Yellow
@@ -2336,7 +2336,7 @@ async fn proxy_logic(
     if let Some(model) = model_name {
         if let Err(e) = state.cost_calculator.preflight(model, None).await {
             if state.billing_strict {
-                tracing::warn!(model = %model, "Preflight billing check failed ? rejecting request: {e}");
+                tracing::warn!(model = %model, "Preflight billing check failed — rejecting request: {e}");
                 state
                     .billing_preflight_rejected_count
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2361,7 +2361,7 @@ async fn proxy_logic(
                         request_log_data: None,
                 };
             } else {
-                tracing::warn!(model = %model, "Preflight billing check failed ? non-strict mode, allowing request: {e}");
+                tracing::warn!(model = %model, "Preflight billing check failed — non-strict mode, allowing request: {e}");
             }
         }
     }
@@ -2411,13 +2411,13 @@ async fn proxy_logic(
         // Update pricing_region for billing to match the actual upstream serving
         selected_pricing_region = upstream.pricing_region.clone();
 
-        // L2 Shaper Check (issue #151) ? runs BEFORE the circuit breaker so
+        // L2 Shaper Check (issue #151) — runs BEFORE the circuit breaker so
         // a locally-overloaded channel is rejected without consuming a CB slot.
         // Unconfigured channels (rpm_cap = NULL) bypass the bucket via
         // `is_configured` (audit Eng E-N1), counted via fail_open_count for
         // /router/status visibility (FM2). On admit, a `BudgetGuard` is held
-        // for the rest of the iteration: success ? `commit(est_tpm)`; any
-        // continue / panic / cancel ? `Drop` refunds full est_tpm (audit FM4).
+        // for the rest of the iteration: success → `commit(est_tpm)`; any
+        // continue / panic / cancel → `Drop` refunds full est_tpm (audit FM4).
         let channel_id_i32: i32 = upstream.id.parse().unwrap_or(0);
         let mut budget_guard: Option<BudgetGuard<'_>> = None;
         let iter_label: &'static str = if !state.rate_budget.is_configured(channel_id_i32) {
@@ -2470,7 +2470,7 @@ async fn proxy_logic(
                 Some(&last_error),
                 0, // No latency - never sent to upstream
             );
-            // budget_guard drops here ? full est_tpm refund (request never
+            // budget_guard drops here → full est_tpm refund (request never
             // reached upstream, so the reservation is returned to the bucket).
             continue;
         }
@@ -2795,7 +2795,7 @@ async fn proxy_logic(
                             // L2 Shaper success: upstream accepted the request.
                             // commit(est_tpm) refunds 0 and marks committed so
                             // Drop is a no-op. The bucket retains est_tpm of
-                            // consumption (pessimistic ? phase 2.5 may refine).
+                            // consumption (pessimistic — phase 2.5 may refine).
                             if let Some(g) = budget_guard.take() {
                                 g.commit(shaper_ctx.est_tpm);
                             }
@@ -2892,7 +2892,7 @@ async fn proxy_logic(
                                         state.affinity_cache.evict(&session_id, model);
                                     }
                                     tracing::info!(
-                                        "Affinity evicted ? embedded error in HTTP 200 for {}",
+                                        "Affinity evicted — embedded error in HTTP 200 for {}",
                                         upstream.name
                                     );
 
@@ -2932,8 +2932,8 @@ async fn proxy_logic(
                                 continue; // Try next candidate
                             }
 
-                            // L2 Shaper success ? non-streaming passthrough.
-                            // Use actual_tpm from parsed usage (audit decision D9 ?
+                            // L2 Shaper success — non-streaming passthrough.
+                            // Use actual_tpm from parsed usage (audit decision D9 —
                             // non-streaming paths have complete usage data).
                             // Fall back to est_tpm when usage parsing yields 0.
                             let actual_tpm = token_counter.get_usage().total_tokens() as u64;
@@ -2967,7 +2967,7 @@ async fn proxy_logic(
                             };
                         }
                     } else {
-                        // Non-success status (4xx) ? capture headers before consuming body.
+                        // Non-success status (4xx) — capture headers before consuming body.
                         let resp_headers = resp.headers().clone();
                         let body_bytes = match resp.bytes().await {
                             Ok(b) => b,
@@ -2975,7 +2975,7 @@ async fn proxy_logic(
                                 last_error = format!("Failed to read error response: {e}");
                                 // 4xx body-read failure: request DID reach
                                 // upstream but actual usage = 0. Let
-                                // budget_guard drop ? full est_tpm refund.
+                                // budget_guard drop → full est_tpm refund.
                                 return ProxyResult {
                                     response: build_response_with_header(
                                         status,
@@ -3003,7 +3003,7 @@ async fn proxy_logic(
                         };
 
                         // Classify all 4xx errors (not just 429) for circuit breaker
-                        // and channel state tracking (P1 ? passthrough error mapping).
+                        // and channel state tracking (P1 — passthrough error mapping).
                         let body_str = String::from_utf8_lossy(&body_bytes);
                         let error_info = parse_error_response(&body_str, &upstream.protocol);
                         let error_message =
@@ -3024,7 +3024,7 @@ async fn proxy_logic(
                             &session_id,
                         );
                         // 429 (rate limit), 401 (auth failed), 402 (payment required):
-                        // try next ranked candidate ? other channels may have valid credentials.
+                        // try next ranked candidate — other channels may have valid credentials.
                         if status == StatusCode::TOO_MANY_REQUESTS
                             || status == StatusCode::UNAUTHORIZED
                             || status == StatusCode::PAYMENT_REQUIRED
@@ -3039,7 +3039,7 @@ async fn proxy_logic(
                         }
 
                         // Other 4xx response: actual usage = 0. budget_guard drops
-                        // on return ? full est_tpm refund (no commit).
+                        // on return → full est_tpm refund (no commit).
                         let et = match failure_type {
                             FailureType::AuthFailed => "auth_failed",
                             FailureType::RateLimited { .. } => "rate_limit",
@@ -3286,7 +3286,7 @@ async fn proxy_logic(
                                 );
                                 token_counter.set_from_usage(&resp_usage);
                             }
-                            // L2 Shaper success ? video-gen non-streaming (actual_tpm available).
+                            // L2 Shaper success — video-gen non-streaming (actual_tpm available).
                             let actual_tpm = token_counter.get_usage().total_tokens() as u64;
                             let commit_tpm = if actual_tpm > 0 {
                                 actual_tpm
@@ -3317,7 +3317,7 @@ async fn proxy_logic(
                             request_log_data: None,
                             };
                         }
-                        // L2 Shaper success: OpenAI streaming path ? keep est_tpm
+                        // L2 Shaper success: OpenAI streaming path — keep est_tpm
                         // (actual_tpm not yet available during stream, audit decision D9).
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
@@ -3522,7 +3522,7 @@ async fn proxy_logic(
                                             session_id = %session_id_clone,
                                             model = %model,
                                             channel_id,
-                                            "Affinity evicted ? consecutive empty responses for {}",
+                                            "Affinity evicted — consecutive empty responses for {}",
                                             upstream_name
                                         );
                                     }
@@ -3817,7 +3817,7 @@ async fn proxy_logic(
                                             session_id = %session_id_clone,
                                             model = %model,
                                             channel_id,
-                                            "Affinity evicted ? consecutive empty responses for {}",
+                                            "Affinity evicted — consecutive empty responses for {}",
                                             upstream_name
                                         );
                                     }
@@ -3840,7 +3840,7 @@ async fn proxy_logic(
                         });
                         let final_stream = stream.chain(done);
 
-                        // L2 Shaper success ? non-OpenAI streaming path ? keep est_tpm
+                        // L2 Shaper success — non-OpenAI streaming path — keep est_tpm
                         // (actual_tpm not yet available during stream, audit decision D9).
                         if let Some(g) = budget_guard.take() {
                             g.commit(shaper_ctx.est_tpm);
@@ -3921,7 +3921,7 @@ async fn proxy_logic(
                         serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string())
                     };
 
-                    // L2 Shaper success ? non-OpenAI non-streaming (actual_tpm available).
+                    // L2 Shaper success — non-OpenAI non-streaming (actual_tpm available).
                     let actual_tpm = token_counter.get_usage().total_tokens() as u64;
                     let commit_tpm = if actual_tpm > 0 {
                         actual_tpm
@@ -3983,7 +3983,7 @@ async fn proxy_logic(
                             // If we can't read the body, return a simple error
                             last_error = format!("Failed to read response body: {e}");
                             // 4xx body-read failure: budget_guard drops here
-                            // ? full est_tpm refund (request reached upstream
+                            // → full est_tpm refund (request reached upstream
                             // but no actual usage was billed).
                             return ProxyResult {
                                 response: build_response_with_header(
@@ -4084,7 +4084,7 @@ async fn proxy_logic(
                     );
 
                     // 4xx response from non-OpenAI: budget_guard drops on
-                    // return ? full est_tpm refund (request reached upstream
+                    // return → full est_tpm refund (request reached upstream
                     // but no actual usage was billed).
                     let et = match failure_type {
                         FailureType::AuthFailed => "auth_failed",
@@ -4145,7 +4145,7 @@ async fn proxy_logic(
 
     // After-loop branch: every candidate was rejected by the L2 Shaper
     // (no CB skip, no upstream failure). Return 503 + X-Rejected-By: shaper
-    // per audit decision D12 ? clients can distinguish a local shaper reject
+    // per audit decision D12 — clients can distinguish a local shaper reject
     // from upstream 5xx and back off via Retry-After.
     if shaper_ctx.rejected_count > 0 && shaper_ctx.rejected_count as usize == total_candidates {
         let body = Body::from(
@@ -4238,7 +4238,7 @@ mod tests {
 
     #[test]
     fn test_veo_billing_defaults_to_8s_when_unspecified() {
-        // Caller passes unwrap_or(8) default ? verify 8 * 1 = 8
+        // Caller passes unwrap_or(8) default — verify 8 * 1 = 8
         let usage = inject_video_tokens_if_empty(StatusCode::OK, UnifiedUsage::default(), 8, "veo");
         assert_eq!(usage.video_tokens, 8);
     }
@@ -4273,7 +4273,7 @@ mod tests {
 
     #[test]
     fn test_seedance_billing_720p() {
-        // Seedance 720p 5s: duration=5, resolution_weight=2 ? video_tokens=10
+        // Seedance 720p 5s: duration=5, resolution_weight=2 → video_tokens=10
         let tokens = 5i64 * 2;
         let usage = inject_video_tokens_if_empty(
             StatusCode::OK,
@@ -4286,7 +4286,7 @@ mod tests {
 
     #[test]
     fn test_seedance_billing_480p() {
-        // Seedance 480p 5s: duration=5, resolution_weight=1 ? video_tokens=5
+        // Seedance 480p 5s: duration=5, resolution_weight=1 → video_tokens=5
         let tokens = 5i64;
         let usage = inject_video_tokens_if_empty(
             StatusCode::OK,
@@ -4311,9 +4311,9 @@ mod tests {
 
     #[test]
     fn test_video_price_derivation_from_per_second() {
-        // Verify the price_sync formula: video_price = price_per_sec_nanos ? 1_000_000 / 2
+        // Verify the price_sync formula: video_price = price_per_sec_nanos × 1_000_000 / 2
         // For $0.14/s at 720p: price_per_sec = 140_000_000 nanodollars
-        // video_price = 140_000_000 ? 1_000_000 / 2 = 70_000_000_000_000 nanodollars/MTok
+        // video_price = 140_000_000 × 1_000_000 / 2 = 70_000_000_000_000 nanodollars/MTok
         let price_per_sec_nanos: i64 = 140_000_000; // $0.14/s
         let video_price = (price_per_sec_nanos as i128 * 1_000_000 / 2) as i64;
 

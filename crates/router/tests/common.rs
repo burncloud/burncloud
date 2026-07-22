@@ -25,7 +25,7 @@ use tokio::net::TcpListener;
 /// FK schema graph and fails with `no such table: main.user_roles`. Recreating
 /// the table here closes that hole.
 async fn ensure_l1_classifier_tables(pool: &AnyPool) -> anyhow::Result<()> {
-    // Recreate user_roles to satisfy user_role_bindings' FK target ? see
+    // Recreate user_roles to satisfy user_role_bindings' FK target — see
     // function-level docs for the rename-migration drop.
     sqlx::query(
         r#"

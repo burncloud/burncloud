@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-/// Internal tests for `database-setting` ? SettingDatabase CRUD operations.
+/// Internal tests for `database-setting` — SettingDatabase CRUD operations.
 ///
 /// Each test spins up an isolated SQLite temp-file database so tests are
 /// hermetic and never touch the user's default database.
@@ -198,7 +198,7 @@ async fn test_empty_string_value() {
 async fn test_value_with_special_characters() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    let special = r#"{"key": "value", "emoji": "??", "newline": "\n"}"#;
+    let special = r#"{"key": "value", "emoji": "🔥", "newline": "\n"}"#;
     sdb.set("json-setting", special)
         .await
         .unwrap_or_else(|e| panic!("set special chars failed: {e}"));

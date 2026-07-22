@@ -160,7 +160,7 @@ async fn test_b4_time_filter_old_data_excluded() {
     let (db, _tmp) = create_test_db().await;
     let user_id = "b4-test-user-old";
 
-    // Insert a log from 90 days ago ? should be outside day/week/month windows
+    // Insert a log from 90 days ago — should be outside day/week/month windows
     let old_time = (chrono::Utc::now() - chrono::Duration::days(90))
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
@@ -221,7 +221,7 @@ async fn test_v2_deduct_usd_insufficient_balance_returns_ok_false() {
     // User has 1M nanodollars ($0.001)
     insert_user_account(&db, user_id, 1_000_000, 0).await;
 
-    // Try to deduct 10M nanodollars ($0.01) ? insufficient
+    // Try to deduct 10M nanodollars ($0.01) — insufficient
     let result = BalanceModel::deduct_usd(&db, user_id, 10_000_000)
         .await
         .expect("deduct_usd should succeed for existing user");
@@ -241,7 +241,7 @@ async fn test_v2_deduct_usd_sufficient_balance_returns_ok_true() {
     // User has 100M nanodollars ($0.1)
     insert_user_account(&db, user_id, 100_000_000, 0).await;
 
-    // Try to deduct 1M nanodollars ($0.001) ? sufficient
+    // Try to deduct 1M nanodollars ($0.001) — sufficient
     let result = BalanceModel::deduct_usd(&db, user_id, 1_000_000)
         .await
         .expect("deduct_usd should succeed for existing user");

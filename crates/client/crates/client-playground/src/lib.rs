@@ -64,9 +64,9 @@ fn format_cost(usd: f64) -> String {
 fn format_cost_cny(usd: f64) -> String {
     let cny = usd * 7.2;
     if cny < 0.01 {
-        format!("? ?{:.2}", cny)
+        format!("≈ ¥{:.2}", cny)
     } else {
-        format!("? ?{:.1}", cny)
+        format!("≈ ¥{:.1}", cny)
     }
 }
 
@@ -496,12 +496,12 @@ pub fn Playground() -> Element {
 
             // Token meter
             div { class: "bc-token-meter",
-                label { class: "config-label mb-0", "Usage ? this session" }
+                label { class: "config-label mb-0", "Usage · this session" }
 
                 div { class: "stat-card bc-stat-compact",
                     span { class: "stat-eyebrow", "TOKENS" }
                     div { class: "stat-value bc-heading-22px", "{total_tokens}" }
-                    span { class: "stat-foot", "{total_prompt_tokens} in ? {total_completion_tokens} out" }
+                    span { class: "stat-foot", "{total_prompt_tokens} in · {total_completion_tokens} out" }
                 }
 
                 div { class: "stat-card bc-stat-compact",
@@ -518,7 +518,7 @@ pub fn Playground() -> Element {
                         } else {
                             for trace in route_traces.read().iter() {
                                 div {
-                                    "? ch:{trace.channel_id.as_deref().unwrap_or(\"?\")} ? {trace.model_id.as_deref().unwrap_or(\"?\")}"
+                                    "→ ch:{trace.channel_id.as_deref().unwrap_or(\"?\")} · {trace.model_id.as_deref().unwrap_or(\"?\")}"
                                 }
                             }
                         }

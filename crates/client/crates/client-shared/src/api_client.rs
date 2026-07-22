@@ -1,4 +1,4 @@
-// HTTP client ? raw API response parsing ? Value required; no feasible typed alternative.
+// HTTP client — raw API response parsing — Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
 use anyhow::Result;
@@ -418,18 +418,18 @@ impl ApiClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("????: {}", e))?;
+            .map_err(|e| format!("网络错误: {}", e))?;
 
         let json: AuthResult = resp
             .json()
             .await
-            .map_err(|e| format!("??????: {}", e))?;
+            .map_err(|e| format!("响应解析错误: {}", e))?;
 
         if json.success {
             json.data
-                .ok_or_else(|| "????????????".to_string())
+                .ok_or_else(|| "注册成功但未返回用户数据".to_string())
         } else {
-            Err(json.message.unwrap_or_else(|| "????".to_string()))
+            Err(json.message.unwrap_or_else(|| "注册失败".to_string()))
         }
     }
 
@@ -451,7 +451,7 @@ impl ApiClient {
         if json["success"].as_bool().unwrap_or(false) {
             Ok(json["data"]["available"].as_bool().unwrap_or(false))
         } else {
-            Err(json["message"].as_str().unwrap_or("????").to_string())
+            Err(json["message"].as_str().unwrap_or("检查失败").to_string())
         }
     }
 

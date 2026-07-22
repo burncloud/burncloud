@@ -12,8 +12,8 @@ use tokio::time::sleep;
 #[tokio::test]
 #[ignore = "requires mock_server binary (Windows-only)"]
 async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
-    // 1. ??????
-    // ????? mock_server.bat
+    // 1. 设置测试环境
+    // 指向我们的 mock_server.bat
     let mut mock_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     mock_bin.push("tests");
     mock_bin.push("mock_server.bat");
@@ -25,12 +25,12 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
             .unwrap_or_else(|| panic!("mock_bin path is not valid UTF-8")),
     );
 
-    // ?????? (???????????? create_default_database ???????
-    // ???????????????????? create_upstream ?????????)
+    // 初始化数据库 (使用内存或临时文件，这里 create_default_database 使用默认位置，
+    // 在测试环境中可能需要注意隔离，但为了验证 create_upstream 逻辑，我们直接用它)
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
 
-    // 2. ?????
+    // 2. 初始化服务
     let service = InferenceService::new();
 
     let model_id = "test-model-qwen";
@@ -45,10 +45,10 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
     };
 
     println!(">>> Starting Instance...");
-    // 3. ????
+    // 3. 启动实例
     service.start_instance(&db, config).await?;
 
-    // ????
+    // 验证状态
     let status = service.get_status(model_id).await;
     assert_eq!(
         status,
@@ -56,7 +56,7 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
         "Instance should be running"
     );
 
-    // 4. ??????? (Task 11.2 Key Validation)
+    // 4. 验证数据库注册 (Task 11.2 Key Validation)
     println!(">>> Verifying Database Registration...");
     let upstream = ChannelProviderModel::list(&db, 1000, 0)
         .await?
@@ -71,14 +71,14 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
     assert_eq!(u.tag.as_deref(), Some("local-inference"));
     println!(">>> Database registration verified: {:?}", u);
 
-    // ???????????
+    // 稍微等待一下，模拟运行
     sleep(Duration::from_millis(500)).await;
 
-    // 5. ????
+    // 5. 停止实例
     println!(">>> Stopping Instance...");
     service.stop_instance(&db, model_id).await?;
 
-    // ????
+    // 验证状态
     let status_stopped = service.get_status(model_id).await;
     assert_eq!(
         status_stopped,
@@ -86,7 +86,7 @@ async fn test_inference_lifecycle_and_db_registration() -> anyhow::Result<()> {
         "Instance should be stopped"
     );
 
-    // 6. ??????? (Task 11.2 Key Validation)
+    // 6. 验证数据库清理 (Task 11.2 Key Validation)
     println!(">>> Verifying Database Cleanup...");
     let upstream_after = ChannelProviderModel::list(&db, 1000, 0)
         .await?

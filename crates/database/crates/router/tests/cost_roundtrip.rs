@@ -5,7 +5,7 @@
 /// These tests guard against two failure modes:
 ///
 /// FM-08: Postgres int4 overflow for cost columns
-///   - i32::MAX = 2,147,483,647 nanodollars ? $2.14/request
+///   - i32::MAX = 2,147,483,647 nanodollars ≈ $2.14/request
 ///   - Any GPT-4o heavy request exceeds this; cost columns must be BIGINT on Postgres
 ///   - This test uses SQLite (8-byte INTEGER natively) but verifies the i64 bindings
 ///     are wired correctly end-to-end. The Postgres path requires a live instance.
@@ -172,7 +172,7 @@ async fn test_cost_breakdown_roundtrip() {
 async fn test_large_cost_no_truncation() {
     let (db, _tmp) = create_test_db().await;
 
-    // $5.00 = 5_000_000_000 nanodollars ? exceeds i32::MAX (2,147,483,647)
+    // $5.00 = 5_000_000_000 nanodollars — exceeds i32::MAX (2,147,483,647)
     let big_cost: i64 = 5_000_000_000;
     assert!(
         big_cost > i32::MAX as i64,
@@ -193,21 +193,21 @@ async fn test_large_cost_no_truncation() {
 
     assert_eq!(
         row.cost, big_cost,
-        "cost truncated ? i64 binding or column type is wrong (FM-08)"
+        "cost truncated — i64 binding or column type is wrong (FM-08)"
     );
     assert_eq!(
         row.input_cost, big_cost,
-        "input_cost truncated ? i64 binding or column type is wrong (FM-08)"
+        "input_cost truncated — i64 binding or column type is wrong (FM-08)"
     );
     assert_eq!(
         row.output_cost, 3_000_000_000,
-        "output_cost truncated ? i64 binding or column type is wrong (FM-08)"
+        "output_cost truncated — i64 binding or column type is wrong (FM-08)"
     );
 }
 
 /// When cost/token fields are not set (zero), they read back as 0 not NULL.
 ///
-/// Verifies #[sqlx(default)] contract: NULL in DB ? 0 in struct, no panic.
+/// Verifies #[sqlx(default)] contract: NULL in DB → 0 in struct, no panic.
 #[tokio::test]
 async fn test_zero_values_read_as_zero_not_null() {
     let (db, _tmp) = create_test_db().await;
@@ -256,7 +256,7 @@ async fn test_zero_values_read_as_zero_not_null() {
 
     let row = find_log(&db, &request_id).await;
 
-    // All zero costs must come back as 0 (not panic on NULL ? i64 coercion)
+    // All zero costs must come back as 0 (not panic on NULL → i64 coercion)
     assert_eq!(row.input_cost, 0, "input_cost");
     assert_eq!(row.output_cost, 0, "output_cost");
     assert_eq!(row.cache_read_cost, 0, "cache_read_cost");

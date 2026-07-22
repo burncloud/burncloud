@@ -11,7 +11,7 @@
 //!    in the corresponding new tables after migration.
 //!
 //! Strategy: create a fresh SQLite database via `create_database_with_url`, which
-//! runs all migrations (0001?0010) and the `schema/rename.rs` data-copy logic.
+//! runs all migrations (0001–0010) and the `schema/rename.rs` data-copy logic.
 
 use burncloud_database::{create_database_with_url, sqlx};
 use sqlx::any::{AnyConnectOptions, AnyPoolOptions};
@@ -72,7 +72,7 @@ async fn count_rows(db: &burncloud_database::Database, table_name: &str) -> i64 
     count
 }
 
-// ??? New tables exist ????????????????????????????????????????????????????????
+// ─── New tables exist ────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_new_user_tables_exist() {
@@ -164,7 +164,7 @@ async fn test_new_sys_tables_exist() {
     );
 }
 
-// ??? Old tables are dropped ??????????????????????????????????????????????????
+// ─── Old tables are dropped ──────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_old_user_tables_dropped() {
@@ -247,7 +247,7 @@ async fn test_old_video_tasks_dropped() {
     );
 }
 
-// ??? New tables are queryable (INSERT + SELECT round-trip) ???????????????????
+// ─── New tables are queryable (INSERT + SELECT round-trip) ───────────────────
 
 #[tokio::test]
 async fn test_user_accounts_insert_and_query() {
@@ -291,7 +291,7 @@ async fn test_user_role_bindings_insert_and_query() {
     .unwrap_or_else(|e| panic!("insert user failed: {e}"));
 
     // Insert a binding (user_role_bindings has FK to user_accounts and user_roles,
-    // but user_roles is currently missing on fresh installs ? insert without FK check)
+    // but user_roles is currently missing on fresh installs — insert without FK check)
     let _ = sqlx::query(
         "INSERT INTO user_role_bindings (user_id, role_id) VALUES ('bind-user-1', 'role-1')",
     )
@@ -603,7 +603,7 @@ async fn test_user_recharges_insert_and_query() {
     assert_eq!(amount, 1000000000);
 }
 
-// ??? Seed data verification ?????????????????????????????????????????????????
+// ─── Seed data verification ─────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_seed_user_in_user_accounts() {
@@ -642,7 +642,7 @@ async fn test_seed_data_uses_new_table_names() {
     );
 }
 
-// ??? Migration idempotency ??????????????????????????????????????????????????
+// ─── Migration idempotency ──────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_migration_0010_is_recorded() {
@@ -679,7 +679,7 @@ async fn test_all_migrations_recorded() {
     );
 }
 
-// ??? Data migration: old table ? new table ??????????????????????????????????
+// ─── Data migration: old table → new table ──────────────────────────────────
 //
 // These tests simulate a pre-migration database:
 //   1. Create old-table schema (matching migration 0001) directly via raw SQL.

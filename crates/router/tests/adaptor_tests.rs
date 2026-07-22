@@ -358,7 +358,7 @@ async fn test_gemini_25_pro_basic() -> anyhow::Result<()> {
         content
     );
 
-    println!("? Basic request test passed: Response contains correct answer");
+    println!("✓ Basic request test passed: Response contains correct answer");
     Ok(())
 }
 
@@ -429,10 +429,10 @@ async fn test_gemini_25_pro_multimodal() -> anyhow::Result<()> {
                 "Expected non-empty response for image query"
             );
         }
-        println!("? Multimodal request test passed: Image processed successfully");
+        println!("✓ Multimodal request test passed: Image processed successfully");
     } else {
         println!(
-            "? Multimodal test skipped: Status {} (adaptor may not support multimodal yet)",
+            "⚠ Multimodal test skipped: Status {} (adaptor may not support multimodal yet)",
             status
         );
     }
@@ -524,7 +524,7 @@ async fn test_gemini_25_pro_long_context() -> anyhow::Result<()> {
         }
     );
 
-    println!("? Long context request test passed: Model processed long input successfully");
+    println!("✓ Long context request test passed: Model processed long input successfully");
     Ok(())
 }
 
@@ -683,7 +683,7 @@ async fn test_gemini_25_flash_basic() -> anyhow::Result<()> {
     );
 
     println!(
-        "? Basic request test passed: Response time {:?}, correct answer received",
+        "✓ Basic request test passed: Response time {:?}, correct answer received",
         elapsed
     );
     Ok(())
@@ -776,7 +776,7 @@ async fn test_gemini_25_flash_streaming() -> anyhow::Result<()> {
     }
 
     println!(
-        "? Streaming request test passed: {} chunks received in {:?}",
+        "✓ Streaming request test passed: {} chunks received in {:?}",
         chunk_count, elapsed
     );
     Ok(())
@@ -840,7 +840,7 @@ async fn test_gemini_25_flash_speed() -> anyhow::Result<()> {
     );
 
     println!(
-        "? Speed verification test passed: Average time {:?}",
+        "✓ Speed verification test passed: Average time {:?}",
         avg_time
     );
     Ok(())
@@ -942,7 +942,7 @@ async fn test_gemini_25_flash_billing() -> anyhow::Result<()> {
         expected_cost
     );
 
-    println!("? Billing verification test passed: Pricing and cost calculation correct");
+    println!("✓ Billing verification test passed: Pricing and cost calculation correct");
     Ok(())
 }
 
@@ -1042,7 +1042,7 @@ async fn test_gemini_25_pro_billing() -> anyhow::Result<()> {
         expected_cost
     );
 
-    println!("? Billing verification test passed: Pricing and cost calculation correct");
+    println!("✓ Billing verification test passed: Pricing and cost calculation correct");
     Ok(())
 }
 
@@ -1206,7 +1206,7 @@ async fn test_gemini_multimodal_image_input() -> anyhow::Result<()> {
         content
     );
 
-    println!("? Image input test passed: Model successfully processed image_url content");
+    println!("✓ Image input test passed: Model successfully processed image_url content");
     Ok(())
 }
 
@@ -1317,10 +1317,10 @@ startxref
                 "Expected non-empty response for PDF query"
             );
         }
-        println!("? PDF input test passed: Model successfully processed PDF content");
+        println!("✓ PDF input test passed: Model successfully processed PDF content");
     } else {
         println!(
-            "? PDF input test skipped: Status {} (adaptor may not fully support PDF yet)",
+            "⚠ PDF input test skipped: Status {} (adaptor may not fully support PDF yet)",
             status
         );
     }
@@ -1416,10 +1416,10 @@ async fn test_gemini_multimodal_audio_input() -> anyhow::Result<()> {
                 "Expected non-empty response for audio query"
             );
         }
-        println!("? Audio input test passed: Model processed audio content");
+        println!("✓ Audio input test passed: Model processed audio content");
     } else {
         println!(
-            "? Audio input test skipped: Status {} (adaptor may not fully support audio yet)",
+            "⚠ Audio input test skipped: Status {} (adaptor may not fully support audio yet)",
             status
         );
     }
@@ -1559,7 +1559,7 @@ async fn test_gemini_audio_input_price_billing() -> anyhow::Result<()> {
     );
 
     println!(
-        "? Audio input price billing test passed: Audio pricing configured and verified correctly"
+        "✓ Audio input price billing test passed: Audio pricing configured and verified correctly"
     );
     Ok(())
 }
@@ -1653,7 +1653,7 @@ async fn test_gemini_multimodal_combined_input() -> anyhow::Result<()> {
     }
 
     println!(
-        "? Combined multimodal test passed: Model successfully processed text + image content"
+        "✓ Combined multimodal test passed: Model successfully processed text + image content"
     );
     Ok(())
 }
@@ -1816,7 +1816,7 @@ async fn test_gemini_25_flash_image_generation() -> anyhow::Result<()> {
 
     // Check for Gemini error response
     if let Some(error) = resp_json.get("error") {
-        println!("? Image generation returned an error: {:?}", error);
+        println!("⚠ Image generation returned an error: {:?}", error);
         // Model may not be available or API may not support image generation
         return Ok(());
     }
@@ -1885,11 +1885,11 @@ async fn test_gemini_25_flash_image_generation() -> anyhow::Result<()> {
     // Note: The model may return text only if image generation is not supported
     // This test verifies the passthrough mechanism works correctly
     if has_image {
-        println!("? Image generation test passed: Model returned image data");
+        println!("✓ Image generation test passed: Model returned image data");
     } else if has_text {
-        println!("? Image generation test partial: Model returned text only (image generation may not be supported for this model)");
+        println!("⚠ Image generation test partial: Model returned text only (image generation may not be supported for this model)");
     } else {
-        println!("? Image generation test: No image or text data in response");
+        println!("⚠ Image generation test: No image or text data in response");
     }
 
     // Check for usage metadata
@@ -1971,7 +1971,7 @@ async fn test_gemini_25_flash_image_via_chat_completions() -> anyhow::Result<()>
 
     // Check for error
     if let Some(error) = resp_json.get("error") {
-        println!("? API returned an error: {:?}", error);
+        println!("⚠ API returned an error: {:?}", error);
         return Ok(());
     }
 
@@ -1984,13 +1984,13 @@ async fn test_gemini_25_flash_image_via_chat_completions() -> anyhow::Result<()>
     // When using passthrough, response should be Gemini native format (candidates, not choices)
     // Check if this is passthrough mode (candidates) or converted (choices)
     if resp_json.get("candidates").is_some() {
-        println!("? Passthrough mode confirmed: Response uses Gemini native format (candidates)");
+        println!("✓ Passthrough mode confirmed: Response uses Gemini native format (candidates)");
 
         let parts = resp_json["candidates"][0]["content"]["parts"].as_array();
         if let Some(parts) = parts {
             for part in parts {
                 if part.get("inlineData").is_some() {
-                    println!("? Found image data in passthrough response");
+                    println!("✓ Found image data in passthrough response");
                 }
                 if part.get("text").is_some() {
                     println!(
@@ -2069,7 +2069,7 @@ async fn test_gemini_25_flash_image_editing() -> anyhow::Result<()> {
 
     // Handle error responses
     if let Some(error) = resp_json.get("error") {
-        println!("? API returned an error: {:?}", error);
+        println!("⚠ API returned an error: {:?}", error);
         return Ok(());
     }
 
@@ -2104,7 +2104,7 @@ async fn test_gemini_25_flash_image_editing() -> anyhow::Result<()> {
         }
     }
 
-    println!("? Conversational image editing test passed: Model processed inline image input");
+    println!("✓ Conversational image editing test passed: Model processed inline image input");
     Ok(())
 }
 
@@ -2184,11 +2184,11 @@ async fn test_gemini_response_modalities_passthrough() -> anyhow::Result<()> {
                     }
                 }
             }
-            println!("? {} modality test passed", description);
+            println!("✓ {} modality test passed", description);
         }
     }
 
-    println!("\n? responseModalities parameter passthrough test completed");
+    println!("\n✓ responseModalities parameter passthrough test completed");
     Ok(())
 }
 
@@ -2264,6 +2264,6 @@ async fn test_gemini_25_flash_image_pricing() -> anyhow::Result<()> {
         output_dollars
     );
 
-    println!("? Pricing configuration test passed");
+    println!("✓ Pricing configuration test passed");
     Ok(())
 }

@@ -101,6 +101,35 @@ pub enum Route {
     NotFoundPage { segments: Vec<String> },
 }
 
+/// Marker used by the LiveView shell to avoid injecting the stylesheet twice.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ExternalStylesProvided;
+
+pub(crate) fn should_inject_styles(is_desktop: bool, external_styles: bool) -> bool {
+    is_desktop || (cfg!(feature = "web") && !external_styles)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_inject_styles;
+
+    #[test]
+    fn desktop_always_injects_styles() {
+        assert!(should_inject_styles(true, false));
+    }
+
+    #[test]
+    fn externally_injected_styles_are_not_duplicated() {
+        assert!(!should_inject_styles(false, true));
+    }
+
+    #[cfg(feature = "web")]
+    #[test]
+    fn web_mode_injects_styles_when_shell_does_not() {
+        assert!(should_inject_styles(false, false));
+    }
+}
+
 #[component]
 pub fn App() -> Element {
     // Initialize i18n context
@@ -169,7 +198,7 @@ fn AppWithTray() -> Element {
     use_effect(move || {
         window_setup.set_maximized(true);
 
-        // ???????????
+        // 启动托盘应用在后台线程
         std::thread::spawn(move || {
             if let Err(e) = start_tray() {
                 eprintln!("Failed to start tray: {}", e);
@@ -177,7 +206,7 @@ fn AppWithTray() -> Element {
         });
     });
 
-    // ????????
+    // 轮询检查托盘操作
     use_effect(move || {
         let window_clone = window.clone();
         spawn(async move {
@@ -185,7 +214,7 @@ fn AppWithTray() -> Element {
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
                 if should_show_window() {
-                    // ??????
+                    // 强制显示窗口
                     window_clone.set_visible(false);
                     window_clone.set_visible(true);
                     window_clone.set_focus();

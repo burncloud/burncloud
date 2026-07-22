@@ -55,7 +55,7 @@ pub async fn spawn_app() -> String {
             };
         }
         if force_spawn {
-            println!("TEST: E2E_FORCE_SPAWN set ? spawning dedicated server (skip :3000 reuse)");
+            println!("TEST: E2E_FORCE_SPAWN set — spawning dedicated server (skip :3000 reuse)");
         }
 
         // 2. Locate Binary
