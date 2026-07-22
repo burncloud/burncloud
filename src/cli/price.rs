@@ -1,4 +1,4 @@
-// CLI command output parsing — HTTP response JSON — Value required; no feasible typed alternative.
+// CLI command output parsing ? HTTP response JSON ? Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
 use anyhow::Result;
@@ -18,6 +18,16 @@ use clap::ArgMatches;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
+
+fn with_internal_secret(
+    request: reqwest::RequestBuilder,
+    secret: Option<&str>,
+) -> reqwest::RequestBuilder {
+    match secret.filter(|value| !value.trim().is_empty()) {
+        Some(secret) => request.header("x-internal-secret", secret),
+        None => request,
+    }
+}
 
 /// Helper to convert f64 dollars to i64 nanodollars
 fn to_nano(price: f64) -> i64 {
@@ -181,7 +191,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 format!(" [{}]", region_str)
             };
             println!(
-                "✓ Price set for '{}': {} input={:.4}/1M, output={:.4}/1M{}",
+                "? Price set for '{}': {} input={:.4}/1M, output={:.4}/1M{}",
                 model, currency, input_price, output_price, region_display
             );
 
@@ -209,10 +219,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             if let Some(r) = region {
                 BillingPriceModel::delete_by_region(db, model, r).await?;
-                println!("✓ Deleted {} region price for '{}'", r, model);
+                println!("? Deleted {} region price for '{}'", r, model);
             } else {
                 BillingPriceModel::delete_all_for_model(db, model).await?;
-                println!("✓ All prices deleted for '{}'", model);
+                println!("? All prices deleted for '{}'", model);
             }
         }
         Some(("get", sub_m)) => {
@@ -335,7 +345,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     for tier in tiers {
                         let region = tier.region.as_deref().unwrap_or("universal");
                         let tier_end =
-                            tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                            tier.tier_end.map_or("?".to_string(), |e| format!("{}", e));
                         println!(
                             "  [{}] {}-{} tokens: {:.4}/{:.4} per 1M (in/out)",
                             region,
@@ -547,7 +557,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 println!("{}", "-".repeat(70));
                 for tier in tiers {
                     let region = tier.region.as_deref().unwrap_or("universal");
-                    let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                    let tier_end = tier.tier_end.map_or("?".to_string(), |e| format!("{}", e));
                     println!(
                         "{:<12} {:>12} {:>12} {:>15.4} {:>15.4}",
                         region,
@@ -871,7 +881,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                 }
             }
 
-            println!("✓ Import complete:");
+            println!("? Import complete:");
             println!("  Prices imported: {}", prices_imported);
             println!("  Tiered entries imported: {}", tiers_imported);
             if !errors.is_empty() {
@@ -1053,7 +1063,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 
             std::fs::write(Path::new(file_path), &output)?;
             println!(
-                "✓ Exported {} models to '{}'",
+                "? Exported {} models to '{}'",
                 config.models.len(),
                 file_path
             );
@@ -1067,7 +1077,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let config = match PricingConfig::from_json(&content) {
                 Ok(c) => c,
                 Err(e) => {
-                    println!("❌ JSON parsing error: {}", e);
+                    println!("? JSON parsing error: {}", e);
                     return Ok(());
                 }
             };
@@ -1082,10 +1092,10 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             match config.validate() {
                 Ok(warnings) => {
                     if warnings.is_empty() {
-                        println!("✅ Configuration is valid with no warnings.");
+                        println!("? Configuration is valid with no warnings.");
                     } else {
                         println!(
-                            "✅ Configuration is valid with {} warning(s):",
+                            "? Configuration is valid with {} warning(s):",
                             warnings.len()
                         );
                         println!();
@@ -1098,7 +1108,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     }
                 }
                 Err(e) => {
-                    println!("❌ Configuration is invalid:");
+                    println!("? Configuration is invalid:");
                     println!("  {}", e);
                 }
             }
@@ -1121,11 +1131,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let text = match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => resp.text().await?,
                 Ok(resp) => {
-                    eprintln!("❌ Server returned {}: {}", resp.status(), url);
+                    eprintln!("? Server returned {}: {}", resp.status(), url);
                     return Ok(());
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to fetch catalog: {}", e);
+                    eprintln!("? Failed to fetch catalog: {}", e);
                     return Ok(());
                 }
             };
@@ -1133,7 +1143,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let config = match PricingConfig::from_json(&text) {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("❌ Invalid catalog format: {}", e);
+                    eprintln!("? Invalid catalog format: {}", e);
                     return Ok(());
                 }
             };
@@ -1197,14 +1207,14 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
                     match BillingPriceModel::upsert(db, &input).await {
                         Ok(_) => ok += 1,
                         Err(e) => {
-                            eprintln!("  ⚠ {}/{}: {}", model_name, currency, e);
+                            eprintln!("  ? {}/{}: {}", model_name, currency, e);
                             err += 1;
                         }
                     }
                 }
             }
 
-            println!("✅ Sync complete: {} upserted, {} errors", ok, err);
+            println!("? Sync complete: {} upserted, {} errors", ok, err);
 
             // Notify running server to refresh its in-memory price cache.
             // If the server is not running this is a no-op (warning only).
@@ -1217,18 +1227,23 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
             let notify_client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(60))
                 .build()?;
-            match notify_client.post(&sync_endpoint).send().await {
+            let internal_secret = std::env::var("BURNCLOUD_INTERNAL_SECRET").ok();
+            let notify_request = with_internal_secret(
+                notify_client.post(&sync_endpoint),
+                internal_secret.as_deref(),
+            );
+            match notify_request.send().await {
                 Ok(resp) if resp.status().is_success() => {
-                    println!("✅ Server price cache refreshed.");
+                    println!("? Server price cache refreshed.");
                 }
                 Ok(resp) => {
                     eprintln!(
-                        "⚠ Server returned {} when refreshing cache (prices are in DB).",
+                        "? Server returned {} when refreshing cache (prices are in DB).",
                         resp.status()
                     );
                 }
                 Err(_) => {
-                    println!("ℹ Server not reachable — prices written to DB, cache refreshes on next startup.");
+                    println!("? Server not reachable ? prices written to DB, cache refreshes on next startup.");
                 }
             }
         }
@@ -1268,7 +1283,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
 
             for tier in tiers {
                 let region = tier.region.as_deref().unwrap_or("-");
-                let tier_end = tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                let tier_end = tier.tier_end.map_or("?".to_string(), |e| format!("{}", e));
                 // Convert nanodollars to dollars for display
                 let input_dollars = from_nano(tier.input_price);
                 let output_dollars = from_nano(tier.output_price);
@@ -1314,10 +1329,10 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
 
             BillingTieredPriceModel::upsert_tier(db, &input).await?;
             println!(
-                "✓ Tier added for '{}': {}-{} tokens at ${:.4}/${:.4} per 1M",
+                "? Tier added for '{}': {}-{} tokens at ${:.4}/${:.4} per 1M",
                 model,
                 tier_start,
-                tier_end.map_or("∞".to_string(), |e| format!("{}", e)),
+                tier_end.map_or("?".to_string(), |e| format!("{}", e)),
                 input_price,
                 output_price
             );
@@ -1338,7 +1353,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                 }
             }
 
-            println!("✓ Imported {} tiered pricing entries", count);
+            println!("? Imported {} tiered pricing entries", count);
         }
         Some(("delete-tiers", sub_m)) => {
             let model = sub_m
@@ -1347,7 +1362,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             let region = sub_m.get_one::<String>("region").map(|s| s.as_str());
 
             BillingTieredPriceModel::delete_tiers(db, model, region).await?;
-            println!("✓ Deleted tiered pricing for '{}'", model);
+            println!("? Deleted tiered pricing for '{}'", model);
         }
         Some(("check-tiered", sub_m)) => {
             let model = sub_m
@@ -1357,7 +1372,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             let has_tiered = BillingTieredPriceModel::has_tiered_pricing(db, model).await?;
 
             if has_tiered {
-                println!("✓ Model '{}' has tiered pricing configured", model);
+                println!("? Model '{}' has tiered pricing configured", model);
 
                 // Show the tiers
                 let tiers = BillingTieredPriceModel::get_tiers(db, model, None).await?;
@@ -1366,7 +1381,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                     for tier in tiers {
                         let region = tier.region.as_deref().unwrap_or("universal");
                         let tier_end =
-                            tier.tier_end.map_or("∞".to_string(), |e| format!("{}", e));
+                            tier.tier_end.map_or("?".to_string(), |e| format!("{}", e));
                         // Convert nanodollars to dollars for display
                         let input_dollars = from_nano(tier.input_price);
                         let output_dollars = from_nano(tier.output_price);
@@ -1378,7 +1393,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
                 }
             } else {
                 println!(
-                    "✗ Model '{}' does not have tiered pricing configured",
+                    "? Model '{}' does not have tiered pricing configured",
                     model
                 );
                 println!("  This model will use standard per-token pricing.");
@@ -1391,4 +1406,39 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_internal_secret;
+
+    #[test]
+    fn internal_request_includes_configured_secret() {
+        let request = with_internal_secret(
+            reqwest::Client::new().post("http://localhost/internal"),
+            Some("test-secret"),
+        )
+        .build()
+        .expect("request should build");
+
+        assert_eq!(
+            request
+                .headers()
+                .get("x-internal-secret")
+                .and_then(|value| value.to_str().ok()),
+            Some("test-secret")
+        );
+    }
+
+    #[test]
+    fn internal_request_omits_blank_secret() {
+        let request = with_internal_secret(
+            reqwest::Client::new().post("http://localhost/internal"),
+            Some("  "),
+        )
+        .build()
+        .expect("request should build");
+
+        assert!(!request.headers().contains_key("x-internal-secret"));
+    }
 }

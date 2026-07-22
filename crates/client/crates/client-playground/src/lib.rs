@@ -64,9 +64,9 @@ fn format_cost(usd: f64) -> String {
 fn format_cost_cny(usd: f64) -> String {
     let cny = usd * 7.2;
     if cny < 0.01 {
-        format!("≈ ¥{:.2}", cny)
+        format!("? ?{:.2}", cny)
     } else {
-        format!("≈ ¥{:.1}", cny)
+        format!("? ?{:.1}", cny)
     }
 }
 
@@ -117,8 +117,10 @@ pub fn Playground() -> Element {
     // Send message effect
     use_effect(move || {
         let _ = send_trigger();
-        let text = input_text.read().clone();
-        if text.is_empty() || sending() {
+        // Only send_trigger should resubscribe this effect. Reading the form
+        // state reactively would send a request as soon as the user types.
+        let text = input_text.peek().clone();
+        if text.is_empty() || *sending.peek() {
             return;
         }
 
@@ -135,15 +137,15 @@ pub fn Playground() -> Element {
         messages.write().push(user_msg);
         input_text.set(String::new());
 
-        let is_stream = stream_mode();
-        let bearer = selected_token();
-        let model = current_model();
-        let temp = temperature();
-        let max_tok = max_tokens();
+        let is_stream = *stream_mode.peek();
+        let bearer = selected_token.peek().clone();
+        let model = current_model.peek().clone();
+        let temp = *temperature.peek();
+        let max_tok = *max_tokens.peek();
 
         // Build PlaygroundMessage list from current messages
         let playground_msgs: Vec<PlaygroundMessage> = messages
-            .read()
+            .peek()
             .iter()
             .map(|m| PlaygroundMessage {
                 role: m.role.clone(),
@@ -153,7 +155,7 @@ pub fn Playground() -> Element {
 
         let config = PlaygroundConfig {
             model: model.clone(),
-            channel_id: Some(selected_channel()),
+            channel_id: Some(*selected_channel.peek()),
             temperature: Some(temp),
             max_tokens: Some(max_tok),
             stream: is_stream,
@@ -494,12 +496,12 @@ pub fn Playground() -> Element {
 
             // Token meter
             div { class: "bc-token-meter",
-                label { class: "config-label mb-0", "Usage · this session" }
+                label { class: "config-label mb-0", "Usage ? this session" }
 
                 div { class: "stat-card bc-stat-compact",
                     span { class: "stat-eyebrow", "TOKENS" }
                     div { class: "stat-value bc-heading-22px", "{total_tokens}" }
-                    span { class: "stat-foot", "{total_prompt_tokens} in · {total_completion_tokens} out" }
+                    span { class: "stat-foot", "{total_prompt_tokens} in ? {total_completion_tokens} out" }
                 }
 
                 div { class: "stat-card bc-stat-compact",
@@ -516,7 +518,7 @@ pub fn Playground() -> Element {
                         } else {
                             for trace in route_traces.read().iter() {
                                 div {
-                                    "→ ch:{trace.channel_id.as_deref().unwrap_or(\"?\")} · {trace.model_id.as_deref().unwrap_or(\"?\")}"
+                                    "? ch:{trace.channel_id.as_deref().unwrap_or(\"?\")} ? {trace.model_id.as_deref().unwrap_or(\"?\")}"
                                 }
                             }
                         }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use burncloud_auto_update::AutoUpdater;
+use burncloud_auto_update::{AutoUpdater, UpdateConfig};
 use burncloud_database::Database;
 use clap::{Arg, Command};
 use tracing::{error, info};
@@ -17,7 +17,7 @@ use super::user::handle_user_command;
 
 pub async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
-        .version("0.1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .about("AI model deployment and management platform")
         .subcommand_required(false)
         .subcommand(
@@ -851,7 +851,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                             Arg::new("rate")
                                 .long("rate")
                                 .required(true)
-                                .help("Exchange rate (e.g., 7.2 for USD→CNY)"),
+                                .help("Exchange rate (e.g., 7.2 for USD?CNY)"),
                         ),
                 )
                 .subcommand(
@@ -1107,9 +1107,21 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
                 ),
         );
 
-    let matches = app.try_get_matches_from(
+    let matches = match app.try_get_matches_from(
         std::iter::once("burncloud".to_string()).chain(args.iter().cloned()),
-    )?;
+    ) {
+        Ok(matches) => matches,
+        Err(error)
+            if matches!(
+                error.kind(),
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+            ) =>
+        {
+            error.print()?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
 
     match matches.subcommand() {
         Some(("update", sub_m)) => {
@@ -1184,21 +1196,21 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
 fn handle_update_command(check_only: bool) -> Result<()> {
     info!("Initializing auto-updater...");
 
-    let updater = AutoUpdater::with_default_config();
+    let updater = AutoUpdater::new(update_config());
 
     if check_only {
         println!("Checking for updates...");
         match updater.sync_check_for_updates() {
             Ok(true) => {
-                println!("✅ New version available!");
+                println!("? New version available!");
                 println!("Run 'burncloud update' to update to the latest version");
             }
             Ok(false) => {
-                println!("✅ Already up to date");
+                println!("? Already up to date");
             }
             Err(e) => {
                 error!("Update check failed: {}", e);
-                println!("❌ Update check failed: {}", e);
+                println!("? Update check failed: {}", e);
                 let (github_url, gitee_url) = updater.get_download_links();
                 println!("You can manually download the latest version from:");
                 println!("  GitHub: {}", github_url);
@@ -1210,12 +1222,12 @@ fn handle_update_command(check_only: bool) -> Result<()> {
         println!("Updating BurnCloud...");
         match updater.sync_update() {
             Ok(_) => {
-                println!("✅ Update successful!");
+                println!("? Update successful!");
                 println!("Please restart the application to use the new version");
             }
             Err(e) => {
                 error!("Update failed: {}", e);
-                println!("❌ Update failed: {}", e);
+                println!("? Update failed: {}", e);
                 let (github_url, gitee_url) = updater.get_download_links();
                 println!("You can manually download the latest version from:");
                 println!("  GitHub: {}", github_url);
@@ -1226,6 +1238,10 @@ fn handle_update_command(check_only: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn update_config() -> UpdateConfig {
+    UpdateConfig::default().with_current_version(env!("CARGO_PKG_VERSION"))
 }
 
 pub fn show_help() {
@@ -1259,4 +1275,15 @@ pub fn show_help() {
     println!("Examples:");
     println!("  burncloud client");
     println!("  burncloud update --check-only");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn updater_uses_root_package_version() {
+        assert_eq!(
+            super::update_config().current_version,
+            env!("CARGO_PKG_VERSION")
+        );
+    }
 }

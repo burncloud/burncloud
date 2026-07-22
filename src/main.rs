@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         env::set_var("RUST_LOG", "error");
     }
 
-    // 初始化日志（tracing-subscriber + 文件输出）
+    // ??????tracing-subscriber + ?????
     let _logging_guards = burncloud_server::logging::init_logging();
 
     match args.as_slice() {
@@ -70,13 +70,13 @@ fn main() -> Result<()> {
                     run_async_server()?;
                 }
                 _ => {
-                    // 处理其他命令
+                    // ??????
                     run_async_cli(&args[1..])?;
                 }
             }
         }
         [] => {
-            // 空参数数组 (理论上不应该发生)
+            // ????? (????????)
             crate::cli::commands::show_help();
         }
     }
@@ -107,13 +107,18 @@ fn ensure_master_key() {
     let key: [u8; 32] = rand::random();
     let hex_key = hex::encode(key);
 
-    // Locate .env: prefer CWD (where dotenvy reads), fall back to exe dir
-    let env_path = std::fs::canonicalize(".env").unwrap_or_else(|_| {
-        env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join(".env")))
-            .unwrap_or_else(|| Path::new(".env").to_path_buf())
-    });
+    // Locate .env: prefer CWD (where dotenvy reads), even before the file exists.
+    // This keeps service deployments from attempting to write beside a read-only binary.
+    let env_path = env::current_dir()
+        .map(|dir| dir.join(".env"))
+        .or_else(|_| {
+            env::current_exe().and_then(|path| {
+                path.parent()
+                    .map(|dir| dir.join(".env"))
+                    .ok_or_else(|| std::io::Error::other("executable has no parent directory"))
+            })
+        })
+        .unwrap_or_else(|_| Path::new(".env").to_path_buf());
 
     // Replace or append MASTER_KEY line in .env
     let line = format!("MASTER_KEY={hex_key}");
@@ -142,7 +147,7 @@ fn ensure_master_key() {
     };
 
     match std::fs::write(&env_path, content) {
-        Ok(_) => eprintln!("Generated MASTER_KEY → {}", env_path.display()),
+        Ok(_) => eprintln!("Generated MASTER_KEY ? {}", env_path.display()),
         Err(e) => eprintln!("Warning: failed to write .env: {e}"),
     }
 

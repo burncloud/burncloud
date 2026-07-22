@@ -15,6 +15,7 @@ use burncloud_service_user::UserService;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -42,7 +43,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         tracing::info!("Redis cache disabled");
     }
 
-    // 3. Data Plane Router (Fallback) — must be created first to get force_sync_tx
+    // 3. Data Plane Router (Fallback) ? must be created first to get force_sync_tx
     let (router_app, internal_app, force_sync_tx) = create_router_app(db.clone()).await?;
 
     let state = AppState {
@@ -86,7 +87,8 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         ))
         .layer(PropagateRequestIdLayer::new(x_request_id.clone()))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        .layer(CompressionLayer::new());
 
     Ok(app)
 }

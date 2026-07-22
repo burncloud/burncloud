@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-/// Internal tests for `database-setting` — SettingDatabase CRUD operations.
+/// Internal tests for `database-setting` ? SettingDatabase CRUD operations.
 ///
 /// Each test spins up an isolated SQLite temp-file database so tests are
 /// hermetic and never touch the user's default database.
@@ -8,10 +8,19 @@ use burncloud_database::create_database_with_url;
 use burncloud_database_sys::SettingDatabase;
 use tempfile::NamedTempFile;
 
+fn sqlite_url(path: &std::path::Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) && !normalized.starts_with('/') {
+        format!("sqlite:///{}?mode=rwc", normalized)
+    } else {
+        format!("sqlite://{}?mode=rwc", normalized)
+    }
+}
+
 /// Create an isolated `SettingDatabase` backed by a fresh SQLite temp file.
 async fn create_test_setting_db() -> (SettingDatabase, NamedTempFile) {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
-    let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
+    let url = sqlite_url(tmp.path());
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to connect to test database: {e}"));
@@ -189,7 +198,7 @@ async fn test_empty_string_value() {
 async fn test_value_with_special_characters() {
     let (sdb, _tmp) = create_test_setting_db().await;
 
-    let special = r#"{"key": "value", "emoji": "🔥", "newline": "\n"}"#;
+    let special = r#"{"key": "value", "emoji": "??", "newline": "\n"}"#;
     sdb.set("json-setting", special)
         .await
         .unwrap_or_else(|e| panic!("set special chars failed: {e}"));

@@ -1,4 +1,4 @@
-// HTTP client — raw API response parsing — Value required; no feasible typed alternative.
+// HTTP client ? raw API response parsing ? Value required; no feasible typed alternative.
 #![allow(clippy::disallowed_types)]
 
 use anyhow::Result;
@@ -8,10 +8,19 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 // Global singleton for API Client, configured for localhost by default
-pub static API_CLIENT: Lazy<ApiClient> = Lazy::new(|| {
-    let port = burncloud_common::constants::DEFAULT_PORT;
-    ApiClient::new(&format!("http://localhost:{}", port))
-});
+pub static API_CLIENT: Lazy<ApiClient> = Lazy::new(|| ApiClient::new(&local_server_base_url()));
+
+fn configured_server_port(value: Option<&str>) -> u16 {
+    value
+        .and_then(|port| port.parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .unwrap_or(burncloud_common::constants::DEFAULT_PORT)
+}
+
+fn local_server_base_url() -> String {
+    let port = configured_server_port(std::env::var("PORT").ok().as_deref());
+    format!("http://localhost:{port}")
+}
 
 #[derive(Clone)]
 pub struct ApiClient {
@@ -161,6 +170,7 @@ impl ChatChunk {
             .and_then(|c| c.delta.as_ref().and_then(|d| d.content.clone()))
     }
 
+
     /// Check if this is the [DONE] sentinel.
     pub fn is_done(text: &str) -> bool {
         text.trim() == "data: [DONE]" || text.trim() == "[DONE]"
@@ -185,10 +195,8 @@ impl ApiClient {
 
     /// Build the data-plane URL for chat completions (no /console prefix).
     fn chat_completions_url(&self) -> String {
-        let port = burncloud_common::constants::DEFAULT_PORT;
-        format!("http://localhost:{}/v1/chat/completions", port)
+        format!("{}/v1/chat/completions", self.server_root())
     }
-
 
     /// Get the stored authentication token from ClientState
     fn get_auth_token() -> Option<String> {
@@ -410,18 +418,18 @@ impl ApiClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("网络错误: {}", e))?;
+            .map_err(|e| format!("????: {}", e))?;
 
         let json: AuthResult = resp
             .json()
             .await
-            .map_err(|e| format!("响应解析错误: {}", e))?;
+            .map_err(|e| format!("??????: {}", e))?;
 
         if json.success {
             json.data
-                .ok_or_else(|| "注册成功但未返回用户数据".to_string())
+                .ok_or_else(|| "????????????".to_string())
         } else {
-            Err(json.message.unwrap_or_else(|| "注册失败".to_string()))
+            Err(json.message.unwrap_or_else(|| "????".to_string()))
         }
     }
 
@@ -443,7 +451,7 @@ impl ApiClient {
         if json["success"].as_bool().unwrap_or(false) {
             Ok(json["data"]["available"].as_bool().unwrap_or(false))
         } else {
-            Err(json["message"].as_str().unwrap_or("检查失败").to_string())
+            Err(json["message"].as_str().unwrap_or("????").to_string())
         }
     }
 
@@ -703,5 +711,27 @@ impl ApiClient {
         }
 
         Ok((usage, trace))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{configured_server_port, ApiClient};
+
+    #[test]
+    fn configured_server_port_uses_valid_nonzero_values() {
+        assert_eq!(configured_server_port(Some("8080")), 8080);
+        assert_eq!(configured_server_port(Some("0")), 3000);
+        assert_eq!(configured_server_port(Some("invalid")), 3000);
+        assert_eq!(configured_server_port(None), 3000);
+    }
+
+    #[test]
+    fn chat_completions_url_uses_the_client_server_root() {
+        let client = ApiClient::new("http://localhost:8080/console");
+        assert_eq!(
+            client.chat_completions_url(),
+            "http://localhost:8080/v1/chat/completions"
+        );
     }
 }

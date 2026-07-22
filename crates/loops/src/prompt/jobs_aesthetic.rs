@@ -1,3 +1,6 @@
+// Prompt artifacts aggregate heterogeneous external JSON that has no stable domain schema.
+#![allow(clippy::disallowed_types)]
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -129,7 +132,7 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
         input.root.display()
     ));
     lines.push(format!(
-        "Completed pages (frozen — observers can preview these): {completed_note}"
+        "Completed pages (frozen ? observers can preview these): {completed_note}"
     ));
     lines.push(
         "When this page passes review, the loop advances to the next page automatically."
@@ -138,7 +141,7 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
     lines.push(String::new());
     lines.push("## Voice".to_string());
     lines.push(
-        "You are Steve Jobs reviewing this screen. Use your own words — direct, impatient with \
+        "You are Steve Jobs reviewing this screen. Use your own words ? direct, impatient with \
          mediocrity, obsessed with simplicity. Do not recite checklists, dimension codes, or \
          canned quotes. The failures below are facts; your critique and fixes are yours."
             .to_string(),

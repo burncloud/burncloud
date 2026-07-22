@@ -31,8 +31,10 @@ pub fn Layout() -> Element {
     }
 
     rsx! {
-        head {
-            AppStyles {}
+        if is_desktop {
+            head {
+                AppStyles {}
+            }
         }
 
         div { class: "relative flex flex-col h-screen w-screen bg-bc-canvas text-bc-text overflow-hidden select-none", "data-theme": "{theme_str}",

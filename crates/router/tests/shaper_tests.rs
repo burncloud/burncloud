@@ -1,23 +1,23 @@
 //! L2 Shaper integration tests (issue #151).
 //!
 //! Covers the 10 cases from the audit review:
-//! - T1/T2: startup `configure_from_db` (SQLite path; T2 PG variant noted —
+//! - T1/T2: startup `configure_from_db` (SQLite path; T2 PG variant noted ?
 //!   the SELECT is dialect-neutral, no `ph()` placeholders, so PG correctness
 //!   follows from T1+T6 SQLite verification).
-//! - T3: `try_consume → OwnBucket` admit path.
-//! - T4: `try_consume → Rejected` after the bucket drains.
-//! - T5: failover loop's "skip rejected, try next" semantic — one channel
+//! - T3: `try_consume ? OwnBucket` admit path.
+//! - T4: `try_consume ? Rejected` after the bucket drains.
+//! - T5: failover loop's "skip rejected, try next" semantic ? one channel
 //!   exhausted, the next admits.
 //! - T6 (issue acceptance): full HTTP request through the failover loop with
 //!   a single low-cap channel; second request returns
 //!   `503 + X-Rejected-By: shaper + Retry-After: 60`.
 //! - T7: `BudgetGuard::commit(actual_tpm)` with `actual < est` refunds the
-//!   over-estimate (`est − actual`) and prevents `Drop` from refunding again.
+//!   over-estimate (`est ? actual`) and prevents `Drop` from refunding again.
 //! - T8 (FM4): `tokio::time::timeout` cancels a future holding a
 //!   `BudgetGuard`; `Drop` fires with `committed = false` and the bucket
 //!   recovers the full `est_tpm`.
-//! - T9: unconfigured channel (rpm_cap = NULL) — `is_configured` returns
-//!   false; the failover loop's旁路 path increments `fail_open_count` and
+//! - T9: unconfigured channel (rpm_cap = NULL) ? `is_configured` returns
+//!   false; the failover loop's?? path increments `fail_open_count` and
 //!   exposes it via `/console/internal/health`.
 //! - T10: `InMemoryBudget::configure` with `reservation` sum != 1.0 falls
 //!   back to `ChannelReservation::default()` (FM8).
@@ -43,16 +43,16 @@ use burncloud_router::rate_budget::{
 use common::{insert_router_token, setup_db, start_test_server};
 
 // ---------------------------------------------------------------------------
-// Unit-level tests — direct InMemoryBudget / BudgetGuard public API.
+// Unit-level tests ? direct InMemoryBudget / BudgetGuard public API.
 // ---------------------------------------------------------------------------
 
-/// T1 — `InMemoryBudget::configure` round-trips DB-loaded values through
+/// T1 ? `InMemoryBudget::configure` round-trips DB-loaded values through
 /// `snapshot()`. Mirrors the SQL-load path in
 /// `configure_rate_budget_from_db`: `(rpm_cap, tpm_cap, reservation_*)` from
-/// `channel_providers` → `configure(channel_id, ...)` → bucket has
+/// `channel_providers` ? `configure(channel_id, ...)` ? bucket has
 /// per-color reserved capacity matching the policy.
 ///
-/// The full DB → bucket integration is exercised by T6 (E2E), which would
+/// The full DB ? bucket integration is exercised by T6 (E2E), which would
 /// fail if `configure_from_db` weren't called or routed values incorrectly.
 #[test]
 fn t1_startup_configure_loads_caps_and_reservations() {
@@ -83,11 +83,11 @@ fn t1_startup_configure_loads_caps_and_reservations() {
     assert_eq!(snap.tpm_remaining_red, 20_000);
 }
 
-/// T2 — PG dialect parity is a documentation contract. The SQL in
+/// T2 ? PG dialect parity is a documentation contract. The SQL in
 /// `configure_rate_budget_from_db` is `SELECT id, rpm_cap, tpm_cap,
 /// reservation_green, reservation_yellow, reservation_red FROM
 /// channel_providers` with **no parameter placeholders** and **no quoted
-/// identifiers** — it parses identically on PG and SQLite. T1 (above) and
+/// identifiers** ? it parses identically on PG and SQLite. T1 (above) and
 /// T6 (HTTP E2E) exercise the same code path on SQLite; PG behavior is
 /// guaranteed by the dialect-neutral query.
 #[test]
@@ -103,7 +103,7 @@ fn t2_configure_from_db_sql_is_dialect_neutral() {
     assert!(!pg_neutral_sql.contains('"'));
 }
 
-/// T3 — `try_consume` admits a Yellow request via OwnBucket when the yellow
+/// T3 ? `try_consume` admits a Yellow request via OwnBucket when the yellow
 /// reservation has capacity.
 #[test]
 fn t3_admit_via_own_bucket() {
@@ -114,7 +114,7 @@ fn t3_admit_via_own_bucket() {
     assert_eq!(outcome.as_label(), "shaper_own");
 }
 
-/// T4 — Repeated `try_consume` drains the bucket; once Yellow + Green are
+/// T4 ? Repeated `try_consume` drains the bucket; once Yellow + Green are
 /// both empty (Yellow's only borrow source), further Yellow requests are
 /// `Rejected`.
 #[test]
@@ -139,8 +139,8 @@ fn t4_rejected_when_yellow_and_green_drained() {
     assert_eq!(second.as_label(), "shaper_reject");
 }
 
-/// T5 — Failover semantics: one channel exhausted, the next admits. Mirrors
-/// the loop body's "Rejected → continue → next candidate" path.
+/// T5 ? Failover semantics: one channel exhausted, the next admits. Mirrors
+/// the loop body's "Rejected ? continue ? next candidate" path.
 #[test]
 fn t5_skip_rejected_then_admit_next_channel() {
     let budget = InMemoryBudget::new();
@@ -165,7 +165,7 @@ fn t5_skip_rejected_then_admit_next_channel() {
     assert_eq!(admitted, ConsumeOutcome::OwnBucket);
 }
 
-/// T7 — `BudgetGuard::commit(actual_tpm)` with `actual < est` refunds the
+/// T7 ? `BudgetGuard::commit(actual_tpm)` with `actual < est` refunds the
 /// over-estimate. After commit, the bucket has `(rpm_cap - 1)` RPM remaining
 /// (consumed 1 attempt) but TPM has only `actual_tpm` consumed (the rest
 /// was refunded).
@@ -181,7 +181,7 @@ fn t7_commit_refunds_overestimate() {
     let snap_after_consume = budget.snapshot(1).expect("snapshot");
     assert_eq!(snap_after_consume.tpm_remaining_yellow, 40_000 - est_tpm);
 
-    // commit with actual = 200 → refund 800.
+    // commit with actual = 200 ? refund 800.
     let actual_tpm: u64 = 200;
     let guard = BudgetGuard::new(&budget, 1, TrafficColor::Yellow, est_tpm);
     guard.commit(actual_tpm);
@@ -191,7 +191,7 @@ fn t7_commit_refunds_overestimate() {
     assert_eq!(snap_after_commit.tpm_remaining_yellow, 40_000 - actual_tpm);
 }
 
-/// T8 (FM4) — `tokio::time::timeout` cancels a future that holds a
+/// T8 (FM4) ? `tokio::time::timeout` cancels a future that holds a
 /// `BudgetGuard`; the guard's `Drop` fires with `committed = false` and the
 /// bucket recovers the full `est_tpm`. Without this RAII, a client cancel
 /// during `.await` would permanently leak `est_tpm` of bucket capacity.
@@ -227,14 +227,14 @@ async fn t8_drop_refunds_full_est_on_timeout_cancel() {
     );
 }
 
-/// T10 (FM8) — `InMemoryBudget::configure` with an invalid reservation
+/// T10 (FM8) ? `InMemoryBudget::configure` with an invalid reservation
 /// (sum != 1.0) silently falls back to the default 0.4/0.4/0.2 instead of
 /// silently producing skewed buckets. The fallback is observable via
 /// `snapshot()` having the default per-color shares.
 #[test]
 fn t10_invalid_reservation_falls_back_to_default() {
     let budget = InMemoryBudget::new();
-    // Sum = 1.5 — invalid.
+    // Sum = 1.5 ? invalid.
     let bad = ChannelReservation {
         green: 0.5,
         yellow: 0.5,
@@ -250,7 +250,7 @@ fn t10_invalid_reservation_falls_back_to_default() {
 }
 
 // ---------------------------------------------------------------------------
-// HTTP E2E tests — full failover loop integration via mock-fixture DB.
+// HTTP E2E tests ? full failover loop integration via mock-fixture DB.
 // ---------------------------------------------------------------------------
 
 /// Insert a `billing_prices` row so the preflight billing check
@@ -281,7 +281,7 @@ async fn grant_unlimited_quota(pool: &sqlx::AnyPool, key: &str) -> anyhow::Resul
 }
 
 /// Insert a `channel_providers` + `channel_abilities` pair so the model
-/// router can resolve `model` → `channel_id`. `rpm_cap` / `tpm_cap` /
+/// router can resolve `model` ? `channel_id`. `rpm_cap` / `tpm_cap` /
 /// `reservation_*` are passed straight through to the L2 Shaper config.
 #[allow(clippy::too_many_arguments)]
 async fn seed_channel(
@@ -327,7 +327,7 @@ async fn seed_channel(
     Ok(())
 }
 
-/// T6 (issue acceptance) — single channel pre-configured to reject Yellow
+/// T6 (issue acceptance) ? single channel pre-configured to reject Yellow
 /// requests immediately (rpm_cap = 1, reservation = all-Red so Yellow has no
 /// own bucket and no Green to borrow from). The shaper rejects on first
 /// admit attempt; with only one candidate, the failover loop falls through
@@ -347,7 +347,7 @@ async fn t6_all_candidates_rejected_returns_503_x_rejected_by_shaper() -> anyhow
 
     // Channel cap = 1 RPM with all capacity in Red. Yellow request can
     // only consume Yellow (own=0) or borrow Green (also 0); Red is NOT a
-    // borrow source for Yellow → Rejected on first try.
+    // borrow source for Yellow ? Rejected on first try.
     seed_channel(
         &pool,
         9_001,
@@ -403,8 +403,8 @@ async fn t6_all_candidates_rejected_returns_503_x_rejected_by_shaper() -> anyhow
     Ok(())
 }
 
-/// T9 — Channel without rpm_cap (NULL) goes through the failover loop's
-/// fail-open旁路: `is_configured` returns false, `fail_open_count` is
+/// T9 ? Channel without rpm_cap (NULL) goes through the failover loop's
+/// fail-open??: `is_configured` returns false, `fail_open_count` is
 /// incremented, and the iteration's `iter_label` is `shaper_unconfigured`.
 /// The `/console/internal/health` endpoint surfaces the counter so admins
 /// can spot silently-permissive channels (audit FM2).
@@ -418,7 +418,7 @@ async fn t9_unconfigured_channel_increments_fail_open_count() -> anyhow::Result<
     let (db, pool, db_url) = setup_db().await?;
 
     seed_price(&pool, "shaper-unconfigured-model").await?;
-    // No rpm_cap → unconfigured → shaper bypasses, fail-open.
+    // No rpm_cap ? unconfigured ? shaper bypasses, fail-open.
     seed_channel(
         &pool,
         9_002,
@@ -442,7 +442,7 @@ async fn t9_unconfigured_channel_increments_fail_open_count() -> anyhow::Result<
         .build()?;
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
 
-    // Fire one request — it'll fail at the upstream HTTP call (dead host),
+    // Fire one request ? it'll fail at the upstream HTTP call (dead host),
     // but the shaper fail-open branch will still have run + incremented
     // fail_open_count.
     let _ = client
@@ -456,9 +456,14 @@ async fn t9_unconfigured_channel_increments_fail_open_count() -> anyhow::Result<
         .send()
         .await;
 
-    // Check /console/internal/health — fail_open_count must be ≥ 1.
+    // Check /console/internal/health ? fail_open_count must be ? 1.
     let health_resp = client
         .get(format!("http://127.0.0.1:{port}/console/internal/health"))
+        .header(
+            "x-internal-secret",
+            std::env::var("BURNCLOUD_INTERNAL_SECRET")
+                .unwrap_or_else(|_| "burncloud-test-internal-secret".to_string()),
+        )
         .send()
         .await?;
     assert_eq!(health_resp.status().as_u16(), 200);

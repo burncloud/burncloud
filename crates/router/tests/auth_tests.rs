@@ -11,7 +11,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_test_server};
+use common::{insert_test_channel, setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
@@ -30,6 +30,18 @@ async fn start_mock_upstream(listener: tokio::net::TcpListener) {
         }
 
         serde_json::json!({
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "mock response"},
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 1,
+                "completion_tokens": 1,
+                "total_tokens": 2
+            },
             "headers": header_map,
             "data": body,
             "json": serde_json::from_str::<serde_json::Value>(&body).ok()
@@ -124,48 +136,30 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
         start_mock_upstream(listener).await;
     });
 
-    let id = "deepseek-test";
+    let id = 30_201;
     let name = "DeepSeek Test";
     let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
     let api_key = "sk-deepseek-mock-key";
-    let match_path = "/v1/chat/completions/test-deepseek";
-    let auth_type = "DeepSeek";
-
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            match_path = excluded.match_path
-        "#,
-    )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .execute(&pool)
-    .await?;
+    let model = "deepseek-test-model";
+    insert_test_channel(&pool, id, 43, name, &base_url, api_key, model, "default").await?;
 
     let port = 3009;
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}{}", port, match_path);
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
 
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .json(&json!({"content": "deepseek body"}))
+        .json(&json!({"model": model, "messages": [{"role": "user", "content": "deepseek body"}]}))
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await?;
+    let status = resp.status();
+    let response_body = resp.text().await?;
+    assert_eq!(status, 200, "router response: {response_body}");
+    let json: serde_json::Value = serde_json::from_str(&response_body)?;
 
     let headers = json
         .get("headers")
@@ -197,48 +191,30 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
         start_mock_upstream(listener).await;
     });
 
-    let id = "qwen-test";
+    let id = 30_211;
     let name = "Qwen Test";
     let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
     let api_key = "sk-qwen-mock-key";
-    let match_path = "/api/v1/services/aigc/text-generation/generation/test-qwen";
-    let auth_type = "Qwen";
-
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            match_path = excluded.match_path
-        "#,
-    )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .execute(&pool)
-    .await?;
+    let model = "qwen-test-model";
+    insert_test_channel(&pool, id, 17, name, &base_url, api_key, model, "default").await?;
 
     let port = 3010;
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}{}", port, match_path);
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
 
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .json(&json!({"content": "qwen body"}))
+        .json(&json!({"model": model, "messages": [{"role": "user", "content": "qwen body"}]}))
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await?;
+    let status = resp.status();
+    let response_body = resp.text().await?;
+    assert_eq!(status, 200, "router response: {response_body}");
+    let json: serde_json::Value = serde_json::from_str(&response_body)?;
 
     let headers = json
         .get("headers")

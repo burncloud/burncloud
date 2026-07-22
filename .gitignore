@@ -12,6 +12,7 @@
 !/.gitattributes
 !/.gitignore
 !/Cargo.toml
+!/Cargo.lock
 !/README.md
 !/clippy.toml
 !/deny.toml
@@ -28,10 +29,9 @@
 crates/tests/target/
 **/*.rs.bk
 *.pdb
-Cargo.lock
 
 # Tailwind CSS standalone CLI (downloaded locally, invoked by build.rs)
-# See crates/client/build.rs — contributors download the binary to this path.
+# See crates/client/build.rs ? contributors download the binary to this path.
 /crates/client/tailwindcss
 /crates/client/tailwindcss.exe
 

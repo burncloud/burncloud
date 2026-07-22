@@ -12,6 +12,7 @@
 )]
 use crate::common::spawn_app;
 use burncloud_tests::TestClient;
+use serde_json::json;
 
 #[tokio::test]
 async fn test_get_system_metrics() -> anyhow::Result<()> {
@@ -20,15 +21,21 @@ async fn test_get_system_metrics() -> anyhow::Result<()> {
     let base_url = spawn_app().await;
 
     let client = TestClient::new(&base_url);
-
-    // We'll try to fetch. If it's 401, we know we need auth.
-    // But since it FAILED with 401, let's fix it by assuming we need one.
-    // However, burncloud's default setup usually has a demo user.
-    // Let's try to add a bearer token.
-    // Note: In a real test env, we should create a user/token first, but for now let's try to see if just adding *any* token works if the auth middleware just checks for presence, or if we need a specific one.
-    // Actually, looking at `burncloud_database_router::RouterDatabase::init`, it inserts `sk-burncloud-demo`.
-
-    let client = client.with_token("sk-burncloud-demo");
+    let username = format!("monitor-test-{}", uuid::Uuid::new_v4());
+    let register_res = client
+        .post(
+            "/api/auth/register",
+            &json!({
+                "username": username,
+                "password": "MonitorTest123!",
+                "email": format!("{}@example.com", username),
+            }),
+        )
+        .await?;
+    let token = register_res["data"]["token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("registration response did not include a token"))?;
+    let client = TestClient::new(&base_url).with_token(token);
 
     // 2. GET /console/api/monitor
     let json = client.get("/console/api/monitor").await?;

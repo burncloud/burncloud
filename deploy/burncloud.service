@@ -1,0 +1,27 @@
+[Unit]
+Description=BurnCloud LLM gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=burncloud
+Group=burncloud
+WorkingDirectory=/var/lib/burncloud
+StateDirectory=burncloud
+EnvironmentFile=-/etc/burncloud/burncloud.env
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=RUST_LOG=info
+ExecStart=/usr/local/bin/burncloud server
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/burncloud
+
+[Install]
+WantedBy=multi-user.target

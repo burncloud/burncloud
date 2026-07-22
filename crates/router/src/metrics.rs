@@ -47,8 +47,7 @@ pub static REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
         prometheus::Opts::new(
             "burncloud_requests_total",
             "Total number of requests processed",
-        )
-        .namespace("burncloud"),
+        ),
         &["status"],
     )
     .expect("Failed to create REQUESTS_TOTAL counter");
@@ -65,7 +64,6 @@ pub static REQUESTS_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
             "burncloud_requests_duration_seconds",
             "Request latency in seconds",
         )
-        .namespace("burncloud")
         .buckets(vec![
             0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0,
         ]),
@@ -84,8 +82,7 @@ pub static REQUESTS_IN_FLIGHT: Lazy<IntGaugeVec> = Lazy::new(|| {
         prometheus::Opts::new(
             "burncloud_requests_in_flight",
             "Number of requests currently being processed",
-        )
-        .namespace("burncloud"),
+        ),
         &["endpoint"],
     )
     .expect("Failed to create REQUESTS_IN_FLIGHT gauge");
@@ -101,8 +98,7 @@ pub static REQUESTS_BY_MODEL: Lazy<IntCounterVec> = Lazy::new(|| {
         prometheus::Opts::new(
             "burncloud_requests_by_model",
             "Number of requests per model",
-        )
-        .namespace("burncloud"),
+        ),
         &["model"],
     )
     .expect("Failed to create REQUESTS_BY_MODEL counter");
@@ -118,8 +114,7 @@ pub static REQUESTS_BY_CHANNEL: Lazy<IntCounterVec> = Lazy::new(|| {
         prometheus::Opts::new(
             "burncloud_requests_by_channel",
             "Number of requests per channel",
-        )
-        .namespace("burncloud"),
+        ),
         &["channel_id", "channel_name"],
     )
     .expect("Failed to create REQUESTS_BY_CHANNEL counter");
@@ -179,8 +174,7 @@ pub static CHANNEL_STATUS: Lazy<IntGaugeVec> = Lazy::new(|| {
         prometheus::Opts::new(
             "burncloud_channel_status",
             "Channel status (1=healthy, 0=unhealthy)",
-        )
-        .namespace("burncloud"),
+        ),
         &["channel_id", "channel_name"],
     )
     .expect("Failed to create CHANNEL_STATUS gauge");
@@ -196,8 +190,7 @@ pub static CHANNEL_ERRORS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
         prometheus::Opts::new(
             "burncloud_channel_errors_total",
             "Total number of channel errors",
-        )
-        .namespace("burncloud"),
+        ),
         &["channel_id", "channel_name", "error_type"],
     )
     .expect("Failed to create CHANNEL_ERRORS_TOTAL counter");
@@ -214,7 +207,6 @@ pub static CHANNEL_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
             "burncloud_channel_latency_seconds",
             "Channel request latency in seconds",
         )
-        .namespace("burncloud")
         .buckets(vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]),
         &["channel_id", "channel_name"],
     )
@@ -475,6 +467,7 @@ mod tests {
         // Initialize the metrics by accessing them
         let _ = &*REQUESTS_TOTAL;
         set_enabled(true);
+        record_request("success");
         let output = export();
         assert!(output.contains("burncloud_requests_total"));
     }

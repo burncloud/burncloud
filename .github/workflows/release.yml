@@ -91,23 +91,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Update Cargo.toml version
+      - name: Verify release version
         run: |
           $version = "${{ needs.check-version.outputs.version }}"
           $version = $version -replace '^v', ''
-
-          # Update root Cargo.toml
-          (Get-Content Cargo.toml) -replace 'version = "0\.1\.0"', "version = `"$version`"" | Set-Content Cargo.toml
-
-          # Update all crate Cargo.toml files
-          Get-ChildItem -Path "crates" -Recurse -Name "Cargo.toml" | ForEach-Object {
-            $file = "crates/$_"
-            (Get-Content $file) -replace 'version = "0\.1\.0"', "version = `"$version`"" | Set-Content $file
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          $current = ($metadata.packages | Where-Object { $_.name -eq "burncloud" }).version
+          if ($current -ne $version) {
+            throw "Release tag $version does not match burncloud package version $current"
           }
 
       - name: Build release binary
         run: |
-          cargo build --release --bin burncloud
+          cargo build --release --locked --bin burncloud
 
       - name: Create artifacts directory
         run: mkdir artifacts
@@ -156,8 +152,63 @@ jobs:
           name: windows-artifacts
           path: artifacts/*
 
+  build-linux:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Verify release version
+        shell: bash
+        run: |
+          version="${{ needs.check-version.outputs.version }}"
+          version="${version#v}"
+          current="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "burncloud"))')"
+          if [ "$current" != "$version" ]; then
+            echo "Release tag $version does not match burncloud package version $current" >&2
+            exit 1
+          fi
+
+      - name: Build release binary
+        run: cargo build --release --locked --bin burncloud
+
+      - name: Package Linux archive
+        shell: bash
+        run: |
+          version="${{ needs.check-version.outputs.version }}"
+          target="x86_64-unknown-linux-gnu"
+          archive_name="burncloud-${version}-${target}"
+          mkdir -p "${archive_name}"
+          install -m 0755 target/release/burncloud "${archive_name}/burncloud"
+          install -m 0644 deploy/burncloud.service "${archive_name}/burncloud.service"
+          tar -czf "${archive_name}.tar.gz" "${archive_name}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: burncloud-*.tar.gz
+
   create-release:
-    needs: [check-version, build-windows]
+    needs: [check-version, build-windows, build-linux]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: windows-latest
 
@@ -170,7 +221,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: windows-artifacts
-          path: artifacts/
+          path: artifacts/windows
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+          path: artifacts/linux
 
       - name: Generate changelog
         id: changelog
@@ -243,7 +300,8 @@ jobs:
           prerelease: false
           fail_on_unmatched_files: true
           files: |
-            artifacts/*.zip
+            artifacts/windows/*.zip
+            artifacts/linux/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -257,9 +315,9 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ needs.create-release.result }}" -eq "success") {
-            echo "✅ Release ${{ needs.check-version.outputs.version }} created successfully!"
-            echo "🎉 Windows binaries are now available for download."
+            echo "? Release ${{ needs.check-version.outputs.version }} created successfully!"
+            echo "?? Windows binaries are now available for download."
           } else {
-            echo "❌ Release creation failed."
+            echo "? Release creation failed."
             exit 1
           }

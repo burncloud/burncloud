@@ -271,16 +271,16 @@ impl ProbeScheduler {
 
         tokio::spawn(async move {
             let mut ticker = interval(Duration::from_secs(10));
-            
+
             while running.load(Ordering::Relaxed) {
                 ticker.tick().await;
-                
+
                 // In a real implementation, this would:
                 // 1. Get all channels with Half-Open breakers
                 // 2. For each channel, check if probing is needed
                 // 3. Send probe request through the appropriate adaptor
                 // 4. Record the result
-                
+
                 tracing::debug!("Probe scheduler tick");
             }
         });
@@ -314,18 +314,18 @@ mod tests {
         let manager = HealthProbeManager::with_defaults();
         let channel_id = 1;
 
-        // Initial state
-        assert!(manager.should_probe(channel_id, &SmartCircuitBreaker::with_defaults()).await);
-
-        // Start probe
-        manager.start_probe(channel_id).await;
-
-        // Should not probe while probing
         let mut breaker = SmartCircuitBreaker::with_defaults();
-        // Force to HalfOpen
-        breaker.trip("test", Duration::from_secs(60));
-        // Need to wait for half-open transition
-        
+        // A closed circuit is not eligible for a health probe.
+        assert!(!manager.should_probe(channel_id, &breaker).await);
+
+        // Force an immediately eligible Half-Open state.
+        breaker.trip("test", Duration::ZERO);
+        assert!(manager.should_probe(channel_id, &breaker).await);
+
+        // A channel cannot be probed concurrently.
+        manager.start_probe(channel_id).await;
+        assert!(!manager.should_probe(channel_id, &breaker).await);
+
         // Record success
         let result = ProbeResult {
             channel_id,
@@ -336,7 +336,7 @@ mod tests {
             error: None,
             timestamp: 0,
         };
-        
+
         let action = manager.record_probe_result(result).await;
         assert_eq!(action, ProbeAction::CloseCircuit);
     }
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn test_probe_model_selection() {
         let manager = HealthProbeManager::with_defaults();
-        
+
         // Should select first preferred model
         let models = vec!["gpt-3.5-turbo".to_string(), "gpt-4".to_string()];
         let selected = manager.get_probe_model(&models);

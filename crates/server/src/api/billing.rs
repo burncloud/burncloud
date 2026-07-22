@@ -1,4 +1,4 @@
-//! Public billing API — `GET /api/billing/summary`
+//! Public billing API ? `GET /api/billing/summary`
 //!
 //! Extracted from `log.rs` so billing routes live in their own module.
 //! The internal console endpoint (`/console/internal/billing/summary`) stays
@@ -23,8 +23,7 @@ struct BillingSummaryParams {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/billing/summary", get(billing_summary_handler))
+    Router::new().route("/api/billing/summary", get(billing_summary_handler))
 }
 
 async fn billing_summary_handler(

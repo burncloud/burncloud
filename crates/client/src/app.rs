@@ -154,6 +154,11 @@ pub fn launch_gui_with_tray() {
         .launch(AppWithTray);
 }
 
+#[cfg(feature = "web")]
+pub fn launch_web() {
+    dioxus::LaunchBuilder::web().launch(App);
+}
+
 #[cfg(all(feature = "desktop", target_os = "windows"))]
 #[component]
 fn AppWithTray() -> Element {
@@ -164,7 +169,7 @@ fn AppWithTray() -> Element {
     use_effect(move || {
         window_setup.set_maximized(true);
 
-        // 启动托盘应用在后台线程
+        // ???????????
         std::thread::spawn(move || {
             if let Err(e) = start_tray() {
                 eprintln!("Failed to start tray: {}", e);
@@ -172,7 +177,7 @@ fn AppWithTray() -> Element {
         });
     });
 
-    // 轮询检查托盘操作
+    // ????????
     use_effect(move || {
         let window_clone = window.clone();
         spawn(async move {
@@ -180,7 +185,7 @@ fn AppWithTray() -> Element {
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
                 if should_show_window() {
-                    // 强制显示窗口
+                    // ??????
                     window_clone.set_visible(false);
                     window_clone.set_visible(true);
                     window_clone.set_focus();

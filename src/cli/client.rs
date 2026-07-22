@@ -15,6 +15,13 @@ pub struct ApiClient {
     config_path: PathBuf,
 }
 
+fn default_base_url() -> String {
+    std::env::var("BURNCLOUD_SERVER_URL").unwrap_or_else(|_| {
+        let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+        format!("http://127.0.0.1:{port}")
+    })
+}
+
 impl ApiClient {
     pub async fn new() -> Result<Self> {
         let home_dir = dirs::home_dir().context("Unable to find user home directory")?;
@@ -27,12 +34,12 @@ impl ApiClient {
         let config = if config_path.exists() {
             let content = fs::read_to_string(&config_path).await?;
             serde_json::from_str(&content).unwrap_or_else(|_| ClientConfig {
-                base_url: "http://127.0.0.1:3000".to_string(),
+                base_url: default_base_url(),
                 ..Default::default()
             })
         } else {
             ClientConfig {
-                base_url: "http://127.0.0.1:3000".to_string(),
+                base_url: default_base_url(),
                 ..Default::default()
             }
         };
@@ -47,16 +54,21 @@ impl ApiClient {
     pub async fn save_config(&self) -> Result<()> {
         let content = serde_json::to_string_pretty(&self.config)?;
         fs::write(&self.config_path, content).await?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&self.config_path, std::fs::Permissions::from_mode(0o600)).await?;
+        }
         Ok(())
     }
 
-    pub async fn login(&mut self, email: &str, password: &str) -> Result<String> {
+    pub async fn login(&mut self, username: &str, password: &str) -> Result<String> {
         let url = format!("{}/api/auth/login", self.config.base_url);
         let resp = self
             .client
             .post(&url)
             .json(&serde_json::json!({
-                "email": email,
+                "username": username,
                 "password": password
             }))
             .send()
@@ -68,7 +80,7 @@ impl ApiClient {
         }
 
         let json: serde_json::Value = resp.json().await?;
-        
+
         // Assume response format is { "token": "..." } or { "data": { "token": "..." } }
         // Adjust based on actual API. Standard JWT return assumed here.
         let token = json["token"]
@@ -82,33 +94,47 @@ impl ApiClient {
 
         Ok(token)
     }
-    
+
     pub fn get_token(&self) -> Option<&String> {
         self.config.token.as_ref()
     }
-    
-    pub async fn chat_completions(&self, model: &str, messages: Vec<serde_json::Value>, stream: bool) -> Result<reqwest::Response> {
+
+    pub async fn chat_completions(
+        &self,
+        model: &str,
+        messages: Vec<serde_json::Value>,
+        stream: bool,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}/v1/chat/completions", self.config.base_url);
-        let token = self.config.token.as_ref().context("Not logged in, please run the login command first")?;
-        
+        let token = self
+            .config
+            .token
+            .as_ref()
+            .context("Not logged in, please run the login command first")?;
+
         let body = serde_json::json!({
             "model": model,
             "messages": messages,
             "stream": stream
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", token))
             .json(&body)
             .send()
             .await?;
-            
+
         if !resp.status().is_success() {
-             let error_text = resp.text().await?;
-             return Err(anyhow::anyhow!("Request failed ({}): {}", resp.status(), error_text));
+            let error_text = resp.text().await?;
+            return Err(anyhow::anyhow!(
+                "Request failed ({}): {}",
+                resp.status(),
+                error_text
+            ));
         }
-        
+
         Ok(resp)
     }
 }

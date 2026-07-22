@@ -9,15 +9,15 @@
 
 **The Next-Gen High-Performance AI Gateway & Aggregator**
 
-[Feature Requests](https://github.com/burncloud/burncloud/issues) · [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) · [Getting Started](docs/getting-started.md) · [Documentation](docs/)
+[Feature Requests](https://github.com/burncloud/burncloud/issues) ? [Roadmap](docs/ARCHITECTURE_EVOLUTION.md) ? [Getting Started](docs/getting-started.md) ? [Documentation](docs/)
 
-[English](README.md) | [简体中文](README_CN.md)
+[English](README.md) | [????](README_CN.md)
 
 </div>
 
 ---
 
-## 💡 What is BurnCloud?
+## ?? What is BurnCloud?
 
 BurnCloud is a **Rust-native** LLM Aggregation Gateway and Management Platform.
 It aims to benchmark against and surpass **One API (New API)**, providing individual developers, teams, and enterprises with a **high-performance, resource-efficient, secure, and controllable** unified LLM access layer.
@@ -25,34 +25,34 @@ It aims to benchmark against and surpass **One API (New API)**, providing indivi
 **We are not just reinventing the wheel; we are upgrading the engine.**
 If you are tired of the high memory consumption, GC pauses, or complex deployment dependencies of existing gateways, BurnCloud is your best choice.
 
-## ✨ Why BurnCloud? (Core Values)
+## ? Why BurnCloud? (Core Values)
 
-### 🚀 1. Performance First
+### ?? 1. Performance First
 *   **Powered by Rust**: Built on `Axum` and `Tokio`, offering astonishing concurrency handling capabilities and extremely low memory footprint (MB level vs GB level).
 *   **Zero-Overhead Passthrough**: Featuring a unique "Don't Touch the Body" routing mode. In scenarios without protocol conversion, it achieves byte-level zero-copy forwarding with near-zero latency.
 *   **Single Binary**: No Runtime dependencies (No Python, No Node.js, No Java). One file is a complete platform.
 
-### 🔌 2. Universal Aggregation
+### ?? 2. Universal Aggregation
 *   **All to OpenAI**: Unifies protocols from Anthropic (Claude), Google (Gemini), Azure, Alibaba Qwen, and other mainstream models into standard **OpenAI format**.
 *   **Write Once, Run Anywhere**: Your LangChain, AutoGPT, or any existing application can seamlessly switch underlying models just by changing the Base URL.
 
-### ⚖️ 3. Enterprise Governance
+### ?? 3. Enterprise Governance
 *   **Smart Load Balancing**: Supports Multi-Channel Round-Robin, Weighted Distribution, and Automatic Failover. If one `gpt-4` goes down, thousands of `gpt-4` stand up.
 *   **Precise Billing**: Supports precise token-based billing, custom Model Ratios, and User Group Ratios.
 *   **Multi-Tenant Management**: Comprehensive redemption codes, quota management, and invitation mechanisms.
 
-### 🛡️ 4. Rock-Solid Reliability
+### ??? 4. Rock-Solid Reliability
 *   **Real-World E2E Testing**: We have abandoned fake Mock data. BurnCloud's CI/CD pipeline validates end-to-end against **real OpenAI/Gemini APIs**, ensuring core forwarding logic remains robust in real network environments.
 *   **Browser-Driven Verification**: Built-in automated UI tests based on **Headless Chrome** ensure the rendering link from Backend API to Frontend Dioxus LiveView is unobstructed.
 *   **Zero-Regression Promise**: Strict **"API-Path Matching"** testing strategy ensures every Commit passes rigorous automated auditing.
 
-### 🎨 5. Fluent Experience
+### ?? 5. Fluent Experience
 *   **More Than API**: Built-in local management client developed with **Dioxus**, featuring **Windows 11 Fluent Design**.
 *   **Visual Monitoring**: View real-time TPS, RPM, and token consumption trends, saying goodbye to boring log files.
 
 ---
 
-## 🏗️ Architecture
+## ??? Architecture
 
 BurnCloud adopts a strict four-layer architecture to ensure high cohesion and low coupling:
 
@@ -69,7 +69,7 @@ The router is a smart pipe, not a processor. It handles authentication and routi
 
 ---
 
-## 🛠️ Getting Started
+## ??? Getting Started
 
 ### Requirements
 *   Rust 1.75+
@@ -77,7 +77,7 @@ The router is a smart pipe, not a processor. It handles authentication and routi
 
 ### Quick Start
 
-> **Full guide:** [docs/getting-started.md](docs/getting-started.md) — 环境要求、安全配置、验证步骤、常见问题
+> **Full guide:** [docs/getting-started.md](docs/getting-started.md) ? ???????????????????
 
 ```bash
 # 1. Clone repository
@@ -104,8 +104,8 @@ Key configuration options:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | 3000 |
-| `HOST` | Server host | 0.0.0.0 |
-| `DATABASE_URL` | Database connection | sqlite:burncloud.db |
+| `HOST` | Server host | 127.0.0.1 |
+| `BURNCLOUD_DATABASE_URL` | Database connection | local SQLite database in the service user's home directory |
 | `RUST_LOG` | Log level | info |
 
 ### Basic Usage
@@ -151,7 +151,7 @@ cargo clippy --all-targets --all-features
 
 ---
 
-## 💰 Billing & Quota
+## ?? Billing & Quota
 
 ### Pricing Configuration
 
@@ -262,7 +262,7 @@ HTTP Status: `401 Unauthorized`
 
 ---
 
-## 📊 Streaming Token Statistics
+## ?? Streaming Token Statistics
 
 BurnCloud parses token usage from streaming responses for accurate billing.
 
@@ -289,7 +289,7 @@ Token counts are in `usageMetadata` field.
 
 ---
 
-## ⚖️ Load Balancing
+## ?? Load Balancing
 
 ### Weighted Random Selection
 
@@ -302,7 +302,7 @@ Weights are configured in the `abilities` table.
 
 ---
 
-## ⚠️ Error Codes
+## ?? Error Codes
 
 BurnCloud returns errors in OpenAI-compatible format:
 
@@ -329,7 +329,7 @@ BurnCloud returns errors in OpenAI-compatible format:
 
 ---
 
-## 🗺️ Roadmap
+## ??? Roadmap
 
 - [x] **v0.1**: Basic routing & AWS SigV4 signing support (Completed)
 - [x] **v0.2**: Database integration, Basic Auth & **New API Core Replication** (Completed)
@@ -343,10 +343,10 @@ BurnCloud returns errors in OpenAI-compatible format:
 
 ---
 
-## 🤝 Contributing
+## ?? Contributing
 
 Contributions of any kind are welcome! Please read our **[Development Constitution](docs/CONSTITUTION.md)** before submitting code.
 
-## 📄 License
+## ?? License
 
-MIT License © 2025 BurnCloud Team
+MIT License ? 2025 BurnCloud Team

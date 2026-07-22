@@ -10,7 +10,7 @@
 
 mod common;
 use burncloud_database::sqlx;
-use common::{setup_db, start_test_server};
+use common::{insert_test_channel, setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 
@@ -54,7 +54,7 @@ async fn test_vertex_full_flow() -> anyhow::Result<()> {
         .create_async().await;
 
     // 2. Configure Upstream
-    let id = "vertex-test";
+    let id = 30_501;
     let name = "Vertex Test";
     let base_url = "https://ignored-but-required.com";
 
@@ -98,9 +98,6 @@ Apfww82b16AoK7qgtPcI8g==
     })
     .to_string();
 
-    let match_path = "/v1/chat/completions";
-    let auth_type = "VertexAi"; // Important: Triggers factory
-
     // Inject overrides
     let param_override = json!({
         "base_url": server.url(),
@@ -108,27 +105,12 @@ Apfww82b16AoK7qgtPcI8g==
     })
     .to_string();
 
-    // Clear existing upstreams (e.g. defaults)
-    sqlx::query("DELETE FROM router_upstreams")
+    insert_test_channel(&pool, id, 41, name, base_url, &api_key, "gemini-pro", "default").await?;
+    sqlx::query("UPDATE channel_providers SET param_override = ? WHERE id = ?")
+        .bind(param_override)
+        .bind(id)
         .execute(&pool)
         .await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, param_override, protocol)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .bind(param_override)
-    .bind("vertex") // Protocol
-    .execute(&pool)
-    .await?;
 
     // Seed a price for gemini-pro so the preflight billing check passes.
     sqlx::query(

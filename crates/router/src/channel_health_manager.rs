@@ -224,6 +224,7 @@ pub fn trip_level_to_weight(level: &TripLevel) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use axum::http::HeaderMap;

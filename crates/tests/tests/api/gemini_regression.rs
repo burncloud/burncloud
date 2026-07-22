@@ -10,18 +10,18 @@
     clippy::to_string_in_format_args,
     clippy::redundant_pattern_matching
 )]
-//! Gemini 完整回归测试套件（黑盒 + 证据链）
+//! Gemini ??????????? + ????
 //!
-//! 目标：验证近期 billing/pricing 改动在真实 Gemini API 下正确计费。
-//! 每个测试写一份 `evidence/{test_name}.json`，作为可存档的测试证据。
+//! ??????? billing/pricing ????? Gemini API ??????
+//! ??????? `evidence/{test_name}.json`????????????
 //!
-//! 核心覆盖：
-//! - CostBreakdown 字段：`input_cost + output_cost == cost`（commit 19e7c34）
-//! - price_sync E2E：sync → DB 写入 → calculator 读取闭环
-//! - cache token 计费：`cachedContentTokenCount` → `cache_read_cost = 10%`
-//! - 余额精度：`balance_before - balance_after == log.cost`（±1 纳元）
+//! ?????
+//! - CostBreakdown ???`input_cost + output_cost == cost`?commit 19e7c34?
+//! - price_sync E2E?sync ? DB ?? ? calculator ????
+//! - cache token ???`cachedContentTokenCount` ? `cache_read_cost = 10%`
+//! - ?????`balance_before - balance_after == log.cost`??1 ???
 //!
-//! 运行：
+//! ???
 //! ```bash
 //! TEST_GEMINI_KEY=AIza... cargo test -p burncloud-tests gemini_regression \
 //!     -- --nocapture --test-threads=1
@@ -109,17 +109,17 @@ async fn latest_log(admin_client: &TestClient) -> Option<Value> {
     res["data"].as_array().and_then(|arr| arr.first().cloned())
 }
 
-/// 遇到 429 时最多等待重试 MAX_RETRIES 次，每次等 RETRY_WAIT_SECS 秒。
-/// 全部重试耗尽后仍 429 才返回 None（skip）。
+/// ?? 429 ??????? MAX_RETRIES ????? RETRY_WAIT_SECS ??
+/// ???????? 429 ??? None?skip??
 const MAX_RETRIES: u32 = 3;
-const RETRY_WAIT_SECS: u64 = 65; // 65s 确保 QPM 滑动窗口完全滑过
+const RETRY_WAIT_SECS: u64 = 65; // 65s ?? QPM ????????
 
 fn is_rate_limit_error(msg: &str) -> bool {
     msg.contains("429") || msg.contains("RESOURCE_EXHAUSTED") || msg.contains("quota")
 }
 
-/// 通用的带重试 POST helper。
-/// 遇到 429 → 等 RETRY_WAIT_SECS 再重试；其他错误 → panic；耗尽重试 → None。
+/// ?????? POST helper?
+/// ?? 429 ? ? RETRY_WAIT_SECS ???????? ? panic????? ? None?
 async fn post_with_retry(client: &TestClient, path: &str, body: &Value) -> Option<Value> {
     for attempt in 0..=MAX_RETRIES {
         match client.post(path, body).await {
@@ -135,7 +135,7 @@ async fn post_with_retry(client: &TestClient, path: &str, body: &Value) -> Optio
                     );
                     sleep(Duration::from_secs(RETRY_WAIT_SECS)).await;
                 } else if is_rate_limit_error(&msg) {
-                    println!("SKIP: Gemini 429 持续，已重试 {} 次。", MAX_RETRIES);
+                    println!("SKIP: Gemini 429 ?????? {} ??", MAX_RETRIES);
                     return None;
                 } else {
                     panic!("request to {} failed: {}", path, msg);
@@ -146,7 +146,7 @@ async fn post_with_retry(client: &TestClient, path: &str, body: &Value) -> Optio
     None
 }
 
-/// OpenAI 格式 chat 请求，遇到 429 自动等待重试。
+/// OpenAI ?? chat ????? 429 ???????
 async fn chat_with_retry(user_client: &TestClient, model: &str, prompt: &str) -> Option<Value> {
     post_with_retry(
         user_client,
@@ -161,10 +161,10 @@ async fn chat_with_retry(user_client: &TestClient, model: &str, prompt: &str) ->
 }
 
 // ============================================================================
-// T1 — 基础账单证据链
+// T1 ? ???????
 // ============================================================================
 
-/// 验证基本 token 计数和费用入账，并产出 JSON 证据文件。
+/// ???? token ??????????? JSON ?????
 #[tokio::test]
 async fn test_basic_billing_evidence() {
     if get_gemini_key().is_none() {
@@ -223,16 +223,16 @@ async fn test_basic_billing_evidence() {
     assert!(prompt_tokens > 0, "prompt_tokens must be positive");
     assert!(
         (deducted - cost).abs() <= 1,
-        "balance deducted ({deducted}) must equal log cost ({cost}) within ±1 nano"
+        "balance deducted ({deducted}) must equal log cost ({cost}) within ?1 nano"
     );
 }
 
 // ============================================================================
-// T2 — CostBreakdown 字段验证（P0 gap from commit 19e7c34）
+// T2 ? CostBreakdown ?????P0 gap from commit 19e7c34?
 // ============================================================================
 
-/// 验证 `input_cost + output_cost == cost`（允许 ±1 纳元舍入误差）。
-/// 这是 commit 19e7c34 引入的新字段，现有测试未覆盖。
+/// ?? `input_cost + output_cost == cost`??? ?1 ????????
+/// ?? commit 19e7c34 ???????????????
 #[tokio::test]
 async fn test_cost_breakdown_input_output() {
     if get_gemini_key().is_none() {
@@ -308,15 +308,15 @@ async fn test_cost_breakdown_input_output() {
     assert!(output_cost > 0, "output_cost must be > 0");
     assert!(
         (breakdown_sum - cost).abs() <= 1,
-        "breakdown sum ({breakdown_sum}) must equal total cost ({cost}) within ±1 nano"
+        "breakdown sum ({breakdown_sum}) must equal total cost ({cost}) within ?1 nano"
     );
 }
 
 // ============================================================================
-// T3 — 余额扣减精度
+// T3 ? ??????
 // ============================================================================
 
-/// 验证 `balance_before - balance_after == log.cost`，允许 ±1 纳元。
+/// ?? `balance_before - balance_after == log.cost`??? ?1 ???
 #[tokio::test]
 async fn test_balance_deduction_precision() {
     if get_gemini_key().is_none() {
@@ -360,15 +360,15 @@ async fn test_balance_deduction_precision() {
     );
     assert!(
         (deducted - cost).abs() <= 1,
-        "balance deducted ({deducted}) must match log cost ({cost}) within ±1 nano"
+        "balance deducted ({deducted}) must match log cost ({cost}) within ?1 nano"
     );
 }
 
 // ============================================================================
-// T4 — Native 路径计费
+// T4 ? Native ????
 // ============================================================================
 
-/// 验证 `/v1beta/models/...` 原生 Gemini 路径的计费与 OpenAI 格式一致。
+/// ?? `/v1beta/models/...` ?? Gemini ?????? OpenAI ?????
 #[tokio::test]
 async fn test_native_path_billing() {
     if get_gemini_key().is_none() {
@@ -432,10 +432,10 @@ async fn test_native_path_billing() {
 }
 
 // ============================================================================
-// T5 — Streaming SSE token 计数
+// T5 ? Streaming SSE token ??
 // ============================================================================
 
-/// 验证 SSE 流式请求结束后 usage 字段存在且计费正确。
+/// ?? SSE ??????? usage ??????????
 #[tokio::test]
 async fn test_streaming_token_count() {
     if get_gemini_key().is_none() {
@@ -453,7 +453,7 @@ async fn test_streaming_token_count() {
 
     // Non-streaming fallback: send stream=true, read as regular response
     // (TestClient does not implement SSE chunked reads, so we rely on log verification)
-    // 遇到 429 自动等待重试
+    // ?? 429 ??????
     let _resp = post_with_retry(
         &user,
         "/v1/chat/completions",
@@ -465,7 +465,7 @@ async fn test_streaming_token_count() {
             "max_tokens": 64,
         }),
     )
-    .await; // streaming response may not parse as JSON — we just need the log
+    .await; // streaming response may not parse as JSON ? we just need the log
             // If all retries exhausted (None), skip
     if _resp.is_none() {
         return;
@@ -504,10 +504,10 @@ async fn test_streaming_token_count() {
 }
 
 // ============================================================================
-// T6 — OpenAI 格式转换后 CostBreakdown 正确
+// T6 ? OpenAI ????? CostBreakdown ??
 // ============================================================================
 
-/// 验证 OpenAI 格式请求经过格式转换后，CostBreakdown 各字段仍然正确。
+/// ?? OpenAI ????????????CostBreakdown ????????
 #[tokio::test]
 async fn test_openai_format_cost_breakdown() {
     if get_gemini_key().is_none() {
@@ -588,17 +588,17 @@ async fn test_openai_format_cost_breakdown() {
     );
     assert!(
         (input_cost + output_cost - cost).abs() <= 1,
-        "input + output ({}) must equal cost ({cost}) within ±1",
+        "input + output ({}) must equal cost ({cost}) within ?1",
         input_cost + output_cost
     );
 }
 
 // ============================================================================
-// T7 — price_sync E2E 验证
+// T7 ? price_sync E2E ??
 // ============================================================================
 
-/// 验证 price_sync 端到端闭环：
-/// sync 执行 → DB 写入 → calculator 读取 → 请求计费成功。
+/// ?? price_sync ??????
+/// sync ?? ? DB ?? ? calculator ?? ? ???????
 #[tokio::test]
 async fn test_price_sync_e2e() {
     if get_gemini_key().is_none() {
@@ -613,10 +613,24 @@ async fn test_price_sync_e2e() {
     let user = TestClient::new(&base_url).with_token(&common_mod::get_demo_token());
 
     // 1. Trigger forced price sync
-    let sync_res = admin
-        .post("/console/internal/prices/sync", &json!({}))
+    let internal_secret = std::env::var("BURNCLOUD_INTERNAL_SECRET")
+        .expect("BURNCLOUD_INTERNAL_SECRET must be set for internal API tests");
+    let sync_response = reqwest::Client::new()
+        .post(format!("{base_url}/console/internal/prices/sync"))
+        .header("x-internal-secret", internal_secret)
+        .json(&json!({}))
+        .send()
         .await
         .expect("price sync call failed");
+    assert!(
+        sync_response.status().is_success(),
+        "price sync returned {}",
+        sync_response.status()
+    );
+    let sync_res: Value = sync_response
+        .json()
+        .await
+        .expect("price sync response was not JSON");
 
     let models_synced = sync_res["models_synced"].as_i64().unwrap_or(0);
     let source = sync_res["source"].as_str().unwrap_or("unknown").to_string();
@@ -626,7 +640,7 @@ async fn test_price_sync_e2e() {
         "[T7] price_sync: models_synced={models_synced}, source={source}, errors={sync_errors}"
     );
 
-    // 2. Send a request — if sync succeeded, calculator should find the price
+    // 2. Send a request ? if sync succeeded, calculator should find the price
     let balance_before = get_balance(&admin).await;
     if chat_with_retry(&user, "gemini-2.0-flash", "Say OK.")
         .await
@@ -679,10 +693,10 @@ async fn test_price_sync_e2e() {
 }
 
 // ============================================================================
-// T8 — 区域定价 CostBreakdown 验证
+// T8 ? ???? CostBreakdown ??
 // ============================================================================
 
-/// 验证 CN 区域通道使用 CNY 计费，且 CostBreakdown 字段正确写入。
+/// ?? CN ?????? CNY ???? CostBreakdown ???????
 #[tokio::test]
 async fn test_region_pricing_cost_breakdown() {
     if get_gemini_key().is_none() {
@@ -761,10 +775,10 @@ async fn test_region_pricing_cost_breakdown() {
 }
 
 // ============================================================================
-// T9 — Thinking 模型 token 计费
+// T9 ? Thinking ?? token ??
 // ============================================================================
 
-/// 验证 thinking 模型的 output_cost 正确包含 thinking token 费用。
+/// ?? thinking ??? output_cost ???? thinking token ???
 #[tokio::test]
 async fn test_thinking_token_billing() {
     if get_gemini_key().is_none() {
@@ -781,14 +795,14 @@ async fn test_thinking_token_billing() {
 
     let balance_before = get_balance(&admin).await;
 
-    // Use thinking model — 429 自动重试，404（模型不存在）直接 skip
+    // Use thinking model ? 429 ?????404????????? skip
     let resp = {
         let body = json!({
             "model": "gemini-2.5-flash-preview-04-17",
             "messages": [{"role": "user", "content": "What is 17 * 23?"}],
             "max_tokens": 256,
         });
-        // post_with_retry 只重试 429，但 404 会 panic；在这里先用 user.post 自行判断
+        // post_with_retry ??? 429?? 404 ? panic?????? user.post ????
         let mut result = None;
         for attempt in 0..=MAX_RETRIES {
             match user.post("/v1/chat/completions", &body).await {
@@ -799,7 +813,7 @@ async fn test_thinking_token_billing() {
                 Err(e) => {
                     let msg = e.to_string();
                     if msg.contains("404") {
-                        println!("SKIP: thinking 模型不可用 (404)，跳过 T9。");
+                        println!("SKIP: thinking ????? (404)??? T9?");
                         return;
                     } else if is_rate_limit_error(&msg) && attempt < MAX_RETRIES {
                         println!(
@@ -810,7 +824,7 @@ async fn test_thinking_token_billing() {
                         );
                         sleep(Duration::from_secs(RETRY_WAIT_SECS)).await;
                     } else if is_rate_limit_error(&msg) {
-                        println!("SKIP: Gemini 429 持续，已重试 {} 次。", MAX_RETRIES);
+                        println!("SKIP: Gemini 429 ?????? {} ??", MAX_RETRIES);
                         return;
                     } else {
                         panic!("thinking model request failed: {}", msg);
@@ -879,15 +893,15 @@ async fn test_thinking_token_billing() {
 }
 
 // ============================================================================
-// T10 — Cache token 计费路径验证
+// T10 ? Cache token ??????
 // ============================================================================
 
-/// 验证 cache_read_cost 字段的计费逻辑：
-/// - 当无缓存时：cache_read_cost == 0
-/// - 当有缓存时（需 Gemini cachedContent API）：cache_read_cost ≈ 10% of input rate
+/// ?? cache_read_cost ????????
+/// - ??????cache_read_cost == 0
+/// - ??????? Gemini cachedContent API??cache_read_cost ? 10% of input rate
 ///
-/// 黑盒测试只能验证「无缓存时 cache_read_cost = 0」以及日志字段存在。
-/// 完整 cache 计费验证需要 Gemini cachedContent API 集成（见 evidence 中的 note）。
+/// ????????????? cache_read_cost = 0??????????
+/// ?? cache ?????? Gemini cachedContent API ???? evidence ?? note??
 #[tokio::test]
 async fn test_cache_read_cost_discount() {
     if get_gemini_key().is_none() {

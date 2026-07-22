@@ -3,14 +3,18 @@ use dioxus_router::components::Outlet;
 
 use crate::app::Route;
 use crate::components::app_styles::AppStyles;
-use burncloud_client_shared::components::TitleBar;
+use burncloud_client_shared::{components::TitleBar, DesktopMode};
 
 #[component]
 pub fn GuestLayout() -> Element {
+    let is_desktop = try_use_context::<DesktopMode>().is_some();
+
     rsx! {
-        head {
-            link { rel: "icon", href: "favicon.ico" }
-            AppStyles {}
+        if is_desktop {
+            head {
+                link { rel: "icon", href: "favicon.ico" }
+                AppStyles {}
+            }
         }
 
         div { class: "h-screen w-screen overflow-hidden flex flex-col bg-bc-canvas text-bc-text relative", "data-theme": "light",
