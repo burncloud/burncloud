@@ -193,8 +193,7 @@ impl ResponseQualityDetector {
 
         // 2.5. Check for SSE streaming error (HTTP 200 with error in data: {...})
         // Some providers (e.g., Xunfei) return errors via SSE format with HTTP 200
-        if body.starts_with("data: ") {
-            let json_str = &body[6..];
+        if let Some(json_str) = body.strip_prefix("data: ") {
             if json_str.trim() != "[DONE]" {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
                     if let Some(error) = json.get("error") {
@@ -221,7 +220,7 @@ impl ResponseQualityDetector {
                     is_streaming,
                 }
             }
-            Ok(tokens) => {
+            Ok(_tokens) => {
                 // Tokens below threshold - treat as empty
                 ResponseQuality::Empty {
                     http_status,
@@ -305,7 +304,7 @@ impl ResponseQualityDetector {
             402 => UpstreamErrorType::PaymentRequired,
             404 => UpstreamErrorType::ModelNotFound,
             500 => UpstreamErrorType::ServerError,
-            502 | 503 | 504 => UpstreamErrorType::GatewayError,
+            502..=504 => UpstreamErrorType::GatewayError,
             code if code >= 500 => UpstreamErrorType::ServerError,
             _ => UpstreamErrorType::ServerError, // Default for unknown errors
         };
@@ -531,11 +530,7 @@ impl ResponseQualityDetector {
     /// Parse error from streaming chunk.
     fn parse_stream_error(&self, chunk: &str, channel_type: &str) -> Option<UpstreamErrorType> {
         // Try to parse JSON from SSE data line
-        let json_str = if chunk.starts_with("data: ") {
-            &chunk[6..]
-        } else {
-            chunk
-        };
+        let json_str = chunk.strip_prefix("data: ").unwrap_or(chunk);
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             // Check for error type
@@ -717,7 +712,7 @@ mod tests {
                 assert_eq!(code, 429);
                 match error_type {
                     UpstreamErrorType::RateLimited { retry_after, .. } => {
-                        assert_eq!(retry_after.clone(), Some(30));
+                        assert_eq!(retry_after, Some(30));
                     }
                     _ => panic!("Expected RateLimited error type"),
                 }

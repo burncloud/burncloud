@@ -31,7 +31,7 @@ const PEEK_FIRST_CHUNK_TIMEOUT_SECS: u64 = 36000;
 // ============================================================
 // Empty Response Counter - Track consecutive empty responses
 // ============================================================
-use std::sync::RwLock as StdRwLock;
+use tokio::sync::RwLock;
 use std::collections::HashMap;
 
 /// Maximum consecutive empty responses before marking as failure
@@ -40,21 +40,29 @@ const EMPTY_RESPONSE_THRESHOLD: u32 = 3;
 /// Counter for tracking consecutive empty responses per channel.
 /// Uses sliding window: only penalizes after threshold consecutive failures.
 pub struct EmptyResponseCounter {
-    counters: StdRwLock<HashMap<String, u32>>,
+    counters: RwLock<HashMap<String, u32>>,
     threshold: u32,
 }
 
 impl EmptyResponseCounter {
     pub fn new() -> Self {
         Self {
-            counters: StdRwLock::new(HashMap::new()),
+            counters: RwLock::new(HashMap::new()),
             threshold: EMPTY_RESPONSE_THRESHOLD,
         }
     }
+}
 
+impl Default for EmptyResponseCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EmptyResponseCounter {
     /// Record an empty response. Returns true if threshold exceeded (should penalize).
-    pub fn record_empty(&self, channel_id: &str) -> bool {
-        let mut counters = self.counters.write().unwrap();
+    pub async fn record_empty(&self, channel_id: &str) -> bool {
+        let mut counters = self.counters.write().await;
         let count = counters.entry(channel_id.to_string()).or_insert(0);
         *count += 1;
         let exceeded = *count >= self.threshold;
@@ -86,8 +94,8 @@ impl EmptyResponseCounter {
     }
 
     /// Reset counter on successful response (non-empty).
-    pub fn reset(&self, channel_id: &str) {
-        let mut counters = self.counters.write().unwrap();
+    pub async fn reset(&self, channel_id: &str) {
+        let mut counters = self.counters.write().await;
         if let Some(count) = counters.get_mut(channel_id) {
             if *count > 0 {
                 tracing::debug!(
@@ -101,15 +109,15 @@ impl EmptyResponseCounter {
     }
 
     /// Get current counter value for a channel (for monitoring/admin purposes).
-    pub fn get_count(&self, channel_id: &str) -> u32 {
-        let counters = self.counters.read().unwrap();
+    pub async fn get_count(&self, channel_id: &str) -> u32 {
+        let counters = self.counters.read().await;
         counters.get(channel_id).copied().unwrap_or(0)
     }
 
     /// Force reset counter for a channel (admin override).
     /// Returns the previous count value.
-    pub fn force_reset(&self, channel_id: &str) -> u32 {
-        let mut counters = self.counters.write().unwrap();
+    pub async fn force_reset(&self, channel_id: &str) -> u32 {
+        let mut counters = self.counters.write().await;
         let previous_count = counters.remove(channel_id).unwrap_or(0);
         if previous_count > 0 {
             tracing::info!(
@@ -122,8 +130,8 @@ impl EmptyResponseCounter {
     }
 
     /// Get all channels with non-zero counters (for monitoring).
-    pub fn get_all_counts(&self) -> Vec<(String, u32)> {
-        let counters = self.counters.read().unwrap();
+    pub async fn get_all_counts(&self) -> Vec<(String, u32)> {
+        let counters = self.counters.read().await;
         counters
             .iter()
             .filter(|(_, &count)| count > 0)
@@ -164,8 +172,8 @@ use order_type::OrderType;
 use reqwest::Client;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-use std::time::Instant;
-use tokio::sync::{mpsc, RwLock};
+use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
@@ -316,7 +324,10 @@ fn record_upstream_failure(
     error_msg: &str,
     session_id: &str,
 ) {
-    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+    let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
     state
         .circuit_breaker
         .record_failure_with_type(&upstream.id, failure_type.clone());
@@ -359,7 +370,10 @@ fn record_upstream_success(
     session_id: &str,
 ) {
     state.circuit_breaker.record_success(&upstream.id);
-    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+    let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
     if let Some(model) = model_name {
         state.affinity_cache.insert(session_id, model, channel_id);
     }
@@ -369,7 +383,8 @@ fn record_upstream_success(
 ///
 /// Returns `true` if empty response was detected (caller should continue to next candidate),
 /// `false` if response has valid tokens (caller should proceed normally).
-fn check_empty_response(
+#[allow(dead_code)]
+async fn check_empty_response(
     state: &AppState,
     upstream: &Upstream,
     model_name: Option<&str>,
@@ -386,7 +401,7 @@ fn check_empty_response(
         );
 
         // Record to sliding window counter for non-streaming responses
-        let should_penalize = state.empty_response_counter.record_empty(&upstream_id_str);
+        let should_penalize = state.empty_response_counter.record_empty(&upstream_id_str).await;
 
         // Only record failure if threshold exceeded (sliding window logic)
         if should_penalize {
@@ -406,7 +421,7 @@ fn check_empty_response(
         true // Empty response detected
     } else {
         // Successful response - reset the counter
-        state.empty_response_counter.reset(&upstream_id_str);
+        state.empty_response_counter.reset(&upstream_id_str).await;
         false // Response has tokens
     }
 }
@@ -465,6 +480,19 @@ const SENSITIVE_FIELDS: &[&str] = &[
     "password",
     "secret",
     "authorization",
+    // Additional sensitive fields
+    "access_token",
+    "refresh_token",
+    "secret_key",
+    "x-api-key",
+    "x-auth-token",
+    "x-access-token",
+    "credential",
+    "credentials",
+    "secret_token",
+    "client_secret",
+    "app_secret",
+    "api_secret",
 ];
 /// Safely cut a string at a UTF-8 character boundary.
 /// Returns a string slice that is at most max_bytes long.
@@ -568,6 +596,7 @@ fn sanitize_request_headers(headers: &axum::http::HeaderMap) -> Option<String> {
 }
 
 /// Sanitize response body for logging: truncate if too large.
+#[allow(dead_code)]
 fn sanitize_response_body(body: &[u8]) -> (Option<String>, bool) {
     if body.is_empty() {
         return (None, false);
@@ -905,6 +934,17 @@ pub async fn create_router_app(
         }
     });
 
+    // Spawn Rate Limiter cleanup task (every minute)
+    let limiter_clone = limiter.clone();
+    tokio::spawn(async move {
+        tracing::info!("Rate limiter cleanup task started");
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            limiter_clone.cleanup_expired();
+        }
+    });
+
     let state = AppState {
         client,
         db, // Arc<Database>
@@ -1108,10 +1148,12 @@ async fn extract_token_user(
                     let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
                         "burncloud-default-secret-change-in-production".to_string()
                     });
+                    let mut validation = jsonwebtoken::Validation::default();
+                    validation.validate_exp = true;
                     let decoded = jsonwebtoken::decode::<JwtClaims>(
                         &token,
                         &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
-                        &jsonwebtoken::Validation::default(),
+                        &validation,
                     );
                     match decoded {
                         Ok(data) => Ok(data.claims.sub),
@@ -1902,10 +1944,10 @@ async fn proxy_handler(
         created_at: None, // Auto-generated by database
     };
 
-    if state.log_tx.send(log).await.is_err() {
-        tracing::error!(
+    if state.log_tx.try_send(log).is_err() {
+        tracing::warn!(
             cost,
-            "billing log channel full or closed — request cost NOT recorded"
+            "billing log channel full — request cost NOT recorded"
         );
     }
 
@@ -2513,7 +2555,7 @@ async fn proxy_logic(
                 let req = state
                     .client
                     .request(method.clone(), &url)
-                    .header("Authorization", format!("Bearer {}", &upstream.api_key));
+                    .header("Authorization", format!("Bearer {}", upstream.api_key));
                 (req, is_stream, false)
             } else {
                 // Gemini passthrough
@@ -2583,7 +2625,10 @@ async fn proxy_logic(
                             record_upstream_success(state, upstream, model_name, &session_id);
                         }
 
-                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
                         let latency_ms = request_start_time.elapsed().as_millis() as u64;
                         // Parse rate limit info from response headers for adaptive limiter
                         let rate_limit_info =
@@ -2620,7 +2665,7 @@ async fn proxy_logic(
                                             let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
                                             tracing::warn!(channel_id = %upstream.id, error_code = error_code, error_msg = error_msg, ?failure_type, "SSE error in first chunk (Passthrough) - retrying");
                                             state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
-                                            state.channel_state_tracker.record_error(upstream.id.parse().unwrap_or(0), model_name.as_deref(), &failure_type, &format!("SSE error: {}", error_msg));
+                                            state.channel_state_tracker.record_error(upstream.id.parse().unwrap_or(0), model_name, &failure_type, &format!("SSE error: {}", error_msg));
                                             if let Some(model) = model_name { state.affinity_cache.evict(&session_id.to_string(), model); }
                                             last_error = format!("SSE error {}: {}", error_code, error_msg);
                                             peek_error_handled = true;
@@ -2654,7 +2699,6 @@ async fn proxy_logic(
                             if peek_error_handled { continue; }
                             
                             let counter_clone = Arc::clone(&token_counter);
-                            let counter_clone = Arc::clone(&token_counter);
 
                             // Clone state and upstream info for post-stream empty response check
                             let state_clone = state.clone();
@@ -2662,7 +2706,10 @@ async fn proxy_logic(
                             let _upstream_name = upstream.name.clone();
                             let model_name_clone = model_name.map(|s| s.to_string());
                             let session_id_clone = session_id.to_string();
-                            let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                            let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
 
                             let parser = get_parser(channel_type);
 
@@ -2727,7 +2774,7 @@ async fn proxy_logic(
                                     // Check for empty response after stream ends
                                     if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
                                         // Use sliding window counter: only penalize after consecutive empty responses
-                                        let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
+                                        let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str).await;
                                         
                                         if should_penalize {
                                             // Threshold exceeded - record failure
@@ -2749,7 +2796,7 @@ async fn proxy_logic(
                                         }
                                     } else {
                                         // Successful response - reset the counter and record success
-                                        state_clone.empty_response_counter.reset(&upstream_id_str);
+                                        state_clone.empty_response_counter.reset(&upstream_id_str).await;
                                         // Now we can safely record success for the streaming response
                                         state_clone.circuit_breaker.record_success(&upstream_id_str);
                                         if let Some(model) = &model_name_clone {
@@ -2887,7 +2934,7 @@ async fn proxy_logic(
                                 &body_str,
                                 status,
                                 &resp_headers,
-                            );
+                            ).await;
                             
                             if is_failure {
                                 tracing::warn!(
@@ -3191,7 +3238,10 @@ async fn proxy_logic(
                     );
 
                     // Record success in channel state tracker with learned upstream limit
-                    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                    let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
                     let latency_ms = request_start_time.elapsed().as_millis() as u64;
                     state
                         .channel_state_tracker
@@ -3316,7 +3366,7 @@ async fn proxy_logic(
                                         state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
                                         state.channel_state_tracker.record_error(
                                             upstream.id.parse().unwrap_or(0),
-                                            model_name.as_deref(),
+                                            model_name,
                                             &failure_type,
                                             &format!("SSE error: {}", error_msg),
                                         );
@@ -3368,7 +3418,10 @@ async fn proxy_logic(
                         let upstream_name = upstream.name.clone();
                         let model_name_clone = model_name.map(|s| s.to_string());
                         let session_id_clone = session_id.to_string();
-                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
 
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -3462,7 +3515,7 @@ async fn proxy_logic(
                         let done = futures::stream::once(async move {
                             if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
                                 // Use sliding window counter: only penalize after consecutive empty responses
-                                let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
+                                let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str).await;
                                 
                                 if should_penalize {
                                     tracing::warn!(
@@ -3501,7 +3554,7 @@ async fn proxy_logic(
                                 }
                             } else {
                                 // Successful response - reset the counter and record success
-                                state_clone.empty_response_counter.reset(&upstream_id_str);
+                                state_clone.empty_response_counter.reset(&upstream_id_str).await;
                                 // Now we can safely record success for the streaming response
                                 state_clone.circuit_breaker.record_success(&upstream_id_str);
                                 if let Some(model) = &model_name_clone {
@@ -3566,7 +3619,7 @@ async fn proxy_logic(
                                         state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
                                         state.channel_state_tracker.record_error(
                                             upstream.id.parse().unwrap_or(0),
-                                            model_name.as_deref(),
+                                            model_name,
                                             &failure_type,
                                             &format!("SSE error: {}", error_msg),
                                         );
@@ -3616,7 +3669,10 @@ async fn proxy_logic(
                         let upstream_name = upstream.name.clone();
                         let model_name_clone = model_name.map(|s| s.to_string());
                         let session_id_clone = session_id.to_string();
-                        let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+                        let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
 
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -3756,7 +3812,7 @@ async fn proxy_logic(
                             // Check for empty response after stream ends with sliding window counter
                             else if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
                                 // Use sliding window counter: only penalize after consecutive empty responses
-                                let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
+                                let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str).await;
                                 
                                 if should_penalize {
                                     tracing::warn!(
@@ -3796,7 +3852,7 @@ async fn proxy_logic(
                                 }
                             } else {
                                 // Successful response - reset the counter and record success
-                                state_clone.empty_response_counter.reset(&upstream_id_str);
+                                state_clone.empty_response_counter.reset(&upstream_id_str).await;
                                 // Now we can safely record success for the streaming response
                                 state_clone.circuit_breaker.record_success(&upstream_id_str);
                                 if let Some(model) = &model_name_clone {
@@ -3903,7 +3959,7 @@ async fn proxy_logic(
                         &response_body,
                         status,
                         &resp_headers,
-                    );
+                    ).await;
                     
                     if is_failure {
                         tracing::warn!(
@@ -4340,7 +4396,7 @@ pub mod health_probe;
 /// - Upstream errors
 /// 
 /// Returns the response quality and whether the response should be treated as a failure.
-fn check_response_quality(
+async fn check_response_quality(
     state: &AppState,
     upstream: &Upstream,
     model_name: Option<&str>,
@@ -4354,7 +4410,10 @@ fn check_response_quality(
     use crate::response_quality::UpstreamErrorType;
     use crate::response_quality::RateLimitScope as UpstreamRateLimitScope;
     
-    let channel_id: i32 = upstream.id.parse().unwrap_or(0);
+    let channel_id: i32 = upstream.id.parse().unwrap_or_else(|e| {
+        tracing::warn!("Invalid channel ID format: {} - {}", upstream.id, e);
+        0
+    });
     let model = model_name.unwrap_or("unknown");
     let http_status: u16 = status_code.as_u16();
     
@@ -4382,12 +4441,12 @@ fn check_response_quality(
     match quality {
         ResponseQuality::Healthy { .. } => {
             // Reset empty response counter
-            state.empty_response_counter.reset(&upstream_id_str);
+            state.empty_response_counter.reset(&upstream_id_str).await;
             (quality, false)
         }
         ResponseQuality::Partial { .. } => {
             // Partial response - not a failure but degraded
-            state.empty_response_counter.reset(&upstream_id_str);
+            state.empty_response_counter.reset(&upstream_id_str).await;
             (quality, false)
         }
         ResponseQuality::Empty { .. } => {
@@ -4398,7 +4457,7 @@ fn check_response_quality(
                 "Empty response detected (new quality system)"
             );
             
-            let should_penalize = state.empty_response_counter.record_empty(&upstream_id_str);
+            let should_penalize = state.empty_response_counter.record_empty(&upstream_id_str).await;
             if should_penalize {
                 record_upstream_failure(
                     state,
@@ -4439,7 +4498,7 @@ fn check_response_quality(
                             UpstreamRateLimitScope::Model => crate::circuit_breaker::RateLimitScope::Model,
                             UpstreamRateLimitScope::Unknown => crate::circuit_breaker::RateLimitScope::Unknown,
                         },
-                        retry_after: retry_after.clone(),
+                        retry_after: *retry_after,
                     }
                 }
                 UpstreamErrorType::AuthFailed => FailureType::AuthFailed,

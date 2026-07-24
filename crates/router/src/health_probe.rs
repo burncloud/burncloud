@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::interval;
 
-use crate::response_quality::{ResponseQuality, ResponseQualityDetector};
+use crate::response_quality::ResponseQualityDetector;
+#[allow(unused_imports)]
 use crate::smart_circuit_breaker::{CircuitState, SmartCircuitBreaker, TripLevel};
 
 /// Configuration for health probing
@@ -103,6 +104,7 @@ pub struct HealthProbeManager {
     /// Per-channel probe state
     probe_states: RwLock<HashMap<i32, ChannelProbeState>>,
     /// Response quality detector
+    #[allow(dead_code)]
     detector: ResponseQualityDetector,
     /// Last probe results (for monitoring)
     last_results: RwLock<Vec<ProbeResult>>,
@@ -266,7 +268,7 @@ impl ProbeScheduler {
             return; // Already running
         }
 
-        let manager = Arc::clone(&self.manager);
+        let _manager = Arc::clone(&self.manager);
         let running = Arc::clone(&self.running);
 
         tokio::spawn(async move {

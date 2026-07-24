@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
@@ -212,8 +213,8 @@ impl CircuitBreaker {
     }
 
     /// Get current health status map for monitoring
-    pub fn get_status_map(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
+    pub fn get_status_map(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
         for r in self.states.iter() {
             let count = r.value().failure_count.load(Ordering::Relaxed);
             let status = if count >= self.failure_threshold {
