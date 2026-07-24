@@ -2,6 +2,7 @@ use dashmap::DashMap;
 use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use tracing::warn;
 
 /// 负载均衡策略
 #[allow(dead_code)]
@@ -92,6 +93,12 @@ impl LoadBalancer for WeightedRandomBalancer {
 
         if total_weight == 0 {
             // 所有权重为0，均匀随机选择
+            warn!(
+                "WeightedRandomBalancer: All upstream channels have zero weight, \
+                falling back to uniform random selection. This may indicate a \
+                misconfiguration. Candidates: {:?}",
+                candidates.iter().map(|c| c.id.clone()).collect::<Vec<_>>()
+            );
             let mut rng = rand::thread_rng();
             return rng.gen_range(0..candidates.len());
         }
@@ -191,8 +198,8 @@ impl LoadBalancer for LeastConnectionsBalancer {
         if min_indices.len() == 1 {
             min_indices[0]
         } else {
-            let mut rng = rand::thread_rng();
-            min_indices[rng.gen_range(0..min_indices.len())]
+            // 使用 rand::random() 替代 thread_rng()，更简洁且线程安全
+            min_indices[rand::random::<usize>() % min_indices.len()]
         }
     }
 
