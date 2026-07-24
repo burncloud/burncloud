@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used)]
+
 //! Prometheus metrics for observability.
 //!
 //! This module provides Prometheus-compatible metrics for monitoring
@@ -35,7 +37,7 @@ pub fn init_from_env() {
 }
 
 /// Custom Prometheus registry for burncloud metrics.
-pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry::new());
+pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
 
 // ============================================================================
 // Request Metrics
