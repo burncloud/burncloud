@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::response_quality::{ResponseQuality, ResponseQualityDetector, UpstreamErrorType};
+use crate::response_quality::{ResponseQuality, ResponseQualityDetector};
 
 /// Default error rate threshold for circuit breaking (10%)
 pub const DEFAULT_ERROR_RATE_THRESHOLD: f64 = 0.1;
@@ -99,6 +99,7 @@ struct RequestRecord {
     timestamp: Instant,
     is_success: bool,
     latency_ms: u64,
+    #[allow(dead_code)]
     health_score: f64,
 }
 
@@ -394,7 +395,7 @@ impl MultiLevelCircuitBreaker {
 
     /// Check if request is allowed for a model
     pub fn allow_request(&self, model: &str) -> TripLevel {
-        let now = Instant::now();
+        let _now = Instant::now();
 
         // Check channel-level first
         match self.channel_breaker.allow_request() {
