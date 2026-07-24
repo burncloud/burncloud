@@ -4,12 +4,9 @@
 //! with the existing channel state tracking system.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use dashmap::DashMap;
 
-
-use crate::channel_state::ChannelStateTracker;
 use crate::response_quality::{ResponseQuality, ResponseQualityDetector};
 use crate::smart_circuit_breaker::{MultiLevelCircuitBreaker, SmartCircuitBreakerConfig, TripLevel};
 
@@ -46,6 +43,7 @@ impl ChannelHealthManager {
     }
 
     /// Process a response and update health state
+    #[allow(clippy::too_many_arguments)]
     pub fn process_response(
         &self,
         channel_id: i32,
