@@ -494,6 +494,20 @@ const SENSITIVE_FIELDS: &[&str] = &[
     "app_secret",
     "api_secret",
 ];
+
+/// Mask sensitive tokens for logging.
+/// Keeps first 4 and last 4 characters, replaces middle with ***.
+pub fn mask_token(token: &str) -> String {
+    let chars: Vec<char> = token.chars().collect();
+    if chars.len() <= 8 {
+        "***".to_string()
+    } else {
+        let first_four: String = chars[0..4].iter().collect();
+        let last_four: String = chars[chars.len()-4..].iter().collect();
+        format!("{}{}{}", first_four, "***", last_four)
+    }
+}
+
 /// Safely cut a string at a UTF-8 character boundary.
 /// Returns a string slice that is at most max_bytes long.
 fn safe_cut(s: &str, max_bytes: usize) -> &str {
