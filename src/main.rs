@@ -29,20 +29,26 @@ fn main() -> Result<()> {
             {
                 // Start Server in background thread
                 std::thread::spawn(|| {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        let host =
-                            std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-                        let port = std::env::var("PORT")
-                            .unwrap_or_else(|_| {
-                                burncloud_common::constants::DEFAULT_PORT.to_string()
-                            })
-                            .parse()
-                            .unwrap_or(burncloud_common::constants::DEFAULT_PORT);
-                        if let Err(e) = burncloud_server::start_server(&host, port, false).await {
-                            eprintln!("Server failed to start: {}", e);
+                    match tokio::runtime::Runtime::new() {
+                        Ok(rt) => {
+                            rt.block_on(async {
+                                let host =
+                                    std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+                                let port = std::env::var("PORT")
+                                    .unwrap_or_else(|_| {
+                                        burncloud_common::constants::DEFAULT_PORT.to_string()
+                                    })
+                                    .parse()
+                                    .unwrap_or(burncloud_common::constants::DEFAULT_PORT);
+                                if let Err(e) = burncloud_server::start_server(&host, port, false).await {
+                                    eprintln!("Server failed to start: {}", e);
+                                }
+                            });
                         }
-                    });
+                        Err(e) => {
+                            eprintln!("Failed to create runtime: {}", e);
+                        }
+                    }
                 });
 
                 burncloud_client::launch_gui_with_tray();

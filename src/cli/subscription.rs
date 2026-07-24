@@ -10,9 +10,12 @@ pub async fn handle_subscription_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match matches.subcommand() {
         Some(("subscribe", sub_m)) => {
-            let user_id = *sub_m.get_one::<i32>("user").unwrap();
-            let plan_id = *sub_m.get_one::<i32>("plan").unwrap();
-            let duration = *sub_m.get_one::<i64>("duration").unwrap();
+            let user_id = *sub_m.get_one::<i32>("user")
+                .ok_or("Missing required argument: user")?;
+            let plan_id = *sub_m.get_one::<i32>("plan")
+                .ok_or("Missing required argument: plan")?;
+            let duration = *sub_m.get_one::<i64>("duration")
+                .ok_or("Missing required argument: duration")?;
 
             let sub = SubscriptionService::subscribe(db, user_id, plan_id, duration).await?;
             println!("✅ Created subscription:");
@@ -70,7 +73,8 @@ pub async fn handle_subscription_command(
             }
         }
         Some(("list", sub_m)) => {
-            let user_id = *sub_m.get_one::<i32>("user").unwrap();
+            let user_id = *sub_m.get_one::<i32>("user")
+                .ok_or("Missing required argument: user")?;
             let subs = SubscriptionService::list_user_subscriptions(db, user_id).await?;
 
             if subs.is_empty() {
@@ -101,7 +105,8 @@ pub async fn handle_subscription_command(
             }
         }
         Some(("cancel", sub_m)) => {
-            let id = *sub_m.get_one::<i32>("id").unwrap();
+            let id = *sub_m.get_one::<i32>("id")
+                .ok_or("Missing required argument: id")?;
             let sub = SubscriptionService::cancel_subscription(db, id).await?;
             println!("✅ Cancelled subscription #{}", id);
             println!("  Status: {}", sub.status);

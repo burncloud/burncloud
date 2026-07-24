@@ -332,7 +332,7 @@ fn parse_check_log(
     }
 
     if let Some(cap) = Regex::new(r"Server failed to start at (http[^\r\n]+)")
-        .unwrap()
+        .expect("Invalid regex pattern for server start error")
         .captures(&text)
     {
         failures.push(Failure {

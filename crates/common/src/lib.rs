@@ -4,6 +4,7 @@ pub mod price_u64;
 pub mod pricing_config;
 pub mod repository;
 pub mod types;
+pub mod validation;
 
 pub use repository::CrudRepository;
 
@@ -15,3 +16,4 @@ pub use price_u64::{
 };
 pub use pricing_config::*;
 pub use types::*;
+pub use validation::*;
