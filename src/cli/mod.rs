@@ -1,4 +1,3 @@
-pub mod bundle;
 pub mod channel;
 pub mod commands;
 pub mod currency;
