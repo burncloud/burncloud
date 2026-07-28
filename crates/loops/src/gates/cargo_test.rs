@@ -198,9 +198,10 @@ fn filter_test_lines(lines: &[String]) -> Vec<String> {
 fn split_timings(lines: Vec<String>) -> (Vec<String>, Value) {
     let timing_re =
         Regex::new(r"\[E2E-TIMING\] page=(\S+) path=(\S+) open_ms=(\d+) wait_ms=(\d+) total_ms=(\d+) status=(\w+)")
-            .expect("timing regex");
+            .unwrap_or_else(|e| panic!("timing regex error: {}", e));
     let browser_re =
-        Regex::new(r"\[agent-browser\] (\S+)(?: .+)? took (\d+)ms").expect("browser regex");
+        Regex::new(r"\[agent-browser\] (\S+)(?: .+)? took (\d+)ms")
+            .unwrap_or_else(|e| panic!("browser regex error: {}", e));
 
     let mut pages = Vec::new();
     let mut browser_ops = Vec::new();
