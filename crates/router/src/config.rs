@@ -62,3 +62,65 @@ pub struct Upstream {
     #[serde(default)]
     pub pricing_region: Option<String>,
 }
+
+/// 故障转移配置
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FailoverConfig {
+    /// 是否启用故障转移
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// 最大重试次数
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// 重试间隔（毫秒）
+    #[serde(default = "default_retry_delay_ms")]
+    pub retry_delay_ms: u64,
+    /// 是否允许降级到低优先级通道
+    #[serde(default = "default_true")]
+    pub allow_degrade: bool,
+    /// 降级时的权重惩罚因子（0.0-1.0）
+    #[serde(default = "default_degrade_penalty")]
+    pub degrade_penalty: f64,
+    /// 熔断触发后的冷却时间（秒）
+    #[serde(default = "default_cooldown_seconds")]
+    pub cooldown_seconds: u64,
+}
+
+impl Default for FailoverConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_retries: 2,
+            retry_delay_ms: 100,
+            allow_degrade: true,
+            degrade_penalty: 0.5,
+            cooldown_seconds: 30,
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn default_true() -> bool {
+    true
+}
+
+#[allow(dead_code)]
+fn default_max_retries() -> u32 {
+    2
+}
+
+#[allow(dead_code)]
+fn default_retry_delay_ms() -> u64 {
+    100
+}
+
+#[allow(dead_code)]
+fn default_degrade_penalty() -> f64 {
+    0.5
+}
+
+#[allow(dead_code)]
+fn default_cooldown_seconds() -> u64 {
+    30
+}

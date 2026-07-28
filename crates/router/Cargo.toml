@@ -38,6 +38,7 @@ prometheus.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 regex.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
 base64 = { workspace = true }

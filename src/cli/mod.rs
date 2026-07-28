@@ -1,4 +1,4 @@
-pub mod bundle;
+// pub mod bundle; // Temporarily commented out due to missing bundle.rs
 pub mod channel;
 pub mod commands;
 pub mod currency;

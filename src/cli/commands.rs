@@ -4,7 +4,7 @@ use burncloud_database::Database;
 use clap::{Arg, Command};
 use tracing::{error, info};
 
-use super::bundle::handle_bundle_command;
+// use super::bundle::handle_bundle_command; // Temporarily commented out
 use super::channel::handle_channel_command;
 use super::currency::handle_currency_command;
 use super::install::handle_install_command;
@@ -1124,9 +1124,9 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         Some(("install", sub_m)) => {
             handle_install_command(sub_m).await?;
         }
-        Some(("bundle", sub_m)) => {
-            handle_bundle_command(sub_m).await?;
-        }
+        // Some(("bundle", sub_m)) => {
+        //     handle_bundle_command(sub_m).await?;
+        // }
         Some(("channel", sub_m)) => {
             let db = Database::new().await?;
             handle_channel_command(&db, sub_m).await?;
