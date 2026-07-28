@@ -4380,7 +4380,13 @@ async fn metrics_handler() -> Response {
         .status(StatusCode::OK)
         .header("Content-Type", "text/plain; version=0.0.4")
         .body(Body::from(metrics_output))
-        .expect("Failed to build metrics response")
+        .unwrap_or_else(|e| {
+            log::error!("Failed to build metrics response: {}", e);
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("Internal Server Error"))
+                .unwrap_or_default()
+        })
 }
 pub mod smart_circuit_breaker;
 pub mod channel_health_manager;
