@@ -254,7 +254,8 @@ impl Installer {
 
         info!("Successfully installed {}", software.name);
 
-        // Update system PATH environment variable for        #[cfg(target_os = "windows")]
+        // Update system PATH environment variable for Windows
+        #[cfg(target_os = "windows")]
         if let Err(e) = self.update_system_path() {
             warn!("Failed to update system PATH: {}", e);
         }
