@@ -77,7 +77,7 @@ fn main() -> Result<()> {
                 }
                 _ => {
                     // 处理其他命令
-                    run_async_cli(&args[1..])?;
+                    tokio::runtime::Runtime::new()?.block_on(run_async_cli(&args[1..]))?;
                 }
             }
         }
@@ -165,7 +165,6 @@ async fn run_async_server() -> Result<()> {
     burncloud_server::start_server(&host, port, true).await
 }
 
-#[tokio::main]
 async fn run_async_cli(args: &[String]) -> Result<()> {
     crate::cli::commands::handle_command(args).await
 }
