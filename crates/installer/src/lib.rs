@@ -32,7 +32,6 @@
 //! }
 //! ```
 
-pub mod bundle;
 pub mod error;
 pub mod installer;
 pub mod npm;
@@ -40,7 +39,6 @@ pub mod platform;
 pub mod registry;
 pub mod software;
 
-pub use bundle::{BundleCreator, BundleManifest, BundleVerifier};
 pub use error::{InstallerError, InstallerResult};
 pub use installer::{Installer, InstallerConfig};
 pub use npm::NpmInstaller;
