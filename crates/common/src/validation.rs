@@ -1,16 +1,14 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-#[allow(clippy::expect_used)]
 pub static USERNAME_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^[a-zA-Z0-9_]+$")
-        .expect("用户名正则语法错误，请修复正则表达式")
+        .unwrap_or_else(|e| panic!("用户名正则语法错误: {}", e))
 });
 
-#[allow(clippy::expect_used)]
 pub static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$")
-        .expect("邮箱正则语法错误，请修复正则表达式")
+        .unwrap_or_else(|e| panic!("邮箱正则语法错误: {}", e))
 });
 
 /// 用户名验证：3-50 个字符，只能包含字母、数字、下划线
