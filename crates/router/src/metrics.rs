@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used)]
+
 //! Prometheus metrics for observability.
 //!
 //! This module provides Prometheus-compatible metrics for monitoring
@@ -35,7 +37,61 @@ pub fn init_from_env() {
 }
 
 /// Custom Prometheus registry for burncloud metrics.
-pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry::new());
+pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
+
+// ============================================================================
+// Safe Registration Helpers
+// ============================================================================
+
+fn safe_register_counter_vec(counter: IntCounterVec, name: &str) -> IntCounterVec {
+    match REGISTRY.register(Box::new(counter.clone())) {
+        Ok(_) => counter,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            counter
+        }
+    }
+}
+
+fn safe_register_histogram_vec(histogram: HistogramVec, name: &str) -> HistogramVec {
+    match REGISTRY.register(Box::new(histogram.clone())) {
+        Ok(_) => histogram,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            histogram
+        }
+    }
+}
+
+fn safe_register_gauge_vec(gauge: IntGaugeVec, name: &str) -> IntGaugeVec {
+    match REGISTRY.register(Box::new(gauge.clone())) {
+        Ok(_) => gauge,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            gauge
+        }
+    }
+}
+
+fn safe_register_counter(counter: IntCounter, name: &str) -> IntCounter {
+    match REGISTRY.register(Box::new(counter.clone())) {
+        Ok(_) => counter,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            counter
+        }
+    }
+}
+
+fn safe_register_gauge(gauge: IntGauge, name: &str) -> IntGauge {
+    match REGISTRY.register(Box::new(gauge.clone())) {
+        Ok(_) => gauge,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            gauge
+        }
+    }
+}
 
 // ============================================================================
 // Request Metrics
@@ -52,10 +108,7 @@ pub static REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
         &["status"],
     )
     .expect("Failed to create REQUESTS_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register REQUESTS_TOTAL");
-    counter
+    safe_register_counter_vec(counter, "REQUESTS_TOTAL")
 });
 
 /// Request latency histogram in seconds.
@@ -72,10 +125,7 @@ pub static REQUESTS_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
         &["endpoint", "model"],
     )
     .expect("Failed to create REQUESTS_DURATION_SECONDS histogram");
-    REGISTRY
-        .register(Box::new(histogram.clone()))
-        .expect("Failed to register REQUESTS_DURATION_SECONDS");
-    histogram
+    safe_register_histogram_vec(histogram, "REQUESTS_DURATION_SECONDS")
 });
 
 /// Number of requests currently being processed.
@@ -89,10 +139,7 @@ pub static REQUESTS_IN_FLIGHT: Lazy<IntGaugeVec> = Lazy::new(|| {
         &["endpoint"],
     )
     .expect("Failed to create REQUESTS_IN_FLIGHT gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register REQUESTS_IN_FLIGHT");
-    gauge
+    safe_register_gauge_vec(gauge, "REQUESTS_IN_FLIGHT")
 });
 
 /// Requests by model.
@@ -106,10 +153,7 @@ pub static REQUESTS_BY_MODEL: Lazy<IntCounterVec> = Lazy::new(|| {
         &["model"],
     )
     .expect("Failed to create REQUESTS_BY_MODEL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register REQUESTS_BY_MODEL");
-    counter
+    safe_register_counter_vec(counter, "REQUESTS_BY_MODEL")
 });
 
 /// Requests by channel.
@@ -123,10 +167,7 @@ pub static REQUESTS_BY_CHANNEL: Lazy<IntCounterVec> = Lazy::new(|| {
         &["channel_id", "channel_name"],
     )
     .expect("Failed to create REQUESTS_BY_CHANNEL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register REQUESTS_BY_CHANNEL");
-    counter
+    safe_register_counter_vec(counter, "REQUESTS_BY_CHANNEL")
 });
 
 // ============================================================================
@@ -140,10 +181,7 @@ pub static TOKENS_PROMPT_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
         "Total number of prompt tokens processed",
     )
     .expect("Failed to create TOKENS_PROMPT_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register TOKENS_PROMPT_TOTAL");
-    counter
+    safe_register_counter(counter, "TOKENS_PROMPT_TOTAL")
 });
 
 /// Total completion tokens generated.
@@ -153,20 +191,14 @@ pub static TOKENS_COMPLETION_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
         "Total number of completion tokens generated",
     )
     .expect("Failed to create TOKENS_COMPLETION_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register TOKENS_COMPLETION_TOTAL");
-    counter
+    safe_register_counter(counter, "TOKENS_COMPLETION_TOTAL")
 });
 
 /// Total cost in nanodollars.
 pub static COST_TOTAL_NANO: Lazy<IntCounter> = Lazy::new(|| {
     let counter = IntCounter::new("burncloud_cost_total_nano", "Total cost in nanodollars")
         .expect("Failed to create COST_TOTAL_NANO counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register COST_TOTAL_NANO");
-    counter
+    safe_register_counter(counter, "COST_TOTAL_NANO")
 });
 
 // ============================================================================
@@ -184,10 +216,7 @@ pub static CHANNEL_STATUS: Lazy<IntGaugeVec> = Lazy::new(|| {
         &["channel_id", "channel_name"],
     )
     .expect("Failed to create CHANNEL_STATUS gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register CHANNEL_STATUS");
-    gauge
+    safe_register_gauge_vec(gauge, "CHANNEL_STATUS")
 });
 
 /// Channel error count.
@@ -201,10 +230,7 @@ pub static CHANNEL_ERRORS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
         &["channel_id", "channel_name", "error_type"],
     )
     .expect("Failed to create CHANNEL_ERRORS_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register CHANNEL_ERRORS_TOTAL");
-    counter
+    safe_register_counter_vec(counter, "CHANNEL_ERRORS_TOTAL")
 });
 
 /// Channel latency in seconds.
@@ -219,10 +245,7 @@ pub static CHANNEL_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
         &["channel_id", "channel_name"],
     )
     .expect("Failed to create CHANNEL_LATENCY_SECONDS histogram");
-    REGISTRY
-        .register(Box::new(histogram.clone()))
-        .expect("Failed to register CHANNEL_LATENCY_SECONDS");
-    histogram
+    safe_register_histogram_vec(histogram, "CHANNEL_LATENCY_SECONDS")
 });
 
 // ============================================================================
@@ -233,10 +256,7 @@ pub static CHANNEL_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
 pub static UPTIME_SECONDS: Lazy<IntGauge> = Lazy::new(|| {
     let gauge = IntGauge::new("burncloud_uptime_seconds", "Service uptime in seconds")
         .expect("Failed to create UPTIME_SECONDS gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register UPTIME_SECONDS");
-    gauge
+    safe_register_gauge(gauge, "UPTIME_SECONDS")
 });
 
 /// Active connections count.
@@ -246,20 +266,14 @@ pub static CONNECTIONS_ACTIVE: Lazy<IntGauge> = Lazy::new(|| {
         "Number of active connections",
     )
     .expect("Failed to create CONNECTIONS_ACTIVE gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register CONNECTIONS_ACTIVE");
-    gauge
+    safe_register_gauge(gauge, "CONNECTIONS_ACTIVE")
 });
 
 /// Memory usage in bytes.
 pub static MEMORY_BYTES: Lazy<IntGauge> = Lazy::new(|| {
     let gauge = IntGauge::new("burncloud_memory_bytes", "Memory usage in bytes")
         .expect("Failed to create MEMORY_BYTES gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register MEMORY_BYTES");
-    gauge
+    safe_register_gauge(gauge, "MEMORY_BYTES")
 });
 
 /// Service start time for uptime calculation.
