@@ -283,7 +283,8 @@ fn parse_check_log(
         return;
     };
 
-    let page_load = Regex::new(r"Page (/[^\s]+) did not load:?\s*([^\r\n]*)").expect("regex");
+    let page_load = Regex::new(r"Page (/[^\s]+) did not load:?\s*([^\r\n]*)")
+        .unwrap_or_else(|e| panic!("page_load regex error: {}", e));
     for cap in page_load.captures_iter(&text) {
         let path = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         if path_to_aesthetic_key(path).as_deref() != Some(focus) {
@@ -312,7 +313,8 @@ fn parse_check_log(
         }
     }
     let panic_load =
-        Regex::new(r"panicked at [^:]+:\d+:\d+:\s*Page (/[^\s]+) did not load").expect("regex");
+        Regex::new(r"panicked at [^:]+:\d+:\d+:\s*Page (/[^\s]+) did not load")
+            .unwrap_or_else(|e| panic!("panic_load regex error: {}", e));
     for cap in panic_load.captures_iter(&text) {
         let path = &cap[1];
         if failures.iter().any(|f| f.page == path) {
@@ -332,7 +334,7 @@ fn parse_check_log(
     }
 
     if let Some(cap) = Regex::new(r"Server failed to start at (http[^\r\n]+)")
-        .unwrap()
+        .unwrap_or_else(|e| panic!("server_start regex error: {}", e))
         .captures(&text)
     {
         failures.push(Failure {
@@ -342,7 +344,8 @@ fn parse_check_log(
         });
     }
 
-    let layout = Regex::new(r"Layout check failed on ([^:]+): ([^\r\n]+)").expect("regex");
+    let layout = Regex::new(r"Layout check failed on ([^:]+): ([^\r\n]+)")
+        .unwrap_or_else(|e| panic!("layout regex error: {}", e));
     for cap in layout.captures_iter(&text) {
         failures.push(Failure {
             layer: "css-visual".into(),
@@ -351,7 +354,8 @@ fn parse_check_log(
         });
     }
 
-    let naming = Regex::new(r"::error::([^\r\n]+)").expect("regex");
+    let naming = Regex::new(r"::error::([^\r\n]+)")
+        .unwrap_or_else(|e| panic!("naming regex error: {}", e));
     for cap in naming.captures_iter(&text) {
         failures.push(Failure {
             layer: "css-naming".into(),
@@ -360,7 +364,8 @@ fn parse_check_log(
         });
     }
 
-    let metrics = Regex::new(r"Aesthetic metrics failed on ([^:]+): ([^\r\n]+)").expect("regex");
+    let metrics = Regex::new(r"Aesthetic metrics failed on ([^:]+): ([^\r\n]+)")
+        .unwrap_or_else(|e| panic!("metrics regex error: {}", e));
     for cap in metrics.captures_iter(&text) {
         let page_key = cap[1].to_string();
         if page_key != focus {

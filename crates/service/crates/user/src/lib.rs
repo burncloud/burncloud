@@ -350,7 +350,7 @@ impl UserService {
         // create_recharge already updates the balance; read it back
         let balance = UserDatabase::update_balance(db, user_id, 0, Some(currency))
             .await
-            .unwrap_or(0);
+            .map_err(UserServiceError::DatabaseError)?;
         Ok(balance)
     }
 
@@ -407,8 +407,9 @@ impl UserService {
         }
 
         let expires_at = chrono::DateTime::parse_from_rfc3339(&reset_token.expires_at)
-            .map_err(|e| UserServiceError::ConfigError(e.to_string()))?;
-        if Utc::now() > expires_at {
+            .map_err(|e| UserServiceError::ConfigError(e.to_string()))?
+            .with_timezone(&chrono::Utc);
+        if chrono::Utc::now() > expires_at {
             return Err(UserServiceError::InvalidCredentials);
         }
 

@@ -11,13 +11,13 @@ pub async fn handle_plan_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match matches.subcommand() {
         Some(("create", sub_m)) => {
-            let name = sub_m.get_one::<String>("name").unwrap().to_string();
-            let monthly_fee = *sub_m.get_one::<i64>("monthly-fee").unwrap();
-            let billing_mode_str = sub_m.get_one::<String>("billing-mode").unwrap();
+            let name = sub_m.get_one::<String>("name").ok_or_else(|| anyhow::anyhow!("Missing required argument: name"))?.to_string();
+            let monthly_fee = *sub_m.get_one::<i64>("monthly-fee").ok_or_else(|| anyhow::anyhow!("Missing required argument: monthly-fee"))?;
+            let billing_mode_str = sub_m.get_one::<String>("billing-mode").ok_or_else(|| anyhow::anyhow!("Missing required argument: billing-mode"))?;
             let billing_mode: BillingMode = billing_mode_str.parse()?;
             let request_limit = sub_m.get_one::<i64>("request-limit").copied();
             let token_limit = sub_m.get_one::<i64>("token-limit").copied();
-            let channel_id = *sub_m.get_one::<i32>("channel-id").unwrap();
+            let channel_id = *sub_m.get_one::<i32>("channel-id").ok_or_else(|| anyhow::anyhow!("Missing required argument: channel-id"))?;
 
             let input = BillingPlanInput {
                 name,
@@ -83,7 +83,7 @@ pub async fn handle_plan_command(
             }
         }
         Some(("show", sub_m)) => {
-            let id = *sub_m.get_one::<i32>("id").unwrap();
+            let id = *sub_m.get_one::<i32>("id").ok_or_else(|| anyhow::anyhow!("Missing required argument: id"))?;
             let plan = SubscriptionService::get_plan(db, id).await?;
             println!("Billing Plan #{}:", plan.id);
             println!("  Name: {}", plan.name);
@@ -104,7 +104,7 @@ pub async fn handle_plan_command(
             );
         }
         Some(("delete", sub_m)) => {
-            let id = *sub_m.get_one::<i32>("id").unwrap();
+            let id = *sub_m.get_one::<i32>("id").ok_or_else(|| anyhow::anyhow!("Missing required argument: id"))?;
             let deleted = SubscriptionService::delete_plan(db, id).await?;
             if deleted {
                 println!("✅ Deleted billing plan #{}", id);

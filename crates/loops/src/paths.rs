@@ -5,8 +5,7 @@ pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
-        .expect("crates/loops must live at crates/loops")
-        .to_path_buf()
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// All loop runtime artifacts (screenshots, metrics, logs, prompts).

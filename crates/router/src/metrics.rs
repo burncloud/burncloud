@@ -35,7 +35,144 @@ pub fn init_from_env() {
 }
 
 /// Custom Prometheus registry for burncloud metrics.
-pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry::new());
+pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
+
+// ============================================================================
+// Safe Creation Helpers
+// ============================================================================
+
+fn create_counter_vec<F>(name: &str, f: F) -> IntCounterVec
+where
+    F: FnOnce() -> prometheus::Result<IntCounterVec>,
+{
+    match f() {
+        Ok(counter) => counter,
+        Err(e) => {
+            log::error!("Failed to create {}: {}, using fallback", name, e);
+            prometheus::IntCounterVec::new(
+                prometheus::Opts::new("burncloud_fallback", "fallback metric"),
+                &["fallback"],
+            )
+            .unwrap_or_else(|_| panic!("Failed to create fallback counter for {}", name))
+        }
+    }
+}
+
+fn create_histogram_vec<F>(name: &str, f: F) -> HistogramVec
+where
+    F: FnOnce() -> prometheus::Result<HistogramVec>,
+{
+    match f() {
+        Ok(histogram) => histogram,
+        Err(e) => {
+            log::error!("Failed to create {}: {}, using fallback", name, e);
+            prometheus::HistogramVec::new(
+                prometheus::HistogramOpts::new("burncloud_fallback", "fallback metric"),
+                &["fallback"],
+            )
+            .unwrap_or_else(|_| panic!("Failed to create fallback histogram for {}", name))
+        }
+    }
+}
+
+fn create_gauge_vec<F>(name: &str, f: F) -> IntGaugeVec
+where
+    F: FnOnce() -> prometheus::Result<IntGaugeVec>,
+{
+    match f() {
+        Ok(gauge) => gauge,
+        Err(e) => {
+            log::error!("Failed to create {}: {}, using fallback", name, e);
+            prometheus::IntGaugeVec::new(
+                prometheus::Opts::new("burncloud_fallback", "fallback metric"),
+                &["fallback"],
+            )
+            .unwrap_or_else(|_| panic!("Failed to create fallback gauge for {}", name))
+        }
+    }
+}
+
+fn create_counter<F>(name: &str, f: F) -> IntCounter
+where
+    F: FnOnce() -> prometheus::Result<IntCounter>,
+{
+    match f() {
+        Ok(counter) => counter,
+        Err(e) => {
+            log::error!("Failed to create {}: {}, using fallback", name, e);
+            prometheus::IntCounter::new("burncloud_fallback", "fallback metric")
+                .unwrap_or_else(|_| panic!("Failed to create fallback counter for {}", name))
+        }
+    }
+}
+
+fn create_gauge<F>(name: &str, f: F) -> IntGauge
+where
+    F: FnOnce() -> prometheus::Result<IntGauge>,
+{
+    match f() {
+        Ok(gauge) => gauge,
+        Err(e) => {
+            log::error!("Failed to create {}: {}, using fallback", name, e);
+            prometheus::IntGauge::new("burncloud_fallback", "fallback metric")
+                .unwrap_or_else(|_| panic!("Failed to create fallback gauge for {}", name))
+        }
+    }
+}
+
+// ============================================================================
+// Safe Registration Helpers
+// ============================================================================
+
+fn safe_register_counter_vec(counter: IntCounterVec, name: &str) -> IntCounterVec {
+    match REGISTRY.register(Box::new(counter.clone())) {
+        Ok(_) => counter,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            counter
+        }
+    }
+}
+
+fn safe_register_histogram_vec(histogram: HistogramVec, name: &str) -> HistogramVec {
+    match REGISTRY.register(Box::new(histogram.clone())) {
+        Ok(_) => histogram,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            histogram
+        }
+    }
+}
+
+fn safe_register_gauge_vec(gauge: IntGaugeVec, name: &str) -> IntGaugeVec {
+    match REGISTRY.register(Box::new(gauge.clone())) {
+        Ok(_) => gauge,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            gauge
+        }
+    }
+}
+
+fn safe_register_counter(counter: IntCounter, name: &str) -> IntCounter {
+    match REGISTRY.register(Box::new(counter.clone())) {
+        Ok(_) => counter,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            counter
+        }
+    }
+}
+
+fn safe_register_gauge(gauge: IntGauge, name: &str) -> IntGauge {
+    match REGISTRY.register(Box::new(gauge.clone())) {
+        Ok(_) => gauge,
+        Err(e) => {
+            log::error!("Failed to register {}: {}", name, e);
+            gauge
+        }
+    }
+}
 
 // ============================================================================
 // Request Metrics
@@ -43,90 +180,80 @@ pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry::new());
 
 /// Total number of requests processed.
 pub static REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
-    let counter = IntCounterVec::new(
-        prometheus::Opts::new(
-            "burncloud_requests_total",
-            "Total number of requests processed",
+    let counter = create_counter_vec("REQUESTS_TOTAL", || {
+        IntCounterVec::new(
+            prometheus::Opts::new(
+                "burncloud_requests_total",
+                "Total number of requests processed",
+            )
+            .namespace("burncloud"),
+            &["status"],
         )
-        .namespace("burncloud"),
-        &["status"],
-    )
-    .expect("Failed to create REQUESTS_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register REQUESTS_TOTAL");
-    counter
+    });
+    safe_register_counter_vec(counter, "REQUESTS_TOTAL")
 });
 
 /// Request latency histogram in seconds.
 pub static REQUESTS_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
-    let histogram = HistogramVec::new(
-        prometheus::HistogramOpts::new(
-            "burncloud_requests_duration_seconds",
-            "Request latency in seconds",
+    let histogram = create_histogram_vec("REQUESTS_DURATION_SECONDS", || {
+        HistogramVec::new(
+            prometheus::HistogramOpts::new(
+                "burncloud_requests_duration_seconds",
+                "Request latency in seconds",
+            )
+            .namespace("burncloud")
+            .buckets(vec![
+                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0,
+            ]),
+            &["endpoint", "model"],
         )
-        .namespace("burncloud")
-        .buckets(vec![
-            0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0,
-        ]),
-        &["endpoint", "model"],
-    )
-    .expect("Failed to create REQUESTS_DURATION_SECONDS histogram");
-    REGISTRY
-        .register(Box::new(histogram.clone()))
-        .expect("Failed to register REQUESTS_DURATION_SECONDS");
-    histogram
+    });
+    safe_register_histogram_vec(histogram, "REQUESTS_DURATION_SECONDS")
 });
 
 /// Number of requests currently being processed.
 pub static REQUESTS_IN_FLIGHT: Lazy<IntGaugeVec> = Lazy::new(|| {
-    let gauge = IntGaugeVec::new(
-        prometheus::Opts::new(
-            "burncloud_requests_in_flight",
-            "Number of requests currently being processed",
+    let gauge = create_gauge_vec("REQUESTS_IN_FLIGHT", || {
+        IntGaugeVec::new(
+            prometheus::Opts::new(
+                "burncloud_requests_in_flight",
+                "Number of requests currently being processed",
+            )
+            .namespace("burncloud"),
+            &["endpoint"],
         )
-        .namespace("burncloud"),
-        &["endpoint"],
-    )
-    .expect("Failed to create REQUESTS_IN_FLIGHT gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register REQUESTS_IN_FLIGHT");
-    gauge
+    });
+    safe_register_gauge_vec(gauge, "REQUESTS_IN_FLIGHT")
 });
 
 /// Requests by model.
 pub static REQUESTS_BY_MODEL: Lazy<IntCounterVec> = Lazy::new(|| {
-    let counter = IntCounterVec::new(
-        prometheus::Opts::new(
-            "burncloud_requests_by_model",
-            "Number of requests per model",
+    let counter = create_counter_vec("REQUESTS_BY_MODEL", || {
+        IntCounterVec::new(
+            prometheus::Opts::new(
+                "burncloud_requests_by_model",
+                "Number of requests per model",
+            )
+            .namespace("burncloud"),
+            &["model"],
         )
-        .namespace("burncloud"),
-        &["model"],
-    )
-    .expect("Failed to create REQUESTS_BY_MODEL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register REQUESTS_BY_MODEL");
-    counter
+    });
+    safe_register_counter_vec(counter, "REQUESTS_BY_MODEL")
 });
 
 /// Requests by channel.
 pub static REQUESTS_BY_CHANNEL: Lazy<IntCounterVec> = Lazy::new(|| {
-    let counter = IntCounterVec::new(
-        prometheus::Opts::new(
-            "burncloud_requests_by_channel",
-            "Number of requests per channel",
+    let counter = create_counter_vec("REQUESTS_BY_CHANNEL", || {
+        IntCounterVec::new(
+            prometheus::Opts::new(
+                "burncloud_requests_by_channel",
+                "Number of requests per channel",
+            )
+            .namespace("burncloud"),
+            &["channel_id", "channel_name"],
         )
-        .namespace("burncloud"),
-        &["channel_id", "channel_name"],
-    )
-    .expect("Failed to create REQUESTS_BY_CHANNEL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register REQUESTS_BY_CHANNEL");
-    counter
+    });
+    safe_register_counter_vec(counter, "REQUESTS_BY_CHANNEL")
 });
 
 // ============================================================================
@@ -135,38 +262,32 @@ pub static REQUESTS_BY_CHANNEL: Lazy<IntCounterVec> = Lazy::new(|| {
 
 /// Total prompt tokens processed.
 pub static TOKENS_PROMPT_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
-    let counter = IntCounter::new(
-        "burncloud_tokens_prompt_total",
-        "Total number of prompt tokens processed",
-    )
-    .expect("Failed to create TOKENS_PROMPT_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register TOKENS_PROMPT_TOTAL");
-    counter
+    let counter = create_counter("TOKENS_PROMPT_TOTAL", || {
+        IntCounter::new(
+            "burncloud_tokens_prompt_total",
+            "Total number of prompt tokens processed",
+        )
+    });
+    safe_register_counter(counter, "TOKENS_PROMPT_TOTAL")
 });
 
 /// Total completion tokens generated.
 pub static TOKENS_COMPLETION_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
-    let counter = IntCounter::new(
-        "burncloud_tokens_completion_total",
-        "Total number of completion tokens generated",
-    )
-    .expect("Failed to create TOKENS_COMPLETION_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register TOKENS_COMPLETION_TOTAL");
-    counter
+    let counter = create_counter("TOKENS_COMPLETION_TOTAL", || {
+        IntCounter::new(
+            "burncloud_tokens_completion_total",
+            "Total number of completion tokens generated",
+        )
+    });
+    safe_register_counter(counter, "TOKENS_COMPLETION_TOTAL")
 });
 
 /// Total cost in nanodollars.
 pub static COST_TOTAL_NANO: Lazy<IntCounter> = Lazy::new(|| {
-    let counter = IntCounter::new("burncloud_cost_total_nano", "Total cost in nanodollars")
-        .expect("Failed to create COST_TOTAL_NANO counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register COST_TOTAL_NANO");
-    counter
+    let counter = create_counter("COST_TOTAL_NANO", || {
+        IntCounter::new("burncloud_cost_total_nano", "Total cost in nanodollars")
+    });
+    safe_register_counter(counter, "COST_TOTAL_NANO")
 });
 
 // ============================================================================
@@ -175,54 +296,48 @@ pub static COST_TOTAL_NANO: Lazy<IntCounter> = Lazy::new(|| {
 
 /// Channel status (1=healthy, 0=unhealthy).
 pub static CHANNEL_STATUS: Lazy<IntGaugeVec> = Lazy::new(|| {
-    let gauge = IntGaugeVec::new(
-        prometheus::Opts::new(
-            "burncloud_channel_status",
-            "Channel status (1=healthy, 0=unhealthy)",
+    let gauge = create_gauge_vec("CHANNEL_STATUS", || {
+        IntGaugeVec::new(
+            prometheus::Opts::new(
+                "burncloud_channel_status",
+                "Channel status (1=healthy, 0=unhealthy)",
+            )
+            .namespace("burncloud"),
+            &["channel_id", "channel_name"],
         )
-        .namespace("burncloud"),
-        &["channel_id", "channel_name"],
-    )
-    .expect("Failed to create CHANNEL_STATUS gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register CHANNEL_STATUS");
-    gauge
+    });
+    safe_register_gauge_vec(gauge, "CHANNEL_STATUS")
 });
 
 /// Channel error count.
 pub static CHANNEL_ERRORS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
-    let counter = IntCounterVec::new(
-        prometheus::Opts::new(
-            "burncloud_channel_errors_total",
-            "Total number of channel errors",
+    let counter = create_counter_vec("CHANNEL_ERRORS_TOTAL", || {
+        IntCounterVec::new(
+            prometheus::Opts::new(
+                "burncloud_channel_errors_total",
+                "Total number of channel errors",
+            )
+            .namespace("burncloud"),
+            &["channel_id", "channel_name", "error_type"],
         )
-        .namespace("burncloud"),
-        &["channel_id", "channel_name", "error_type"],
-    )
-    .expect("Failed to create CHANNEL_ERRORS_TOTAL counter");
-    REGISTRY
-        .register(Box::new(counter.clone()))
-        .expect("Failed to register CHANNEL_ERRORS_TOTAL");
-    counter
+    });
+    safe_register_counter_vec(counter, "CHANNEL_ERRORS_TOTAL")
 });
 
 /// Channel latency in seconds.
 pub static CHANNEL_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
-    let histogram = HistogramVec::new(
-        prometheus::HistogramOpts::new(
-            "burncloud_channel_latency_seconds",
-            "Channel request latency in seconds",
+    let histogram = create_histogram_vec("CHANNEL_LATENCY_SECONDS", || {
+        HistogramVec::new(
+            prometheus::HistogramOpts::new(
+                "burncloud_channel_latency_seconds",
+                "Channel request latency in seconds",
+            )
+            .namespace("burncloud")
+            .buckets(vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]),
+            &["channel_id", "channel_name"],
         )
-        .namespace("burncloud")
-        .buckets(vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]),
-        &["channel_id", "channel_name"],
-    )
-    .expect("Failed to create CHANNEL_LATENCY_SECONDS histogram");
-    REGISTRY
-        .register(Box::new(histogram.clone()))
-        .expect("Failed to register CHANNEL_LATENCY_SECONDS");
-    histogram
+    });
+    safe_register_histogram_vec(histogram, "CHANNEL_LATENCY_SECONDS")
 });
 
 // ============================================================================
@@ -231,35 +346,29 @@ pub static CHANNEL_LATENCY_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
 
 /// Service uptime in seconds.
 pub static UPTIME_SECONDS: Lazy<IntGauge> = Lazy::new(|| {
-    let gauge = IntGauge::new("burncloud_uptime_seconds", "Service uptime in seconds")
-        .expect("Failed to create UPTIME_SECONDS gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register UPTIME_SECONDS");
-    gauge
+    let gauge = create_gauge("UPTIME_SECONDS", || {
+        IntGauge::new("burncloud_uptime_seconds", "Service uptime in seconds")
+    });
+    safe_register_gauge(gauge, "UPTIME_SECONDS")
 });
 
 /// Active connections count.
 pub static CONNECTIONS_ACTIVE: Lazy<IntGauge> = Lazy::new(|| {
-    let gauge = IntGauge::new(
-        "burncloud_connections_active",
-        "Number of active connections",
-    )
-    .expect("Failed to create CONNECTIONS_ACTIVE gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register CONNECTIONS_ACTIVE");
-    gauge
+    let gauge = create_gauge("CONNECTIONS_ACTIVE", || {
+        IntGauge::new(
+            "burncloud_connections_active",
+            "Number of active connections",
+        )
+    });
+    safe_register_gauge(gauge, "CONNECTIONS_ACTIVE")
 });
 
 /// Memory usage in bytes.
 pub static MEMORY_BYTES: Lazy<IntGauge> = Lazy::new(|| {
-    let gauge = IntGauge::new("burncloud_memory_bytes", "Memory usage in bytes")
-        .expect("Failed to create MEMORY_BYTES gauge");
-    REGISTRY
-        .register(Box::new(gauge.clone()))
-        .expect("Failed to register MEMORY_BYTES");
-    gauge
+    let gauge = create_gauge("MEMORY_BYTES", || {
+        IntGauge::new("burncloud_memory_bytes", "Memory usage in bytes")
+    });
+    safe_register_gauge(gauge, "MEMORY_BYTES")
 });
 
 /// Service start time for uptime calculation.
