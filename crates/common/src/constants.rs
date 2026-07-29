@@ -7,8 +7,21 @@ pub const WS_PATH: &str = "/ws";
 pub const DEFAULT_JWT_SECRET: &str = "burncloud-default-secret-change-in-production";
 
 /// Resolve JWT signing/verification secret from the environment.
+///
+/// # Warning
+/// If `JWT_SECRET` environment variable is not set, the default dev-only secret will be used.
+/// This is insecure for production environments. A warning log will be emitted.
 pub fn jwt_secret() -> String {
-    std::env::var("JWT_SECRET").unwrap_or_else(|_| DEFAULT_JWT_SECRET.to_string())
+    match std::env::var("JWT_SECRET") {
+        Ok(secret) if !secret.is_empty() => secret,
+        _ => {
+            tracing::warn!(
+                "JWT_SECRET environment variable is not set or empty. Using insecure default secret. \
+                 THIS IS INSECURE FOR PRODUCTION! Please set a strong JWT_SECRET value."
+            );
+            DEFAULT_JWT_SECRET.to_string()
+        }
+    }
 }
 
 // Helper to get base URL
