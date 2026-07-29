@@ -67,6 +67,10 @@ impl ExchangeRateService {
 
     /// Convert an amount from one currency to another
     pub fn convert(&self, amount: f64, from: Currency, to: Currency) -> anyhow::Result<f64> {
+        if amount == 0.0 {
+            return Ok(0.0);
+        }
+
         if from == to {
             return Ok(amount);
         }
