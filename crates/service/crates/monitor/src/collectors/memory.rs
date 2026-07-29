@@ -67,7 +67,10 @@ impl MemoryCollector {
         for line in meminfo_content.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
-                let value = parts[1].parse::<u64>().unwrap_or(0);
+                let value = parts[1].parse::<u64>().unwrap_or_else(|e| {
+                    tracing::error!(parse_err = ?e, field = "parts[1]", "数值字符串解析失败，兜底返回0");
+                    0
+                });
                 match parts[0] {
                     "MemTotal:" => total_kb = value,
                     "MemAvailable:" => available_kb = value,
@@ -141,7 +144,10 @@ impl MemoryCollector {
         for line in meminfo_content.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
-                let value = parts[1].parse::<u64>().unwrap_or(0);
+                let value = parts[1].parse::<u64>().unwrap_or_else(|e| {
+                    tracing::error!(parse_err = ?e, field = "parts[1]", "数值字符串解析失败，兜底返回0");
+                    0
+                });
                 match parts[0] {
                     "MemTotal:" => total_kb = value,
                     "MemAvailable:" => available_kb = value,
