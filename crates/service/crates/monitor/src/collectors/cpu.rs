@@ -52,8 +52,11 @@ impl CpuCollector {
     async fn collect_windows(&mut self) -> Result<CpuInfo, MonitorError> {
         use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
 
-        // 获取CPU核心数
+        // SAFETY: SYSTEM_INFO is a C-compatible POD structure that can be safely zeroed.
+        // GetSystemInfo fills the structure with system information and does not require cleanup.
         let mut sys_info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
+        // SAFETY: GetSystemInfo writes to a valid, properly aligned pointer to SYSTEM_INFO.
+        // The function is documented to be thread-safe and does not allocate.
         unsafe {
             GetSystemInfo(&mut sys_info);
         }
@@ -86,6 +89,11 @@ impl CpuCollector {
         let mut frequency = 0u64;
         let mut brand = String::from("Windows CPU");
 
+        // SAFETY: This block performs Win32 registry operations.
+        // - RegOpenKeyExW/RegQueryValueExW/RegCloseKey are called with valid, properly encoded wide strings.
+        // - All buffer sizes are correctly calculated to prevent buffer overflow.
+        // - HKEY is properly closed with RegCloseKey after use, preventing resource leaks.
+        // - Null pointer checks are performed via Win32 API return values.
         unsafe {
             let mut hkey: HKEY = ptr::null_mut();
             let subkey: Vec<u16> = OsStr::new("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0")
