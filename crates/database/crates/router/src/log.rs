@@ -6,6 +6,7 @@
 use burncloud_database::{adapt_sql, ph, phs, Database, DatabaseError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::str::FromStr;
 
 /// Router log entry
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -744,13 +745,17 @@ impl StoragePolicy {
             Self::None => "none",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
+impl FromStr for StoragePolicy {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "full" => Self::Full,
-            "summary" => Self::Summary,
-            "none" => Self::None,
-            _ => Self::Summary, // Default to summary for unknown values
+            "full" => Ok(Self::Full),
+            "summary" => Ok(Self::Summary),
+            "none" => Ok(Self::None),
+            _ => Err("invalid storage policy, valid values: full / summary / none"),
         }
     }
 }
