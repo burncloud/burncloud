@@ -3158,7 +3158,7 @@ async fn proxy_logic(
                 Some(body_json)
             };
 
-        // SAFETY: The two branches above both return Some
+        // Both branches above return Some; the None case is handled defensively below
         let mut request_body_json = match request_body_json {
             Some(json) => json,
             None => {
