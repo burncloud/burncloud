@@ -96,9 +96,12 @@ impl Database {
 
         // Enable WAL mode for SQLite performance and concurrency
         if self.kind() == "sqlite" {
-            let _ = sqlx::query("PRAGMA journal_mode=WAL;")
+            if let Err(e) = sqlx::query("PRAGMA journal_mode=WAL;")
                 .execute(connection.pool())
-                .await;
+                .await
+            {
+                tracing::warn!("Failed to enable WAL mode: {}", e);
+            }
         }
 
         // Run versioned DDL migrations first (creates all tables and columns).
