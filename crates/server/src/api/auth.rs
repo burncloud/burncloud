@@ -100,6 +100,19 @@ async fn create_user(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
 ) -> impl IntoResponse {
+    // Input validation
+    if let Err(e) = burncloud_common::validate_username(&payload.username) {
+        return err(e).into_response();
+    }
+    if let Err(e) = burncloud_common::validate_password(&payload.password) {
+        return err(e).into_response();
+    }
+    if let Some(email) = &payload.email {
+        if let Err(e) = burncloud_common::validate_email(email) {
+            return err(e).into_response();
+        }
+    }
+
     match state
         .user_service
         .register_user(
