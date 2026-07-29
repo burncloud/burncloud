@@ -29,7 +29,13 @@ fn main() -> Result<()> {
             {
                 // Start Server in background thread
                 std::thread::spawn(|| {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+                        panic!(
+                            "Failed to create Tokio runtime: {}. \
+                             This usually indicates system resource exhaustion or thread limit reached.",
+                            e
+                        )
+                    });
                     rt.block_on(async {
                         let host =
                             std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
