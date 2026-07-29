@@ -51,7 +51,17 @@ impl DownloadManager {
             ))
         })?;
 
-        let dir = download_dir.unwrap_or("./downloads").to_string();
+        let dir = match download_dir {
+            Some(d) => d.to_string(),
+            None => {
+                let default = "./downloads".to_string();
+                tracing::warn!(
+                    "No download_dir specified, using default: {}",
+                    default
+                );
+                default
+            }
+        };
 
         // 从 URL 中提取文件名
         let filename = extract_filename_from_url(url);
@@ -86,9 +96,18 @@ impl DownloadManager {
 
         // 同步状态到数据库
         self.db.update_status(gid, &status.status).await?;
-        let total: i64 = status.total_length.parse().unwrap_or(0);
-        let completed: i64 = status.completed_length.parse().unwrap_or(0);
-        let speed: i64 = status.download_speed.parse().unwrap_or(0);
+        let total: i64 = status.total_length.parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "total_length", "下载状态数值解析失败，兜底返回0");
+            0
+        });
+        let completed: i64 = status.completed_length.parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "completed_length", "下载状态数值解析失败，兜底返回0");
+            0
+        });
+        let speed: i64 = status.download_speed.parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "download_speed", "下载状态数值解析失败，兜底返回0");
+            0
+        });
         self.db
             .update_progress(gid, total, completed, speed)
             .await?;
@@ -142,9 +161,18 @@ impl DownloadManager {
                 if let Some(client) = aria2.create_rpc_client() {
                     if let Ok(status) = client.tell_status(&gid).await {
                         let _ = db.update_status(&gid, &status.status).await;
-                        let total: i64 = status.total_length.parse().unwrap_or(0);
-                        let completed: i64 = status.completed_length.parse().unwrap_or(0);
-                        let speed: i64 = status.download_speed.parse().unwrap_or(0);
+                        let total: i64 = status.total_length.parse().unwrap_or_else(|e| {
+                            tracing::error!(parse_err = ?e, field = "total_length", "下载状态数值解析失败，兜底返回0");
+                            0
+                        });
+                        let completed: i64 = status.completed_length.parse().unwrap_or_else(|e| {
+                            tracing::error!(parse_err = ?e, field = "completed_length", "下载状态数值解析失败，兜底返回0");
+                            0
+                        });
+                        let speed: i64 = status.download_speed.parse().unwrap_or_else(|e| {
+                            tracing::error!(parse_err = ?e, field = "download_speed", "下载状态数值解析失败，兜底返回0");
+                            0
+                        });
                         let _ = db.update_progress(&gid, total, completed, speed).await;
 
                         // 如果下载完成或出错，停止监控
@@ -173,11 +201,18 @@ impl DownloadManager {
         for download in incomplete {
             let uris: Vec<String> = serde_json::from_str(&download.uris).unwrap_or_default();
             if !uris.is_empty() {
-                let dir = download
-                    .download_dir
-                    .as_deref()
-                    .unwrap_or("./downloads")
-                    .to_string();
+                let dir = match download.download_dir.as_deref() {
+                    Some(d) if !d.is_empty() => d.to_string(),
+                    _ => {
+                        let default = "./downloads".to_string();
+                        tracing::warn!(
+                            gid = %download.gid,
+                            "No download_dir stored for restored download, using default: {}",
+                            default
+                        );
+                        default
+                    }
+                };
                 let options = burncloud_download_aria2::DownloadOptions {
                     dir: Some(dir),
                     out: download.filename,
