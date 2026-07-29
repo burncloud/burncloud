@@ -51,7 +51,17 @@ impl DownloadManager {
             ))
         })?;
 
-        let dir = download_dir.unwrap_or("./downloads").to_string();
+        let dir = match download_dir {
+            Some(d) => d.to_string(),
+            None => {
+                let default = "./downloads".to_string();
+                tracing::warn!(
+                    "No download_dir specified, using default: {}",
+                    default
+                );
+                default
+            }
+        };
 
         // 从 URL 中提取文件名
         let filename = extract_filename_from_url(url);
@@ -191,11 +201,18 @@ impl DownloadManager {
         for download in incomplete {
             let uris: Vec<String> = serde_json::from_str(&download.uris).unwrap_or_default();
             if !uris.is_empty() {
-                let dir = download
-                    .download_dir
-                    .as_deref()
-                    .unwrap_or("./downloads")
-                    .to_string();
+                let dir = match download.download_dir.as_deref() {
+                    Some(d) if !d.is_empty() => d.to_string(),
+                    _ => {
+                        let default = "./downloads".to_string();
+                        tracing::warn!(
+                            gid = %download.gid,
+                            "No download_dir stored for restored download, using default: {}",
+                            default
+                        );
+                        default
+                    }
+                };
                 let options = burncloud_download_aria2::DownloadOptions {
                     dir: Some(dir),
                     out: download.filename,
