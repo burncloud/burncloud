@@ -1,40 +1,50 @@
-use anyhow::Result;
-use burncloud_installer::{BundleCreator, BundleVerifier};
-use clap::ArgMatches;
-use std::path::PathBuf;
+//! CLI commands for offline bundle management
+//!
+//! # ⚠️ STUB IMPLEMENTATION
+//! This module is currently a stub. The actual bundle creation and verification
+//! logic is not yet implemented.
 
+use anyhow::Result;
+use clap::ArgMatches;
+
+/// Handle bundle command
+///
+/// # ⚠️ STUB: Bundle management is NOT implemented yet.
 pub async fn handle_bundle_command(matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("create", sub_m)) => {
             let software = sub_m
                 .get_one::<String>("software")
-                .ok_or_else(|| anyhow::anyhow!("software argument is required"))?;
-
-            let output_dir = sub_m
+                .ok_or_else(|| anyhow::anyhow!("Missing required argument: --software"))?;
+            let output = sub_m
                 .get_one::<String>("output")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("./bundles"));
+                .cloned()
+                .unwrap_or_else(|| "./bundles".to_string());
 
-            let creator = BundleCreator::new(output_dir);
-            let bundle_dir = creator.create(software).await?;
-            println!("Bundle created at: {}", bundle_dir.display());
+            tracing::warn!(
+                "Bundle creation is a STUB - not actually creating bundle for software: {}, output: {}",
+                software,
+                output
+            );
+            println!("⚠️  Bundle creation is not yet implemented. This is a stub.");
+            Ok(())
         }
         Some(("verify", sub_m)) => {
             let bundle_path = sub_m
                 .get_one::<String>("bundle")
-                .ok_or_else(|| anyhow::anyhow!("bundle argument is required"))?;
+                .ok_or_else(|| anyhow::anyhow!("Missing required argument: --bundle"))?;
 
-            let bundle_dir = PathBuf::from(bundle_path);
-            let manifest = BundleVerifier::verify(&bundle_dir)?;
-            println!(
-                "Bundle verified: {} ({})",
-                manifest.software.name, manifest.software.id
+            tracing::warn!(
+                "Bundle verification is a STUB - not actually verifying bundle: {}",
+                bundle_path
             );
+            println!("⚠️  Bundle verification is not yet implemented. This is a stub.");
+            Ok(())
         }
         _ => {
-            println!("Unknown bundle subcommand. Use 'create' or 'verify'.");
+            println!("Usage: burncloud bundle <command>");
+            println!("Commands: create, verify");
+            Ok(())
         }
     }
-
-    Ok(())
 }

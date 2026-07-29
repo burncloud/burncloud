@@ -15,6 +15,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 log.workspace = true
+tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
