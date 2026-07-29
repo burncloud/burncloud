@@ -22,8 +22,12 @@ pub fn init_logging() -> Vec<WorkerGuard> {
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(7);
 
-    fs::create_dir_all(&log_dir)
-        .unwrap_or_else(|e| panic!("failed to create log directory '{log_dir}': {e}"));
+    fs::create_dir_all(&log_dir).unwrap_or_else(|e| {
+        panic!(
+            "Failed to create log directory '{log_dir}': {e}. \
+             Check that the directory path is valid and the current user has write permissions."
+        )
+    });
     tracing_log::LogTracer::init().ok();
 
     let env_filter = EnvFilter::from_default_env();
