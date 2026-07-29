@@ -29,6 +29,11 @@ impl MemoryCollector {
 
     #[cfg(windows)]
     async fn collect_windows(&self) -> Result<MemoryInfo, MonitorError> {
+        // SAFETY:
+        // 1. MEMORYSTATUSEX 是标准 POD 结构，可安全使用 zeroed() 零初始化；
+        // 2. dwLength 字段已正确设置为结构体大小，满足系统 API 要求；
+        // 3. GlobalMemoryStatusEx 是线程安全的系统调用，不会分配堆内存，也无资源泄漏风险；
+        // 4. 传入的 &mut mem_status 指针有效且对齐，函数执行完成后无需清理。
         unsafe {
             let mut mem_status: MEMORYSTATUSEX = std::mem::zeroed();
             mem_status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
@@ -62,7 +67,10 @@ impl MemoryCollector {
         for line in meminfo_content.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
-                let value = parts[1].parse::<u64>().unwrap_or(0);
+                let value = parts[1].parse::<u64>().unwrap_or_else(|e| {
+                    tracing::error!(parse_err = ?e, field = "parts[1]", "数值字符串解析失败，兜底返回0");
+                    0
+                });
                 match parts[0] {
                     "MemTotal:" => total_kb = value,
                     "MemAvailable:" => available_kb = value,
@@ -136,7 +144,10 @@ impl MemoryCollector {
         for line in meminfo_content.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
-                let value = parts[1].parse::<u64>().unwrap_or(0);
+                let value = parts[1].parse::<u64>().unwrap_or_else(|e| {
+                    tracing::error!(parse_err = ?e, field = "parts[1]", "数值字符串解析失败，兜底返回0");
+                    0
+                });
                 match parts[0] {
                     "MemTotal:" => total_kb = value,
                     "MemAvailable:" => available_kb = value,
