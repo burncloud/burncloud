@@ -92,7 +92,7 @@ pub const PREVIEW_ROUTES_AVAILABLE: bool = cfg!(any(debug_assertions, feature = 
 pub fn channels() -> Option<Vec<Channel>> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.channels.clone());
+        state::with_active(|r| r.channels.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -103,7 +103,7 @@ pub fn channels() -> Option<Vec<Channel>> {
 pub fn tokens() -> Option<Vec<TokenDto>> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.tokens.clone());
+        state::with_active(|r| r.tokens.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -114,7 +114,7 @@ pub fn tokens() -> Option<Vec<TokenDto>> {
 pub fn system_metrics() -> Option<SystemMetrics> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.system_metrics.clone());
+        state::with_active(|r| r.system_metrics.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -125,7 +125,7 @@ pub fn system_metrics() -> Option<SystemMetrics> {
 pub fn security_summary() -> Option<SecuritySummary> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.security_summary.clone());
+        state::with_active(|r| r.security_summary.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -136,7 +136,7 @@ pub fn security_summary() -> Option<SecuritySummary> {
 pub fn risk_events() -> Option<RiskEventPage> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.risk_events.clone());
+        state::with_active(|r| r.risk_events.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -147,7 +147,7 @@ pub fn risk_events() -> Option<RiskEventPage> {
 pub fn filter_config() -> Option<FilterConfig> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.filter_config.clone());
+        state::with_active(|r| r.filter_config.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -158,7 +158,7 @@ pub fn filter_config() -> Option<FilterConfig> {
 pub fn usage_stats() -> Option<UsageStats> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.usage.clone());
+        state::with_active(|r| r.usage.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -169,7 +169,7 @@ pub fn usage_stats() -> Option<UsageStats> {
 pub fn billing_summary() -> Option<BillingSummary> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.billing.clone());
+        state::with_active(|r| r.billing.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -180,7 +180,7 @@ pub fn billing_summary() -> Option<BillingSummary> {
 pub fn recharges() -> Option<Vec<Recharge>> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.recharges.clone());
+        state::with_active(|r| r.recharges.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
@@ -191,7 +191,7 @@ pub fn recharges() -> Option<Vec<Recharge>> {
 pub fn logs() -> Option<Vec<LogEntry>> {
     #[cfg(any(debug_assertions, feature = "e2e-preview"))]
     {
-        return state::with_active(|r| r.logs.clone());
+        state::with_active(|r| r.logs.clone())
     }
     #[cfg(not(any(debug_assertions, feature = "e2e-preview")))]
     {
