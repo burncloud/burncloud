@@ -86,9 +86,18 @@ impl DownloadManager {
 
         // 同步状态到数据库
         self.db.update_status(gid, &status.status).await?;
-        let total: i64 = status.total_length.parse().unwrap_or(0);
-        let completed: i64 = status.completed_length.parse().unwrap_or(0);
-        let speed: i64 = status.download_speed.parse().unwrap_or(0);
+        let total: i64 = status.total_length.parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "total_length", "下载状态数值解析失败，兜底返回0");
+            0
+        });
+        let completed: i64 = status.completed_length.parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "completed_length", "下载状态数值解析失败，兜底返回0");
+            0
+        });
+        let speed: i64 = status.download_speed.parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "download_speed", "下载状态数值解析失败，兜底返回0");
+            0
+        });
         self.db
             .update_progress(gid, total, completed, speed)
             .await?;
@@ -142,9 +151,18 @@ impl DownloadManager {
                 if let Some(client) = aria2.create_rpc_client() {
                     if let Ok(status) = client.tell_status(&gid).await {
                         let _ = db.update_status(&gid, &status.status).await;
-                        let total: i64 = status.total_length.parse().unwrap_or(0);
-                        let completed: i64 = status.completed_length.parse().unwrap_or(0);
-                        let speed: i64 = status.download_speed.parse().unwrap_or(0);
+                        let total: i64 = status.total_length.parse().unwrap_or_else(|e| {
+                            tracing::error!(parse_err = ?e, field = "total_length", "下载状态数值解析失败，兜底返回0");
+                            0
+                        });
+                        let completed: i64 = status.completed_length.parse().unwrap_or_else(|e| {
+                            tracing::error!(parse_err = ?e, field = "completed_length", "下载状态数值解析失败，兜底返回0");
+                            0
+                        });
+                        let speed: i64 = status.download_speed.parse().unwrap_or_else(|e| {
+                            tracing::error!(parse_err = ?e, field = "download_speed", "下载状态数值解析失败，兜底返回0");
+                            0
+                        });
                         let _ = db.update_progress(&gid, total, completed, speed).await;
 
                         // 如果下载完成或出错，停止监控

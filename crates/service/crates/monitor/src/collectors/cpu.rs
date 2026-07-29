@@ -170,13 +170,34 @@ impl CpuCollector {
             ));
         }
 
-        let user: u64 = parts[1].parse().unwrap_or(0);
-        let nice: u64 = parts[2].parse().unwrap_or(0);
-        let system: u64 = parts[3].parse().unwrap_or(0);
-        let idle: u64 = parts[4].parse().unwrap_or(0);
-        let iowait: u64 = parts[5].parse().unwrap_or(0);
-        let irq: u64 = parts[6].parse().unwrap_or(0);
-        let softirq: u64 = parts[7].parse().unwrap_or(0);
+        let user: u64 = parts[1].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "user", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let nice: u64 = parts[2].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "nice", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let system: u64 = parts[3].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "system", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let idle: u64 = parts[4].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "idle", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let iowait: u64 = parts[5].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "iowait", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let irq: u64 = parts[6].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "irq", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let softirq: u64 = parts[7].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "softirq", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
 
         let total = user + nice + system + idle + iowait + irq + softirq;
         let current_times = CpuTimes { idle, total };
