@@ -99,7 +99,7 @@ fn download_tailwind(cli: &std::path::Path, cli_name: &str) -> Result<(), String
 }
 
 #[cfg(target_os = "windows")]
-fn embed_windows_icon() {
+fn embed_windows_icon() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let rc_file = manifest_dir.join("assets/burncloud.rc");
     let ico_file = manifest_dir.join("assets/favicon.ico");
@@ -110,13 +110,14 @@ fn embed_windows_icon() {
     let mut res = winres::WindowsResource::new();
     res.set_icon_with_id(&ico_file.display().to_string(), "1");
     res.set_resource_file(&rc_file.display().to_string());
-    res.compile().expect("Failed to compile Windows resources");
+    res.compile().map_err(|e| format!("Failed to compile Windows resources: {}", e))?;
+    Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Embed icon into Windows executable
     #[cfg(target_os = "windows")]
-    embed_windows_icon();
+    embed_windows_icon()?;
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let config = manifest_dir.join("tailwind.config.js");
@@ -144,7 +145,7 @@ fn main() {
                 }
                 let _ = std::fs::write(&output, "/* tailwind placeholder — download failed */\n");
             }
-            return;
+            return Ok(());
         }
     }
 
@@ -162,11 +163,12 @@ fn main() {
         Ok(s) => s,
         Err(e) => {
             println!("cargo:warning=failed to invoke tailwindcss CLI: {e}");
-            return;
+            return Ok(());
         }
     };
 
     if !status.success() {
-        panic!("tailwindcss build failed with status: {status}");
+        return Err(format!("tailwindcss build failed with status: {status}").into());
     }
+    Ok(())
 }
