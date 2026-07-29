@@ -47,6 +47,11 @@ impl DiskCollector {
 
     #[cfg(windows)]
     async fn get_disk_info_windows(&self, path: &str) -> Result<DiskInfo, MonitorError> {
+        // SAFETY:
+        // 1. 宽字符路径 path_wide 已通过 encode_wide() + chain(null) 正确编码，确保以 null 结尾；
+        // 2. GetDiskFreeSpaceExW 的指针参数（路径、空闲字节、总字节）均有效且对齐；
+        // 3. 系统调用返回值已检查（==0 表示失败），失败时提前返回错误；
+        // 4. 此函数为无状态查询，线程安全且无资源泄漏风险。
         unsafe {
             let path_wide: Vec<u16> = OsStr::new(path)
                 .encode_wide()
