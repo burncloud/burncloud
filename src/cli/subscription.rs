@@ -1,5 +1,6 @@
 //! CLI commands for subscription management (Issue #232)
 
+use anyhow::anyhow;
 use burncloud_database::Database;
 use burncloud_service_billing::SubscriptionService;
 use clap::ArgMatches;
@@ -10,9 +11,12 @@ pub async fn handle_subscription_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match matches.subcommand() {
         Some(("subscribe", sub_m)) => {
-            let user_id = *sub_m.get_one::<i32>("user").unwrap();
-            let plan_id = *sub_m.get_one::<i32>("plan").unwrap();
-            let duration = *sub_m.get_one::<i64>("duration").unwrap();
+            let user_id = *sub_m.get_one::<i32>("user")
+                .ok_or_else(|| anyhow::anyhow!("Missing required argument: --user (user ID)"))?;
+            let plan_id = *sub_m.get_one::<i32>("plan")
+                .ok_or_else(|| anyhow::anyhow!("Missing required argument: --plan (plan ID)"))?;
+            let duration = *sub_m.get_one::<i64>("duration")
+                .ok_or_else(|| anyhow::anyhow!("Missing required argument: --duration (duration in seconds)"))?;
 
             let sub = SubscriptionService::subscribe(db, user_id, plan_id, duration).await?;
             println!("✅ Created subscription:");
@@ -70,7 +74,8 @@ pub async fn handle_subscription_command(
             }
         }
         Some(("list", sub_m)) => {
-            let user_id = *sub_m.get_one::<i32>("user").unwrap();
+            let user_id = *sub_m.get_one::<i32>("user")
+                .ok_or_else(|| anyhow::anyhow!("Missing required argument: --user (user ID)"))?;
             let subs = SubscriptionService::list_user_subscriptions(db, user_id).await?;
 
             if subs.is_empty() {
@@ -101,7 +106,8 @@ pub async fn handle_subscription_command(
             }
         }
         Some(("cancel", sub_m)) => {
-            let id = *sub_m.get_one::<i32>("id").unwrap();
+            let id = *sub_m.get_one::<i32>("id")
+                .ok_or_else(|| anyhow::anyhow!("Missing required argument: --id (subscription ID)"))?;
             let sub = SubscriptionService::cancel_subscription(db, id).await?;
             println!("✅ Cancelled subscription #{}", id);
             println!("  Status: {}", sub.status);

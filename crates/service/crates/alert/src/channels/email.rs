@@ -1,10 +1,19 @@
 //! Email notification channel (stub implementation)
+//!
+//! # ⚠️ STUB IMPLEMENTATION
+//! This channel is currently a stub. The `send` method only logs the alert
+//! message without actually sending an email.
+//! Do NOT rely on this channel for production email alerts until the actual
+//! sending logic is implemented.
 
 use super::NotificationChannel;
 use crate::types::{Alert, AlertError};
 use async_trait::async_trait;
 
 /// Email notification channel
+///
+/// # ⚠️ STUB: This channel does NOT send actual emails.
+/// It only logs the alert. Real email sending is not yet implemented.
 pub struct EmailChannel {
     smtp_config: Option<String>,
 }
@@ -30,10 +39,11 @@ impl NotificationChannel for EmailChannel {
             ));
         }
 
-        // TODO: Implement actual email sending using lettre or similar
-        // For now, just log the alert
-        log::info!(
-            "Email alert: [{}] {} - {}",
+        // ⚠️ STUB: Actual email sending is NOT implemented.
+        // This channel only logs alerts. Replace with lettre or similar library.
+        tracing::warn!(
+            "Email channel is a STUB - alert only logged, not sent via email. \
+             Alert: [{}] {} - {}",
             alert.level,
             alert.alert_type,
             alert.message

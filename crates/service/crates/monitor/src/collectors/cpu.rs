@@ -53,7 +53,10 @@ impl CpuCollector {
         use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
 
         // 获取CPU核心数
+        // SAFETY: SYSTEM_INFO is a C-compatible POD structure that can be safely zeroed.
         let mut sys_info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
+        // SAFETY: GetSystemInfo writes to a valid, properly aligned pointer to SYSTEM_INFO.
+        // The function is documented to be thread-safe and does not allocate.
         unsafe {
             GetSystemInfo(&mut sys_info);
         }
@@ -86,6 +89,11 @@ impl CpuCollector {
         let mut frequency = 0u64;
         let mut brand = String::from("Windows CPU");
 
+        // SAFETY: Windows Registry API calls.
+        // 1. The subkey path is properly encoded as UTF-16 wide characters with null terminator.
+        // 2. RegOpenKeyExW and RegQueryValueExW return error codes that are checked.
+        // 3. HKEY is properly closed with RegCloseKey if opened.
+        // 4. Buffer pointers are valid and properly sized for the API calls.
         unsafe {
             let mut hkey: HKEY = ptr::null_mut();
             let subkey: Vec<u16> = OsStr::new("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0")
@@ -170,13 +178,34 @@ impl CpuCollector {
             ));
         }
 
-        let user: u64 = parts[1].parse().unwrap_or(0);
-        let nice: u64 = parts[2].parse().unwrap_or(0);
-        let system: u64 = parts[3].parse().unwrap_or(0);
-        let idle: u64 = parts[4].parse().unwrap_or(0);
-        let iowait: u64 = parts[5].parse().unwrap_or(0);
-        let irq: u64 = parts[6].parse().unwrap_or(0);
-        let softirq: u64 = parts[7].parse().unwrap_or(0);
+        let user: u64 = parts[1].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "user", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let nice: u64 = parts[2].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "nice", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let system: u64 = parts[3].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "system", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let idle: u64 = parts[4].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "idle", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let iowait: u64 = parts[5].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "iowait", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let irq: u64 = parts[6].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "irq", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
+        let softirq: u64 = parts[7].parse().unwrap_or_else(|e| {
+            tracing::error!(parse_err = ?e, field = "softirq", "CPU时间数值解析失败，兜底返回0");
+            0
+        });
 
         let total = user + nice + system + idle + iowait + irq + softirq;
         let current_times = CpuTimes { idle, total };
