@@ -1,7 +1,7 @@
 use reqwest::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
 
-use crate::backend::{server_root, ClientState};
+use crate::backend::{server_root, Channel, ClientState};
 
 fn url(path: &str) -> String {
     format!("{}{}", server_root(), path)
@@ -117,4 +117,51 @@ pub async fn clear_cache() -> Result<(), String> {
     let request = authenticated(Client::new().post(url("/console/api/cache/clear")))?;
     let response: EnvelopeValue = response_json(request).await?;
     if response.success { Ok(()) } else { Err(response.message.unwrap_or_else(|| "Cache clear failed".to_string())) }
+}
+
+/// Update a provider without erasing L2 shaper reservation thresholds that are
+/// present in the current server ChannelDto but not editable in this UI yet.
+pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result<(), String> {
+    if channel.id <= 0 {
+        return Err("Channel id is required for update".to_string());
+    }
+
+    let get_request = authenticated(Client::new().get(url(&format!("/console/api/channel/{}", channel.id))))?;
+    let current: EnvelopeValue = response_json(get_request).await?;
+    if !current.success {
+        return Err(current.message.unwrap_or_else(|| "Unable to load current channel before update".to_string()));
+    }
+
+    let reservation_green = current.data.get("reservation_green").cloned().unwrap_or(serde_json::Value::Null);
+    let reservation_yellow = current.data.get("reservation_yellow").cloned().unwrap_or(serde_json::Value::Null);
+    let reservation_red = current.data.get("reservation_red").cloned().unwrap_or(serde_json::Value::Null);
+
+    let payload = serde_json::json!({
+        "id": channel.id,
+        "type": channel.type_,
+        "key": channel.key,
+        "name": channel.name,
+        "base_url": channel.base_url,
+        "models": channel.models,
+        "group": channel.group,
+        "weight": channel.weight,
+        "priority": channel.priority,
+        "param_override": channel.param_override,
+        "header_override": channel.header_override,
+        "api_version": channel.api_version,
+        "model_mapping": channel.model_mapping,
+        "rpm_cap": channel.rpm_cap,
+        "tpm_cap": channel.tpm_cap,
+        "reservation_green": reservation_green,
+        "reservation_yellow": reservation_yellow,
+        "reservation_red": reservation_red,
+    });
+
+    let put_request = authenticated(Client::new().put(url("/console/api/channel")))?.json(&payload);
+    let updated: EnvelopeValue = response_json(put_request).await?;
+    if updated.success {
+        Ok(())
+    } else {
+        Err(updated.message.unwrap_or_else(|| "Provider update failed".to_string()))
+    }
 }
