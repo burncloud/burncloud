@@ -7,6 +7,7 @@ pub mod data;
 pub mod functional_api;
 pub mod functional_layout;
 pub mod functional_pages;
+pub mod observability;
 pub mod pages;
 pub mod route_aliases;
 
