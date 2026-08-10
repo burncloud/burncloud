@@ -135,6 +135,9 @@ pub fn Overview() -> Element {
     let down_channels = channels.iter().filter(|channel| channel.status == 0).count();
     let model_count = channel_model_count(&channels);
     let latest = logs.first().cloned();
+    let has_latest = latest.is_some();
+    let latest_for_card = latest.clone();
+    let latest_for_drawer = latest.clone();
     let request_text = compact(total_requests);
     let billing_note = format!("${:.4} total billed", billing.total_cost_usd);
     let token_text = compact(usage.total_tokens);
@@ -166,7 +169,7 @@ pub fn Overview() -> Element {
                     }
                     button {
                         class: "button button-primary",
-                        disabled: latest.is_none(),
+                        disabled: !has_latest,
                         onclick: move |_| receipt_open.set(true),
                         Icon { name: "logs" }
                         "Latest Request Receipt"
@@ -225,7 +228,7 @@ pub fn Overview() -> Element {
                         span { class: "section-label", "Latest Real Router Receipt" }
                         span { class: "badge badge-neutral", "router_logs" }
                     }
-                    if let Some(log) = latest.clone() {
+                    if let Some(log) = latest_for_card {
                         {
                             let model_text = log.model.clone().unwrap_or_else(|| "-".to_string());
                             let upstream_text = log.upstream_id.clone().unwrap_or_else(|| "-".to_string());
@@ -291,7 +294,7 @@ pub fn Overview() -> Element {
                 title: "Stored Request Route Receipt",
                 open: receipt_open(),
                 on_close: move |_| receipt_open.set(false),
-                if let Some(log) = latest {
+                if let Some(log) = latest_for_drawer {
                     {
                         let receipt = route_receipt(&log);
                         rsx! {
