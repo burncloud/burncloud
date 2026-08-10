@@ -5,7 +5,7 @@ use crate::{
     data::{LogRow, LOGS},
 };
 
-fn page_header(title: &'static str, subtitle: &'static str, actions: Element) -> Element {
+fn page_header(title: &str, subtitle: &str, actions: Element) -> Element {
     rsx! {
         div { class: "page-header",
             div {
@@ -17,12 +17,38 @@ fn page_header(title: &'static str, subtitle: &'static str, actions: Element) ->
     }
 }
 
-fn status_tone(status: &'static str) -> &'static str {
+fn status_tone(status: &str) -> &'static str {
     match status {
         "Success" => "success",
         "Fallback" => "warning",
         "Timeout" => "error",
         _ => "neutral",
+    }
+}
+
+fn detail_stat(label: &str, value: String, mono: bool) -> Element {
+    let class = if mono { "small strong mono" } else { "small strong" };
+    rsx! {
+        div {
+            span { class: "tiny subtle", "{label}" }
+            div { class: "{class}", "{value}" }
+        }
+    }
+}
+
+fn timeline_step(tone: &str, text: String) -> Element {
+    let dot_color = match tone {
+        "red" => "#ef4444",
+        "amber" => "#f59e0b",
+        "green" => "#22c55e",
+        "blue" => "#60a5fa",
+        _ => "#d1d5db",
+    };
+    rsx! {
+        div { class: "row gap-2", style: "align-items:flex-start",
+            span { style: "width:10px;height:10px;border-radius:50%;background:{dot_color};margin-top:4px;flex:0 0 auto" }
+            span { class: "small muted", "{text}" }
+        }
     }
 }
 
@@ -107,35 +133,35 @@ pub fn Logs() -> Element {
                 if let Some(log) = selected() {
                     div { class: "stack-lg",
                         div { class: "card card-pad", style: "display:grid;grid-template-columns:repeat(3,1fr);gap:16px",
-                            DetailStat { label: "Request ID", value: log.request_id.to_string(), mono: true }
-                            DetailStat { label: "Customer", value: log.customer.to_string() }
-                            DetailStat { label: "Total Cost", value: format!("${:.3}", log.cost) }
+                            {detail_stat("Request ID", log.request_id.to_string(), true)}
+                            {detail_stat("Customer", log.customer.to_string(), false)}
+                            {detail_stat("Total Cost", format!("${:.3}", log.cost), false)}
                         }
 
                         div { class: "stack",
                             h3 { class: "section-label", "Routing Timeline" }
-                            TimelineStep { tone: "neutral", text: format!("Request received • {}", log.timestamp) }
-                            TimelineStep { tone: "blue", text: format!("Matched route: {}", log.route) }
-                            TimelineStep {
-                                tone: "blue",
-                                text: format!(
+                            {timeline_step("neutral", format!("Request received • {}", log.timestamp))}
+                            {timeline_step("blue", format!("Matched route: {}", log.route))}
+                            {timeline_step(
+                                "blue",
+                                format!(
                                     "Selected primary model: {}",
                                     if log.status == "Success" { log.model } else { "claude-fable-5" }
-                                )
-                            }
+                                ),
+                            )}
                             if log.status == "Timeout" {
-                                TimelineStep { tone: "red", text: "Timeout after 10s".to_string() }
-                                TimelineStep { tone: "amber", text: "Triggered fallback condition: Timeout > 8s".to_string() }
-                                TimelineStep { tone: "blue", text: format!("Retried through fallback path toward {}", log.model) }
+                                {timeline_step("red", "Timeout after 10s".to_string())}
+                                {timeline_step("amber", "Triggered fallback condition: Timeout > 8s".to_string())}
+                                {timeline_step("blue", format!("Retried through fallback path toward {}", log.model))}
                             }
                             if log.status == "Fallback" {
-                                TimelineStep { tone: "amber", text: "Provider error rate exceeded threshold".to_string() }
-                                TimelineStep { tone: "blue", text: format!("Falling back to {} via {}", log.model, log.provider) }
+                                {timeline_step("amber", "Provider error rate exceeded threshold".to_string())}
+                                {timeline_step("blue", format!("Falling back to {} via {}", log.model, log.provider))}
                             }
-                            TimelineStep {
-                                tone: if log.status == "Timeout" { "red" } else { "green" },
-                                text: format!("Response completed in {}ms", log.latency),
-                            }
+                            {timeline_step(
+                                if log.status == "Timeout" { "red" } else { "green" },
+                                format!("Response completed in {}ms", log.latency),
+                            )}
                         }
 
                         div { class: "stack",
@@ -147,33 +173,6 @@ pub fn Logs() -> Element {
                     }
                 }
             }
-        }
-    }
-}
-
-#[component]
-fn DetailStat(label: &'static str, value: String, #[props(default)] mono: bool) -> Element {
-    rsx! {
-        div {
-            span { class: "tiny subtle", "{label}" }
-            div { class: if mono { "small strong mono" } else { "small strong" }, "{value}" }
-        }
-    }
-}
-
-#[component]
-fn TimelineStep(tone: &'static str, text: String) -> Element {
-    let dot_color = match tone {
-        "red" => "#ef4444",
-        "amber" => "#f59e0b",
-        "green" => "#22c55e",
-        "blue" => "#60a5fa",
-        _ => "#d1d5db",
-    };
-    rsx! {
-        div { class: "row gap-2", style: "align-items:flex-start",
-            span { style: "width:10px;height:10px;border-radius:50%;background:{dot_color};margin-top:4px;flex:0 0 auto" }
-            span { class: "small muted", "{text}" }
         }
     }
 }
