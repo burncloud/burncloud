@@ -19,6 +19,11 @@ burncloud-common.workspace = true
 dioxus = { workspace = true, features = ["router", "lib"] }
 dioxus-router.workspace = true
 tokio.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+dirs.workspace = true
 
 # LiveView integration used by the BurnCloud server binary.
 dioxus-liveview = { workspace = true, optional = true }
