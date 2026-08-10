@@ -1,9 +1,9 @@
 mod auth;
-mod customers;
+mod customers_v2;
 mod dashboard;
 mod logs;
 
 pub use auth::{Login, Register};
-pub use customers::{Customers, Users};
+pub use customers_v2::{Customers, Users};
 pub use dashboard::{Dashboard, Overview};
 pub use logs::Logs;
