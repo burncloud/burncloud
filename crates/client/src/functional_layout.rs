@@ -27,8 +27,39 @@ fn page_title(route: &Route) -> &'static str {
     }
 }
 
+fn search_route(query: &str) -> Option<Route> {
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return None;
+    }
+
+    let pages = [
+        ("overview dashboard home console", Route::Overview {}),
+        ("playground chat completion inference", Route::Playground {}),
+        ("routes routing groups priority weight", Route::Routes {}),
+        ("models model", Route::Models {}),
+        ("providers provider channels channel upstream", Route::Providers {}),
+        ("api keys key tokens token", Route::APIKeys {}),
+        ("customers users user accounts account", Route::Customers {}),
+        ("guardrails security filters risk circuit breaker", Route::Guardrails {}),
+        ("logs requests router log observability", Route::Logs {}),
+        ("evaluation metrics latency success", Route::Evaluation {}),
+        ("billing cost usage spend", Route::Billing {}),
+        ("team members roles", Route::Team {}),
+        ("settings cache runtime server", Route::Settings {}),
+    ];
+
+    pages
+        .into_iter()
+        .find(|(keywords, _)| keywords.split_whitespace().any(|word| word.starts_with(&q) || q.contains(word)))
+        .map(|(_, route)| route)
+}
+
 fn initials(name: &str) -> String {
-    let words: Vec<&str> = name.split(|c: char| c.is_whitespace() || c == '-' || c == '_').filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = name
+        .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
+        .filter(|w| !w.is_empty())
+        .collect();
     if words.len() >= 2 {
         let a = words[0].chars().next().unwrap_or('B');
         let b = words[1].chars().next().unwrap_or('C');
@@ -44,10 +75,16 @@ pub fn FunctionalConsoleLayout() -> Element {
     let title = page_title(&current);
     let auth = use_auth();
     let navigator = use_navigator();
+    let search_navigator = navigator.clone();
     let user = auth.user();
-    let username = user.as_ref().map(|u| u.username.clone()).unwrap_or_else(|| "BurnCloud".to_string());
+    let username = user
+        .as_ref()
+        .map(|u| u.username.clone())
+        .unwrap_or_else(|| "BurnCloud".to_string());
     let avatar = initials(&username);
     let roles = user.as_ref().map(|u| u.roles.join(", ")).unwrap_or_default();
+    let mut search = use_signal(String::new);
+    let mut search_status = use_signal(String::new);
 
     rsx! {
         div { class:"console-shell",
@@ -99,10 +136,33 @@ pub fn FunctionalConsoleLayout() -> Element {
                 header { class:"topbar",
                     h1 { class:"topbar-title", "{title}" }
                     div { class:"topbar-right",
-                        div { class:"global-search", Icon { name:"search" } input { r#type:"text", placeholder:"Search routes, keys, logs..." } }
+                        div { class:"global-search", title: if search_status().is_empty() { "Jump to a console page" } else { "{search_status}" },
+                            Icon { name:"search" }
+                            input {
+                                r#type:"text",
+                                placeholder:"Jump to page…",
+                                value:"{search}",
+                                oninput:move |evt| {
+                                    search.set(evt.value());
+                                    search_status.set(String::new());
+                                },
+                                onkeydown:move |evt| {
+                                    if evt.key() == Key::Enter {
+                                        let query = search();
+                                        if let Some(route) = search_route(&query) {
+                                            search_navigator.replace(route);
+                                            search.set(String::new());
+                                            search_status.set(String::new());
+                                        } else {
+                                            search_status.set("No console page matched that query.".to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         div { class:"top-actions",
                             Link { to:Route::Home {}, class:"tiny-link", Icon { name:"globe" } span { "Visit Landing Page" } }
-                            button { class:"env-chip", span { class:"green-dot" } "Production" }
+                            div { class:"env-chip", title:"Current console environment", span { class:"green-dot" } "Production" }
                             Link { to:Route::Logs {}, class:"icon-button", title:"Open logs", Icon { name:"bell" } }
                             Link { to:Route::Settings {}, class:"icon-button", title:"Open settings", Icon { name:"help" } }
                             div { class:"top-divider" }
