@@ -131,13 +131,14 @@ fn AppWithDesktop() -> Element {
 
         let tray_window = window.clone();
         use_effect(move || {
+            let poll_window = tray_window.clone();
             spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                     if desktop_chrome::should_show_window() {
-                        tray_window.set_visible(false);
-                        tray_window.set_visible(true);
-                        tray_window.set_focus();
+                        poll_window.set_visible(false);
+                        poll_window.set_visible(true);
+                        poll_window.set_focus();
                     }
                 }
             });
