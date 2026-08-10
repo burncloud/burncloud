@@ -1,4 +1,4 @@
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Model {
     pub name: &'static str,
     pub provider: &'static str,
@@ -24,7 +24,7 @@ pub const MODELS: &[Model] = &[
     Model { name:"GLM-5.2", provider:"GLM", tags:&["Long Context","Agentic","Chinese"], context:"1M tokens", input:0.50, output:1.50, latency:720, reliability:99.92, quality:95 },
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct RouteRow {
     pub name: &'static str,
     pub environment: &'static str,
@@ -45,7 +45,7 @@ pub const ROUTES: &[RouteRow] = &[
     RouteRow { name:"experimental-reasoning", environment:"Staging", primary:"DeepSeek-V4", fallback:"gpt-5.5 → claude-fable-5", traffic:3, success:99.70, latency:1100, cost:1.20, status:"Testing" },
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Provider {
     pub name: &'static str,
     pub status: &'static str,
@@ -63,7 +63,7 @@ pub const PROVIDERS: &[Provider] = &[
     Provider { name:"DeepSeek", status:"Connected", usage:85, spend:1278, incident:"None", routes:8, latency:450 },
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct LogRow {
     pub timestamp: &'static str,
     pub request_id: &'static str,
@@ -83,7 +83,7 @@ pub const LOGS: &[LogRow] = &[
     LogRow { timestamp:"10:41:59", request_id:"req_8f299f", customer:"Internal", route:"coding-agent-premium", model:"claude-fable-5", provider:"Anthropic", status:"Timeout", latency:10000, tokens:7220, cost:0.108 },
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Customer {
     pub name: &'static str,
     pub environment: &'static str,
@@ -103,7 +103,7 @@ pub const CUSTOMERS: &[Customer] = &[
     Customer { name:"AlphaCorp", environment:"Staging", spend:1920, budget:2000, rps:30, route:"experimental-reasoning", keys:1, requests:94000 },
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct ApiKeyRow {
     pub name: &'static str,
     pub masked: &'static str,
@@ -121,7 +121,7 @@ pub const API_KEYS: &[ApiKeyRow] = &[
     ApiKeyRow { name:"demo-customer-staging", masked:"bk_live_f0••••••••••••5432", customer:"Demo", perms:"Staging Only", last_used:"2 days ago", usage:"84K", rate:"100 RPM", status:"Limited" },
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct GuardrailRow {
     pub name: &'static str,
     pub category: &'static str,
@@ -139,8 +139,15 @@ pub const GUARDRAILS: &[GuardrailRow] = &[
     GuardrailRow { name:"PII Output Leakage Guard", category:"Privacy", description:"Intercept model outputs to verify no sensitive developer API keys or server credentials leak.", action:"Block", violations:12, status:"Enabled" },
 ];
 
-#[derive(Clone, Copy)]
-pub struct TeamRow { pub name:&'static str, pub email:&'static str, pub role:&'static str, pub status:&'static str, pub added:&'static str }
+#[derive(Clone, Copy, PartialEq)]
+pub struct TeamRow {
+    pub name: &'static str,
+    pub email: &'static str,
+    pub role: &'static str,
+    pub status: &'static str,
+    pub added: &'static str,
+}
+
 pub const TEAM: &[TeamRow] = &[
     TeamRow { name:"William Hayes", email:"william@burncloud.com", role:"Owner", status:"Active", added:"Jul 12, 2025" },
     TeamRow { name:"Sarah Chen", email:"sarah.chen@burncloud.com", role:"Admin", status:"Active", added:"Nov 24, 2025" },
@@ -149,8 +156,19 @@ pub const TEAM: &[TeamRow] = &[
     TeamRow { name:"James Carter", email:"james.carter@burncloud.com", role:"Developer", status:"Pending Invite", added:"Jul 08, 2026" },
 ];
 
-#[derive(Clone, Copy)]
-pub struct EvalRow { pub model:&'static str, pub reasoning:u32, pub coding:u32, pub chinese:u32, pub context:u32, pub tools:u32, pub stability:u32, pub cost:u32, pub overall:u32 }
+#[derive(Clone, Copy, PartialEq)]
+pub struct EvalRow {
+    pub model: &'static str,
+    pub reasoning: u32,
+    pub coding: u32,
+    pub chinese: u32,
+    pub context: u32,
+    pub tools: u32,
+    pub stability: u32,
+    pub cost: u32,
+    pub overall: u32,
+}
+
 pub const EVALS: &[EvalRow] = &[
     EvalRow{model:"claude-fable-5",reasoning:99,coding:98,chinese:92,context:94,tools:98,stability:99,cost:72,overall:99},
     EvalRow{model:"gpt-5.5",reasoning:99,coding:97,chinese:93,context:96,tools:97,stability:99,cost:78,overall:98},
