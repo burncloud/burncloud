@@ -2,11 +2,12 @@ use dioxus::prelude::*;
 
 use crate::{
     components::ConsoleLayout,
-    critical_pages::{Customers, Dashboard, Login, Logs, Overview, Register, Users},
+    critical_pages::{Customers, Login, Logs, Overview, Register},
     pages::{
         APIKeys, Billing, Evaluation, Guardrails, Home, Landing, Models, Playground, Providers,
         Routes, Settings, Team,
     },
+    route_aliases::{Dashboard, Users},
 };
 
 #[derive(Clone, Routable, Debug, PartialEq)]
