@@ -1,60 +1,60 @@
 # burncloud-router
 
-LLM 请求代理引擎。接收客户端请求,路由到上游 Provider,处理协议转换、负载均衡、限流、熔断和计费。
+BurnCloud data-plane routing and upstream execution crate.
 
-## 为什么存在
+## Current role
 
-BurnCloud 需要一个高性能的数据平面,在多个 LLM Provider 之间智能路由请求。这个 crate 封装了所有代理逻辑,让 Server 层只需关注管理 API。
+The router receives unmatched data-plane requests from the unified server fallback, performs request admission/routing, selects upstream candidates, executes provider requests, handles passthrough or conversion branches, tracks response/usage/failure state, and participates in billing/log settlement.
 
-## 关键类型
+The exact behavior is branch-dependent. Read `src/lib.rs` and the relevant helper module before changing a flow.
 
-| 类型 | 说明 |
-|------|------|
-| `AppState` | Router 运行时状态(client, config, balancer, limiter, circuit_breaker, price_cache...) |
-| `RouterConfig` | 动态路由配置(Upstream + Group 列表) |
-| `Upstream` / `Group` | 上游 Provider 和分组定义 |
-| `ChannelAdaptor` | 协议适配器 trait(OpenAI, Claude, Gemini, Vertex...) |
-| `CircuitBreaker` | 熔断器(5 次失败触发,30 秒冷却) |
-| `RateLimiter` | 令牌桶限流 |
-| `ModelRouter` | 模型 → Channel 路由逻辑 |
-| `AdvancedPricing` | 多模态定价(标准/缓存/批量/优先级/音频) |
-| `StreamingTokenCounter` | 线程安全流式 Token 计数 |
+## Entry points
 
-## 依赖
+`create_router_app()` currently registers three explicit data-plane routes:
 
-- `burncloud-database`, `burncloud-database-router`, `burncloud-database-billing`, `burncloud-database-channel`, `burncloud-database-model` — 数据持久化
-- `burncloud-common` — 共享类型
-- `burncloud-service-billing` — 计费计算（宪法例外，见 §1.1）
-- `burncloud-service-user` — 流量分类 `UserService::resolve_traffic_class`（宪法例外，见 §1.1）
-- `burncloud-router-aws` — AWS SigV4 签名
+- `GET /v1/models`
+- `GET /api/v1/usage`
+- `GET /api/v1/usage/models`
 
-> **§1.1 宪法例外**：Router 对 `service-billing` 和 `service-user` 的反向依赖是宪法例外，详见 [`docs/code/README.md §1.1`](../../docs/code/README.md)。
+Other unmatched data-plane paths enter `proxy_handler()` through `.fallback(proxy_handler)`.
 
-## 目录结构
+Internal operator routes for health, price sync, circuit-breaker trip-all, and metrics are returned separately so the server can merge them before LiveView catch-all behavior.
 
-```
-src/
-├── lib.rs              — 核心入口, Handler, 启动逻辑
-├── state.rs            — AppState 定义
-├── config.rs           — RouterConfig, Upstream, Group, AuthType
-├── model_router.rs     — 模型路由
-├── token_counter.rs    — 流式 Token 计数
-├── price_sync.rs       — 多源价格同步
-├── circuit_breaker.rs  — 熔断器
-├── limiter.rs          — 令牌桶限流
-├── channel_state.rs    — Channel 健康追踪
-├── aimd_limiter.rs    — AIMD 自适应限流（Additive Increase / Multiplicative Decrease）
-├── exchange_rate.rs    — 汇率处理
-├── adaptor/            — 协议适配器(OpenAI, Claude, Gemini, Vertex, ZAI, Dynamic)
-├── balancer/           — Round-Robin 负载均衡
-└── proxy*.rs           — 代理请求处理
-```
+## Important modules
 
-## 核心原则
+- `src/lib.rs` — router construction, fallback handler, proxy execution, settlement and internal endpoints.
+- `src/model_router.rs` — model/channel candidate loading and ranking.
+- `src/passthrough.rs` — passthrough decision logic.
+- `src/circuit_breaker.rs` / channel-state related modules — failure/availability state.
+- `src/price_sync.rs` — price synchronization.
+- adaptor/provider modules — runtime protocol/provider behavior.
+- `crates/router-aws` — AWS-specific signing/support code.
 
-**"Don't Touch the Body"** — Router 不修改请求/响应体。只做路由、协议转换、计费、限流。
+Use source search rather than this list as an exhaustive module index.
 
-## Sources
+## Dependency boundary
 
-- `crates/router/src/lib.rs` — 完整请求处理流水线
-- `docs/backend/router-guide.md` — 开发指南
+Current `Cargo.toml` directly depends on database/common crates and currently two `burncloud-service-*` crates:
+
+- `burncloud-service-billing`
+- `burncloud-service-user`
+
+`crates/router/scripts/check-router-deps.sh` enforces these two service crates as the current whitelist. Adding another direct `burncloud-service-*` dependency requires deliberate architecture review and updating the enforced rule if accepted.
+
+See:
+
+- `docs/agent/INVARIANTS.md`
+- `docs/architecture/CURRENT_SYSTEM.md`
+- `docs/contracts/ROUTER.md`
+
+## Passthrough and conversion
+
+Passthrough is **conditional**, not a universal “never parse the body” rule. Current code contains native passthrough branches and parsing/conversion branches. Preserve the semantics of the active path and check `src/passthrough.rs` plus the selected branch in `src/lib.rs`.
+
+## Runtime flow
+
+Human-oriented progressive runtime documentation is rendered at:
+
+https://burncloud.github.io/
+
+Use it for navigation, then re-check the current checkout before modifying code.

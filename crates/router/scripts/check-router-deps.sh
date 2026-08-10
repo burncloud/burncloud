@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # check-router-deps.sh — Verify burncloud-router only depends on whitelisted service crates.
 #
-# Constitutional exception (§1.1): router may depend on service-billing and
+# Current architecture rule: router may depend on service-billing and
 # service-user, but no other burncloud-service-* crate. Adding a new service
-# dependency requires architecture review.
+# dependency requires architecture review and an explicit whitelist update.
 #
 # Usage:
 #   ./crates/router/scripts/check-router-deps.sh          # human-readable output
@@ -34,10 +34,8 @@ ALLOWED_SERVICE_CRATES=(
   burncloud-service-user
 )
 
-# ── Extract burncloud-router's direct dependencies via cargo metadata ──
 cd "$REPO_ROOT"
 
-# ── Prerequisites ──
 for cmd in cargo jq; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "${RED}Error: $cmd is required but not installed${RESET}"
@@ -54,12 +52,10 @@ if ! echo "$CARGO_METADATA" | jq -e '.packages[] | select(.name == "burncloud-ro
 fi
 
 SERVICE_DEPS=()
-# 使用简单的循环以兼容 Bash 3.2 (macOS 默认版本)
 for dep in $(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name | select(startswith("burncloud-service-"))'); do
   SERVICE_DEPS+=("$dep")
 done
 
-# ── Check each service dep against the whitelist ──
 VIOLATIONS=()
 for dep in "${SERVICE_DEPS[@]}"; do
   if ! [[ " ${ALLOWED_SERVICE_CRATES[*]} " =~ " $dep " ]]; then
@@ -67,16 +63,14 @@ for dep in "${SERVICE_DEPS[@]}"; do
   fi
 done
 
-# ── Report ──
 if [[ ${#VIOLATIONS[@]} -eq 0 ]]; then
   allowed_list="${ALLOWED_SERVICE_CRATES[*]}"
-  echo "${GREEN}OK: burncloud-router service dependencies are within constitutional exception whitelist.${RESET}"
+  echo "${GREEN}OK: burncloud-router service dependencies are within the architecture whitelist.${RESET}"
   echo "  Allowed: $allowed_list"
   echo "  Found:   ${SERVICE_DEPS[*]:-none}"
   exit 0
 fi
 
-# Build the allowed list string for the error message
 allowed_str=$(printf '%s, ' "${ALLOWED_SERVICE_CRATES[@]}")
 allowed_str="${allowed_str%, }"
 
@@ -85,10 +79,11 @@ echo ""
 echo "  Found:   ${VIOLATIONS[*]}"
 echo "  Allowed: $allowed_str"
 echo ""
-echo "  Router is a data-plane component. Dependency direction should be"
-echo "  Router -> Database -> Common. Service-* dependencies are constitutional"
-echo "  exceptions; adding new ones requires architecture review."
+echo "  The current router service-dependency boundary is enforced by this script."
+echo "  Adding a new burncloud-service-* dependency requires architecture review"
+echo "  and an explicit update to the whitelist if the new dependency is accepted."
 echo ""
-echo "  See: docs/code/README.md §1.1 \"Constitutional Exceptions\""
-echo "  Or:  crates/router/README.md \"Dependencies\" section"
+echo "  See: docs/agent/INVARIANTS.md"
+echo "  See: docs/contracts/ROUTER.md"
+echo "  Or:  crates/router/README.md \"Dependency boundary\" section"
 exit 1
