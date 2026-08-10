@@ -54,7 +54,7 @@ pub fn Logs() -> Element {
                         input {
                             class: "input",
                             placeholder: "Search by request ID, customer, route...",
-                            value: query(),
+                            value: "{query}",
                             oninput: move |evt| query.set(evt.value()),
                         }
                     }
