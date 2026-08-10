@@ -1,4 +1,5 @@
 pub mod app;
+pub mod auth_gate;
 pub mod backend;
 pub mod components;
 pub mod critical_pages;
