@@ -61,6 +61,7 @@ pub fn App() -> Element {
             meta { name:"viewport", content:"width=device-width, initial-scale=1" }
             title { "BurnCloud" }
             style { dangerous_inner_html: include_str!("styles.css") }
+            style { dangerous_inner_html: include_str!("critical_pages.css") }
         }
         Router::<Route> {}
     }
