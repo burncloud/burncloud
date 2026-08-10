@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::{
     app::Route,
     backend::use_auth,
-    components::ConsoleLayout,
+    functional_layout::FunctionalConsoleLayout,
 };
 
 #[component]
@@ -31,5 +31,5 @@ pub fn AuthGate() -> Element {
         };
     }
 
-    rsx! { ConsoleLayout {} }
+    rsx! { FunctionalConsoleLayout {} }
 }
