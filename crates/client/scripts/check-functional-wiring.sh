@@ -18,6 +18,8 @@ require 'functional_pages::{' src/app.rs
 require 'auth_gate::AuthGate' src/app.rs
 require 'FunctionalConsoleLayout' src/auth_gate.rs
 require 'auth.clear();' src/functional_layout.rs
+require 'pub use providers::Providers;' src/functional_pages/mod.rs
+require 'pub use catalog::{Models, Routes};' src/functional_pages/mod.rs
 
 # Authentication and persistent session wiring.
 require '/api/auth/login' src/backend.rs
