@@ -1,202 +1,255 @@
 use dioxus::prelude::*;
 
-use crate::components::{Badge, Drawer, Icon, MetricCard};
+use crate::{
+    backend::{
+        billing_summary, system_metrics, user_usage, use_auth, BillingSummary, Channel, ChannelService,
+        LogService, RouterLog, SystemMetrics, UsageStats,
+    },
+    components::{Drawer, Icon},
+};
 
-const RECEIPT_JSON: &str = r#"{
-  "request_id": "req_8f1a2c9d4e3f7a10",
-  "timestamp": "2026-07-17T00:51:38.125Z",
-  "model_requested": "claude-fable-5",
-  "provider_target": "aws-bedrock-us-east-1",
-  "tpm_signature": "0x8e1f5b3a...09d",
-  "hardware_signature": "SIG_TPM_NITRO_91f8",
-  "authenticity_score": "100%",
-  "audit_status": "PASSED"
-}"#;
+fn compact(n: i64) -> String {
+    let abs = n.abs();
+    if abs >= 1_000_000_000 {
+        format!("{:.2}B", n as f64 / 1_000_000_000.0)
+    } else if abs >= 1_000_000 {
+        format!("{:.2}M", n as f64 / 1_000_000.0)
+    } else if abs >= 1_000 {
+        format!("{:.2}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
+}
+
+fn kpi(label: &str, value: String, note: String, icon: &'static str, tone: &'static str) -> Element {
+    rsx! {
+        div { class: "card metric card-hover",
+            div { class: "metric-copy",
+                span { class: "metric-label", "{label}" }
+                span { class: "metric-value", "{value}" }
+                span { class: "metric-note mono", "{note}" }
+            }
+            div { class: "metric-icon {tone}", Icon { name: icon } }
+        }
+    }
+}
+
+fn latest_log(logs: &[RouterLog]) -> Option<RouterLog> {
+    logs.first().cloned()
+}
+
+fn channel_model_count(channels: &[Channel]) -> usize {
+    let mut models: Vec<String> = channels
+        .iter()
+        .flat_map(|channel| channel.models.split(',').map(str::trim).filter(|m| !m.is_empty()).map(str::to_string))
+        .collect();
+    models.sort();
+    models.dedup();
+    models.len()
+}
 
 #[component]
 pub fn Overview() -> Element {
+    let auth = use_auth();
+    let current_user = auth.user();
+    let token = auth.token().unwrap_or_default();
+    let user_id = current_user.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+    let username = current_user.as_ref().map(|u| u.username.clone()).unwrap_or_else(|| "User".to_string());
+
+    let token_for_usage = token.clone();
+    let user_for_usage = user_id.clone();
+    let token_for_billing = token.clone();
+
+    let mut metrics_resource = use_resource(move || async move { system_metrics().await });
+    let mut channels_resource = use_resource(move || async move { ChannelService::list(100).await });
+    let mut logs_resource = use_resource(move || async move { LogService::list(50).await });
+    let mut usage_resource = use_resource(move || {
+        let token = token_for_usage.clone();
+        let uid = user_for_usage.clone();
+        async move {
+            if token.is_empty() || uid.is_empty() {
+                Err("No authenticated user context".to_string())
+            } else {
+                user_usage(&uid, &token).await
+            }
+        }
+    });
+    let mut billing_resource = use_resource(move || {
+        let token = token_for_billing.clone();
+        async move {
+            if token.is_empty() {
+                Err("No authenticated token".to_string())
+            } else {
+                billing_summary(&token).await
+            }
+        }
+    });
+
+    let metrics_result = metrics_resource.read().clone();
+    let channels_result = channels_resource.read().clone();
+    let logs_result = logs_resource.read().clone();
+    let usage_result = usage_resource.read().clone();
+    let billing_result = billing_resource.read().clone();
+
+    let metrics: SystemMetrics = metrics_result.clone().and_then(Result::ok).unwrap_or_default();
+    let channels: Vec<Channel> = channels_result.clone().and_then(Result::ok).unwrap_or_default();
+    let logs: Vec<RouterLog> = logs_result.clone().and_then(Result::ok).unwrap_or_default();
+    let usage: UsageStats = usage_result.clone().and_then(Result::ok).unwrap_or_default();
+    let billing: BillingSummary = billing_result.clone().and_then(Result::ok).unwrap_or_default();
+
+    let errors: Vec<String> = [
+        metrics_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Monitor: {e}")),
+        channels_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Channels: {e}")),
+        logs_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Logs: {e}")),
+        usage_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Usage: {e}")),
+        billing_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Billing: {e}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let total_requests = billing.models.iter().map(|m| m.requests).sum::<i64>() + billing.pre_migration_requests;
+    let active_channels = channels.iter().filter(|channel| channel.status == 1).count();
+    let down_channels = channels.iter().filter(|channel| channel.status == 0).count();
+    let model_count = channel_model_count(&channels);
+    let latest = latest_log(&logs);
     let mut receipt_open = use_signal(|| false);
-    let mut audit_open = use_signal(|| false);
-    let mut receipt_verified = use_signal(|| false);
-    let mut audit_complete = use_signal(|| false);
 
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
-                    div { class: "row gap-2",
-                        h2 { class: "page-title", "Good morning, Wei." }
-                        Badge { text: "● All routes verified", tone: "success" }
-                    }
-                    p { class: "page-subtitle",
-                        "Every request is fully traceable. "
-                        strong { "12.8M requests" }
-                        " routed today."
-                    }
+                    h2 { class: "page-title", "Good morning, {username}." }
+                    p { class: "page-subtitle", "Live data from the running BurnCloud server. Dashboard values are no longer seeded UI demo values." }
                 }
                 div { class: "header-actions",
                     button {
                         class: "button button-secondary",
                         onclick: move |_| {
-                            audit_complete.set(false);
-                            audit_open.set(true);
+                            metrics_resource.restart();
+                            channels_resource.restart();
+                            logs_resource.restart();
+                            usage_resource.restart();
+                            billing_resource.restart();
                         },
-                        Icon { name: "spark" }
-                        "Steve's Critique"
+                        Icon { name: "activity" }
+                        "Refresh All"
                     }
                     button {
                         class: "button button-primary",
-                        onclick: move |_| {
-                            audit_complete.set(true);
-                            audit_open.set(true);
-                        },
-                        Icon { name: "activity" }
-                        "Cryptographic Scan"
+                        disabled: latest.is_none(),
+                        onclick: move |_| receipt_open.set(true),
+                        Icon { name: "logs" }
+                        "Latest Request Receipt"
                     }
                 }
             }
 
+            if !errors.is_empty() {
+                div { class: "card card-pad stack",
+                    strong { class: "danger", "Some live dashboard sources could not be loaded" }
+                    for message in errors { code { class: "terminal", "{message}" } }
+                }
+            }
+
             div { class: "metrics",
-                MetricCard { label: "Verified Requests", value: "12.8M", note: "Fully cloud attested", icon: "activity", tone: "tone-blue" }
-                MetricCard { label: "Source Transparent", value: "100%", note: "Direct hardware keys", icon: "shield", tone: "tone-green" }
-                MetricCard { label: "Model Identity Match", value: "99.99%", note: "Silicon handshake hash", icon: "server", tone: "tone-purple" }
-                MetricCard { label: "Est. Cost Saved", value: "$4,766", note: "Smart fallback routing", icon: "dollar", tone: "tone-amber" }
+                {kpi("Requests", compact(total_requests), format!("${:.4} total billed", billing.total_cost_usd), "activity", "tone-blue")}
+                {kpi("User Tokens", compact(usage.total_tokens), format!("{} prompt / {} completion", compact(usage.prompt_tokens), compact(usage.completion_tokens)), "models", "tone-purple")}
+                {kpi("Active Channels", active_channels.to_string(), format!("{} total • {} down", channels.len(), down_channels), "server", "tone-green")}
+                {kpi("CPU / Memory", format!("{:.0}% / {:.0}%", metrics.cpu.usage_percent, metrics.memory.usage_percent), format!("{} cores • {} models exposed", metrics.cpu.core_count, model_count), "activity", "tone-amber")}
             }
 
             div { class: "grid-2",
                 div { class: "card card-pad stack",
                     div { class: "row between",
-                        span { class: "section-label", "Live Model Source Map" }
-                        Badge { text: "ACTIVE POOL" }
+                        span { class: "section-label", "Live Provider / Channel Pool" }
+                        span { class: if down_channels == 0 { "badge badge-success" } else { "badge badge-warning" },
+                            if down_channels == 0 { "ALL HEALTHY" } else { "DEGRADED" }
+                        }
                     }
-                    div { class: "source-map",
-                        div { class: "source-title", span { class: "green-dot" } "claude-fable-5" }
-                        SourceBar { label: "├ AWS Bedrock", percent: 52 }
-                        SourceBar { label: "├ Anthropic", percent: 31, tone: "purple" }
-                        SourceBar { label: "└ Vertex AI", percent: 17, tone: "green" }
+                    if channels.is_empty() {
+                        p { class: "small muted", "No channels were returned. Admin role may be required for the channel API." }
+                    } else {
+                        div { class: "stack",
+                            for channel in channels.iter().take(8) {
+                                div { class: "source-line",
+                                    div { class: "source-meta",
+                                        span { class: "strong", "{channel.name}" }
+                                        span { class: if channel.status == 1 { "badge badge-success" } else { "badge badge-error" },
+                                            if channel.status == 1 { "ACTIVE" } else { "DOWN" }
+                                        }
+                                    }
+                                    div { class: "tiny subtle mono", "type={channel.type_} • weight={channel.weight} • models={channel.models}" }
+                                }
+                            }
+                        }
                     }
-                    div { class: "tiny subtle mono", style: "text-align:center;border-top:1px solid #f3f4f6;padding-top:14px", "Pristine silicon attestation active." }
                 }
 
                 div { class: "card card-pad stack",
                     div { class: "row between",
-                        span { class: "section-label", "Latest Model Receipt" }
-                        Badge { text: "SECURE TPM", tone: "success" }
+                        span { class: "section-label", "Latest Real Router Receipt" }
+                        span { class: "badge badge-neutral", "router_logs" }
                     }
-                    div { class: "receipt",
-                        ReceiptRow { label: "Requested:", value: "claude-fable-5" }
-                        ReceiptRow { label: "Provider:", value: "AWS" }
-                        ReceiptRow { label: "Region:", value: "us-east-1" }
-                        div { class: "receipt-row", style: "border-top:1px dashed #e5e7eb;padding-top:10px",
-                            label { "Route:" }
-                            strong { class: "success", "● Verified" }
+                    if let Some(log) = latest.clone() {
+                        div { class: "receipt",
+                            div { class: "receipt-row", label { "Request:" } strong { class: "mono", "{log.request_id}" } }
+                            div { class: "receipt-row", label { "Model:" } strong { "{log.model.clone().unwrap_or_else(|| "—".to_string())}" } }
+                            div { class: "receipt-row", label { "Upstream:" } strong { "{log.upstream_id.clone().unwrap_or_else(|| "—".to_string())}" } }
+                            div { class: "receipt-row", label { "Status:" } strong { "HTTP {log.status_code} • {log.status_label()}" } }
+                        }
+                        button { class: "button button-primary", style: "width:100%", onclick: move |_| receipt_open.set(true), "Inspect Stored Route Metadata" }
+                    } else {
+                        p { class: "small muted", "No router log receipt is currently available." }
+                    }
+                }
+            }
+
+            div { class: "card table-card",
+                div { class: "card-pad row between",
+                    span { class: "section-label", "Billing Model Breakdown" }
+                    span { class: "small muted", "{billing.models.len()} billed models" }
+                }
+                if billing.models.is_empty() {
+                    div { class: "card-pad small muted", "No billing model usage returned for the current account/period." }
+                } else {
+                    div { class: "table-wrap",
+                        table { class: "data-table",
+                            thead { tr {
+                                th { "Model" }
+                                th { class: "right", "Requests" }
+                                th { class: "right", "Prompt" }
+                                th { class: "right", "Completion" }
+                                th { class: "right", "Cost" }
+                            } }
+                            tbody {
+                                for model in billing.models.iter().take(12) {
+                                    tr { key: "{model.model}",
+                                        td { class: "table-primary", "{model.model}" }
+                                        td { class: "right tabular", "{compact(model.requests)}" }
+                                        td { class: "right tabular", "{compact(model.prompt_tokens)}" }
+                                        td { class: "right tabular", "{compact(model.completion_tokens)}" }
+                                        td { class: "right strong tabular", "${model.cost_usd:.6}" }
+                                    }
+                                }
+                            }
                         }
                     }
-                    button {
-                        class: "button button-primary",
-                        style: "width:100%",
-                        onclick: move |_| {
-                            receipt_verified.set(false);
-                            receipt_open.set(true);
-                        },
-                        Icon { name: "logs" }
-                        "View Verifiable Receipt"
-                    }
                 }
             }
-
-            div { class: "card card-pad stack",
-                div { class: "row between",
-                    span { class: "section-label", "What Changed" }
-                    span { class: "tiny subtle mono", "LAST 24 HOURS" }
-                }
-                ul { class: "change-list",
-                    li { span { class: "dot" } "286 requests used a disclosed fallback" }
-                    li { span { class: "dot green" } "Router A changed upstream provider to AWS Bedrock" }
-                    li { span { class: "dot amber" } "One route is awaiting independent verification" }
-                }
-            }
-
-            div { class: "card card-pad", style: "display:flex;align-items:center;justify-content:space-around;text-align:center;gap:16px;flex-wrap:wrap",
-                MiniStat { value: "12.8M Requests", label: "Verified traffic today" }
-                MiniStat { value: "3.6B", label: "Tokens routed" }
-                MiniStat { value: "184ms", label: "P95 latency" }
-                MiniStat { value: "$4,766 Saved", label: "Smart routing savings" }
-            }
-            p { class: "tiny subtle mono", style: "text-align:center", "BurnCloud Gateway • Designed with Steve's absolute design & integrity rules." }
 
             Drawer {
-                title: "Traceable Route Certificate",
+                title: "Stored Request Route Receipt",
                 open: receipt_open(),
                 on_close: move |_| receipt_open.set(false),
-                div { class: "stack-lg",
-                    div { style: "text-align:center",
-                        div { class: "metric-icon tone-green", style: "margin:0 auto;width:52px;height:52px", Icon { name: "shield" } }
-                        p { class: "small muted", "Verifiable proof of model identity & route authenticity issued by BurnCloud secure hardware enclaves." }
-                    }
-                    div { class: "card card-pad stack",
-                        span { class: "section-label", "100% Traceability Mechanism" }
-                        p { class: "small muted", "Every routed request is bound to a cryptographic certificate. The request is signed inside a secure enclave, forwarded with a hash, and matched against the provider hardware profile to prevent proxy dilution." }
-                    }
-                    div { class: "stack",
-                        div { class: "row between",
-                            span { class: "section-label", "Verification Blueprint" }
-                            Badge { text: "● SIGNED BY ROOT", tone: "success" }
+                if let Some(log) = latest {
+                    div { class: "stack-lg",
+                        div { class: "card card-pad stack",
+                            span { class: "section-label", "What this proves" }
+                            p { class: "small muted", "These are the actual observability fields persisted by BurnCloud for the request. This UI does not claim TPM or cryptographic verification because the current router_logs schema does not store a hardware signature." }
                         }
-                        pre { class: "terminal", style: "white-space:pre-wrap;line-height:1.65", "{RECEIPT_JSON}" }
-                    }
-                    button {
-                        class: "button button-primary",
-                        style: "width:100%",
-                        onclick: move |_| receipt_verified.set(true),
-                        Icon { name: "lock" }
-                        if receipt_verified() { "Cryptographic Chain Verified" } else { "Verify Cryptographic Chain" }
-                    }
-                    if receipt_verified() {
-                        div { class: "terminal",
-                            div { class: "terminal-line", "> 🔐 Retrieving downstream HMAC-SHA256 request token..." }
-                            div { class: "terminal-line", "> 📡 Handshaking with AWS Bedrock TPM Secure Enclave..." }
-                            div { class: "terminal-line", "> 🧬 Extracting silicon-bound hardware signature..." }
-                            div { class: "terminal-line success", "> ✓ 100% Traceability Confirmed" }
-                        }
-                        div { class: "badge badge-success", style: "display:block;padding:12px;text-align:center", "Routing history matches authentic provider signatures without middleman spoofing." }
-                    }
-                }
-            }
-
-            Drawer {
-                title: "Steve's Verdict on Micro-Tuning",
-                open: audit_open(),
-                on_close: move |_| audit_open.set(false),
-                div { class: "stack-lg",
-                    div { style: "text-align:center",
-                        div { style: "font-size:40px", "👓" }
-                        p { class: "small muted", style: "font-style:italic", "The finest details are the ones you can't see, but you can feel. When the hardware is honest, the software doesn't need to lie." }
-                    }
-                    div { class: "card card-pad row between",
-                        div { span { class: "section-label", "Integrity Score" } div { class: "small muted", "Cupertino Calibration" } }
-                        if audit_complete() {
-                            div { class: "row gap-2", strong { class: "metric-value success", "100.0%" } Badge { text: "INSANELY GREAT", tone: "success" } }
-                        } else {
-                            span { class: "small muted mono", "Pending micro-probe..." }
-                        }
-                    }
-                    Directive { number: "1", title: "Visual Gravity of Spacing", text: "Thin dividers, disciplined card spacing and low visual noise keep trust data as the hero." }
-                    Directive { number: "2", title: "Typographic Integrity", text: "High-contrast display type and monospaced technical data make the routing tree feel precise and authoritative." }
-                    Directive { number: "3", title: "The Magic in Interaction", text: "A cryptographic receipt becomes tangible when the verification chain can be inspected directly." }
-                    button {
-                        class: "button button-primary",
-                        style: "width:100%",
-                        onclick: move |_| audit_complete.set(true),
-                        Icon { name: "activity" }
-                        if audit_complete() { "Calibration Complete" } else { "Run Cupertino Integrity Calibration" }
-                    }
-                    if audit_complete() {
-                        div { class: "terminal",
-                            div { class: "terminal-line", "> Calibrating alignments to pristine proportions..." }
-                            div { class: "terminal-line", "> Measuring padding density and radius consistency..." }
-                            div { class: "terminal-line", "> Auditing route transparency and provider hardware enclaves..." }
-                            div { class: "terminal-line success", "> ✓ Integrity score: 100.0%" }
+                        pre { class: "terminal", style: "white-space:pre-wrap;line-height:1.65",
+                            "request_id: {log.request_id}\nuser_id: {log.user_id.clone().unwrap_or_else(|| "—".to_string())}\npath: {log.path}\nmodel: {log.model.clone().unwrap_or_else(|| "—".to_string())}\nupstream_id: {log.upstream_id.clone().unwrap_or_else(|| "—".to_string())}\nstatus_code: {log.status_code}\nlatency_ms: {log.latency_ms}\nlayer_decision: {log.layer_decision.clone().unwrap_or_else(|| "—".to_string())}\ntraffic_color: {log.traffic_color.clone().unwrap_or_else(|| "—".to_string())}\nerror_type: {log.error_type.clone().unwrap_or_else(|| "—".to_string())}\ncost_status: {log.cost_status.clone().unwrap_or_else(|| "—".to_string())}\ntotal_tokens: {log.total_tokens()}\ncost_usd: {log.cost_usd():.9}"
                         }
                     }
                 }
@@ -208,36 +261,4 @@ pub fn Overview() -> Element {
 #[component]
 pub fn Dashboard() -> Element {
     rsx! { Overview {} }
-}
-
-#[component]
-fn Directive(number: &'static str, title: &'static str, text: &'static str) -> Element {
-    rsx! {
-        div { class: "card card-pad stack",
-            div { class: "row gap-2", Badge { text: number, tone: "brand" } strong { "{title}" } }
-            p { class: "small muted", "{text}" }
-        }
-    }
-}
-
-#[component]
-fn ReceiptRow(label: &'static str, value: &'static str) -> Element {
-    rsx! { div { class: "receipt-row", label { "{label}" } strong { "{value}" } } }
-}
-
-#[component]
-fn MiniStat(value: &'static str, label: &'static str) -> Element {
-    rsx! { div { strong { "{value}" } div { class: "tiny subtle", "{label}" } } }
-}
-
-#[component]
-fn SourceBar(label: &'static str, percent: u32, #[props(default)] tone: String) -> Element {
-    let progress_class = if tone.is_empty() { "progress".to_string() } else { format!("progress {tone}") };
-    let width = format!("width:{percent}%");
-    rsx! {
-        div { class: "source-line",
-            div { class: "source-meta", span { "{label}" } span { class: "badge badge-neutral mono", "{percent}%" } }
-            div { class: "{progress_class}", span { style: "{width}" } }
-        }
-    }
 }
