@@ -25,6 +25,9 @@ dioxus-liveview = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 burncloud-database = { workspace = true, optional = true }
 
+[target.'cfg(windows)'.dependencies]
+systray.workspace = true
+
 [build-dependencies]
 winres = "0.1"
 
