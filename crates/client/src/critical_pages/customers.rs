@@ -67,6 +67,8 @@ pub fn Customers() -> Element {
         })
         .cloned()
         .collect();
+    let visible_count = visible.len();
+    let total_count = tenant_snapshot.len();
     let total_spend: u32 = tenant_snapshot.iter().map(|tenant| tenant.spend).sum();
     let total_requests: u32 = tenant_snapshot.iter().map(|tenant| tenant.requests).sum();
     let critical = tenant_snapshot
@@ -103,7 +105,7 @@ pub fn Customers() -> Element {
             }
 
             div { class: "metrics",
-                TenantMetric { label: "Total Tenants", value: tenant_snapshot.len().to_string(), icon: "users", tone: "tone-gray" }
+                TenantMetric { label: "Total Tenants", value: total_count.to_string(), icon: "users", tone: "tone-gray" }
                 TenantMetric { label: "Active Month Spend", value: format!("${:.2}K", total_spend as f64 / 1000.0), icon: "dollar", tone: "tone-green" }
                 TenantMetric { label: "Total Demands", value: format!("{:.2}M Req", total_requests as f64 / 1_000_000.0), icon: "activity", tone: "tone-blue" }
                 TenantMetric { label: "Budget Alerts", value: format!("{} Critical", critical), icon: "shield", tone: "tone-amber" }
@@ -116,12 +118,13 @@ pub fn Customers() -> Element {
                         input {
                             class: "input",
                             placeholder: "Search tenants or active policies...",
-                            value: query(),
+                            value: "{query}",
                             oninput: move |evt| query.set(evt.value()),
                         }
                     }
-                    span { class: "small muted", "Showing {visible.len()} of {tenant_snapshot.len()} tenants" }
+                    span { class: "small muted", "Showing {visible_count} of {total_count} tenants" }
                 }
+
                 div { class: "table-wrap",
                     table { class: "data-table",
                         thead { tr {
@@ -153,12 +156,15 @@ pub fn Customers() -> Element {
                                     } else {
                                         "background:#10b981"
                                     };
+
                                     rsx! {
                                         tr {
                                             td { class: "table-primary",
                                                 div { class: "row gap-2",
                                                     "{tenant.name}"
-                                                    if ratio >= 0.9 { span { style: "width:6px;height:6px;border-radius:50%;background:#ef4444" } }
+                                                    if ratio >= 0.9 {
+                                                        span { style: "width:6px;height:6px;border-radius:50%;background:#ef4444" }
+                                                    }
                                                 }
                                             }
                                             td {
@@ -248,7 +254,7 @@ pub fn Customers() -> Element {
                         label { "Tenant Customer Name" }
                         input {
                             class: "input",
-                            value: form_name(),
+                            value: "{form_name}",
                             placeholder: "e.g. AeroTech Corp",
                             oninput: move |evt| form_name.set(evt.value()),
                         }
@@ -259,7 +265,7 @@ pub fn Customers() -> Element {
                             label { "Environment" }
                             select {
                                 class: "select",
-                                value: form_env(),
+                                value: "{form_env}",
                                 oninput: move |evt| form_env.set(evt.value()),
                                 option { value: "Production", "Production" }
                                 option { value: "Staging", "Staging" }
@@ -270,7 +276,7 @@ pub fn Customers() -> Element {
                             label { "Default Route Policy" }
                             select {
                                 class: "select",
-                                value: form_route(),
+                                value: "{form_route}",
                                 oninput: move |evt| form_route.set(evt.value()),
                                 for route in ROUTES {
                                     option { value: route.name, "{route.name}" }
@@ -282,14 +288,14 @@ pub fn Customers() -> Element {
                     div { class: "field",
                         div { class: "row between",
                             label { "Rate Limit Quota" }
-                            strong { class: "mono small", "{form_rps()} RPS" }
+                            strong { class: "mono small", "{form_rps} RPS" }
                         }
                         input {
                             r#type: "range",
                             min: "5",
                             max: "500",
                             step: "5",
-                            value: form_rps().to_string(),
+                            value: "{form_rps}",
                             oninput: move |evt| {
                                 if let Ok(value) = evt.value().parse::<u32>() {
                                     form_rps.set(value);
@@ -302,14 +308,14 @@ pub fn Customers() -> Element {
                     div { class: "field",
                         div { class: "row between",
                             label { "Monthly Budget Threshold" }
-                            strong { class: "mono small", "${form_budget()}" }
+                            strong { class: "mono small", "${form_budget}" }
                         }
                         input {
                             r#type: "range",
                             min: "500",
                             max: "50000",
                             step: "500",
-                            value: form_budget().to_string(),
+                            value: "{form_budget}",
                             oninput: move |evt| {
                                 if let Ok(value) = evt.value().parse::<u32>() {
                                     form_budget.set(value);
@@ -330,7 +336,11 @@ pub fn Customers() -> Element {
                                     move |_| {
                                         let mut next = tenants();
                                         if let Some(item) = next.iter_mut().find(|item| item.id == id) {
-                                            item.status = if item.status == "Active" { "Suspended".to_string() } else { "Active".to_string() };
+                                            item.status = if item.status == "Active" {
+                                                "Suspended".to_string()
+                                            } else {
+                                                "Active".to_string()
+                                            };
                                         }
                                         tenants.set(next);
                                     }
