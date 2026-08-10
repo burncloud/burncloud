@@ -25,6 +25,9 @@ jobs:
       - name: Check console button conventions
         run: bash scripts/check-ui-conventions.sh
 
+      - name: Check functional console wiring
+        run: bash scripts/check-functional-wiring.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
