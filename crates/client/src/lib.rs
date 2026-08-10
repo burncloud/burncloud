@@ -1,5 +1,6 @@
 pub mod app;
 pub mod components;
+pub mod critical_pages;
 pub mod data;
 pub mod pages;
 
@@ -47,9 +48,9 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
 
     let mut app = Router::new().route("/", html_handler.clone());
     for path in [
-        "/home", "/landing", "/login", "/register", "/playground", "/routes", "/models",
-        "/providers", "/keys", "/customers", "/guardrails", "/logs", "/evaluation", "/billing",
-        "/team", "/settings",
+        "/dashboard", "/home", "/landing", "/login", "/register", "/playground", "/routes",
+        "/models", "/providers", "/keys", "/customers", "/users", "/guardrails", "/logs",
+        "/evaluation", "/billing", "/team", "/settings",
     ] {
         app = app.route(path, html_handler.clone());
     }
