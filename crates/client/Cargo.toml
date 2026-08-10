@@ -1,66 +1,32 @@
 [package]
 publish.workspace = true
 name = "burncloud-client"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2021"
-description = "Desktop GUI client application for BurnCloud AI model deployment platform"
+description = "Dioxus client for the BurnCloud AI routing platform"
 license = "MIT"
 repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop", "dep:image", "burncloud-client-shared/desktop"]
+desktop = ["dioxus/desktop"]
 web = ["dioxus/web"]
 liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
-# Compile /preview/* routes (still opt-in at runtime until navigated).
-e2e-preview = ["burncloud-client-shared/e2e-preview"]
 
 [dependencies]
-burncloud-common = { workspace = true }
-burncloud-client-dashboard.workspace = true
-burncloud-client-deploy.workspace = true
-burncloud-client-models.workspace = true
-burncloud-client-monitor.workspace = true
-burncloud-client-settings.workspace = true
-burncloud-client-shared.workspace = true
-burncloud-client-users.workspace = true
-burncloud-client-finance.workspace = true
-burncloud-client-access.workspace = true
-burncloud-client-log.workspace = true
-burncloud-client-connect.workspace = true
-burncloud-client-playground.workspace = true
-burncloud-client-register.workspace = true
-open = "5"
-log = { workspace = true }
+burncloud-common.workspace = true
 dioxus = { workspace = true, features = ["router"] }
 dioxus-router.workspace = true
 tokio.workspace = true
-serde_json.workspace = true
-dioxus-ssr = { workspace = true }
-image = { workspace = true, optional = true }
 
-# LiveView specific dependencies
+# LiveView integration used by the BurnCloud server binary.
 dioxus-liveview = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 burncloud-database = { workspace = true, optional = true }
 
-[package.metadata.cargo-machete]
-# winapi is under [target.'cfg(windows)'.dependencies] — machete doesn't detect cfg-gated deps
-ignored = ["winapi"]
-
-[target.'cfg(windows)'.dependencies]
-winapi.workspace = true
-burncloud-client-tray.workspace = true
-
 [build-dependencies]
 winres = "0.1"
-
-[dev-dependencies]
-dioxus-ssr = { workspace = true }
-
-[target.'cfg(windows)'.build-dependencies]
-winres.workspace = true
 
 [lints]
 workspace = true
