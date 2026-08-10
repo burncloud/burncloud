@@ -16,7 +16,7 @@ liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
 
 [dependencies]
 burncloud-common.workspace = true
-dioxus = { workspace = true, features = ["router"] }
+dioxus = { workspace = true, features = ["router", "lib"] }
 dioxus-router.workspace = true
 tokio.workspace = true
 
