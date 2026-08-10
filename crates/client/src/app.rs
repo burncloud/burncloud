@@ -1,11 +1,21 @@
 use dioxus::prelude::*;
-use crate::{components::ConsoleLayout, pages::*};
+
+use crate::{
+    components::ConsoleLayout,
+    critical_pages::{Customers, Dashboard, Login, Logs, Overview, Register, Users},
+    pages::{
+        APIKeys, Billing, Evaluation, Guardrails, Home, Landing, Models, Playground, Providers,
+        Routes, Settings, Team,
+    },
+};
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {
     #[layout(ConsoleLayout)]
     #[route("/")]
     Overview {},
+    #[route("/dashboard")]
+    Dashboard {},
     #[route("/playground")]
     Playground {},
     #[route("/routes")]
@@ -18,6 +28,8 @@ pub enum Route {
     APIKeys {},
     #[route("/customers")]
     Customers {},
+    #[route("/users")]
+    Users {},
     #[route("/guardrails")]
     Guardrails {},
     #[route("/logs")]
