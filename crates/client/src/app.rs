@@ -7,10 +7,11 @@ mod desktop_chrome;
 use crate::{
     auth_gate::AuthGate,
     critical_pages::{Customers, Login, Logs, Overview, Register},
-    pages::{
-        APIKeys, Billing, Evaluation, Guardrails, Home, Landing, Models, Playground, Providers,
-        Routes, Settings, Team,
+    functional_pages::{
+        APIKeys, Billing, Evaluation, Guardrails, Models, Playground, Providers, Routes, Settings,
+        Team,
     },
+    pages::{Home, Landing},
     route_aliases::{Dashboard, Users},
 };
 
