@@ -3,6 +3,7 @@ pub mod components;
 pub mod critical_pages;
 pub mod data;
 pub mod pages;
+pub mod route_aliases;
 
 pub use app::App;
 
