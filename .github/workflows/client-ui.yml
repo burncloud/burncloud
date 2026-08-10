@@ -5,6 +5,7 @@ on:
     paths:
       - 'crates/client/**'
       - 'docs/ui/**'
+      - '.github/workflows/client-ui.yml'
 
 permissions:
   contents: read
@@ -21,3 +22,14 @@ jobs:
 
       - name: Check console button conventions
         run: bash scripts/check-ui-conventions.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Check Dioxus LiveView client
+        run: cargo check --no-default-features --features liveview
