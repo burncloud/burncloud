@@ -1,0 +1,63 @@
+/* Desktop chrome restored from the pre-rebuild BurnCloud client. */
+.app-drag-region { -webkit-app-region: drag; }
+.app-no-drag { -webkit-app-region: no-drag; }
+
+.desktop-titlebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 32px;
+    z-index: 10000;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    background: transparent;
+    border: 0;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.desktop-titlebar-spacer { flex: 1; min-width: 0; }
+.desktop-window-controls { display: inline-flex; align-items: stretch; height: 32px; }
+.desktop-window-control {
+    width: 46px;
+    height: 32px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    cursor: default;
+    transition: background 120ms ease;
+}
+.desktop-window-control:hover { background: rgba(127,127,127,.18); }
+.desktop-window-control:active { background: rgba(127,127,127,.28); }
+.desktop-window-control.danger:hover,
+.desktop-window-control.danger:active { background: #c42b1c; }
+.desktop-win-icon {
+    font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+    color: #1d1d1f;
+    text-shadow: 0 0 3px rgba(255,255,255,.95), 0 0 1px rgba(255,255,255,.85), 0 1px 1px rgba(0,0,0,.12);
+    pointer-events: none;
+    user-select: none;
+}
+.desktop-window-control.danger:hover .desktop-win-icon,
+.desktop-window-control.danger:active .desktop-win-icon { color: #fff; text-shadow: none; }
+
+/* The transparent native-titlebar overlay occupies the top-right 138px. */
+.desktop-host .topbar { padding-right: 154px; }
+.desktop-host .public-header,
+.desktop-host .auth-header { padding-right: 170px; }
+
+@media (max-width: 980px) {
+    .desktop-host .topbar { padding-right: 146px; }
+    .desktop-host .topbar-right .global-search { display: none; }
+}
