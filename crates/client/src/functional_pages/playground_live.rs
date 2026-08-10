@@ -7,7 +7,7 @@ pub fn Playground()->Element{
     let mut channels=use_resource(move||async move{ChannelService::list(100).await});
     let channel_rows=channels.read().clone().and_then(Result::ok).unwrap_or_default();
     let mut available=BTreeSet::new();for c in &channel_rows{if c.status==1{for m in c.models.split(',').map(str::trim).filter(|m|!m.is_empty()){available.insert(m.to_string());}}}
-    let mut model=use_signal(String::new);let mut prompt=use_signal(String::new);let mut messages=use_signal(Vec::<ChatMessage>::new());let mut temperature=use_signal(||0.7f64);let mut max_tokens=use_signal(||1024i64);let mut loading=use_signal(||false);let mut error=use_signal(String::new);let mut trace=use_signal(RouteTrace::default);let mut usage=use_signal(String::new);
+    let mut model=use_signal(String::new);let mut prompt=use_signal(String::new);let mut messages=use_signal(||Vec::<ChatMessage>::new());let mut temperature=use_signal(||0.7f64);let mut max_tokens=use_signal(||1024i64);let mut loading=use_signal(||false);let mut error=use_signal(String::new);let mut trace=use_signal(RouteTrace::default);let mut usage=use_signal(String::new);
     let trace_value=trace();let trace_channel=trace_value.channel_id.unwrap_or_else(||"-".to_string());let trace_model=trace_value.model_id.unwrap_or_else(||"-".to_string());
     rsx!{
         div{class:"page",
