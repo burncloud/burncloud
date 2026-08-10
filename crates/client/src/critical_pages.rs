@@ -4,6 +4,6 @@ mod dashboard;
 mod logs;
 
 pub use auth::{Login, Register};
-pub use customers_portable::{Customers, Users};
-pub use dashboard::{Dashboard, Overview};
+pub use customers_portable::Customers;
+pub use dashboard::Overview;
 pub use logs::Logs;
