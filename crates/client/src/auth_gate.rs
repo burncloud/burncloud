@@ -1,16 +1,24 @@
 use dioxus::prelude::*;
 
-use crate::{app::Route, backend::use_auth};
+use crate::{
+    app::Route,
+    backend::use_auth,
+    components::ConsoleLayout,
+};
 
 #[component]
 pub fn AuthGate() -> Element {
     let auth = use_auth();
     let navigator = use_navigator();
+    let authenticated = auth.is_authenticated();
 
-    if !auth.is_authenticated() {
-        use_effect(move || {
+    use_effect(move || {
+        if !authenticated {
             navigator.replace(Route::Login {});
-        });
+        }
+    });
+
+    if !authenticated {
         return rsx! {
             div { class: "auth-page",
                 main { class: "auth-main",
@@ -23,5 +31,5 @@ pub fn AuthGate() -> Element {
         };
     }
 
-    rsx! { Outlet::<Route> {} }
+    rsx! { ConsoleLayout {} }
 }
