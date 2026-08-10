@@ -59,6 +59,19 @@ pub enum Route {
 }
 
 #[component]
+fn DesktopChrome() -> Element {
+    #[cfg(feature = "desktop")]
+    {
+        return rsx! { desktop_chrome::DesktopTitleBar {} };
+    }
+
+    #[cfg(not(feature = "desktop"))]
+    {
+        rsx! {}
+    }
+}
+
+#[component]
 pub fn App() -> Element {
     rsx! {
         head {
@@ -67,11 +80,9 @@ pub fn App() -> Element {
             title { "BurnCloud" }
             style { dangerous_inner_html: include_str!("styles.css") }
             style { dangerous_inner_html: include_str!("critical_pages.css") }
-            #[cfg(feature = "desktop")]
             style { dangerous_inner_html: include_str!("desktop_chrome.css") }
         }
-        #[cfg(feature = "desktop")]
-        desktop_chrome::DesktopTitleBar {}
+        DesktopChrome {}
         Router::<Route> {}
     }
 }
