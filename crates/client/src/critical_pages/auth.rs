@@ -70,7 +70,7 @@ pub fn Login() -> Element {
                                             class: "input auth-input-with-icon",
                                             r#type: "email",
                                             required: true,
-                                            value: email(),
+                                            value: "{email}",
                                             placeholder: "name@company.com",
                                             oninput: move |evt| email.set(evt.value()),
                                         }
@@ -95,7 +95,7 @@ pub fn Login() -> Element {
                                             class: "input auth-input-with-icon",
                                             r#type: "password",
                                             required: true,
-                                            value: password(),
+                                            value: "{password}",
                                             placeholder: "••••••••••••",
                                             oninput: move |evt| password.set(evt.value()),
                                         }
@@ -231,7 +231,7 @@ pub fn Register() -> Element {
                                         class: "input",
                                         r#type: "text",
                                         required: true,
-                                        value: full_name(),
+                                        value: "{full_name}",
                                         placeholder: "Jane Doe",
                                         oninput: move |evt| full_name.set(evt.value()),
                                     }
@@ -242,7 +242,7 @@ pub fn Register() -> Element {
                                         class: "input",
                                         r#type: "text",
                                         required: true,
-                                        value: company(),
+                                        value: "{company}",
                                         placeholder: "Acme Corp",
                                         oninput: move |evt| company.set(evt.value()),
                                     }
@@ -255,7 +255,7 @@ pub fn Register() -> Element {
                                     class: "input",
                                     r#type: "email",
                                     required: true,
-                                    value: email(),
+                                    value: "{email}",
                                     placeholder: "name@company.com",
                                     oninput: move |evt| email.set(evt.value()),
                                 }
@@ -267,7 +267,7 @@ pub fn Register() -> Element {
                                     class: "input",
                                     r#type: "password",
                                     required: true,
-                                    value: password(),
+                                    value: "{password}",
                                     placeholder: "At least 8 characters",
                                     oninput: move |evt| password.set(evt.value()),
                                 }
