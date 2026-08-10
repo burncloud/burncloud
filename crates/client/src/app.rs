@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 mod desktop_chrome;
 
 use crate::{
-    components::ConsoleLayout,
+    auth_gate::AuthGate,
     critical_pages::{Customers, Login, Logs, Overview, Register},
     pages::{
         APIKeys, Billing, Evaluation, Guardrails, Home, Landing, Models, Playground, Providers,
@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {
-    #[layout(ConsoleLayout)]
+    #[layout(AuthGate)]
     #[route("/")]
     Overview {},
     #[route("/dashboard")]
