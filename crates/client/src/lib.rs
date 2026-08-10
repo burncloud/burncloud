@@ -4,6 +4,8 @@ pub mod backend;
 pub mod components;
 pub mod critical_pages;
 pub mod data;
+pub mod functional_api;
+pub mod functional_pages;
 pub mod pages;
 pub mod route_aliases;
 
