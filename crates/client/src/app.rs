@@ -1,5 +1,9 @@
 use dioxus::prelude::*;
 
+#[cfg(feature = "desktop")]
+#[path = "desktop_chrome.rs"]
+mod desktop_chrome;
+
 use crate::{
     components::ConsoleLayout,
     critical_pages::{Customers, Login, Logs, Overview, Register},
@@ -63,7 +67,11 @@ pub fn App() -> Element {
             title { "BurnCloud" }
             style { dangerous_inner_html: include_str!("styles.css") }
             style { dangerous_inner_html: include_str!("critical_pages.css") }
+            #[cfg(feature = "desktop")]
+            style { dangerous_inner_html: include_str!("desktop_chrome.css") }
         }
+        #[cfg(feature = "desktop")]
+        desktop_chrome::DesktopTitleBar {}
         Router::<Route> {}
     }
 }
@@ -71,10 +79,22 @@ pub fn App() -> Element {
 #[cfg(feature = "desktop")]
 pub fn launch_gui_with_tray() {
     use dioxus::desktop::{Config, WindowBuilder};
+
     let window = WindowBuilder::new()
-        .with_title("BurnCloud")
+        .with_title("BurnCloud - AI Local Deployment Platform")
         .with_inner_size(dioxus::desktop::LogicalSize::new(1440.0, 900.0))
-        .with_resizable(true);
+        .with_resizable(true)
+        .with_decorations(false);
+
+    #[cfg(target_os = "windows")]
+    let window = {
+        use dioxus::desktop::tao::platform::windows::IconExtWindows;
+        match dioxus::desktop::tao::window::Icon::from_resource(1, None) {
+            Ok(icon) => window.with_window_icon(Some(icon)),
+            Err(_) => window,
+        }
+    };
+
     let data_dir = std::env::temp_dir().join("burncloud_dioxus_ui");
     let config = Config::new().with_window(window).with_data_directory(data_dir);
     dioxus::LaunchBuilder::desktop().with_cfg(config).launch(AppWithDesktop);
@@ -84,7 +104,35 @@ pub fn launch_gui_with_tray() {
 #[component]
 fn AppWithDesktop() -> Element {
     let window = dioxus::desktop::use_window();
-    use_effect(move || window.set_maximized(true));
+
+    let maximize_window = window.clone();
+    use_effect(move || maximize_window.set_maximized(true));
+
+    #[cfg(target_os = "windows")]
+    {
+        use_effect(move || {
+            std::thread::spawn(move || {
+                if let Err(error) = desktop_chrome::start_tray() {
+                    eprintln!("Failed to start BurnCloud system tray: {error}");
+                }
+            });
+        });
+
+        let tray_window = window.clone();
+        use_effect(move || {
+            spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    if desktop_chrome::should_show_window() {
+                        tray_window.set_visible(false);
+                        tray_window.set_visible(true);
+                        tray_window.set_focus();
+                    }
+                }
+            });
+        });
+    }
+
     rsx! { App {} }
 }
 
