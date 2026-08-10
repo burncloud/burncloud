@@ -3,7 +3,9 @@ name: Client UI Conventions
 on:
   pull_request:
     paths:
+      - 'Cargo.toml'
       - 'crates/client/**'
+      - 'deploy/Dockerfile'
       - 'docs/ui/**'
       - '.github/workflows/client-ui.yml'
 
@@ -33,3 +35,6 @@ jobs:
 
       - name: Check Dioxus LiveView client
         run: cargo check --no-default-features --features liveview
+
+      - name: Check BurnCloud application integration
+        run: cargo check -p burncloud
