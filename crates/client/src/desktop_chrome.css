@@ -52,12 +52,12 @@
 .desktop-window-control.danger:hover .desktop-win-icon,
 .desktop-window-control.danger:active .desktop-win-icon { color: #fff; text-shadow: none; }
 
-/* The transparent native-titlebar overlay occupies the top-right 138px. */
-.desktop-host .topbar { padding-right: 154px; }
-.desktop-host .public-header,
-.desktop-host .auth-header { padding-right: 170px; }
+/* The restored transparent titlebar is a sibling of the routed page root. */
+.desktop-titlebar ~ .console-shell .topbar { padding-right: 154px; }
+.desktop-titlebar ~ .public-page .public-header,
+.desktop-titlebar ~ .auth-page .auth-header { padding-right: 170px; }
 
 @media (max-width: 980px) {
-    .desktop-host .topbar { padding-right: 146px; }
-    .desktop-host .topbar-right .global-search { display: none; }
+    .desktop-titlebar ~ .console-shell .topbar { padding-right: 146px; }
+    .desktop-titlebar ~ .console-shell .topbar-right .global-search { display: none; }
 }
