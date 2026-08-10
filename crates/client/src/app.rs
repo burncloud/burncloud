@@ -73,6 +73,8 @@ fn DesktopChrome() -> Element {
 
 #[component]
 pub fn App() -> Element {
+    let _auth = crate::backend::use_init_auth();
+
     rsx! {
         head {
             meta { charset:"utf-8" }
