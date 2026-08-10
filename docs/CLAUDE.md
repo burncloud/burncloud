@@ -1,133 +1,60 @@
-# BurnCloud — AI 助手快速参考
-
-> 此文件在每次 Claude Code 会话启动时自动加载。
-> 阅读时间 < 2 分钟。
-
+---
+doc_id: agent.bootstrap
+doc_type: agent-bootstrap
+truth: normative
+status: active
+audited_against: c7107382b8479deb44f992e9e5ae8dcac5efb417
 ---
 
-## 架构速览
+# BurnCloud — AI Agent Bootstrap
 
-```
-Client (Dioxus) → Server (axum) → Router (data plane)
-                         ↓
-                  Service (business logic)
-                         ↓
-                  Database crates (SQLx)
-                         ↓
-                  Common (shared utilities)
-```
+Read this first. Target reading time: under two minutes.
 
-依赖方向严格单向：Server 依赖 Service，Service 依赖 Database，Database 依赖 Common。
+## Operating rule
 
-**禁止反向依赖。禁止 Service 引入 axum 类型。**
-（Router 对 service-billing/service-user 的依赖是宪法例外，见 docs/code/README.md §1.1）
+**Code first. Do not infer behavior from filenames, crate names, old architecture conventions, or product intent.**
 
----
+For every task:
 
-## 关键约定（违反会导致编译错误或运行时 bug）
+1. Open [`agent/START_HERE.md`](agent/START_HERE.md).
+2. Route the task with [`agent/TASK_ROUTER.md`](agent/TASK_ROUTER.md).
+3. Read the listed source before proposing a change.
+4. Check [`agent/INVARIANTS.md`](agent/INVARIANTS.md).
+5. Run the relevant scope from [`agent/TEST_MATRIX.md`](agent/TEST_MATRIX.md).
+6. Follow [`agent/CHANGE_PROTOCOL.md`](agent/CHANGE_PROTOCOL.md).
 
-| 约定 | 正确 | 错误 |
-|------|------|------|
-| Handler 状态注入 | `State(state): State<AppState>` | `State<Arc<AppState>>` |
-| Handler 返回类型 | `impl IntoResponse` | `Result<Json<T>, AppError>` |
-| 响应构造 | `ok(data).into_response()` | 手写 `Json(...)` |
-| 响应错误 | `err("message").into_response()` | 手写 `StatusCode::BAD_REQUEST` |
-| SQL 占位符 | `ph(db.is_postgres(), 1)` / `phs(...)` | `$1` 或 `?` 硬编码 |
-| Service 传参 | `db: &Database` 按引用传入 | 持有 `db: Database` 字段 |
-| 日志 | `log::info!` / `log::warn!` / `log::error!` | `eprintln!` / `println!` |
-| 错误类型 | `thiserror::Error` derive | 裸 `String` / `Box<dyn Error>` |
+## Current executable shape
 
----
+- Workspace members are declared in root `Cargo.toml`.
+- Process entry is `src/main.rs`.
+- `server` and `router` subcommands both call the same `run_async_server()` path today.
+- `burncloud-server` composes management APIs, optional Dioxus LiveView, internal router endpoints, and the data-plane fallback.
+- `burncloud-router` owns the data-plane fallback and upstream request execution.
+- The router has explicit `/v1/models` and `/api/v1/usage*` routes; unmatched data-plane paths fall back to `proxy_handler()`.
+- Protected Console APIs are composed in `crates/server/src/api/mod.rs` and wrapped with `auth_middleware`.
 
-## Service 两种模式
+## Important correction from legacy docs
 
-**模式 A（有状态，有配置字段）** — 例如 `UserService`
-```rust
-pub struct UserService { jwt_secret: String }
-impl UserService {
-    pub fn new() -> Self { ... }
-    pub async fn register(&self, db: &Database, ...) -> Result<...> { ... }
-}
-```
+Do **not** assume a strict `Server → Service → Database` dependency chain. Current `burncloud-server` directly depends on database crates, services, the router, common code, and the client. Current architecture documentation describes what exists, not an idealized layering rule.
 
-**模式 B（无状态，纯操作封装）** — 例如 `GroupService`, `TokenService`
-```rust
-pub struct GroupService;
-impl GroupService {
-    pub async fn get_all(db: &Database) -> Result<Vec<RouterGroup>> { ... }
-}
-```
+## Repository-enforced Rust facts
 
----
+Root workspace lints currently include:
 
-## 完整规范文档
+- `clippy::unwrap_used = deny`
+- `clippy::expect_used = warn`
+- `clippy::disallowed_types = deny`
 
-| 主题 | 文件 |
-|------|------|
-| 核心规则（必读） | `docs/code/README.md` |
-| Handler / Router | `docs/code/SERVER.md` |
-| Service 层 | `docs/code/SERVICE.md` |
-| 数据库命名 & SQL | `docs/code/DATABASE.md` |
-| 数据模型规范 | `docs/code/MODEL.md` |
-| 错误处理 | `docs/code/ERROR.md` |
-| 完整 copy-paste 模板 | `docs/code/TEMPLATES.md` |
-| **UI 规范（必读）** | `docs/ui/system.md` |
-| UI CSS / Tailwind 命名 | `docs/ui/naming.md` |
-| UI 组件白名单 | `docs/ui/components.md` |
-| UI 页面模板 | `docs/ui/pages.md` |
-| UI Token 速查 | `docs/ui/tokens.md` |
+Dependency versions belong in `[workspace.dependencies]` when shared across workspace crates.
 
----
+## Runtime documentation
 
-## UI 关键约定（控制台 `/console/*`）
+For progressive runtime-flow reading, use `https://burncloud.github.io/` and start from the user action. Treat source links in that site as evidence, but re-check current repository code before modifying behavior.
 
-| 约定 | 正确 | 错误 |
-|------|------|------|
-| 间距 / 颜色 class | `gap-bc-4`, `text-bc-text-secondary` | `gap-md`, `gap-3`, 硬编码 hex |
-| 按钮 | `BCButton` + `ButtonVariant` | `class: "btn btn-primary"` |
-| 输入 | `BCInput` / `SchemaForm` | 裸 `.input` |
-| 弹窗 | `BCModal` | 自写 overlay |
-| 页面骨架 | `PageHeader` + `page-content` | 自拼 header |
-| 文案 | `t(lang, "key")` | 硬编码中英字符串 |
-| 参考实现 | `client-access/src/lib.rs` | `client-api/`（遗留废弃） |
+## Never do this
 
-改 `crates/client/**` 前必读 `docs/ui/` 全套；Cursor 规则见 `.cursor/rules/ui-design-system.mdc`。
-
----
-
-## Workspace Crate 结构
-
-```
-crates/
-  server/        ← axum HTTP 层，Handler 和路由
-  service/       ← 业务逻辑（service-user, service-group 等）
-  database/      ← 核心 Database + schema + placeholder utils
-                ← 子 crate 在 database/crates/ 下按业务域组织（user, token, group, channel, router, router-log, billing, models, setting, installer, download 等）
-  common/        ← CrudRepository trait，跨 crate 纯工具
-  router/        ← LLM 数据面路由（独立，不在 Service 依赖链内）
-  client/        ← Dioxus 前端
-  cli/           ← 命令行工具
-```
-
----
-
-## 仓库根目录纪律
-
-**禁止在仓库根目录新增任何文件或目录。** 新内容按下表归位：
-
-| 类别 | 落点 | 示例 |
-|------|------|------|
-| 部署 / 容器 / 编排 | `deploy/` | `Dockerfile`、`docker-compose.yml`、k8s manifests |
-| 部署 / 运维脚本 | `deploy/scripts/` | `entrypoint.sh`、`migrate.sh`、`release.sh` |
-| Crate 局部脚本 | `crates/<crate>/scripts/` | 已有约定，例：`crates/router/scripts/` |
-| 文档 | `docs/` | 所有 `.md`（根目录 README 例外） |
-| 代码 | `crates/` 或 `src/` | 按 workspace 既有结构 |
-
-**根目录允许列表**（工具链强制位置，新增前需 PR 评审）：
-
-`Cargo.toml`、`Cargo.lock`、`README.md`、`clippy.toml`、`deny.toml`、`.cargo/`、`.github/`、`.gitignore`、`.gitattributes`、`.env.example`
-
-不在此列表的根目录新增项一律 reject。
-
-**严禁修改 `.gitignore`**：Agent 不得新增、删除或改写根目录 `.gitignore` 的任何条目。若有忽略文件/目录的需求，在 PR 或任务说明中写明，由维护者手动处理。
-
+- Treat a roadmap as implemented behavior.
+- Create a call edge because it “looks likely”.
+- Copy an old pattern without checking current source.
+- Change routing/billing/auth behavior without checking its tests and downstream state effects.
+- Add screenshots or binary documentation assets under `docs/`.
