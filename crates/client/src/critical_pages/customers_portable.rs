@@ -46,6 +46,10 @@ pub fn Customers() -> Element {
     let active_count = user_list.iter().filter(|u| u.status == 1).count();
     let cny_total: i64 = user_list.iter().map(|u| u.balance_cny).sum();
     let usd_total: i64 = user_list.iter().map(|u| u.balance_usd).sum();
+    let cny_total_text = format_nano(cny_total, "CNY ");
+    let usd_total_text = format_nano(usd_total, "$");
+    let filtered_count = filtered.len();
+    let user_count = user_list.len();
 
     rsx! {
         div { class: "page",
@@ -78,7 +82,7 @@ pub fn Customers() -> Element {
 
             div { class: "metrics",
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Total Accounts" } span { class: "metric-value", "{user_list.len()}" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Total Accounts" } span { class: "metric-value", "{user_count}" } }
                     div { class: "metric-icon tone-gray", Icon { name: "users" } }
                 }
                 div { class: "card metric",
@@ -86,11 +90,11 @@ pub fn Customers() -> Element {
                     div { class: "metric-icon tone-green", Icon { name: "activity" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "CNY Balance Pool" } span { class: "metric-value", "{format_nano(cny_total, "¥")}" } }
+                    div { class: "metric-copy", span { class: "metric-label", "CNY Balance Pool" } span { class: "metric-value", "{cny_total_text}" } }
                     div { class: "metric-icon tone-amber", Icon { name: "dollar" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "USD Balance Pool" } span { class: "metric-value", "{format_nano(usd_total, "$")}" } }
+                    div { class: "metric-copy", span { class: "metric-label", "USD Balance Pool" } span { class: "metric-value", "{usd_total_text}" } }
                     div { class: "metric-icon tone-blue", Icon { name: "dollar" } }
                 }
             }
@@ -123,7 +127,7 @@ pub fn Customers() -> Element {
                             }
                             "Active only"
                         }
-                        span { class: "small muted", "Showing {filtered.len()} of {user_list.len()} accounts" }
+                        span { class: "small muted", "Showing {filtered_count} of {user_count} accounts" }
                     }
 
                     if filtered.is_empty() {
@@ -145,9 +149,11 @@ pub fn Customers() -> Element {
                                 tbody {
                                     for user in filtered {
                                         {
-                                            let email_text = user.email.clone().unwrap_or_else(|| "—".to_string());
+                                            let email_text = user.email.clone().unwrap_or_else(|| "-".to_string());
                                             let status_text = if user.status == 1 { "Active" } else { "Disabled" };
                                             let status_class = if user.status == 1 { "badge badge-success" } else { "badge badge-neutral" };
+                                            let cny_text = format_nano(user.balance_cny, "CNY ");
+                                            let usd_text = format_nano(user.balance_usd, "$");
                                             rsx! {
                                                 tr { key: "{user.id}",
                                                     td { class: "table-primary", "{user.username}" }
@@ -155,8 +161,8 @@ pub fn Customers() -> Element {
                                                     td { class: "muted", "{email_text}" }
                                                     td { span { class: "badge badge-neutral", "{user.role}" } }
                                                     td { "{user.group}" }
-                                                    td { class: "right tabular", "{format_nano(user.balance_cny, "¥")}" }
-                                                    td { class: "right tabular", "{format_nano(user.balance_usd, "$")}" }
+                                                    td { class: "right tabular", "{cny_text}" }
+                                                    td { class: "right tabular", "{usd_text}" }
                                                     td { class: "center", span { class: "{status_class}", "{status_text}" } }
                                                     td {
                                                         button {
@@ -180,7 +186,7 @@ pub fn Customers() -> Element {
                         }
                     }
                     div { class: "card-pad tiny subtle",
-                        "User status is currently read-only here because the server does not expose an account suspend/reactivate endpoint. The previous fake suspend toggle has been removed."
+                        "User status is read-only because the current server does not expose an account suspend/reactivate endpoint. The previous fake suspend toggle has been removed."
                     }
                 }
             }
@@ -274,7 +280,7 @@ pub fn Customers() -> Element {
                                     class: "input",
                                     r#type: "number",
                                     min: "1",
-                                    value: if amount() > 0 { amount().to_string() } else { String::new() },
+                                    value: "{amount}",
                                     disabled: busy(),
                                     oninput: move |evt| amount.set(evt.value().parse::<i64>().unwrap_or(0)),
                                 }
