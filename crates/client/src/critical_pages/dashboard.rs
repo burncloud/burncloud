@@ -34,10 +34,6 @@ fn kpi(label: &str, value: String, note: String, icon: &'static str, tone: &'sta
     }
 }
 
-fn latest_log(logs: &[RouterLog]) -> Option<RouterLog> {
-    logs.first().cloned()
-}
-
 fn channel_model_count(channels: &[Channel]) -> usize {
     let mut models: Vec<String> = channels
         .iter()
@@ -46,6 +42,32 @@ fn channel_model_count(channels: &[Channel]) -> usize {
     models.sort();
     models.dedup();
     models.len()
+}
+
+fn route_receipt(log: &RouterLog) -> String {
+    let user_id = log.user_id.clone().unwrap_or_else(|| "-".to_string());
+    let model = log.model.clone().unwrap_or_else(|| "-".to_string());
+    let upstream = log.upstream_id.clone().unwrap_or_else(|| "-".to_string());
+    let decision = log.layer_decision.clone().unwrap_or_else(|| "-".to_string());
+    let traffic = log.traffic_color.clone().unwrap_or_else(|| "-".to_string());
+    let error_type = log.error_type.clone().unwrap_or_else(|| "-".to_string());
+    let cost_status = log.cost_status.clone().unwrap_or_else(|| "-".to_string());
+    format!(
+        "request_id: {}\nuser_id: {}\npath: {}\nmodel: {}\nupstream_id: {}\nstatus_code: {}\nlatency_ms: {}\nlayer_decision: {}\ntraffic_color: {}\nerror_type: {}\ncost_status: {}\ntotal_tokens: {}\ncost_usd: {:.9}",
+        log.request_id,
+        user_id,
+        log.path,
+        model,
+        upstream,
+        log.status_code,
+        log.latency_ms,
+        decision,
+        traffic,
+        error_type,
+        cost_status,
+        log.total_tokens(),
+        log.cost_usd()
+    )
 }
 
 #[component]
@@ -112,7 +134,14 @@ pub fn Overview() -> Element {
     let active_channels = channels.iter().filter(|channel| channel.status == 1).count();
     let down_channels = channels.iter().filter(|channel| channel.status == 0).count();
     let model_count = channel_model_count(&channels);
-    let latest = latest_log(&logs);
+    let latest = logs.first().cloned();
+    let request_text = compact(total_requests);
+    let billing_note = format!("${:.4} total billed", billing.total_cost_usd);
+    let token_text = compact(usage.total_tokens);
+    let usage_note = format!("{} prompt / {} completion", compact(usage.prompt_tokens), compact(usage.completion_tokens));
+    let channel_note = format!("{} total • {} down", channels.len(), down_channels);
+    let system_text = format!("{:.0}% / {:.0}%", metrics.cpu.usage_percent, metrics.memory.usage_percent);
+    let system_note = format!("{} cores • {} models exposed", metrics.cpu.core_count, model_count);
     let mut receipt_open = use_signal(|| false);
 
     rsx! {
@@ -153,10 +182,10 @@ pub fn Overview() -> Element {
             }
 
             div { class: "metrics",
-                {kpi("Requests", compact(total_requests), format!("${:.4} total billed", billing.total_cost_usd), "activity", "tone-blue")}
-                {kpi("User Tokens", compact(usage.total_tokens), format!("{} prompt / {} completion", compact(usage.prompt_tokens), compact(usage.completion_tokens)), "models", "tone-purple")}
-                {kpi("Active Channels", active_channels.to_string(), format!("{} total • {} down", channels.len(), down_channels), "server", "tone-green")}
-                {kpi("CPU / Memory", format!("{:.0}% / {:.0}%", metrics.cpu.usage_percent, metrics.memory.usage_percent), format!("{} cores • {} models exposed", metrics.cpu.core_count, model_count), "activity", "tone-amber")}
+                {kpi("Requests", request_text, billing_note, "activity", "tone-blue")}
+                {kpi("User Tokens", token_text, usage_note, "models", "tone-purple")}
+                {kpi("Active Channels", active_channels.to_string(), channel_note, "server", "tone-green")}
+                {kpi("CPU / Memory", system_text, system_note, "activity", "tone-amber")}
             }
 
             div { class: "grid-2",
@@ -172,14 +201,19 @@ pub fn Overview() -> Element {
                     } else {
                         div { class: "stack",
                             for channel in channels.iter().take(8) {
-                                div { class: "source-line",
-                                    div { class: "source-meta",
-                                        span { class: "strong", "{channel.name}" }
-                                        span { class: if channel.status == 1 { "badge badge-success" } else { "badge badge-error" },
-                                            if channel.status == 1 { "ACTIVE" } else { "DOWN" }
+                                {
+                                    let detail = format!("type={} • weight={} • models={}", channel.type_, channel.weight, channel.models);
+                                    rsx! {
+                                        div { class: "source-line",
+                                            div { class: "source-meta",
+                                                span { class: "strong", "{channel.name}" }
+                                                span { class: if channel.status == 1 { "badge badge-success" } else { "badge badge-error" },
+                                                    if channel.status == 1 { "ACTIVE" } else { "DOWN" }
+                                                }
+                                            }
+                                            div { class: "tiny subtle mono", "{detail}" }
                                         }
                                     }
-                                    div { class: "tiny subtle mono", "type={channel.type_} • weight={channel.weight} • models={channel.models}" }
                                 }
                             }
                         }
@@ -192,13 +226,20 @@ pub fn Overview() -> Element {
                         span { class: "badge badge-neutral", "router_logs" }
                     }
                     if let Some(log) = latest.clone() {
-                        div { class: "receipt",
-                            div { class: "receipt-row", label { "Request:" } strong { class: "mono", "{log.request_id}" } }
-                            div { class: "receipt-row", label { "Model:" } strong { "{log.model.clone().unwrap_or_else(|| "—".to_string())}" } }
-                            div { class: "receipt-row", label { "Upstream:" } strong { "{log.upstream_id.clone().unwrap_or_else(|| "—".to_string())}" } }
-                            div { class: "receipt-row", label { "Status:" } strong { "HTTP {log.status_code} • {log.status_label()}" } }
+                        {
+                            let model_text = log.model.clone().unwrap_or_else(|| "-".to_string());
+                            let upstream_text = log.upstream_id.clone().unwrap_or_else(|| "-".to_string());
+                            let status_text = format!("HTTP {} • {}", log.status_code, log.status_label());
+                            rsx! {
+                                div { class: "receipt",
+                                    div { class: "receipt-row", label { "Request:" } strong { class: "mono", "{log.request_id}" } }
+                                    div { class: "receipt-row", label { "Model:" } strong { "{model_text}" } }
+                                    div { class: "receipt-row", label { "Upstream:" } strong { "{upstream_text}" } }
+                                    div { class: "receipt-row", label { "Status:" } strong { "{status_text}" } }
+                                }
+                                button { class: "button button-primary", style: "width:100%", onclick: move |_| receipt_open.set(true), "Inspect Stored Route Metadata" }
+                            }
                         }
-                        button { class: "button button-primary", style: "width:100%", onclick: move |_| receipt_open.set(true), "Inspect Stored Route Metadata" }
                     } else {
                         p { class: "small muted", "No router log receipt is currently available." }
                     }
@@ -224,12 +265,20 @@ pub fn Overview() -> Element {
                             } }
                             tbody {
                                 for model in billing.models.iter().take(12) {
-                                    tr { key: "{model.model}",
-                                        td { class: "table-primary", "{model.model}" }
-                                        td { class: "right tabular", "{compact(model.requests)}" }
-                                        td { class: "right tabular", "{compact(model.prompt_tokens)}" }
-                                        td { class: "right tabular", "{compact(model.completion_tokens)}" }
-                                        td { class: "right strong tabular", "${model.cost_usd:.6}" }
+                                    {
+                                        let request_count = compact(model.requests);
+                                        let prompt_count = compact(model.prompt_tokens);
+                                        let completion_count = compact(model.completion_tokens);
+                                        let cost_text = format!("${:.6}", model.cost_usd);
+                                        rsx! {
+                                            tr { key: "{model.model}",
+                                                td { class: "table-primary", "{model.model}" }
+                                                td { class: "right tabular", "{request_count}" }
+                                                td { class: "right tabular", "{prompt_count}" }
+                                                td { class: "right tabular", "{completion_count}" }
+                                                td { class: "right strong tabular", "{cost_text}" }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -243,13 +292,16 @@ pub fn Overview() -> Element {
                 open: receipt_open(),
                 on_close: move |_| receipt_open.set(false),
                 if let Some(log) = latest {
-                    div { class: "stack-lg",
-                        div { class: "card card-pad stack",
-                            span { class: "section-label", "What this proves" }
-                            p { class: "small muted", "These are the actual observability fields persisted by BurnCloud for the request. This UI does not claim TPM or cryptographic verification because the current router_logs schema does not store a hardware signature." }
-                        }
-                        pre { class: "terminal", style: "white-space:pre-wrap;line-height:1.65",
-                            "request_id: {log.request_id}\nuser_id: {log.user_id.clone().unwrap_or_else(|| "—".to_string())}\npath: {log.path}\nmodel: {log.model.clone().unwrap_or_else(|| "—".to_string())}\nupstream_id: {log.upstream_id.clone().unwrap_or_else(|| "—".to_string())}\nstatus_code: {log.status_code}\nlatency_ms: {log.latency_ms}\nlayer_decision: {log.layer_decision.clone().unwrap_or_else(|| "—".to_string())}\ntraffic_color: {log.traffic_color.clone().unwrap_or_else(|| "—".to_string())}\nerror_type: {log.error_type.clone().unwrap_or_else(|| "—".to_string())}\ncost_status: {log.cost_status.clone().unwrap_or_else(|| "—".to_string())}\ntotal_tokens: {log.total_tokens()}\ncost_usd: {log.cost_usd():.9}"
+                    {
+                        let receipt = route_receipt(&log);
+                        rsx! {
+                            div { class: "stack-lg",
+                                div { class: "card card-pad stack",
+                                    span { class: "section-label", "What this proves" }
+                                    p { class: "small muted", "These are the actual observability fields persisted by BurnCloud for the request. This UI does not claim TPM or cryptographic verification because the current router_logs schema does not store a hardware signature." }
+                                }
+                                pre { class: "terminal", style: "white-space:pre-wrap;line-height:1.65", "{receipt}" }
+                            }
                         }
                     }
                 }
