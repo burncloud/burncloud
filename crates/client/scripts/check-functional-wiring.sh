@@ -41,6 +41,9 @@ require '/console/api/monitor/security/events' src/functional_api.rs
 require '/console/api/monitor/security/emergency-circuit-break' src/functional_api.rs
 require '/console/api/cache/stats' src/functional_api.rs
 require '/console/api/cache/clear' src/functional_api.rs
+require 'reservation_green' src/functional_api.rs
+require 'reservation_yellow' src/functional_api.rs
+require 'reservation_red' src/functional_api.rs
 
 # Page-to-service contracts: these make accidental regressions back to seeded/static pages fail CI.
 require 'AuthService::login' src/critical_pages/auth.rs
@@ -51,7 +54,9 @@ require 'LogService::list' src/critical_pages/logs.rs
 require 'billing_summary' src/critical_pages/dashboard.rs
 require 'ChannelService::list' src/critical_pages/dashboard.rs
 require 'TokenService::create' src/functional_pages/access_live.rs
-require 'ChannelService::create' src/functional_pages/platform_live.rs
+require 'ChannelService::create' src/functional_pages/providers.rs
+require 'update_channel_preserving_reservations' src/functional_pages/providers.rs
+require 'ChannelService::list' src/functional_pages/catalog.rs
 require 'chat_completion' src/functional_pages/playground_live.rs
 require 'save_security_filters' src/functional_pages/guardrails_live.rs
 require 'clear_cache' src/functional_pages/settings.rs
