@@ -121,6 +121,11 @@ pub async fn clear_cache() -> Result<(), String> {
 
 /// Update a provider without erasing L2 shaper reservation thresholds that are
 /// present in the current server ChannelDto but not editable in this UI yet.
+///
+/// The current server update handler also forces `status = 1`. To avoid silently
+/// reactivating a down/inactive provider, edits are rejected unless the current
+/// channel is active. This can be relaxed once the server supports preserve-status
+/// update semantics.
 pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result<(), String> {
     if channel.id <= 0 {
         return Err("Channel id is required for update".to_string());
@@ -130,6 +135,14 @@ pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result
     let current: EnvelopeValue = response_json(get_request).await?;
     if !current.success {
         return Err(current.message.unwrap_or_else(|| "Unable to load current channel before update".to_string()));
+    }
+
+    let current_status = current.data.get("status").and_then(|value| value.as_i64()).unwrap_or(1);
+    if current_status != 1 {
+        return Err(
+            "This provider is inactive/down. The current BurnCloud PUT /console/api/channel handler would implicitly reactivate it, so this client refuses the edit to preserve routing state."
+                .to_string(),
+        );
     }
 
     let reservation_green = current.data.get("reservation_green").cloned().unwrap_or(serde_json::Value::Null);
