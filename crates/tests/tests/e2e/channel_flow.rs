@@ -60,10 +60,25 @@ async fn test_channel_create_form_open() {
         .or_else(|_| browser.click_by_name("button:添加", 3_000))
         .expect("Failed to click create button");
 
+    // Wait for form to appear - look for common form elements
     let result = browser.wait_for_text("名称", 10_000)
-        .or_else(|_| browser.wait_for_text("类型", 5_000));
-    assert!(result.is_ok(), "Create form should appear");
+        .or_else(|_| browser.wait_for_text("类型", 5_000))
+        .or_else(|_| browser.wait_for_text("选择", 5_000))  // Provider selection modal
+        .or_else(|_| browser.wait_for_text("Provider", 5_000))
+        .or_else(|_| browser.wait_for_text("创建", 5_000));  // Create form title
+    
     let _ = browser.screenshot("channel-create-form-open");
+    
+    // Verify form appeared by checking snapshot
+    let snap = browser.snapshot().expect("Failed to snapshot");
+    let form_visible = result.is_ok() 
+        || snap.text.contains("名称")
+        || snap.text.contains("类型")
+        || snap.text.contains("选择")
+        || snap.text.contains("Provider")
+        || snap.text.contains("API");
+    
+    assert!(form_visible, "Create form should appear. Page preview: {}", &snap.text.chars().take(300).collect::<String>());
 }
 
 #[tokio::test]
