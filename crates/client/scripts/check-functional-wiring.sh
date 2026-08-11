@@ -52,6 +52,7 @@ require '/console/api/cache/clear' src/functional_api.rs
 require 'reservation_green' src/functional_api.rs
 require 'reservation_yellow' src/functional_api.rs
 require 'reservation_red' src/functional_api.rs
+require 'current_status != 1' src/functional_api.rs
 
 # Page-to-service contracts: these make accidental regressions back to seeded/static pages fail CI.
 require 'AuthService::login' src/critical_pages/auth.rs
