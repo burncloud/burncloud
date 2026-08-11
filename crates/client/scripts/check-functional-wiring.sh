@@ -20,6 +20,8 @@ require 'FunctionalConsoleLayout' src/auth_gate.rs
 require 'auth.clear();' src/functional_layout.rs
 require 'pub use providers::Providers;' src/functional_pages/mod.rs
 require 'pub use catalog::{Models, Routes};' src/functional_pages/mod.rs
+require 'pub use logs_full::Logs;' src/functional_pages/mod.rs
+require 'pub use analytics_full::Evaluation;' src/functional_pages/mod.rs
 
 # Authentication and persistent session wiring.
 require '/api/auth/login' src/backend.rs
@@ -31,13 +33,17 @@ require 'Authorization' src/backend.rs
 require '/console/api/list_users' src/backend.rs
 require '/console/api/user/register' src/backend.rs
 require '/console/api/user/topup' src/backend.rs
-require '/console/api/logs?page=1&page_size=' src/backend.rs
 require '/console/api/channel?limit=' src/backend.rs
 require '/console/api/tokens' src/backend.rs
 require '/console/api/usage/' src/backend.rs
 require '/api/billing/summary' src/backend.rs
 require '/console/api/monitor' src/backend.rs
 require '/v1/chat/completions' src/backend.rs
+require '/console/api/logs?page=1&page_size=' src/observability.rs
+require 'video_tokens' src/observability.rs
+require 'audio_input_tokens' src/observability.rs
+require 'image_tokens' src/observability.rs
+require 'embedding_tokens' src/observability.rs
 require '/console/api/monitor/security/filters' src/functional_api.rs
 require '/console/api/monitor/security/events' src/functional_api.rs
 require '/console/api/monitor/security/emergency-circuit-break' src/functional_api.rs
@@ -52,13 +58,14 @@ require 'AuthService::login' src/critical_pages/auth.rs
 require 'AuthService::register' src/critical_pages/auth.rs
 require 'UserService::list' src/critical_pages/customers_portable.rs
 require 'UserService::topup' src/critical_pages/customers_portable.rs
-require 'LogService::list' src/critical_pages/logs.rs
 require 'billing_summary' src/critical_pages/dashboard.rs
 require 'ChannelService::list' src/critical_pages/dashboard.rs
 require 'TokenService::create' src/functional_pages/access_live.rs
 require 'ChannelService::create' src/functional_pages/providers.rs
 require 'update_channel_preserving_reservations' src/functional_pages/providers.rs
 require 'ChannelService::list' src/functional_pages/catalog.rs
+require 'full_logs' src/functional_pages/logs_full.rs
+require 'full_logs' src/functional_pages/analytics_full.rs
 require 'chat_completion' src/functional_pages/playground_live.rs
 require 'save_security_filters' src/functional_pages/guardrails_live.rs
 require 'clear_cache' src/functional_pages/settings.rs
@@ -69,7 +76,7 @@ if grep -Fq 'Suspend Account' src/critical_pages/customers_portable.rs; then
   echo "Fake suspend action reintroduced without a server endpoint" >&2
   exit 1
 fi
-if grep -Fq 'Prompt Snippet' src/critical_pages/logs.rs; then
+if grep -Fq 'Prompt Snippet' src/functional_pages/logs_full.rs; then
   echo "Synthetic prompt content reintroduced into router log UI" >&2
   exit 1
 fi
