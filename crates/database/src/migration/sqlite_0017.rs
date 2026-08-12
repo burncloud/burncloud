@@ -1,11 +1,17 @@
 //! SQLite migration 0017 — repair missing channel tables and coerce BOOLEAN → INTEGER.
 //!
 //! Some databases reached 0017 without `channel_protocol_configs` (partial 0010 apply or
-//! legacy installs that only had `protocol_configs`).  The old SQL migration assumed the
+//! legacy installs that only had `protocol_configs`). The old SQL migration assumed the
 //! table always existed and also attempted an incorrect `channel_abilities` reshape.
+//!
+//! SQLite table rebuilds must stay on one connection and one transaction. Production uses
+//! a multi-connection pool, so issuing CREATE/COPY/DROP/RENAME as independent pool queries
+//! can expose intermediate schema states across connections. The rebuild below is atomic:
+//! either the canonical table remains untouched or the complete INTEGER-backed table is
+//! committed.
 
 use crate::{DatabaseError, Result};
-use sqlx::{AnyPool, Row};
+use sqlx::{Acquire, AnyPool, Row};
 
 pub async fn apply(pool: &AnyPool) -> Result<()> {
     ensure_channel_protocol_configs(pool).await?;
@@ -148,8 +154,25 @@ async fn fix_bool_column(pool: &AnyPool, table: &str, column: &str, ddl_template
 
     let temp = format!("{table}_boolfix");
     let create_sql = ddl_template.replace("{table}", &temp);
+
+    // Pin the complete SQLite table rebuild to one connection/transaction. This
+    // prevents the production AnyPool (10 connections) from observing or acting
+    // on the intermediate state between DROP and RENAME.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| DatabaseError::Migration(format!("begin {table} bool rebuild: {e}")))?;
+
+    // A failed pre-transaction implementation could have left a temporary table
+    // behind while keeping the canonical table. In that recoverable state the
+    // canonical table is the source of truth, so discard only the stale temp.
+    sqlx::query(&format!("DROP TABLE IF EXISTS {temp}"))
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| DatabaseError::Migration(format!("drop stale {temp}: {e}")))?;
+
     sqlx::query(&create_sql)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("create {temp}: {e}")))?;
 
@@ -169,19 +192,23 @@ async fn fix_bool_column(pool: &AnyPool, table: &str, column: &str, ddl_template
     };
 
     sqlx::query(&copy_sql)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("copy {table} → {temp}: {e}")))?;
 
     sqlx::query(&format!("DROP TABLE {table}"))
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("drop {table}: {e}")))?;
 
     sqlx::query(&format!("ALTER TABLE {temp} RENAME TO {table}"))
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("rename {temp}: {e}")))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| DatabaseError::Migration(format!("commit {table} bool rebuild: {e}")))?;
 
     Ok(())
 }
@@ -255,7 +282,9 @@ mod tests {
     async fn memory_pool() -> AnyPool {
         sqlx::any::install_default_drivers();
         AnyPoolOptions::new()
-            .max_connections(1)
+            // Match the production DatabaseConnection pool shape. The previous
+            // max_connections(1) test could not expose pooled SQLite DDL issues.
+            .max_connections(10)
             .connect("sqlite::memory:?cache=shared")
             .await
             .expect("memory pool")
@@ -305,5 +334,86 @@ mod tests {
             .await
             .unwrap();
         assert!(!is_bool_type(&col_type));
+    }
+
+    #[tokio::test]
+    async fn rebuilds_existing_boolean_tables_atomically_with_production_sized_pool() {
+        let pool = memory_pool().await;
+
+        sqlx::query(
+            r#"CREATE TABLE channel_protocol_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_type INTEGER NOT NULL,
+                api_version TEXT NOT NULL,
+                is_default BOOLEAN DEFAULT 0,
+                chat_endpoint TEXT,
+                embed_endpoint TEXT,
+                models_endpoint TEXT,
+                request_mapping TEXT,
+                response_mapping TEXT,
+                detection_rules TEXT,
+                created_at INTEGER,
+                updated_at INTEGER,
+                UNIQUE(channel_type, api_version)
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO channel_protocol_configs (channel_type, api_version, is_default) VALUES (14, 'v1', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"CREATE TABLE channel_abilities (
+                "group" VARCHAR(64) NOT NULL,
+                model VARCHAR(255) NOT NULL,
+                channel_id INTEGER NOT NULL,
+                enabled BOOLEAN DEFAULT 1,
+                priority INTEGER DEFAULT 0,
+                weight INTEGER DEFAULT 0,
+                tag TEXT,
+                PRIMARY KEY ("group", model, channel_id)
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO channel_abilities (\"group\", model, channel_id, enabled, priority, weight) \
+             VALUES ('default', 'staging-model', 1, 1, 0, 100)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        apply(&pool)
+            .await
+            .expect("0017 should atomically rebuild BOOLEAN canonical tables");
+        // A retry after success must be a no-op.
+        apply(&pool).await.expect("0017 should remain idempotent");
+
+        let protocol_type = column_type(&pool, "channel_protocol_configs", "is_default")
+            .await
+            .unwrap();
+        let abilities_type = column_type(&pool, "channel_abilities", "enabled")
+            .await
+            .unwrap();
+        assert!(!is_bool_type(&protocol_type));
+        assert!(!is_bool_type(&abilities_type));
+
+        let protocol_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channel_protocol_configs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let ability_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channel_abilities")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(protocol_count, 1);
+        assert_eq!(ability_count, 1);
     }
 }
