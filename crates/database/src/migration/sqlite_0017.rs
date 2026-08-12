@@ -11,7 +11,7 @@
 //! committed.
 
 use crate::{DatabaseError, Result};
-use sqlx::{Acquire, AnyPool, Row};
+use sqlx::{AnyPool, Row};
 
 pub async fn apply(pool: &AnyPool) -> Result<()> {
     ensure_channel_protocol_configs(pool).await?;
@@ -278,21 +278,26 @@ fn is_bool_type(type_str: &str) -> bool {
 mod tests {
     use super::*;
     use sqlx::any::AnyPoolOptions;
+    use tempfile::TempDir;
 
-    async fn memory_pool() -> AnyPool {
+    async fn file_pool() -> (AnyPool, TempDir) {
         sqlx::any::install_default_drivers();
-        AnyPoolOptions::new()
-            // Match the production DatabaseConnection pool shape. The previous
-            // max_connections(1) test could not expose pooled SQLite DDL issues.
+        let dir = tempfile::tempdir().expect("temp SQLite directory");
+        let db_path = dir.path().join("migration-0017.db");
+        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy().replace('\\', "/"));
+        let pool = AnyPoolOptions::new()
+            // Production DatabaseConnection uses a multi-connection pool backed by
+            // one SQLite file. A :memory: pool does not model that shared schema.
             .max_connections(10)
-            .connect("sqlite::memory:?cache=shared")
+            .connect(&url)
             .await
-            .expect("memory pool")
+            .expect("file-backed SQLite pool");
+        (pool, dir)
     }
 
     #[tokio::test]
     async fn creates_missing_channel_protocol_configs_from_legacy_table() {
-        let pool = memory_pool().await;
+        let (pool, _dir) = file_pool().await;
 
         sqlx::query(
             r#"CREATE TABLE protocol_configs (
@@ -338,7 +343,7 @@ mod tests {
 
     #[tokio::test]
     async fn rebuilds_existing_boolean_tables_atomically_with_production_sized_pool() {
-        let pool = memory_pool().await;
+        let (pool, _dir) = file_pool().await;
 
         sqlx::query(
             r#"CREATE TABLE channel_protocol_configs (
