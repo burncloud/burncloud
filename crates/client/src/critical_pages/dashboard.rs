@@ -164,6 +164,8 @@ pub fn Overview() -> Element {
     .into_iter()
     .flatten()
     .collect();
+    let has_errors = !errors.is_empty();
+    let errors_for_panel = errors.clone();
 
     let total_requests = billing.models.iter().map(|m| m.requests).sum::<i64>() + billing.pre_migration_requests;
     let active_channels = channels.iter().filter(|channel| channel.status == 1).count();
@@ -176,7 +178,7 @@ pub fn Overview() -> Element {
     let has_request = !logs.is_empty();
     let setup_complete = has_provider && has_model && has_key;
 
-    let (status_class, status_title, status_copy) = if !errors.is_empty() {
+    let (status_class, status_title, status_copy) = if has_errors {
         (
             "product-status-card status-blocked",
             "Some system data is unavailable",
@@ -243,8 +245,8 @@ pub fn Overview() -> Element {
             div { class: "product-hero",
                 div { class: "card {status_class}",
                     div { class: "row gap-2",
-                        span { class: if setup_complete && errors.is_empty() && down_channels == 0 { "badge badge-success" } else { "badge badge-warning" },
-                            if setup_complete && errors.is_empty() && down_channels == 0 { "READY" } else { "ATTENTION" }
+                        span { class: if setup_complete && !has_errors && down_channels == 0 { "badge badge-success" } else { "badge badge-warning" },
+                            if setup_complete && !has_errors && down_channels == 0 { "READY" } else { "ATTENTION" }
                         }
                     }
                     div {
@@ -282,12 +284,12 @@ pub fn Overview() -> Element {
                 }
             }
 
-            if !errors.is_empty() {
+            if has_errors {
                 div { class: "card card-pad stack",
                     div { class: "product-section-head",
                         div { h3 { class: "danger", "Needs attention" } p { "These sources failed to load on the latest refresh." } }
                     }
-                    for message in errors { code { class: "terminal", "{message}" } }
+                    for message in errors_for_panel { code { class: "terminal", "{message}" } }
                 }
             }
 
@@ -320,7 +322,10 @@ pub fn Overview() -> Element {
                         div { class: "stack",
                             for channel in channels.iter().take(6) {
                                 {
-                                    let model_summary = if channel.models.len() > 52 { format!("{}…", &channel.models[..52]) } else { channel.models.clone() };
+                                    let mut model_summary = channel.models.chars().take(52).collect::<String>();
+                                    if channel.models.chars().count() > 52 {
+                                        model_summary.push('…');
+                                    }
                                     rsx! {
                                         div { class: "source-line",
                                             div { class: "source-meta",
