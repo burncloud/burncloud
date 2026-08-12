@@ -2,8 +2,8 @@ use dioxus::prelude::*;
 
 use crate::{
     backend::{server_root, system_metrics, use_auth, SystemMetrics},
-    functional_api::{cache_stats, clear_cache},
     components::Icon,
+    functional_api::{cache_stats, clear_cache},
 };
 
 #[component]
@@ -13,6 +13,7 @@ pub fn Settings() -> Element {
     let api_root = server_root();
     let mut metrics_resource = use_resource(move || async move { system_metrics().await });
     let mut cache_resource = use_resource(move || async move { cache_stats().await });
+    let mut confirm_clear = use_signal(|| false);
     let mut busy = use_signal(|| false);
     let mut notice = use_signal(String::new);
     let mut error = use_signal(String::new);
@@ -20,36 +21,36 @@ pub fn Settings() -> Element {
     let metrics_result = metrics_resource.read().clone();
     let cache_result = cache_resource.read().clone();
     let metrics: SystemMetrics = metrics_result.clone().and_then(Result::ok).unwrap_or_default();
-    let metrics_error = metrics_result.as_ref().and_then(|r| r.as_ref().err().cloned());
+    let metrics_error = metrics_result.as_ref().and_then(|result| result.as_ref().err().cloned());
     let cache_text = match cache_result {
         Some(Ok(value)) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
         Some(Err(message)) => format!("Cache statistics unavailable: {message}"),
         None => "Loading cache statistics…".to_string(),
     };
-    let roles = user.as_ref().map(|u| u.roles.join(", ")).unwrap_or_else(|| "-".to_string());
-    let username = user.as_ref().map(|u| u.username.clone()).unwrap_or_else(|| "-".to_string());
-    let user_id = user.as_ref().map(|u| u.id.clone()).unwrap_or_else(|| "-".to_string());
+
+    let roles = user.as_ref().map(|user| user.roles.join(", ")).unwrap_or_else(|| "-".to_string());
+    let username = user.as_ref().map(|user| user.username.clone()).unwrap_or_else(|| "-".to_string());
+    let user_id = user.as_ref().map(|user| user.id.clone()).unwrap_or_else(|| "-".to_string());
     let memory_used_gib = metrics.memory.used as f64 / 1024.0 / 1024.0 / 1024.0;
     let memory_total_gib = metrics.memory.total as f64 / 1024.0 / 1024.0 / 1024.0;
     let memory_text = format!("{memory_used_gib:.1} / {memory_total_gib:.1} GiB");
     let cpu_text = format!("{:.1}%", metrics.cpu.usage_percent);
+    let memory_percent = format!("{:.1}%", metrics.memory.usage_percent);
 
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Settings" }
-                    p { class: "page-subtitle", "Only settings and maintenance operations backed by the current BurnCloud server are shown as actionable." }
+                    p { class: "page-subtitle", "Inspect the connected BurnCloud environment and perform the maintenance operations the server actually supports." }
                 }
-                div { class: "header-actions",
-                    button {
-                        class: "button button-secondary",
-                        onclick: move |_| {
-                            metrics_resource.restart();
-                            cache_resource.restart();
-                        },
-                        "Refresh"
-                    }
+                button {
+                    class: "button button-secondary",
+                    onclick: move |_| {
+                        metrics_resource.restart();
+                        cache_resource.restart();
+                    },
+                    "Refresh"
                 }
             }
 
@@ -58,74 +59,102 @@ pub fn Settings() -> Element {
 
             div { class: "grid-2",
                 div { class: "card card-pad stack-lg",
-                    div { class: "row between",
-                        h3 { "Server Connection" }
-                        span { class: "badge badge-success", "CONNECTED CONFIG" }
+                    div { class: "product-section-head",
+                        div {
+                            h3 { "Environment" }
+                            p { "The server endpoint and identity this console is currently using." }
+                        }
+                        span { class: "badge badge-success", "CONNECTED" }
                     }
-                    div { class: "receipt-row", label { "API Root" } strong { class: "mono", "{api_root}" } }
-                    div { class: "receipt-row", label { "Username" } strong { "{username}" } }
-                    div { class: "receipt-row", label { "User ID" } strong { class: "mono", "{user_id}" } }
+                    div { class: "receipt-row", label { "Server" } strong { class: "mono", "{api_root}" } }
+                    div { class: "receipt-row", label { "Signed in as" } strong { "{username}" } }
                     div { class: "receipt-row", label { "Roles" } strong { "{roles}" } }
-                    p { class: "tiny subtle", "Override the local server root with BURNCLOUD_API_BASE. Otherwise the client uses 127.0.0.1 and BurnCloud's PORT/default port." }
+                    details {
+                        summary { class: "small strong", style: "cursor:pointer", "Connection details" }
+                        div { class: "stack", style: "margin-top:12px",
+                            div { class: "receipt-row", label { "User ID" } strong { class: "mono", "{user_id}" } }
+                            div { class: "product-note", "Set BURNCLOUD_API_BASE to point the client at a different BurnCloud server. Otherwise the client uses the configured local host/port behavior." }
+                        }
+                    }
                 }
 
                 div { class: "card card-pad stack-lg",
-                    div { class: "row between",
-                        h3 { "Runtime Health" }
+                    div { class: "product-section-head",
+                        div {
+                            h3 { "Runtime health" }
+                            p { "Host pressure can explain latency or capacity issues, but it is not the same as routing health." }
+                        }
                         Icon { name: "activity" }
                     }
                     if let Some(message) = metrics_error {
                         code { class: "terminal", "{message}" }
                     } else {
-                        div { class: "receipt-row", label { "CPU" } strong { "{cpu_text}" } }
-                        div { class: "receipt-row", label { "CPU Cores" } strong { "{metrics.cpu.core_count}" } }
-                        div { class: "receipt-row", label { "Memory" } strong { "{memory_text}" } }
-                        div { class: "receipt-row", label { "Disks" } strong { "{metrics.disks.len()} mounted entries" } }
+                        div { class: "grid-2",
+                            div { class: "receipt-row", label { "CPU" } strong { class: "mono", "{cpu_text}" } }
+                            div { class: "receipt-row", label { "Memory" } strong { class: "mono", "{memory_percent}" } }
+                        }
+                        div { class: "receipt-row", label { "CPU cores" } strong { "{metrics.cpu.core_count}" } }
+                        div { class: "receipt-row", label { "Memory used" } strong { "{memory_text}" } }
+                        div { class: "receipt-row", label { "Mounted disks" } strong { "{metrics.disks.len()}" } }
                     }
                 }
             }
 
-            div { class: "grid-2",
-                div { class: "card card-pad stack",
-                    div { class: "row between",
-                        h3 { "Router Cache" }
-                        button { class: "button button-ghost button-sm", onclick: move |_| cache_resource.restart(), "Refresh Stats" }
+            div { class: "card card-pad stack-lg",
+                div { class: "product-section-head",
+                    div {
+                        h3 { "Application cache" }
+                        p { "Cache is an operational implementation detail, so raw server statistics are available on demand instead of dominating the page." }
                     }
-                    pre { class: "terminal", style: "white-space:pre-wrap;max-height:300px;overflow:auto", "{cache_text}" }
+                    button { class: "button button-ghost button-sm", onclick: move |_| cache_resource.restart(), "Refresh cache" }
                 }
+                details {
+                    summary { class: "small strong", style: "cursor:pointer", "View raw cache statistics" }
+                    pre { class: "terminal", style: "margin-top:12px;white-space:pre-wrap;max-height:300px;overflow:auto", "{cache_text}" }
+                }
+            }
 
-                div { class: "card card-pad stack",
-                    h3 { class: "danger", "Cache Maintenance" }
-                    p { class: "small muted", "Clear all BurnCloud application cache through the real /console/api/cache/clear endpoint. This does not delete users, channels, API keys or router logs." }
-                    button {
-                        class: "button button-primary",
-                        disabled: busy(),
-                        onclick: move |_| {
-                            busy.set(true);
-                            error.set(String::new());
-                            notice.set("Clearing BurnCloud cache…".to_string());
-                            spawn(async move {
-                                match clear_cache().await {
-                                    Ok(()) => {
-                                        notice.set("BurnCloud cache cleared successfully.".to_string());
-                                        cache_resource.restart();
-                                    }
-                                    Err(message) => {
-                                        notice.set(String::new());
-                                        error.set(format!("Cache clear failed: {message}"));
-                                    }
+            div { class: "card card-pad stack-lg danger-zone",
+                div { class: "product-section-head",
+                    div {
+                        h3 { class: "danger", "Cache maintenance" }
+                        p { "Clear application cache only when you are troubleshooting stale runtime state or following an operational procedure." }
+                    }
+                    span { class: "badge badge-error", "MAINTENANCE" }
+                }
+                p { class: "small muted", "Clearing cache does not delete customers, providers, API keys, or router logs, but it can temporarily change runtime behavior while caches warm again." }
+                label { class: "row gap-2 small", style: "align-items:flex-start",
+                    input { r#type: "checkbox", checked: confirm_clear(), onchange: move |_| confirm_clear.set(!confirm_clear()) }
+                    span { "I understand this is a live maintenance operation on the connected BurnCloud server." }
+                }
+                button {
+                    class: "button button-primary",
+                    disabled: busy() || !confirm_clear(),
+                    onclick: move |_| {
+                        busy.set(true);
+                        error.set(String::new());
+                        notice.set("Clearing BurnCloud application cache…".to_string());
+                        spawn(async move {
+                            match clear_cache().await {
+                                Ok(()) => {
+                                    notice.set("BurnCloud application cache cleared.".to_string());
+                                    confirm_clear.set(false);
+                                    cache_resource.restart();
                                 }
-                                busy.set(false);
-                            });
-                        },
-                        if busy() { "Clearing…" } else { "Clear Application Cache" }
-                    }
+                                Err(message) => {
+                                    notice.set(String::new());
+                                    error.set(format!("Cache clear failed: {message}"));
+                                }
+                            }
+                            busy.set(false);
+                        });
+                    },
+                    if busy() { "Clearing…" } else { "Clear Application Cache" }
                 }
             }
 
-            div { class: "card card-pad stack",
-                h3 { "Unavailable Configuration" }
-                p { class: "small muted", "The current BurnCloud server does not expose a general system-settings CRUD endpoint. Appearance, arbitrary gateway defaults, notification preferences and similar prototype controls are therefore not shown as fake save actions." }
+            div { class: "product-note",
+                "General appearance preferences, arbitrary gateway defaults, and notification settings are intentionally absent because the current BurnCloud server does not expose a general settings CRUD API. The console only presents settings it can actually read or change."
             }
         }
     }
