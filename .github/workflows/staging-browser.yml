@@ -103,7 +103,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python3 crates/tests/scripts/staging_browser_audit.py 2>&1 \
+          python3 crates/tests/scripts/staging_browser_current.py 2>&1 \
             | tee target/staging-audit/browser-test.log
 
       - name: Publish audit summary
