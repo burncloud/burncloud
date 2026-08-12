@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./target/debug/burncloud server > target/staging-audit/server.log 2>&1 &
+          stdbuf -oL -eL ./target/debug/burncloud server > target/staging-audit/server.log 2>&1 &
           echo $! > target/staging-audit/server.pid
 
           for attempt in $(seq 1 120); do
@@ -103,7 +103,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test -p burncloud-tests --test staging_browser -- --ignored --nocapture 2>&1 \
+          python3 crates/tests/scripts/staging_browser_audit.py 2>&1 \
             | tee target/staging-audit/browser-test.log
 
       - name: Publish audit summary
@@ -114,7 +114,7 @@ jobs:
             cat target/staging-audit/report.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo "# BurnCloud Staging Browser Audit" >> "$GITHUB_STEP_SUMMARY"
-            echo "The browser audit did not reach report generation. Inspect browser-test.log, server.log, and partial screenshots in the uploaded artifact." >> "$GITHUB_STEP_SUMMARY"
+            echo "The browser audit did not reach report generation. Inspect browser-test.log, failure.json, server.log, and partial screenshots in the uploaded artifact." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload staging visual evidence
