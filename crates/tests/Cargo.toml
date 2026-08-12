@@ -32,6 +32,10 @@ name = "e2e_smoke"
 path = "tests/e2e_smoke.rs"
 
 [[test]]
+name = "staging_browser"
+path = "tests/staging_browser.rs"
+
+[[test]]
 name = "logging_test"
 path = "tests/logging_test.rs"
 
