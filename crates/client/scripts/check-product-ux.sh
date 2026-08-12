@@ -87,7 +87,7 @@ require 'Manage business accounts' src/critical_pages/customers_portable.rs
 require '!is_staff_role(&user.role)' src/critical_pages/customers_portable.rs
 require 'Environment operators' src/functional_pages/access_live.rs
 require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
-require 'role management is read-only' src/functional_pages/access_live.rs
+require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
 
 # API keys must be human-owned and lifecycle/destructive actions need explicit steps.
 require 'Choose which account will own this router credential' src/functional_pages/access_live.rs
