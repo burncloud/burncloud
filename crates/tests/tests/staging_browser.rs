@@ -335,13 +335,18 @@ fn capture_page(
     pages: &mut Vec<PageAudit>,
 ) -> Result<()> {
     browser.wait_for_path(expected_path, Duration::from_secs(15))?;
+
+    // Capture first. If the strict product-copy assertion drifts, the workflow still
+    // preserves the actual rendered page for ChatGPT/Codex to inspect.
+    browser.screenshot_full(name)?;
+
     let body = browser.wait_for_text(expected_text, Duration::from_secs(20))?;
     for text in extra_text {
         if !body.contains(text) {
             bail!("{name}: expected page content '{text}' was not present. Body: {body}");
         }
     }
-    browser.screenshot_full(name)?;
+
     let m = metrics(browser)?;
     pages.push(PageAudit {
         name: name.to_string(),
@@ -413,8 +418,12 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
     let browser = StagingBrowser::new(&base_url, dir.join("screenshots"))?;
     browser.open("/login")?;
     browser.set_viewport(1440, 900)?;
-    browser.wait_for_text("Sign in to BurnCloud", Duration::from_secs(20))?;
+
+    // Preserve the initial page even when visible login copy changes.
     browser.screenshot_full("00-login")?;
+    browser.wait_for_text("BurnCloud Console", Duration::from_secs(20))?;
+    browser.wait_for_text("Sign in to Console", Duration::from_secs(10))?;
+
     browser.fill("input[type='text']", &admin)?;
     browser.fill("input[type='password']", &password)?;
     browser.click_role("button", "Sign in to Console", Duration::from_secs(10))?;
@@ -431,8 +440,8 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
 
     click_page(&browser, "Providers", "02-providers", "/providers", "Provider inventory", &["Staging Dummy Provider", "staging-model"], &mut pages)?;
     browser.click_role("button", "Add Provider", Duration::from_secs(8))?;
-    browser.wait_for_text("Connect an upstream and define the models it can serve.", Duration::from_secs(8))?;
     browser.screenshot_full("02a-provider-add-drawer")?;
+    browser.wait_for_text("Connect an upstream and define the models it can serve.", Duration::from_secs(8))?;
     browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
     click_page(&browser, "Models", "03-models", "/models", "Model availability", &["staging-model", "Single upstream", "No failover redundancy"], &mut pages)?;
@@ -444,14 +453,14 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
 
     click_page(&browser, "API Keys", "09-api-keys", "/keys", "Credentials", &["staging-admin"], &mut pages)?;
     browser.click_role("button", "Create API Key", Duration::from_secs(8))?;
-    browser.wait_for_text("Choose which account will own this router credential.", Duration::from_secs(8))?;
     browser.screenshot_full("09a-api-key-create-drawer")?;
+    browser.wait_for_text("Choose which account will own this router credential.", Duration::from_secs(8))?;
     browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
     click_page(&browser, "Customers", "10-customers", "/customers", "Customers", &["staging-customer"], &mut pages)?;
     browser.click_role("button", "Create Customer", Duration::from_secs(8))?;
-    browser.wait_for_text("Create a business account that can own wallet balance and API access.", Duration::from_secs(8))?;
     browser.screenshot_full("10a-customer-create-drawer")?;
+    browser.wait_for_text("Create a business account that can own wallet balance and API access.", Duration::from_secs(8))?;
     browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
     click_page(&browser, "Guardrails", "11-guardrails", "/guardrails", "Guardrails", &[], &mut pages)?;
@@ -471,8 +480,8 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
 
     browser.click_role("button", "Sign Out", Duration::from_secs(8))?;
     browser.wait_for_path("/login", Duration::from_secs(10))?;
-    browser.wait_for_text("Sign in to BurnCloud", Duration::from_secs(10))?;
     browser.screenshot_full("99-signed-out")?;
+    browser.wait_for_text("BurnCloud Console", Duration::from_secs(10))?;
 
     let overflow: Vec<&PageAudit> = report.pages.iter().filter(|page| page.horizontal_overflow).collect();
     if !overflow.is_empty() {
