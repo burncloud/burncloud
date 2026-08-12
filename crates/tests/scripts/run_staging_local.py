@@ -6,7 +6,8 @@ This is the fast iteration entrypoint for ChatGPT/Codex UI work:
     BurnCloud binary -> isolated SQLite -> /health -> agent-browser -> screenshots/report
 
 The runner never touches the default BurnCloud database. Every run receives its own
-SQLite file through BURNCLOUD_DATABASE_URL and the server is terminated afterwards.
+SQLite file through BURNCLOUD_DATABASE_URL. By default the server and isolated runtime
+are cleaned up after the audit.
 """
 
 from __future__ import annotations
@@ -38,11 +39,6 @@ def parse_args() -> argparse.Namespace:
         help="auto builds only when the binary is missing or Rust/Cargo sources are newer",
     )
     parser.add_argument(
-        "--browser-args",
-        default=os.environ.get("AGENT_BROWSER_ARGS", "--headless=new,--no-sandbox"),
-        help="arguments forwarded to agent-browser through AGENT_BROWSER_ARGS",
-    )
-    parser.add_argument(
         "--keep-runtime",
         action="store_true",
         help="keep the isolated SQLite/runtime directory after the run for debugging",
@@ -50,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--keep-server",
         action="store_true",
-        help="leave the local staging server running after the audit",
+        help="leave the local staging server running after the audit; also keeps its runtime database",
     )
     return parser.parse_args()
 
@@ -179,7 +175,6 @@ def main() -> int:
             "SKIP_INITIAL_PRICE_SYNC": "1",
             "NO_PROXY": "*",
             "STAGING_AUDIT_DIR": str(audit_dir),
-            "AGENT_BROWSER_ARGS": args.browser_args,
         }
     )
     env.pop("BURNCLOUD_FRESH_DB", None)
@@ -208,20 +203,20 @@ def main() -> int:
             print(f"[staging] PASS -> {audit_dir / 'report.md'}")
         else:
             print(f"[staging] FAIL -> {audit_dir / 'failure.json'}", file=sys.stderr)
-        if args.keep_server:
-            print(f"[staging] server left running: {base_url} (pid={process.pid})")
-            process = None  # type: ignore[assignment]
     except Exception as exc:
         print(f"[staging] ERROR: {exc}", file=sys.stderr)
         audit_code = 1
     finally:
-        if process is not None:
+        if args.keep_server:
+            print(f"[staging] server left running: {base_url} (pid={process.pid})")
+        else:
             stop_process(process)
         server_log.close()
-        if not args.keep_runtime:
-            shutil.rmtree(runtime_dir, ignore_errors=True)
-        else:
+
+        if args.keep_runtime or args.keep_server:
             print(f"[staging] runtime kept: {runtime_dir}")
+        else:
+            shutil.rmtree(runtime_dir, ignore_errors=True)
 
     return audit_code
 
