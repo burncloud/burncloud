@@ -5,18 +5,20 @@ truth: source-and-runtime-derived
 status: active
 ---
 
-# BurnCloud Staging Browser Review
+# BurnCloud Local Staging Browser Review
 
 This is the runtime visual truth path for the current Dioxus console.
 
-Static RSX/CSS review is not sufficient for declaring a UI task complete. For meaningful Console UI changes, prefer evidence from a running BurnCloud server plus a real browser session.
+Static RSX/CSS review is not sufficient for declaring a UI task complete. For meaningful Console UI changes, use a running BurnCloud server plus a real browser session and inspect the resulting screenshots/click path.
 
-## Runtime topology
+## Primary workflow: local, not GitHub Actions
 
-The GitHub Actions workflow `.github/workflows/staging-browser.yml` starts an isolated real BurnCloud process:
+The browser review runs directly on the developer/Codex machine. GitHub Actions is intentionally not the primary UI review path because it adds queue/install/build latency to every visual iteration.
 
 ```text
-Fresh SQLite database
+Local BurnCloud binary
+        ↓
+Isolated temporary SQLite database
         ↓
 BurnCloud server + management APIs + router
         ↓
@@ -24,22 +26,73 @@ Dioxus LiveView
         ↓
 agent-browser (1440×900)
         ↓
-click-path checks + screenshots + report.json/report.md
+real sidebar clicks + screenshots + report.json/report.md
 ```
+
+The local runner always supplies `BURNCLOUD_DATABASE_URL` pointing at a dedicated staging database under `target/staging-runtime/`. It does not use `BURNCLOUD_FRESH_DB` against the default database, so normal developer data is not deleted.
+
+## One-time browser install
+
+```bash
+npm install -g agent-browser
+agent-browser install
+```
+
+## One-command staging audit
+
+From the repository root:
+
+```bash
+python crates/tests/scripts/run_staging_local.py
+```
+
+The runner will:
+
+1. reuse `target/debug/burncloud` when source has not changed;
+2. run incremental `cargo build --bin burncloud` only when needed;
+3. create an isolated SQLite database;
+4. start BurnCloud on `127.0.0.1:3000`;
+5. wait for `/health`;
+6. seed a deterministic admin, customer, provider, model and API key through real APIs;
+7. log in through the visible Dioxus UI;
+8. click through the Console with `agent-browser`;
+9. write screenshots and machine-readable evidence;
+10. stop the server and remove the temporary database.
+
+Useful variants:
+
+```bash
+# Force an incremental rebuild before the audit
+python crates/tests/scripts/run_staging_local.py --build always
+
+# Reuse the current binary even if source timestamps are newer
+python crates/tests/scripts/run_staging_local.py --build never
+
+# Keep the server and its isolated DB alive after the browser audit
+python crates/tests/scripts/run_staging_local.py --keep-server
+
+# Keep only the temporary runtime DB for diagnosis
+python crates/tests/scripts/run_staging_local.py --keep-runtime
+
+# Use another local port
+python crates/tests/scripts/run_staging_local.py --port 3100
+```
+
+## Seeded staging state
 
 The audit uses the normal authentication and management APIs. It seeds:
 
-- one first-user admin (`staging-admin`);
-- one business customer (`staging-customer`);
-- one active dummy OpenAI-compatible provider;
-- one model (`staging-model`);
+- first-user admin: `staging-admin`;
+- business customer: `staging-customer`;
+- active dummy provider: `Staging Dummy Provider`;
+- model: `staging-model`;
 - one active BurnCloud API key.
 
-The dummy upstream is deliberately not invoked. This makes the configuration/catalog/access pages realistic without requiring or exposing a paid upstream credential.
+The dummy upstream is deliberately not invoked. This makes configuration/catalog/access pages realistic without requiring or exposing a paid upstream credential.
 
 ## Current browser journey
 
-The audit logs in through the visible `/login` form and follows the Console navigation rather than directly rendering page components:
+The audit logs in through the visible `/login` form and follows the rendered Console navigation rather than directly rendering page components:
 
 ```text
 Login
@@ -66,16 +119,13 @@ The browser is fixed to **1440×900**. Each primary Console page is checked for 
 
 ## Evidence contract
 
-Workflow artifact name:
-
-`burncloud-staging-browser-audit`
-
-Expected contents:
+Every run writes to:
 
 ```text
 target/staging-audit/
 ├── report.json
 ├── report.md
+├── failure.json          # only on failure
 ├── server.log
 └── screenshots/
     ├── 00-login.png
@@ -84,55 +134,44 @@ target/staging-audit/
     ├── 02a-provider-add-drawer.png
     ├── ...
     ├── 13-settings.png
-    └── 99-signed-out.png
+    ├── 99-signed-out.png
+    └── zz-failure.png    # only on failure
 ```
 
-`report.json` is machine-readable and records route, viewport, document dimensions, horizontal-overflow state, and visible button/link counts for every audited page.
+`report.json` records route, viewport, document dimensions, horizontal-overflow state, and visible button/link counts for every audited page.
 
-`report.md` is appended to the GitHub Actions step summary.
+`failure.json` records the browser error, current path and visible body text so ChatGPT/Codex can diagnose a stopped click path without guessing from source.
 
-## Agent workflow
+## ChatGPT/Codex UI loop
 
-For a UI task, ChatGPT/Codex should use this order:
+For UI work, use this order:
 
-1. Read the current source for the affected behavior.
-2. Read the latest Staging Browser Audit result when one exists.
-3. Inspect the screenshot for the affected page and adjacent click-path states.
-4. State the concrete visual/product defect before editing.
-5. Make the smallest coherent UI change.
-6. Run static UI/functional/product guards.
-7. Run the Staging Browser Audit again.
-8. Compare the new screenshot and click path with the previous evidence.
+1. Read the current source for the affected page/behavior.
+2. Run `python crates/tests/scripts/run_staging_local.py`.
+3. Inspect `target/staging-audit/report.md` and the affected screenshots.
+4. State the concrete visual/product/click-path defect before editing.
+5. Make the smallest coherent change.
+6. Run targeted Rust/static guards for the changed code.
+7. Run the local staging browser audit again.
+8. Compare the new rendered screenshot and click path with the previous evidence.
+9. Continue page-by-page until the visual and click-path acceptance criteria are satisfied.
 
 Do not infer that a page looks correct only because `cargo check` passes.
 
-## Local run
+## Fast third-round review
 
-Start BurnCloud with an isolated database and disabled initial price sync, then run the ignored browser test:
+For the third-round product pass, treat the local staging output as the source of truth for:
 
-```bash
-export HOST=127.0.0.1
-export PORT=3000
-export E2E_BASE_URL=http://127.0.0.1:3000
-export BURNCLOUD_FRESH_DB=1
-export MASTER_KEY=a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
-export SKIP_INITIAL_PRICE_SYNC=1
-export PRICE_SYNC_INTERVAL_SECS=999999
+- page composition and visual hierarchy;
+- spacing, density and overflow;
+- loading/empty/error states;
+- drawer/modal stability after animation;
+- sidebar and in-page click paths;
+- whether backend-seeded state is actually visible;
+- product wording and control discoverability.
 
-cargo build --bin burncloud
-./target/debug/burncloud server
-```
+The intended loop is local and repeatable; no CI wait is required between visual edits.
 
-In another shell:
+## Persistent/public staging
 
-```bash
-npm install -g agent-browser@0.33.0
-agent-browser install --with-deps
-cargo test -p burncloud-tests --test staging_browser -- --ignored --nocapture
-```
-
-## Public staging
-
-The CI staging environment is intentionally ephemeral and private to the GitHub runner. It is enough for automated visual/click-path evidence and for agents that can read GitHub Actions artifacts.
-
-A persistent public Staging URL is a separate deployment concern. Do not claim one exists unless a real host/tunnel has been configured and verified. When a public staging deployment is added, keep this same browser audit as the acceptance contract and point a deployment-specific runner at that URL rather than creating a second UI truth model.
+A persistent public Staging URL is a separate deployment concern. Do not claim one exists unless a real host/tunnel has been configured and verified. If a public staging deployment is later added, point the same `staging_browser_audit.py` acceptance contract at that environment rather than creating a second UI truth model.
