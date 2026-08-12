@@ -1,0 +1,129 @@
+name: BurnCloud Staging Browser Audit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'crates/client/**'
+      - 'crates/server/**'
+      - 'crates/router/**'
+      - 'crates/database/**'
+      - 'crates/tests/**'
+      - '.github/workflows/staging-browser.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'crates/client/**'
+      - 'crates/server/**'
+      - 'crates/router/**'
+      - 'crates/database/**'
+      - 'crates/tests/**'
+      - '.github/workflows/staging-browser.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      HOST: 127.0.0.1
+      PORT: '3000'
+      E2E_BASE_URL: http://127.0.0.1:3000
+      BURNCLOUD_FRESH_DB: '1'
+      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
+      PRICE_SYNC_INTERVAL_SECS: '999999'
+      SKIP_INITIAL_PRICE_SYNC: '1'
+      NO_PROXY: '*'
+      STAGING_AUDIT_DIR: ${{ github.workspace }}/target/staging-audit
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install agent-browser
+        run: |
+          npm install -g agent-browser@0.33.0
+          agent-browser install --with-deps
+          agent-browser --version
+
+      - name: Build BurnCloud staging server
+        run: |
+          mkdir -p target/staging-audit/screenshots
+          cargo build --bin burncloud
+
+      - name: Start isolated BurnCloud staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./target/debug/burncloud server > target/staging-audit/server.log 2>&1 &
+          echo $! > target/staging-audit/server.pid
+
+          for attempt in $(seq 1 120); do
+            if curl --silent --show-error --fail http://127.0.0.1:3000/health >/dev/null; then
+              echo "BurnCloud staging is healthy at http://127.0.0.1:3000"
+              exit 0
+            fi
+            if ! kill -0 "$(cat target/staging-audit/server.pid)" 2>/dev/null; then
+              echo "BurnCloud exited before becoming healthy"
+              cat target/staging-audit/server.log
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          echo "Timed out waiting for BurnCloud staging"
+          cat target/staging-audit/server.log
+          exit 1
+
+      - name: Audit current Dioxus UI in browser
+        run: cargo test -p burncloud-tests --test staging_browser -- --ignored --nocapture
+
+      - name: Publish audit summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f target/staging-audit/report.md ]; then
+            cat target/staging-audit/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "# BurnCloud Staging Browser Audit" >> "$GITHUB_STEP_SUMMARY"
+            echo "The browser audit did not reach report generation. Inspect the uploaded server log and partial screenshots." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload staging visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: burncloud-staging-browser-audit
+          path: target/staging-audit
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Stop staging server
+        if: always()
+        shell: bash
+        run: |
+          if [ -f target/staging-audit/server.pid ]; then
+            kill "$(cat target/staging-audit/server.pid)" 2>/dev/null || true
+          fi
+          agent-browser close --all >/dev/null 2>&1 || true
