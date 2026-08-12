@@ -1,7 +1,7 @@
 //! Database operations for token management
 //!
 //! This crate handles all database operations related to API tokens,
-//! including validation, quota tracking, CRUD operations, and key rotation.
+//! including validation, spend-quota tracking, CRUD operations, and key rotation.
 
 use burncloud_common::CrudRepository;
 use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
@@ -40,8 +40,10 @@ pub struct RouterToken {
     pub user_id: String,
     pub status: String, // "active", "disabled"
     #[sqlx(default)]
-    pub quota_limit: i64, // -1 for unlimited
+    /// Spend limit in nanodollars. `-1` means unlimited.
+    pub quota_limit: i64,
     #[sqlx(default)]
+    /// Settled spend in nanodollars. Never store token counts in this field.
     pub used_quota: i64,
     #[sqlx(default)]
     pub expired_time: i64, // -1 for never expire, >0 = unix timestamp
@@ -79,6 +81,10 @@ impl RouterTokenModel {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64
+    }
+
+    fn quota_allows(limit: i64, used: i64, cost: i64) -> bool {
+        limit < 0 || used.saturating_add(cost) <= limit
     }
 
     /// List all tokens
@@ -270,7 +276,6 @@ impl RouterTokenModel {
             .fetch_optional(conn.pool())
             .await?
         {
-            // Check if token is expired
             if t.expired_time > 0 && now > t.expired_time {
                 return Ok(None);
             }
@@ -293,8 +298,6 @@ impl RouterTokenModel {
             .fetch_optional(conn.pool())
             .await?
         {
-            // Old key is valid during transition period
-            // Check if token itself is expired
             if t.expired_time > 0 && now > t.expired_time {
                 return Ok(None);
             }
@@ -312,7 +315,6 @@ impl RouterTokenModel {
         let conn = db.get_connection()?;
         let now = Self::current_timestamp();
 
-        // First, try to find the token directly
         let sql = adapt_sql(
             db.kind() == "postgres",
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time, \
@@ -325,16 +327,13 @@ impl RouterTokenModel {
             .fetch_optional(conn.pool())
             .await?
         {
-            // Check if token is expired
             if t.expired_time > 0 && now > t.expired_time {
                 return Ok(RouterTokenValidationResult::Expired);
             }
             return Ok(RouterTokenValidationResult::Valid(t));
         }
 
-        // Check if it's an old key during transition period
         let token_hash = format!("{:x}", md5::compute(token.as_bytes()));
-
         let old_key_sql = adapt_sql(
             db.kind() == "postgres",
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time, \
@@ -348,7 +347,6 @@ impl RouterTokenModel {
             .fetch_optional(conn.pool())
             .await?
         {
-            // Old key is valid during transition period
             if t.expired_time > 0 && now > t.expired_time {
                 return Ok(RouterTokenValidationResult::Expired);
             }
@@ -376,79 +374,153 @@ impl RouterTokenModel {
         Ok(())
     }
 
-    /// Check if quota is sufficient without deducting.
-    /// Cost parameter uses i64 nanodollars for precision.
-    /// quota_limit = -1 means unlimited.
+    /// Check whether a credential has enough spend quota for `cost`.
+    ///
+    /// `quota_limit` / `remain_quota` and `used_quota` are nanodollars.
+    /// Missing or inactive credentials fail closed. Router-token rotation aliases
+    /// are resolved to the canonical current token before checking quota.
     pub async fn check_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
-        let conn = db.get_connection()?;
-
         if cost <= 0 {
             return Ok(true);
         }
 
-        let quota_sql = adapt_sql(
-            db.kind() == "postgres",
-            "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?",
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let direct_sql = adapt_sql(
+            is_postgres,
+            "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ? AND status = 'active'",
         );
-        let token_quota: Option<(i64, i64)> = sqlx::query_as(&quota_sql)
+        if let Some((limit, used)) = sqlx::query_as::<_, (i64, i64)>(&direct_sql)
+            .bind(token)
+            .fetch_optional(conn.pool())
+            .await?
+        {
+            return Ok(Self::quota_allows(limit, used, cost));
+        }
+
+        let now = Self::current_timestamp();
+        let token_hash = format!("{:x}", md5::compute(token.as_bytes()));
+        let old_key_sql = adapt_sql(
+            is_postgres,
+            "SELECT quota_limit, used_quota FROM router_tokens WHERE old_key_hash = ? AND old_key_expires_at > ? AND status = 'active'",
+        );
+        if let Some((limit, used)) = sqlx::query_as::<_, (i64, i64)>(&old_key_sql)
+            .bind(token_hash)
+            .bind(now)
+            .fetch_optional(conn.pool())
+            .await?
+        {
+            return Ok(Self::quota_allows(limit, used, cost));
+        }
+
+        let legacy_sql = adapt_sql(
+            is_postgres,
+            "SELECT remain_quota, used_quota FROM user_api_keys WHERE key = ? AND status = 1",
+        );
+        let legacy = sqlx::query_as::<_, (i64, i64)>(&legacy_sql)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
 
-        if let Some((quota_limit, used_quota)) = token_quota {
-            // quota_limit = -1 means unlimited
-            if quota_limit >= 0 && used_quota + cost > quota_limit {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
+        Ok(legacy
+            .map(|(limit, used)| Self::quota_allows(limit, used, cost))
+            .unwrap_or(false))
     }
 
-    /// Deduct quota from token atomically.
-    /// Returns Ok(true) if deduction successful, Ok(false) if insufficient quota.
-    /// Cost parameter uses i64 nanodollars for precision.
-    /// quota_limit = -1 means unlimited.
+    /// Settle actual request cost against exactly the credential that was used.
+    ///
+    /// The write is durable even when the new total crosses a configured cap;
+    /// the return value then becomes `false` so the caller knows the credential
+    /// is exhausted. This prevents the final over-cap request from becoming free.
+    /// Missing/inactive credentials fail closed and never report a successful
+    /// settlement.
     pub async fn deduct_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
-        let conn = db.get_connection()?;
-        let is_postgres = db.kind() == "postgres";
-
         if cost <= 0 {
             return Ok(true);
         }
 
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
         let mut tx = conn.pool().begin().await?;
 
-        // Read quota_limit and used_quota in one query. Any DB failure propagates as an error.
-        let quota_sql = adapt_sql(
+        let direct_sql = adapt_sql(
             is_postgres,
-            "SELECT quota_limit, used_quota FROM router_tokens WHERE token = ?",
+            "SELECT token, quota_limit, used_quota FROM router_tokens WHERE token = ? AND status = 'active'",
         );
-        let token_quota: Option<(i64, i64)> = sqlx::query_as(&quota_sql)
+        let mut router_quota = sqlx::query_as::<_, (String, i64, i64)>(&direct_sql)
             .bind(token)
             .fetch_optional(&mut *tx)
             .await?;
 
-        if let Some((quota_limit, used_quota)) = token_quota {
-            // quota_limit = -1 means unlimited
-            if quota_limit >= 0 && used_quota + cost > quota_limit {
+        if router_quota.is_none() {
+            let now = Self::current_timestamp();
+            let token_hash = format!("{:x}", md5::compute(token.as_bytes()));
+            let old_key_sql = adapt_sql(
+                is_postgres,
+                "SELECT token, quota_limit, used_quota FROM router_tokens WHERE old_key_hash = ? AND old_key_expires_at > ? AND status = 'active'",
+            );
+            router_quota = sqlx::query_as::<_, (String, i64, i64)>(&old_key_sql)
+                .bind(token_hash)
+                .bind(now)
+                .fetch_optional(&mut *tx)
+                .await?;
+        }
+
+        if let Some((canonical_token, limit, used)) = router_quota {
+            let within_limit = Self::quota_allows(limit, used, cost);
+            let update_sql = adapt_sql(
+                is_postgres,
+                "UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ? AND status = 'active'",
+            );
+            let rows = sqlx::query(&update_sql)
+                .bind(cost)
+                .bind(canonical_token)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            if rows == 0 {
                 tx.rollback().await?;
                 return Ok(false);
             }
+            tx.commit().await?;
+            return Ok(within_limit);
         }
 
-        let deduct_sql = adapt_sql(
+        // `user_api_keys` is the primary credential table for normal API keys.
+        // `remain_quota = -1` represents unlimited quota, including keys created
+        // with `unlimited_quota=true`.
+        let legacy_sql = adapt_sql(
             is_postgres,
-            "UPDATE router_tokens SET used_quota = used_quota + ? WHERE token = ?",
+            "SELECT remain_quota, used_quota FROM user_api_keys WHERE key = ? AND status = 1",
         );
-        sqlx::query(&deduct_sql)
+        let legacy = sqlx::query_as::<_, (i64, i64)>(&legacy_sql)
+            .bind(token)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+        let Some((limit, used)) = legacy else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+
+        let within_limit = Self::quota_allows(limit, used, cost);
+        let update_sql = adapt_sql(
+            is_postgres,
+            "UPDATE user_api_keys SET used_quota = used_quota + ? WHERE key = ? AND status = 1",
+        );
+        let rows = sqlx::query(&update_sql)
             .bind(cost)
             .bind(token)
             .execute(&mut *tx)
-            .await?;
+            .await?
+            .rows_affected();
+        if rows == 0 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
 
         tx.commit().await?;
-        Ok(true)
+        Ok(within_limit)
     }
 
     /// Revoke old key version immediately
@@ -491,10 +563,9 @@ impl RouterTokenModel {
             .await?;
 
         match ip_whitelist {
-            None => Ok(true),                              // No whitelist = all IPs allowed
-            Some(ref list) if list.is_empty() => Ok(true), // Empty whitelist = all IPs allowed
+            None => Ok(true),
+            Some(ref list) if list.is_empty() => Ok(true),
             Some(list) => {
-                // Parse whitelist (comma-separated CIDR ranges or IPs)
                 for entry in list.split(',') {
                     let entry = entry.trim();
                     if entry.is_empty() {
