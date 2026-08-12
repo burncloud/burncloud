@@ -67,6 +67,9 @@ jobs:
           agent-browser install --with-deps
           agent-browser --version
 
+      - name: Verify SQLite staging migrations
+        run: cargo test -p burncloud-database sqlite_0017 -- --nocapture
+
       - name: Build BurnCloud staging server
         run: |
           mkdir -p target/staging-audit/screenshots
