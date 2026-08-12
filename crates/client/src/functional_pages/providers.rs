@@ -479,12 +479,13 @@ pub fn Providers() -> Element {
                                         class: "button button-primary danger-zone",
                                         disabled: busy(),
                                         onclick: move |_| {
+                                            let deleted_name = target_name.clone();
                                             busy.set(true);
                                             error.set(String::new());
                                             spawn(async move {
                                                 match ChannelService::delete(target_id).await {
                                                     Ok(()) => {
-                                                        notice.set(format!("Provider {target_name} deleted."));
+                                                        notice.set(format!("Provider {deleted_name} deleted."));
                                                         pending_delete.set(None);
                                                         resource.restart();
                                                     }
