@@ -14,12 +14,11 @@ use burncloud_database_router::RouterDatabase;
 use common::setup_db;
 use std::time::Duration;
 
-/// Test quota deduction
+/// Spend quota is measured in nanodollars and actual cost is always settled.
 #[tokio::test]
 async fn test_quota_deduction() -> anyhow::Result<()> {
-    let (_db, pool, _db_url) = setup_db().await?;
+    let (db, pool, _db_url) = setup_db().await?;
 
-    // Create a test token with limited quota
     sqlx::query(
         r#"
         INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota)
@@ -31,65 +30,52 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
-    // Small delay to ensure SQLite transaction completes
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Deduct 50 quota
     let result =
-        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 50).await?;
-    assert!(result, "Deduction should succeed");
-
-    // Small delay
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // Check used_quota
-    let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
-        .bind("sk-test-quota-token")
-        .fetch_one(&pool)
-        .await?;
-
-    assert_eq!(used, 50, "used_quota should be 50");
-
-    // Deduct another 50 (should succeed, total 100)
-    let result =
-        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 50).await?;
-    assert!(result, "Second deduction should succeed");
-
-    tokio::time::sleep(Duration::from_millis(50)).await;
+        RouterDatabase::deduct_quota(&db, "test-quota-user", "sk-test-quota-token", 50).await?;
+    assert!(result, "Settlement within the spend cap should report available");
 
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
         .bind("sk-test-quota-token")
         .fetch_one(&pool)
         .await?;
+    assert_eq!(used, 50, "used_quota is settled nanodollar spend");
 
-    assert_eq!(used, 100, "used_quota should be 100");
-
-    // Try to deduct 1 more (should fail - quota exceeded)
     let result =
-        RouterDatabase::deduct_quota(&_db, "test-quota-user", "sk-test-quota-token", 1).await?;
-    assert!(!result, "Deduction should fail - quota exceeded");
+        RouterDatabase::deduct_quota(&db, "test-quota-user", "sk-test-quota-token", 50).await?;
+    assert!(result, "Settlement reaching the cap should still report available");
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // Verify used_quota didn't change
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
         .bind("sk-test-quota-token")
         .fetch_one(&pool)
         .await?;
+    assert_eq!(used, 100);
 
-    assert_eq!(used, 100, "used_quota should still be 100");
+    // The final request may cross the cap because the exact cost is only known
+    // after the upstream response. Its real cost must still be recorded, while
+    // the return value tells the caller the credential is now exhausted.
+    let result =
+        RouterDatabase::deduct_quota(&db, "test-quota-user", "sk-test-quota-token", 1).await?;
+    assert!(!result, "Over-cap settlement should report quota exhausted");
 
-    println!("✓ Quota deduction test passed");
+    let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
+        .bind("sk-test-quota-token")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(used, 101, "actual spend must never be silently dropped");
+
+    let result = RouterDatabase::check_quota(&db, "sk-test-quota-token", 1).await?;
+    assert!(!result, "An exhausted credential must fail the next pre-check");
 
     Ok(())
 }
 
-/// Test unlimited quota token
+/// Unlimited spend quota remains unlimited but settlement is still recorded.
 #[tokio::test]
 async fn test_unlimited_quota() -> anyhow::Result<()> {
-    let (_db, pool, _db_url) = setup_db().await?;
+    let (db, pool, _db_url) = setup_db().await?;
 
-    // Create a token with unlimited quota
     sqlx::query(
         r#"
         INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota)
@@ -101,29 +87,29 @@ async fn test_unlimited_quota() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // Deduct a large amount
     let result = RouterDatabase::deduct_quota(
-        &_db,
+        &db,
         "test-unlimited-user",
         "sk-test-unlimited-token",
         1_000_000,
     )
     .await?;
-    assert!(result, "Unlimited token should always succeed");
+    assert!(result, "Unlimited token should always report quota available");
 
-    println!("✓ Unlimited quota test passed");
+    let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
+        .bind("sk-test-unlimited-token")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(used, 1_000_000, "unlimited does not mean unmetered");
 
     Ok(())
 }
 
-/// Test quota check without deduction
+/// Quota checks are read-only and missing credentials fail closed.
 #[tokio::test]
 async fn test_quota_check() -> anyhow::Result<()> {
-    let (_db, pool, _db_url) = setup_db().await?;
+    let (db, pool, _db_url) = setup_db().await?;
 
-    // Create a token with quota 100
     sqlx::query(
         r#"
         INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota)
@@ -135,25 +121,26 @@ async fn test_quota_check() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    let result = RouterDatabase::check_quota(&db, "sk-test-check-token", 40).await?;
+    assert!(result, "Should have enough spend quota");
 
-    // Check if 40 quota is available (should pass: 50 used + 40 = 90 < 100)
-    let result = RouterDatabase::check_quota(&_db, "sk-test-check-token", 40).await?;
-    assert!(result, "Should have enough quota");
+    let result = RouterDatabase::check_quota(&db, "sk-test-check-token", 60).await?;
+    assert!(!result, "Should not have enough spend quota");
 
-    // Check if 60 quota is available (should fail: 50 used + 60 = 110 > 100)
-    let result = RouterDatabase::check_quota(&_db, "sk-test-check-token", 60).await?;
-    assert!(!result, "Should not have enough quota");
-
-    // Verify used_quota didn't change
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
         .bind("sk-test-check-token")
         .fetch_one(&pool)
         .await?;
+    assert_eq!(used, 50, "quota check must not mutate settlement state");
 
-    assert_eq!(used, 50, "used_quota should still be 50");
-
-    println!("✓ Quota check test passed");
+    assert!(
+        !RouterDatabase::check_quota(&db, "missing-token", 1).await?,
+        "unknown credentials must fail closed"
+    );
+    assert!(
+        !RouterDatabase::deduct_quota(&db, "test-check-user", "missing-token", 1).await?,
+        "unknown credentials must not report a successful settlement"
+    );
 
     Ok(())
 }
