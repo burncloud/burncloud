@@ -3,7 +3,6 @@ doc_id: agent.invariants
 doc_type: engineering-invariants
 truth: source-derived
 status: active
-audited_against: c7107382b8479deb44f992e9e5ae8dcac5efb417
 ---
 
 # Verified Engineering Invariants
@@ -28,6 +27,8 @@ These are high-value facts visible in current code. If a change intentionally al
 - optional Dioxus LiveView,
 - the data-plane router as `fallback_service`.
 
+The unified server also applies `security_boundary_middleware` across explicit routes and the data-plane fallback.
+
 **Evidence:** `crates/server/src/lib.rs :: create_app`.
 
 ### INV-ROUTER-001 — Data plane uses explicit utility routes plus a fallback
@@ -48,13 +49,53 @@ Router internal health/price-sync/circuit-breaker/metrics routes are constructed
 
 **Evidence:** `crates/router/src/lib.rs :: create_router_app`; `crates/server/src/lib.rs :: create_app`.
 
-## Authentication
+## Authentication and authorization
 
 ### INV-AUTH-001 — Public and protected management routes are separate routers
 
 `crates/server/src/api/mod.rs` merges public auth routes without auth middleware and wraps the protected route group with `auth_middleware`.
 
 **Evidence:** `crates/server/src/api/mod.rs :: routes`.
+
+### INV-AUTH-002 — Console JWTs are management-plane credentials, not inference credentials
+
+The unified server rejects a valid Console JWT when it is presented as the bearer/API credential for `/v1/*` or `/api/v1/*`. Data-plane inference must use an API credential rather than a management session token.
+
+**Evidence:** `crates/server/src/api/auth.rs :: security_boundary_middleware`; `crates/server/tests/security_invariants.rs :: console_jwt_cannot_authenticate_data_plane`.
+
+### INV-AUTH-003 — Administrative Console operations require current admin authorization
+
+Channel, logs/usage administration, monitor/security, and cache management routes require both a valid JWT and the current `admin` role from the database. User registration from the Console, user listing, and balance top-up also perform admin authorization in their handlers.
+
+**Evidence:** `crates/server/src/api/mod.rs :: routes`; `crates/server/src/api/auth.rs :: admin_middleware`; `crates/server/src/api/user.rs`; `crates/server/tests/security_invariants.rs :: regular_users_cannot_execute_admin_management_actions`.
+
+### INV-AUTH-004 — API-token management is owner-scoped with admin override
+
+A non-admin authenticated user may list/create/manage only their own router tokens. Administrators may manage tokens across users. List/detail responses expose a token hint, not the bearer secret; create and rotate are the explicit one-time secret disclosure points.
+
+**Evidence:** `crates/server/src/api/token.rs`; `crates/server/tests/security_invariants.rs :: token_management_is_owner_scoped_and_redacted`.
+
+## Internal control plane
+
+### INV-INTERNAL-001 — Sensitive internal mutations fail closed without the internal secret
+
+`POST /console/internal/prices/sync` and `POST /console/internal/circuit-breaker/trip-all` require `BURNCLOUD_INTERNAL_SECRET` to be configured and the matching value in `X-Internal-Secret`. If the server has no configured secret, these mutations are unavailable rather than unauthenticated.
+
+**Evidence:** `crates/server/src/api/auth.rs :: security_boundary_middleware`; `crates/server/tests/security_invariants.rs :: sensitive_internal_mutations_require_internal_secret`.
+
+## Billing and quota
+
+### INV-BILLING-001 — Credential quota fields represent spend, not token counts
+
+`router_tokens.quota_limit` / `router_tokens.used_quota` and the corresponding `user_api_keys` quota values used by settlement are nanodollar spend values. Usage-log insertion does not mutate spend quota.
+
+**Evidence:** `crates/database/crates/router/src/token.rs :: RouterTokenModel::{check_quota,deduct_quota}`; `crates/database/crates/router/src/lib.rs :: RouterDatabase::insert_log`; `crates/router/tests/billing_invariants.rs :: router_log_insert_never_mutates_spend_quota`.
+
+### INV-BILLING-002 — Spend settlement is credential-scoped and actual cost is durable
+
+Settlement updates only the credential that authorized the request. A missing/inactive credential fails closed. If exact post-response cost crosses a configured cap, the actual cost is still recorded and settlement returns `false`; subsequent quota checks reject further spend. A valid old key during a rotation transition settles against its canonical current token.
+
+**Evidence:** `crates/database/crates/router/src/token.rs :: RouterTokenModel::{check_quota,deduct_quota}`; `crates/router/tests/quota_tests.rs`; `crates/router/tests/billing_invariants.rs`.
 
 ## Database
 
