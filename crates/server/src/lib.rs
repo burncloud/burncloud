@@ -3,7 +3,7 @@ pub mod logging;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::http::HeaderName;
-use axum::{routing::get, Router};
+use axum::{middleware, routing::get, Router};
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
@@ -86,7 +86,12 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         ))
         .layer(PropagateRequestIdLayer::new(x_request_id.clone()))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        // Security boundary is intentionally global so it protects both the
+        // explicitly merged internal routes and the data-plane fallback.
+        .layer(middleware::from_fn(
+            api::auth::security_boundary_middleware,
+        ));
 
     Ok(app)
 }
