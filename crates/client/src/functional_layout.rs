@@ -163,10 +163,7 @@ pub fn FunctionalConsoleLayout() -> Element {
                             }
                         }
                         div { class:"top-actions",
-                            Link { to:Route::Home {}, class:"tiny-link", Icon { name:"globe" } span { "Landing Page" } }
                             div { class:"env-chip", title:"BurnCloud server is configured; live health is shown on Overview", span { class:"green-dot" } "Server Configured" }
-                            Link { to:Route::Logs {}, class:"icon-button", title:"Open request logs", Icon { name:"bell" } }
-                            Link { to:Route::Settings {}, class:"icon-button", title:"System settings", Icon { name:"help" } }
                             div { class:"top-divider" }
                             div { class:"profile-link",
                                 div { class:"avatar", "{avatar}" }
