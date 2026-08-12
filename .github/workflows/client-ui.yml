@@ -28,6 +28,9 @@ jobs:
       - name: Check functional console wiring
         run: bash scripts/check-functional-wiring.sh
 
+      - name: Check product UX contracts
+        run: bash scripts/check-product-ux.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
