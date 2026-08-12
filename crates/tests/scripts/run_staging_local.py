@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-AUDIT_SCRIPT = Path(__file__).with_name("staging_browser_audit.py")
+AUDIT_SCRIPT = Path(__file__).with_name("staging_browser_current.py")
 DEFAULT_MASTER_KEY = "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8"
 
 
@@ -196,7 +196,7 @@ def main() -> int:
     try:
         wait_health(base_url, process)
         print("[staging] /health ready")
-        print("[staging] running real browser journey")
+        print("[staging] running current Dioxus browser journey")
         audit = subprocess.run([sys.executable, str(AUDIT_SCRIPT)], cwd=ROOT, env=env, check=False)
         audit_code = audit.returncode
         if audit_code == 0:
