@@ -3,18 +3,21 @@ doc_id: agent.start-here
 doc_type: agent-protocol
 truth: normative
 status: active
-audited_against: c7107382b8479deb44f992e9e5ae8dcac5efb417
 ---
 
 # Start Here — AI Agent Workflow
 
 ## Goal
 
-Reduce repository search, guessing, and accidental cross-flow regressions. Start from the requested behavior, not the directory tree.
+Reduce repository search, guessing, and accidental cross-flow regressions. Start from requested behavior, not the directory tree.
 
-## Required workflow
+The standard loop is:
 
-### 1. Restate the task as a user/runtime behavior
+`DISCOVER -> UNDERSTAND -> TRACE -> CONTRACT -> PLAN -> CHANGE -> VERIFY -> INSPECT -> REPORT`
+
+## 1. DISCOVER — restate the behavior
+
+Translate the request into a user/operator-visible behavior.
 
 Examples:
 
@@ -25,62 +28,109 @@ Examples:
 
 Do not begin with “edit file X” unless the user explicitly requires a file-level change.
 
-### 2. Route the task
+## 2. UNDERSTAND — route the task
 
-Open [`TASK_ROUTER.md`](TASK_ROUTER.md) and identify:
+Open `TASK_ROUTER.md` and identify:
 
-- primary source,
-- related source,
-- runtime flow,
-- relevant tests.
+- primary source;
+- related source;
+- runtime/contract docs;
+- tests/evidence to inspect;
+- likely ownership domain.
 
-### 3. Read the real entry point
+If a domain contract exists, read it. Do not create a fictional domain boundary from directory names alone.
+
+## 3. TRACE — read the real execution path
 
 Trace only as far as required to understand the change:
 
-`entry → branch → callee → state/external effect → return/error`.
+`entry -> branch -> callee -> state/external effect -> return/error`
 
-Do not build a giant repository-wide call graph.
+For important claims classify the edge as:
 
-### 4. Classify every important claim
+- **STATIC CONFIRMED** — directly visible in current code/tests;
+- **DYNAMIC** — runtime selection/configuration/state controls the target;
+- **INFERRED** — plausible but not fully proven;
+- **UNKNOWN** — not yet established.
 
-- **STATIC CONFIRMED** — directly visible in current code/tests.
-- **DYNAMIC** — trait object, runtime configuration, channel type, environment, or other runtime selection controls the target.
-- **INFERRED** — reasonable but not fully statically proven.
+Never present DYNAMIC, INFERRED, or UNKNOWN behavior as a fixed call path.
 
-Never present DYNAMIC/INFERRED behavior as a fixed call path.
+Do not build a repository-wide call graph when a smaller trace establishes the task boundary.
 
-### 5. Check invariants
+## 4. CONTRACT — establish the task contract
 
-Read [`INVARIANTS.md`](INVARIANTS.md). If the change would alter an invariant, call that out explicitly and update the invariant only together with code/tests.
+For every non-trivial task, create the minimum internal contract defined by `TASK_CONTRACT.md`:
 
-### 6. Make the smallest coherent change
+- goal;
+- current behavior;
+- expected behavior;
+- scope;
+- execution path;
+- impacts;
+- invariants;
+- verification;
+- done criteria.
 
-Prefer one runtime behavior per change. Avoid opportunistic refactors unless required to make the behavior correct/testable.
+The contract is a reasoning/control artifact. Do not commit one-off task contracts unless a long-lived repository workflow actually needs them.
 
-### 7. Run the relevant verification
+## 5. PLAN — plan from root cause / behavior gap
 
-Use [`TEST_MATRIX.md`](TEST_MATRIX.md). At minimum run targeted checks for the affected crate/flow; broader workspace checks are required when dependency/API boundaries change.
+A useful plan explains:
 
-### 8. Update docs only when the truth changed
+`problem -> root cause/behavior gap -> affected path -> required change -> verification strategy`
 
-Update docs when the code changes:
+A list of filenames is not a sufficient plan.
 
-- entry/routing behavior,
-- auth/admission behavior,
-- persistence/state mutation,
-- billing/accounting,
-- provider dispatch/failover,
-- a listed invariant,
-- task-routing ownership.
+## 6. CHANGE — make the smallest coherent modification
 
-Do not update docs for internal refactors that preserve these truths unless source locations/ownership changed materially.
+Prefer one runtime behavior per change. Avoid opportunistic refactors unless required for correctness or testability.
 
-## Evidence format for agent reasoning
+Follow the relevant task playbook under `playbooks/`.
 
-Prefer:
+## 7. VERIFY — prove function, regression, and invariants
+
+Read `INVARIANTS.md`, `TEST_MATRIX.md`, and `verification/VERIFICATION_STANDARD.md`.
+
+Verification answers three different questions:
+
+1. Does the requested behavior work?
+2. Did adjacent existing behavior remain intact?
+3. Do the relevant BurnCloud invariants still hold?
+
+One green test does not automatically answer all three.
+
+## 8. INSPECT — review the final diff
+
+Check for:
+
+- unrelated changes;
+- accidental deletion;
+- public API or business-semantic drift;
+- changed error/retry behavior;
+- debug or temporary code;
+- secrets;
+- weakened tests;
+- documentation that became stale.
+
+## 9. REPORT — provide evidence
+
+A completion report should separate:
+
+- result;
+- root cause or implementation rationale;
+- verified execution path;
+- changes;
+- verification actually run;
+- invariants checked;
+- known dynamic/unverified boundaries;
+- remaining risk;
+- unrelated changes (normally `None`).
+
+## Evidence references
+
+Prefer stable references:
 
 `path/to/file.rs :: SymbolName`  
 `path/to/test.rs :: test_name`
 
-Use line numbers only for point-in-time review evidence; they drift as code changes.
+Use line numbers only for point-in-time review evidence because they drift as code changes.
