@@ -1,9 +1,8 @@
 //! Runtime browser audit for the current BurnCloud Dioxus console.
 //!
-//! This test deliberately does not import the legacy page E2E modules. It uses the
-//! same agent-browser CLI, but its route/text contract is tied to the current UI.
-//! A dummy upstream is seeded for realistic provider/model/route state and is never
-//! invoked, so no paid upstream credential is required.
+//! This test deliberately does not import the legacy page E2E modules. It drives a
+//! real BurnCloud process through its visible LiveView UI and preserves screenshots
+//! before and after asynchronous page state settles.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 
@@ -61,7 +60,6 @@ impl StagingBrowser {
             data: None,
             error: if stderr.trim().is_empty() { None } else { Some(stderr.clone()) },
         });
-
         if !output.status.success() || parsed.success == Some(false) {
             bail!(
                 "agent-browser {} failed: stdout={} stderr={} error={:?}",
@@ -91,11 +89,7 @@ impl StagingBrowser {
     fn eval(&self, js: &str) -> Result<Value> {
         let response = self.exec(&["eval", js])?;
         let data = response.data.unwrap_or(Value::Null);
-        if let Some(result) = data.get("result").cloned() {
-            Ok(result)
-        } else {
-            Ok(data)
-        }
+        Ok(data.get("result").cloned().unwrap_or(data))
     }
 
     fn body_text(&self) -> Result<String> {
@@ -236,7 +230,9 @@ async fn seed_staging(base_url: &str) -> Result<(String, String, String)> {
         None,
     )
     .await?;
-    let admin_data = admin_response.get("data").ok_or_else(|| anyhow!("missing admin data"))?;
+    let admin_data = admin_response
+        .get("data")
+        .ok_or_else(|| anyhow!("missing admin data"))?;
     let admin_id = admin_data
         .get("id")
         .and_then(Value::as_str)
@@ -245,7 +241,11 @@ async fn seed_staging(base_url: &str) -> Result<(String, String, String)> {
         .get("token")
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow!("missing admin token"))?;
-    let roles = admin_data.get("roles").and_then(Value::as_array).cloned().unwrap_or_default();
+    let roles = admin_data
+        .get("roles")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if !roles.iter().any(|role| role.as_str() == Some("admin")) {
         bail!("fresh staging DB did not make first user admin: roles={roles:?}");
     }
@@ -336,29 +336,57 @@ fn capture_page(
 ) -> Result<()> {
     browser.wait_for_path(expected_path, Duration::from_secs(15))?;
 
-    // Capture first. If the strict product-copy assertion drifts, the workflow still
-    // preserves the actual rendered page for ChatGPT/Codex to inspect.
+    // Preserve the first rendered state. If async data never settles, the failure
+    // artifact still contains what the operator actually saw at navigation time.
     browser.screenshot_full(name)?;
 
-    let body = browser.wait_for_text(expected_text, Duration::from_secs(20))?;
+    browser.wait_for_text(expected_text, Duration::from_secs(20))?;
     for text in extra_text {
-        if !body.contains(text) {
-            bail!("{name}: expected page content '{text}' was not present. Body: {body}");
-        }
+        browser.wait_for_text(text, Duration::from_secs(20))?;
     }
+
+    // Overwrite the page screenshot with the stable state once all required async
+    // product data is visible. Successful artifacts therefore represent visual truth,
+    // while failed runs retain the earlier evidence captured above.
+    browser.screenshot_full(name)?;
 
     let m = metrics(browser)?;
     pages.push(PageAudit {
         name: name.to_string(),
-        path: m.get("path").and_then(Value::as_str).unwrap_or(expected_path).to_string(),
+        path: m
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or(expected_path)
+            .to_string(),
         screenshot: format!("screenshots/{name}.png"),
-        viewport_width: m.get("viewport_width").and_then(Value::as_i64).unwrap_or_default(),
-        viewport_height: m.get("viewport_height").and_then(Value::as_i64).unwrap_or_default(),
-        scroll_width: m.get("scroll_width").and_then(Value::as_i64).unwrap_or_default(),
-        scroll_height: m.get("scroll_height").and_then(Value::as_i64).unwrap_or_default(),
-        horizontal_overflow: m.get("horizontal_overflow").and_then(Value::as_bool).unwrap_or(false),
-        visible_buttons: m.get("visible_buttons").and_then(Value::as_i64).unwrap_or_default(),
-        visible_links: m.get("visible_links").and_then(Value::as_i64).unwrap_or_default(),
+        viewport_width: m
+            .get("viewport_width")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        viewport_height: m
+            .get("viewport_height")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        scroll_width: m
+            .get("scroll_width")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        scroll_height: m
+            .get("scroll_height")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        horizontal_overflow: m
+            .get("horizontal_overflow")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        visible_buttons: m
+            .get("visible_buttons")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        visible_links: m
+            .get("visible_links")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
     });
     Ok(())
 }
@@ -419,11 +447,9 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
     browser.open("/login")?;
     browser.set_viewport(1440, 900)?;
 
-    // Preserve the initial page even when visible login copy changes.
     browser.screenshot_full("00-login")?;
     browser.wait_for_text("BurnCloud Console", Duration::from_secs(20))?;
     browser.wait_for_text("Sign in to Console", Duration::from_secs(10))?;
-
     browser.fill("input[type='text']", &admin)?;
     browser.fill("input[type='password']", &password)?;
     browser.click_role("button", "Sign in to Console", Duration::from_secs(10))?;
@@ -438,34 +464,131 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
         &mut pages,
     )?;
 
-    click_page(&browser, "Providers", "02-providers", "/providers", "Provider inventory", &["Staging Dummy Provider", "staging-model"], &mut pages)?;
+    click_page(
+        &browser,
+        "Providers",
+        "02-providers",
+        "/providers",
+        "Provider inventory",
+        &["Staging Dummy Provider", "staging-model"],
+        &mut pages,
+    )?;
     browser.click_role("button", "Add Provider", Duration::from_secs(8))?;
     browser.screenshot_full("02a-provider-add-drawer")?;
-    browser.wait_for_text("Connect an upstream and define the models it can serve.", Duration::from_secs(8))?;
+    browser.wait_for_text(
+        "Connect an upstream and define the models it can serve.",
+        Duration::from_secs(8),
+    )?;
     browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
-    click_page(&browser, "Models", "03-models", "/models", "Model availability", &["staging-model", "Single upstream", "No failover redundancy"], &mut pages)?;
-    click_page(&browser, "Routes", "04-routes", "/routes", "Routing Groups", &["default", "Single upstream"], &mut pages)?;
-    click_page(&browser, "Playground", "05-playground", "/playground", "Playground", &["staging-model", "Send Test Request"], &mut pages)?;
+    click_page(
+        &browser,
+        "Models",
+        "03-models",
+        "/models",
+        "Model availability",
+        &["staging-model", "Single upstream", "No failover redundancy"],
+        &mut pages,
+    )?;
+    click_page(
+        &browser,
+        "Routes",
+        "04-routes",
+        "/routes",
+        "Routing Groups",
+        &["default", "Single upstream"],
+        &mut pages,
+    )?;
+    click_page(
+        &browser,
+        "Playground",
+        "05-playground",
+        "/playground",
+        "Playground",
+        &["staging-model", "Send Test Request"],
+        &mut pages,
+    )?;
     click_page(&browser, "Logs", "06-logs", "/logs", "Logs", &[], &mut pages)?;
-    click_page(&browser, "Evaluation", "07-evaluation", "/evaluation", "Evaluation", &[], &mut pages)?;
-    click_page(&browser, "Billing", "08-billing", "/billing", "Billing", &[], &mut pages)?;
+    click_page(
+        &browser,
+        "Evaluation",
+        "07-evaluation",
+        "/evaluation",
+        "Evaluation",
+        &[],
+        &mut pages,
+    )?;
+    click_page(
+        &browser,
+        "Billing",
+        "08-billing",
+        "/billing",
+        "Billing",
+        &[],
+        &mut pages,
+    )?;
 
-    click_page(&browser, "API Keys", "09-api-keys", "/keys", "Credentials", &["staging-admin"], &mut pages)?;
+    click_page(
+        &browser,
+        "API Keys",
+        "09-api-keys",
+        "/keys",
+        "Credentials",
+        &["staging-admin"],
+        &mut pages,
+    )?;
     browser.click_role("button", "Create API Key", Duration::from_secs(8))?;
     browser.screenshot_full("09a-api-key-create-drawer")?;
-    browser.wait_for_text("Choose which account will own this router credential.", Duration::from_secs(8))?;
+    browser.wait_for_text(
+        "Choose which account will own this router credential.",
+        Duration::from_secs(8),
+    )?;
     browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
-    click_page(&browser, "Customers", "10-customers", "/customers", "Customers", &["staging-customer"], &mut pages)?;
+    click_page(
+        &browser,
+        "Customers",
+        "10-customers",
+        "/customers",
+        "Customers",
+        &["staging-customer"],
+        &mut pages,
+    )?;
     browser.click_role("button", "Create Customer", Duration::from_secs(8))?;
     browser.screenshot_full("10a-customer-create-drawer")?;
-    browser.wait_for_text("Create a business account that can own wallet balance and API access.", Duration::from_secs(8))?;
+    browser.wait_for_text(
+        "Create a business account that can own wallet balance and API access.",
+        Duration::from_secs(8),
+    )?;
     browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
-    click_page(&browser, "Guardrails", "11-guardrails", "/guardrails", "Guardrails", &[], &mut pages)?;
-    click_page(&browser, "Team", "12-team", "/team", "Environment operators", &["staging-admin"], &mut pages)?;
-    click_page(&browser, "Settings", "13-settings", "/settings", "Settings", &[], &mut pages)?;
+    click_page(
+        &browser,
+        "Guardrails",
+        "11-guardrails",
+        "/guardrails",
+        "Guardrails",
+        &[],
+        &mut pages,
+    )?;
+    click_page(
+        &browser,
+        "Team",
+        "12-team",
+        "/team",
+        "Environment operators",
+        &["staging-admin"],
+        &mut pages,
+    )?;
+    click_page(
+        &browser,
+        "Settings",
+        "13-settings",
+        "/settings",
+        "Settings",
+        &[],
+        &mut pages,
+    )?;
 
     let report = AuditReport {
         base_url: base_url.clone(),
@@ -483,15 +606,27 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
     browser.screenshot_full("99-signed-out")?;
     browser.wait_for_text("BurnCloud Console", Duration::from_secs(10))?;
 
-    let overflow: Vec<&PageAudit> = report.pages.iter().filter(|page| page.horizontal_overflow).collect();
+    let overflow: Vec<&PageAudit> = report
+        .pages
+        .iter()
+        .filter(|page| page.horizontal_overflow)
+        .collect();
     if !overflow.is_empty() {
         bail!(
             "horizontal overflow detected on: {}",
-            overflow.iter().map(|page| page.name.as_str()).collect::<Vec<_>>().join(", ")
+            overflow
+                .iter()
+                .map(|page| page.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
 
-    if report.pages.iter().any(|page| page.viewport_width != 1440 || page.viewport_height != 900) {
+    if report
+        .pages
+        .iter()
+        .any(|page| page.viewport_width != 1440 || page.viewport_height != 900)
+    {
         bail!("agent-browser did not hold the required 1440x900 viewport; inspect report.json");
     }
 
