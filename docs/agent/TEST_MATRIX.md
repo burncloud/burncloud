@@ -16,7 +16,8 @@ The repository's integration/E2E crate is `crates/tests`. Its current tests live
 2. Check affected package(s): `cargo check -p <package>`.
 3. Run affected package tests: `cargo test -p <package>`.
 4. Run relevant `burncloud-tests` target(s) for the user flow.
-5. Run broader workspace checks when shared APIs/dependencies changed.
+5. For Dioxus Console UI work, run the local staging browser audit.
+6. Run broader workspace checks only when shared APIs/dependencies changed.
 
 Do not claim tests passed unless they actually ran in the current environment.
 
@@ -30,11 +31,23 @@ Do not claim tests passed unless they actually ran in the current environment.
 | Channel Console CRUD | server/channel/service/database tests + `api/channel.rs`, `e2e/channel_flow.rs` |
 | API key/token flows | token/service/database tests + `e2e/api_key_flow.rs` and related API tests |
 | Billing / usage | router + service-billing/database-billing tests + billing/provider integration tests such as `api/gemini_billing.rs` when relevant |
-| UI / Console behavior or styling | affected client crate + static UI/functional/product guards + `staging_browser` runtime audit; use older `e2e/console_pages.rs`, `css_visual_acceptance.rs`, `aesthetic_acceptance.rs` only after confirming their route/text expectations are still current |
+| UI / Console behavior or styling | affected client crate + static UI/functional/product guards + `python crates/tests/scripts/run_staging_local.py`; use older `e2e/console_pages.rs`, `css_visual_acceptance.rs`, `aesthetic_acceptance.rs` only after confirming their route/text expectations are still current |
 | Shared database utilities | affected database crates; test both dialect-sensitive code paths where tests support them |
 | Workspace dependency/API changes | targeted tests first, then `cargo check --workspace` and the relevant integration suites |
 
 For current Dioxus visual/click-path work, see `docs/ui/staging-browser.md`. A passing compile is not visual acceptance.
+
+## Local UI acceptance rule
+
+The default visual acceptance path is local, not GitHub Actions:
+
+```bash
+python crates/tests/scripts/run_staging_local.py
+```
+
+This starts a real BurnCloud process with an isolated SQLite database, drives the rendered LiveView Console with `agent-browser`, and writes screenshots plus `report.json` / `report.md` to `target/staging-audit/`.
+
+For fast iterations, the runner reuses the existing BurnCloud binary when source has not changed and performs only an incremental build when needed.
 
 ## Test discovery rule
 
@@ -47,3 +60,5 @@ If an existing relevant test contradicts a proposed behavior change:
 - do not silently update the test to make the PR green;
 - first determine whether the test expresses a current contract or is stale;
 - document that decision in the PR description.
+
+For browser-audit failures, inspect `target/staging-audit/failure.json`, `server.log`, and `screenshots/zz-failure.png` before changing application code. Do not turn a stale text assertion into a product change without confirming the rendered page is actually wrong.
