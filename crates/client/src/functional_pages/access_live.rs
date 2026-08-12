@@ -371,6 +371,7 @@ pub fn APIKeys() -> Element {
                                         class: "button button-primary",
                                         disabled: busy(),
                                         onclick: move |_| {
+                                            let token = token.clone();
                                             busy.set(true);
                                             error.set(String::new());
                                             spawn(async move {
@@ -414,6 +415,7 @@ pub fn APIKeys() -> Element {
                                         class: "button button-primary",
                                         disabled: busy(),
                                         onclick: move |_| {
+                                            let token = token.clone();
                                             busy.set(true);
                                             error.set(String::new());
                                             spawn(async move {
