@@ -34,19 +34,19 @@ fn search_route(query: &str) -> Option<Route> {
     }
 
     let pages = [
-        ("overview dashboard home console", Route::Overview {}),
-        ("playground chat completion inference", Route::Playground {}),
-        ("routes routing groups priority weight", Route::Routes {}),
-        ("models model", Route::Models {}),
-        ("providers provider channels channel upstream", Route::Providers {}),
-        ("api keys key tokens token", Route::APIKeys {}),
-        ("customers users user accounts account", Route::Customers {}),
+        ("overview dashboard health status home console", Route::Overview {}),
+        ("providers provider channels channel upstream supply", Route::Providers {}),
+        ("models model catalog", Route::Models {}),
+        ("routes routing groups priority weight traffic", Route::Routes {}),
+        ("playground chat completion inference test", Route::Playground {}),
+        ("logs requests router log observability errors", Route::Logs {}),
+        ("evaluation metrics latency success performance", Route::Evaluation {}),
+        ("billing cost usage spend finance", Route::Billing {}),
+        ("api keys key tokens token access", Route::APIKeys {}),
+        ("customers users user accounts account balance", Route::Customers {}),
         ("guardrails security filters risk circuit breaker", Route::Guardrails {}),
-        ("logs requests router log observability", Route::Logs {}),
-        ("evaluation metrics latency success", Route::Evaluation {}),
-        ("billing cost usage spend", Route::Billing {}),
-        ("team members roles", Route::Team {}),
-        ("settings cache runtime server", Route::Settings {}),
+        ("team members roles operators admins", Route::Team {}),
+        ("settings cache runtime server system", Route::Settings {}),
     ];
 
     pages
@@ -93,29 +93,31 @@ pub fn FunctionalConsoleLayout() -> Element {
                     Link { to:Route::Overview {}, class:"brand-link", Logo {} span { class:"brand-name", "BurnCloud" } }
                 }
                 nav { class:"sidebar-nav",
-                    NavGroup { title:"Core Platform",
+                    NavGroup { title:"Workspace",
                         NavItem { to:Route::Overview {}, icon:"overview", label:"Overview" }
-                        NavItem { to:Route::Playground {}, icon:"terminal", label:"Playground" }
-                        NavItem { to:Route::Routes {}, icon:"routes", label:"Routes" }
-                        NavItem { to:Route::Models {}, icon:"models", label:"Models" }
+                    }
+                    NavGroup { title:"Traffic Setup",
                         NavItem { to:Route::Providers {}, icon:"providers", label:"Providers" }
+                        NavItem { to:Route::Models {}, icon:"models", label:"Models" }
+                        NavItem { to:Route::Routes {}, icon:"routes", label:"Routes" }
+                        NavItem { to:Route::Playground {}, icon:"terminal", label:"Playground" }
                     }
-                    NavGroup { title:"Access & Control",
-                        NavItem { to:Route::APIKeys {}, icon:"key", label:"API Keys" }
-                        NavItem { to:Route::Customers {}, icon:"users", label:"Customers" }
-                        NavItem { to:Route::Guardrails {}, icon:"shield", label:"Guardrails" }
-                    }
-                    NavGroup { title:"Ops & Finance",
+                    NavGroup { title:"Observe",
                         NavItem { to:Route::Logs {}, icon:"logs", label:"Logs" }
                         NavItem { to:Route::Evaluation {}, icon:"chart", label:"Evaluation" }
                         NavItem { to:Route::Billing {}, icon:"billing", label:"Billing" }
                     }
-                    NavGroup { title:"System",
+                    NavGroup { title:"Access & Customers",
+                        NavItem { to:Route::APIKeys {}, icon:"key", label:"API Keys" }
+                        NavItem { to:Route::Customers {}, icon:"users", label:"Customers" }
+                    }
+                    NavGroup { title:"Security & System",
+                        NavItem { to:Route::Guardrails {}, icon:"shield", label:"Guardrails" }
                         NavItem { to:Route::Team {}, icon:"users", label:"Team" }
                         NavItem { to:Route::Settings {}, icon:"settings", label:"Settings" }
                     }
                     div { class:"public-links",
-                        h4 { class:"nav-group-title", "Public Portal" }
+                        h4 { class:"nav-group-title", "External" }
                         div { class:"nav-items",
                             NavItem { to:Route::Home {}, icon:"globe", label:"Landing Page" }
                             button {
@@ -140,7 +142,7 @@ pub fn FunctionalConsoleLayout() -> Element {
                             Icon { name:"search" }
                             input {
                                 r#type:"text",
-                                placeholder:"Jump to page…",
+                                placeholder:"Jump to a page…",
                                 value:"{search}",
                                 oninput:move |evt| {
                                     search.set(evt.value());
@@ -161,10 +163,10 @@ pub fn FunctionalConsoleLayout() -> Element {
                             }
                         }
                         div { class:"top-actions",
-                            Link { to:Route::Home {}, class:"tiny-link", Icon { name:"globe" } span { "Visit Landing Page" } }
-                            div { class:"env-chip", title:"Current console environment", span { class:"green-dot" } "Production" }
-                            Link { to:Route::Logs {}, class:"icon-button", title:"Open logs", Icon { name:"bell" } }
-                            Link { to:Route::Settings {}, class:"icon-button", title:"Open settings", Icon { name:"help" } }
+                            Link { to:Route::Home {}, class:"tiny-link", Icon { name:"globe" } span { "Landing Page" } }
+                            div { class:"env-chip", title:"Connected to the configured BurnCloud server", span { class:"green-dot" } "Server Connected" }
+                            Link { to:Route::Logs {}, class:"icon-button", title:"Open request logs", Icon { name:"bell" } }
+                            Link { to:Route::Settings {}, class:"icon-button", title:"System settings", Icon { name:"help" } }
                             div { class:"top-divider" }
                             div { class:"profile-link",
                                 div { class:"avatar", "{avatar}" }
