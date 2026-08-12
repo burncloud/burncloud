@@ -100,7 +100,11 @@ jobs:
           exit 1
 
       - name: Audit current Dioxus UI in browser
-        run: cargo test -p burncloud-tests --test staging_browser -- --ignored --nocapture
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test -p burncloud-tests --test staging_browser -- --ignored --nocapture 2>&1 \
+            | tee target/staging-audit/browser-test.log
 
       - name: Publish audit summary
         if: always()
@@ -110,7 +114,7 @@ jobs:
             cat target/staging-audit/report.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo "# BurnCloud Staging Browser Audit" >> "$GITHUB_STEP_SUMMARY"
-            echo "The browser audit did not reach report generation. Inspect the uploaded server log and partial screenshots." >> "$GITHUB_STEP_SUMMARY"
+            echo "The browser audit did not reach report generation. Inspect browser-test.log, server.log, and partial screenshots in the uploaded artifact." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload staging visual evidence
