@@ -3,7 +3,7 @@ doc_id: agent.test-matrix
 doc_type: verification-guide
 truth: source-derived
 status: active
-audited_against: c7107382b8479deb44f992e9e5ae8dcac5efb417
+audited_against: b49df42d9660833974e80534ad738e6a51d80926
 ---
 
 # Test Matrix
@@ -30,9 +30,11 @@ Do not claim tests passed unless they actually ran in the current environment.
 | Channel Console CRUD | server/channel/service/database tests + `api/channel.rs`, `e2e/channel_flow.rs` |
 | API key/token flows | token/service/database tests + `e2e/api_key_flow.rs` and related API tests |
 | Billing / usage | router + service-billing/database-billing tests + billing/provider integration tests such as `api/gemini_billing.rs` when relevant |
-| UI / Console styling | affected client crate + `e2e/console_pages.rs`, `css_visual_acceptance.rs`, `aesthetic_acceptance.rs` as applicable |
+| UI / Console behavior or styling | affected client crate + static UI/functional/product guards + `staging_browser` runtime audit; use older `e2e/console_pages.rs`, `css_visual_acceptance.rs`, `aesthetic_acceptance.rs` only after confirming their route/text expectations are still current |
 | Shared database utilities | affected database crates; test both dialect-sensitive code paths where tests support them |
 | Workspace dependency/API changes | targeted tests first, then `cargo check --workspace` and the relevant integration suites |
+
+For current Dioxus visual/click-path work, see `docs/ui/staging-browser.md`. A passing compile is not visual acceptance.
 
 ## Test discovery rule
 
