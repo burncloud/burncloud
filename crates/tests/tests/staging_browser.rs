@@ -1,11 +1,9 @@
-//! Live browser audit for the current BurnCloud Dioxus console.
+//! Runtime browser audit for the current BurnCloud Dioxus console.
 //!
-//! This test is intentionally separate from the legacy E2E page suite. It drives the
-//! current product routes against a real running BurnCloud server, real SQLite state,
-//! and real management/auth APIs, while using a dummy upstream that is never invoked.
-//!
-//! Run with a server already listening at E2E_BASE_URL and agent-browser installed:
-//!   cargo test -p burncloud-tests --test staging_browser -- --ignored --nocapture
+//! This test deliberately does not import the legacy page E2E modules. It uses the
+//! same agent-browser CLI, but its route/text contract is tied to the current UI.
+//! A dummy upstream is seeded for realistic provider/model/route state and is never
+//! invoked, so no paid upstream credential is required.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 
@@ -20,16 +18,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Deserialize)]
-struct BrowserRawResponse {
+struct BrowserResponse {
     success: Option<bool>,
     data: Option<Value>,
     error: Option<String>,
-}
-
-#[derive(Debug)]
-struct Snapshot {
-    text: String,
-    refs: Value,
 }
 
 struct StagingBrowser {
@@ -48,7 +40,7 @@ impl StagingBrowser {
         })
     }
 
-    fn exec(&self, args: &[&str]) -> Result<BrowserRawResponse> {
+    fn exec(&self, args: &[&str]) -> Result<BrowserResponse> {
         let output = Command::new("agent-browser")
             .arg("--json")
             .arg("--session")
@@ -64,7 +56,7 @@ impl StagingBrowser {
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let parsed = serde_json::from_str::<BrowserRawResponse>(&stdout).unwrap_or(BrowserRawResponse {
+        let parsed = serde_json::from_str::<BrowserResponse>(&stdout).unwrap_or(BrowserResponse {
             success: Some(output.status.success()),
             data: None,
             error: if stderr.trim().is_empty() { None } else { Some(stderr.clone()) },
@@ -90,48 +82,41 @@ impl StagingBrowser {
     }
 
     fn set_viewport(&self, width: u32, height: u32) -> Result<()> {
-        self.exec(&[
-            "set",
-            "viewport",
-            &width.to_string(),
-            &height.to_string(),
-        ])?;
+        let width = width.to_string();
+        let height = height.to_string();
+        self.exec(&["set", "viewport", &width, &height])?;
         Ok(())
     }
 
     fn eval(&self, js: &str) -> Result<Value> {
         let response = self.exec(&["eval", js])?;
-        Ok(response
-            .data
-            .and_then(|data| data.get("result").cloned().or(Some(data)))
-            .unwrap_or(Value::Null))
-    }
-
-    fn snapshot(&self) -> Result<Snapshot> {
-        let response = self.exec(&["snapshot", "-i"])?;
         let data = response.data.unwrap_or(Value::Null);
-        Ok(Snapshot {
-            text: data
-                .get("snapshot")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            refs: data.get("refs").cloned().unwrap_or(Value::Null),
-        })
+        if let Some(result) = data.get("result").cloned() {
+            Ok(result)
+        } else {
+            Ok(data)
+        }
     }
 
-    fn wait_for_text(&self, expected: &str, timeout: Duration) -> Result<Snapshot> {
+    fn body_text(&self) -> Result<String> {
+        Ok(self
+            .eval("document.body?.innerText || ''")?
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
+    }
+
+    fn wait_for_text(&self, expected: &str, timeout: Duration) -> Result<String> {
         let start = Instant::now();
         let mut last = String::new();
         while start.elapsed() < timeout {
-            let snapshot = self.snapshot()?;
-            if snapshot.text.contains(expected) {
-                return Ok(snapshot);
+            last = self.body_text()?;
+            if last.contains(expected) {
+                return Ok(last);
             }
-            last = snapshot.text;
-            thread::sleep(Duration::from_millis(350));
+            thread::sleep(Duration::from_millis(300));
         }
-        bail!("timeout waiting for text '{expected}'. Last snapshot: {last}")
+        bail!("timeout waiting for text '{expected}'. Last body text: {last}")
     }
 
     fn wait_for_path(&self, expected: &str, timeout: Duration) -> Result<()> {
@@ -152,29 +137,23 @@ impl StagingBrowser {
         Ok(())
     }
 
-    fn click_by_name(&self, role: &str, needle: &str, timeout: Duration) -> Result<()> {
+    fn click_role(&self, role: &str, name: &str, timeout: Duration) -> Result<()> {
         let start = Instant::now();
+        let mut last_error = String::new();
         while start.elapsed() < timeout {
-            let snapshot = self.snapshot()?;
-            if let Some(refs) = snapshot.refs.as_object() {
-                for (ref_id, info) in refs {
-                    let found_role = info.get("role").and_then(Value::as_str).unwrap_or_default();
-                    let name = info.get("name").and_then(Value::as_str).unwrap_or_default();
-                    if found_role == role && name.contains(needle) {
-                        self.exec(&["click", ref_id])?;
-                        return Ok(());
-                    }
-                }
+            match self.exec(&["find", "role", role, "click", "--name", name]) {
+                Ok(_) => return Ok(()),
+                Err(error) => last_error = error.to_string(),
             }
             thread::sleep(Duration::from_millis(250));
         }
-        bail!("could not find {role} containing '{needle}'")
+        bail!("could not click {role} named '{name}': {last_error}")
     }
 
     fn screenshot_full(&self, name: &str) -> Result<()> {
         let path = self.screenshot_dir.join(format!("{name}.png"));
-        let path_text = path.to_string_lossy().to_string();
-        self.exec(&["screenshot", "--full", &path_text])?;
+        let path = path.to_string_lossy().to_string();
+        self.exec(&["screenshot", "--full", &path])?;
         Ok(())
     }
 
@@ -356,10 +335,10 @@ fn capture_page(
     pages: &mut Vec<PageAudit>,
 ) -> Result<()> {
     browser.wait_for_path(expected_path, Duration::from_secs(15))?;
-    let snapshot = browser.wait_for_text(expected_text, Duration::from_secs(20))?;
+    let body = browser.wait_for_text(expected_text, Duration::from_secs(20))?;
     for text in extra_text {
-        if !snapshot.text.contains(text) {
-            bail!("{name}: expected page content '{text}' was not present. Snapshot: {}", snapshot.text);
+        if !body.contains(text) {
+            bail!("{name}: expected page content '{text}' was not present. Body: {body}");
         }
     }
     browser.screenshot_full(name)?;
@@ -388,7 +367,7 @@ fn click_page(
     extra_text: &[&str],
     pages: &mut Vec<PageAudit>,
 ) -> Result<()> {
-    browser.click_by_name("link", label, Duration::from_secs(10))?;
+    browser.click_role("link", label, Duration::from_secs(10))?;
     capture_page(browser, name, path, expected_text, extra_text, pages)
 }
 
@@ -399,7 +378,10 @@ fn write_report(dir: &Path, report: &AuditReport) -> Result<()> {
     let mut md = String::from("# BurnCloud Staging Browser Audit\n\n");
     md.push_str(&format!("- Base URL: `{}`\n", report.base_url));
     md.push_str(&format!("- Viewport: **{}**\n", report.viewport));
-    md.push_str(&format!("- Seeded provider/model: **{} / {}**\n\n", report.seeded_provider, report.seeded_model));
+    md.push_str(&format!(
+        "- Seeded provider/model: **{} / {}**\n\n",
+        report.seeded_provider, report.seeded_model
+    ));
     md.push_str("| Page | Path | Viewport | Scroll | Overflow | Buttons | Links | Screenshot |\n");
     md.push_str("|---|---|---:|---:|---|---:|---:|---|\n");
     for page in &report.pages {
@@ -426,17 +408,16 @@ fn write_report(dir: &Path, report: &AuditReport) -> Result<()> {
 async fn current_console_visual_and_click_path_audit() -> Result<()> {
     let base_url = base_url();
     let dir = audit_dir();
-    let screenshots = dir.join("screenshots");
     let (admin, password, customer) = seed_staging(&base_url).await?;
 
-    let browser = StagingBrowser::new(&base_url, screenshots)?;
+    let browser = StagingBrowser::new(&base_url, dir.join("screenshots"))?;
     browser.open("/login")?;
     browser.set_viewport(1440, 900)?;
     browser.wait_for_text("Sign in to BurnCloud", Duration::from_secs(20))?;
     browser.screenshot_full("00-login")?;
     browser.fill("input[type='text']", &admin)?;
     browser.fill("input[type='password']", &password)?;
-    browser.click_by_name("button", "Sign in to Console", Duration::from_secs(10))?;
+    browser.click_role("button", "Sign in to Console", Duration::from_secs(10))?;
 
     let mut pages = Vec::new();
     capture_page(
@@ -449,10 +430,10 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
     )?;
 
     click_page(&browser, "Providers", "02-providers", "/providers", "Provider inventory", &["Staging Dummy Provider", "staging-model"], &mut pages)?;
-    browser.click_by_name("button", "Add Provider", Duration::from_secs(8))?;
+    browser.click_role("button", "Add Provider", Duration::from_secs(8))?;
     browser.wait_for_text("Connect an upstream and define the models it can serve.", Duration::from_secs(8))?;
     browser.screenshot_full("02a-provider-add-drawer")?;
-    browser.click_by_name("button", "Cancel", Duration::from_secs(5))?;
+    browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
     click_page(&browser, "Models", "03-models", "/models", "Model availability", &["staging-model", "Single upstream", "No failover redundancy"], &mut pages)?;
     click_page(&browser, "Routes", "04-routes", "/routes", "Routing Groups", &["default", "Single upstream"], &mut pages)?;
@@ -462,16 +443,16 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
     click_page(&browser, "Billing", "08-billing", "/billing", "Billing", &[], &mut pages)?;
 
     click_page(&browser, "API Keys", "09-api-keys", "/keys", "Credentials", &["staging-admin"], &mut pages)?;
-    browser.click_by_name("button", "Create API Key", Duration::from_secs(8))?;
+    browser.click_role("button", "Create API Key", Duration::from_secs(8))?;
     browser.wait_for_text("Choose which account will own this router credential.", Duration::from_secs(8))?;
     browser.screenshot_full("09a-api-key-create-drawer")?;
-    browser.click_by_name("button", "Cancel", Duration::from_secs(5))?;
+    browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
     click_page(&browser, "Customers", "10-customers", "/customers", "Customers", &["staging-customer"], &mut pages)?;
-    browser.click_by_name("button", "Create Customer", Duration::from_secs(8))?;
+    browser.click_role("button", "Create Customer", Duration::from_secs(8))?;
     browser.wait_for_text("Create a business account that can own wallet balance and API access.", Duration::from_secs(8))?;
     browser.screenshot_full("10a-customer-create-drawer")?;
-    browser.click_by_name("button", "Cancel", Duration::from_secs(5))?;
+    browser.click_role("button", "Cancel", Duration::from_secs(5))?;
 
     click_page(&browser, "Guardrails", "11-guardrails", "/guardrails", "Guardrails", &[], &mut pages)?;
     click_page(&browser, "Team", "12-team", "/team", "Environment operators", &["staging-admin"], &mut pages)?;
@@ -488,7 +469,7 @@ async fn current_console_visual_and_click_path_audit() -> Result<()> {
     };
     write_report(&dir, &report)?;
 
-    browser.click_by_name("button", "Sign Out", Duration::from_secs(8))?;
+    browser.click_role("button", "Sign Out", Duration::from_secs(8))?;
     browser.wait_for_path("/login", Duration::from_secs(10))?;
     browser.wait_for_text("Sign in to BurnCloud", Duration::from_secs(10))?;
     browser.screenshot_full("99-signed-out")?;
