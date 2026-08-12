@@ -83,6 +83,7 @@ pub fn App() -> Element {
             title { "BurnCloud" }
             style { dangerous_inner_html: include_str!("styles.css") }
             style { dangerous_inner_html: include_str!("critical_pages.css") }
+            style { dangerous_inner_html: include_str!("product_ui.css") }
             style { dangerous_inner_html: include_str!("desktop_chrome.css") }
         }
         DesktopChrome {}

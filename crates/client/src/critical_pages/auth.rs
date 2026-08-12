@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::{
     app::Route,
     backend::{use_auth, AuthService, ClientState, CurrentUser},
-    components::{Badge, Icon, Logo},
+    components::{Badge, Logo},
 };
 
 #[component]
@@ -15,21 +15,20 @@ pub fn Login() -> Element {
 
     let mut username = use_signal(move || last_username);
     let mut password = use_signal(String::new);
-    let mut passkey = use_signal(|| false);
+    let mut recovery_open = use_signal(|| false);
+    let mut recovery_email = use_signal(String::new);
     let mut loading = use_signal(|| false);
+    let mut recovery_loading = use_signal(|| false);
     let mut status = use_signal(String::new);
     let mut is_error = use_signal(|| false);
+    let mut recovery_status = use_signal(String::new);
+    let mut recovery_error = use_signal(|| false);
 
     use_effect(move || {
         if was_authenticated {
             auth.clear();
         }
     });
-
-    let submit_nav = navigator.clone();
-    let forgot_username = username;
-    let mut forgot_status = status;
-    let mut forgot_error = is_error;
 
     rsx! {
         div { class: "auth-page",
@@ -47,187 +46,159 @@ pub fn Login() -> Element {
             main { class: "auth-main",
                 div { class: "auth-wrap",
                     div { class: "auth-intro",
-                        Badge { text: "BurnCloud Secure Console", tone: "brand" }
-                        h1 { "Sign in to BurnCloud" }
-                        p { "Authenticate against the local BurnCloud server and resume your protected console session." }
+                        Badge { text: "BurnCloud Console", tone: "brand" }
+                        h1 { "Sign in" }
+                        p { "Use your BurnCloud username and password to access the connected environment." }
                     }
 
                     div { class: "card auth-card",
-                        div { class: "auth-tabs",
-                            button {
-                                r#type: "button",
-                                class: if !passkey() { "auth-tab active" } else { "auth-tab" },
-                                onclick: move |_| {
-                                    passkey.set(false);
-                                    status.set(String::new());
-                                    is_error.set(false);
-                                },
-                                "Password"
+                        form {
+                            class: "auth-form",
+                            onsubmit: move |event| {
+                                event.prevent_default();
+                                let user_name = username().trim().to_string();
+                                let user_password = password();
+                                if user_name.is_empty() || user_password.is_empty() {
+                                    is_error.set(true);
+                                    status.set("Username and password are required.".to_string());
+                                    return;
+                                }
+                                loading.set(true);
+                                is_error.set(false);
+                                status.set("Signing in…".to_string());
+                                let nav = navigator.clone();
+                                spawn(async move {
+                                    match AuthService::login(&user_name, &user_password).await {
+                                        Ok(response) => {
+                                            let user = CurrentUser {
+                                                id: response.id,
+                                                username: response.username,
+                                                roles: response.roles,
+                                            };
+                                            auth.set(response.token, user, true);
+                                            loading.set(false);
+                                            status.set(String::new());
+                                            nav.replace(Route::Overview {});
+                                        }
+                                        Err(error) => {
+                                            loading.set(false);
+                                            is_error.set(true);
+                                            status.set(format!("Sign in failed: {error}"));
+                                        }
+                                    }
+                                });
+                            },
+                            div { class: "field",
+                                label { "Username" }
+                                input {
+                                    class: "input",
+                                    r#type: "text",
+                                    autocomplete: "username",
+                                    required: true,
+                                    value: "{username}",
+                                    placeholder: "Your BurnCloud username",
+                                    disabled: loading(),
+                                    oninput: move |event| username.set(event.value()),
+                                }
                             }
+
+                            div { class: "field",
+                                div { class: "row between",
+                                    label { "Password" }
+                                    button {
+                                        r#type: "button",
+                                        class: "button button-ghost button-sm",
+                                        disabled: loading(),
+                                        onclick: move |_| {
+                                            recovery_open.set(!recovery_open());
+                                            recovery_status.set(String::new());
+                                            recovery_error.set(false);
+                                        },
+                                        "Forgot password?"
+                                    }
+                                }
+                                input {
+                                    class: "input",
+                                    r#type: "password",
+                                    autocomplete: "current-password",
+                                    required: true,
+                                    value: "{password}",
+                                    placeholder: "Enter your password",
+                                    disabled: loading(),
+                                    oninput: move |event| password.set(event.value()),
+                                }
+                            }
+
+                            if !status().is_empty() {
+                                div { class: if is_error() { "terminal auth-status auth-status-error" } else { "terminal auth-status" }, "{status}" }
+                            }
+
                             button {
-                                r#type: "button",
-                                class: if passkey() { "auth-tab active" } else { "auth-tab" },
-                                onclick: move |_| {
-                                    passkey.set(true);
-                                    status.set("Passkey authentication is not exposed by the current BurnCloud server API yet.".to_string());
-                                    is_error.set(false);
-                                },
-                                "◉ Passkey"
+                                r#type: "submit",
+                                class: "button button-primary button-lg",
+                                style: "width:100%",
+                                disabled: loading(),
+                                if loading() { "Signing in…" } else { "Sign in to Console" }
                             }
                         }
 
-                        if !passkey() {
-                            div { class: "auth-form",
+                        if recovery_open() {
+                            div { class: "form-section", style: "margin-top:18px",
+                                div { class: "form-section-head",
+                                    strong { "Password recovery" }
+                                    small { "Enter the email stored on your BurnCloud account. Recovery is separate from the username you use to sign in." }
+                                }
                                 div { class: "field",
-                                    label { "Username" }
-                                    div { class: "auth-input-wrap",
-                                        span { class: "auth-input-icon", "@" }
-                                        input {
-                                            class: "input auth-input-with-icon",
-                                            r#type: "text",
-                                            required: true,
-                                            value: "{username}",
-                                            placeholder: "your BurnCloud username",
-                                            disabled: loading(),
-                                            oninput: move |evt| username.set(evt.value()),
-                                        }
+                                    label { "Account email" }
+                                    input {
+                                        class: "input",
+                                        r#type: "email",
+                                        autocomplete: "email",
+                                        value: "{recovery_email}",
+                                        placeholder: "name@company.com",
+                                        disabled: recovery_loading(),
+                                        oninput: move |event| recovery_email.set(event.value()),
                                     }
                                 }
-
-                                div { class: "field",
-                                    div { class: "row between",
-                                        label { "Password" }
-                                        button {
-                                            r#type: "button",
-                                            class: "button button-ghost button-sm",
-                                            disabled: loading(),
-                                            onclick: move |_| {
-                                                let account = forgot_username().trim().to_string();
-                                                if account.is_empty() || !account.contains('@') {
-                                                    forgot_error.set(true);
-                                                    forgot_status.set("Password reset requires the account email address. Enter the email in Username if your account uses email as its username, or use the registered email from the recovery flow.".to_string());
-                                                    return;
-                                                }
-                                                forgot_error.set(false);
-                                                forgot_status.set("Requesting password reset…".to_string());
-                                                spawn(async move {
-                                                    match AuthService::forgot_password(&account).await {
-                                                        Ok(()) => {
-                                                            forgot_error.set(false);
-                                                            forgot_status.set("Password reset request accepted by the BurnCloud server.".to_string());
-                                                        }
-                                                        Err(error) => {
-                                                            forgot_error.set(true);
-                                                            forgot_status.set(format!("Password reset failed: {error}"));
-                                                        }
-                                                    }
-                                                });
-                                            },
-                                            "Forgot?"
-                                        }
-                                    }
-                                    div { class: "auth-input-wrap",
-                                        span { class: "auth-input-icon", "•" }
-                                        input {
-                                            class: "input auth-input-with-icon",
-                                            r#type: "password",
-                                            required: true,
-                                            value: "{password}",
-                                            placeholder: "Enter password",
-                                            disabled: loading(),
-                                            oninput: move |evt| password.set(evt.value()),
-                                            onkeydown: move |evt| {
-                                                if evt.key() == Key::Enter && !loading() {
-                                                    let u = username().trim().to_string();
-                                                    let p = password();
-                                                    if u.is_empty() || p.is_empty() {
-                                                        is_error.set(true);
-                                                        status.set("Username and password are required.".to_string());
-                                                        return;
-                                                    }
-                                                    loading.set(true);
-                                                    is_error.set(false);
-                                                    status.set("Authenticating with BurnCloud…".to_string());
-                                                    let nav = submit_nav.clone();
-                                                    spawn(async move {
-                                                        match AuthService::login(&u, &p).await {
-                                                            Ok(response) => {
-                                                                let user = CurrentUser { id: response.id, username: response.username, roles: response.roles };
-                                                                auth.set(response.token, user, true);
-                                                                loading.set(false);
-                                                                status.set(String::new());
-                                                                nav.replace(Route::Overview {});
-                                                            }
-                                                            Err(error) => {
-                                                                loading.set(false);
-                                                                is_error.set(true);
-                                                                status.set(format!("Sign in failed: {error}"));
-                                                            }
-                                                        }
-                                                    });
-                                                }
-                                            },
-                                        }
-                                    }
+                                if !recovery_status().is_empty() {
+                                    div { class: if recovery_error() { "terminal auth-status auth-status-error" } else { "terminal auth-status" }, "{recovery_status}" }
                                 }
-
-                                if !status().is_empty() {
-                                    div { class: if is_error() { "terminal auth-status auth-status-error" } else { "terminal auth-status" }, "{status}" }
-                                }
-
                                 button {
                                     r#type: "button",
-                                    class: "button button-primary",
-                                    style: "width:100%",
-                                    disabled: loading(),
+                                    class: "button button-secondary",
+                                    disabled: recovery_loading(),
                                     onclick: move |_| {
-                                        let u = username().trim().to_string();
-                                        let p = password();
-                                        if u.is_empty() || p.is_empty() {
-                                            is_error.set(true);
-                                            status.set("Username and password are required.".to_string());
+                                        let email = recovery_email().trim().to_string();
+                                        if email.is_empty() || !email.contains('@') {
+                                            recovery_error.set(true);
+                                            recovery_status.set("Enter the email address attached to the account.".to_string());
                                             return;
                                         }
-                                        loading.set(true);
-                                        is_error.set(false);
-                                        status.set("Authenticating with BurnCloud…".to_string());
-                                        let nav = navigator.clone();
+                                        recovery_loading.set(true);
+                                        recovery_error.set(false);
+                                        recovery_status.set("Requesting password recovery…".to_string());
                                         spawn(async move {
-                                            match AuthService::login(&u, &p).await {
-                                                Ok(response) => {
-                                                    let user = CurrentUser { id: response.id, username: response.username, roles: response.roles };
-                                                    auth.set(response.token, user, true);
-                                                    loading.set(false);
-                                                    status.set(String::new());
-                                                    nav.replace(Route::Overview {});
+                                            match AuthService::forgot_password(&email).await {
+                                                Ok(()) => {
+                                                    recovery_loading.set(false);
+                                                    recovery_error.set(false);
+                                                    recovery_status.set("Password recovery request accepted by the BurnCloud server.".to_string());
                                                 }
                                                 Err(error) => {
-                                                    loading.set(false);
-                                                    is_error.set(true);
-                                                    status.set(format!("Sign in failed: {error}"));
+                                                    recovery_loading.set(false);
+                                                    recovery_error.set(true);
+                                                    recovery_status.set(format!("Password recovery failed: {error}"));
                                                 }
                                             }
                                         });
                                     },
-                                    if loading() { "Signing in…" } else { "Sign in to Console →" }
+                                    if recovery_loading() { "Requesting…" } else { "Request Password Recovery" }
                                 }
-                            }
-                        } else {
-                            div { class: "auth-form",
-                                div { style: "text-align:center",
-                                    div { class: "metric-icon tone-purple", style: "margin:0 auto;width:64px;height:64px",
-                                        Icon { name: "lock" }
-                                    }
-                                    h3 { "Passkey authentication" }
-                                    p { class: "small muted", "The current BurnCloud backend exposes password/JWT authentication, OAuth URL generation and password recovery, but no passkey challenge endpoint." }
-                                }
-                                div { class: "terminal auth-status", "Backend support required before this control can be enabled." }
-                                button { r#type: "button", class: "button button-secondary", style: "width:100%", disabled: true, "Passkey challenge unavailable" }
                             }
                         }
                     }
 
-                    p { class: "tiny subtle mono", style: "text-align:center", "Session token is stored locally for authenticated console API calls." }
+                    p { class: "tiny subtle", style: "text-align:center", "BurnCloud stores the authenticated session locally so console API calls can use your JWT." }
                 }
             }
 
@@ -240,11 +211,9 @@ pub fn Login() -> Element {
 pub fn Register() -> Element {
     let navigator = use_navigator();
     let auth = use_auth();
-    let mut tier = use_signal(|| 1usize);
     let mut username = use_signal(String::new);
     let mut email = use_signal(String::new);
     let mut password = use_signal(String::new);
-    let mut company = use_signal(String::new);
     let mut terms = use_signal(|| false);
     let mut loading = use_signal(|| false);
     let mut status = use_signal(String::new);
@@ -264,62 +233,89 @@ pub fn Register() -> Element {
             }
 
             main { class: "auth-main",
-                div { class: "auth-wrap register",
+                div { class: "auth-wrap",
                     div { class: "auth-intro",
-                        Badge { text: "Create a real BurnCloud account", tone: "success" }
-                        h1 { "Open Your Gateway Console" }
-                        p { "This form now creates the account through /api/auth/register and uses the returned JWT immediately." }
+                        Badge { text: "BurnCloud Account", tone: "success" }
+                        h1 { "Create your account" }
+                        p { "Create the identity you will use to sign in to this BurnCloud environment." }
                     }
 
                     div { class: "card auth-card",
-                        div { class: "auth-form",
-                            div { class: "field",
-                                label { "Onboarding Account Preference" }
-                                p { class: "tiny subtle", "Visual preference only: the current backend does not persist billing tiers during registration." }
-                                div { class: "tier-grid",
-                                    TierButton { index: 0, current: tier(), name: "Free Sandbox", price: "$0 Free", detail: "Onboarding preference", on_select: move |index| tier.set(index) }
-                                    TierButton { index: 1, current: tier(), name: "Pay-As-You-Go", price: "Usage Based", detail: "Onboarding preference", popular: true, on_select: move |index| tier.set(index) }
-                                    TierButton { index: 2, current: tier(), name: "Enterprise", price: "Volume", detail: "Onboarding preference", on_select: move |index| tier.set(index) }
+                        form {
+                            class: "auth-form",
+                            onsubmit: move |event| {
+                                event.prevent_default();
+                                let user_name = username().trim().to_string();
+                                let account_email = email().trim().to_string();
+                                let user_password = password();
+                                if !terms() {
+                                    is_error.set(true);
+                                    status.set("Accept the Terms of Service and Privacy Policy to continue.".to_string());
+                                    return;
                                 }
+                                if user_name.is_empty() {
+                                    is_error.set(true);
+                                    status.set("Username is required.".to_string());
+                                    return;
+                                }
+                                if user_password.len() < 8 {
+                                    is_error.set(true);
+                                    status.set("Password must contain at least 8 characters.".to_string());
+                                    return;
+                                }
+                                loading.set(true);
+                                is_error.set(false);
+                                status.set("Creating your BurnCloud account…".to_string());
+                                let nav = navigator.clone();
+                                spawn(async move {
+                                    let email_arg = if account_email.is_empty() { None } else { Some(account_email.as_str()) };
+                                    match AuthService::register(&user_name, &user_password, email_arg).await {
+                                        Ok(response) => {
+                                            let user = CurrentUser {
+                                                id: response.id,
+                                                username: response.username,
+                                                roles: response.roles,
+                                            };
+                                            auth.set(response.token, user, true);
+                                            loading.set(false);
+                                            status.set(String::new());
+                                            nav.replace(Route::Overview {});
+                                        }
+                                        Err(error) => {
+                                            loading.set(false);
+                                            is_error.set(true);
+                                            status.set(format!("Account creation failed: {error}"));
+                                        }
+                                    }
+                                });
+                            },
+                            div { class: "field",
+                                label { "Username" }
+                                input {
+                                    class: "input",
+                                    r#type: "text",
+                                    autocomplete: "username",
+                                    required: true,
+                                    value: "{username}",
+                                    placeholder: "Choose a BurnCloud username",
+                                    disabled: loading(),
+                                    oninput: move |event| username.set(event.value()),
+                                }
+                                span { class: "tiny subtle", "This is the identity used on the Sign In page." }
                             }
 
-                            div { class: "auth-form-grid",
-                                div { class: "field",
-                                    label { "Username" }
-                                    input {
-                                        class: "input",
-                                        r#type: "text",
-                                        required: true,
-                                        value: "{username}",
-                                        placeholder: "burncloud-admin",
-                                        disabled: loading(),
-                                        oninput: move |evt| username.set(evt.value()),
-                                    }
-                                }
-                                div { class: "field",
-                                    label { "Company / Team" }
-                                    input {
-                                        class: "input",
-                                        r#type: "text",
-                                        value: "{company}",
-                                        placeholder: "Optional UI note",
-                                        disabled: loading(),
-                                        oninput: move |evt| company.set(evt.value()),
-                                    }
-                                    span { class: "tiny subtle", "Not persisted by the current registration API." }
-                                }
-                            }
-
                             div { class: "field",
-                                label { "Email" }
+                                label { "Email (recommended)" }
                                 input {
                                     class: "input",
                                     r#type: "email",
+                                    autocomplete: "email",
                                     value: "{email}",
                                     placeholder: "name@company.com",
                                     disabled: loading(),
-                                    oninput: move |evt| email.set(evt.value()),
+                                    oninput: move |event| email.set(event.value()),
                                 }
+                                span { class: "tiny subtle", "Add an email if you want to use the server's password-recovery flow." }
                             }
 
                             div { class: "field",
@@ -327,11 +323,12 @@ pub fn Register() -> Element {
                                 input {
                                     class: "input",
                                     r#type: "password",
+                                    autocomplete: "new-password",
                                     required: true,
                                     value: "{password}",
                                     placeholder: "At least 8 characters",
                                     disabled: loading(),
-                                    oninput: move |evt| password.set(evt.value()),
+                                    oninput: move |event| password.set(event.value()),
                                 }
                             }
 
@@ -340,7 +337,7 @@ pub fn Register() -> Element {
                                     r#type: "checkbox",
                                     checked: terms(),
                                     disabled: loading(),
-                                    onclick: move |_| terms.set(!terms()),
+                                    onchange: move |_| terms.set(!terms()),
                                 }
                                 span { "I agree to BurnCloud's Terms of Service and Privacy Policy." }
                             }
@@ -350,84 +347,20 @@ pub fn Register() -> Element {
                             }
 
                             button {
-                                r#type: "button",
+                                r#type: "submit",
                                 class: "button button-primary button-lg",
                                 style: "width:100%",
                                 disabled: loading(),
-                                onclick: move |_| {
-                                    let u = username().trim().to_string();
-                                    let e = email().trim().to_string();
-                                    let p = password();
-                                    if !terms() {
-                                        is_error.set(true);
-                                        status.set("Please accept the Terms of Service to proceed.".to_string());
-                                        return;
-                                    }
-                                    if u.is_empty() || p.is_empty() {
-                                        is_error.set(true);
-                                        status.set("Username and password are required.".to_string());
-                                        return;
-                                    }
-                                    if p.len() < 8 {
-                                        is_error.set(true);
-                                        status.set("Password must contain at least 8 characters.".to_string());
-                                        return;
-                                    }
-                                    loading.set(true);
-                                    is_error.set(false);
-                                    status.set("Creating account on BurnCloud…".to_string());
-                                    let nav = navigator.clone();
-                                    spawn(async move {
-                                        let email_arg = if e.is_empty() { None } else { Some(e.as_str()) };
-                                        match AuthService::register(&u, &p, email_arg).await {
-                                            Ok(response) => {
-                                                let user = CurrentUser { id: response.id, username: response.username, roles: response.roles };
-                                                auth.set(response.token, user, true);
-                                                loading.set(false);
-                                                status.set(String::new());
-                                                nav.replace(Route::Overview {});
-                                            }
-                                            Err(error) => {
-                                                loading.set(false);
-                                                is_error.set(true);
-                                                status.set(format!("Registration failed: {error}"));
-                                            }
-                                        }
-                                    });
-                                },
-                                if loading() { "Creating account…" } else { "Create Account & Open Console →" }
+                                if loading() { "Creating account…" } else { "Create Account" }
                             }
                         }
                     }
 
-                    p { class: "tiny subtle mono", style: "text-align:center", "Registration persists only fields supported by the current BurnCloud backend." }
+                    div { class: "product-note", "Registration now shows only fields the current BurnCloud backend can actually persist. Billing plans, company metadata, and passkeys will appear only when corresponding server capabilities exist." }
                 }
             }
 
             AuthFooter { alternate: "login" }
-        }
-    }
-}
-
-#[component]
-fn TierButton(
-    index: usize,
-    current: usize,
-    name: &'static str,
-    price: &'static str,
-    detail: &'static str,
-    #[props(default)] popular: bool,
-    on_select: EventHandler<usize>,
-) -> Element {
-    rsx! {
-        button {
-            r#type: "button",
-            class: if current == index { "tier active" } else { "tier" },
-            onclick: move |_| on_select.call(index),
-            if popular { span { class: "popular", "POPULAR" } }
-            strong { "{name}" }
-            span { class: "price", "{price}" }
-            small { "{detail}" }
         }
     }
 }
