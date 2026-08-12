@@ -3,7 +3,7 @@ use crate::AppState;
 use axum::{
     body::Body,
     extract::{Json, State},
-    http::{Request, StatusCode},
+    http::{Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -66,6 +66,118 @@ pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
         &Validation::default(),
     )?;
     Ok(token_data.claims)
+}
+
+/// Resolve whether the authenticated principal currently has the admin role.
+/// Roles are read from the database instead of trusting client-provided claims.
+pub async fn is_admin(state: &AppState, claims: &Claims) -> Result<bool, StatusCode> {
+    state
+        .user_service
+        .get_user_roles(&state.db, &claims.sub)
+        .await
+        .map(|roles| roles.iter().any(|role| role == "admin"))
+        .map_err(|e| {
+            tracing::error!(user_id = %claims.sub, error = %e, "Failed to resolve admin role");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+/// Authorization middleware for administrator-only Console routes.
+/// Authentication must run outside this layer so `Claims` are already present.
+#[tracing::instrument(skip_all)]
+pub async fn admin_middleware(
+    State(state): State<AppState>,
+    req: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let claims = req
+        .extensions()
+        .get::<Claims>()
+        .cloned()
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    if is_admin(&state, &claims).await? {
+        Ok(next.run(req).await)
+    } else {
+        Err(StatusCode::FORBIDDEN)
+    }
+}
+
+fn is_data_plane_path(path: &str) -> bool {
+    path == "/v1"
+        || path.starts_with("/v1/")
+        || path == "/api/v1"
+        || path.starts_with("/api/v1/")
+}
+
+fn is_sensitive_internal_mutation(method: &Method, path: &str) -> bool {
+    method == Method::POST
+        && matches!(
+            path,
+            "/console/internal/prices/sync" | "/console/internal/circuit-breaker/trip-all"
+        )
+}
+
+/// Enforce the trust boundary between the management plane, data plane, and
+/// sensitive internal control-plane mutations.
+///
+/// Invariants:
+/// - a Console JWT is never accepted as an inference credential;
+/// - sensitive internal POST endpoints fail closed unless
+///   `BURNCLOUD_INTERNAL_SECRET` is configured and presented.
+#[tracing::instrument(skip_all)]
+pub async fn security_boundary_middleware(
+    req: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let path = req.uri().path();
+
+    if is_sensitive_internal_mutation(req.method(), path) {
+        let expected = std::env::var("BURNCLOUD_INTERNAL_SECRET")
+            .ok()
+            .filter(|secret| !secret.is_empty())
+            .ok_or_else(|| {
+                tracing::error!(
+                    path,
+                    "Sensitive internal endpoint disabled: BURNCLOUD_INTERNAL_SECRET is not configured"
+                );
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+        let provided = req
+            .headers()
+            .get("x-internal-secret")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        if provided != expected {
+            tracing::warn!(path, "Rejected unauthorized internal mutation");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    if is_data_plane_path(path) {
+        let credential = req
+            .headers()
+            .get("authorization")
+            .and_then(|header| header.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .or_else(|| {
+                req.headers()
+                    .get("x-api-key")
+                    .and_then(|header| header.to_str().ok())
+            })
+            .or_else(|| {
+                req.headers()
+                    .get("x-goog-api-key")
+                    .and_then(|header| header.to_str().ok())
+            });
+
+        if credential.is_some_and(|token| verify_jwt(token).is_ok()) {
+            tracing::warn!(path, "Rejected Console JWT on data-plane route");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    Ok(next.run(req).await)
 }
 
 /// Public routes - no authentication required
