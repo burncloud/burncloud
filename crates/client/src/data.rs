@@ -1,0 +1,183 @@
+#[derive(Clone, Copy, PartialEq)]
+pub struct Model {
+    pub name: &'static str,
+    pub provider: &'static str,
+    pub tags: &'static [&'static str],
+    pub context: &'static str,
+    pub input: f64,
+    pub output: f64,
+    pub latency: u32,
+    pub reliability: f64,
+    pub quality: u32,
+}
+
+pub const MODELS: &[Model] = &[
+    Model { name:"claude-fable-5", provider:"Anthropic", tags:&["Agentic","Coding","Complex Tasks"], context:"200K tokens", input:3.00, output:15.00, latency:850, reliability:99.98, quality:99 },
+    Model { name:"gpt-5.5", provider:"OpenAI", tags:&["Reasoning","Coding","Multimodal"], context:"200K tokens", input:2.00, output:8.00, latency:620, reliability:99.99, quality:99 },
+    Model { name:"gemini-3.5-flash", provider:"Google", tags:&["Multimodal","Coding","Agentic"], context:"2M tokens", input:0.10, output:0.40, latency:410, reliability:99.97, quality:95 },
+    Model { name:"grok-4.5", provider:"xAI", tags:&["Real-time Search","Coding","Tool Calling"], context:"128K tokens", input:2.00, output:10.00, latency:510, reliability:99.92, quality:96 },
+    Model { name:"kimi-k2.7-code", provider:"Kimi", tags:&["Coding","High Speed","Agentic"], context:"200K tokens", input:0.20, output:0.80, latency:480, reliability:99.94, quality:94 },
+    Model { name:"Seed2.0 Pro", provider:"Doubao", tags:&["Chinese Context","Multimodal","Reasoning"], context:"128K tokens", input:0.15, output:0.60, latency:380, reliability:99.95, quality:93 },
+    Model { name:"Llama-4-Maverick", provider:"Meta", tags:&["Open Weights","Multimodal","Local Setup"], context:"128K tokens", input:0.00, output:0.00, latency:220, reliability:99.96, quality:91 },
+    Model { name:"Qwen/Qwen3.6-35B-A3B", provider:"Alibaba Cloud", tags:&["Open Weights","Chinese","Coding"], context:"128K tokens", input:0.10, output:0.30, latency:440, reliability:99.95, quality:93 },
+    Model { name:"DeepSeek-V4", provider:"DeepSeek", tags:&["Low Cost","Reasoning","Open Weights"], context:"128K tokens", input:0.14, output:0.28, latency:610, reliability:99.94, quality:97 },
+    Model { name:"GLM-5.2", provider:"GLM", tags:&["Long Context","Agentic","Chinese"], context:"1M tokens", input:0.50, output:1.50, latency:720, reliability:99.92, quality:95 },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct RouteRow {
+    pub name: &'static str,
+    pub environment: &'static str,
+    pub primary: &'static str,
+    pub fallback: &'static str,
+    pub traffic: u32,
+    pub success: f64,
+    pub latency: u32,
+    pub cost: f64,
+    pub status: &'static str,
+}
+
+pub const ROUTES: &[RouteRow] = &[
+    RouteRow { name:"production-chat-default", environment:"Production", primary:"claude-fable-5", fallback:"gpt-5.5 → gemini-3.5-flash → DeepSeek-V4", traffic:42, success:99.99, latency:580, cost:3.50, status:"Active" },
+    RouteRow { name:"cost-optimized-general", environment:"Production", primary:"DeepSeek-V4", fallback:"Qwen/Qwen3.6-35B-A3B → gemini-3.5-flash", traffic:28, success:99.94, latency:450, cost:0.21, status:"Active" },
+    RouteRow { name:"coding-agent-premium", environment:"Production", primary:"claude-fable-5", fallback:"gpt-5.5 → kimi-k2.7-code", traffic:18, success:99.97, latency:820, cost:4.80, status:"Active" },
+    RouteRow { name:"chinese-long-context", environment:"Production", primary:"GLM-5.2", fallback:"Qwen/Qwen3.6-35B-A3B → Seed2.0 Pro", traffic:9, success:99.91, latency:680, cost:0.60, status:"Active" },
+    RouteRow { name:"experimental-reasoning", environment:"Staging", primary:"DeepSeek-V4", fallback:"gpt-5.5 → claude-fable-5", traffic:3, success:99.70, latency:1100, cost:1.20, status:"Testing" },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct Provider {
+    pub name: &'static str,
+    pub status: &'static str,
+    pub usage: u32,
+    pub spend: u32,
+    pub incident: &'static str,
+    pub routes: u32,
+    pub latency: u32,
+}
+
+pub const PROVIDERS: &[Provider] = &[
+    Provider { name:"OpenAI", status:"Connected", usage:68, spend:2526, incident:"None", routes:14, latency:124 },
+    Provider { name:"Anthropic", status:"Degraded", usage:91, spend:34455, incident:"Timeout spike 42 mins ago", routes:9, latency:265 },
+    Provider { name:"Google AI", status:"Connected", usage:42, spend:283, incident:"None", routes:6, latency:110 },
+    Provider { name:"DeepSeek", status:"Connected", usage:85, spend:1278, incident:"None", routes:8, latency:450 },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct LogRow {
+    pub timestamp: &'static str,
+    pub request_id: &'static str,
+    pub customer: &'static str,
+    pub route: &'static str,
+    pub model: &'static str,
+    pub provider: &'static str,
+    pub status: &'static str,
+    pub latency: u32,
+    pub tokens: u32,
+    pub cost: f64,
+}
+
+pub const LOGS: &[LogRow] = &[
+    LogRow { timestamp:"10:42:18", request_id:"req_8f29a1", customer:"ETR Global", route:"production-chat-default", model:"claude-fable-5", provider:"Anthropic", status:"Success", latency:742, tokens:4820, cost:0.038 },
+    LogRow { timestamp:"10:42:11", request_id:"req_8f29a0", customer:"NovaDesk", route:"cost-optimized-general", model:"DeepSeek-V4", provider:"DeepSeek", status:"Fallback", latency:4120, tokens:2940, cost:0.006 },
+    LogRow { timestamp:"10:41:59", request_id:"req_8f299f", customer:"Internal", route:"coding-agent-premium", model:"claude-fable-5", provider:"Anthropic", status:"Timeout", latency:10000, tokens:7220, cost:0.108 },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct Customer {
+    pub name: &'static str,
+    pub environment: &'static str,
+    pub spend: u32,
+    pub budget: u32,
+    pub rps: u32,
+    pub route: &'static str,
+    pub keys: u32,
+    pub requests: u32,
+}
+
+pub const CUSTOMERS: &[Customer] = &[
+    Customer { name:"ETR Global", environment:"Production", spend:24820, budget:25000, rps:120, route:"production-chat-default", keys:4, requests:1204520 },
+    Customer { name:"NovaDesk", environment:"Production", spend:8420, budget:15000, rps:60, route:"cost-optimized-general", keys:2, requests:485120 },
+    Customer { name:"Internal", environment:"Development", spend:1280, budget:5000, rps:150, route:"coding-agent-premium", keys:8, requests:195200 },
+    Customer { name:"AeroTech", environment:"Production", spend:3120, budget:10000, rps:80, route:"production-chat-default", keys:3, requests:210850 },
+    Customer { name:"AlphaCorp", environment:"Staging", spend:1920, budget:2000, rps:30, route:"experimental-reasoning", keys:1, requests:94000 },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct ApiKeyRow {
+    pub name: &'static str,
+    pub masked: &'static str,
+    pub customer: &'static str,
+    pub perms: &'static str,
+    pub last_used: &'static str,
+    pub usage: &'static str,
+    pub rate: &'static str,
+    pub status: &'static str,
+}
+
+pub const API_KEYS: &[ApiKeyRow] = &[
+    ApiKeyRow { name:"burncloud-prod-key", masked:"bk_live_2a••••••••••••8f3d", customer:"Internal", perms:"Full Access", last_used:"2 mins ago", usage:"4.8M", rate:"5,000 RPM", status:"Active" },
+    ApiKeyRow { name:"etr-global-chat", masked:"bk_live_9d••••••••••••1b0a", customer:"ETR Global", perms:"Chat Routes Only", last_used:"8 secs ago", usage:"1.2M", rate:"1,000 RPM", status:"Active" },
+    ApiKeyRow { name:"demo-customer-staging", masked:"bk_live_f0••••••••••••5432", customer:"Demo", perms:"Staging Only", last_used:"2 days ago", usage:"84K", rate:"100 RPM", status:"Limited" },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct GuardrailRow {
+    pub name: &'static str,
+    pub category: &'static str,
+    pub description: &'static str,
+    pub action: &'static str,
+    pub violations: u32,
+    pub status: &'static str,
+}
+
+pub const GUARDRAILS: &[GuardrailRow] = &[
+    GuardrailRow { name:"Anti-Prompt Injection Engine", category:"Security", description:"Analyze incoming requests for malicious system overrides, jailbreaks, and indirect injection vectors.", action:"Block", violations:1420, status:"Enabled" },
+    GuardrailRow { name:"PII Redactor", category:"Privacy", description:"Scan user queries and model answers to mask passwords, credit cards, emails, SSNs, and API secrets.", action:"Redact", violations:8520, status:"Enabled" },
+    GuardrailRow { name:"Toxicity & Content Filter", category:"Safety", description:"Detect and block hateful speech, harassment, self-harm, sexual content, and weapon instructions.", action:"Block", violations:310, status:"Enabled" },
+    GuardrailRow { name:"Factual Alignment Monitor", category:"Compliance", description:"Compare responses against source documents to prevent hallucinations and ungrounded statements.", action:"Safer Fallback", violations:0, status:"Disabled" },
+    GuardrailRow { name:"PII Output Leakage Guard", category:"Privacy", description:"Intercept model outputs to verify no sensitive developer API keys or server credentials leak.", action:"Block", violations:12, status:"Enabled" },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct TeamRow {
+    pub name: &'static str,
+    pub email: &'static str,
+    pub role: &'static str,
+    pub status: &'static str,
+    pub added: &'static str,
+}
+
+pub const TEAM: &[TeamRow] = &[
+    TeamRow { name:"William Hayes", email:"william@burncloud.com", role:"Owner", status:"Active", added:"Jul 12, 2025" },
+    TeamRow { name:"Sarah Chen", email:"sarah.chen@burncloud.com", role:"Admin", status:"Active", added:"Nov 24, 2025" },
+    TeamRow { name:"Aris Thorne", email:"aris.thorne@burncloud.com", role:"Engineer", status:"Active", added:"Feb 15, 2026" },
+    TeamRow { name:"Elena Rostova", email:"elena.rostova@burncloud.com", role:"Viewer", status:"Active", added:"May 02, 2026" },
+    TeamRow { name:"James Carter", email:"james.carter@burncloud.com", role:"Developer", status:"Pending Invite", added:"Jul 08, 2026" },
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct EvalRow {
+    pub model: &'static str,
+    pub reasoning: u32,
+    pub coding: u32,
+    pub chinese: u32,
+    pub context: u32,
+    pub tools: u32,
+    pub stability: u32,
+    pub cost: u32,
+    pub overall: u32,
+}
+
+pub const EVALS: &[EvalRow] = &[
+    EvalRow{model:"claude-fable-5",reasoning:99,coding:98,chinese:92,context:94,tools:98,stability:99,cost:72,overall:99},
+    EvalRow{model:"gpt-5.5",reasoning:99,coding:97,chinese:93,context:96,tools:97,stability:99,cost:78,overall:98},
+    EvalRow{model:"DeepSeek-V4",reasoning:98,coding:96,chinese:95,context:90,tools:93,stability:94,cost:97,overall:97},
+    EvalRow{model:"grok-4.5",reasoning:96,coding:95,chinese:91,context:93,tools:96,stability:96,cost:78,overall:96},
+    EvalRow{model:"GLM-5.2",reasoning:95,coding:93,chinese:96,context:98,tools:94,stability:95,cost:84,overall:95},
+    EvalRow{model:"gemini-3.5-flash",reasoning:94,coding:93,chinese:90,context:99,tools:95,stability:97,cost:98,overall:95},
+    EvalRow{model:"kimi-k2.7-code",reasoning:93,coding:97,chinese:92,context:95,tools:94,stability:95,cost:94,overall:94},
+    EvalRow{model:"Qwen/Qwen3.6-35B-A3B",reasoning:91,coding:92,chinese:96,context:89,tools:88,stability:94,cost:95,overall:93},
+    EvalRow{model:"Seed2.0 Pro",reasoning:90,coding:91,chinese:94,context:88,tools:89,stability:93,cost:94,overall:92},
+    EvalRow{model:"Llama-4-Maverick",reasoning:89,coding:88,chinese:87,context:88,tools:88,stability:96,cost:100,overall:91},
+];

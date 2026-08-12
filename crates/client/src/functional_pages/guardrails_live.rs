@@ -1,0 +1,35 @@
+use dioxus::prelude::*;
+use crate::{components::Icon,functional_api::{circuit_breaker_status,emergency_circuit_break,risk_events,save_security_filters,security_filters,security_summary,RiskEventPage,SecurityFilters,SecuritySummary}};
+
+#[component]
+pub fn Guardrails()->Element{
+    let mut summary_res=use_resource(move||async move{security_summary().await});
+    let mut filters_res=use_resource(move||async move{security_filters().await});
+    let mut events_res=use_resource(move||async move{risk_events().await});
+    let mut breaker_res=use_resource(move||async move{circuit_breaker_status().await});
+    let mut filter_state=use_signal(SecurityFilters::default);let mut synced=use_signal(||false);let mut new_rule=use_signal(String::new);let mut reason=use_signal(String::new);let mut busy=use_signal(||false);let mut notice=use_signal(String::new);let mut error=use_signal(String::new);
+    let filters_snapshot=filters_res.read().clone();
+    if !synced(){if let Some(Ok(server))=filters_snapshot.clone(){filter_state.set(server);synced.set(true);}}
+    let summary_snapshot=summary_res.read().clone();let summary:SecuritySummary=summary_snapshot.clone().and_then(Result::ok).unwrap_or_default();
+    let events_snapshot=events_res.read().clone();let events:RiskEventPage=events_snapshot.clone().and_then(Result::ok).unwrap_or_default();
+    let breaker_text=match breaker_res.read().clone(){Some(Ok(v))=>serde_json::to_string_pretty(&v).unwrap_or_else(|_|v.to_string()),Some(Err(e))=>format!("Unavailable: {e}"),None=>"Loading circuit breaker status…".to_string()};
+    let state=filter_state();let content_enabled=state.content_filter_enabled;let blacklist_enabled=state.blacklist_enabled;let rules=state.custom_rules.clone();
+    let mut load_errors=Vec::new();if let Some(Err(e))=summary_snapshot{load_errors.push(format!("Security summary: {e}"));}if let Some(Err(e))=filters_snapshot{load_errors.push(format!("Filters: {e}"));}if let Some(Err(e))=events_snapshot{load_errors.push(format!("Risk events: {e}"));}
+    rsx!{
+        div{class:"page",
+            div{class:"page-header",div{h2{class:"page-title","Guardrails"}p{class:"page-subtitle","Live security score, persisted filters, router-derived risk events and the real circuit breaker."}}button{class:"button button-secondary",onclick:move |_|{synced.set(false);summary_res.restart();filters_res.restart();events_res.restart();breaker_res.restart();},"Refresh"}}
+            if !notice().is_empty(){div{class:"terminal auth-status","{notice}"}}if !error().is_empty(){div{class:"terminal auth-status auth-status-error","{error}"}}if !load_errors.is_empty(){div{class:"card card-pad stack",for message in load_errors{code{class:"terminal","{message}"}}}}
+            div{class:"metrics",div{class:"card metric",div{class:"metric-copy",span{class:"metric-label","Security Score"}span{class:"metric-value","{summary.score}/100"}}div{class:"metric-icon tone-green",Icon{name:"shield"}}}div{class:"card metric",div{class:"metric-copy",span{class:"metric-label","Blocked / Error Events"}span{class:"metric-value","{summary.blocked_count}"}}}div{class:"card metric",div{class:"metric-copy",span{class:"metric-label","Threat Sources"}span{class:"metric-value","{summary.threat_source_count}"}}}}
+            div{class:"grid-2",
+                div{class:"card card-pad stack-lg",h3{"Security Filters"}
+                    label{class:"row between",span{div{class:"strong","Content Filter"}small{class:"muted","Persisted in BurnCloud security_filters"}}input{r#type:"checkbox",checked:content_enabled,onchange:move |_|{let mut next=filter_state();next.content_filter_enabled=!next.content_filter_enabled;filter_state.set(next);}}}
+                    label{class:"row between",span{div{class:"strong","Blacklist"}small{class:"muted","Persisted in BurnCloud security_filters"}}input{r#type:"checkbox",checked:blacklist_enabled,onchange:move |_|{let mut next=filter_state();next.blacklist_enabled=!next.blacklist_enabled;filter_state.set(next);}}}
+                    div{class:"field",label{"Custom Rules"}for(index,rule)in rules.iter().enumerate(){{let idx=index;rsx!{div{class:"row between card card-pad",key:"{idx}",code{"{rule}"}button{class:"button button-ghost button-sm danger",onclick:move |_|{let mut next=filter_state();if idx<next.custom_rules.len(){next.custom_rules.remove(idx);}filter_state.set(next);},"Remove"}}}}}div{class:"row gap-2",input{class:"input",value:"{new_rule}",placeholder:"Add custom security rule",oninput:move|e|new_rule.set(e.value())}button{class:"button button-secondary",onclick:move |_|{let rule=new_rule().trim().to_string();if !rule.is_empty(){let mut next=filter_state();next.custom_rules.push(rule);filter_state.set(next);new_rule.set(String::new());}},"Add"}}}
+                    button{class:"button button-primary",disabled:busy(),onclick:move |_|{let payload=filter_state();busy.set(true);error.set(String::new());spawn(async move{match save_security_filters(&payload).await{Ok(saved)=>{filter_state.set(saved);notice.set("Security filters saved.".to_string());filters_res.restart();},Err(e)=>error.set(format!("Save failed: {e}"))}busy.set(false);});},"Save Guardrails"}
+                }
+                div{class:"stack-lg",div{class:"card card-pad stack",div{class:"row between",h3{"Circuit Breaker Status"}button{class:"button button-ghost button-sm",onclick:move |_|breaker_res.restart(),"Refresh"}}pre{class:"terminal",style:"max-height:240px;overflow:auto;white-space:pre-wrap","{breaker_text}"}}div{class:"card card-pad stack",h3{class:"danger","Emergency Circuit Break"}p{class:"small muted","Operational action: trip all router circuits. A reason is required."}textarea{class:"textarea",rows:"3",value:"{reason}",placeholder:"Reason for emergency stop",oninput:move|e|reason.set(e.value())}button{class:"button button-primary",disabled:busy()||reason().trim().is_empty(),onclick:move |_|{let why=reason().trim().to_string();busy.set(true);error.set(String::new());spawn(async move{match emergency_circuit_break(&why).await{Ok(v)=>{notice.set(format!("Emergency circuit break accepted: {v}"));breaker_res.restart();},Err(e)=>error.set(format!("Circuit break failed: {e}"))}busy.set(false);});},"Trip All Circuits"}}}
+            }
+            div{class:"card table-card",div{class:"card-pad row between",h3{"Risk Events"}span{class:"small muted","{events.total} events"}}if events.data.is_empty(){div{class:"card-pad small muted","No HTTP 4xx/5xx risk events derived from router logs."}}else{div{class:"table-wrap",table{class:"data-table",thead{tr{th{"Time"}th{"Source"}th{"Target"}th{"Type"}th{"Severity"}th{"Status"}th{"Detail"}}}tbody{for event in events.data{tr{key:"{event.id}",td{class:"mono muted","{event.time}"}td{class:"mono","{event.source}"}td{class:"mono","{event.target}"}td{"{event.event_type}"}td{span{class:if event.severity=="critical"{"badge badge-error"}else{"badge badge-warning"},"{event.severity}"}}td{"{event.status}"}td{"{event.detail}"}}}}}}}}
+        }
+    }
+}

@@ -1,0 +1,83 @@
+.auth-input-wrap {
+  position: relative;
+}
+
+.auth-input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.auth-input-with-icon {
+  padding-left: 36px;
+}
+
+.auth-status {
+  padding: 10px 12px;
+  min-height: 40px;
+}
+
+.auth-demo {
+  border-top: 1px solid #f3f4f6;
+  padding-top: 16px;
+  text-align: center;
+}
+
+.customer-toolbar {
+  padding: 20px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.customer-search {
+  max-width: 420px;
+  flex: 1;
+}
+
+.customer-cost {
+  min-width: 150px;
+}
+
+.customer-form-error {
+  display: block;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.customer-form-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tenant-progress {
+  min-width: 84px;
+}
+
+.drawer .terminal {
+  overflow-x: auto;
+}
+
+@media (max-width: 860px) {
+  .customer-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .customer-search {
+    max-width: none;
+    width: 100%;
+  }
+
+  .auth-header-note {
+    gap: 4px;
+  }
+}

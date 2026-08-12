@@ -3,21 +3,6 @@ members = [
     "crates/auto-update",
     "crates/client",
     "crates/installer",
-    "crates/client/crates/client-api",
-    "crates/client/crates/client-dashboard",
-    "crates/client/crates/client-deploy",
-    "crates/client/crates/client-models",
-    "crates/client/crates/client-monitor",
-    "crates/client/crates/client-settings",
-    "crates/client/crates/client-shared",
-    "crates/client/crates/client-tray",
-    "crates/client/crates/client-users",
-    "crates/client/crates/client-finance",
-    "crates/client/crates/client-access",
-    "crates/client/crates/client-log",
-    "crates/client/crates/client-connect",
-    "crates/client/crates/client-playground",
-    "crates/client/crates/client-register",
     "crates/common",
     "crates/database",
     "crates/database/crates/billing",
@@ -140,21 +125,6 @@ tracing-log = "0.2"
 # Internal crates
 burncloud-auto-update = { path = "crates/auto-update" }
 burncloud-client = { path = "crates/client", default-features = false }
-burncloud-client-api = { path = "crates/client/crates/client-api" }
-burncloud-client-dashboard = { path = "crates/client/crates/client-dashboard" }
-burncloud-client-deploy = { path = "crates/client/crates/client-deploy" }
-burncloud-client-models = { path = "crates/client/crates/client-models" }
-burncloud-client-monitor = { path = "crates/client/crates/client-monitor" }
-burncloud-client-settings = { path = "crates/client/crates/client-settings" }
-burncloud-client-shared = { path = "crates/client/crates/client-shared" }
-burncloud-client-tray = { path = "crates/client/crates/client-tray" }
-burncloud-client-users = { path = "crates/client/crates/client-users" }
-burncloud-client-finance = { path = "crates/client/crates/client-finance" }
-burncloud-client-access = { path = "crates/client/crates/client-access" }
-burncloud-client-log = { path = "crates/client/crates/client-log" }
-burncloud-client-connect = { path = "crates/client/crates/client-connect" }
-burncloud-client-playground = { path = "crates/client/crates/client-playground" }
-burncloud-client-register = { path = "crates/client/crates/client-register" }
 burncloud-common = { path = "crates/common" }
 burncloud-database = { path = "crates/database" }
 burncloud-database-billing = { path = "crates/database/crates/billing" }

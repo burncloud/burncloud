@@ -3,8 +3,11 @@ name: Client UI Conventions
 on:
   pull_request:
     paths:
+      - 'Cargo.toml'
       - 'crates/client/**'
+      - 'deploy/Dockerfile'
       - 'docs/ui/**'
+      - '.github/workflows/client-ui.yml'
 
 permissions:
   contents: read
@@ -21,3 +24,37 @@ jobs:
 
       - name: Check console button conventions
         run: bash scripts/check-ui-conventions.sh
+
+      - name: Check functional console wiring
+        run: bash scripts/check-functional-wiring.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Check Dioxus LiveView client
+        run: cargo check --no-default-features --features liveview
+
+      - name: Check BurnCloud application integration
+        run: cargo check -p burncloud
+
+  windows-desktop:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Check Dioxus Windows desktop client
+        run: cargo check -p burncloud-client
