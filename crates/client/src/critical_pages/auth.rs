@@ -48,7 +48,7 @@ pub fn Login() -> Element {
                     div { class: "auth-intro",
                         Badge { text: "BurnCloud Console", tone: "brand" }
                         h1 { "Sign in" }
-                        p { "Use your BurnCloud username and password to access the connected environment." }
+                        p { "Manage providers, traffic, customers, access, and billing in this BurnCloud environment." }
                     }
 
                     div { class: "card auth-card",
@@ -182,7 +182,7 @@ pub fn Login() -> Element {
                                                 Ok(()) => {
                                                     recovery_loading.set(false);
                                                     recovery_error.set(false);
-                                                    recovery_status.set("Password recovery request accepted by the BurnCloud server.".to_string());
+                                                    recovery_status.set("Password recovery request accepted.".to_string());
                                                 }
                                                 Err(error) => {
                                                     recovery_loading.set(false);
@@ -197,12 +197,8 @@ pub fn Login() -> Element {
                             }
                         }
                     }
-
-                    p { class: "tiny subtle", style: "text-align:center", "BurnCloud stores the authenticated session locally so console API calls can use your JWT." }
                 }
             }
-
-            AuthFooter { alternate: "register" }
         }
     }
 }
@@ -214,7 +210,6 @@ pub fn Register() -> Element {
     let mut username = use_signal(String::new);
     let mut email = use_signal(String::new);
     let mut password = use_signal(String::new);
-    let mut terms = use_signal(|| false);
     let mut loading = use_signal(|| false);
     let mut status = use_signal(String::new);
     let mut is_error = use_signal(|| false);
@@ -237,7 +232,7 @@ pub fn Register() -> Element {
                     div { class: "auth-intro",
                         Badge { text: "BurnCloud Account", tone: "success" }
                         h1 { "Create your account" }
-                        p { "Create the identity you will use to sign in to this BurnCloud environment." }
+                        p { "Create an account for this BurnCloud environment, then complete provider and API access setup from the console." }
                     }
 
                     div { class: "card auth-card",
@@ -248,11 +243,6 @@ pub fn Register() -> Element {
                                 let user_name = username().trim().to_string();
                                 let account_email = email().trim().to_string();
                                 let user_password = password();
-                                if !terms() {
-                                    is_error.set(true);
-                                    status.set("Accept the Terms of Service and Privacy Policy to continue.".to_string());
-                                    return;
-                                }
                                 if user_name.is_empty() {
                                     is_error.set(true);
                                     status.set("Username is required.".to_string());
@@ -301,11 +291,10 @@ pub fn Register() -> Element {
                                     disabled: loading(),
                                     oninput: move |event| username.set(event.value()),
                                 }
-                                span { class: "tiny subtle", "This is the identity used on the Sign In page." }
                             }
 
                             div { class: "field",
-                                label { "Email (recommended)" }
+                                label { "Email" }
                                 input {
                                     class: "input",
                                     r#type: "email",
@@ -315,7 +304,7 @@ pub fn Register() -> Element {
                                     disabled: loading(),
                                     oninput: move |event| email.set(event.value()),
                                 }
-                                span { class: "tiny subtle", "Add an email if you want to use the server's password-recovery flow." }
+                                span { class: "tiny subtle", "Recommended so password recovery can identify this account." }
                             }
 
                             div { class: "field",
@@ -332,16 +321,6 @@ pub fn Register() -> Element {
                                 }
                             }
 
-                            label { class: "small row gap-2", style: "align-items:flex-start",
-                                input {
-                                    r#type: "checkbox",
-                                    checked: terms(),
-                                    disabled: loading(),
-                                    onchange: move |_| terms.set(!terms()),
-                                }
-                                span { "I agree to BurnCloud's Terms of Service and Privacy Policy." }
-                            }
-
                             if !status().is_empty() {
                                 div { class: if is_error() { "terminal auth-status auth-status-error" } else { "terminal auth-status" }, "{status}" }
                             }
@@ -355,32 +334,7 @@ pub fn Register() -> Element {
                             }
                         }
                     }
-
-                    div { class: "product-note", "Registration now shows only fields the current BurnCloud backend can actually persist. Billing plans, company metadata, and passkeys will appear only when corresponding server capabilities exist." }
                 }
-            }
-
-            AuthFooter { alternate: "login" }
-        }
-    }
-}
-
-#[component]
-fn AuthFooter(alternate: &'static str) -> Element {
-    rsx! {
-        footer { class: "public-footer",
-            div { class: "row", style: "justify-content:center",
-                Link { to: Route::Home {}, "Home" }
-                span { "•" }
-                if alternate == "register" {
-                    Link { to: Route::Register {}, "Register" }
-                } else {
-                    Link { to: Route::Login {}, "Sign In" }
-                }
-                span { "•" }
-                a { href: "#privacy", "Privacy Policy" }
-                span { "•" }
-                a { href: "#terms", "Terms of Service" }
             }
         }
     }
