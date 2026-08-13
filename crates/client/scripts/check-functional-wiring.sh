@@ -32,6 +32,7 @@ require 'pub use analytics_full::Evaluation;' src/functional_pages/mod.rs
 require 'pub use api_keys_live::APIKeys;' src/functional_pages/mod.rs
 require 'pub use team_live::Team;' src/functional_pages/mod.rs
 require 'pub use overview_live::Overview;' src/critical_pages.rs
+require 'pub use customers_live::Customers;' src/critical_pages.rs
 
 # Public runtime routes must use the truthful public module, never the historical prototype page module.
 require 'public_pages::{Home, Landing}' src/app.rs
@@ -40,9 +41,12 @@ if grep -Eq '(^|[[:space:]])pages::\{Home, Landing\}' src/app.rs || grep -Fq 'pu
   fail src/app.rs "Historical prototype pages were reconnected to the runtime"
 fi
 
-# Historical overview/access implementations must not remain in the active module graph.
+# Historical overview/access/customer implementations must not remain in the active module graph.
 if grep -Fq 'mod dashboard;' src/critical_pages.rs; then
   fail src/critical_pages.rs "Historical dashboard implementation was reconnected to the runtime"
+fi
+if grep -Fq 'mod customers_portable;' src/critical_pages.rs || grep -Fq 'pub use customers_portable::Customers;' src/critical_pages.rs; then
+  fail src/critical_pages.rs "Historical customer page was reconnected to the runtime"
 fi
 if grep -Fq 'mod access_live;' src/functional_pages/mod.rs || grep -Fq 'pub use access_live::APIKeys;' src/functional_pages/mod.rs; then
   fail src/functional_pages/mod.rs "Historical combined access module was reconnected to the runtime"
@@ -84,8 +88,9 @@ require 'allow_reactivation' src/functional_api.rs
 # Page-to-service contracts: accidental regressions back to seeded/static pages fail CI.
 require 'AuthService::login' src/critical_pages/auth.rs
 require 'AuthService::register' src/critical_pages/auth.rs
-require 'UserService::list' src/critical_pages/customers_portable.rs
-require 'UserService::topup' src/critical_pages/customers_portable.rs
+require 'UserService::list' src/critical_pages/customers_live.rs
+require 'UserService::create' src/critical_pages/customers_live.rs
+require 'UserService::topup' src/critical_pages/customers_live.rs
 require 'billing_summary' src/critical_pages/overview_live.rs
 require 'user_usage' src/critical_pages/overview_live.rs
 require 'ChannelService::list' src/critical_pages/overview_live.rs
@@ -106,8 +111,8 @@ require 'clear_cache' src/functional_pages/settings.rs
 require 'billing_summary' src/functional_pages/analytics.rs
 
 # Unsupported prototype actions must not reappear as fake success paths.
-if grep -Fq 'Suspend Account' src/critical_pages/customers_portable.rs; then
-  fail src/critical_pages/customers_portable.rs "Fake suspend action reintroduced without a server endpoint"
+if grep -Fq 'Suspend Account' src/critical_pages/customers_live.rs; then
+  fail src/critical_pages/customers_live.rs "Fake suspend action reintroduced without a server endpoint"
 fi
 if grep -Fq 'Prompt Snippet' src/functional_pages/logs_full.rs; then
   fail src/functional_pages/logs_full.rs "Synthetic prompt content reintroduced into router log UI"
