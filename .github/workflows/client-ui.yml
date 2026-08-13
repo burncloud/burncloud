@@ -31,6 +31,9 @@ jobs:
       - name: Check product UX contracts
         run: bash scripts/check-product-ux.sh
 
+      - name: Check access and data-scope UX contracts
+        run: bash scripts/check-access-scope-ux.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
