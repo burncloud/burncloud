@@ -21,6 +21,10 @@ fn compact(n: i64) -> String {
 pub fn Billing() -> Element {
     let auth = use_auth();
     let token = auth.token().unwrap_or_default();
+    let account_name = auth
+        .user()
+        .map(|user| user.username)
+        .unwrap_or_else(|| "current account".to_string());
     let token_for_resource = token.clone();
     let mut summary_resource = use_resource(move || {
         let token = token_for_resource.clone();
@@ -76,8 +80,8 @@ pub fn Billing() -> Element {
         div { class: "page",
             div { class: "page-header",
                 div {
-                    h2 { class: "page-title", "Billing" }
-                    p { class: "page-subtitle", "See total spend first, then identify which models and traffic patterns are driving the bill." }
+                    h2 { class: "page-title", "Billing & Usage" }
+                    p { class: "page-subtitle", "Review requests, tokens, and model spend for the signed-in BurnCloud account: {account_name}." }
                 }
                 div { class: "header-actions",
                     span { class: "badge badge-neutral mono", "{period_text}" }
@@ -85,30 +89,35 @@ pub fn Billing() -> Element {
                 }
             }
 
+            div { class: "product-note",
+                strong { "Account scope: " }
+                "The public billing summary is calculated for the authenticated account. These numbers are not presented as company-wide or environment-wide spend."
+            }
+
             if loading {
-                div { class: "card card-pad", "Loading billing summary…" }
+                div { class: "card card-pad", "Loading account billing summary…" }
             } else if let Some(message) = load_error {
                 div { class: "card card-pad stack",
-                    strong { class: "danger", "Billing could not be loaded" }
+                    strong { class: "danger", "Account billing could not be loaded" }
                     code { class: "terminal", "{message}" }
                     button { class: "button button-primary", onclick: move |_| summary_resource.restart(), "Retry" }
                 }
             } else {
                 div { class: "metrics",
                     div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Spend" } span { class: "metric-value", "{cost_text}" } span { class: "metric-note", "current billing period" } }
+                        div { class: "metric-copy", span { class: "metric-label", "Account Spend" } span { class: "metric-value", "{cost_text}" } span { class: "metric-note", "signed-in account • current period" } }
                         div { class: "metric-icon tone-amber", Icon { name: "dollar" } }
                     }
                     div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Requests" } span { class: "metric-value", "{request_text}" } span { class: "metric-note", "billed request activity" } }
+                        div { class: "metric-copy", span { class: "metric-label", "Account Requests" } span { class: "metric-value", "{request_text}" } span { class: "metric-note", "billed request activity" } }
                         div { class: "metric-icon tone-blue", Icon { name: "activity" } }
                     }
                     div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Avg / Request" } span { class: "metric-value", "{avg_request_cost_text}" } span { class: "metric-note", "blended average cost" } }
+                        div { class: "metric-copy", span { class: "metric-label", "Avg / Request" } span { class: "metric-value", "{avg_request_cost_text}" } span { class: "metric-note", "blended account average" } }
                         div { class: "metric-icon tone-purple", Icon { name: "billing" } }
                     }
                     div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Tokens" } span { class: "metric-value", "{token_text}" } span { class: "metric-note", "all billed token types" } }
+                        div { class: "metric-copy", span { class: "metric-label", "Account Tokens" } span { class: "metric-value", "{token_text}" } span { class: "metric-note", "all billed token types" } }
                         div { class: "metric-icon tone-green", Icon { name: "models" } }
                     }
                 }
@@ -117,16 +126,16 @@ pub fn Billing() -> Element {
                     div { class: "card product-empty",
                         div { class: "product-empty-inner",
                             div { class: "product-empty-icon", Icon { name: "billing" } }
-                            h3 { "No billed usage yet" }
-                            p { "Once this account sends routed traffic, model-level spend and token usage will appear here." }
+                            h3 { "No billed usage for this account yet" }
+                            p { "Once this account sends routed traffic, its model-level spend and token usage will appear here." }
                         }
                     }
                 } else {
                     div { class: "card table-card",
                         div { class: "card-pad product-section-head",
                             div {
-                                h3 { "What is driving spend" }
-                                p { "Models are sorted by cost. Token composition is shown as secondary context instead of competing with the financial view." }
+                                h3 { "What is driving this account's spend" }
+                                p { "Models are sorted by cost for {account_name}. Token composition stays secondary to the financial view." }
                             }
                             span { class: "small muted", "{model_count} billed models" }
                         }
@@ -193,7 +202,7 @@ pub fn Billing() -> Element {
                 }
 
                 if data.pre_migration_requests > 0 {
-                    div { class: "product-note", "{data.pre_migration_requests} requests predate the current model-level billing breakdown and are included in the total request count without model attribution." }
+                    div { class: "product-note", "{data.pre_migration_requests} account requests predate the current model-level billing breakdown and are included in the total request count without model attribution." }
                 }
             }
         }
