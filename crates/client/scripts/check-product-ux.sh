@@ -157,15 +157,32 @@ require 'Review wallet change' src/critical_pages/customers_portable.rs
 require 'Balance after' src/critical_pages/customers_portable.rs
 forbid 'saturating_mul(1_000_000_000)' src/critical_pages/customers_portable.rs
 
-# API keys are human-owned and lifecycle changes happen in an intentional management flow.
-require 'Choose which account will own this router credential' src/functional_pages/access_live.rs
-require 'API Key Created' src/functional_pages/access_live.rs
-require 'Manage API Key' src/functional_pages/access_live.rs
-require 'Credential lifecycle' src/functional_pages/access_live.rs
-require 'Delete credential' src/functional_pages/access_live.rs
-require 'Rotate API Key' src/functional_pages/access_live.rs
-require 'Delete API Key' src/functional_pages/access_live.rs
-forbid 'th { "Version" }' src/functional_pages/access_live.rs
+# API keys fail closed on owner attribution, expose spend limits in USD, and protect one-time credentials.
+require 'Spend quota semantics:' src/functional_pages/api_keys_live.rs
+require 'parse_spend_limit_usd' src/functional_pages/api_keys_live.rs
+require 'format_usd_nano' src/functional_pages/api_keys_live.rs
+require 'USD spend limit (optional)' src/functional_pages/api_keys_live.rs
+require 'Stored as nano-USD (1 USD = 1,000,000,000 quota units).' src/functional_pages/api_keys_live.rs
+require 'BurnCloud will not fall back to free-form ownership' src/functional_pages/api_keys_live.rs
+require 'Creation is blocked rather than accepting an unverified free-form user ID.' src/functional_pages/api_keys_live.rs
+require 'Disabled accounts are intentionally excluded from new credential ownership.' src/functional_pages/api_keys_live.rs
+require 'active key(s) belong to an inactive or missing account' src/functional_pages/api_keys_live.rs
+require 'Manage API Key' src/functional_pages/api_keys_live.rs
+require 'Credential lifecycle' src/functional_pages/api_keys_live.rs
+require 'Disable Key' src/functional_pages/api_keys_live.rs
+require 'Rotate API Key' src/functional_pages/api_keys_live.rs
+require 'Delete API Key' src/functional_pages/api_keys_live.rs
+require 'One-time credential reveal' src/functional_pages/api_keys_live.rs
+require 'I saved this credential' src/functional_pages/api_keys_live.rs
+require 'CIDR ranges such as 10.0.0.0/8 are not supported' src/functional_pages/api_keys_live.rs
+require 'I understand this broadens network access for the credential.' src/functional_pages/api_keys_live.rs
+require 'Rotation may have succeeded' src/functional_pages/api_keys_live.rs
+require 'pub use api_keys_live::APIKeys;' src/functional_pages/mod.rs
+forbid '.parse::<i64>().ok()' src/functional_pages/api_keys_live.rs
+forbid 'Owner user ID' src/functional_pages/api_keys_live.rs
+forbid 'Key rotation accepted:' src/functional_pages/api_keys_live.rs
+forbid 'mod access_live;' src/functional_pages/mod.rs
+forbid 'pub use access_live::APIKeys;' src/functional_pages/mod.rs
 
 # Logs distinguish real timeouts from generic HTTP errors and provide a direct problem-diagnosis path.
 require '"problems" => matches!(status, "Timeout" | "Error")' src/functional_pages/logs_full.rs
