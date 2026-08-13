@@ -34,24 +34,26 @@ models_line=$(line_of 'NavItem { to:Route::Models' src/functional_layout.rs)
 routes_line=$(line_of 'NavItem { to:Route::Routes' src/functional_layout.rs)
 playground_line=$(line_of 'NavItem { to:Route::Playground' src/functional_layout.rs)
 logs_line=$(line_of 'NavItem { to:Route::Logs' src/functional_layout.rs)
-evaluation_line=$(line_of 'NavItem { to:Route::Evaluation' src/functional_layout.rs)
+performance_line=$(line_of 'NavItem { to:Route::Evaluation' src/functional_layout.rs)
 billing_line=$(line_of 'NavItem { to:Route::Billing' src/functional_layout.rs)
 
 if ! (( providers_line < models_line && models_line < routes_line && routes_line < playground_line )); then
   echo "Traffic Setup navigation must remain Providers -> Models -> Routes -> Playground" >&2
   exit 1
 fi
-if ! (( logs_line < evaluation_line && evaluation_line < billing_line )); then
-  echo "Observe navigation must remain Logs -> Evaluation -> Billing" >&2
+if ! (( logs_line < performance_line && performance_line < billing_line )); then
+  echo "Monitoring navigation must remain Logs -> Performance -> Billing" >&2
   exit 1
 fi
+require 'label:"Performance"' src/functional_layout.rs
 
-# Overview must answer readiness and next action before technical diagnostics.
-require 'Setup & readiness' src/critical_pages/dashboard.rs
-require 'BurnCloud is ready to serve traffic' src/critical_pages/dashboard.rs
-require 'Finish setup before sending production traffic' src/critical_pages/dashboard.rs
-require 'Add first provider' src/critical_pages/dashboard.rs
-require 'Test a request' src/critical_pages/dashboard.rs
+# Overview must distinguish configured prerequisites from a verified successful traffic path.
+require 'Setup & verification' src/critical_pages/dashboard.rs
+require 'Setup is complete — verify one real request' src/critical_pages/dashboard.rs
+require 'Traffic path verified' src/critical_pages/dashboard.rs
+require 'has_successful_request' src/critical_pages/dashboard.rs
+require 'Run verification test' src/critical_pages/dashboard.rs
+forbid 'BurnCloud is ready to serve traffic' src/critical_pages/dashboard.rs
 
 # Auth must expose only current backend capabilities, not prototype choices.
 forbid 'Onboarding Account Preference' src/critical_pages/auth.rs
@@ -69,11 +71,12 @@ require 'Leave blank to keep stored credential' src/functional_pages/providers.r
 require 'pending_delete' src/functional_pages/providers.rs
 forbid 'Provider Type ID' src/functional_pages/providers.rs
 
-# Models/Routes communicate service availability and resilience, not just database fields.
-require 'Single upstream' src/functional_pages/catalog.rs
-require 'Redundant' src/functional_pages/catalog.rs
+# Models/Routes communicate understandable service availability and resilience.
+require 'Needs backup' src/functional_pages/catalog.rs
+require 'Protected' src/functional_pages/catalog.rs
 require 'Unavailable' src/functional_pages/catalog.rs
-require 'No failover redundancy' src/functional_pages/catalog.rs
+require 'No active provider' src/functional_pages/catalog.rs
+require 'Routing Policy' src/functional_pages/catalog.rs
 
 # Playground is a guided end-to-end test and blocks impossible workflows.
 require 'Playground is not ready yet' src/functional_pages/playground_live.rs
@@ -95,20 +98,25 @@ require 'API Key Created' src/functional_pages/access_live.rs
 require 'Rotate API Key' src/functional_pages/access_live.rs
 require 'Delete API Key' src/functional_pages/access_live.rs
 
-# Diagnostic pages prioritize conclusions and risks.
+# Diagnostic pages prioritize conclusions, risks and money before implementation detail.
 require 'Failures' src/functional_pages/logs_full.rs
 require 'Outcome' src/functional_pages/logs_full.rs
-require 'Operational attention' src/functional_pages/analytics_full.rs
-require 'Spend by model' src/functional_pages/analytics.rs
+require 'Performance' src/functional_pages/analytics_full.rs
+require 'Needs attention' src/functional_pages/analytics_full.rs
+require 'What is driving spend' src/functional_pages/analytics.rs
+require 'Avg / Request' src/functional_pages/analytics.rs
 
-# Dangerous operational actions require explicit acknowledgement and stay in danger zones.
+# Dangerous operational actions require explicit acknowledgement and truthful live state.
 require 'confirm_trip' src/functional_pages/guardrails_live.rs
 require 'DANGER ZONE' src/functional_pages/guardrails_live.rs
+require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_live.rs
 require 'confirm_clear' src/functional_pages/settings.rs
 require 'MAINTENANCE' src/functional_pages/settings.rs
 
-# Chrome must not overclaim runtime health.
+# Chrome must not overclaim runtime health or expose fake top-level utilities.
 require 'Server Configured' src/functional_layout.rs
 forbid 'Server Connected' src/functional_layout.rs
+forbid 'Open request logs' src/functional_layout.rs
+forbid 'System settings' src/functional_layout.rs
 
 echo "Product UX contracts OK"
