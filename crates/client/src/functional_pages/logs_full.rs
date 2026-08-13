@@ -61,9 +61,12 @@ pub fn Logs() -> Element {
 
     let snapshot = resource.read().clone();
     let loading = snapshot.is_none();
-    let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
-    let rows = snapshot.and_then(Result::ok).unwrap_or_default();
-    let search = query().to_lowercase();
+    let load_error = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
+    let ready = snapshot.as_ref().is_some_and(Result::is_ok);
+    let rows = snapshot.clone().and_then(Result::ok).unwrap_or_default();
+    let search = query().trim().to_lowercase();
     let filter_value = filter();
 
     let visible: Vec<FullRouterLog> = rows
@@ -78,31 +81,97 @@ pub fn Logs() -> Element {
             let text_match = search.is_empty()
                 || log.request_id.to_lowercase().contains(&search)
                 || log.path.to_lowercase().contains(&search)
-                || log.user_id.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || log.model.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || log.upstream_id.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || log.error_type.as_deref().unwrap_or("").to_lowercase().contains(&search);
+                || log
+                    .user_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || log
+                    .model
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || log
+                    .upstream_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || log
+                    .error_type
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search);
             status_match && text_match
         })
         .cloned()
         .collect();
 
-    let success = rows.iter().filter(|log| log.status_label() == "Success").count();
-    let fallback = rows.iter().filter(|log| log.status_label() == "Fallback").count();
-    let failures = rows.len().saturating_sub(success + fallback);
+    let success = rows
+        .iter()
+        .filter(|log| log.status_label() == "Success")
+        .count();
+    let fallback = rows
+        .iter()
+        .filter(|log| log.status_label() == "Fallback")
+        .count();
+    let failures = rows
+        .iter()
+        .filter(|log| matches!(log.status_label(), "Timeout" | "Error"))
+        .count();
+    let unknown = rows
+        .iter()
+        .filter(|log| log.status_label() == "Unknown")
+        .count();
     let avg_latency = if rows.is_empty() {
-        0
+        None
     } else {
-        rows.iter().map(|log| log.latency_ms).sum::<i64>() / rows.len() as i64
+        Some(rows.iter().map(|log| log.latency_ms).sum::<i64>() / rows.len() as i64)
     };
     let failure_rate = if rows.is_empty() {
-        0.0
+        None
     } else {
-        failures as f64 * 100.0 / rows.len() as f64
+        Some(failures as f64 * 100.0 / rows.len() as f64)
     };
-    let failure_rate_text = format!("{failure_rate:.1}% of loaded requests");
     let total_cost = rows.iter().map(FullRouterLog::cost_usd).sum::<f64>();
-    let total_cost_text = format!("${total_cost:.4}");
+
+    let row_count_text = if ready {
+        rows.len().to_string()
+    } else {
+        "—".to_string()
+    };
+    let failures_text = if ready {
+        failures.to_string()
+    } else {
+        "—".to_string()
+    };
+    let fallback_text = if ready {
+        fallback.to_string()
+    } else {
+        "—".to_string()
+    };
+    let total_cost_text = if ready {
+        format!("${total_cost:.4}")
+    } else {
+        "—".to_string()
+    };
+    let failure_note = if !ready {
+        "request sample unavailable".to_string()
+    } else if let Some(rate) = failure_rate {
+        format!("{rate:.1}% of loaded requests")
+    } else {
+        "no loaded requests".to_string()
+    };
+    let cost_note = if !ready {
+        "request sample unavailable".to_string()
+    } else if let Some(latency) = avg_latency {
+        format!("sample avg latency {latency}ms")
+    } else {
+        "no loaded requests".to_string()
+    };
     let visible_count = visible.len();
     let row_count = rows.len();
 
@@ -111,7 +180,7 @@ pub fn Logs() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Logs" }
-                    p { class: "page-subtitle", "Find failures and fallbacks quickly, then inspect the routing and usage facts behind each request." }
+                    p { class: "page-subtitle", "Find environment-wide failures and fallbacks quickly, then inspect the routing and usage facts behind each request." }
                 }
                 div { class: "header-actions",
                     div { class: "search-field", style: "width:300px",
@@ -125,31 +194,37 @@ pub fn Logs() -> Element {
                         option { value: "fallback", "Fallback" }
                         option { value: "timeout", "Timeout" }
                         option { value: "error", "Error" }
+                        option { value: "unknown", "Unknown" }
                     }
                     button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
                 }
             }
 
+            div { class: "product-note",
+                strong { "Sample scope: " }
+                "this page loads up to the latest 200 environment-wide router-log records returned by the console API. Loaded Cost is the cost stored on those rows, not an account bill or all-time environment spend."
+            }
+
             div { class: "metrics",
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Requests Loaded" } span { class: "metric-value", "{row_count}" } span { class: "metric-note", "latest router activity" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Requests Loaded" } span { class: "metric-value", "{row_count_text}" } span { class: "metric-note", if ready { "latest environment sample" } else { "request sample unavailable" } } }
                     div { class: "metric-icon tone-blue", Icon { name: "logs" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Failures" } span { class: "metric-value", "{failures}" } span { class: "metric-note", "{failure_rate_text}" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Failures" } span { class: "metric-value", "{failures_text}" } span { class: "metric-note", "{failure_note}" } }
                     div { class: "metric-icon tone-red", Icon { name: "shield" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Fallbacks" } span { class: "metric-value", "{fallback}" } span { class: "metric-note", "alternate route used" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Fallbacks" } span { class: "metric-value", "{fallback_text}" } span { class: "metric-note", if ready { "successful alternate route observed" } else { "request sample unavailable" } } }
                     div { class: "metric-icon tone-amber", Icon { name: "routes" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Loaded Cost" } span { class: "metric-value", "{total_cost_text}" } span { class: "metric-note mono", "avg latency {avg_latency}ms" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Loaded Cost" } span { class: "metric-value", "{total_cost_text}" } span { class: "metric-note mono", "{cost_note}" } }
                     div { class: "metric-icon tone-purple", Icon { name: "dollar" } }
                 }
             }
 
-            if failures > 0 {
+            if ready && failures > 0 {
                 div { class: "readiness-strip blocked",
                     span { class: "readiness-dot" }
                     strong { "{failures} failed request(s) need attention" }
@@ -158,11 +233,20 @@ pub fn Logs() -> Element {
                 }
             }
 
+            if ready && unknown > 0 {
+                div { class: "product-note",
+                    strong { "{unknown} row(s) have an Unknown outcome. " }
+                    "BurnCloud only labels 2xx/3xx as successful. Missing or non-final status codes stay unknown instead of being counted as success."
+                    button { class: "button button-ghost button-sm", onclick: move |_| filter.set("unknown".to_string()), "Show unknown" }
+                }
+            }
+
             if loading {
                 div { class: "card card-pad", "Loading request logs…" }
             } else if let Some(message) = load_error {
                 div { class: "card card-pad stack",
                     strong { class: "danger", "Request logs could not be loaded" }
+                    p { class: "small muted", "Request, failure, fallback, latency, and loaded-cost metrics remain unavailable rather than falling back to zero." }
                     code { class: "terminal", "{message}" }
                     button { class: "button button-primary", onclick: move |_| resource.restart(), "Retry" }
                 }
@@ -234,7 +318,7 @@ pub fn Logs() -> Element {
                                                     td { class: "right tabular", "{tokens}" }
                                                     td { class: "right strong tabular", "{cost}" }
                                                     td { class: "right",
-                                                        button { class: "button button-ghost button-sm", onclick: move |_| selected.set(Some(inspect_log.clone())), "Inspect" }
+                                                        button { class: "button button-ghost button-sm", onclick: move |event| { event.stop_propagation(); selected.set(Some(inspect_log.clone())); }, "Inspect" }
                                                     }
                                                 }
                                             }
@@ -257,26 +341,32 @@ pub fn Logs() -> Element {
                         let model = log.model.clone().unwrap_or_else(|| "-".to_string());
                         let upstream = log.upstream_id.clone().unwrap_or_else(|| "-".to_string());
                         let user = log.user_id.clone().unwrap_or_else(|| "anonymous".to_string());
-                        let decision = log.layer_decision.clone().unwrap_or_else(|| "direct".to_string());
+                        let decision = log.layer_decision.clone().unwrap_or_else(|| "-".to_string());
                         let traffic = log.traffic_color.clone().unwrap_or_else(|| "-".to_string());
                         let error_type = log.error_type.clone().unwrap_or_else(|| "none".to_string());
                         let cost_status = log.cost_status.clone().unwrap_or_else(|| "-".to_string());
                         let pricing = log.pricing_region.clone().unwrap_or_else(|| "-".to_string());
                         let total_cost = format!("${:.9}", log.cost_usd());
-                        let is_problem = log.status_code >= 400 || log.status_label() != "Success";
+                        let is_problem = matches!(log.status_label(), "Timeout" | "Error");
+                        let outcome_note = match log.status_label() {
+                            "Success" => "Request completed without an observed router error.",
+                            "Fallback" => "Request completed after an alternate route was observed.",
+                            "Timeout" | "Error" => "Review outcome and routing metadata below.",
+                            _ => "The stored status is incomplete or non-final, so BurnCloud does not infer success.",
+                        };
                         rsx! {
                             div { class: "stack-lg",
                                 div { class: if is_problem { "readiness-strip blocked" } else { "readiness-strip ready" },
                                     span { class: "readiness-dot" }
                                     strong { "{status}" }
-                                    span { class: "muted", if is_problem { "Review outcome and routing metadata below." } else { "Request completed without an observed router error." } }
+                                    span { class: "muted", "{outcome_note}" }
                                 }
 
                                 div { class: "card card-pad stack",
                                     div { class: "product-section-head", div { h3 { "Outcome" } p { "The first facts needed to understand this request." } } }
                                     div { class: "grid-2",
                                         {detail_stat("Request ID", log.request_id.clone())}
-                                        {detail_stat("HTTP Status", log.status_code.to_string())}
+                                        {detail_stat("HTTP Status", if log.status_code > 0 { log.status_code.to_string() } else { "Unknown".to_string() })}
                                         {detail_stat("Model", model)}
                                         {detail_stat("Upstream", upstream)}
                                         {detail_stat("Latency", format!("{}ms", log.latency_ms))}
