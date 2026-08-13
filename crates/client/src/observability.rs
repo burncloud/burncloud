@@ -72,10 +72,16 @@ impl FullRouterLog {
             "Timeout"
         } else if self.status_code >= 400 {
             "Error"
-        } else if self.layer_decision.as_deref().unwrap_or("").contains("failover") {
-            "Fallback"
+        } else if (200..400).contains(&self.status_code) {
+            let failover = self
+                .layer_decision
+                .as_deref()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .contains("failover");
+            if failover { "Fallback" } else { "Success" }
         } else {
-            "Success"
+            "Unknown"
         }
     }
 }
