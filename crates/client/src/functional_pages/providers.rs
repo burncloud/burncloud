@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::{
     backend::{Channel, ChannelService},
     components::Icon,
-    functional_api::update_channel_preserving_reservations,
+    functional_api::{repair_channel_and_reactivate, update_channel_preserving_reservations},
 };
 
 const PROVIDER_TYPES: &[(i32, &str)] = &[
@@ -230,6 +230,7 @@ pub fn Providers() -> Element {
                                             }
                                         };
                                         let status = if channel.status == 1 { "Active" } else { "Down" };
+                                        let action_label = if channel.status == 1 { "Edit" } else { "Repair" };
                                         rsx! {
                                             tr { key: "{channel.id}",
                                                 td {
@@ -261,8 +262,7 @@ pub fn Providers() -> Element {
                                                     div { class: "action-menu",
                                                         button {
                                                             class: "button button-ghost button-sm",
-                                                            title: if channel.status == 1 { "Edit provider" } else { "Inactive providers are protected from edits because the current server update would reactivate them" },
-                                                            disabled: channel.status != 1,
+                                                            title: if channel.status == 1 { "Edit provider" } else { "Repair this provider; saving changes will reactivate routing" },
                                                             onclick: move |_| {
                                                                 name.set(edit_channel.name.clone());
                                                                 provider_type.set(edit_channel.type_);
@@ -278,7 +278,7 @@ pub fn Providers() -> Element {
                                                                 error.set(String::new());
                                                                 editing.set(Some(edit_channel.clone()));
                                                             },
-                                                            "Edit"
+                                                            "{action_label}"
                                                         }
                                                         button {
                                                             class: "button button-ghost button-sm danger",
@@ -310,17 +310,34 @@ pub fn Providers() -> Element {
                     let current_type_known = known_provider_type(provider_type());
                     let current_type_label = provider_label(provider_type());
                     let is_new = current_id == 0;
+                    let is_repair = current_id > 0 && current_status != 1;
                     rsx! {
                         div { class: "drawer-backdrop", onclick: move |_| editing.set(None) }
                         aside { class: "drawer",
                             div { class: "drawer-head",
                                 div {
-                                    h2 { if is_new { "Add Provider" } else { "Edit Provider" } }
-                                    p { class: "small muted", if is_new { "Connect an upstream and define the models it can serve." } else { "Update connection, model coverage, or routing policy." } }
+                                    h2 { if is_new { "Add Provider" } else if is_repair { "Repair Provider" } else { "Edit Provider" } }
+                                    p { class: "small muted",
+                                        if is_new {
+                                            "Connect an upstream and define the models it can serve."
+                                        } else if is_repair {
+                                            "Fix connection or configuration problems, then explicitly reactivate this provider."
+                                        } else {
+                                            "Update connection, model coverage, or routing policy."
+                                        }
+                                    }
                                 }
                                 button { class: "close-button", onclick: move |_| editing.set(None), "×" }
                             }
                             div { class: "drawer-body stack-lg",
+                                if is_repair {
+                                    div { class: "readiness-strip blocked",
+                                        span { class: "readiness-dot" }
+                                        strong { "Saving this repair will reactivate routing" }
+                                        span { class: "muted", "Review credentials, endpoint, models, and routing policy before continuing." }
+                                    }
+                                }
+
                                 div { class: "form-section",
                                     div { class: "form-section-head",
                                         strong { "Provider" }
@@ -437,17 +454,27 @@ pub fn Providers() -> Element {
                                                 return;
                                             }
                                             let updating = item.id > 0;
+                                            let repairing = updating && current_status != 1;
                                             busy.set(true);
                                             error.set(String::new());
                                             spawn(async move {
-                                                let result = if updating {
+                                                let result = if repairing {
+                                                    repair_channel_and_reactivate(&item).await
+                                                } else if updating {
                                                     update_channel_preserving_reservations(&item).await
                                                 } else {
                                                     ChannelService::create(&item).await
                                                 };
                                                 match result {
                                                     Ok(()) => {
-                                                        notice.set(if updating { "Provider updated.".to_string() } else { "Provider connected. Review Models and Routes before sending traffic.".to_string() });
+                                                        let message = if repairing {
+                                                            "Provider repaired and reactivated. Run a Playground test before relying on production traffic."
+                                                        } else if updating {
+                                                            "Provider updated."
+                                                        } else {
+                                                            "Provider connected. Review Models and Routes before sending traffic."
+                                                        };
+                                                        notice.set(message.to_string());
                                                         editing.set(None);
                                                         resource.restart();
                                                     }
@@ -456,7 +483,15 @@ pub fn Providers() -> Element {
                                                 busy.set(false);
                                             });
                                         },
-                                        if busy() { "Saving…" } else if is_new { "Connect Provider" } else { "Save Changes" }
+                                        if busy() {
+                                            "Saving…"
+                                        } else if is_new {
+                                            "Connect Provider"
+                                        } else if is_repair {
+                                            "Save & Reactivate"
+                                        } else {
+                                            "Save Changes"
+                                        }
                                     }
                                 }
                             }
@@ -483,7 +518,7 @@ pub fn Providers() -> Element {
                                     strong { "Delete {target_name}?" }
                                     p { class: "small muted", "This provider currently exposes {target_models_text}. Deleting it removes this upstream from routing immediately and cannot be undone from the console." }
                                 }
-                                div { class: "product-note", "If you only need to pause traffic, do not use Delete. This action permanently removes the channel record." }
+                                div { class: "product-note", "Delete is for permanent removal. If this provider is down, use Repair after fixing its connection instead of deleting and recreating it." }
                                 div { class: "row customer-form-actions",
                                     button { class: "button button-secondary", disabled: busy(), onclick: move |_| pending_delete.set(None), "Cancel" }
                                     button {
