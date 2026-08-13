@@ -53,15 +53,40 @@ require 'Setup is complete — verify one real request' src/critical_pages/dashb
 require 'Traffic path verified' src/critical_pages/dashboard.rs
 require 'has_successful_request' src/critical_pages/dashboard.rs
 require 'Run verification test' src/critical_pages/dashboard.rs
+require 'router_status_label' src/critical_pages/dashboard.rs
+require 'eq_ignore_ascii_case("timeout")' src/critical_pages/dashboard.rs
 forbid 'BurnCloud is ready to serve traffic' src/critical_pages/dashboard.rs
 
-# Auth must expose only current backend capabilities, not prototype choices.
+# Auth exposes real account capabilities only, without developer implementation notes or fake legal acceptance.
 forbid 'Onboarding Account Preference' src/critical_pages/auth.rs
 forbid 'TierButton' src/critical_pages/auth.rs
 forbid 'Company / Team' src/critical_pages/auth.rs
 forbid 'auth-tabs' src/critical_pages/auth.rs
 require 'Password recovery' src/critical_pages/auth.rs
 require 'Account email' src/critical_pages/auth.rs
+require 'Manage providers, traffic, customers, access, and billing' src/critical_pages/auth.rs
+forbid 'BurnCloud stores the authenticated session locally' src/critical_pages/auth.rs
+forbid 'JWT' src/critical_pages/auth.rs
+forbid 'href: "#privacy"' src/critical_pages/auth.rs
+forbid 'href: "#terms"' src/critical_pages/auth.rs
+forbid 'let mut terms' src/critical_pages/auth.rs
+forbid 'Terms of Service and Privacy Policy' src/critical_pages/auth.rs
+forbid 'Registration now shows only fields' src/critical_pages/auth.rs
+
+# Public product surfaces must describe current capabilities, not old prototype attestation/benchmark claims.
+require 'public_pages::{Home, Landing}' src/app.rs
+require 'pub mod public_pages;' src/lib.rs
+forbid 'pub mod pages;' src/lib.rs
+require 'One API for your' src/public_pages.rs
+require 'OpenAI-compatible endpoint' src/public_pages.rs
+require 'It does not present ordinary routing metadata as cryptographic attestation.' src/public_pages.rs
+forbid '100% Cryptographically Traceable' src/public_pages.rs
+forbid 'Silicon-Attested' src/public_pages.rs
+forbid 'TPM SIGNED' src/public_pages.rs
+forbid '99.999%' src/public_pages.rs
+forbid '12.8M' src/public_pages.rs
+forbid '$4,766' src/public_pages.rs
+require 'BurnCloud - AI Gateway Console' src/app.rs
 
 # Providers present product concepts instead of raw enum IDs/shorthand and protect destructive changes.
 require 'PROVIDER_TYPES' src/functional_pages/providers.rs
@@ -102,14 +127,14 @@ require 'Environment operators' src/functional_pages/access_live.rs
 require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
 require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
 
-# Customer wallet funding must support normal currency precision and show the resulting balance before commit.
+# Customer wallet funding supports normal currency precision and shows the resulting balance before commit.
 require 'parse_currency_amount_nano' src/critical_pages/customers_portable.rs
 require 'step: "0.01"' src/critical_pages/customers_portable.rs
 require 'Review wallet change' src/critical_pages/customers_portable.rs
 require 'Balance after' src/critical_pages/customers_portable.rs
 forbid 'saturating_mul(1_000_000_000)' src/critical_pages/customers_portable.rs
 
-# API keys must be human-owned and lifecycle changes must happen in an intentional management flow.
+# API keys are human-owned and lifecycle changes happen in an intentional management flow.
 require 'Choose which account will own this router credential' src/functional_pages/access_live.rs
 require 'API Key Created' src/functional_pages/access_live.rs
 require 'Manage API Key' src/functional_pages/access_live.rs
@@ -119,7 +144,7 @@ require 'Rotate API Key' src/functional_pages/access_live.rs
 require 'Delete API Key' src/functional_pages/access_live.rs
 forbid 'th { "Version" }' src/functional_pages/access_live.rs
 
-# Logs must distinguish real timeouts from generic HTTP errors and provide a direct problem-diagnosis path.
+# Logs distinguish real timeouts from generic HTTP errors and provide a direct problem-diagnosis path.
 require '"problems" => matches!(status, "Timeout" | "Error")' src/functional_pages/logs_full.rs
 require 'Problems (error + timeout)' src/functional_pages/logs_full.rs
 require 'Show problems' src/functional_pages/logs_full.rs
@@ -143,7 +168,7 @@ require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_l
 require 'confirm_clear' src/functional_pages/settings.rs
 require 'MAINTENANCE' src/functional_pages/settings.rs
 
-# Settings must distinguish configured endpoint from verified reachability.
+# Settings distinguishes configured endpoint from verified reachability.
 require 'REACHABLE' src/functional_pages/settings.rs
 require 'UNVERIFIED' src/functional_pages/settings.rs
 require 'Retry runtime check' src/functional_pages/settings.rs
