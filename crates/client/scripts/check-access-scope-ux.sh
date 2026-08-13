@@ -70,6 +70,19 @@ require 'Environment health' src/critical_pages/overview_live.rs
 require 'environment-wide router log' src/critical_pages/overview_live.rs
 require 'Unknown values stay unknown instead of being displayed as zero' src/critical_pages/overview_live.rs
 
+# API-key ownership must fail closed and cost quota must be presented with its actual USD meaning.
+require 'let owner_directory_ready = user_snapshot.as_ref().is_some_and(Result::is_ok);' src/functional_pages/api_keys_live.rs
+require 'let active_users: Vec<User>' src/functional_pages/api_keys_live.rs
+require '.filter(|user| user.status == 1)' src/functional_pages/api_keys_live.rs
+require 'let create_ready = owner_directory_ready && !active_users.is_empty();' src/functional_pages/api_keys_live.rs
+require 'BurnCloud will not fall back to free-form ownership' src/functional_pages/api_keys_live.rs
+require 'Choose an active owner returned by the current account directory.' src/functional_pages/api_keys_live.rs
+require 'router credential quota is charged from calculated request cost in nano-USD' src/functional_pages/api_keys_live.rs
+require 'Spend Used / Limit' src/functional_pages/api_keys_live.rs
+require 'active key(s) belong to an inactive or missing account' src/functional_pages/api_keys_live.rs
+require 'server-side enforcement is tracked separately' src/functional_pages/api_keys_live.rs
+forbid 'Owner user ID' src/functional_pages/api_keys_live.rs
+
 # Performance may describe observed upstream diversity but may not infer configured failover from the sample.
 require 'Observed upstream diversity describes this sample only' src/functional_pages/analytics_full.rs
 require 'Single upstream observed' src/functional_pages/analytics_full.rs
@@ -80,5 +93,10 @@ forbid 'Needs backup' src/functional_pages/analytics_full.rs
 # New role-aware modules must stay in the runtime graph.
 require 'pub mod customer_layout;' src/lib.rs
 require 'pub mod role_access;' src/lib.rs
+require 'pub use api_keys_live::APIKeys;' src/functional_pages/mod.rs
+
+# Historical combined access module stays outside the active graph so stale Team/API-key logic cannot be mistaken for runtime truth.
+forbid 'mod access_live;' src/functional_pages/mod.rs
+forbid 'pub use access_live::APIKeys;' src/functional_pages/mod.rs
 
 echo "Access and data-scope UX contracts OK"
