@@ -20,6 +20,16 @@ fn compact(n: i64) -> String {
     }
 }
 
+fn success_tone(rate: f64) -> &'static str {
+    if rate >= 99.0 {
+        "tone-green"
+    } else if rate >= 95.0 {
+        "tone-amber"
+    } else {
+        "tone-red"
+    }
+}
+
 #[derive(Default, Clone)]
 struct ModelEval {
     requests: i64,
@@ -72,23 +82,31 @@ pub fn Evaluation() -> Element {
         successful_requests as f64 * 100.0 / total_requests as f64
     };
     let overall_success_text = format!("{overall_success:.1}%");
+    let overall_success_tone = success_tone(overall_success);
     let avg_latency = if total_requests == 0 { 0 } else { total_latency / total_requests };
     let avg_latency_text = format!("{avg_latency}ms");
     let model_count = models.len();
     let models_with_errors = models.values().filter(|model| model.success < model.requests).count();
-    let single_upstream_models = models.values().filter(|model| model.upstreams.len() <= 1).count();
+    let single_observed_upstream = models
+        .values()
+        .filter(|model| model.requests > 0 && model.upstreams.len() <= 1)
+        .count();
 
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Performance" }
-                    p { class: "page-subtitle", "Use real routed traffic to find unreliable, slow, expensive, or single-upstream models." }
+                    p { class: "page-subtitle", "Analyze the latest environment-wide router-log sample for reliability, latency, cost, and observed upstream behavior." }
                 }
                 div { class: "header-actions",
                     button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
                     Link { class: "button button-secondary", to: Route::Logs {}, "Inspect Logs" }
                 }
+            }
+
+            div { class: "product-note",
+                "Performance uses up to the latest 500 router-log records returned by the console API. Observed upstream diversity describes this sample only; configured redundancy is determined from Provider/Model configuration."
             }
 
             if loading {
@@ -111,12 +129,12 @@ pub fn Evaluation() -> Element {
             } else {
                 div { class: "metrics",
                     div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Requests Analyzed" } span { class: "metric-value", "{total_requests}" } span { class: "metric-note", "latest traffic sample" } }
+                        div { class: "metric-copy", span { class: "metric-label", "Requests Analyzed" } span { class: "metric-value", "{total_requests}" } span { class: "metric-note", "latest environment sample" } }
                         div { class: "metric-icon tone-blue", Icon { name: "activity" } }
                     }
                     div { class: "card metric",
                         div { class: "metric-copy", span { class: "metric-label", "Success Rate" } span { class: "metric-value", "{overall_success_text}" } span { class: "metric-note", "HTTP success across sample" } }
-                        div { class: "metric-icon tone-green", Icon { name: "shield" } }
+                        div { class: "metric-icon {overall_success_tone}", Icon { name: "shield" } }
                     }
                     div { class: "card metric",
                         div { class: "metric-copy", span { class: "metric-label", "Average Latency" } span { class: "metric-value", "{avg_latency_text}" } span { class: "metric-note", "end-to-end observed" } }
@@ -128,12 +146,12 @@ pub fn Evaluation() -> Element {
                     }
                 }
 
-                if models_with_errors > 0 || single_upstream_models > 0 {
+                if models_with_errors > 0 || single_observed_upstream > 0 {
                     div { class: "card card-pad stack",
                         div { class: "product-section-head",
                             div {
-                                h3 { "Needs attention" }
-                                p { "Start here before reading the full model table." }
+                                h3 { "Sample observations" }
+                                p { "Failures are actionable here; upstream diversity is descriptive until checked against configured Providers." }
                             }
                         }
                         if models_with_errors > 0 {
@@ -143,11 +161,11 @@ pub fn Evaluation() -> Element {
                                 Link { class: "button button-ghost button-sm", to: Route::Logs {}, "Inspect failures" }
                             }
                         }
-                        if single_upstream_models > 0 {
-                            div { class: "readiness-strip blocked",
-                                span { class: "readiness-dot" }
-                                strong { "{single_upstream_models} observed models were served by one or fewer upstreams in this sample." }
-                                Link { class: "button button-ghost button-sm", to: Route::Models {}, "Review redundancy" }
+                        if single_observed_upstream > 0 {
+                            div { class: "product-note",
+                                strong { "{single_observed_upstream} model(s) used one or fewer upstreams in this sample. " }
+                                "That does not prove they lack configured failover. Check Models to review actual provider redundancy."
+                                Link { class: "button button-ghost button-sm", to: Route::Models {}, "Review configured redundancy" }
                             }
                         }
                     }
@@ -157,21 +175,21 @@ pub fn Evaluation() -> Element {
                     div { class: "card-pad product-section-head",
                         div {
                             h3 { "Model performance" }
-                            p { "Compare reliability and latency first; use cost and upstream count to explain the result." }
+                            p { "Compare observed reliability and latency first; cost and upstream diversity help explain this traffic sample." }
                         }
                     }
                     div { class: "table-wrap",
                         table { class: "data-table",
                             thead { tr {
                                 th { "Model" }
-                                th { "Health" }
+                                th { "Sample Health" }
                                 th { class: "right", "Requests" }
                                 th { class: "right", "Success" }
                                 th { class: "right", "Avg Latency" }
                                 th { class: "right", "Tokens" }
                                 th { class: "right", "Multimodal" }
                                 th { class: "right", "Cost" }
-                                th { "Upstreams" }
+                                th { "Upstreams Observed" }
                             } }
                             tbody {
                                 for (model_name, evaluation) in models {
@@ -192,7 +210,7 @@ pub fn Evaluation() -> Element {
                                         let (health_class, health_text) = if failures > 0 {
                                             ("badge badge-error", "Errors observed")
                                         } else if upstream_count <= 1 {
-                                            ("badge badge-warning", "Needs backup")
+                                            ("badge badge-neutral", "Single upstream observed")
                                         } else {
                                             ("badge badge-success", "Stable sample")
                                         };
@@ -216,7 +234,7 @@ pub fn Evaluation() -> Element {
                     }
                 }
 
-                div { class: "product-note", "This page measures operational behavior from observed requests. Accuracy, hallucination rate, task quality, and benchmark scores require a separate model-quality evaluation system." }
+                div { class: "product-note", "This page measures operational behavior from observed requests. Accuracy, hallucination rate, task quality, benchmark scores, and configured failover are separate questions that require their own data sources." }
             }
         }
     }
