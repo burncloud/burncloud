@@ -85,6 +85,7 @@ pub fn App() -> Element {
             style { dangerous_inner_html: include_str!("critical_pages.css") }
             style { dangerous_inner_html: include_str!("product_ui.css") }
             style { dangerous_inner_html: include_str!("desktop_chrome.css") }
+            style { dangerous_inner_html: include_str!("visual_system.css") }
         }
         DesktopChrome {}
         Router::<Route> {}
