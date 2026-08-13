@@ -65,14 +65,16 @@ forbid 'mod dashboard;' src/critical_pages.rs
 forbid 'BurnCloud is ready to serve traffic' src/critical_pages/overview_live.rs
 forbid 'System Overview' src/critical_pages/overview_live.rs
 
-# Auth exposes real account capabilities only, without developer implementation notes or fake legal acceptance.
+# Auth exposes real account capabilities only, chooses the workspace from roles, and avoids fake legal/developer UI.
 forbid 'Onboarding Account Preference' src/critical_pages/auth.rs
 forbid 'TierButton' src/critical_pages/auth.rs
 forbid 'Company / Team' src/critical_pages/auth.rs
 forbid 'auth-tabs' src/critical_pages/auth.rs
 require 'Password recovery' src/critical_pages/auth.rs
 require 'Account email' src/critical_pages/auth.rs
-require 'Manage providers, traffic, customers, access, and billing' src/critical_pages/auth.rs
+require 'Sign in to the BurnCloud workspace available to your account.' src/critical_pages/auth.rs
+require 'is_staff_roles(&response.roles)' src/critical_pages/auth.rs
+require 'Route::Billing' src/critical_pages/auth.rs
 forbid 'BurnCloud stores the authenticated session locally' src/critical_pages/auth.rs
 forbid 'JWT' src/critical_pages/auth.rs
 forbid 'href: "#privacy"' src/critical_pages/auth.rs
@@ -185,12 +187,14 @@ require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_l
 forbid 'Security Score' src/functional_pages/guardrails_live.rs
 forbid 'Threat Sources' src/functional_pages/guardrails_live.rs
 
-# Diagnostic pages prioritize conclusions, risks and money before implementation detail.
+# Diagnostic pages prioritize truthful sample/account semantics, risk, and money before implementation detail.
 require 'Failures' src/functional_pages/logs_full.rs
 require 'Outcome' src/functional_pages/logs_full.rs
 require 'Performance' src/functional_pages/analytics_full.rs
-require 'Needs attention' src/functional_pages/analytics_full.rs
-require 'What is driving spend' src/functional_pages/analytics.rs
+require 'Sample observations' src/functional_pages/analytics_full.rs
+require 'Single upstream observed' src/functional_pages/analytics_full.rs
+require 'What is driving this account' src/functional_pages/analytics.rs
+require 'Account scope:' src/functional_pages/analytics.rs
 require 'Avg / Request' src/functional_pages/analytics.rs
 
 # Dangerous operational actions require explicit acknowledgement and truthful live state.
