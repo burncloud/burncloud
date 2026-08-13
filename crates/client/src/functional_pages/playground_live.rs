@@ -1,30 +1,50 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use dioxus::prelude::*;
 
 use crate::{
     app::Route,
     backend::{
-        chat_completion, first_active_api_token, ChannelService, ChatMessage, RouteTrace, TokenDto,
-        TokenService,
+        chat_completion, ChannelService, ChatMessage, RouteTrace, TokenDto, TokenService, User,
+        UserService,
     },
     components::Icon,
 };
+
+fn masked(token: &str) -> String {
+    if token.len() <= 16 {
+        return "••••••••".to_string();
+    }
+    format!("{}••••••••{}", &token[..8], &token[token.len() - 6..])
+}
 
 #[component]
 pub fn Playground() -> Element {
     let mut channels_resource = use_resource(move || async move { ChannelService::list(100).await });
     let mut keys_resource = use_resource(move || async move { TokenService::list().await });
+    let mut users_resource = use_resource(move || async move { UserService::list().await });
 
     let channel_snapshot = channels_resource.read().clone();
     let key_snapshot = keys_resource.read().clone();
+    let user_snapshot = users_resource.read().clone();
     let channel_error = channel_snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
     let key_error = key_snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let user_error = user_snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
     let channels = channel_snapshot.and_then(Result::ok).unwrap_or_default();
     let keys: Vec<TokenDto> = key_snapshot.and_then(Result::ok).unwrap_or_default();
+    let users: Vec<User> = user_snapshot.and_then(Result::ok).unwrap_or_default();
 
+    let owner_names: BTreeMap<String, String> = users
+        .iter()
+        .map(|user| (user.id.clone(), user.username.clone()))
+        .collect();
+    let active_tokens: Vec<TokenDto> = keys
+        .iter()
+        .filter(|key| key.status == "active")
+        .cloned()
+        .collect();
     let active_channels = channels.iter().filter(|channel| channel.status == 1).count();
-    let active_keys = keys.iter().filter(|key| key.status == "active").count();
+    let active_keys = active_tokens.len();
     let mut model_set = BTreeSet::new();
     for channel in &channels {
         if channel.status == 1 {
@@ -38,6 +58,7 @@ pub fn Playground() -> Element {
     let ready = active_channels > 0 && model_count > 0 && active_keys > 0;
 
     let mut model = use_signal(String::new);
+    let mut selected_key = use_signal(String::new);
     let mut prompt = use_signal(String::new);
     let mut messages = use_signal(|| Vec::<ChatMessage>::new());
     let mut temperature = use_signal(|| 0.7f64);
@@ -51,20 +72,30 @@ pub fn Playground() -> Element {
     let trace_channel = trace_value.channel_id.unwrap_or_else(|| "-".to_string());
     let trace_model = trace_value.model_id.unwrap_or_else(|| "-".to_string());
     let has_response = messages().iter().any(|message| message.role == "assistant");
+    let selected_index = selected_key().parse::<usize>().ok();
+    let selected_identity = selected_index
+        .and_then(|index| active_tokens.get(index))
+        .map(|key| {
+            let owner = owner_names.get(&key.user_id).cloned().unwrap_or_else(|| key.user_id.clone());
+            format!("{} • {}", owner, masked(&key.token))
+        });
+    let keys_for_send = active_tokens.clone();
 
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Playground" }
-                    p { class: "page-subtitle", "Verify the complete path from API access to model routing and upstream response before sending real traffic." }
+                    p { class: "page-subtitle", "Verify a real routed request with an explicit model and customer/API-key identity before sending production traffic." }
                 }
                 div { class: "header-actions",
                     button {
                         class: "button button-secondary",
                         onclick: move |_| {
+                            selected_key.set(String::new());
                             channels_resource.restart();
                             keys_resource.restart();
+                            users_resource.restart();
                         },
                         "Refresh readiness"
                     }
@@ -79,6 +110,9 @@ pub fn Playground() -> Element {
             }
             if let Some(message) = key_error {
                 div { class: "terminal auth-status auth-status-error", "API keys could not be loaded: {message}" }
+            }
+            if let Some(message) = user_error {
+                div { class: "product-note", "Owner names could not be loaded ({message}). API-key owner IDs are shown instead; test routing still works." }
             }
 
             div { class: if ready { "readiness-strip ready" } else { "readiness-strip blocked" },
@@ -122,28 +156,55 @@ pub fn Playground() -> Element {
             } else {
                 div { class: "grid-2", style: "grid-template-columns:minmax(0,1fr) 340px;align-items:start",
                     div { class: "card stack", style: "min-height:620px",
-                        div { class: "card-pad row between", style: "border-bottom:1px solid var(--border);gap:16px",
-                            div { class: "field", style: "flex:1",
-                                label { "Model to test" }
-                                select {
-                                    class: "select mono",
-                                    value: "{model}",
-                                    onchange: move |event| model.set(event.value()),
-                                    option { value: "", "Select a configured model…" }
-                                    for available_model in available_models.iter() {
-                                        option { value: "{available_model}", "{available_model}" }
+                        div { class: "card-pad stack", style: "border-bottom:1px solid var(--border);gap:12px",
+                            div { class: "grid-2",
+                                div { class: "field",
+                                    label { "Model to test" }
+                                    select {
+                                        class: "select mono",
+                                        value: "{model}",
+                                        onchange: move |event| model.set(event.value()),
+                                        option { value: "", "Select a configured model…" }
+                                        for available_model in available_models.iter() {
+                                            option { value: "{available_model}", "{available_model}" }
+                                        }
+                                    }
+                                }
+                                div { class: "field",
+                                    label { "Charge test to / API key" }
+                                    select {
+                                        class: "select",
+                                        value: "{selected_key}",
+                                        onchange: move |event| {
+                                            selected_key.set(event.value());
+                                            messages.set(Vec::new());
+                                            trace.set(RouteTrace::default());
+                                            usage.set(String::new());
+                                            error.set(String::new());
+                                        },
+                                        option { value: "", "Choose an account / API key…" }
+                                        for (index, key) in active_tokens.iter().enumerate() {
+                                            {
+                                                let owner = owner_names.get(&key.user_id).cloned().unwrap_or_else(|| key.user_id.clone());
+                                                let key_label = masked(&key.token);
+                                                rsx! { option { value: "{index}", "{owner} — {key_label}" } }
+                                            }
+                                        }
                                     }
                                 }
                             }
-                            button {
-                                class: "button button-secondary button-sm",
-                                onclick: move |_| {
-                                    messages.set(Vec::new());
-                                    trace.set(RouteTrace::default());
-                                    usage.set(String::new());
-                                    error.set(String::new());
-                                },
-                                "Clear conversation"
+                            div { class: "row between", style: "gap:16px",
+                                span { class: "tiny subtle", "Changing the API key clears the conversation so one test session does not mix customer attribution." }
+                                button {
+                                    class: "button button-secondary button-sm",
+                                    onclick: move |_| {
+                                        messages.set(Vec::new());
+                                        trace.set(RouteTrace::default());
+                                        usage.set(String::new());
+                                        error.set(String::new());
+                                    },
+                                    "Clear conversation"
+                                }
                             }
                         }
 
@@ -153,7 +214,7 @@ pub fn Playground() -> Element {
                                     div { class: "product-empty-inner",
                                         div { class: "product-empty-icon", Icon { name: "play" } }
                                         h3 { "Run a controlled routing test" }
-                                        p { "Choose a model, send a representative prompt, then verify which provider served it and inspect the resulting request log." }
+                                        p { "Choose a model and the account/API key that should own this test, then verify which provider served the request." }
                                     }
                                 }
                             } else {
@@ -185,17 +246,23 @@ pub fn Playground() -> Element {
                                 oninput: move |event| prompt.set(event.value()),
                             }
                             div { class: "row between",
-                                span { class: "tiny subtle", "Request goes through the same BurnCloud router and API-key path used by external clients." }
+                                span { class: "tiny subtle", "This request uses the selected real API key, so usage and billing follow that key's owner." }
                                 button {
                                     class: "button button-primary",
-                                    disabled: loading() || model().trim().is_empty() || prompt().trim().is_empty(),
+                                    disabled: loading() || model().trim().is_empty() || selected_key().trim().is_empty() || prompt().trim().is_empty(),
                                     onclick: move |_| {
                                         let model_id = model().trim().to_string();
                                         let text = prompt().trim().to_string();
+                                        let key_index = selected_key().trim().parse::<usize>().ok();
+                                        let api_key = key_index.and_then(|index| keys_for_send.get(index).map(|key| key.token.clone()));
                                         if model_id.is_empty() || text.is_empty() {
                                             error.set("Choose a model and enter a prompt.".to_string());
                                             return;
                                         }
+                                        let Some(api_key) = api_key else {
+                                            error.set("Choose which account / API key should own this test.".to_string());
+                                            return;
+                                        };
                                         let mut request_messages = messages();
                                         request_messages.push(ChatMessage { role: "user".to_string(), content: text });
                                         messages.set(request_messages.clone());
@@ -206,12 +273,7 @@ pub fn Playground() -> Element {
                                         let temp = temperature();
                                         let max = max_tokens();
                                         spawn(async move {
-                                            let result = async {
-                                                let api_key = first_active_api_token().await?;
-                                                chat_completion(&request_messages, &model_id, &api_key, temp, max).await
-                                            }
-                                            .await;
-                                            match result {
+                                            match chat_completion(&request_messages, &model_id, &api_key, temp, max).await {
                                                 Ok(response) => {
                                                     let mut next = request_messages;
                                                     next.push(ChatMessage { role: "assistant".to_string(), content: response.content });
@@ -242,6 +304,20 @@ pub fn Playground() -> Element {
                     div { class: "stack-lg",
                         div { class: "card card-pad stack",
                             div { class: "product-section-head",
+                                div { h3 { "Test identity" } p { "Who this controlled request will be attributed to." } }
+                            }
+                            if let Some(identity) = selected_identity {
+                                div { class: "readiness-strip ready",
+                                    span { class: "readiness-dot" }
+                                    strong { "{identity}" }
+                                }
+                            } else {
+                                div { class: "product-note", "Choose an account/API key before sending. Playground will not silently pick the first active credential." }
+                            }
+                        }
+
+                        div { class: "card card-pad stack",
+                            div { class: "product-section-head",
                                 div { h3 { "Request settings" } p { "Keep defaults unless your test needs specific generation behavior." } }
                             }
                             div { class: "field",
@@ -268,7 +344,7 @@ pub fn Playground() -> Element {
                         }
 
                         div { class: "product-note",
-                            "Playground is an operational smoke test, not a separate inference path. A successful response here is evidence that provider configuration, model exposure, API access and routing all work together."
+                            "Playground is an operational smoke test, not a separate inference path. A successful response here verifies provider configuration, model exposure, the selected API access identity, and routing together."
                         }
                     }
                 }
