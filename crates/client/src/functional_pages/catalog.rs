@@ -42,15 +42,17 @@ pub fn Models() -> Element {
 
     let total_models = model_map.len();
     let available_models = model_map.values().filter(|model| !model.active_providers.is_empty()).count();
-    let redundant_models = model_map.values().filter(|model| model.active_providers.len() >= 2).count();
+    let protected_models = model_map.values().filter(|model| model.active_providers.len() >= 2).count();
     let unavailable_models = total_models.saturating_sub(available_models);
+    let needs_backup_models = model_map.values().filter(|model| model.active_providers.len() == 1).count();
+    let attention_models = needs_backup_models + unavailable_models;
 
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Models" }
-                    p { class: "page-subtitle", "See which model IDs BurnCloud can actually serve and whether each model has upstream redundancy." }
+                    p { class: "page-subtitle", "See what BurnCloud can serve now and which models would stop working if one provider fails." }
                 }
                 div { class: "header-actions",
                     button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
@@ -60,20 +62,20 @@ pub fn Models() -> Element {
 
             div { class: "metrics",
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Models" } span { class: "metric-value", "{total_models}" } span { class: "metric-note", "derived from providers" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Models" } span { class: "metric-value", "{total_models}" } span { class: "metric-note", "configured model IDs" } }
                     div { class: "metric-icon tone-blue", Icon { name: "models" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Available" } span { class: "metric-value", "{available_models}" } span { class: "metric-note", "at least one active upstream" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Usable Now" } span { class: "metric-value", "{available_models}" } span { class: "metric-note", "has an active provider" } }
                     div { class: "metric-icon tone-green", Icon { name: "activity" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Redundant" } span { class: "metric-value", "{redundant_models}" } span { class: "metric-note", "2+ active upstreams" } }
-                    div { class: "metric-icon tone-purple", Icon { name: "routes" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Protected" } span { class: "metric-value", "{protected_models}" } span { class: "metric-note", "2+ active providers" } }
+                    div { class: "metric-icon tone-purple", Icon { name: "shield" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Unavailable" } span { class: "metric-value", "{unavailable_models}" } span { class: "metric-note", "needs provider attention" } }
-                    div { class: "metric-icon tone-amber", Icon { name: "shield" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Needs Attention" } span { class: "metric-value", "{attention_models}" } span { class: "metric-note", "no backup or unavailable" } }
+                    div { class: "metric-icon tone-amber", Icon { name: "routes" } }
                 }
             }
 
@@ -88,47 +90,56 @@ pub fn Models() -> Element {
                     div { class: "product-empty-inner",
                         div { class: "product-empty-icon", Icon { name: "models" } }
                         h3 { "No models are exposed yet" }
-                        p { "BurnCloud derives the model catalog from provider configuration. Add a provider or add model IDs to an existing provider." }
+                        p { "BurnCloud builds this catalog from provider configuration. Add a provider, then list the model IDs that provider can serve." }
                         Link { class: "button button-primary", to: Route::Providers {}, "Configure Providers" }
                     }
                 }
             } else {
+                if attention_models > 0 {
+                    div { class: "readiness-strip blocked",
+                        span { class: "readiness-dot" }
+                        strong { "{attention_models} model(s) need attention" }
+                        span { class: "muted", "Add overlapping providers for important models so one upstream failure does not interrupt service." }
+                    }
+                }
+
                 div { class: "card table-card",
                     div { class: "card-pad product-section-head",
                         div {
                             h3 { "Model availability" }
-                            p { "Availability reflects active providers now; redundancy highlights models that can survive one upstream failure." }
+                            p { "The status is based on active providers right now, not just configured entries." }
                         }
                     }
                     div { class: "table-wrap",
                         table { class: "data-table",
                             thead { tr {
                                 th { "Model" }
-                                th { "Availability" }
-                                th { "Active Upstreams" }
+                                th { "Resilience" }
+                                th { "Active Providers" }
                                 th { "Routing Groups" }
-                                th { class: "right", "Action" }
+                                th { class: "right", "Next Step" }
                             } }
                             tbody {
                                 for (model_name, availability) in model_map {
                                     {
                                         let active_count = availability.active_providers.len();
                                         let total_count = availability.providers.len();
+                                        let provider_word = if total_count == 1 { "provider" } else { "providers" };
                                         let active_text = availability.active_providers.iter().cloned().collect::<Vec<_>>().join(", ");
                                         let group_text = availability.groups.iter().cloned().collect::<Vec<_>>().join(", ");
                                         let (badge_class, badge_text, note) = if active_count == 0 {
-                                            ("badge badge-error", "Unavailable", "No active upstream")
+                                            ("badge badge-error", "Unavailable", "No active provider")
                                         } else if active_count == 1 {
-                                            ("badge badge-warning", "Single upstream", "No failover redundancy")
+                                            ("badge badge-warning", "Needs backup", "Only one active provider")
                                         } else {
-                                            ("badge badge-success", "Redundant", "Failover available")
+                                            ("badge badge-success", "Protected", "Failover available")
                                         };
                                         rsx! {
                                             tr { key: "{model_name}",
                                                 td {
                                                     div { class: "two-line",
                                                         strong { class: "table-primary mono", "{model_name}" }
-                                                        small { class: "muted", "{total_count} configured providers" }
+                                                        small { class: "muted", "{total_count} configured {provider_word}" }
                                                     }
                                                 }
                                                 td {
@@ -138,10 +149,10 @@ pub fn Models() -> Element {
                                                     }
                                                 }
                                                 td { class: "small", if active_text.is_empty() { "—" } else { "{active_text}" } }
-                                                td { class: "mono muted", "{group_text}" }
+                                                td { class: "mono muted", if group_text.is_empty() { "—" } else { "{group_text}" } }
                                                 td { class: "right",
                                                     if active_count > 0 {
-                                                        Link { class: "button button-ghost button-sm", to: Route::Playground {}, "Test" }
+                                                        Link { class: "button button-ghost button-sm", to: Route::Playground {}, "Open Playground" }
                                                     } else {
                                                         Link { class: "button button-ghost button-sm", to: Route::Providers {}, "Fix Provider" }
                                                     }
@@ -181,40 +192,45 @@ pub fn Routes() -> Element {
         .values()
         .filter(|rows| rows.iter().any(|channel| channel.status == 1))
         .count();
-    let redundant_groups = groups
+    let protected_groups = groups
         .values()
         .filter(|rows| rows.iter().filter(|channel| channel.status == 1).count() >= 2)
         .count();
     let unavailable_groups = route_groups.saturating_sub(healthy_groups);
+    let needs_backup_groups = groups
+        .values()
+        .filter(|rows| rows.iter().filter(|channel| channel.status == 1).count() == 1)
+        .count();
+    let attention_groups = needs_backup_groups + unavailable_groups;
 
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Routes" }
-                    p { class: "page-subtitle", "Understand how traffic groups choose providers and where a routing group still depends on a single upstream." }
+                    p { class: "page-subtitle", "See which providers will receive traffic, which path is preferred, and where failover is still missing." }
                 }
                 div { class: "header-actions",
                     button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
-                    Link { class: "button button-primary", to: Route::Providers {}, "Manage Routing Inputs" }
+                    Link { class: "button button-primary", to: Route::Providers {}, "Manage Providers" }
                 }
             }
 
             div { class: "metrics",
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Routing Groups" } span { class: "metric-value", "{route_groups}" } span { class: "metric-note", "traffic policies" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Routing Groups" } span { class: "metric-value", "{route_groups}" } span { class: "metric-note", "traffic destinations" } }
                     div { class: "metric-icon tone-blue", Icon { name: "routes" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Available" } span { class: "metric-value", "{healthy_groups}" } span { class: "metric-note", "has an active provider" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Serving" } span { class: "metric-value", "{healthy_groups}" } span { class: "metric-note", "has an active provider" } }
                     div { class: "metric-icon tone-green", Icon { name: "activity" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Redundant" } span { class: "metric-value", "{redundant_groups}" } span { class: "metric-note", "2+ active candidates" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Protected" } span { class: "metric-value", "{protected_groups}" } span { class: "metric-note", "2+ active providers" } }
                     div { class: "metric-icon tone-purple", Icon { name: "shield" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Unavailable" } span { class: "metric-value", "{unavailable_groups}" } span { class: "metric-note", "no active candidate" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Needs Attention" } span { class: "metric-value", "{attention_groups}" } span { class: "metric-note", "no backup or unavailable" } }
                     div { class: "metric-icon tone-amber", Icon { name: "providers" } }
                 }
             }
@@ -235,6 +251,14 @@ pub fn Routes() -> Element {
                     }
                 }
             } else {
+                if attention_groups > 0 {
+                    div { class: "readiness-strip blocked",
+                        span { class: "readiness-dot" }
+                        strong { "{attention_groups} routing group(s) need attention" }
+                        span { class: "muted", "A production route should normally have more than one active provider for the models it serves." }
+                    }
+                }
+
                 div { class: "stack-lg",
                     for (group_name, rows) in groups {
                         {
@@ -244,12 +268,14 @@ pub fn Routes() -> Element {
                                 .flat_map(|channel| channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()).map(str::to_string))
                                 .collect::<BTreeSet<_>>()
                                 .len();
+                            let candidate_word = if rows.len() == 1 { "provider" } else { "providers" };
+                            let model_word = if model_count == 1 { "model" } else { "models" };
                             let (health_class, health_text) = if active_count == 0 {
                                 ("badge badge-error", "Unavailable")
                             } else if active_count == 1 {
-                                ("badge badge-warning", "Single upstream")
+                                ("badge badge-warning", "Needs backup")
                             } else {
-                                ("badge badge-success", "Redundant")
+                                ("badge badge-success", "Protected")
                             };
                             rsx! {
                                 div { class: "card card-pad stack",
@@ -259,34 +285,38 @@ pub fn Routes() -> Element {
                                                 h3 { "{group_name}" }
                                                 span { class: "{health_class}", "{health_text}" }
                                             }
-                                            p { "{active_count} active of {rows.len()} candidates • {model_count} model IDs available" }
+                                            p { "{active_count} active of {rows.len()} {candidate_word} • {model_count} {model_word} available" }
                                         }
-                                        Link { class: "button button-secondary button-sm", to: Route::Providers {}, "Edit Providers" }
+                                        Link {
+                                            class: "button button-secondary button-sm",
+                                            to: Route::Providers {},
+                                            if active_count < 2 { "Add backup provider" } else { "Manage providers" }
+                                        }
                                     }
                                     div { class: "table-wrap",
                                         table { class: "data-table",
                                             thead { tr {
-                                                th { "Preference" }
+                                                th { "Order" }
                                                 th { "Provider" }
                                                 th { "Status" }
                                                 th { "Models" }
-                                                th { class: "right", "Priority" }
-                                                th { class: "right", "Weight" }
+                                                th { class: "right", "Routing Policy" }
                                             } }
                                             tbody {
                                                 for (index, channel) in rows.iter().enumerate() {
                                                     {
                                                         let preference = index + 1;
                                                         let status = status_label(channel);
-                                                        let model_count = channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()).count();
+                                                        let channel_model_count = channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()).count();
+                                                        let channel_model_word = if channel_model_count == 1 { "model" } else { "models" };
+                                                        let policy = format!("Priority {} • Weight {}", channel.priority, channel.weight);
                                                         rsx! {
                                                             tr { key: "{channel.id}",
                                                                 td { class: "mono", "#{preference}" }
                                                                 td { class: "table-primary", "{channel.name}" }
                                                                 td { span { class: if channel.status == 1 { "badge badge-success" } else { "badge badge-error" }, "{status}" } }
-                                                                td { "{model_count} models" }
-                                                                td { class: "right tabular", "{channel.priority}" }
-                                                                td { class: "right tabular", "{channel.weight}" }
+                                                                td { "{channel_model_count} {channel_model_word}" }
+                                                                td { class: "right mono muted", "{policy}" }
                                                             }
                                                         }
                                                     }
@@ -294,8 +324,14 @@ pub fn Routes() -> Element {
                                             }
                                         }
                                     }
-                                    if active_count == 1 {
-                                        div { class: "product-note", "This routing group currently has a single active upstream. Adding a second provider with overlapping model coverage improves failover resilience." }
+                                    div { class: "product-note",
+                                        if active_count == 0 {
+                                            "No active provider can currently serve this route. Restore a provider before sending traffic to this group."
+                                        } else if active_count == 1 {
+                                            "Only one active provider can serve this route. Add another provider with overlapping model coverage so one upstream failure does not stop traffic."
+                                        } else {
+                                            "Lower priority values are preferred first. Weight distributes traffic between providers that share the same priority."
+                                        }
                                     }
                                 }
                             }
