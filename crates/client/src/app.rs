@@ -96,7 +96,7 @@ pub fn launch_gui_with_tray() {
     use dioxus::desktop::{Config, WindowBuilder};
 
     let window = WindowBuilder::new()
-        .with_title("BurnCloud - AI Local Deployment Platform")
+        .with_title("BurnCloud - AI Gateway Console")
         .with_inner_size(dioxus::desktop::LogicalSize::new(1440.0, 900.0))
         .with_resizable(true)
         .with_decorations(false);
