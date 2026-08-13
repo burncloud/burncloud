@@ -104,6 +104,16 @@ require 'disabled: busy() || !cache_operational || !confirm_clear()' src/functio
 require 'Cache state is not enabled and connected; maintenance was not sent.' src/functional_pages/settings.rs
 forbid 'BurnCloud application cache cleared.' src/functional_pages/settings.rs
 
+# Logs are an environment-wide bounded sample; unknown/missing status must never be inferred as success or zero metrics.
+require 'up to the latest 200 environment-wide router-log records' src/functional_pages/logs_full.rs
+require 'Loaded Cost is the cost stored on those rows, not an account bill or all-time environment spend.' src/functional_pages/logs_full.rs
+require 'Request, failure, fallback, latency, and loaded-cost metrics remain unavailable rather than falling back to zero.' src/functional_pages/logs_full.rs
+require 'Missing or non-final status codes stay unknown instead of being counted as success.' src/functional_pages/logs_full.rs
+require 'option { value: "unknown", "Unknown" }' src/functional_pages/logs_full.rs
+require '(200..400).contains(&self.status_code)' src/observability.rs
+require 'if failover { "Fallback" } else { "Success" }' src/observability.rs
+require '"Unknown"' src/observability.rs
+
 # Performance may describe observed upstream diversity but may not infer configured failover from the sample.
 require 'Observed upstream diversity describes this sample only' src/functional_pages/analytics_full.rs
 require 'Single upstream observed' src/functional_pages/analytics_full.rs
