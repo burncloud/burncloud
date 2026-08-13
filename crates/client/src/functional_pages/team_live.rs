@@ -6,14 +6,8 @@ use crate::{
     app::Route,
     backend::{use_auth, User, UserService},
     components::Icon,
+    role_access::is_staff_role,
 };
-
-fn is_staff_role(role: &str) -> bool {
-    matches!(
-        role.trim().to_ascii_lowercase().as_str(),
-        "root" | "admin" | "administrator" | "operator" | "owner"
-    )
-}
 
 fn role_label(role: &str) -> String {
     let trimmed = role.trim();
@@ -79,26 +73,26 @@ pub fn Team() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Team" }
-                    p { class: "page-subtitle", "Review the administrative identities that can operate this BurnCloud environment and spot disabled or unexpected access." }
+                    p { class: "page-subtitle", "Review admin identities that can operate this BurnCloud environment and spot disabled or unexpected access." }
                 }
                 button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
             }
 
             div { class: "metrics",
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Operators" } span { class: "metric-value", "{operator_text}" } span { class: "metric-note", "admin / owner / operator identities" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Admins" } span { class: "metric-value", "{operator_text}" } span { class: "metric-note", "accounts with the current admin role" } }
                     div { class: "metric-icon tone-blue", Icon { name: "users" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Active" } span { class: "metric-value", "{active_text}" } span { class: "metric-note", "currently enabled operator accounts" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Active" } span { class: "metric-value", "{active_text}" } span { class: "metric-note", "currently enabled admin accounts" } }
                     div { class: "metric-icon tone-green", Icon { name: "activity" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Disabled" } span { class: "metric-value", "{disabled_text}" } span { class: "metric-note", "operator accounts not currently enabled" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Disabled" } span { class: "metric-value", "{disabled_text}" } span { class: "metric-note", "admin accounts not currently enabled" } }
                     div { class: "metric-icon tone-gray", Icon { name: "lock" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Roles Observed" } span { class: "metric-value", "{roles_text}" } span { class: "metric-note", "distinct staff role labels" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Roles Observed" } span { class: "metric-value", "{roles_text}" } span { class: "metric-note", "admin role labels returned here" } }
                     div { class: "metric-icon tone-purple", Icon { name: "shield" } }
                 }
             }
@@ -106,7 +100,7 @@ pub fn Team() -> Element {
             if let Some(message) = load_error.clone() {
                 div { class: "card card-pad stack",
                     strong { class: "danger", "Team directory could not be loaded" }
-                    p { class: "small muted", "BurnCloud will not infer operator counts or access state when the account list is unavailable." }
+                    p { class: "small muted", "BurnCloud will not infer admin counts or access state when the account list is unavailable." }
                     code { class: "terminal", "{message}" }
                     button { class: "button button-primary button-sm", onclick: move |_| resource.restart(), "Retry" }
                 }
@@ -130,12 +124,12 @@ pub fn Team() -> Element {
                         if session_in_directory {
                             div { class: "readiness-strip ready",
                                 span { class: "readiness-dot" }
-                                strong { "Current session appears in the operator directory" }
+                                strong { "Current session appears in the admin directory" }
                             }
                         } else {
                             div { class: "readiness-strip blocked",
                                 span { class: "readiness-dot" }
-                                strong { "Current session is not present in the returned operator directory" }
+                                strong { "Current admin session is not present in the returned admin directory" }
                                 span { class: "muted", "The session can still be authenticated, but the account list and session claims do not line up. Review server role data before relying on this directory." }
                             }
                         }
@@ -150,7 +144,7 @@ pub fn Team() -> Element {
                         }
                     }
                     div { class: "product-note",
-                        "This page is an access inventory, not a fake staff-management screen. The current server can list account roles, but it does not expose explicit endpoints to invite staff, change roles, disable a staff account, or revoke an operator safely from here."
+                        "This page is an access inventory, not a fake staff-management screen. The current persisted role model exposes admin and user roles, but the server does not expose explicit endpoints to invite admins, change roles, disable an admin account, or revoke admin access safely from here."
                     }
                     if !role_set.is_empty() {
                         div { class: "stack",
@@ -170,29 +164,29 @@ pub fn Team() -> Element {
             }
 
             if loading {
-                div { class: "card card-pad", "Loading operator directory…" }
+                div { class: "card card-pad", "Loading admin directory…" }
             } else if load_error.is_none() {
                 if let Some(users) = staff.clone() {
                     if users.is_empty() {
                         div { class: "card product-empty",
                             div { class: "product-empty-inner",
                                 div { class: "product-empty-icon", Icon { name: "users" } }
-                                h3 { "No staff-role accounts returned" }
-                                p { "The account list did not return root, admin, administrator, owner, or operator roles. This does not prove that no privileged session exists; compare it with the current session above." }
+                                h3 { "No admin-role accounts returned" }
+                                p { "The account list did not return an admin-role account. This does not prove that no privileged session exists; compare it with the current session above and review server role data." }
                             }
                         }
                     } else {
                         div { class: "card table-card",
                             div { class: "card-pad product-section-head",
                                 div {
-                                    h3 { "Operator directory" }
+                                    h3 { "Admin directory" }
                                     p { "Administrative identities are separated from customer accounts so access review stays focused." }
                                 }
-                                span { class: "small muted", "{users.len()} operators" }
+                                span { class: "small muted", "{users.len()} admins" }
                             }
                             div { class: "table-wrap",
                                 table { class: "data-table",
-                                    thead { tr { th { "Operator" } th { "Role" } th { "Status" } th { "Contact" } } }
+                                    thead { tr { th { "Admin" } th { "Role" } th { "Status" } th { "Contact" } } }
                                     tbody {
                                         for user in users {
                                             {
