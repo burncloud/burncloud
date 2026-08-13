@@ -11,7 +11,7 @@ use crate::{
         APIKeys, Billing, Evaluation, Guardrails, Logs, Models, Playground, Providers, Routes,
         Settings, Team,
     },
-    pages::{Home, Landing},
+    public_pages::{Home, Landing},
     route_aliases::{Dashboard, Users},
 };
 
