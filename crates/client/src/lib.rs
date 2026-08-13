@@ -3,12 +3,14 @@ pub mod auth_gate;
 pub mod backend;
 pub mod components;
 pub mod critical_pages;
+pub mod customer_layout;
 pub mod data;
 pub mod functional_api;
 pub mod functional_layout;
 pub mod functional_pages;
 pub mod observability;
 pub mod public_pages;
+pub mod role_access;
 pub mod route_aliases;
 
 pub use app::App;
