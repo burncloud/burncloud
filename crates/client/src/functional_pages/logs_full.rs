@@ -70,7 +70,11 @@ pub fn Logs() -> Element {
         .iter()
         .filter(|log| {
             let status = log.status_label();
-            let status_match = filter_value == "all" || status.to_lowercase() == filter_value;
+            let status_match = match filter_value.as_str() {
+                "all" => true,
+                "problems" => matches!(status, "Timeout" | "Error"),
+                _ => status.to_lowercase() == filter_value,
+            };
             let text_match = search.is_empty()
                 || log.request_id.to_lowercase().contains(&search)
                 || log.path.to_lowercase().contains(&search)
@@ -107,7 +111,7 @@ pub fn Logs() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Logs" }
-                    p { class: "page-subtitle", "Find failed, slow, or fallback requests first, then inspect the exact routing and usage metadata behind each request." }
+                    p { class: "page-subtitle", "Find failures and fallbacks quickly, then inspect the routing and usage facts behind each request." }
                 }
                 div { class: "header-actions",
                     div { class: "search-field", style: "width:300px",
@@ -116,6 +120,7 @@ pub fn Logs() -> Element {
                     }
                     select { class: "select", value: "{filter}", onchange: move |event| filter.set(event.value()),
                         option { value: "all", "All outcomes" }
+                        option { value: "problems", "Problems (error + timeout)" }
                         option { value: "success", "Success" }
                         option { value: "fallback", "Fallback" }
                         option { value: "timeout", "Timeout" }
@@ -144,6 +149,15 @@ pub fn Logs() -> Element {
                 }
             }
 
+            if failures > 0 {
+                div { class: "readiness-strip blocked",
+                    span { class: "readiness-dot" }
+                    strong { "{failures} failed request(s) need attention" }
+                    span { class: "muted", "Problems combines HTTP errors and true timeout events so operators can start diagnosis without building a filter manually." }
+                    button { class: "button button-ghost button-sm", onclick: move |_| filter.set("problems".to_string()), "Show problems" }
+                }
+            }
+
             if loading {
                 div { class: "card card-pad", "Loading request logs…" }
             } else if let Some(message) = load_error {
@@ -157,7 +171,7 @@ pub fn Logs() -> Element {
                     div { class: "card-pad product-section-head",
                         div {
                             h3 { "Request activity" }
-                            p { "Showing {visible_count} of {row_count} loaded requests. Select a row for routing and cost detail." }
+                            p { "Showing {visible_count} of {row_count} loaded requests. Inspect a row for routing and cost detail." }
                         }
                     }
                     if visible.is_empty() {
@@ -178,6 +192,7 @@ pub fn Logs() -> Element {
                                     th { class: "right", "Latency" }
                                     th { class: "right", "Tokens" }
                                     th { class: "right", "Cost" }
+                                    th { class: "right", "Action" }
                                 } }
                                 tbody {
                                     for log in visible {
@@ -189,8 +204,11 @@ pub fn Logs() -> Element {
                                             let user = log.user_id.clone().unwrap_or_else(|| "anonymous".to_string());
                                             let tokens = log.total_tokens();
                                             let cost = format!("${:.6}", log.cost_usd());
+                                            let error_detail = log.error_type.clone().filter(|value| !value.trim().is_empty());
+                                            let row_log = log.clone();
+                                            let inspect_log = log.clone();
                                             rsx! {
-                                                tr { key: "{log.id}-{log.request_id}", style: "cursor:pointer", onclick: move |_| selected.set(Some(log.clone())),
+                                                tr { key: "{log.id}-{log.request_id}", style: "cursor:pointer", onclick: move |_| selected.set(Some(row_log.clone())),
                                                     td { class: "mono muted", "{timestamp}" }
                                                     td {
                                                         div { class: "two-line",
@@ -204,10 +222,20 @@ pub fn Logs() -> Element {
                                                             small { class: "muted", "{upstream}" }
                                                         }
                                                     }
-                                                    td { Badge { text: status, tone: status_tone(status) } }
+                                                    td {
+                                                        div { class: "two-line",
+                                                            Badge { text: status, tone: status_tone(status) }
+                                                            if let Some(detail) = error_detail {
+                                                                small { class: "mono muted", "{detail}" }
+                                                            }
+                                                        }
+                                                    }
                                                     td { class: "right tabular", "{log.latency_ms}ms" }
                                                     td { class: "right tabular", "{tokens}" }
                                                     td { class: "right strong tabular", "{cost}" }
+                                                    td { class: "right",
+                                                        button { class: "button button-ghost button-sm", onclick: move |_| selected.set(Some(inspect_log.clone())), "Inspect" }
+                                                    }
                                                 }
                                             }
                                         }
@@ -241,7 +269,7 @@ pub fn Logs() -> Element {
                                 div { class: if is_problem { "readiness-strip blocked" } else { "readiness-strip ready" },
                                     span { class: "readiness-dot" }
                                     strong { "{status}" }
-                                    span { class: "muted", if is_problem { "Review routing and error metadata below." } else { "Request completed without an observed router error." } }
+                                    span { class: "muted", if is_problem { "Review outcome and routing metadata below." } else { "Request completed without an observed router error." } }
                                 }
 
                                 div { class: "card card-pad stack",
