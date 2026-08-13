@@ -9,6 +9,51 @@ fn format_nano(nano: i64, symbol: &str) -> String {
     format!("{symbol}{:.2}", nano as f64 / 1_000_000_000.0)
 }
 
+fn parse_currency_amount_nano(input: &str) -> Result<i64, String> {
+    let value = input.trim();
+    if value.is_empty() {
+        return Err("Enter an amount.".to_string());
+    }
+    if value.starts_with('-') {
+        return Err("Funding amount must be greater than zero.".to_string());
+    }
+
+    let mut parts = value.split('.');
+    let whole = parts.next().unwrap_or_default();
+    let fraction = parts.next().unwrap_or_default();
+    if parts.next().is_some() || fraction.len() > 2 {
+        return Err("Use a currency amount with no more than 2 decimal places.".to_string());
+    }
+    if whole.is_empty() && fraction.is_empty() {
+        return Err("Enter a valid amount.".to_string());
+    }
+
+    let whole_value = if whole.is_empty() {
+        0i64
+    } else {
+        whole.parse::<i64>().map_err(|_| "Enter a valid amount.".to_string())?
+    };
+    let fraction_value = if fraction.is_empty() {
+        0i64
+    } else {
+        fraction.parse::<i64>().map_err(|_| "Enter a valid amount.".to_string())?
+    };
+    let fraction_nano = match fraction.len() {
+        0 => 0,
+        1 => fraction_value.checked_mul(100_000_000).ok_or_else(|| "Amount is too large.".to_string())?,
+        2 => fraction_value.checked_mul(10_000_000).ok_or_else(|| "Amount is too large.".to_string())?,
+        _ => return Err("Use a currency amount with no more than 2 decimal places.".to_string()),
+    };
+    let nano = whole_value
+        .checked_mul(1_000_000_000)
+        .and_then(|base| base.checked_add(fraction_nano))
+        .ok_or_else(|| "Amount is too large.".to_string())?;
+    if nano <= 0 {
+        return Err("Funding amount must be greater than zero.".to_string());
+    }
+    Ok(nano)
+}
+
 fn is_staff_role(role: &str) -> bool {
     matches!(
         role.trim().to_ascii_lowercase().as_str(),
@@ -26,7 +71,7 @@ pub fn Customers() -> Element {
     let mut username = use_signal(String::new);
     let mut email = use_signal(String::new);
     let mut password = use_signal(String::new);
-    let mut amount = use_signal(|| 0i64);
+    let mut amount = use_signal(String::new);
     let mut currency = use_signal(|| "CNY".to_string());
     let mut busy = use_signal(|| false);
     let mut notice = use_signal(String::new);
@@ -67,7 +112,7 @@ pub fn Customers() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Customers" }
-                    p { class: "page-subtitle", "Manage business accounts, review wallet balances, and fund customer usage. Administrative staff are shown separately under Team." }
+                    p { class: "page-subtitle", "Manage customer accounts, review wallet balances, and fund usage with clear financial confirmation." }
                 }
                 div { class: "header-actions",
                     button { class: "button button-secondary", onclick: move |_| users.restart(), "Refresh" }
@@ -122,7 +167,7 @@ pub fn Customers() -> Element {
                     div { class: "product-empty-inner",
                         div { class: "product-empty-icon", Icon { name: "users" } }
                         h3 { "Create the first customer account" }
-                        p { "Customer accounts own wallet balances and can receive API keys for routed model usage. Team members are intentionally managed separately." }
+                        p { "Customer accounts own wallet balances and can receive API keys for routed model usage. Team members are managed separately." }
                         button { class: "button button-primary", onclick: move |_| create_open.set(true), "Create Customer" }
                     }
                 }
@@ -158,9 +203,9 @@ pub fn Customers() -> Element {
                                 thead { tr {
                                     th { "Customer" }
                                     th { "Status" }
-                                    th { "Wallet" }
+                                    th { "Wallet Balance" }
                                     th { "Preferred Currency" }
-                                    th { class: "right", "Actions" }
+                                    th { class: "right", "Action" }
                                 } }
                                 tbody {
                                     for user in filtered {
@@ -190,7 +235,7 @@ pub fn Customers() -> Element {
                                                         button {
                                                             class: "button button-secondary button-sm",
                                                             onclick: move |_| {
-                                                                amount.set(0);
+                                                                amount.set(String::new());
                                                                 currency.set(user.preferred_currency.clone().filter(|value| value == "USD" || value == "CNY").unwrap_or_else(|| "CNY".to_string()));
                                                                 notice.set(String::new());
                                                                 error.set(String::new());
@@ -267,6 +312,22 @@ pub fn Customers() -> Element {
                 {
                     let current_cny = format_nano(user.balance_cny, "CNY ");
                     let current_usd = format_nano(user.balance_usd, "$");
+                    let selected_currency = currency();
+                    let symbol = if selected_currency == "USD" { "$" } else { "CNY " };
+                    let current_balance_nano = if selected_currency == "USD" { user.balance_usd } else { user.balance_cny };
+                    let parsed_amount = parse_currency_amount_nano(&amount());
+                    let amount_nano = parsed_amount.clone().unwrap_or(0);
+                    let funding_text = if amount_nano > 0 { format_nano(amount_nano, symbol) } else { "—".to_string() };
+                    let after_text = if amount_nano > 0 {
+                        format_nano(current_balance_nano.saturating_add(amount_nano), symbol)
+                    } else {
+                        format_nano(current_balance_nano, symbol)
+                    };
+                    let confirm_label = if amount_nano > 0 {
+                        format!("Add {funding_text}")
+                    } else {
+                        "Add Funds".to_string()
+                    };
                     rsx! {
                         div { class: "drawer-backdrop", onclick: move |_| topup_user.set(None) }
                         aside { class: "drawer",
@@ -287,38 +348,64 @@ pub fn Customers() -> Element {
                                         }
                                         div { class: "field",
                                             label { "Amount" }
-                                            input { class: "input", r#type: "number", min: "1", value: "{amount}", disabled: busy(), oninput: move |event| amount.set(event.value().parse::<i64>().unwrap_or(0)) }
+                                            input {
+                                                class: "input",
+                                                r#type: "number",
+                                                min: "0.01",
+                                                step: "0.01",
+                                                value: "{amount}",
+                                                placeholder: "0.00",
+                                                disabled: busy(),
+                                                oninput: move |event| amount.set(event.value()),
+                                            }
                                         }
                                     }
                                     div { class: "row gap-2",
-                                        button { class: "button button-secondary button-sm", onclick: move |_| amount.set(100), "100" }
-                                        button { class: "button button-secondary button-sm", onclick: move |_| amount.set(500), "500" }
-                                        button { class: "button button-secondary button-sm", onclick: move |_| amount.set(1000), "1,000" }
+                                        button { class: "button button-secondary button-sm", onclick: move |_| amount.set("100".to_string()), "100" }
+                                        button { class: "button button-secondary button-sm", onclick: move |_| amount.set("500".to_string()), "500" }
+                                        button { class: "button button-secondary button-sm", onclick: move |_| amount.set("1000".to_string()), "1,000" }
                                     }
                                 }
+
+                                div { class: "form-section",
+                                    div { class: "form-section-head", strong { "Review wallet change" } small { "Funding is applied immediately after confirmation." } }
+                                    div { class: "receipt-row", label { "Customer" } strong { "{user.username}" } }
+                                    div { class: "receipt-row", label { "Add" } strong { class: "tabular", "{funding_text}" } }
+                                    div { class: "receipt-row", label { "Balance after" } strong { class: "tabular", "{after_text}" } }
+                                    if let Err(message) = parsed_amount.clone() {
+                                        if !amount().trim().is_empty() {
+                                            div { class: "product-note", "{message}" }
+                                        }
+                                    }
+                                }
+
                                 if !error().is_empty() { div { class: "terminal auth-status auth-status-error", "{error}" } }
                                 if !notice().is_empty() { div { class: "terminal auth-status", "{notice}" } }
                                 div { class: "row customer-form-actions",
                                     button { class: "button button-secondary", disabled: busy(), onclick: move |_| topup_user.set(None), "Cancel" }
                                     button {
                                         class: "button button-primary",
-                                        disabled: busy(),
+                                        disabled: busy() || parsed_amount.is_err(),
                                         onclick: move |_| {
-                                            let value = amount();
+                                            let amount_value = amount();
+                                            let amount_nano = match parse_currency_amount_nano(&amount_value) {
+                                                Ok(value) => value,
+                                                Err(message) => {
+                                                    error.set(message);
+                                                    return;
+                                                }
+                                            };
                                             let selected_currency = currency();
+                                            let symbol = if selected_currency == "USD" { "$" } else { "CNY " };
                                             let user_id = user.id.clone();
                                             let user_name = user.username.clone();
-                                            if value <= 0 {
-                                                error.set("Funding amount must be greater than zero.".to_string());
-                                                return;
-                                            }
+                                            let display_amount = format_nano(amount_nano, symbol);
                                             busy.set(true);
                                             error.set(String::new());
                                             spawn(async move {
-                                                let amount_nano = value.saturating_mul(1_000_000_000);
                                                 match UserService::topup(&user_id, amount_nano, &selected_currency).await {
                                                     Ok(_) => {
-                                                        notice.set(format!("Added {value} {selected_currency} to {user_name}."));
+                                                        notice.set(format!("Added {display_amount} to {user_name}."));
                                                         topup_user.set(None);
                                                         users.restart();
                                                     }
@@ -327,7 +414,7 @@ pub fn Customers() -> Element {
                                                 busy.set(false);
                                             });
                                         },
-                                        if busy() { "Adding…" } else { "Confirm Funding" }
+                                        if busy() { "Adding…" } else { "{confirm_label}" }
                                     }
                                 }
                             }
