@@ -56,6 +56,22 @@ fn channel_model_count(channels: &[Channel]) -> usize {
     models.len()
 }
 
+fn router_status_label(log: &RouterLog) -> &'static str {
+    let is_timeout = log
+        .error_type
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("timeout"));
+    if is_timeout {
+        "Timeout"
+    } else if log.status_code >= 400 {
+        "Error"
+    } else if log.layer_decision.as_deref().unwrap_or("").contains("failover") {
+        "Fallback"
+    } else {
+        "Success"
+    }
+}
+
 fn route_receipt(log: &RouterLog) -> String {
     let user_id = log.user_id.clone().unwrap_or_else(|| "-".to_string());
     let model = log.model.clone().unwrap_or_else(|| "-".to_string());
@@ -402,7 +418,7 @@ pub fn Overview() -> Element {
                         {
                             let model_text = log.model.clone().unwrap_or_else(|| "-".to_string());
                             let upstream_text = log.upstream_id.clone().unwrap_or_else(|| "-".to_string());
-                            let status_text = format!("HTTP {} • {}", log.status_code, log.status_label());
+                            let status_text = format!("HTTP {} • {}", log.status_code, router_status_label(&log));
                             rsx! {
                                 div { class: "receipt",
                                     div { class: "receipt-row", label { "Request" } strong { class: "mono", "{log.request_id}" } }
