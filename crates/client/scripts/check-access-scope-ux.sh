@@ -95,6 +95,15 @@ require 'active key(s) belong to an inactive or missing account' src/functional_
 require 'server-side enforcement is tracked separately' src/functional_pages/api_keys_live.rs
 forbid 'Owner user ID' src/functional_pages/api_keys_live.rs
 
+# Cache maintenance must be gated by verified enabled+connected Redis state and target only BurnCloud's cache namespace.
+require 'let cache_operational = cache_enabled == Some(true) && cache_connected == Some(true);' src/functional_pages/settings.rs
+require 'Application caching is disabled. There is no active Redis cache namespace to clear.' src/functional_pages/settings.rs
+require 'BurnCloud requires cache stats to confirm that Redis caching is enabled and connected before allowing this operation.' src/functional_pages/settings.rs
+require "Clear Application Cache deletes BurnCloud's bc:* Redis cache keys." src/functional_pages/settings.rs
+require 'disabled: busy() || !cache_operational || !confirm_clear()' src/functional_pages/settings.rs
+require 'Cache state is not enabled and connected; maintenance was not sent.' src/functional_pages/settings.rs
+forbid 'BurnCloud application cache cleared.' src/functional_pages/settings.rs
+
 # Performance may describe observed upstream diversity but may not infer configured failover from the sample.
 require 'Observed upstream diversity describes this sample only' src/functional_pages/analytics_full.rs
 require 'Single upstream observed' src/functional_pages/analytics_full.rs
