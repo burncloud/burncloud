@@ -102,7 +102,7 @@ pub fn FunctionalConsoleLayout() -> Element {
                         NavItem { to:Route::Routes {}, icon:"routes", label:"Routes" }
                         NavItem { to:Route::Playground {}, icon:"terminal", label:"Playground" }
                     }
-                    NavGroup { title:"Observe",
+                    NavGroup { title:"Monitoring",
                         NavItem { to:Route::Logs {}, icon:"logs", label:"Logs" }
                         NavItem { to:Route::Evaluation {}, icon:"chart", label:"Evaluation" }
                         NavItem { to:Route::Billing {}, icon:"billing", label:"Billing" }
@@ -122,7 +122,7 @@ pub fn FunctionalConsoleLayout() -> Element {
                             NavItem { to:Route::Home {}, icon:"globe", label:"Landing Page" }
                             button {
                                 class:"nav-item",
-                                style:"width:100%;text-align:left",
+                                style:"width:100%;text-align:left;border:0;background:transparent",
                                 onclick:move |_| {
                                     auth.clear();
                                     navigator.replace(Route::Login {});
@@ -163,12 +163,9 @@ pub fn FunctionalConsoleLayout() -> Element {
                             }
                         }
                         div { class:"top-actions",
-                            Link { to:Route::Home {}, class:"tiny-link", Icon { name:"globe" } span { "Landing Page" } }
                             div { class:"env-chip", title:"BurnCloud server is configured; live health is shown on Overview", span { class:"green-dot" } "Server Configured" }
-                            Link { to:Route::Logs {}, class:"icon-button", title:"Open request logs", Icon { name:"bell" } }
-                            Link { to:Route::Settings {}, class:"icon-button", title:"System settings", Icon { name:"help" } }
                             div { class:"top-divider" }
-                            div { class:"profile-link",
+                            div { class:"profile-link", title:"Signed-in account",
                                 div { class:"avatar", "{avatar}" }
                                 div { class:"two-line",
                                     span { class:"profile-name", "{username}" }
