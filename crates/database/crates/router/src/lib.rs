@@ -8,7 +8,7 @@
 //! - [`log`] - Router logs, usage stats and balance deduction (RouterLog, RouterLogModel, BalanceModel)
 //! - [`router_video_task`] - Router video task persistence (RouterVideoTask, RouterVideoTaskModel)
 
-use burncloud_database::{adapt_sql, Database, Result};
+use burncloud_database::{adapt_sql, phs, Database, Result};
 
 pub mod log;
 pub mod router_video_task;
@@ -228,8 +228,66 @@ impl RouterDatabase {
 
     // ============== Log delegations ==============
 
+    /// Insert an immutable usage/billing log entry.
+    ///
+    /// Logging is intentionally side-effect free with respect to credential
+    /// spend quota. Spend settlement is owned by `deduct_quota` and is scoped
+    /// to the credential that actually authorized the request.
     pub async fn insert_log(db: &Database, log: &RouterLog) -> Result<()> {
-        RouterLogModel::insert(db, log).await
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let sql = format!(
+            r#"
+            INSERT INTO router_logs
+            (request_id, user_id, path, upstream_id, status_code, latency_ms,
+             prompt_tokens, completion_tokens, cost,
+             model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens,
+             cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens,
+             input_cost, output_cost, cache_read_cost, cache_write_cost,
+             audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost,
+             layer_decision, traffic_color, cost_status, error_type)
+            VALUES ({})
+            "#,
+            phs(is_postgres, 32)
+        );
+
+        sqlx::query(&sql)
+            .bind(&log.request_id)
+            .bind(&log.user_id)
+            .bind(&log.path)
+            .bind(&log.upstream_id)
+            .bind(log.status_code)
+            .bind(log.latency_ms)
+            .bind(log.prompt_tokens)
+            .bind(log.completion_tokens)
+            .bind(log.cost)
+            .bind(&log.model)
+            .bind(log.cache_read_tokens)
+            .bind(log.reasoning_tokens)
+            .bind(&log.pricing_region)
+            .bind(log.video_tokens)
+            .bind(log.cache_write_tokens)
+            .bind(log.audio_input_tokens)
+            .bind(log.audio_output_tokens)
+            .bind(log.image_tokens)
+            .bind(log.embedding_tokens)
+            .bind(log.input_cost)
+            .bind(log.output_cost)
+            .bind(log.cache_read_cost)
+            .bind(log.cache_write_cost)
+            .bind(log.audio_cost)
+            .bind(log.image_cost)
+            .bind(log.video_cost)
+            .bind(log.reasoning_cost)
+            .bind(log.embedding_cost)
+            .bind(&log.layer_decision)
+            .bind(&log.traffic_color)
+            .bind(&log.cost_status)
+            .bind(&log.error_type)
+            .execute(conn.pool())
+            .await?;
+
+        Ok(())
     }
 
     pub async fn get_logs(db: &Database, limit: i32, offset: i32) -> Result<Vec<RouterLog>> {

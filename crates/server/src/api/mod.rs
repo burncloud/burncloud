@@ -27,31 +27,39 @@ async fn api_not_found() -> impl IntoResponse {
 }
 
 pub fn routes(state: AppState) -> Router {
-    // Public routes - no authentication required
-    // These are auth endpoints that must be accessible without a token
+    // Public routes - no authentication required.
     let public_routes = Router::new()
         .merge(auth::public_routes())
         .with_state(state.clone());
 
-    // Protected routes - authentication required
-    // All /console/api/* endpoints (except public auth routes) require a valid JWT
+    // Administrator-only management surfaces. Authentication runs on the
+    // outer protected router; this inner layer performs authorization.
+    let admin_routes = Router::new()
+        .merge(channel::routes())
+        .merge(log::routes())
+        .merge(monitor::routes())
+        .merge(security::security_routes())
+        .merge(cache::routes())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::admin_middleware,
+        ));
+
+    // Authenticated self-service routes. Token handlers perform resource-level
+    // owner/admin authorization because users are allowed to manage their own
+    // API credentials while administrators may manage all credentials.
     let protected_routes = Router::new()
         .merge(auth::protected_routes())
         .merge(billing::routes())
-        .merge(channel::routes())
         .merge(token::routes())
-        .merge(log::routes())
-        .merge(monitor::routes())
         .merge(user::routes())
-        .merge(security::security_routes())
         .merge(openapi::routes())
-        .merge(cache::routes())
-        // Catch-all for any unmatched /console/api/* paths
-        // This prevents LiveView from returning HTML for non-existent API endpoints
+        .merge(admin_routes)
+        // Catch-all for any unmatched /console/api/* paths. This prevents
+        // LiveView from returning HTML for non-existent API endpoints.
         .route("/console/api/{*path}", get(api_not_found))
         .layer(middleware::from_fn(crate::auth_middleware))
         .with_state(state);
 
-    // Merge public and protected routes
     public_routes.merge(protected_routes)
 }

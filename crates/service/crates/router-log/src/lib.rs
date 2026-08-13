@@ -4,7 +4,7 @@
 //! usage statistics, and balance deductions.
 
 use burncloud_database::Database;
-use burncloud_database_router::{BalanceModel, RouterLogModel};
+use burncloud_database_router::{BalanceModel, RouterDatabase, RouterLogModel};
 
 pub use burncloud_database_router::{
     BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, UsageStats,
@@ -16,9 +16,9 @@ type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 pub struct RouterLogService;
 
 impl RouterLogService {
-    /// Insert a new router log entry
+    /// Insert a new router log entry without mutating credential spend quota.
     pub async fn insert(db: &Database, log: &RouterLog) -> Result<()> {
-        RouterLogModel::insert(db, log).await
+        RouterDatabase::insert_log(db, log).await
     }
 
     /// Get logs with pagination

@@ -1,0 +1,57 @@
+name: Security & Billing Invariants
+
+on:
+  pull_request:
+    paths:
+      - "crates/server/**"
+      - "crates/router/**"
+      - "crates/database/crates/router/**"
+      - "crates/service/crates/router-log/**"
+      - ".github/workflows/security-billing-invariants.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/server/**"
+      - "crates/router/**"
+      - "crates/database/crates/router/**"
+      - "crates/service/crates/router-log/**"
+      - ".github/workflows/security-billing-invariants.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  invariants:
+    name: Security + Billing invariant suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
+      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
+      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
+      SKIP_INITIAL_PRICE_SYNC: "1"
+      RUST_BACKTRACE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Check affected packages
+        run: cargo check -p burncloud-router -p burncloud-server
+
+      - name: Billing invariants
+        run: cargo test -p burncloud-router --test billing_invariants --test quota_tests
+
+      - name: Security invariants
+        run: cargo test -p burncloud-server --test security_invariants

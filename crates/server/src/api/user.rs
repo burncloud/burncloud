@@ -1,8 +1,9 @@
-use crate::api::auth::Claims;
-use crate::api::response::{err, ok};
+use crate::api::auth::{is_admin, Claims};
+use crate::api::response::{err, err_status, ok};
 use crate::AppState;
 use axum::{
     extract::{Extension, Json, Query, State},
+    http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Router,
@@ -77,8 +78,24 @@ pub fn routes() -> Router<AppState> {
         .merge(authenticated)
 }
 
-#[tracing::instrument(skip(state, payload), fields(user_id = %payload.user_id))]
-async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> impl IntoResponse {
+async fn require_admin_or_response(state: &AppState, claims: &Claims) -> Option<axum::response::Response> {
+    match is_admin(state, claims).await {
+        Ok(true) => None,
+        Ok(false) => Some(err_status(StatusCode::FORBIDDEN, "Admin access required").into_response()),
+        Err(status) => Some(err_status(status, "Failed to authorize request").into_response()),
+    }
+}
+
+#[tracing::instrument(skip(state, claims, payload), fields(user_id = %payload.user_id))]
+async fn topup(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<TopupDto>,
+) -> impl IntoResponse {
+    if let Some(response) = require_admin_or_response(&state, &claims).await {
+        return response;
+    }
+
     let currency = payload.currency.unwrap_or_else(|| "USD".to_string());
     match state
         .user_service
@@ -90,11 +107,16 @@ async fn topup(State(state): State<AppState>, Json(payload): Json<TopupDto>) -> 
     }
 }
 
-#[tracing::instrument(skip(state, payload), fields(username = %payload.username))]
+#[tracing::instrument(skip(state, claims, payload), fields(username = %payload.username))]
 async fn register(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Json(payload): Json<RegisterDto>,
 ) -> impl IntoResponse {
+    if let Some(response) = require_admin_or_response(&state, &claims).await {
+        return response;
+    }
+
     match state
         .user_service
         .register_user(
@@ -214,7 +236,14 @@ fn persist_client_state(username: &str, token: &str) {
 }
 
 #[tracing::instrument(skip_all)]
-async fn list_users(State(state): State<AppState>) -> impl IntoResponse {
+async fn list_users(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> impl IntoResponse {
+    if let Some(response) = require_admin_or_response(&state, &claims).await {
+        return response;
+    }
+
     match state.user_service.list_users(&state.db).await {
         Ok(users) => {
             let mut summaries = Vec::new();
