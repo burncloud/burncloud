@@ -22,6 +22,23 @@ pub fn Settings() -> Element {
     let cache_result = cache_resource.read().clone();
     let metrics: SystemMetrics = metrics_result.clone().and_then(Result::ok).unwrap_or_default();
     let metrics_error = metrics_result.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let (environment_badge_class, environment_badge, environment_note) = match metrics_result.as_ref() {
+        None => (
+            "badge badge-neutral",
+            "CHECKING",
+            "Verifying the configured server with live runtime telemetry.",
+        ),
+        Some(Ok(_)) => (
+            "badge badge-success",
+            "REACHABLE",
+            "The configured server responded to the latest runtime telemetry request.",
+        ),
+        Some(Err(_)) => (
+            "badge badge-warning",
+            "UNVERIFIED",
+            "The endpoint is configured, but the latest runtime check did not succeed.",
+        ),
+    };
     let cache_text = match cache_result {
         Some(Ok(value)) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
         Some(Err(message)) => format!("Cache statistics unavailable: {message}"),
@@ -42,7 +59,7 @@ pub fn Settings() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Settings" }
-                    p { class: "page-subtitle", "Inspect the connected BurnCloud environment and perform the maintenance operations the server actually supports." }
+                    p { class: "page-subtitle", "Inspect the configured BurnCloud environment, verify runtime reachability, and perform supported maintenance operations." }
                 }
                 button {
                     class: "button button-secondary",
@@ -62,10 +79,11 @@ pub fn Settings() -> Element {
                     div { class: "product-section-head",
                         div {
                             h3 { "Environment" }
-                            p { "The server endpoint and identity this console is currently using." }
+                            p { "The endpoint and identity this console is configured to use." }
                         }
-                        span { class: "badge badge-success", "CONNECTED" }
+                        span { class: "{environment_badge_class}", "{environment_badge}" }
                     }
+                    div { class: "product-note", "{environment_note}" }
                     div { class: "receipt-row", label { "Server" } strong { class: "mono", "{api_root}" } }
                     div { class: "receipt-row", label { "Signed in as" } strong { "{username}" } }
                     div { class: "receipt-row", label { "Roles" } strong { "{roles}" } }
@@ -87,7 +105,13 @@ pub fn Settings() -> Element {
                         Icon { name: "activity" }
                     }
                     if let Some(message) = metrics_error {
-                        code { class: "terminal", "{message}" }
+                        div { class: "stack",
+                            strong { class: "danger", "Runtime telemetry unavailable" }
+                            code { class: "terminal", "{message}" }
+                            button { class: "button button-secondary button-sm", onclick: move |_| metrics_resource.restart(), "Retry runtime check" }
+                        }
+                    } else if metrics_result.is_none() {
+                        p { class: "small muted", "Checking runtime telemetry…" }
                     } else {
                         div { class: "grid-2",
                             div { class: "receipt-row", label { "CPU" } strong { class: "mono", "{cpu_text}" } }
@@ -104,7 +128,7 @@ pub fn Settings() -> Element {
                 div { class: "product-section-head",
                     div {
                         h3 { "Application cache" }
-                        p { "Cache is an operational implementation detail, so raw server statistics are available on demand instead of dominating the page." }
+                        p { "Cache is an operational implementation detail, so raw server statistics stay on demand instead of dominating the page." }
                     }
                     button { class: "button button-ghost button-sm", onclick: move |_| cache_resource.restart(), "Refresh cache" }
                 }
@@ -118,14 +142,14 @@ pub fn Settings() -> Element {
                 div { class: "product-section-head",
                     div {
                         h3 { class: "danger", "Cache maintenance" }
-                        p { "Clear application cache only when you are troubleshooting stale runtime state or following an operational procedure." }
+                        p { "Clear application cache only when troubleshooting stale runtime state or following an operational procedure." }
                     }
                     span { class: "badge badge-error", "MAINTENANCE" }
                 }
                 p { class: "small muted", "Clearing cache does not delete customers, providers, API keys, or router logs, but it can temporarily change runtime behavior while caches warm again." }
                 label { class: "row gap-2 small", style: "align-items:flex-start",
                     input { r#type: "checkbox", checked: confirm_clear(), onchange: move |_| confirm_clear.set(!confirm_clear()) }
-                    span { "I understand this is a live maintenance operation on the connected BurnCloud server." }
+                    span { "I understand this is a live maintenance operation against the configured BurnCloud server." }
                 }
                 button {
                     class: "button button-primary",
