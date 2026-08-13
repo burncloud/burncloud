@@ -47,15 +47,23 @@ if ! (( logs_line < performance_line && performance_line < billing_line )); then
 fi
 require 'label:"Performance"' src/functional_layout.rs
 
-# Overview must distinguish configured prerequisites from a verified successful traffic path.
-require 'Setup & verification' src/critical_pages/dashboard.rs
-require 'Setup is complete — verify one real request' src/critical_pages/dashboard.rs
-require 'Traffic path verified' src/critical_pages/dashboard.rs
-require 'has_successful_request' src/critical_pages/dashboard.rs
-require 'Run verification test' src/critical_pages/dashboard.rs
-require 'router_status_label' src/critical_pages/dashboard.rs
-require 'eq_ignore_ascii_case("timeout")' src/critical_pages/dashboard.rs
-forbid 'BurnCloud is ready to serve traffic' src/critical_pages/dashboard.rs
+# Overview must keep unknown data unknown, separate account activity from environment health, and require real traffic evidence.
+require 'Setup & verification' src/critical_pages/overview_live.rs
+require 'Checking this environment' src/critical_pages/overview_live.rs
+require 'Unknown values stay unknown instead of being displayed as zero' src/critical_pages/overview_live.rs
+require 'Your usage' src/critical_pages/overview_live.rs
+require 'Your Requests' src/critical_pages/overview_live.rs
+require 'Your Tokens' src/critical_pages/overview_live.rs
+require 'Your Spend' src/critical_pages/overview_live.rs
+require 'Environment health' src/critical_pages/overview_live.rs
+require 'Recent successful request observed' src/critical_pages/overview_live.rs
+require 'Traffic path verified' src/critical_pages/overview_live.rs
+require 'router_status_label' src/critical_pages/overview_live.rs
+require 'eq_ignore_ascii_case("timeout")' src/critical_pages/overview_live.rs
+require 'pub use overview_live::Overview;' src/critical_pages.rs
+forbid 'mod dashboard;' src/critical_pages.rs
+forbid 'BurnCloud is ready to serve traffic' src/critical_pages/overview_live.rs
+forbid 'System Overview' src/critical_pages/overview_live.rs
 
 # Auth exposes real account capabilities only, without developer implementation notes or fake legal acceptance.
 forbid 'Onboarding Account Preference' src/critical_pages/auth.rs
@@ -129,9 +137,13 @@ forbid 'first_active_api_token' src/functional_pages/playground_live.rs
 # Customers and staff have separate product responsibilities.
 require 'Manage customer accounts' src/critical_pages/customers_portable.rs
 require '!is_staff_role(&user.role)' src/critical_pages/customers_portable.rs
-require 'Environment operators' src/functional_pages/access_live.rs
-require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
-require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
+require 'Operator directory' src/functional_pages/team_live.rs
+require 'Current session appears in the operator directory' src/functional_pages/team_live.rs
+require 'This page is an access inventory, not a fake staff-management screen.' src/functional_pages/team_live.rs
+require 'pub use team_live::Team;' src/functional_pages/mod.rs
+forbid 'pub use access_live::{APIKeys, Team};' src/functional_pages/mod.rs
+forbid 'Invite Organization Member' src/functional_pages/team_live.rs
+forbid 'Send Secure Invitation' src/functional_pages/team_live.rs
 
 # Customer wallet funding supports normal currency precision and shows the resulting balance before commit.
 require 'parse_currency_amount_nano' src/critical_pages/customers_portable.rs
@@ -159,6 +171,20 @@ require 'eq_ignore_ascii_case("timeout")' src/observability.rs
 require 'else if self.status_code >= 400' src/observability.rs
 forbid 'self.status_code >= 500 ||' src/observability.rs
 
+# Guardrails must describe backend-derived HTTP error signals accurately instead of overclaiming security intelligence.
+require 'Request Health' src/functional_pages/guardrails_live.rs
+require 'HTTP Error Events' src/functional_pages/guardrails_live.rs
+require 'Affected IDs / Upstreams' src/functional_pages/guardrails_live.rs
+require 'operational traffic indicators, not a threat-intelligence feed' src/functional_pages/guardrails_live.rs
+require 'BurnCloud will not show default-off controls when the real saved policy could not be loaded.' src/functional_pages/guardrails_live.rs
+require 'HTTP risk signals' src/functional_pages/guardrails_live.rs
+require 'A 4xx does not automatically mean a malicious client' src/functional_pages/guardrails_live.rs
+require 'confirm_trip' src/functional_pages/guardrails_live.rs
+require 'DANGER ZONE' src/functional_pages/guardrails_live.rs
+require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_live.rs
+forbid 'Security Score' src/functional_pages/guardrails_live.rs
+forbid 'Threat Sources' src/functional_pages/guardrails_live.rs
+
 # Diagnostic pages prioritize conclusions, risks and money before implementation detail.
 require 'Failures' src/functional_pages/logs_full.rs
 require 'Outcome' src/functional_pages/logs_full.rs
@@ -168,9 +194,6 @@ require 'What is driving spend' src/functional_pages/analytics.rs
 require 'Avg / Request' src/functional_pages/analytics.rs
 
 # Dangerous operational actions require explicit acknowledgement and truthful live state.
-require 'confirm_trip' src/functional_pages/guardrails_live.rs
-require 'DANGER ZONE' src/functional_pages/guardrails_live.rs
-require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_live.rs
 require 'confirm_clear' src/functional_pages/settings.rs
 require 'MAINTENANCE' src/functional_pages/settings.rs
 
