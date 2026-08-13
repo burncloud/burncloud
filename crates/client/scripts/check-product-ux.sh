@@ -136,16 +136,19 @@ require 'Playground will not silently pick the first active credential.' src/fun
 require 'Send Test Request' src/functional_pages/playground_live.rs
 forbid 'first_active_api_token' src/functional_pages/playground_live.rs
 
-# Customers and staff have separate product responsibilities.
+# Customers and admins have separate product responsibilities under the current admin/user role model.
 require 'Manage customer accounts' src/critical_pages/customers_portable.rs
 require '!is_staff_role(&user.role)' src/critical_pages/customers_portable.rs
-require 'Operator directory' src/functional_pages/team_live.rs
-require 'Current session appears in the operator directory' src/functional_pages/team_live.rs
+require 'role_access::is_staff_role' src/functional_pages/team_live.rs
+require 'Admin directory' src/functional_pages/team_live.rs
+require 'Current session appears in the admin directory' src/functional_pages/team_live.rs
+require 'current persisted role model exposes admin and user roles' src/functional_pages/team_live.rs
 require 'This page is an access inventory, not a fake staff-management screen.' src/functional_pages/team_live.rs
 require 'pub use team_live::Team;' src/functional_pages/mod.rs
 forbid 'pub use access_live::{APIKeys, Team};' src/functional_pages/mod.rs
 forbid 'Invite Organization Member' src/functional_pages/team_live.rs
 forbid 'Send Secure Invitation' src/functional_pages/team_live.rs
+forbid 'admin / owner / operator identities' src/functional_pages/team_live.rs
 
 # Customer wallet funding supports normal currency precision and shows the resulting balance before commit.
 require 'parse_currency_amount_nano' src/critical_pages/customers_portable.rs
