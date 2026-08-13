@@ -4,12 +4,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+fail() {
+  local file="$1"
+  local message="$2"
+  echo "::error file=$file::$message" >&2
+  echo "$message" >&2
+  exit 1
+}
+
 require() {
   local needle="$1"
   local file="$2"
   if ! grep -Fq "$needle" "$file"; then
-    echo "Missing functional wiring: '$needle' in $file" >&2
-    exit 1
+    fail "$file" "Missing functional wiring: '$needle'"
   fi
 }
 
@@ -29,18 +36,15 @@ require 'pub use overview_live::Overview;' src/critical_pages.rs
 require 'public_pages::{Home, Landing}' src/app.rs
 require 'pub mod public_pages;' src/lib.rs
 if grep -Fq 'pages::{Home, Landing}' src/app.rs || grep -Fq 'pub mod pages;' src/lib.rs; then
-  echo "Historical prototype pages were reconnected to the runtime" >&2
-  exit 1
+  fail src/app.rs "Historical prototype pages were reconnected to the runtime"
 fi
 
 # Historical overview/team implementations must not remain in the active module graph.
 if grep -Fq 'mod dashboard;' src/critical_pages.rs; then
-  echo "Historical dashboard implementation was reconnected to the runtime" >&2
-  exit 1
+  fail src/critical_pages.rs "Historical dashboard implementation was reconnected to the runtime"
 fi
 if grep -Fq 'pub use access_live::{APIKeys, Team};' src/functional_pages/mod.rs; then
-  echo "Historical Team implementation was reconnected to API-key module" >&2
-  exit 1
+  fail src/functional_pages/mod.rs "Historical Team implementation was reconnected to API-key module"
 fi
 
 # Authentication and persistent session wiring.
@@ -100,12 +104,10 @@ require 'billing_summary' src/functional_pages/analytics.rs
 
 # Unsupported prototype actions must not reappear as fake success paths.
 if grep -Fq 'Suspend Account' src/critical_pages/customers_portable.rs; then
-  echo "Fake suspend action reintroduced without a server endpoint" >&2
-  exit 1
+  fail src/critical_pages/customers_portable.rs "Fake suspend action reintroduced without a server endpoint"
 fi
 if grep -Fq 'Prompt Snippet' src/functional_pages/logs_full.rs; then
-  echo "Synthetic prompt content reintroduced into router log UI" >&2
-  exit 1
+  fail src/functional_pages/logs_full.rs "Synthetic prompt content reintroduced into router log UI"
 fi
 
 # Chrome controls should either navigate/act or be semantic status elements.
