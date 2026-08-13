@@ -3,18 +3,24 @@ name: Security & Billing Invariants
 on:
   pull_request:
     paths:
+      - ".env.example"
       - "crates/server/**"
       - "crates/router/**"
       - "crates/database/crates/router/**"
       - "crates/service/crates/router-log/**"
+      - "crates/tests/tests/common/**"
+      - "crates/tests/tests/api/auth_handlers.rs"
       - ".github/workflows/security-billing-invariants.yml"
   push:
     branches: [main]
     paths:
+      - ".env.example"
       - "crates/server/**"
       - "crates/router/**"
       - "crates/database/crates/router/**"
       - "crates/service/crates/router-log/**"
+      - "crates/tests/tests/common/**"
+      - "crates/tests/tests/api/auth_handlers.rs"
       - ".github/workflows/security-billing-invariants.yml"
 
 permissions:
@@ -55,3 +61,12 @@ jobs:
 
       - name: Security invariants
         run: cargo test -p burncloud-server --test security_invariants
+
+      - name: Registration bootstrap invariants
+        run: cargo test -p burncloud-server api::registration -- --test-threads=1
+
+      - name: Compile auth API integration tests
+        run: cargo test -p burncloud-tests --test api_tests --no-run
+
+      - name: Check BurnCloud application integration
+        run: cargo check -p burncloud
