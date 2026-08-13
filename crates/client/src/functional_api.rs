@@ -119,14 +119,10 @@ pub async fn clear_cache() -> Result<(), String> {
     if response.success { Ok(()) } else { Err(response.message.unwrap_or_else(|| "Cache clear failed".to_string())) }
 }
 
-/// Update a provider without erasing L2 shaper reservation thresholds that are
-/// present in the current server ChannelDto but not editable in this UI yet.
-///
-/// The current server update handler also forces `status = 1`. To avoid silently
-/// reactivating a down/inactive provider, edits are rejected unless the current
-/// channel is active. This can be relaxed once the server supports preserve-status
-/// update semantics.
-pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result<(), String> {
+async fn update_channel_preserving_reservations_inner(
+    channel: &Channel,
+    allow_reactivation: bool,
+) -> Result<(), String> {
     if channel.id <= 0 {
         return Err("Channel id is required for update".to_string());
     }
@@ -138,9 +134,9 @@ pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result
     }
 
     let current_status = current.data.get("status").and_then(|value| value.as_i64()).unwrap_or(1);
-    if current_status != 1 {
+    if current_status != 1 && !allow_reactivation {
         return Err(
-            "This provider is inactive/down. The current BurnCloud PUT /console/api/channel handler would implicitly reactivate it, so this client refuses the edit to preserve routing state."
+            "This provider is inactive/down. Use the explicit repair flow if you intend to save changes and reactivate routing."
                 .to_string(),
         );
     }
@@ -177,4 +173,18 @@ pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result
     } else {
         Err(updated.message.unwrap_or_else(|| "Provider update failed".to_string()))
     }
+}
+
+/// Edit an already-active provider while preserving reservation thresholds.
+/// A down/inactive provider is rejected here because the current server PUT
+/// implicitly activates it; callers must use the explicit repair flow instead.
+pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result<(), String> {
+    update_channel_preserving_reservations_inner(channel, false).await
+}
+
+/// Repair a down/inactive provider and explicitly accept the server's current
+/// save-and-reactivate behavior. Reservation thresholds are preserved exactly
+/// like the normal update path.
+pub async fn repair_channel_and_reactivate(channel: &Channel) -> Result<(), String> {
+    update_channel_preserving_reservations_inner(channel, true).await
 }
