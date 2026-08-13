@@ -35,7 +35,7 @@ require 'pub use overview_live::Overview;' src/critical_pages.rs
 # Public runtime routes must use the truthful public module, never the historical prototype page module.
 require 'public_pages::{Home, Landing}' src/app.rs
 require 'pub mod public_pages;' src/lib.rs
-if grep -Fq 'pages::{Home, Landing}' src/app.rs || grep -Fq 'pub mod pages;' src/lib.rs; then
+if grep -Eq '(^|[[:space:]])pages::\{Home, Landing\}' src/app.rs || grep -Fq 'pub mod pages;' src/lib.rs; then
   fail src/app.rs "Historical prototype pages were reconnected to the runtime"
 fi
 
