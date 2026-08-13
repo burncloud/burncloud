@@ -256,6 +256,141 @@
   justify-content: flex-end;
 }
 
+/* BurnCloud visual baseline: status first, data second, decoration last. */
+:root {
+  --bc-brand: #e95513;
+  --bc-brand-soft: color-mix(in srgb, var(--bc-brand) 9%, #fff);
+  --bc-surface: #fff;
+  --bc-surface-subtle: #f6f7f8;
+  --bc-border: rgba(229, 231, 235, .82);
+  --bc-border-strong: rgba(209, 213, 219, .92);
+  --bc-radius-card: 16px;
+  --bc-radius-control: 10px;
+  --bc-shadow-floating: 0 18px 48px -18px rgba(17, 24, 39, .22);
+}
+
+.console-shell .card {
+  border-radius: var(--bc-radius-card);
+  border-color: var(--bc-border);
+  box-shadow: none;
+}
+
+.topbar {
+  justify-content: flex-end;
+}
+
+.topbar-right {
+  margin-left: auto;
+  gap: 20px;
+}
+
+.env-chip {
+  background: var(--bc-surface-subtle);
+  color: #6b7280;
+}
+
+.neutral-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #9ca3af;
+  flex: 0 0 auto;
+}
+
+.nav-item.active::before,
+.nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--bc-brand);
+}
+
+.global-search input:focus {
+  border-color: color-mix(in srgb, var(--bc-brand) 24%, #d1d5db);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bc-brand) 7%, transparent);
+}
+
+.button:focus-visible,
+.icon-button:focus-visible,
+.nav-item:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bc-brand) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.page {
+  animation-duration: .18s;
+  animation-timing-function: ease-out;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.product-status-card.status-ready,
+.product-status-card.status-configured,
+.product-status-card.status-attention,
+.product-status-card.status-blocked {
+  background: var(--bc-surface);
+  border-color: var(--bc-border-strong);
+}
+
+.product-status-card.status-ready {
+  box-shadow: inset 3px 0 0 #22c55e;
+}
+
+.product-status-card.status-configured {
+  box-shadow: inset 3px 0 0 var(--bc-brand);
+}
+
+.product-status-card.status-attention {
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.product-status-card.status-blocked {
+  box-shadow: inset 3px 0 0 #ef4444;
+}
+
+.overview-page-header {
+  align-items: center;
+}
+
+.overview-refresh {
+  color: var(--muted);
+}
+
+.overview-metrics {
+  gap: 16px;
+}
+
+.overview-metrics .metric {
+  min-height: 96px;
+}
+
+.overview-metrics .metric-icon {
+  background: var(--bc-surface-subtle);
+  border-color: var(--bc-border);
+  color: #6b7280;
+}
+
+.overview-secondary {
+  background: color-mix(in srgb, var(--bc-surface-subtle) 55%, #fff);
+}
+
+.latest-request-card {
+  border-color: var(--bc-border-strong);
+}
+
 @media (max-width: 1100px) {
   .product-hero {
     grid-template-columns: 1fr;
