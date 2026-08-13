@@ -29,6 +29,7 @@ require 'pub use providers::Providers;' src/functional_pages/mod.rs
 require 'pub use catalog::{Models, Routes};' src/functional_pages/mod.rs
 require 'pub use logs_full::Logs;' src/functional_pages/mod.rs
 require 'pub use analytics_full::Evaluation;' src/functional_pages/mod.rs
+require 'pub use api_keys_live::APIKeys;' src/functional_pages/mod.rs
 require 'pub use team_live::Team;' src/functional_pages/mod.rs
 require 'pub use overview_live::Overview;' src/critical_pages.rs
 
@@ -39,12 +40,12 @@ if grep -Eq '(^|[[:space:]])pages::\{Home, Landing\}' src/app.rs || grep -Fq 'pu
   fail src/app.rs "Historical prototype pages were reconnected to the runtime"
 fi
 
-# Historical overview/team implementations must not remain in the active module graph.
+# Historical overview/access implementations must not remain in the active module graph.
 if grep -Fq 'mod dashboard;' src/critical_pages.rs; then
   fail src/critical_pages.rs "Historical dashboard implementation was reconnected to the runtime"
 fi
-if grep -Fq 'pub use access_live::{APIKeys, Team};' src/functional_pages/mod.rs; then
-  fail src/functional_pages/mod.rs "Historical Team implementation was reconnected to API-key module"
+if grep -Fq 'mod access_live;' src/functional_pages/mod.rs || grep -Fq 'pub use access_live::APIKeys;' src/functional_pages/mod.rs; then
+  fail src/functional_pages/mod.rs "Historical combined access module was reconnected to the runtime"
 fi
 
 # Authentication and persistent session wiring.
@@ -90,7 +91,9 @@ require 'user_usage' src/critical_pages/overview_live.rs
 require 'ChannelService::list' src/critical_pages/overview_live.rs
 require 'LogService::list' src/critical_pages/overview_live.rs
 require 'UserService::list' src/functional_pages/team_live.rs
-require 'TokenService::create' src/functional_pages/access_live.rs
+require 'TokenService::create' src/functional_pages/api_keys_live.rs
+require 'TokenService::rotate' src/functional_pages/api_keys_live.rs
+require 'TokenService::set_ip_whitelist' src/functional_pages/api_keys_live.rs
 require 'ChannelService::create' src/functional_pages/providers.rs
 require 'update_channel_preserving_reservations' src/functional_pages/providers.rs
 require 'repair_channel_and_reactivate' src/functional_pages/providers.rs
