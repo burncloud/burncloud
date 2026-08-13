@@ -63,13 +63,19 @@ forbid 'auth-tabs' src/critical_pages/auth.rs
 require 'Password recovery' src/critical_pages/auth.rs
 require 'Account email' src/critical_pages/auth.rs
 
-# Providers present product concepts instead of raw enum IDs and protect destructive changes.
+# Providers present product concepts instead of raw enum IDs/shorthand and protect destructive changes.
 require 'PROVIDER_TYPES' src/functional_pages/providers.rs
 require 'Provider type' src/functional_pages/providers.rs
 require 'Advanced routing & capacity' src/functional_pages/providers.rs
 require 'Leave blank to keep stored credential' src/functional_pages/providers.rs
 require 'pending_delete' src/functional_pages/providers.rs
+require 'Active Providers' src/functional_pages/providers.rs
+require 'Routing Groups' src/functional_pages/providers.rs
+require 'Priority {} • Weight {}' src/functional_pages/providers.rs
+require 'No limits' src/functional_pages/providers.rs
 forbid 'Provider Type ID' src/functional_pages/providers.rs
+forbid 'P{} • W{}' src/functional_pages/providers.rs
+forbid '∞ RPM' src/functional_pages/providers.rs
 
 # Models/Routes communicate understandable service availability and resilience.
 require 'Needs backup' src/functional_pages/catalog.rs
@@ -92,11 +98,15 @@ require 'Environment operators' src/functional_pages/access_live.rs
 require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
 require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
 
-# API keys must be human-owned and lifecycle/destructive actions need explicit steps.
+# API keys must be human-owned and lifecycle changes must happen in an intentional management flow.
 require 'Choose which account will own this router credential' src/functional_pages/access_live.rs
 require 'API Key Created' src/functional_pages/access_live.rs
+require 'Manage API Key' src/functional_pages/access_live.rs
+require 'Credential lifecycle' src/functional_pages/access_live.rs
+require 'Delete credential' src/functional_pages/access_live.rs
 require 'Rotate API Key' src/functional_pages/access_live.rs
 require 'Delete API Key' src/functional_pages/access_live.rs
+forbid 'th { "Version" }' src/functional_pages/access_live.rs
 
 # Diagnostic pages prioritize conclusions, risks and money before implementation detail.
 require 'Failures' src/functional_pages/logs_full.rs
