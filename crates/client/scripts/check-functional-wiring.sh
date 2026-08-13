@@ -23,6 +23,14 @@ require 'pub use catalog::{Models, Routes};' src/functional_pages/mod.rs
 require 'pub use logs_full::Logs;' src/functional_pages/mod.rs
 require 'pub use analytics_full::Evaluation;' src/functional_pages/mod.rs
 
+# Public runtime routes must use the truthful public module, never the historical prototype page module.
+require 'public_pages::{Home, Landing}' src/app.rs
+require 'pub mod public_pages;' src/lib.rs
+if grep -Fq 'pages::{Home, Landing}' src/app.rs || grep -Fq 'pub mod pages;' src/lib.rs; then
+  echo "Historical prototype pages were reconnected to the runtime" >&2
+  exit 1
+fi
+
 # Authentication and persistent session wiring.
 require '/api/auth/login' src/backend.rs
 require '/api/auth/register' src/backend.rs
