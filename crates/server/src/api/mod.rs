@@ -16,6 +16,7 @@ pub mod channel;
 pub mod log;
 pub mod monitor;
 pub mod openapi;
+mod registration;
 pub mod response;
 pub mod token;
 pub mod user;
