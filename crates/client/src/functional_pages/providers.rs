@@ -59,6 +59,10 @@ fn model_list(channel: &Channel) -> Vec<String> {
         .collect()
 }
 
+fn model_count_text(count: usize) -> String {
+    format!("{count} {}", if count == 1 { "model" } else { "models" })
+}
+
 #[component]
 pub fn Providers() -> Element {
     let mut resource = use_resource(move || async move { ChannelService::list(100).await });
@@ -103,7 +107,7 @@ pub fn Providers() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Providers" }
-                    p { class: "page-subtitle", "Connect upstream model supply, choose what each provider serves, and control how the router should use it." }
+                    p { class: "page-subtitle", "Manage upstream supply, model coverage, routing preference, and capacity from one place." }
                 }
                 div { class: "header-actions",
                     button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
@@ -132,20 +136,20 @@ pub fn Providers() -> Element {
 
             div { class: "metrics",
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Configured" } span { class: "metric-value", "{total}" } span { class: "metric-note", "upstream providers" } }
-                    div { class: "metric-icon tone-blue", Icon { name: "providers" } }
-                }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Active" } span { class: "metric-value", "{active}" } span { class: "metric-note", "available to route" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Active Providers" } span { class: "metric-value", "{active}" } span { class: "metric-note", "{total} configured" } }
                     div { class: "metric-icon tone-green", Icon { name: "activity" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Models Served" } span { class: "metric-value", "{model_count}" } span { class: "metric-note", "unique model IDs" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Models" } span { class: "metric-value", "{model_count}" } span { class: "metric-note", "unique model IDs" } }
                     div { class: "metric-icon tone-purple", Icon { name: "models" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Needs Attention" } span { class: "metric-value", "{attention}" } span { class: "metric-note", "across {group_count} routing groups" } }
-                    div { class: "metric-icon tone-amber", Icon { name: "routes" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Routing Groups" } span { class: "metric-value", "{group_count}" } span { class: "metric-note", "traffic destinations" } }
+                    div { class: "metric-icon tone-blue", Icon { name: "routes" } }
+                }
+                div { class: "card metric",
+                    div { class: "metric-copy", span { class: "metric-label", "Needs Attention" } span { class: "metric-value", "{attention}" } span { class: "metric-note", "inactive or down providers" } }
+                    div { class: "metric-icon tone-amber", Icon { name: "shield" } }
                 }
             }
 
@@ -190,7 +194,7 @@ pub fn Providers() -> Element {
                     div { class: "card-pad product-section-head",
                         div {
                             h3 { "Provider inventory" }
-                            p { "Status, model coverage and routing policy at a glance. Technical connection details stay secondary." }
+                            p { "See service state and coverage first. Connection details and routing numbers stay secondary." }
                         }
                     }
                     div { class: "table-wrap",
@@ -210,15 +214,21 @@ pub fn Providers() -> Element {
                                         let delete_channel = channel.clone();
                                         let type_label = provider_label(channel.type_);
                                         let mark = provider_mark(&type_label);
-                                        let base = channel.base_url.clone().unwrap_or_else(|| "Default provider endpoint".to_string());
+                                        let base = channel.base_url.clone().unwrap_or_else(|| "Default endpoint".to_string());
                                         let served_models = model_list(&channel);
                                         let served_count = served_models.len();
+                                        let served_count_text = model_count_text(served_count);
                                         let model_preview = served_models.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
                                         let model_text = if served_count > 3 { format!("{model_preview} +{} more", served_count - 3) } else { model_preview };
-                                        let routing_text = format!("{} • P{} • W{}", channel.group, channel.priority, channel.weight);
-                                        let rpm = channel.rpm_cap.map(|value| value.to_string()).unwrap_or_else(|| "∞".to_string());
-                                        let tpm = channel.tpm_cap.map(|value| value.to_string()).unwrap_or_else(|| "∞".to_string());
-                                        let capacity = format!("{rpm} RPM • {tpm} TPM");
+                                        let routing_text = format!("Priority {} • Weight {}", channel.priority, channel.weight);
+                                        let capacity = match (channel.rpm_cap, channel.tpm_cap) {
+                                            (None, None) => "No limits".to_string(),
+                                            (rpm, tpm) => {
+                                                let rpm_text = rpm.map(|value| format!("{value} RPM")).unwrap_or_else(|| "No RPM limit".to_string());
+                                                let tpm_text = tpm.map(|value| format!("{value} TPM")).unwrap_or_else(|| "No TPM limit".to_string());
+                                                format!("{rpm_text} • {tpm_text}")
+                                            }
+                                        };
                                         let status = if channel.status == 1 { "Active" } else { "Down" };
                                         rsx! {
                                             tr { key: "{channel.id}",
@@ -236,8 +246,8 @@ pub fn Providers() -> Element {
                                                 }
                                                 td {
                                                     div { class: "two-line",
-                                                        strong { class: "small", "{served_count} models" }
-                                                        small { class: "mono muted", "{model_text}" }
+                                                        strong { class: "small", "{served_count_text}" }
+                                                        small { class: "mono muted", if model_text.is_empty() { "No models configured" } else { "{model_text}" } }
                                                     }
                                                 }
                                                 td {
@@ -246,7 +256,7 @@ pub fn Providers() -> Element {
                                                         small { class: "mono muted", "{routing_text}" }
                                                     }
                                                 }
-                                                td { class: "small muted mono", "{capacity}" }
+                                                td { class: "small muted", "{capacity}" }
                                                 td { class: "right",
                                                     div { class: "action-menu",
                                                         button {
@@ -460,6 +470,7 @@ pub fn Providers() -> Element {
                     let target_id = target.id;
                     let target_name = target.name.clone();
                     let target_models = model_list(&target).len();
+                    let target_models_text = model_count_text(target_models);
                     rsx! {
                         div { class: "drawer-backdrop", onclick: move |_| pending_delete.set(None) }
                         aside { class: "drawer",
@@ -470,7 +481,7 @@ pub fn Providers() -> Element {
                             div { class: "drawer-body stack-lg",
                                 div { class: "form-section danger-zone",
                                     strong { "Delete {target_name}?" }
-                                    p { class: "small muted", "This provider currently exposes {target_models} model entries. Deleting it removes this upstream from routing immediately and cannot be undone from the console." }
+                                    p { class: "small muted", "This provider currently exposes {target_models_text}. Deleting it removes this upstream from routing immediately and cannot be undone from the console." }
                                 }
                                 div { class: "product-note", "If you only need to pause traffic, do not use Delete. This action permanently removes the channel record." }
                                 div { class: "row customer-form-actions",
