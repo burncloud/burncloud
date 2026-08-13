@@ -13,7 +13,7 @@ require() {
   fi
 }
 
-# All protected console routes must use the functional page module, not the static prototype exports.
+# All protected console routes must use the functional page modules, not static prototype exports.
 require 'functional_pages::{' src/app.rs
 require 'auth_gate::AuthGate' src/app.rs
 require 'FunctionalConsoleLayout' src/auth_gate.rs
@@ -22,12 +22,24 @@ require 'pub use providers::Providers;' src/functional_pages/mod.rs
 require 'pub use catalog::{Models, Routes};' src/functional_pages/mod.rs
 require 'pub use logs_full::Logs;' src/functional_pages/mod.rs
 require 'pub use analytics_full::Evaluation;' src/functional_pages/mod.rs
+require 'pub use team_live::Team;' src/functional_pages/mod.rs
+require 'pub use overview_live::Overview;' src/critical_pages.rs
 
 # Public runtime routes must use the truthful public module, never the historical prototype page module.
 require 'public_pages::{Home, Landing}' src/app.rs
 require 'pub mod public_pages;' src/lib.rs
 if grep -Fq 'pages::{Home, Landing}' src/app.rs || grep -Fq 'pub mod pages;' src/lib.rs; then
   echo "Historical prototype pages were reconnected to the runtime" >&2
+  exit 1
+fi
+
+# Historical overview/team implementations must not remain in the active module graph.
+if grep -Fq 'mod dashboard;' src/critical_pages.rs; then
+  echo "Historical dashboard implementation was reconnected to the runtime" >&2
+  exit 1
+fi
+if grep -Fq 'pub use access_live::{APIKeys, Team};' src/functional_pages/mod.rs; then
+  echo "Historical Team implementation was reconnected to API-key module" >&2
   exit 1
 fi
 
@@ -64,13 +76,16 @@ require 'current_status != 1' src/functional_api.rs
 require 'repair_channel_and_reactivate' src/functional_api.rs
 require 'allow_reactivation' src/functional_api.rs
 
-# Page-to-service contracts: these make accidental regressions back to seeded/static pages fail CI.
+# Page-to-service contracts: accidental regressions back to seeded/static pages fail CI.
 require 'AuthService::login' src/critical_pages/auth.rs
 require 'AuthService::register' src/critical_pages/auth.rs
 require 'UserService::list' src/critical_pages/customers_portable.rs
 require 'UserService::topup' src/critical_pages/customers_portable.rs
-require 'billing_summary' src/critical_pages/dashboard.rs
-require 'ChannelService::list' src/critical_pages/dashboard.rs
+require 'billing_summary' src/critical_pages/overview_live.rs
+require 'user_usage' src/critical_pages/overview_live.rs
+require 'ChannelService::list' src/critical_pages/overview_live.rs
+require 'LogService::list' src/critical_pages/overview_live.rs
+require 'UserService::list' src/functional_pages/team_live.rs
 require 'TokenService::create' src/functional_pages/access_live.rs
 require 'ChannelService::create' src/functional_pages/providers.rs
 require 'update_channel_preserving_reservations' src/functional_pages/providers.rs
