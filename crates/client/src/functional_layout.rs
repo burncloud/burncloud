@@ -6,27 +6,6 @@ use crate::{
     components::{Icon, Logo},
 };
 
-fn page_title(route: &Route) -> &'static str {
-    match route {
-        Route::Overview {} | Route::Dashboard {} => "Overview",
-        Route::Playground {} => "Playground",
-        Route::Routes {} => "Routes",
-        Route::Models {} => "Models",
-        Route::Providers {} => "Providers",
-        Route::APIKeys {} => "API Keys",
-        Route::Customers {} | Route::Users {} => "Customers",
-        Route::Guardrails {} => "Guardrails",
-        Route::Logs {} => "Logs",
-        Route::Evaluation {} => "Evaluation",
-        Route::Billing {} => "Billing",
-        Route::Team {} => "Team",
-        Route::Settings {} => "Settings",
-        Route::Home {} | Route::Landing {} => "Home",
-        Route::Login {} => "Sign In",
-        Route::Register {} => "Register",
-    }
-}
-
 fn search_route(query: &str) -> Option<Route> {
     let q = query.trim().to_ascii_lowercase();
     if q.is_empty() {
@@ -71,8 +50,6 @@ fn initials(name: &str) -> String {
 
 #[component]
 pub fn FunctionalConsoleLayout() -> Element {
-    let current = use_route::<Route>();
-    let title = page_title(&current);
     let auth = use_auth();
     let navigator = use_navigator();
     let search_navigator = navigator.clone();
@@ -136,7 +113,6 @@ pub fn FunctionalConsoleLayout() -> Element {
             }
             div { class:"console-main",
                 header { class:"topbar",
-                    h1 { class:"topbar-title", "{title}" }
                     div { class:"topbar-right",
                         div { class:"global-search", title: if search_status().is_empty() { "Jump to a console page" } else { "{search_status}" },
                             Icon { name:"search" }
@@ -163,10 +139,9 @@ pub fn FunctionalConsoleLayout() -> Element {
                             }
                         }
                         div { class:"top-actions",
-                            Link { to:Route::Home {}, class:"tiny-link", Icon { name:"globe" } span { "Landing Page" } }
-                            div { class:"env-chip", title:"BurnCloud server is configured; live health is shown on Overview", span { class:"green-dot" } "Server Configured" }
-                            Link { to:Route::Logs {}, class:"icon-button", title:"Open request logs", Icon { name:"bell" } }
-                            Link { to:Route::Settings {}, class:"icon-button", title:"System settings", Icon { name:"help" } }
+                            div { class:"env-chip", title:"BurnCloud server is configured; live health is shown on Overview", span { class:"neutral-dot" } "Server Configured" }
+                            Link { to:Route::Logs {}, class:"icon-button", title:"Open request activity", Icon { name:"activity" } }
+                            Link { to:Route::Settings {}, class:"icon-button", title:"System settings", Icon { name:"settings" } }
                             div { class:"top-divider" }
                             div { class:"profile-link",
                                 div { class:"avatar", "{avatar}" }
