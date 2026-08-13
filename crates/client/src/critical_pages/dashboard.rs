@@ -22,6 +22,10 @@ fn compact(n: i64) -> String {
     }
 }
 
+fn counted(count: usize, singular: &str, plural: &str) -> String {
+    format!("{} {}", count, if count == 1 { singular } else { plural })
+}
+
 fn kpi(label: &str, value: String, note: String, icon: &'static str, tone: &'static str) -> Element {
     rsx! {
         div { class: "card metric card-hover",
@@ -176,31 +180,44 @@ pub fn Overview() -> Element {
     let has_model = model_count > 0;
     let has_key = active_keys > 0;
     let has_request = !logs.is_empty();
+    let has_successful_request = logs.iter().any(|log| log.status_code >= 200 && log.status_code < 400);
     let setup_complete = has_provider && has_model && has_key;
+    let environment_verified = setup_complete && has_successful_request && !has_errors && down_channels == 0;
 
-    let (status_class, status_title, status_copy) = if has_errors {
+    let (status_class, status_badge, status_title, status_copy) = if has_errors {
         (
             "product-status-card status-blocked",
+            "CHECK SYSTEM",
             "Some system data is unavailable",
             "BurnCloud is reachable, but one or more operational data sources could not be loaded. Review the errors below before relying on this environment.",
         )
     } else if !setup_complete {
         (
             "product-status-card status-attention",
-            "Finish setup before sending production traffic",
-            "BurnCloud still needs one or more routing prerequisites. Complete the checklist to make a verified end-to-end request.",
+            "SETUP REQUIRED",
+            "Finish the traffic setup",
+            "BurnCloud still needs one or more prerequisites before it can run an end-to-end request. Complete the checklist on the right.",
         )
     } else if down_channels > 0 {
         (
             "product-status-card status-attention",
-            "Traffic is available, but a provider needs attention",
-            "At least one provider is inactive or down. Healthy providers can still serve traffic, but routing resilience may be reduced.",
+            "PROVIDER ISSUE",
+            "A provider needs attention",
+            "At least one configured provider is inactive or down. Review provider health before relying on routing resilience.",
+        )
+    } else if !has_successful_request {
+        (
+            "product-status-card status-attention",
+            "TEST REQUIRED",
+            "Setup is complete — verify one real request",
+            "Provider, model and API access are configured, but BurnCloud has not yet observed a successful routed request. Run a controlled test before sending production traffic.",
         )
     } else {
         (
             "product-status-card status-ready",
-            "BurnCloud is ready to serve traffic",
-            "Providers, models and API access are configured. Use Playground for a controlled test or inspect recent request activity below.",
+            "VERIFIED",
+            "Traffic path verified",
+            "BurnCloud has observed a successful routed request with the current environment. Continue monitoring provider health, request outcomes and spend below.",
         )
     };
 
@@ -211,8 +228,18 @@ pub fn Overview() -> Element {
     let request_text = compact(total_requests);
     let token_text = compact(usage.total_tokens);
     let spend_text = format!("${:.4}", billing.total_cost_usd);
-    let provider_note = format!("{} total • {} need attention", channels.len(), down_channels);
-    let request_note = if has_request { "Billing period activity".to_string() } else { "No requests observed yet".to_string() };
+    let provider_note = if down_channels == 0 {
+        format!("{} • all healthy", counted(channels.len(), "configured provider", "configured providers"))
+    } else {
+        format!("{} • {} need attention", counted(channels.len(), "configured provider", "configured providers"), down_channels)
+    };
+    let request_note = if has_successful_request {
+        "Successful traffic observed".to_string()
+    } else if has_request {
+        "Requests seen • none successful yet".to_string()
+    } else {
+        "No requests observed yet".to_string()
+    };
     let usage_note = format!("{} prompt • {} completion", compact(usage.prompt_tokens), compact(usage.completion_tokens));
     let spend_note = format!("{} billed models", billing.models.len());
     let runtime_cpu = format!("{:.0}%", metrics.cpu.usage_percent);
@@ -225,7 +252,7 @@ pub fn Overview() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "System Overview" }
-                    p { class: "page-subtitle", "Know whether BurnCloud can serve traffic, what needs attention, and where to act next." }
+                    p { class: "page-subtitle", "See setup status, real traffic evidence, current risks, and where to act next." }
                 }
                 button {
                     class: "button button-secondary",
@@ -245,8 +272,9 @@ pub fn Overview() -> Element {
             div { class: "product-hero",
                 div { class: "card {status_class}",
                     div { class: "row gap-2",
-                        span { class: if setup_complete && !has_errors && down_channels == 0 { "badge badge-success" } else { "badge badge-warning" },
-                            if setup_complete && !has_errors && down_channels == 0 { "READY" } else { "ATTENTION" }
+                        span {
+                            class: if environment_verified { "badge badge-success" } else if has_errors { "badge badge-error" } else { "badge badge-warning" },
+                            "{status_badge}"
                         }
                     }
                     div {
@@ -258,28 +286,47 @@ pub fn Overview() -> Element {
                             Link { class: "button button-primary", to: Route::Providers {}, Icon { name: "plus" } "Add first provider" }
                         } else if !has_key {
                             Link { class: "button button-primary", to: Route::APIKeys {}, Icon { name: "key" } "Create API key" }
+                        } else if !has_successful_request {
+                            Link { class: "button button-primary", to: Route::Playground {}, Icon { name: "play" } "Run verification test" }
                         } else {
-                            Link { class: "button button-primary", to: Route::Playground {}, Icon { name: "play" } "Test a request" }
+                            Link { class: "button button-primary", to: Route::Logs {}, Icon { name: "logs" } "Review recent traffic" }
                         }
-                        Link { class: "button button-secondary", to: Route::Logs {}, "View request logs" }
+                        if has_request {
+                            Link { class: "button button-secondary", to: Route::Logs {}, "View request logs" }
+                        } else if has_provider {
+                            Link { class: "button button-secondary", to: Route::Providers {}, "Review providers" }
+                        }
                     }
                 }
 
                 div { class: "card setup-card",
                     div { class: "product-section-head",
                         div {
-                            h3 { "Setup & readiness" }
-                            p { "The minimum path to a working routed request." }
+                            h3 { "Setup & verification" }
+                            p { "Four checks from configuration to proven traffic." }
                         }
-                        span { class: if setup_complete { "badge badge-success" } else { "badge badge-neutral" },
-                            if setup_complete { "Ready" } else { "In progress" }
+                        span {
+                            class: if environment_verified { "badge badge-success" } else if setup_complete { "badge badge-warning" } else { "badge badge-neutral" },
+                            if environment_verified { "Verified" } else if setup_complete { "Needs test" } else { "In progress" }
                         }
                     }
                     div { class: "setup-list",
-                        SetupStep { complete: has_provider, title: "Provider connected", detail: format!("{} active providers", active_channels), to: Route::Providers {}, action: "Configure" }
-                        SetupStep { complete: has_model, title: "Model available", detail: format!("{} unique models exposed", model_count), to: Route::Models {}, action: "Review" }
-                        SetupStep { complete: has_key, title: "API access created", detail: format!("{} active API keys", active_keys), to: Route::APIKeys {}, action: "Create" }
-                        SetupStep { complete: has_request, title: "First request observed", detail: if has_request { "Traffic is visible in Logs".to_string() } else { "Send a request from Playground".to_string() }, to: Route::Playground {}, action: "Test" }
+                        SetupStep { complete: has_provider, title: "Provider connected", detail: counted(active_channels, "active provider", "active providers"), to: Route::Providers {}, action: "Configure" }
+                        SetupStep { complete: has_model, title: "Model available", detail: counted(model_count, "model exposed", "models exposed"), to: Route::Models {}, action: "Review" }
+                        SetupStep { complete: has_key, title: "API access created", detail: counted(active_keys, "active API key", "active API keys"), to: Route::APIKeys {}, action: "Create" }
+                        SetupStep {
+                            complete: has_successful_request,
+                            title: "Successful request observed",
+                            detail: if has_successful_request {
+                                "Traffic is visible in Logs".to_string()
+                            } else if has_request {
+                                "Requests exist, but none has verified the path yet".to_string()
+                            } else {
+                                "Run a request from Playground".to_string()
+                            },
+                            to: Route::Playground {},
+                            action: "Test"
+                        }
                     }
                 }
             }
@@ -347,7 +394,7 @@ pub fn Overview() -> Element {
                     div { class: "product-section-head",
                         div {
                             h3 { "Latest request" }
-                            p { "A fast confidence check that traffic reached the router." }
+                            p { "Use the latest real request as a quick routing confidence check." }
                         }
                         Link { class: "button button-ghost button-sm", to: Route::Logs {}, "Open logs" }
                     }
@@ -371,8 +418,8 @@ pub fn Overview() -> Element {
                             div { class: "product-empty-inner",
                                 div { class: "product-empty-icon", Icon { name: "logs" } }
                                 h3 { "No request activity yet" }
-                                p { "Use Playground to make the first routed request, then return here to verify the result." }
-                                Link { class: "button button-primary button-sm", to: Route::Playground {}, "Open Playground" }
+                                p { "Run one controlled request in Playground to verify provider, model, API access and routing together." }
+                                Link { class: "button button-primary button-sm", to: Route::Playground {}, "Run verification test" }
                             }
                         }
                     }
