@@ -22,15 +22,15 @@ fn compact(n: i64) -> String {
     }
 }
 
-fn kpi(label: &str, value: String, note: String, icon: &'static str, tone: &'static str) -> Element {
+fn kpi(label: &str, value: String, note: String, icon: &'static str) -> Element {
     rsx! {
-        div { class: "card metric card-hover",
+        div { class: "card metric",
             div { class: "metric-copy",
                 span { class: "metric-label", "{label}" }
                 span { class: "metric-value", "{value}" }
                 span { class: "metric-note mono", "{note}" }
             }
-            div { class: "metric-icon {tone}", Icon { name: icon } }
+            div { class: "metric-icon tone-gray", Icon { name: icon } }
         }
     }
 }
@@ -93,9 +93,7 @@ fn SetupStep(
                 strong { "{title}" }
                 small { "{detail}" }
             }
-            if complete {
-                span { class: "badge badge-success", "Done" }
-            } else {
+            if !complete {
                 Link { class: "button button-ghost button-sm", to: to, "{action}" }
             }
         }
@@ -176,31 +174,56 @@ pub fn Overview() -> Element {
     let has_model = model_count > 0;
     let has_key = active_keys > 0;
     let has_request = !logs.is_empty();
+    let has_verified_request = logs.iter().any(|log| {
+        (200..300).contains(&log.status_code)
+            && log
+                .upstream_id
+                .as_deref()
+                .map(|id| !id.trim().is_empty())
+                .unwrap_or(false)
+    });
     let setup_complete = has_provider && has_model && has_key;
+    let traffic_verified = setup_complete && has_verified_request;
 
-    let (status_class, status_title, status_copy) = if has_errors {
+    let (status_class, status_badge_class, status_badge, status_title, status_copy) = if has_errors {
         (
             "product-status-card status-blocked",
+            "badge badge-error",
+            "ATTENTION",
             "Some system data is unavailable",
             "BurnCloud is reachable, but one or more operational data sources could not be loaded. Review the errors below before relying on this environment.",
         )
     } else if !setup_complete {
         (
             "product-status-card status-attention",
+            "badge badge-warning",
+            "SETUP REQUIRED",
             "Finish setup before sending production traffic",
-            "BurnCloud still needs one or more routing prerequisites. Complete the checklist to make a verified end-to-end request.",
+            "BurnCloud still needs one or more routing prerequisites. Complete the checklist before verifying the full traffic path.",
         )
     } else if down_channels > 0 {
         (
             "product-status-card status-attention",
+            "badge badge-warning",
+            "DEGRADED",
             "Traffic is available, but a provider needs attention",
             "At least one provider is inactive or down. Healthy providers can still serve traffic, but routing resilience may be reduced.",
+        )
+    } else if !traffic_verified {
+        (
+            "product-status-card status-configured",
+            "badge badge-neutral",
+            "CONFIGURED",
+            "BurnCloud is configured. Verify the traffic path",
+            "Providers, models and API access are configured. Send a controlled Playground request to verify routing end to end before treating this environment as operational.",
         )
     } else {
         (
             "product-status-card status-ready",
+            "badge badge-success",
+            "OPERATIONAL",
             "BurnCloud is ready to serve traffic",
-            "Providers, models and API access are configured. Use Playground for a controlled test or inspect recent request activity below.",
+            "A successful routed request has verified the configured provider, model and API access path. Continue with normal traffic or inspect recent activity below.",
         )
     };
 
@@ -222,13 +245,13 @@ pub fn Overview() -> Element {
 
     rsx! {
         div { class: "page",
-            div { class: "page-header",
+            div { class: "page-header overview-page-header",
                 div {
                     h2 { class: "page-title", "System Overview" }
                     p { class: "page-subtitle", "Know whether BurnCloud can serve traffic, what needs attention, and where to act next." }
                 }
                 button {
-                    class: "button button-secondary",
+                    class: "button button-ghost button-sm overview-refresh",
                     onclick: move |_| {
                         metrics_resource.restart();
                         channels_resource.restart();
@@ -245,9 +268,7 @@ pub fn Overview() -> Element {
             div { class: "product-hero",
                 div { class: "card {status_class}",
                     div { class: "row gap-2",
-                        span { class: if setup_complete && !has_errors && down_channels == 0 { "badge badge-success" } else { "badge badge-warning" },
-                            if setup_complete && !has_errors && down_channels == 0 { "READY" } else { "ATTENTION" }
-                        }
+                        span { class: "{status_badge_class}", "{status_badge}" }
                     }
                     div {
                         div { class: "product-status-title", "{status_title}" }
@@ -269,17 +290,17 @@ pub fn Overview() -> Element {
                     div { class: "product-section-head",
                         div {
                             h3 { "Setup & readiness" }
-                            p { "The minimum path to a working routed request." }
+                            p { "Configuration first, then verify one successful routed request." }
                         }
-                        span { class: if setup_complete { "badge badge-success" } else { "badge badge-neutral" },
-                            if setup_complete { "Ready" } else { "In progress" }
+                        span { class: if traffic_verified { "badge badge-success" } else { "badge badge-neutral" },
+                            if traffic_verified { "Verified" } else if setup_complete { "Configured" } else { "In progress" }
                         }
                     }
                     div { class: "setup-list",
                         SetupStep { complete: has_provider, title: "Provider connected", detail: format!("{} active providers", active_channels), to: Route::Providers {}, action: "Configure" }
                         SetupStep { complete: has_model, title: "Model available", detail: format!("{} unique models exposed", model_count), to: Route::Models {}, action: "Review" }
                         SetupStep { complete: has_key, title: "API access created", detail: format!("{} active API keys", active_keys), to: Route::APIKeys {}, action: "Create" }
-                        SetupStep { complete: has_request, title: "First request observed", detail: if has_request { "Traffic is visible in Logs".to_string() } else { "Send a request from Playground".to_string() }, to: Route::Playground {}, action: "Test" }
+                        SetupStep { complete: has_verified_request, title: "Verified request", detail: if has_verified_request { "Successful routed traffic is visible in Logs".to_string() } else { "Send a successful request from Playground".to_string() }, to: Route::Playground {}, action: "Test" }
                     }
                 }
             }
@@ -293,11 +314,11 @@ pub fn Overview() -> Element {
                 }
             }
 
-            div { class: "metrics",
-                {kpi("Requests", request_text, request_note, "activity", "tone-blue")}
-                {kpi("Tokens", token_text, usage_note, "models", "tone-purple")}
-                {kpi("Spend", spend_text, spend_note, "dollar", "tone-amber")}
-                {kpi("Active Providers", active_channels.to_string(), provider_note, "server", "tone-green")}
+            div { class: "metrics overview-metrics",
+                {kpi("Requests", request_text, request_note, "activity")}
+                {kpi("Tokens", token_text, usage_note, "models")}
+                {kpi("Spend", spend_text, spend_note, "dollar")}
+                {kpi("Active Providers", active_channels.to_string(), provider_note, "server")}
             }
 
             div { class: "grid-2",
@@ -343,7 +364,7 @@ pub fn Overview() -> Element {
                     }
                 }
 
-                div { class: "card card-pad stack",
+                div { class: "card card-pad stack latest-request-card",
                     div { class: "product-section-head",
                         div {
                             h3 { "Latest request" }
@@ -380,7 +401,7 @@ pub fn Overview() -> Element {
             }
 
             div { class: "grid-2",
-                div { class: "card card-pad stack",
+                div { class: "card card-pad stack overview-secondary",
                     div { class: "product-section-head",
                         div { h3 { "Runtime" } p { "Host resource pressure is secondary to traffic health, but useful for capacity diagnosis." } }
                         Link { class: "button button-ghost button-sm", to: Route::Settings {}, "System details" }
