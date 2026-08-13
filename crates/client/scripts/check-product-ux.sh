@@ -84,19 +84,30 @@ require 'Unavailable' src/functional_pages/catalog.rs
 require 'No active provider' src/functional_pages/catalog.rs
 require 'Routing Policy' src/functional_pages/catalog.rs
 
-# Playground is a guided end-to-end test and blocks impossible workflows.
+# Playground is a guided end-to-end test and never silently chooses customer/API-key attribution.
 require 'Playground is not ready yet' src/functional_pages/playground_live.rs
 require 'Connect an active provider first' src/functional_pages/playground_live.rs
 require 'Create an API key for the test' src/functional_pages/playground_live.rs
 require 'Select a configured model' src/functional_pages/playground_live.rs
+require 'Charge test to / API key' src/functional_pages/playground_live.rs
+require 'Choose which account / API key should own this test.' src/functional_pages/playground_live.rs
+require 'Playground will not silently pick the first active credential.' src/functional_pages/playground_live.rs
 require 'Send Test Request' src/functional_pages/playground_live.rs
+forbid 'first_active_api_token' src/functional_pages/playground_live.rs
 
 # Customers and staff have separate product responsibilities.
-require 'Manage business accounts' src/critical_pages/customers_portable.rs
+require 'Manage customer accounts' src/critical_pages/customers_portable.rs
 require '!is_staff_role(&user.role)' src/critical_pages/customers_portable.rs
 require 'Environment operators' src/functional_pages/access_live.rs
 require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
 require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
+
+# Customer wallet funding must support normal currency precision and show the resulting balance before commit.
+require 'parse_currency_amount_nano' src/critical_pages/customers_portable.rs
+require 'step: "0.01"' src/critical_pages/customers_portable.rs
+require 'Review wallet change' src/critical_pages/customers_portable.rs
+require 'Balance after' src/critical_pages/customers_portable.rs
+forbid 'saturating_mul(1_000_000_000)' src/critical_pages/customers_portable.rs
 
 # API keys must be human-owned and lifecycle changes must happen in an intentional management flow.
 require 'Choose which account will own this router credential' src/functional_pages/access_live.rs
@@ -107,6 +118,15 @@ require 'Delete credential' src/functional_pages/access_live.rs
 require 'Rotate API Key' src/functional_pages/access_live.rs
 require 'Delete API Key' src/functional_pages/access_live.rs
 forbid 'th { "Version" }' src/functional_pages/access_live.rs
+
+# Logs must distinguish real timeouts from generic HTTP errors and provide a direct problem-diagnosis path.
+require '"problems" => matches!(status, "Timeout" | "Error")' src/functional_pages/logs_full.rs
+require 'Problems (error + timeout)' src/functional_pages/logs_full.rs
+require 'Show problems' src/functional_pages/logs_full.rs
+require 'Inspect' src/functional_pages/logs_full.rs
+require 'eq_ignore_ascii_case("timeout")' src/observability.rs
+require 'else if self.status_code >= 400' src/observability.rs
+forbid 'self.status_code >= 500 ||' src/observability.rs
 
 # Diagnostic pages prioritize conclusions, risks and money before implementation detail.
 require 'Failures' src/functional_pages/logs_full.rs
@@ -122,6 +142,12 @@ require 'DANGER ZONE' src/functional_pages/guardrails_live.rs
 require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_live.rs
 require 'confirm_clear' src/functional_pages/settings.rs
 require 'MAINTENANCE' src/functional_pages/settings.rs
+
+# Settings must distinguish configured endpoint from verified reachability.
+require 'REACHABLE' src/functional_pages/settings.rs
+require 'UNVERIFIED' src/functional_pages/settings.rs
+require 'Retry runtime check' src/functional_pages/settings.rs
+forbid '"CONNECTED"' src/functional_pages/settings.rs
 
 # Chrome must not overclaim runtime health or expose fake top-level utilities.
 require 'Server Configured' src/functional_layout.rs
