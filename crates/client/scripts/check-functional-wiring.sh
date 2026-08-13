@@ -61,6 +61,8 @@ require 'reservation_green' src/functional_api.rs
 require 'reservation_yellow' src/functional_api.rs
 require 'reservation_red' src/functional_api.rs
 require 'current_status != 1' src/functional_api.rs
+require 'repair_channel_and_reactivate' src/functional_api.rs
+require 'allow_reactivation' src/functional_api.rs
 
 # Page-to-service contracts: these make accidental regressions back to seeded/static pages fail CI.
 require 'AuthService::login' src/critical_pages/auth.rs
@@ -72,6 +74,7 @@ require 'ChannelService::list' src/critical_pages/dashboard.rs
 require 'TokenService::create' src/functional_pages/access_live.rs
 require 'ChannelService::create' src/functional_pages/providers.rs
 require 'update_channel_preserving_reservations' src/functional_pages/providers.rs
+require 'repair_channel_and_reactivate' src/functional_pages/providers.rs
 require 'ChannelService::list' src/functional_pages/catalog.rs
 require 'full_logs' src/functional_pages/logs_full.rs
 require 'full_logs' src/functional_pages/analytics_full.rs
