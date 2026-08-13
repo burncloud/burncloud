@@ -70,6 +70,18 @@ require 'Environment health' src/critical_pages/overview_live.rs
 require 'environment-wide router log' src/critical_pages/overview_live.rs
 require 'Unknown values stay unknown instead of being displayed as zero' src/critical_pages/overview_live.rs
 
+# Customer administration exposes server-side money/account defaults instead of hiding them.
+require 'role_access::{is_staff_role, is_staff_roles}' src/critical_pages/customers_live.rs
+require 'the server creates new users as Active and currently grants a $10.00 USD signup wallet credit' src/critical_pages/customers_live.rs
+require 'Create Active Customer + $10 Credit' src/critical_pages/customers_live.rs
+require 'Role is verified from the server response after creation.' src/critical_pages/customers_live.rs
+require 'Disabled accounts are visible for access review, but BurnCloud does not fund them from this page.' src/critical_pages/customers_live.rs
+require 'disabled: user.status != 1' src/critical_pages/customers_live.rs
+require 'Server-confirmed {selected_currency} balance' src/critical_pages/customers_live.rs
+require 'pub use customers_live::Customers;' src/critical_pages.rs
+forbid 'mod customers_portable;' src/critical_pages.rs
+forbid 'pub use customers_portable::Customers;' src/critical_pages.rs
+
 # API-key ownership must fail closed and cost quota must be presented with its actual USD meaning.
 require 'let owner_directory_ready = user_snapshot.as_ref().is_some_and(Result::is_ok);' src/functional_pages/api_keys_live.rs
 require 'let active_users: Vec<User>' src/functional_pages/api_keys_live.rs
