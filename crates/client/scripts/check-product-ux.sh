@@ -98,9 +98,15 @@ require 'Active Providers' src/functional_pages/providers.rs
 require 'Routing Groups' src/functional_pages/providers.rs
 require 'Priority {} • Weight {}' src/functional_pages/providers.rs
 require 'No limits' src/functional_pages/providers.rs
+require 'Repair Provider' src/functional_pages/providers.rs
+require 'Saving this repair will reactivate routing' src/functional_pages/providers.rs
+require 'Save & Reactivate' src/functional_pages/providers.rs
+require 'repair_channel_and_reactivate' src/functional_pages/providers.rs
+require 'explicit repair flow' src/functional_api.rs
 forbid 'Provider Type ID' src/functional_pages/providers.rs
 forbid 'P{} • W{}' src/functional_pages/providers.rs
 forbid '∞ RPM' src/functional_pages/providers.rs
+forbid 'disabled: channel.status != 1' src/functional_pages/providers.rs
 
 # Models/Routes communicate understandable service availability and resilience.
 require 'Needs backup' src/functional_pages/catalog.rs
