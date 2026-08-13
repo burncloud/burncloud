@@ -1,8 +1,8 @@
+/// Keep client role interpretation aligned with the current BurnCloud server.
+/// The persisted default roles are `admin` and `user`, and provider-management
+/// authorization currently accepts the `admin` role explicitly.
 pub fn is_staff_role(role: &str) -> bool {
-    matches!(
-        role.trim().to_ascii_lowercase().as_str(),
-        "root" | "admin" | "administrator" | "operator" | "owner"
-    )
+    role.trim().eq_ignore_ascii_case("admin")
 }
 
 pub fn is_staff_roles(roles: &[String]) -> bool {
