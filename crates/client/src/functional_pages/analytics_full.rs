@@ -82,8 +82,8 @@ pub fn Evaluation() -> Element {
         div { class: "page",
             div { class: "page-header",
                 div {
-                    h2 { class: "page-title", "Evaluation" }
-                    p { class: "page-subtitle", "Compare observed model reliability and latency from real routed traffic. This is operational evaluation, not synthetic model-quality scoring." }
+                    h2 { class: "page-title", "Performance" }
+                    p { class: "page-subtitle", "Use real routed traffic to find unreliable, slow, expensive, or single-upstream models." }
                 }
                 div { class: "header-actions",
                     button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
@@ -92,10 +92,10 @@ pub fn Evaluation() -> Element {
             }
 
             if loading {
-                div { class: "card card-pad", "Loading operational evaluation…" }
+                div { class: "card card-pad", "Loading performance data…" }
             } else if let Some(message) = load_error {
                 div { class: "card card-pad stack",
-                    strong { class: "danger", "Evaluation data could not be loaded" }
+                    strong { class: "danger", "Performance data could not be loaded" }
                     code { class: "terminal", "{message}" }
                     button { class: "button button-primary", onclick: move |_| resource.restart(), "Retry" }
                 }
@@ -103,15 +103,15 @@ pub fn Evaluation() -> Element {
                 div { class: "card product-empty",
                     div { class: "product-empty-inner",
                         div { class: "product-empty-icon", Icon { name: "chart" } }
-                        h3 { "No model traffic to evaluate yet" }
-                        p { "Evaluation is built from observed router logs. Send representative requests through Playground or production clients first." }
+                        h3 { "No traffic to analyze yet" }
+                        p { "Performance is calculated from real router logs. Send representative requests through Playground or production clients first." }
                         Link { class: "button button-primary", to: Route::Playground {}, "Run a Test Request" }
                     }
                 }
             } else {
                 div { class: "metrics",
                     div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Observed Requests" } span { class: "metric-value", "{total_requests}" } span { class: "metric-note", "latest evaluation sample" } }
+                        div { class: "metric-copy", span { class: "metric-label", "Requests Analyzed" } span { class: "metric-value", "{total_requests}" } span { class: "metric-note", "latest traffic sample" } }
                         div { class: "metric-icon tone-blue", Icon { name: "activity" } }
                     }
                     div { class: "card metric",
@@ -132,8 +132,8 @@ pub fn Evaluation() -> Element {
                     div { class: "card card-pad stack",
                         div { class: "product-section-head",
                             div {
-                                h3 { "Operational attention" }
-                                p { "These signals do not prove model quality, but they indicate where routing or upstream reliability deserves investigation." }
+                                h3 { "Needs attention" }
+                                p { "Start here before reading the full model table." }
                             }
                         }
                         if models_with_errors > 0 {
@@ -157,7 +157,7 @@ pub fn Evaluation() -> Element {
                     div { class: "card-pad product-section-head",
                         div {
                             h3 { "Model performance" }
-                            p { "Use this table to identify failures, slow models, high-cost models, and single-upstream observations." }
+                            p { "Compare reliability and latency first; use cost and upstream count to explain the result." }
                         }
                     }
                     div { class: "table-wrap",
@@ -192,7 +192,7 @@ pub fn Evaluation() -> Element {
                                         let (health_class, health_text) = if failures > 0 {
                                             ("badge badge-error", "Errors observed")
                                         } else if upstream_count <= 1 {
-                                            ("badge badge-warning", "Single upstream")
+                                            ("badge badge-warning", "Needs backup")
                                         } else {
                                             ("badge badge-success", "Stable sample")
                                         };
@@ -206,7 +206,7 @@ pub fn Evaluation() -> Element {
                                                 td { class: "right tabular", "{token_text}" }
                                                 td { class: "right tabular", "{evaluation.multimodal_requests}" }
                                                 td { class: "right tabular", "{cost_text}" }
-                                                td { class: "muted", "{upstream_text}" }
+                                                td { class: "muted", if upstream_text.is_empty() { "—" } else { "{upstream_text}" } }
                                             }
                                         }
                                     }
@@ -216,7 +216,7 @@ pub fn Evaluation() -> Element {
                     }
                 }
 
-                div { class: "product-note", "Evaluation uses observed production/request-log data. Accuracy, hallucination rate, task quality, and benchmark scores require a dedicated evaluation backend and are intentionally not inferred here." }
+                div { class: "product-note", "This page measures operational behavior from observed requests. Accuracy, hallucination rate, task quality, and benchmark scores require a separate model-quality evaluation system." }
             }
         }
     }
