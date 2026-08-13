@@ -64,12 +64,16 @@ impl FullRouterLog {
     }
 
     pub fn status_label(&self) -> &'static str {
-        if self.status_code >= 500 || self.error_type.as_deref() == Some("timeout") {
+        let is_timeout = self
+            .error_type
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("timeout"));
+        if is_timeout {
             "Timeout"
-        } else if self.layer_decision.as_deref().unwrap_or("").contains("failover") {
-            "Fallback"
         } else if self.status_code >= 400 {
             "Error"
+        } else if self.layer_decision.as_deref().unwrap_or("").contains("failover") {
+            "Fallback"
         } else {
             "Success"
         }
