@@ -17,7 +17,7 @@ fn page_title(route: &Route) -> &'static str {
         Route::Customers {} | Route::Users {} => "Customers",
         Route::Guardrails {} => "Guardrails",
         Route::Logs {} => "Logs",
-        Route::Evaluation {} => "Evaluation",
+        Route::Evaluation {} => "Performance",
         Route::Billing {} => "Billing",
         Route::Team {} => "Team",
         Route::Settings {} => "Settings",
@@ -40,7 +40,7 @@ fn search_route(query: &str) -> Option<Route> {
         ("routes routing groups priority weight traffic", Route::Routes {}),
         ("playground chat completion inference test", Route::Playground {}),
         ("logs requests router log observability errors", Route::Logs {}),
-        ("evaluation metrics latency success performance", Route::Evaluation {}),
+        ("performance evaluation metrics latency success reliability", Route::Evaluation {}),
         ("billing cost usage spend finance", Route::Billing {}),
         ("api keys key tokens token access", Route::APIKeys {}),
         ("customers users user accounts account balance", Route::Customers {}),
@@ -104,7 +104,7 @@ pub fn FunctionalConsoleLayout() -> Element {
                     }
                     NavGroup { title:"Monitoring",
                         NavItem { to:Route::Logs {}, icon:"logs", label:"Logs" }
-                        NavItem { to:Route::Evaluation {}, icon:"chart", label:"Evaluation" }
+                        NavItem { to:Route::Evaluation {}, icon:"chart", label:"Performance" }
                         NavItem { to:Route::Billing {}, icon:"billing", label:"Billing" }
                     }
                     NavGroup { title:"Access & Customers",
