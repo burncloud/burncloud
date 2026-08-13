@@ -1,3 +1,6 @@
+use crate::api::registration::{
+    register_public_user, PublicRegistrationError, PublicRegistrationInput,
+};
 use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
@@ -18,6 +21,8 @@ pub struct RegisterDto {
     pub username: String,
     pub password: String,
     pub email: Option<String>,
+    /// Required only while a fresh installation still needs its first admin.
+    pub bootstrap_token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -181,7 +186,7 @@ pub async fn security_boundary_middleware(
 }
 
 /// Public routes - no authentication required
-/// - /api/auth/register - Registration
+/// - /api/auth/register - Token-gated initial admin bootstrap or configured public signup
 /// - /api/auth/login - Login
 /// - /api/auth/forgot-password - Forgot password
 /// - /api/auth/reset-password - Reset password
@@ -212,42 +217,55 @@ async fn create_user(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
 ) -> impl IntoResponse {
-    match state
-        .user_service
-        .register_user(
-            &state.db,
-            &payload.username,
-            &payload.password,
-            payload.email,
-        )
-        .await
-    {
-        Ok(user_id) => {
-            let roles = state
-                .user_service
-                .get_user_roles(&state.db, &user_id)
-                .await
-                .unwrap_or_default();
-            match state
-                .user_service
-                .generate_token(&user_id, &payload.username)
-            {
-                Ok(auth_token) => ok(AuthData {
-                    id: user_id,
-                    username: payload.username,
-                    roles: Some(roles),
-                    token: auth_token.token,
-                })
-                .into_response(),
-                Err(e) => {
-                    tracing::error!("JWT generation failed: {}", e);
-                    err("Failed to generate authentication token").into_response()
-                }
+    let input = PublicRegistrationInput {
+        username: payload.username,
+        password: payload.password,
+        email: payload.email,
+        bootstrap_token: payload.bootstrap_token,
+    };
+
+    match register_public_user(&state.db, &input).await {
+        Ok(created) => match state
+            .user_service
+            .generate_token(&created.user_id, &created.username)
+        {
+            Ok(auth_token) => ok(AuthData {
+                id: created.user_id,
+                username: created.username,
+                roles: Some(vec![created.role]),
+                token: auth_token.token,
+            })
+            .into_response(),
+            Err(e) => {
+                tracing::error!("JWT generation failed after registration: {}", e);
+                err("Failed to generate authentication token").into_response()
             }
+        },
+        Err(PublicRegistrationError::BootstrapRequired) => {
+            err("Initial admin bootstrap requires a bootstrap token").into_response()
         }
-        Err(UserServiceError::UserAlreadyExists) => err("Username already exists").into_response(),
-        Err(e) => {
-            tracing::error!("Registration error: {}", e);
+        Err(PublicRegistrationError::BootstrapNotConfigured) => {
+            err("Initial admin bootstrap is locked because BURNCLOUD_BOOTSTRAP_TOKEN is not configured").into_response()
+        }
+        Err(PublicRegistrationError::InvalidBootstrapToken) => {
+            err("Invalid bootstrap token").into_response()
+        }
+        Err(PublicRegistrationError::BootstrapAlreadyComplete) => {
+            err("Initial admin bootstrap has already been completed").into_response()
+        }
+        Err(PublicRegistrationError::RegistrationClosed) => {
+            err("Public registration is closed").into_response()
+        }
+        Err(PublicRegistrationError::UserAlreadyExists) => {
+            err("Username already exists").into_response()
+        }
+        Err(PublicRegistrationError::InvalidInput(message)) => err(message).into_response(),
+        Err(PublicRegistrationError::Configuration(message)) => {
+            tracing::error!(error = %message, "Public registration configuration is invalid");
+            err("Registration configuration is invalid").into_response()
+        }
+        Err(PublicRegistrationError::Database(message)) => {
+            tracing::error!(error = %message, "Public registration database transaction failed");
             err("Registration failed").into_response()
         }
     }
