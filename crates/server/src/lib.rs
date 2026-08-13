@@ -30,6 +30,10 @@ pub struct AppState {
 
 #[tracing::instrument(skip(db))]
 pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Result<Router> {
+    // Bootstrap state must exist before public registration is reachable. Existing
+    // installations are marked complete here so upgrades never reopen first-admin setup.
+    api::registration::initialize_bootstrap_state(&db).await?;
+
     let monitor = Arc::new(SystemMonitorService::new());
     // Start auto collection in background
     let _ = monitor.start_auto_update().await;
