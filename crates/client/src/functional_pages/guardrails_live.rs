@@ -34,9 +34,12 @@ pub fn Guardrails() -> Element {
 
     let summary_snapshot = summary_resource.read().clone();
     let event_snapshot = events_resource.read().clone();
+    let breaker_snapshot = breaker_resource.read().clone();
     let summary: SecuritySummary = summary_snapshot.clone().and_then(Result::ok).unwrap_or_default();
     let events: RiskEventPage = event_snapshot.clone().and_then(Result::ok).unwrap_or_default();
-    let breaker_text = match breaker_resource.read().clone() {
+    let breaker_connected = breaker_snapshot.as_ref().is_some_and(Result::is_ok);
+    let breaker_loading = breaker_snapshot.is_none();
+    let breaker_text = match breaker_snapshot.clone() {
         Some(Ok(value)) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
         Some(Err(message)) => format!("Unavailable: {message}"),
         None => "Loading circuit breaker state…".to_string(),
@@ -57,6 +60,9 @@ pub fn Guardrails() -> Element {
     }
     if let Some(Err(message)) = event_snapshot {
         load_errors.push(format!("Risk events: {message}"));
+    }
+    if let Some(Err(message)) = breaker_snapshot.clone() {
+        load_errors.push(format!("Circuit breaker: {message}"));
     }
 
     rsx! {
@@ -219,19 +225,29 @@ pub fn Guardrails() -> Element {
                     div { class: "product-section-head",
                         div {
                             h3 { "Protection state" }
-                            p { "Operational circuit-breaker state is visible here without mixing it with emergency actions." }
+                            p { "Circuit-breaker telemetry is shown as available only when the server actually returns it." }
                         }
                         button { class: "button button-ghost button-sm", onclick: move |_| breaker_resource.restart(), "Refresh" }
                     }
-                    div { class: "readiness-strip ready",
-                        span { class: "readiness-dot" }
-                        strong { "Circuit breaker telemetry connected" }
+                    if breaker_loading {
+                        div { class: "product-note", "Loading circuit breaker state…" }
+                    } else if breaker_connected {
+                        div { class: "readiness-strip ready",
+                            span { class: "readiness-dot" }
+                            strong { "Circuit breaker telemetry available" }
+                        }
+                    } else {
+                        div { class: "readiness-strip blocked",
+                            span { class: "readiness-dot" }
+                            strong { "Circuit breaker state is unavailable" }
+                            span { class: "muted", "Refresh or review the error above before using emergency controls." }
+                        }
                     }
                     details {
                         summary { class: "small strong", style: "cursor:pointer", "View raw circuit breaker state" }
                         pre { class: "terminal", style: "margin-top:12px;max-height:260px;overflow:auto;white-space:pre-wrap", "{breaker_text}" }
                     }
-                    div { class: "product-note", "The server currently returns circuit-breaker state as structured operational data. This UI keeps the raw payload available for diagnosis rather than guessing at fields it does not own." }
+                    div { class: "product-note", "The server currently returns circuit-breaker state as structured operational data. Raw payload remains available for diagnosis instead of inventing unsupported status fields." }
                 }
             }
 
