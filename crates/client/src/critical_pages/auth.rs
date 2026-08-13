@@ -4,6 +4,7 @@ use crate::{
     app::Route,
     backend::{use_auth, AuthService, ClientState, CurrentUser},
     components::{Badge, Logo},
+    role_access::is_staff_roles,
 };
 
 #[component]
@@ -46,9 +47,9 @@ pub fn Login() -> Element {
             main { class: "auth-main",
                 div { class: "auth-wrap",
                     div { class: "auth-intro",
-                        Badge { text: "BurnCloud Console", tone: "brand" }
+                        Badge { text: "BurnCloud", tone: "brand" }
                         h1 { "Sign in" }
-                        p { "Manage providers, traffic, customers, access, and billing in this BurnCloud environment." }
+                        p { "Sign in to the BurnCloud workspace available to your account. Operator roles open the management console; customer accounts open account-scoped billing." }
                     }
 
                     div { class: "card auth-card",
@@ -70,6 +71,7 @@ pub fn Login() -> Element {
                                 spawn(async move {
                                     match AuthService::login(&user_name, &user_password).await {
                                         Ok(response) => {
+                                            let staff = is_staff_roles(&response.roles);
                                             let user = CurrentUser {
                                                 id: response.id,
                                                 username: response.username,
@@ -78,7 +80,11 @@ pub fn Login() -> Element {
                                             auth.set(response.token, user, true);
                                             loading.set(false);
                                             status.set(String::new());
-                                            nav.replace(Route::Overview {});
+                                            if staff {
+                                                nav.replace(Route::Overview {});
+                                            } else {
+                                                nav.replace(Route::Billing {});
+                                            }
                                         }
                                         Err(error) => {
                                             loading.set(false);
@@ -138,7 +144,7 @@ pub fn Login() -> Element {
                                 class: "button button-primary button-lg",
                                 style: "width:100%",
                                 disabled: loading(),
-                                if loading() { "Signing in…" } else { "Sign in to Console" }
+                                if loading() { "Signing in…" } else { "Sign in" }
                             }
                         }
 
@@ -232,7 +238,7 @@ pub fn Register() -> Element {
                     div { class: "auth-intro",
                         Badge { text: "BurnCloud Account", tone: "success" }
                         h1 { "Create your account" }
-                        p { "Create an account for this BurnCloud environment, then complete provider and API access setup from the console." }
+                        p { "Create a BurnCloud account. The workspace shown after registration is determined by the roles returned for that account." }
                     }
 
                     div { class: "card auth-card",
@@ -261,6 +267,7 @@ pub fn Register() -> Element {
                                     let email_arg = if account_email.is_empty() { None } else { Some(account_email.as_str()) };
                                     match AuthService::register(&user_name, &user_password, email_arg).await {
                                         Ok(response) => {
+                                            let staff = is_staff_roles(&response.roles);
                                             let user = CurrentUser {
                                                 id: response.id,
                                                 username: response.username,
@@ -269,7 +276,11 @@ pub fn Register() -> Element {
                                             auth.set(response.token, user, true);
                                             loading.set(false);
                                             status.set(String::new());
-                                            nav.replace(Route::Overview {});
+                                            if staff {
+                                                nav.replace(Route::Overview {});
+                                            } else {
+                                                nav.replace(Route::Billing {});
+                                            }
                                         }
                                         Err(error) => {
                                             loading.set(false);
