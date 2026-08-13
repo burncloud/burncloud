@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use dioxus::prelude::*;
 
@@ -21,6 +21,10 @@ fn is_staff_role(role: &str) -> bool {
     )
 }
 
+fn status_label(status: &str) -> &'static str {
+    if status == "active" { "Active" } else { "Disabled" }
+}
+
 #[component]
 pub fn APIKeys() -> Element {
     let auth = use_auth();
@@ -29,6 +33,7 @@ pub fn APIKeys() -> Element {
     let mut users_resource = use_resource(move || async move { UserService::list().await });
 
     let mut create_open = use_signal(|| false);
+    let mut manage_target = use_signal(|| None::<TokenDto>);
     let mut whitelist_target = use_signal(|| None::<TokenDto>);
     let mut rotate_target = use_signal(|| None::<TokenDto>);
     let mut delete_target = use_signal(|| None::<TokenDto>);
@@ -57,6 +62,7 @@ pub fn APIKeys() -> Element {
         .iter()
         .filter(|token| token.ip_whitelist.as_deref().is_some_and(|value| !value.trim().is_empty()))
         .count();
+    let owners = tokens.iter().map(|token| token.user_id.clone()).collect::<BTreeSet<_>>().len();
     let total = tokens.len();
 
     rsx! {
@@ -64,7 +70,7 @@ pub fn APIKeys() -> Element {
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "API Keys" }
-                    p { class: "page-subtitle", "Control which BurnCloud account can send router traffic and protect credentials over their lifecycle." }
+                    p { class: "page-subtitle", "See who can send traffic, then manage credential status, rotation, network access, and deletion intentionally." }
                 }
                 div { class: "header-actions",
                     button {
@@ -91,20 +97,20 @@ pub fn APIKeys() -> Element {
 
             div { class: "metrics",
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Total Keys" } span { class: "metric-value", "{total}" } span { class: "metric-note", "router credentials" } }
-                    div { class: "metric-icon tone-blue", Icon { name: "key" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Active Keys" } span { class: "metric-value", "{active}" } span { class: "metric-note", "{total} total credentials" } }
+                    div { class: "metric-icon tone-green", Icon { name: "key" } }
                 }
                 div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Active" } span { class: "metric-value", "{active}" } span { class: "metric-note", "can send traffic" } }
-                    div { class: "metric-icon tone-green", Icon { name: "activity" } }
-                }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Disabled" } span { class: "metric-value", "{disabled}" } span { class: "metric-note", "blocked credentials" } }
-                    div { class: "metric-icon tone-gray", Icon { name: "lock" } }
+                    div { class: "metric-copy", span { class: "metric-label", "Owners" } span { class: "metric-value", "{owners}" } span { class: "metric-note", "accounts with credentials" } }
+                    div { class: "metric-icon tone-blue", Icon { name: "users" } }
                 }
                 div { class: "card metric",
                     div { class: "metric-copy", span { class: "metric-label", "IP Restricted" } span { class: "metric-value", "{restricted}" } span { class: "metric-note", "keys with allowlists" } }
                     div { class: "metric-icon tone-purple", Icon { name: "shield" } }
+                }
+                div { class: "card metric",
+                    div { class: "metric-copy", span { class: "metric-label", "Disabled" } span { class: "metric-value", "{disabled}" } span { class: "metric-note", "cannot send traffic" } }
+                    div { class: "metric-icon tone-gray", Icon { name: "lock" } }
                 }
             }
 
@@ -134,7 +140,7 @@ pub fn APIKeys() -> Element {
                     div { class: "card-pad product-section-head",
                         div {
                             h3 { "Credentials" }
-                            p { "Keys are masked after creation. Rotate credentials instead of sharing or recreating them casually." }
+                            p { "The table answers ownership and access at a glance. Lifecycle changes are grouped under Manage to reduce accidental actions." }
                         }
                     }
                     div { class: "table-wrap",
@@ -143,29 +149,29 @@ pub fn APIKeys() -> Element {
                                 th { "Key" }
                                 th { "Owner" }
                                 th { "Status" }
-                                th { "Quota" }
-                                th { "Network Access" }
-                                th { "Version" }
-                                th { class: "right", "Actions" }
+                                th { "Usage / Quota" }
+                                th { "Network" }
+                                th { class: "right", "Action" }
                             } }
                             tbody {
                                 for item in tokens {
                                     {
                                         let row_key = item.token.clone();
-                                        let token_toggle = item.token.clone();
-                                        let item_for_whitelist = item.clone();
-                                        let item_for_rotate = item.clone();
-                                        let item_for_delete = item.clone();
+                                        let item_for_manage = item.clone();
                                         let label = masked(&item.token);
-                                        let next_status = if item.status == "active" { "disabled" } else { "active" };
-                                        let toggle_label = if item.status == "active" { "Disable" } else { "Enable" };
-                                        let quota_text = if item.quota_limit < 0 { "Unlimited".to_string() } else { item.quota_limit.to_string() };
-                                        let ip_text = item
-                                            .ip_whitelist
-                                            .clone()
-                                            .filter(|value| !value.trim().is_empty())
-                                            .unwrap_or_else(|| "Any IP".to_string());
+                                        let quota_text = if item.quota_limit < 0 {
+                                            "Unlimited".to_string()
+                                        } else {
+                                            format!("{} / {}", item.used_quota, item.quota_limit)
+                                        };
+                                        let quota_note = if item.quota_limit < 0 {
+                                            format!("{} used", item.used_quota)
+                                        } else {
+                                            "used / limit".to_string()
+                                        };
+                                        let restricted = item.ip_whitelist.as_deref().is_some_and(|value| !value.trim().is_empty());
                                         let owner_name = owner_names.get(&item.user_id).cloned().unwrap_or_else(|| item.user_id.clone());
+                                        let state = status_label(&item.status);
                                         rsx! {
                                             tr { key: "{row_key}",
                                                 td { class: "mono table-primary", "{label}" }
@@ -175,47 +181,27 @@ pub fn APIKeys() -> Element {
                                                         small { class: "mono muted", "{item.user_id}" }
                                                     }
                                                 }
-                                                td { span { class: if item.status == "active" { "badge badge-success" } else { "badge badge-neutral" }, "{item.status}" } }
+                                                td { span { class: if item.status == "active" { "badge badge-success" } else { "badge badge-neutral" }, "{state}" } }
                                                 td {
                                                     div { class: "two-line",
-                                                        strong { class: "small", "{quota_text}" }
-                                                        small { class: "muted", "used {item.used_quota}" }
+                                                        strong { class: "small tabular", "{quota_text}" }
+                                                        small { class: "muted", "{quota_note}" }
                                                     }
                                                 }
-                                                td { class: "mono muted", "{ip_text}" }
-                                                td { class: "mono", "v{item.key_version}" }
+                                                td {
+                                                    span { class: if restricted { "badge badge-neutral" } else { "small muted" },
+                                                        if restricted { "IP restricted" } else { "Any IP" }
+                                                    }
+                                                }
                                                 td { class: "right",
-                                                    div { class: "action-menu",
-                                                        button {
-                                                            class: "button button-ghost button-sm",
-                                                            disabled: busy(),
-                                                            onclick: move |_| {
-                                                                let token = token_toggle.clone();
-                                                                busy.set(true);
-                                                                error.set(String::new());
-                                                                spawn(async move {
-                                                                    match TokenService::set_status(&token, next_status).await {
-                                                                        Ok(()) => {
-                                                                            notice.set(format!("API key {next_status}."));
-                                                                            tokens_resource.restart();
-                                                                        }
-                                                                        Err(message) => error.set(format!("Status update failed: {message}")),
-                                                                    }
-                                                                    busy.set(false);
-                                                                });
-                                                            },
-                                                            "{toggle_label}"
-                                                        }
-                                                        button { class: "button button-ghost button-sm", onclick: move |_| rotate_target.set(Some(item_for_rotate.clone())), "Rotate" }
-                                                        button {
-                                                            class: "button button-ghost button-sm",
-                                                            onclick: move |_| {
-                                                                whitelist.set(item_for_whitelist.ip_whitelist.clone().unwrap_or_default());
-                                                                whitelist_target.set(Some(item_for_whitelist.clone()));
-                                                            },
-                                                            "IP Rules"
-                                                        }
-                                                        button { class: "button button-ghost button-sm danger", onclick: move |_| delete_target.set(Some(item_for_delete.clone())), "Delete" }
+                                                    button {
+                                                        class: "button button-secondary button-sm",
+                                                        onclick: move |_| {
+                                                            notice.set(String::new());
+                                                            error.set(String::new());
+                                                            manage_target.set(Some(item_for_manage.clone()));
+                                                        },
+                                                        "Manage"
                                                     }
                                                 }
                                             }
@@ -291,6 +277,110 @@ pub fn APIKeys() -> Element {
                                     });
                                 },
                                 if busy() { "Creating…" } else { "Create API Key" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(target) = manage_target() {
+                {
+                    let token_for_status = target.token.clone();
+                    let target_for_network = target.clone();
+                    let target_for_rotate = target.clone();
+                    let target_for_delete = target.clone();
+                    let label = masked(&target.token);
+                    let owner = owner_names.get(&target.user_id).cloned().unwrap_or_else(|| target.user_id.clone());
+                    let state = status_label(&target.status);
+                    let next_status = if target.status == "active" { "disabled" } else { "active" };
+                    let toggle_label = if target.status == "active" { "Disable Key" } else { "Enable Key" };
+                    let restricted = target.ip_whitelist.as_deref().is_some_and(|value| !value.trim().is_empty());
+                    let quota_text = if target.quota_limit < 0 {
+                        format!("{} used • unlimited", target.used_quota)
+                    } else {
+                        format!("{} used of {}", target.used_quota, target.quota_limit)
+                    };
+                    rsx! {
+                        div { class: "drawer-backdrop", onclick: move |_| manage_target.set(None) }
+                        aside { class: "drawer",
+                            div { class: "drawer-head",
+                                div { h2 { "Manage API Key" } p { class: "small muted mono", "{label}" } }
+                                button { class: "close-button", onclick: move |_| manage_target.set(None), "×" }
+                            }
+                            div { class: "drawer-body stack-lg",
+                                div { class: "form-section",
+                                    div { class: "form-section-head", strong { "Access summary" } small { "Check the owner and current access state before changing this credential." } }
+                                    div { class: "receipt-row", label { "Owner" } strong { "{owner}" } }
+                                    div { class: "receipt-row", label { "Status" } strong { "{state}" } }
+                                    div { class: "receipt-row", label { "Usage / quota" } strong { class: "mono", "{quota_text}" } }
+                                    div { class: "receipt-row", label { "Network" } strong { if restricted { "IP restricted" } else { "Any IP" } } }
+                                    details {
+                                        summary { class: "small strong", style: "cursor:pointer", "Technical details" }
+                                        div { class: "stack", style: "margin-top:12px",
+                                            div { class: "receipt-row", label { "Owner ID" } strong { class: "mono", "{target.user_id}" } }
+                                            div { class: "receipt-row", label { "Key version" } strong { class: "mono", "v{target.key_version}" } }
+                                        }
+                                    }
+                                }
+
+                                div { class: "form-section",
+                                    div { class: "form-section-head", strong { "Credential lifecycle" } small { "Use rotation for normal credential replacement. Disable only when traffic from this key must stop." } }
+                                    div { class: "row gap-2", style: "flex-wrap:wrap",
+                                        button {
+                                            class: if target.status == "active" { "button button-secondary" } else { "button button-primary" },
+                                            disabled: busy(),
+                                            onclick: move |_| {
+                                                let token = token_for_status.clone();
+                                                busy.set(true);
+                                                error.set(String::new());
+                                                spawn(async move {
+                                                    match TokenService::set_status(&token, next_status).await {
+                                                        Ok(()) => {
+                                                            notice.set(format!("API key {next_status}."));
+                                                            manage_target.set(None);
+                                                            tokens_resource.restart();
+                                                        }
+                                                        Err(message) => error.set(format!("Status update failed: {message}")),
+                                                    }
+                                                    busy.set(false);
+                                                });
+                                            },
+                                            "{toggle_label}"
+                                        }
+                                        button {
+                                            class: "button button-secondary",
+                                            onclick: move |_| {
+                                                manage_target.set(None);
+                                                rotate_target.set(Some(target_for_rotate.clone()));
+                                            },
+                                            "Rotate Key"
+                                        }
+                                        button {
+                                            class: "button button-secondary",
+                                            onclick: move |_| {
+                                                whitelist.set(target_for_network.ip_whitelist.clone().unwrap_or_default());
+                                                manage_target.set(None);
+                                                whitelist_target.set(Some(target_for_network.clone()));
+                                            },
+                                            "Network Access"
+                                        }
+                                    }
+                                    if target.status == "active" {
+                                        div { class: "product-note", "Disabling this key immediately prevents clients using it from authenticating. Rotate instead when you simply need a replacement credential." }
+                                    }
+                                }
+
+                                div { class: "form-section danger-zone",
+                                    div { class: "form-section-head", strong { class: "danger", "Delete credential" } small { "Deletion is permanent and immediately breaks any client still using this key." } }
+                                    button {
+                                        class: "button button-secondary danger",
+                                        onclick: move |_| {
+                                            manage_target.set(None);
+                                            delete_target.set(Some(target_for_delete.clone()));
+                                        },
+                                        "Delete API Key"
+                                    }
+                                }
                             }
                         }
                     }
