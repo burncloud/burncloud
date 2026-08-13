@@ -39,6 +39,8 @@ jsonwebtoken = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 chrono = { workspace = true }
 dirs = { workspace = true }
+sqlx.workspace = true
+bcrypt.workspace = true
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
