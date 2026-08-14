@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -44,40 +46,29 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      - name: Capture rustfmt diagnostic
-        id: formatting
+      - name: Formatting
         shell: bash
         run: |
-          set +e
-          cargo fmt > /tmp/rustfmt.log 2>&1
-          fmt_status=$?
-          set -e
-          git diff --binary > /tmp/rustfmt.patch
-          if [ -s /tmp/rustfmt.patch ]; then
-            has_diff=1
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
           else
-            has_diff=0
-          fi
-          echo "fmt_status=$fmt_status" >> "$GITHUB_OUTPUT"
-          echo "has_diff=$has_diff" >> "$GITHUB_OUTPUT"
-          cat /tmp/rustfmt.log
-          if [ "$has_diff" = "1" ]; then
-            echo "rustfmt changed these files:"
-            git diff --name-only
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
           fi
 
-      - name: Upload rustfmt diagnostic
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustfmt-diagnostic
-          path: |
-            /tmp/rustfmt.log
-            /tmp/rustfmt.patch
-          if-no-files-found: error
+          mapfile -d '' rust_files < <(
+            git diff --name-only --diff-filter=ACMR -z "$base_sha" "$head_sha" -- '*.rs'
+          )
 
-      - name: Enforce formatting
-        if: steps.formatting.outputs.fmt_status != '0' || steps.formatting.outputs.has_diff != '0'
-        run: exit 1
+          if [ "${#rust_files[@]}" -eq 0 ]; then
+            echo "No changed Rust files to format-check."
+            exit 0
+          fi
+
+          printf 'Checking rustfmt on %s changed Rust file(s):\n' "${#rust_files[@]}"
+          printf '  %s\n' "${rust_files[@]}"
+          rustfmt --edition 2021 --check --config skip_children=true "${rust_files[@]}"
 
       - name: Check affected packages
         run: cargo check -p burncloud-router -p burncloud-server
