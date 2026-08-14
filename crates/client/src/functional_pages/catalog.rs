@@ -19,6 +19,61 @@ struct ModelAvailability {
     groups: BTreeSet<String>,
 }
 
+#[derive(Default)]
+struct RouteGroupHealth {
+    active_candidates: usize,
+    configured_models: usize,
+    available_models: usize,
+    redundant_models: usize,
+    unavailable_models: usize,
+    single_upstream_models: usize,
+}
+
+impl RouteGroupHealth {
+    fn fully_available(&self) -> bool {
+        self.configured_models > 0 && self.unavailable_models == 0
+    }
+
+    fn fully_redundant(&self) -> bool {
+        self.fully_available() && self.single_upstream_models == 0
+    }
+}
+
+fn route_group_health(rows: &[Channel]) -> RouteGroupHealth {
+    let active_candidates = rows.iter().filter(|channel| channel.status == 1).count();
+    let mut configured_models = BTreeSet::new();
+    let mut active_model_upstreams: BTreeMap<String, usize> = BTreeMap::new();
+
+    for channel in rows {
+        for model in channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()) {
+            configured_models.insert(model.to_string());
+            if channel.status == 1 {
+                *active_model_upstreams.entry(model.to_string()).or_default() += 1;
+            }
+        }
+    }
+
+    let available_models = configured_models
+        .iter()
+        .filter(|model| active_model_upstreams.get(*model).copied().unwrap_or(0) > 0)
+        .count();
+    let redundant_models = configured_models
+        .iter()
+        .filter(|model| active_model_upstreams.get(*model).copied().unwrap_or(0) >= 2)
+        .count();
+    let unavailable_models = configured_models.len().saturating_sub(available_models);
+    let single_upstream_models = available_models.saturating_sub(redundant_models);
+
+    RouteGroupHealth {
+        active_candidates,
+        configured_models: configured_models.len(),
+        available_models,
+        redundant_models,
+        unavailable_models,
+        single_upstream_models,
+    }
+}
+
 #[component]
 pub fn Models() -> Element {
     let mut resource = use_resource(move || async move { ChannelService::list(100).await });
@@ -246,8 +301,14 @@ pub fn Models() -> Element {
 pub fn Routes() -> Element {
     let mut resource = use_resource(move || async move { ChannelService::list(100).await });
     let snapshot = resource.read().clone();
+    let is_loading = snapshot.is_none();
     let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
-    let channels = snapshot.and_then(Result::ok).unwrap_or_default();
+    let has_load_error = load_error.is_some();
+    let channels = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned()
+        .unwrap_or_default();
 
     let mut groups: BTreeMap<String, Vec<Channel>> = BTreeMap::new();
     for channel in channels {
@@ -256,49 +317,100 @@ pub fn Routes() -> Element {
         }
     }
     for rows in groups.values_mut() {
-        rows.sort_by_key(|channel| (channel.priority, -channel.weight));
+        rows.sort_by(|left, right| {
+            left.priority
+                .cmp(&right.priority)
+                .then_with(|| right.weight.cmp(&left.weight))
+        });
     }
 
     let route_groups = groups.len();
-    let healthy_groups = groups
-        .values()
-        .filter(|rows| rows.iter().any(|channel| channel.status == 1))
-        .count();
-    let redundant_groups = groups
-        .values()
-        .filter(|rows| rows.iter().filter(|channel| channel.status == 1).count() >= 2)
-        .count();
-    let unavailable_groups = route_groups.saturating_sub(healthy_groups);
+    let group_health = groups.values().map(|rows| route_group_health(rows)).collect::<Vec<_>>();
+    let fully_available_groups = group_health.iter().filter(|health| health.fully_available()).count();
+    let redundant_groups = group_health.iter().filter(|health| health.fully_redundant()).count();
+    let unavailable_groups = group_health.iter().filter(|health| health.available_models == 0).count();
+    let partial_groups = route_groups
+        .saturating_sub(fully_available_groups)
+        .saturating_sub(unavailable_groups);
+    let single_upstream_groups = fully_available_groups.saturating_sub(redundant_groups);
+    let attention_groups = route_groups.saturating_sub(redundant_groups);
+    let health_class = if attention_groups > 0 {
+        "readiness-strip blocked route-health-strip"
+    } else {
+        "readiness-strip ready route-health-strip"
+    };
+    let health_title = if unavailable_groups > 0 || partial_groups > 0 {
+        "Some routes cannot serve their full model set"
+    } else if single_upstream_groups > 0 {
+        "Routes are available, but failover is incomplete"
+    } else {
+        "Routing groups are resilient"
+    };
+    let health_copy = if unavailable_groups > 0 || partial_groups > 0 {
+        format!("{unavailable_groups} routing groups are unavailable and {partial_groups} have partial model coverage. Fix provider health or overlap before production traffic relies on them.")
+    } else if single_upstream_groups > 0 {
+        format!("{single_upstream_groups} routing groups still contain model IDs that rely on a single active upstream.")
+    } else {
+        format!("All {route_groups} routing groups have active model coverage with failover redundancy.")
+    };
+    let redundancy_label = format!("{redundant_groups} redundant");
+    let attention_note = format!("{single_upstream_groups} single • {partial_groups} partial • {unavailable_groups} unavailable");
 
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Routes" }
-                    p { class: "page-subtitle", "Understand how traffic groups choose providers and where a routing group still depends on a single upstream." }
+                    p { class: "page-subtitle", "Understand how traffic groups choose providers and whether every routed model has an active failover path." }
                 }
                 div { class: "header-actions",
-                    button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
+                    button {
+                        class: "button button-secondary",
+                        disabled: is_loading,
+                        onclick: move |_| resource.restart(),
+                        if is_loading { "Refreshing…" } else { "Refresh" }
+                    }
                     Link { class: "button button-primary", to: Route::Providers {}, "Manage Routing Inputs" }
                 }
             }
 
-            div { class: "metrics",
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Routing Groups" } span { class: "metric-value", "{route_groups}" } span { class: "metric-note", "traffic policies" } }
-                    div { class: "metric-icon tone-blue", Icon { name: "routes" } }
+            if is_loading {
+                div { class: "card product-empty route-loading-state",
+                    div { class: "product-empty-inner",
+                        div { class: "product-empty-icon", Icon { name: "routes" } }
+                        h3 { "Evaluating routing groups" }
+                        p { "Reading provider status and model overlap before calculating route availability and failover coverage." }
+                    }
                 }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Available" } span { class: "metric-value", "{healthy_groups}" } span { class: "metric-note", "has an active provider" } }
-                    div { class: "metric-icon tone-green", Icon { name: "activity" } }
+            } else if !has_load_error {
+                div { class: "metrics",
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Routing Groups" } span { class: "metric-value", "{route_groups}" } span { class: "metric-note", "traffic policies" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "routes" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Fully Available" } span { class: "metric-value", "{fully_available_groups}" } span { class: "metric-note", "every configured model has an active upstream" } }
+                        div { class: if fully_available_groups > 0 { "metric-icon tone-green" } else { "metric-icon tone-gray" }, Icon { name: "activity" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Redundant" } span { class: "metric-value", "{redundant_groups}" } span { class: "metric-note", "every model has 2+ active upstreams" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "shield" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Needs Attention" } span { class: "metric-value", "{attention_groups}" } span { class: "metric-note", "{attention_note}" } }
+                        div { class: if attention_groups > 0 { "metric-icon tone-amber" } else { "metric-icon tone-gray" }, Icon { name: "providers" } }
+                    }
                 }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Redundant" } span { class: "metric-value", "{redundant_groups}" } span { class: "metric-note", "2+ active candidates" } }
-                    div { class: "metric-icon tone-purple", Icon { name: "shield" } }
-                }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Unavailable" } span { class: "metric-value", "{unavailable_groups}" } span { class: "metric-note", "no active candidate" } }
-                    div { class: "metric-icon tone-amber", Icon { name: "providers" } }
+
+                if !groups.is_empty() {
+                    div { class: "{health_class}",
+                        span { class: "readiness-dot" }
+                        div { class: "route-health-copy",
+                            strong { "{health_title}" }
+                            span { class: "small muted", "{health_copy}" }
+                        }
+                        span { class: "badge badge-neutral route-health-meta", "{redundancy_label}" }
+                    }
                 }
             }
 
@@ -308,7 +420,7 @@ pub fn Routes() -> Element {
                     code { class: "terminal", "{message}" }
                     button { class: "button button-primary", onclick: move |_| resource.restart(), "Retry" }
                 }
-            } else if groups.is_empty() {
+            } else if !is_loading && groups.is_empty() {
                 div { class: "card product-empty",
                     div { class: "product-empty-inner",
                         div { class: "product-empty-icon", Icon { name: "routes" } }
@@ -317,37 +429,47 @@ pub fn Routes() -> Element {
                         Link { class: "button button-primary", to: Route::Providers {}, "Configure Providers" }
                     }
                 }
-            } else {
+            } else if !is_loading {
                 div { class: "stack-lg",
                     for (group_name, rows) in groups {
                         {
-                            let active_count = rows.iter().filter(|channel| channel.status == 1).count();
-                            let model_count = rows
-                                .iter()
-                                .flat_map(|channel| channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()).map(str::to_string))
-                                .collect::<BTreeSet<_>>()
-                                .len();
-                            let (health_class, health_text) = if active_count == 0 {
+                            let health = route_group_health(&rows);
+                            let active_count = health.active_candidates;
+                            let configured_model_count = health.configured_models;
+                            let available_model_count = health.available_models;
+                            let redundant_model_count = health.redundant_models;
+                            let unavailable_model_count = health.unavailable_models;
+                            let single_model_count = health.single_upstream_models;
+                            let (group_health_class, group_health_text) = if available_model_count == 0 {
                                 ("badge badge-error", "Unavailable")
-                            } else if active_count == 1 {
+                            } else if unavailable_model_count > 0 {
+                                ("badge badge-warning", "Partial coverage")
+                            } else if single_model_count > 0 {
                                 ("badge badge-warning", "Single upstream")
                             } else {
                                 ("badge badge-success", "Redundant")
                             };
+                            let model_summary = format!("{available_model_count}/{configured_model_count} model IDs available • {redundant_model_count} redundant");
                             rsx! {
-                                div { class: "card card-pad stack",
+                                div { class: "card card-pad stack route-group-card",
                                     div { class: "product-section-head",
-                                        div {
+                                        div { class: "route-group-heading",
                                             div { class: "row gap-2",
-                                                h3 { "{group_name}" }
-                                                span { class: "{health_class}", "{health_text}" }
+                                                h3 { title: "{group_name}", "{group_name}" }
+                                                span { class: "{group_health_class}", "{group_health_text}" }
                                             }
-                                            p { "{active_count} active of {rows.len()} candidates • {model_count} model IDs available" }
+                                            p { "{active_count} active of {rows.len()} candidates • {model_summary}" }
                                         }
-                                        Link { class: "button button-secondary button-sm", to: Route::Providers {}, "Edit Providers" }
+                                        if available_model_count == 0 || unavailable_model_count > 0 {
+                                            Link { class: "button button-secondary button-sm", to: Route::Providers {}, "Fix Providers" }
+                                        } else if single_model_count > 0 {
+                                            Link { class: "button button-secondary button-sm", to: Route::Providers {}, "Add Failover" }
+                                        } else {
+                                            Link { class: "button button-secondary button-sm", to: Route::Playground {}, "Test Route" }
+                                        }
                                     }
                                     div { class: "table-wrap",
-                                        table { class: "data-table",
+                                        table { class: "data-table route-candidate-table",
                                             thead { tr {
                                                 th { "Preference" }
                                                 th { "Provider" }
@@ -362,12 +484,13 @@ pub fn Routes() -> Element {
                                                         let preference = index + 1;
                                                         let status = status_label(channel);
                                                         let model_count = channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()).count();
+                                                        let model_count_text = if model_count == 1 { "1 model ID".to_string() } else { format!("{model_count} model IDs") };
                                                         rsx! {
                                                             tr { key: "{channel.id}",
                                                                 td { class: "mono", "#{preference}" }
-                                                                td { class: "table-primary", "{channel.name}" }
+                                                                td { class: "table-primary route-provider-name", title: "{channel.name}", "{channel.name}" }
                                                                 td { span { class: if channel.status == 1 { "badge badge-success" } else { "badge badge-error" }, "{status}" } }
-                                                                td { "{model_count} models" }
+                                                                td { "{model_count_text}" }
                                                                 td { class: "right tabular", "{channel.priority}" }
                                                                 td { class: "right tabular", "{channel.weight}" }
                                                             }
@@ -377,8 +500,14 @@ pub fn Routes() -> Element {
                                             }
                                         }
                                     }
-                                    if active_count == 1 {
-                                        div { class: "product-note", "This routing group currently has a single active upstream. Adding a second provider with overlapping model coverage improves failover resilience." }
+                                    if unavailable_model_count > 0 {
+                                        div { class: "product-note route-risk-note",
+                                            "{unavailable_model_count} model IDs in this routing group currently have no active upstream. {single_model_count} additional model IDs have only one active upstream."
+                                        }
+                                    } else if single_model_count > 0 {
+                                        div { class: "product-note route-risk-note",
+                                            "{single_model_count} model IDs in this routing group still rely on a single active upstream. Add overlapping provider coverage to create failover."
+                                        }
                                     }
                                 }
                             }
