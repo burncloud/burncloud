@@ -96,7 +96,9 @@ async fn require_admin_or_response(
 ) -> Option<axum::response::Response> {
     match is_admin(state, claims).await {
         Ok(true) => None,
-        Ok(false) => Some(err_status(StatusCode::FORBIDDEN, "Admin access required").into_response()),
+        Ok(false) => {
+            Some(err_status(StatusCode::FORBIDDEN, "Admin access required").into_response())
+        }
         Err(status) => Some(err_status(status, "Failed to authorize request").into_response()),
     }
 }
