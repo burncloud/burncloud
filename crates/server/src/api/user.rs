@@ -65,6 +65,18 @@ struct UserSummary {
     group: &'static str,
 }
 
+fn primary_role(roles: &[String]) -> String {
+    if roles.iter().any(|role| role == "admin") {
+        return "admin".to_string();
+    }
+
+    roles
+        .iter()
+        .min()
+        .cloned()
+        .unwrap_or_else(|| "user".to_string())
+}
+
 pub fn routes() -> Router<AppState> {
     let authenticated = Router::new()
         .route("/console/api/user/recharges", get(list_recharges))
@@ -78,10 +90,15 @@ pub fn routes() -> Router<AppState> {
         .merge(authenticated)
 }
 
-async fn require_admin_or_response(state: &AppState, claims: &Claims) -> Option<axum::response::Response> {
+async fn require_admin_or_response(
+    state: &AppState,
+    claims: &Claims,
+) -> Option<axum::response::Response> {
     match is_admin(state, claims).await {
         Ok(true) => None,
-        Ok(false) => Some(err_status(StatusCode::FORBIDDEN, "Admin access required").into_response()),
+        Ok(false) => {
+            Some(err_status(StatusCode::FORBIDDEN, "Admin access required").into_response())
+        }
         Err(status) => Some(err_status(status, "Failed to authorize request").into_response()),
     }
 }
@@ -253,10 +270,7 @@ async fn list_users(
                     .get_user_roles(&state.db, &u.id)
                     .await
                     .unwrap_or_default();
-                let role = roles
-                    .into_iter()
-                    .next()
-                    .unwrap_or_else(|| "user".to_string());
+                let role = primary_role(&roles);
 
                 summaries.push(UserSummary {
                     id: u.id,
@@ -288,5 +302,23 @@ async fn list_recharges(
     {
         Ok(recharges) => ok(recharges).into_response(),
         Err(e) => err(e).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::primary_role;
+
+    #[test]
+    fn primary_role_prefers_console_admin() {
+        let roles = vec!["user".to_string(), "admin".to_string()];
+        assert_eq!(primary_role(&roles), "admin");
+    }
+
+    #[test]
+    fn primary_role_has_a_stable_non_admin_fallback() {
+        let roles = vec!["zeta".to_string(), "alpha".to_string()];
+        assert_eq!(primary_role(&roles), "alpha");
+        assert_eq!(primary_role(&[]), "user");
     }
 }
