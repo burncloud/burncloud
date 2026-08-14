@@ -80,8 +80,14 @@ pub fn Providers() -> Element {
     let mut tpm_cap = use_signal(String::new);
 
     let snapshot = resource.read().clone();
+    let is_loading = snapshot.is_none();
     let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
-    let channels = snapshot.and_then(Result::ok).unwrap_or_default();
+    let has_load_error = load_error.is_some();
+    let channels = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned()
+        .unwrap_or_default();
     let total = channels.len();
     let active = channels.iter().filter(|channel| channel.status == 1).count();
     let attention = total.saturating_sub(active);
@@ -97,6 +103,26 @@ pub fn Providers() -> Element {
     }
     let model_count = unique_models.len();
     let group_count = routing_groups.len();
+    let group_label = if group_count == 1 {
+        "1 routing group".to_string()
+    } else {
+        format!("{group_count} routing groups")
+    };
+    let health_class = if attention == 0 {
+        "readiness-strip ready provider-health-strip"
+    } else {
+        "readiness-strip blocked provider-health-strip"
+    };
+    let health_title = if attention == 0 {
+        "Provider supply is healthy"
+    } else {
+        "Provider supply needs attention"
+    };
+    let health_copy = if attention == 0 {
+        format!("{active} of {total} providers are active and exposing {model_count} unique model IDs.")
+    } else {
+        format!("{attention} of {total} providers are inactive or down. Verify route redundancy before production changes.")
+    };
 
     rsx! {
         div { class: "page",
@@ -106,7 +132,12 @@ pub fn Providers() -> Element {
                     p { class: "page-subtitle", "Connect upstream model supply, choose what each provider serves, and control how the router should use it." }
                 }
                 div { class: "header-actions",
-                    button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
+                    button {
+                        class: "button button-secondary",
+                        disabled: is_loading,
+                        onclick: move |_| resource.restart(),
+                        if is_loading { "Refreshing…" } else { "Refresh" }
+                    }
                     button {
                         class: "button button-primary",
                         onclick: move |_| {
@@ -130,22 +161,43 @@ pub fn Providers() -> Element {
                 }
             }
 
-            div { class: "metrics",
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Configured" } span { class: "metric-value", "{total}" } span { class: "metric-note", "upstream providers" } }
-                    div { class: "metric-icon tone-blue", Icon { name: "providers" } }
+            if is_loading {
+                div { class: "card product-empty provider-loading-state",
+                    div { class: "product-empty-inner",
+                        div { class: "product-empty-icon", Icon { name: "providers" } }
+                        h3 { "Loading provider inventory" }
+                        p { "Reading provider health, model coverage, routing policy, and capacity from this BurnCloud environment." }
+                    }
                 }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Active" } span { class: "metric-value", "{active}" } span { class: "metric-note", "available to route" } }
-                    div { class: "metric-icon tone-green", Icon { name: "activity" } }
+            } else if !has_load_error {
+                div { class: "metrics",
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Configured" } span { class: "metric-value", "{total}" } span { class: "metric-note", "upstream records" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "providers" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Active" } span { class: "metric-value", "{active}" } span { class: "metric-note", "available to route" } }
+                        div { class: if active > 0 { "metric-icon tone-green" } else { "metric-icon tone-gray" }, Icon { name: "activity" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Models Served" } span { class: "metric-value", "{model_count}" } span { class: "metric-note", "unique model IDs" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "models" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Needs Attention" } span { class: "metric-value", "{attention}" } span { class: "metric-note", "inactive or down" } }
+                        div { class: if attention > 0 { "metric-icon tone-amber" } else { "metric-icon tone-gray" }, Icon { name: "routes" } }
+                    }
                 }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Models Served" } span { class: "metric-value", "{model_count}" } span { class: "metric-note", "unique model IDs" } }
-                    div { class: "metric-icon tone-purple", Icon { name: "models" } }
-                }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Needs Attention" } span { class: "metric-value", "{attention}" } span { class: "metric-note", "across {group_count} routing groups" } }
-                    div { class: "metric-icon tone-amber", Icon { name: "routes" } }
+
+                if !channels.is_empty() {
+                    div { class: "{health_class}",
+                        span { class: "readiness-dot" }
+                        div { class: "provider-health-copy",
+                            strong { "{health_title}" }
+                            span { class: "small muted", "{health_copy}" }
+                        }
+                        span { class: "badge badge-neutral provider-health-meta", "{group_label}" }
+                    }
                 }
             }
 
@@ -158,7 +210,7 @@ pub fn Providers() -> Element {
                     code { class: "terminal", "{message}" }
                     button { class: "button button-primary", onclick: move |_| resource.restart(), "Retry" }
                 }
-            } else if channels.is_empty() {
+            } else if !is_loading && channels.is_empty() {
                 div { class: "card product-empty",
                     div { class: "product-empty-inner",
                         div { class: "product-empty-icon", Icon { name: "providers" } }
@@ -178,6 +230,7 @@ pub fn Providers() -> Element {
                                 priority.set(0);
                                 rpm_cap.set(String::new());
                                 tpm_cap.set(String::new());
+                                notice.set(String::new());
                                 error.set(String::new());
                             },
                             Icon { name: "plus" }
@@ -185,7 +238,7 @@ pub fn Providers() -> Element {
                         }
                     }
                 }
-            } else {
+            } else if !is_loading {
                 div { class: "card table-card",
                     div { class: "card-pad product-section-head",
                         div {
@@ -194,7 +247,7 @@ pub fn Providers() -> Element {
                         }
                     }
                     div { class: "table-wrap",
-                        table { class: "data-table",
+                        table { class: "data-table provider-table",
                             thead { tr {
                                 th { "Provider" }
                                 th { "Status" }
@@ -214,11 +267,22 @@ pub fn Providers() -> Element {
                                         let served_models = model_list(&channel);
                                         let served_count = served_models.len();
                                         let model_preview = served_models.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
-                                        let model_text = if served_count > 3 { format!("{model_preview} +{} more", served_count - 3) } else { model_preview };
-                                        let routing_text = format!("{} • P{} • W{}", channel.group, channel.priority, channel.weight);
-                                        let rpm = channel.rpm_cap.map(|value| value.to_string()).unwrap_or_else(|| "∞".to_string());
-                                        let tpm = channel.tpm_cap.map(|value| value.to_string()).unwrap_or_else(|| "∞".to_string());
-                                        let capacity = format!("{rpm} RPM • {tpm} TPM");
+                                        let model_text = if served_count == 0 {
+                                            "No model IDs configured".to_string()
+                                        } else if served_count > 3 {
+                                            format!("{model_preview} +{} more", served_count - 3)
+                                        } else {
+                                            model_preview
+                                        };
+                                        let model_count_text = if served_count == 1 { "1 model".to_string() } else { format!("{served_count} models") };
+                                        let route_group = if channel.group.trim().is_empty() { "default".to_string() } else { channel.group.clone() };
+                                        let routing_text = format!("Priority {} • Weight {}", channel.priority, channel.weight);
+                                        let capacity = match (channel.rpm_cap, channel.tpm_cap) {
+                                            (None, None) => "Unlimited".to_string(),
+                                            (Some(rpm), None) => format!("{rpm} RPM • Unlimited TPM"),
+                                            (None, Some(tpm)) => format!("Unlimited RPM • {tpm} TPM"),
+                                            (Some(rpm), Some(tpm)) => format!("{rpm} RPM • {tpm} TPM"),
+                                        };
                                         let status = if channel.status == 1 { "Active" } else { "Down" };
                                         rsx! {
                                             tr { key: "{channel.id}",
@@ -227,7 +291,7 @@ pub fn Providers() -> Element {
                                                         div { class: "provider-mark", "{mark}" }
                                                         div { class: "provider-name-block",
                                                             strong { "{channel.name}" }
-                                                            small { "{type_label} • {base}" }
+                                                            small { class: "provider-endpoint", title: "{type_label} • {base}", "{type_label} • {base}" }
                                                         }
                                                     }
                                                 }
@@ -236,17 +300,17 @@ pub fn Providers() -> Element {
                                                 }
                                                 td {
                                                     div { class: "two-line",
-                                                        strong { class: "small", "{served_count} models" }
-                                                        small { class: "mono muted", "{model_text}" }
+                                                        strong { class: "small", "{model_count_text}" }
+                                                        small { class: "mono muted provider-model-preview", "{model_text}" }
                                                     }
                                                 }
                                                 td {
                                                     div { class: "two-line",
-                                                        strong { class: "small", "{channel.group}" }
-                                                        small { class: "mono muted", "{routing_text}" }
+                                                        strong { class: "small", "{route_group}" }
+                                                        small { class: "mono muted provider-routing-detail", "{routing_text}" }
                                                     }
                                                 }
-                                                td { class: "small muted mono", "{capacity}" }
+                                                td { class: "small muted mono provider-capacity", "{capacity}" }
                                                 td { class: "right",
                                                     div { class: "action-menu",
                                                         button {
@@ -365,9 +429,9 @@ pub fn Providers() -> Element {
                                     div { class: "product-note", "Use exact upstream model IDs separated by commas. BurnCloud derives its model catalog from this list." }
                                 }
 
-                                details { class: "form-section",
-                                    summary { class: "strong", style: "cursor:pointer", "Advanced routing & capacity" }
-                                    div { class: "form-section-head", style: "margin-top:12px",
+                                details { class: "form-section provider-advanced",
+                                    summary { class: "strong", "Advanced routing & capacity" }
+                                    div { class: "form-section-head provider-advanced-copy",
                                         small { "Most providers can keep the defaults. Change these only when you intentionally control route preference or capacity." }
                                     }
                                     div { class: "grid-2",
@@ -476,7 +540,7 @@ pub fn Providers() -> Element {
                                 div { class: "row customer-form-actions",
                                     button { class: "button button-secondary", disabled: busy(), onclick: move |_| pending_delete.set(None), "Cancel" }
                                     button {
-                                        class: "button button-primary danger-zone",
+                                        class: "button button-danger",
                                         disabled: busy(),
                                         onclick: move |_| {
                                             let deleted_name = target_name.clone();
