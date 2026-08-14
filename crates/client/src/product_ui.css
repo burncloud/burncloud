@@ -287,6 +287,53 @@
   white-space: nowrap;
 }
 
+.route-health-strip {
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.route-health-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.route-health-meta {
+  margin-left: auto;
+}
+
+.route-loading-state {
+  min-height: 180px;
+}
+
+.route-group-card {
+  overflow: hidden;
+}
+
+.route-group-heading {
+  min-width: 0;
+}
+
+.route-group-heading h3 {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-provider-name {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-risk-note {
+  border: 1px solid var(--bc-color-warning-border);
+  background: var(--bc-color-warning-soft);
+}
+
 .form-section {
   display: flex;
   flex-direction: column;
@@ -389,13 +436,19 @@
 
 @media (max-width: 760px) {
   .provider-health-strip,
-  .model-health-strip {
+  .model-health-strip,
+  .route-health-strip {
     align-items: flex-start;
     flex-wrap: wrap;
   }
 
   .provider-health-meta,
-  .model-health-meta {
+  .model-health-meta,
+  .route-health-meta {
     margin-left: 19px;
+  }
+
+  .route-group-heading h3 {
+    max-width: 260px;
   }
 }
