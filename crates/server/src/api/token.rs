@@ -169,9 +169,10 @@ pub(crate) async fn authorized_token(
         err_status(StatusCode::INTERNAL_SERVER_ERROR, "Failed to load API token").into_response()
     })?;
 
-    let Some(record) = tokens.into_iter().find(|record| {
-        record.token == token_ref || token_management_id(&record.token) == token_ref
-    }) else {
+    let Some(record) = tokens
+        .into_iter()
+        .find(|record| record.token == token_ref || token_management_id(&record.token) == token_ref)
+    else {
         return Err(err_status(StatusCode::NOT_FOUND, "Token not found").into_response());
     };
 
@@ -435,7 +436,12 @@ async fn playground_chat(
         }
     };
 
-    match state.data_plane.clone().oneshot(request).await {
+    match state
+        .data_plane
+        .clone()
+        .oneshot(request)
+        .await
+    {
         Ok(response) => response,
         Err(error) => {
             tracing::error!(%error, "Console playground data-plane request failed");
