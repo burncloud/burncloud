@@ -23,8 +23,14 @@ struct ModelAvailability {
 pub fn Models() -> Element {
     let mut resource = use_resource(move || async move { ChannelService::list(100).await });
     let snapshot = resource.read().clone();
+    let is_loading = snapshot.is_none();
     let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
-    let channels = snapshot.and_then(Result::ok).unwrap_or_default();
+    let has_load_error = load_error.is_some();
+    let channels = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned()
+        .unwrap_or_default();
 
     let mut model_map: BTreeMap<String, ModelAvailability> = BTreeMap::new();
     for channel in &channels {
@@ -44,6 +50,27 @@ pub fn Models() -> Element {
     let available_models = model_map.values().filter(|model| !model.active_providers.is_empty()).count();
     let redundant_models = model_map.values().filter(|model| model.active_providers.len() >= 2).count();
     let unavailable_models = total_models.saturating_sub(available_models);
+    let single_upstream_models = available_models.saturating_sub(redundant_models);
+    let health_class = if unavailable_models > 0 || single_upstream_models > 0 {
+        "readiness-strip blocked model-health-strip"
+    } else {
+        "readiness-strip ready model-health-strip"
+    };
+    let health_title = if unavailable_models > 0 {
+        "Some models are unavailable"
+    } else if single_upstream_models > 0 {
+        "Model supply is available, but not fully redundant"
+    } else {
+        "Model supply is resilient"
+    };
+    let health_copy = if unavailable_models > 0 {
+        format!("{unavailable_models} model IDs have no active upstream. Restore provider health before relying on the full catalog.")
+    } else if single_upstream_models > 0 {
+        format!("{single_upstream_models} of {available_models} available model IDs still rely on one active upstream.")
+    } else {
+        format!("All {available_models} available model IDs have at least two active upstreams.")
+    };
+    let redundancy_label = format!("{redundant_models} redundant");
 
     rsx! {
         div { class: "page",
@@ -53,27 +80,53 @@ pub fn Models() -> Element {
                     p { class: "page-subtitle", "See which model IDs BurnCloud can actually serve and whether each model has upstream redundancy." }
                 }
                 div { class: "header-actions",
-                    button { class: "button button-secondary", onclick: move |_| resource.restart(), "Refresh" }
+                    button {
+                        class: "button button-secondary",
+                        disabled: is_loading,
+                        onclick: move |_| resource.restart(),
+                        if is_loading { "Refreshing…" } else { "Refresh" }
+                    }
                     Link { class: "button button-primary", to: Route::Providers {}, "Manage Providers" }
                 }
             }
 
-            div { class: "metrics",
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Models" } span { class: "metric-value", "{total_models}" } span { class: "metric-note", "derived from providers" } }
-                    div { class: "metric-icon tone-blue", Icon { name: "models" } }
+            if is_loading {
+                div { class: "card product-empty model-loading-state",
+                    div { class: "product-empty-inner",
+                        div { class: "product-empty-icon", Icon { name: "models" } }
+                        h3 { "Building model availability" }
+                        p { "Reading provider model IDs and active upstream state before deriving the catalog." }
+                    }
                 }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Available" } span { class: "metric-value", "{available_models}" } span { class: "metric-note", "at least one active upstream" } }
-                    div { class: "metric-icon tone-green", Icon { name: "activity" } }
+            } else if !has_load_error {
+                div { class: "metrics",
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Models" } span { class: "metric-value", "{total_models}" } span { class: "metric-note", "derived from providers" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "models" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Available" } span { class: "metric-value", "{available_models}" } span { class: "metric-note", "at least one active upstream" } }
+                        div { class: if available_models > 0 { "metric-icon tone-green" } else { "metric-icon tone-gray" }, Icon { name: "activity" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Redundant" } span { class: "metric-value", "{redundant_models}" } span { class: "metric-note", "2+ active upstreams" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "routes" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Unavailable" } span { class: "metric-value", "{unavailable_models}" } span { class: "metric-note", "no active upstream" } }
+                        div { class: if unavailable_models > 0 { "metric-icon tone-red" } else { "metric-icon tone-gray" }, Icon { name: "shield" } }
+                    }
                 }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Redundant" } span { class: "metric-value", "{redundant_models}" } span { class: "metric-note", "2+ active upstreams" } }
-                    div { class: "metric-icon tone-purple", Icon { name: "routes" } }
-                }
-                div { class: "card metric",
-                    div { class: "metric-copy", span { class: "metric-label", "Unavailable" } span { class: "metric-value", "{unavailable_models}" } span { class: "metric-note", "needs provider attention" } }
-                    div { class: "metric-icon tone-amber", Icon { name: "shield" } }
+
+                if !model_map.is_empty() {
+                    div { class: "{health_class}",
+                        span { class: "readiness-dot" }
+                        div { class: "model-health-copy",
+                            strong { "{health_title}" }
+                            span { class: "small muted", "{health_copy}" }
+                        }
+                        span { class: "badge badge-neutral model-health-meta", "{redundancy_label}" }
+                    }
                 }
             }
 
@@ -83,7 +136,7 @@ pub fn Models() -> Element {
                     code { class: "terminal", "{message}" }
                     button { class: "button button-primary", onclick: move |_| resource.restart(), "Retry" }
                 }
-            } else if model_map.is_empty() {
+            } else if !is_loading && model_map.is_empty() {
                 div { class: "card product-empty",
                     div { class: "product-empty-inner",
                         div { class: "product-empty-icon", Icon { name: "models" } }
@@ -92,7 +145,7 @@ pub fn Models() -> Element {
                         Link { class: "button button-primary", to: Route::Providers {}, "Configure Providers" }
                     }
                 }
-            } else {
+            } else if !is_loading {
                 div { class: "card table-card",
                     div { class: "card-pad product-section-head",
                         div {
@@ -101,7 +154,7 @@ pub fn Models() -> Element {
                         }
                     }
                     div { class: "table-wrap",
-                        table { class: "data-table",
+                        table { class: "data-table model-availability-table",
                             thead { tr {
                                 th { "Model" }
                                 th { "Availability" }
@@ -114,8 +167,26 @@ pub fn Models() -> Element {
                                     {
                                         let active_count = availability.active_providers.len();
                                         let total_count = availability.providers.len();
-                                        let active_text = availability.active_providers.iter().cloned().collect::<Vec<_>>().join(", ");
-                                        let group_text = availability.groups.iter().cloned().collect::<Vec<_>>().join(", ");
+                                        let active_preview = availability.active_providers.iter().take(2).cloned().collect::<Vec<_>>().join(", ");
+                                        let active_text = if active_count == 0 {
+                                            "No active upstream".to_string()
+                                        } else if active_count > 2 {
+                                            format!("{active_preview} +{} more", active_count - 2)
+                                        } else {
+                                            active_preview
+                                        };
+                                        let active_count_text = if active_count == 1 { "1 active".to_string() } else { format!("{active_count} active") };
+                                        let configured_text = if total_count == 1 { "1 configured provider".to_string() } else { format!("{total_count} configured providers") };
+                                        let group_count = availability.groups.len();
+                                        let group_preview = availability.groups.iter().take(2).cloned().collect::<Vec<_>>().join(", ");
+                                        let group_text = if group_count == 0 {
+                                            "No routing group".to_string()
+                                        } else if group_count > 2 {
+                                            format!("{group_preview} +{} more", group_count - 2)
+                                        } else {
+                                            group_preview
+                                        };
+                                        let group_count_text = if group_count == 1 { "1 group".to_string() } else { format!("{group_count} groups") };
                                         let (badge_class, badge_text, note) = if active_count == 0 {
                                             ("badge badge-error", "Unavailable", "No active upstream")
                                         } else if active_count == 1 {
@@ -126,9 +197,9 @@ pub fn Models() -> Element {
                                         rsx! {
                                             tr { key: "{model_name}",
                                                 td {
-                                                    div { class: "two-line",
-                                                        strong { class: "table-primary mono", "{model_name}" }
-                                                        small { class: "muted", "{total_count} configured providers" }
+                                                    div { class: "two-line model-name-cell",
+                                                        strong { class: "table-primary mono", title: "{model_name}", "{model_name}" }
+                                                        small { class: "muted", "{configured_text}" }
                                                     }
                                                 }
                                                 td {
@@ -137,13 +208,25 @@ pub fn Models() -> Element {
                                                         small { class: "muted", "{note}" }
                                                     }
                                                 }
-                                                td { class: "small", if active_text.is_empty() { "—" } else { "{active_text}" } }
-                                                td { class: "mono muted", "{group_text}" }
+                                                td {
+                                                    div { class: "two-line",
+                                                        strong { class: "small", "{active_count_text}" }
+                                                        small { class: "muted model-upstream-preview", title: "{active_text}", "{active_text}" }
+                                                    }
+                                                }
+                                                td {
+                                                    div { class: "two-line",
+                                                        strong { class: "small", "{group_count_text}" }
+                                                        small { class: "mono muted model-group-preview", title: "{group_text}", "{group_text}" }
+                                                    }
+                                                }
                                                 td { class: "right",
-                                                    if active_count > 0 {
-                                                        Link { class: "button button-ghost button-sm", to: Route::Playground {}, "Test" }
-                                                    } else {
+                                                    if active_count == 0 {
                                                         Link { class: "button button-ghost button-sm", to: Route::Providers {}, "Fix Provider" }
+                                                    } else if active_count == 1 {
+                                                        Link { class: "button button-ghost button-sm", to: Route::Providers {}, "Add Failover" }
+                                                    } else {
+                                                        Link { class: "button button-ghost button-sm", to: Route::Playground {}, "Test" }
                                                     }
                                                 }
                                             }
