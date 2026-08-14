@@ -475,6 +475,94 @@
   white-space: nowrap;
 }
 
+.logs-toolbar {
+  flex-wrap: wrap;
+}
+
+.logs-search-field {
+  width: min(300px, 34vw);
+}
+
+.logs-outcome-filter {
+  width: auto;
+  min-width: 148px;
+}
+
+.logs-loading-state {
+  min-height: 180px;
+}
+
+.logs-health-strip,
+.logs-detail-status {
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.logs-health-error {
+  border-color: var(--bc-color-danger-border);
+  background: var(--bc-color-danger-soft);
+}
+
+.logs-health-error .readiness-dot {
+  background: var(--bc-color-danger);
+}
+
+.logs-health-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.logs-health-meta {
+  margin-left: auto;
+}
+
+.logs-empty-state {
+  min-height: 190px;
+}
+
+.logs-row {
+  cursor: pointer;
+}
+
+.logs-time {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs-request-cell,
+.logs-route-cell {
+  min-width: 0;
+  max-width: 280px;
+}
+
+.logs-request-cell strong,
+.logs-request-cell small,
+.logs-route-cell strong,
+.logs-route-cell small {
+  display: block;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs-detail-grid {
+  gap: var(--bc-space-4);
+}
+
+.logs-detail-stat {
+  min-width: 0;
+}
+
+.logs-detail-stat > div {
+  margin-top: var(--bc-space-1);
+  overflow-wrap: anywhere;
+}
+
 .form-section {
   display: flex;
   flex-direction: column;
@@ -581,13 +669,19 @@
   .playground-sidebar {
     position: static;
   }
+
+  .logs-search-field {
+    width: 240px;
+  }
 }
 
 @media (max-width: 760px) {
   .provider-health-strip,
   .model-health-strip,
   .route-health-strip,
-  .playground-test-status {
+  .playground-test-status,
+  .logs-health-strip,
+  .logs-detail-status {
     align-items: flex-start;
     flex-wrap: wrap;
   }
@@ -595,7 +689,8 @@
   .provider-health-meta,
   .model-health-meta,
   .route-health-meta,
-  .playground-status-meta {
+  .playground-status-meta,
+  .logs-health-meta {
     margin-left: 19px;
   }
 
@@ -611,6 +706,17 @@
 
   .playground-toolbar .button,
   .playground-composer-footer .button {
+    width: 100%;
+  }
+
+  .logs-toolbar {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .logs-search-field,
+  .logs-outcome-filter,
+  .logs-toolbar .button {
     width: 100%;
   }
 }
