@@ -73,8 +73,28 @@ jobs:
       - name: Check affected packages
         run: cargo check -p burncloud-router -p burncloud-server
 
-      - name: Billing invariants
-        run: cargo test -p burncloud-router --test billing_invariants --test quota_tests
+      - name: Capture billing invariant diagnostics
+        id: billing
+        shell: bash
+        run: |
+          set +e
+          cargo test -p burncloud-router --test billing_invariants --test quota_tests -- --nocapture > /tmp/billing-invariants.log 2>&1
+          billing_status=$?
+          set -e
+          echo "status=$billing_status" >> "$GITHUB_OUTPUT"
+          cat /tmp/billing-invariants.log
+
+      - name: Upload billing invariant diagnostics
+        if: steps.billing.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: billing-invariant-diagnostic
+          path: /tmp/billing-invariants.log
+          if-no-files-found: error
+
+      - name: Enforce billing invariants
+        if: steps.billing.outputs.status != '0'
+        run: exit 1
 
       - name: Security invariants
         run: cargo test -p burncloud-server --test security_invariants
