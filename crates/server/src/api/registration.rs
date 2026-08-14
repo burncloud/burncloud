@@ -24,7 +24,6 @@ pub(crate) struct PublicRegistrationResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PublicRegistrationError {
     BootstrapRequired,
-    BootstrapNotConfigured,
     InvalidBootstrapToken,
     BootstrapAlreadyComplete,
     RegistrationClosed,
@@ -34,7 +33,12 @@ pub(crate) enum PublicRegistrationError {
     Database(String),
 }
 
-pub(crate) async fn initialize_bootstrap_state(db: &Database) -> anyhow::Result<()> {
+/// Ensure the single-row first-admin marker exists and return whether bootstrap
+/// has already completed.
+///
+/// Existing installations predate this marker, so any real pre-existing user
+/// permanently closes first-admin bootstrap during startup.
+pub(crate) async fn initialize_bootstrap_state(db: &Database) -> anyhow::Result<bool> {
     let connection = db.get_connection()?;
     let pool = connection.pool();
     let create_sql = if db.kind() == "postgres" {
@@ -56,8 +60,6 @@ pub(crate) async fn initialize_bootstrap_state(db: &Database) -> anyhow::Result<
     };
     sqlx::query(&create_sql).execute(pool).await?;
 
-    // Existing installations predate the bootstrap marker. Mark them complete
-    // before serving requests so an upgrade can never reopen first-admin setup.
     let existing_users: i64 = sqlx::query_scalar::<Any, i64>(
         "SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'",
     )
@@ -78,12 +80,51 @@ pub(crate) async fn initialize_bootstrap_state(db: &Database) -> anyhow::Result<
         sqlx::query(&backfill_sql).execute(pool).await?;
     }
 
-    Ok(())
+    let marker_sql = format!("SELECT COUNT(*) FROM {BOOTSTRAP_TABLE} WHERE id = 1");
+    let marker_count: i64 = sqlx::query_scalar::<Any, i64>(&marker_sql)
+        .fetch_one(pool)
+        .await?;
+    Ok(marker_count > 0)
 }
 
+pub(crate) async fn bootstrap_complete(
+    db: &Database,
+) -> Result<bool, PublicRegistrationError> {
+    let connection = db
+        .get_connection()
+        .map_err(|error| PublicRegistrationError::Database(error.to_string()))?;
+    let marker_sql = format!("SELECT COUNT(*) FROM {BOOTSTRAP_TABLE} WHERE id = 1");
+    let marker_count: i64 = sqlx::query_scalar::<Any, i64>(&marker_sql)
+        .fetch_one(connection.pool())
+        .await
+        .map_err(|error| PublicRegistrationError::Database(error.to_string()))?;
+    Ok(marker_count > 0)
+}
+
+pub(crate) fn generate_bootstrap_token() -> String {
+    format!(
+        "{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    )
+}
+
+/// Register either the one-time first administrator or a normal public user.
+///
+/// `bootstrap_token_required=false` is reserved for a server bound only to a
+/// loopback address. That is BurnCloud's zero-configuration installation path:
+/// the first local registration atomically becomes the administrator.
+///
+/// A server exposed on a non-loopback address must pass
+/// `bootstrap_token_required=true` and an automatically generated or explicitly
+/// configured setup token. The same transaction claims the singleton marker,
+/// creates the user and binds the admin role, so concurrent first-admin attempts
+/// cannot both succeed.
 pub(crate) async fn register_public_user(
     db: &Database,
     input: &PublicRegistrationInput,
+    bootstrap_token_required: bool,
+    expected_bootstrap_token: Option<&str>,
 ) -> Result<PublicRegistrationResult, PublicRegistrationError> {
     let username = input.username.trim();
     if username.is_empty() {
@@ -145,22 +186,21 @@ pub(crate) async fn register_public_user(
         }
         ("user", public_signup_bonus_nano()?)
     } else {
-        let supplied = bootstrap_token.ok_or(PublicRegistrationError::BootstrapRequired)?;
-        let expected = std::env::var("BURNCLOUD_BOOTSTRAP_TOKEN")
-            .map_err(|_| PublicRegistrationError::BootstrapNotConfigured)?;
-        let expected = expected.trim();
-        if expected.len() < 16 {
-            return Err(PublicRegistrationError::Configuration(
-                "BURNCLOUD_BOOTSTRAP_TOKEN must contain at least 16 characters".to_string(),
-            ));
-        }
-        if !constant_time_eq(supplied, expected) {
-            return Err(PublicRegistrationError::InvalidBootstrapToken);
+        if bootstrap_token_required {
+            let supplied = bootstrap_token.ok_or(PublicRegistrationError::BootstrapRequired)?;
+            let expected = expected_bootstrap_token
+                .map(str::trim)
+                .filter(|value| value.len() >= 16)
+                .ok_or_else(|| {
+                    PublicRegistrationError::Configuration(
+                        "Remote bootstrap setup code is unavailable".to_string(),
+                    )
+                })?;
+            if !constant_time_eq(supplied, expected) {
+                return Err(PublicRegistrationError::InvalidBootstrapToken);
+            }
         }
 
-        // Claim the singleton marker inside the same transaction as admin user
-        // creation. The unique primary key prevents two processes from both
-        // successfully completing first-admin bootstrap.
         let claim_sql = if postgres {
             format!(
                 "INSERT INTO {BOOTSTRAP_TABLE} (id, completed_by) VALUES (1, $1) \
