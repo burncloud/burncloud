@@ -436,12 +436,7 @@ async fn playground_chat(
         }
     };
 
-    match state
-        .data_plane
-        .clone()
-        .oneshot(request)
-        .await
-    {
+    match state.data_plane.clone().oneshot(request).await {
         Ok(response) => response,
         Err(error) => {
             tracing::error!(%error, "Console playground data-plane request failed");
