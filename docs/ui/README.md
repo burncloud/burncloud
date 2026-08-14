@@ -11,6 +11,7 @@ audited_against: c314bff9646f9113c9a58a818552fc80c77543a6
 These documents describe the rebuilt Dioxus console that is currently routed from `crates/client/src/app.rs` and the target product semantics that future Console work must converge on.
 
 - [`product-text-prototype.md`](product-text-prototype.md) — trust-first target product text prototype: north star, proof vocabulary, Trust Receipt, Verification and target information architecture.
+- [`verification-profiles.md`](verification-profiles.md) — machine-testable proof dimensions, named verification profiles, downgrade/failure rules and permitted `CHAIN VERIFIED` wording.
 - [`product-todo.md`](product-todo.md) — Goal → TODO → Verification execution plan with audited baseline, acceptance criteria and completion gates.
 - [`product-flow.md`](product-flow.md) — canonical current Console responsibility flow, page ownership, scope/evidence rules, cross-page handoffs and migration order.
 - [`tokens.md`](tokens.md) — canonical semantic visual-system ownership and token rules.
@@ -24,9 +25,10 @@ These documents describe the rebuilt Dioxus console that is currently routed fro
 For future UI work:
 
 1. `product-text-prototype.md` defines the target product claims and trust semantics;
-2. `product-todo.md` defines what must be implemented and how completion is verified;
-3. `product-flow.md` defines current page ownership and migration boundaries;
-4. routed source and executable gates define what the current product actually does today.
+2. `verification-profiles.md` defines what verification labels mean and the proof required to use them;
+3. `product-todo.md` defines what must be implemented and how completion is verified;
+4. `product-flow.md` defines current page ownership and migration boundaries;
+5. routed source and executable gates define what the current product actually does today.
 
 Target-state documentation must never be presented as current implementation truth. If routed source lacks a target proof, the UI must show the current limitation rather than the desired future state.
 
