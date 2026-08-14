@@ -167,6 +167,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .provider-mark {
@@ -182,6 +183,10 @@
   flex: 0 0 auto;
 }
 
+.provider-name-block {
+  min-width: 0;
+}
+
 .provider-name-block strong,
 .provider-name-block small {
   display: block;
@@ -190,6 +195,54 @@
 .provider-name-block small {
   margin-top: 3px;
   color: var(--muted);
+}
+
+.provider-endpoint {
+  max-width: min(34vw, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-model-preview {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-routing-detail,
+.provider-capacity {
+  white-space: nowrap;
+}
+
+.provider-health-strip {
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.provider-health-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.provider-health-meta {
+  margin-left: auto;
+}
+
+.provider-loading-state {
+  min-height: 180px;
+}
+
+.provider-advanced > summary {
+  cursor: pointer;
+  color: var(--bc-color-text-primary);
+}
+
+.provider-advanced-copy {
+  margin-top: 12px;
 }
 
 .form-section {
@@ -285,5 +338,20 @@
 
   .setup-step small {
     white-space: normal;
+  }
+
+  .provider-endpoint {
+    max-width: 300px;
+  }
+}
+
+@media (max-width: 760px) {
+  .provider-health-strip {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .provider-health-meta {
+    margin-left: 19px;
   }
 }
