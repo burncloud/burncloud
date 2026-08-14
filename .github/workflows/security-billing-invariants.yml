@@ -45,7 +45,24 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Formatting
-        run: cargo fmt --check
+        id: formatting
+        shell: bash
+        run: |
+          cargo fmt
+          git diff --binary > /tmp/rustfmt.patch
+          if [ -s /tmp/rustfmt.patch ]; then
+            echo "rustfmt changed these files:"
+            git diff --name-only
+            exit 1
+          fi
+
+      - name: Upload rustfmt diagnostic patch
+        if: failure() && steps.formatting.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-diagnostic-patch
+          path: /tmp/rustfmt.patch
+          if-no-files-found: error
 
       - name: Check affected packages
         run: cargo check -p burncloud-router -p burncloud-server
