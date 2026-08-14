@@ -75,12 +75,17 @@ require 'Redundant' src/functional_pages/catalog.rs
 require 'Unavailable' src/functional_pages/catalog.rs
 require 'No failover redundancy' src/functional_pages/catalog.rs
 
-# Playground is a guided end-to-end test and blocks impossible workflows.
+# Playground is a guided end-to-end data-plane test and must respect one-time-secret semantics.
 require 'Playground is not ready yet' src/functional_pages/playground_live.rs
 require 'Connect an active provider first' src/functional_pages/playground_live.rs
 require 'Create an API key for the test' src/functional_pages/playground_live.rs
 require 'Select a configured model' src/functional_pages/playground_live.rs
+require 'Paste a saved BurnCloud API key' src/functional_pages/playground_live.rs
+require 'r#type: "password"' src/functional_pages/playground_live.rs
+require 'readiness_loading' src/functional_pages/playground_live.rs
 require 'Send Test Request' src/functional_pages/playground_live.rs
+require 'No previous route receipt is reused for this result.' src/functional_pages/playground_live.rs
+forbid 'first_active_api_token' src/functional_pages/playground_live.rs
 
 # Customers and staff have separate product responsibilities.
 require 'Manage business accounts' src/critical_pages/customers_portable.rs
