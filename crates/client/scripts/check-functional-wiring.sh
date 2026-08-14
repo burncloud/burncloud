@@ -22,6 +22,8 @@ require 'pub use providers::Providers;' src/functional_pages/mod.rs
 require 'pub use catalog::{Models, Routes};' src/functional_pages/mod.rs
 require 'pub use logs_full::Logs;' src/functional_pages/mod.rs
 require 'pub use analytics_full::Evaluation;' src/functional_pages/mod.rs
+require 'pub use api_keys_live::APIKeys;' src/functional_pages/mod.rs
+require 'pub use access_live::Team;' src/functional_pages/mod.rs
 
 # Authentication and persistent session wiring.
 require '/api/auth/login' src/backend.rs
@@ -61,7 +63,12 @@ require 'UserService::list' src/critical_pages/customers_portable.rs
 require 'UserService::topup' src/critical_pages/customers_portable.rs
 require 'billing_summary' src/critical_pages/dashboard.rs
 require 'ChannelService::list' src/critical_pages/dashboard.rs
-require 'TokenService::create' src/functional_pages/access_live.rs
+require 'TokenService::create' src/functional_pages/api_keys_live.rs
+require 'TokenService::rotate' src/functional_pages/api_keys_live.rs
+require 'TokenService::set_status' src/functional_pages/api_keys_live.rs
+require 'TokenService::set_ip_whitelist' src/functional_pages/api_keys_live.rs
+require 'TokenService::delete' src/functional_pages/api_keys_live.rs
+require 'UserService::list' src/functional_pages/access_live.rs
 require 'ChannelService::create' src/functional_pages/providers.rs
 require 'update_channel_preserving_reservations' src/functional_pages/providers.rs
 require 'ChannelService::list' src/functional_pages/catalog.rs

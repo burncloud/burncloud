@@ -1,6 +1,7 @@
 mod access_live;
 mod analytics;
 mod analytics_full;
+mod api_keys_live;
 mod catalog;
 mod guardrails_live;
 mod logs_full;
@@ -8,9 +9,10 @@ mod playground_live;
 mod providers;
 mod settings;
 
-pub use access_live::{APIKeys, Team};
+pub use access_live::Team;
 pub use analytics::Billing;
 pub use analytics_full::Evaluation;
+pub use api_keys_live::APIKeys;
 pub use catalog::{Models, Routes};
 pub use guardrails_live::Guardrails;
 pub use logs_full::Logs;

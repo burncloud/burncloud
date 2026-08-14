@@ -89,11 +89,18 @@ require 'Environment operators' src/functional_pages/access_live.rs
 require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
 require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
 
-# API keys must be human-owned and lifecycle/destructive actions need explicit steps.
-require 'Choose which account will own this router credential' src/functional_pages/access_live.rs
-require 'API Key Created' src/functional_pages/access_live.rs
-require 'Rotate API Key' src/functional_pages/access_live.rs
-require 'Delete API Key' src/functional_pages/access_live.rs
+# API-key management must keep opaque management references separate from bearer-secret disclosure.
+require 'Opaque management reference' src/functional_pages/api_keys_live.rs
+require 'not a masked bearer secret' src/functional_pages/api_keys_live.rs
+require 'New key creation is unavailable' src/functional_pages/api_keys_live.rs
+require 'USD spend limit' src/functional_pages/api_keys_live.rs
+require 'One-time bearer secret' src/functional_pages/api_keys_live.rs
+require 'I saved this credential' src/functional_pages/api_keys_live.rs
+require 'CIDR ranges are not supported' src/functional_pages/api_keys_live.rs
+require 'Rotate API Key' src/functional_pages/api_keys_live.rs
+require 'Delete API Key' src/functional_pages/api_keys_live.rs
+forbid 'Owner user ID' src/functional_pages/api_keys_live.rs
+forbid 'fn masked' src/functional_pages/api_keys_live.rs
 
 # Diagnostic pages prioritize conclusions and risks.
 require 'Failures' src/functional_pages/logs_full.rs
