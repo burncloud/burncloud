@@ -85,6 +85,16 @@ require 'Send Test Request' src/functional_pages/playground_live.rs
 # Customers and staff have separate product responsibilities.
 require 'Manage business accounts' src/critical_pages/customers_portable.rs
 require '!is_staff_role(&user.role)' src/critical_pages/customers_portable.rs
+require 'Loading customer accounts' src/critical_pages/customers_portable.rs
+require 'Default Status' src/critical_pages/customers_portable.rs
+require 'Status is server metadata.' src/critical_pages/customers_portable.rs
+require 'parse_positive_amount_nano' src/critical_pages/customers_portable.rs
+require 'Use no more than two decimal places.' src/critical_pages/customers_portable.rs
+require 'Funding review' src/critical_pages/customers_portable.rs
+require 'New {selected_currency} balance' src/critical_pages/customers_portable.rs
+forbid '"Disabled"' src/critical_pages/customers_portable.rs
+forbid 'enabled accounts' src/critical_pages/customers_portable.rs
+forbid 'saturating_mul(1_000_000_000)' src/critical_pages/customers_portable.rs
 require 'Environment operators' src/functional_pages/access_live.rs
 require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
 require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
