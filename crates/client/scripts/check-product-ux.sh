@@ -82,7 +82,7 @@ require 'Create an API key for the test' src/functional_pages/playground_live.rs
 require 'Select a configured model' src/functional_pages/playground_live.rs
 require 'Send Test Request' src/functional_pages/playground_live.rs
 
-# Customers and staff have separate product responsibilities.
+# Customers and Console administrators have separate product responsibilities.
 require 'Manage business accounts' src/critical_pages/customers_portable.rs
 require '!is_staff_role(&user.role)' src/critical_pages/customers_portable.rs
 require 'Loading customer accounts' src/critical_pages/customers_portable.rs
@@ -95,9 +95,25 @@ require 'New {selected_currency} balance' src/critical_pages/customers_portable.
 forbid '"Disabled"' src/critical_pages/customers_portable.rs
 forbid 'enabled accounts' src/critical_pages/customers_portable.rs
 forbid 'saturating_mul(1_000_000_000)' src/critical_pages/customers_portable.rs
-require 'Environment operators' src/functional_pages/access_live.rs
-require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
-require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
+
+# Team reflects the actual Console authorization boundary: only admin is treated as an administrator.
+require 'Loading Console administrators' src/functional_pages/access_live.rs
+require 'is_console_admin_role(&user.role)' src/functional_pages/access_live.rs
+require 'Console admin authorization' src/functional_pages/access_live.rs
+require 'Console administrators' src/functional_pages/access_live.rs
+require 'Account Status Metadata' src/functional_pages/access_live.rs
+require 'Team is read-only until the server exposes explicit role-management endpoints' src/functional_pages/access_live.rs
+require 'The current authorization boundary recognizes admin.' src/functional_pages/access_live.rs
+forbid 'is_staff_role' src/functional_pages/access_live.rs
+forbid '"Disabled"' src/functional_pages/access_live.rs
+forbid 'Invite Administrator' src/functional_pages/access_live.rs
+forbid 'Change Role' src/functional_pages/access_live.rs
+forbid 'Remove Member' src/functional_pages/access_live.rs
+
+# list_users must make the compatibility role summary deterministic for Console authorization.
+require 'fn primary_role' ../server/src/api/user.rs
+require 'roles.iter().any(|role| role == "admin")' ../server/src/api/user.rs
+require 'let role = primary_role(&roles);' ../server/src/api/user.rs
 
 # API-key management must keep opaque management references separate from bearer-secret disclosure.
 require 'Opaque management reference' src/functional_pages/api_keys_live.rs
