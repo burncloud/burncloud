@@ -77,8 +77,8 @@ async fn playground_chat_completion(
         return Err(format!("Chat request failed ({status}): {text}"));
     }
 
-    let parsed: PlaygroundChatResponse = serde_json::from_str(&text)
-        .map_err(|error| format!("Invalid chat response: {error}"))?;
+    let parsed: PlaygroundChatResponse =
+        serde_json::from_str(&text).map_err(|error| format!("Invalid chat response: {error}"))?;
     let content = parsed
         .choices
         .first()
@@ -97,7 +97,8 @@ async fn playground_chat_completion(
 pub fn Playground() -> Element {
     let auth = use_auth();
     let console_token = auth.token().unwrap_or_default();
-    let mut channels_resource = use_resource(move || async move { ChannelService::list(100).await });
+    let mut channels_resource =
+        use_resource(move || async move { ChannelService::list(100).await });
     let mut keys_resource = use_resource(move || async move { TokenService::list().await });
 
     let channel_snapshot = channels_resource.read().clone();
@@ -121,12 +122,20 @@ pub fn Playground() -> Element {
         .cloned()
         .unwrap_or_default();
 
-    let active_channels = channels.iter().filter(|channel| channel.status == 1).count();
+    let active_channels = channels
+        .iter()
+        .filter(|channel| channel.status == 1)
+        .count();
     let active_keys = keys.iter().filter(|key| key.status == "active").count();
     let mut model_set = BTreeSet::new();
     for channel in &channels {
         if channel.status == 1 {
-            for model in channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()) {
+            for model in channel
+                .models
+                .split(',')
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+            {
                 model_set.insert(model.to_string());
             }
         }
