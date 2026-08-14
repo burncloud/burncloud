@@ -1,8 +1,8 @@
 .product-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, .8fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(380px, .95fr);
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .product-status-card {
@@ -13,18 +13,18 @@
 }
 
 .product-status-card.status-ready {
-  border-color: color-mix(in srgb, #22c55e 30%, var(--border));
-  background: linear-gradient(135deg, color-mix(in srgb, #22c55e 7%, var(--panel)), var(--panel));
+  border-color: var(--bc-color-success-border);
+  background: linear-gradient(135deg, var(--bc-color-success-soft), var(--panel));
 }
 
 .product-status-card.status-attention {
-  border-color: color-mix(in srgb, #f59e0b 34%, var(--border));
-  background: linear-gradient(135deg, color-mix(in srgb, #f59e0b 8%, var(--panel)), var(--panel));
+  border-color: var(--bc-color-warning-border);
+  background: linear-gradient(135deg, var(--bc-color-warning-soft), var(--panel));
 }
 
 .product-status-card.status-blocked {
-  border-color: color-mix(in srgb, #ef4444 30%, var(--border));
-  background: linear-gradient(135deg, color-mix(in srgb, #ef4444 7%, var(--panel)), var(--panel));
+  border-color: var(--bc-color-danger-border);
+  background: linear-gradient(135deg, var(--bc-color-danger-soft), var(--panel));
 }
 
 .product-status-title {
@@ -51,19 +51,25 @@
 }
 
 .setup-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 0;
   margin-top: 8px;
 }
 
 .setup-step {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+  min-width: 0;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+
+.setup-step:nth-last-child(-n + 2) {
+  border-bottom: 0;
 }
 
 .setup-step:last-child {
@@ -84,9 +90,9 @@
 }
 
 .setup-step.complete .setup-step-dot {
-  background: color-mix(in srgb, #22c55e 15%, var(--panel));
-  color: #22c55e;
-  border-color: color-mix(in srgb, #22c55e 40%, var(--border));
+  background: var(--bc-color-success-soft);
+  color: var(--bc-color-success);
+  border-color: var(--bc-color-success-border);
 }
 
 .setup-step strong {
@@ -96,8 +102,12 @@
 
 .setup-step small {
   display: block;
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   margin-top: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .product-section-head {
@@ -140,7 +150,7 @@
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: var(--surface-subtle, rgba(127,127,127,.08));
+  background: var(--surface-subtle);
 }
 
 .product-empty h3 {
@@ -167,7 +177,7 @@
   place-items: center;
   font-weight: 800;
   font-size: 12px;
-  background: var(--surface-subtle, rgba(127,127,127,.08));
+  background: var(--surface-subtle);
   border: 1px solid var(--border);
   flex: 0 0 auto;
 }
@@ -204,8 +214,8 @@
 }
 
 .danger-zone {
-  border-color: color-mix(in srgb, #ef4444 30%, var(--border));
-  background: color-mix(in srgb, #ef4444 5%, var(--panel));
+  border-color: var(--bc-color-danger-border);
+  background: var(--bc-color-danger-soft);
 }
 
 .readiness-strip {
@@ -219,31 +229,31 @@
 }
 
 .readiness-strip.ready {
-  border-color: color-mix(in srgb, #22c55e 32%, var(--border));
-  background: color-mix(in srgb, #22c55e 7%, var(--panel));
+  border-color: var(--bc-color-success-border);
+  background: var(--bc-color-success-soft);
 }
 
 .readiness-strip.blocked {
-  border-color: color-mix(in srgb, #f59e0b 34%, var(--border));
-  background: color-mix(in srgb, #f59e0b 7%, var(--panel));
+  border-color: var(--bc-color-warning-border);
+  background: var(--bc-color-warning-soft);
 }
 
 .readiness-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #f59e0b;
+  background: var(--bc-color-warning);
   flex: 0 0 auto;
 }
 
 .readiness-strip.ready .readiness-dot {
-  background: #22c55e;
+  background: var(--bc-color-success);
 }
 
 .product-note {
   padding: 12px 14px;
   border-radius: 10px;
-  background: var(--surface-subtle, rgba(127,127,127,.06));
+  background: var(--surface-subtle);
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
@@ -259,5 +269,21 @@
 @media (max-width: 1100px) {
   .product-hero {
     grid-template-columns: 1fr;
+  }
+
+  .setup-list {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-step:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .setup-step:last-child {
+    border-bottom: 0;
+  }
+
+  .setup-step small {
+    white-space: normal;
   }
 }

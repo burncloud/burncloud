@@ -176,7 +176,9 @@ pub fn Overview() -> Element {
     let has_model = model_count > 0;
     let has_key = active_keys > 0;
     let has_request = !logs.is_empty();
-    let setup_complete = has_provider && has_model && has_key;
+    let has_successful_request = logs.iter().any(|log| (200..300).contains(&log.status_code));
+    let routing_configured = has_provider && has_model && has_key;
+    let setup_complete = routing_configured && has_successful_request;
 
     let (status_class, status_title, status_copy) = if has_errors {
         (
@@ -184,11 +186,21 @@ pub fn Overview() -> Element {
             "Some system data is unavailable",
             "BurnCloud is reachable, but one or more operational data sources could not be loaded. Review the errors below before relying on this environment.",
         )
-    } else if !setup_complete {
+    } else if !routing_configured {
         (
             "product-status-card status-attention",
             "Finish setup before sending production traffic",
-            "BurnCloud still needs one or more routing prerequisites. Complete the checklist to make a verified end-to-end request.",
+            "BurnCloud still needs one or more routing prerequisites. Complete the checklist before attempting a production request.",
+        )
+    } else if !has_successful_request {
+        (
+            "product-status-card status-attention",
+            "Verify a successful routed request",
+            if has_request {
+                "Requests are reaching BurnCloud, but no HTTP 2xx response is visible yet. Use Playground and Logs to verify the route before production traffic."
+            } else {
+                "Routing is configured, but no successful request has been observed yet. Run a controlled Playground request before production traffic."
+            },
         )
     } else if down_channels > 0 {
         (
@@ -200,7 +212,7 @@ pub fn Overview() -> Element {
         (
             "product-status-card status-ready",
             "BurnCloud is ready to serve traffic",
-            "Providers, models and API access are configured. Use Playground for a controlled test or inspect recent request activity below.",
+            "Providers, models and API access are configured, and a successful routed request has been observed. Inspect recent request activity below or run another controlled test in Playground.",
         )
     };
 
@@ -210,7 +222,7 @@ pub fn Overview() -> Element {
     let has_latest = latest.is_some();
     let request_text = compact(total_requests);
     let token_text = compact(usage.total_tokens);
-    let spend_text = format!("${:.4}", billing.total_cost_usd);
+    let spend_text = format!("${:.2}", billing.total_cost_usd);
     let provider_note = format!("{} total • {} need attention", channels.len(), down_channels);
     let request_note = if has_request { "Billing period activity".to_string() } else { "No requests observed yet".to_string() };
     let usage_note = format!("{} prompt • {} completion", compact(usage.prompt_tokens), compact(usage.completion_tokens));
@@ -269,7 +281,7 @@ pub fn Overview() -> Element {
                     div { class: "product-section-head",
                         div {
                             h3 { "Setup & readiness" }
-                            p { "The minimum path to a working routed request." }
+                            p { "The minimum path to a verified routed request." }
                         }
                         span { class: if setup_complete { "badge badge-success" } else { "badge badge-neutral" },
                             if setup_complete { "Ready" } else { "In progress" }
@@ -279,7 +291,19 @@ pub fn Overview() -> Element {
                         SetupStep { complete: has_provider, title: "Provider connected", detail: format!("{} active providers", active_channels), to: Route::Providers {}, action: "Configure" }
                         SetupStep { complete: has_model, title: "Model available", detail: format!("{} unique models exposed", model_count), to: Route::Models {}, action: "Review" }
                         SetupStep { complete: has_key, title: "API access created", detail: format!("{} active API keys", active_keys), to: Route::APIKeys {}, action: "Create" }
-                        SetupStep { complete: has_request, title: "First request observed", detail: if has_request { "Traffic is visible in Logs".to_string() } else { "Send a request from Playground".to_string() }, to: Route::Playground {}, action: "Test" }
+                        SetupStep {
+                            complete: has_successful_request,
+                            title: "Successful request observed",
+                            detail: if has_successful_request {
+                                "HTTP 2xx traffic is visible in Logs".to_string()
+                            } else if has_request {
+                                "Requests exist, but no successful response is visible yet".to_string()
+                            } else {
+                                "Send a test from Playground".to_string()
+                            },
+                            to: Route::Playground {},
+                            action: "Test"
+                        }
                     }
                 }
             }
