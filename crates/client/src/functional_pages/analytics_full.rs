@@ -223,7 +223,7 @@ pub fn Evaluation() -> Element {
                     div { class: "card card-pad stack",
                         div { class: "product-section-head",
                             div {
-                                h3 { "Observed signals" }
+                                h3 { "Operational attention" }
                                 p { "These are facts about the loaded traffic sample. Configuration redundancy must be verified separately in Models and Routes." }
                             }
                         }
