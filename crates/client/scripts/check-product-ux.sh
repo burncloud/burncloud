@@ -118,6 +118,17 @@ require 'Outcome' src/functional_pages/logs_full.rs
 require 'Operational attention' src/functional_pages/analytics_full.rs
 require 'Spend by model' src/functional_pages/analytics.rs
 
+# Guardrails must describe HTTP-error-derived evidence truthfully and fail closed on unknown policy state.
+require 'Request Health' src/functional_pages/guardrails_live.rs
+require 'HTTP risk signals' src/functional_pages/guardrails_live.rs
+require 'not a threat-intelligence feed' src/functional_pages/guardrails_live.rs
+require 'BurnCloud will not show default-off controls' src/functional_pages/guardrails_live.rs
+require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_live.rs
+require 'Save Protection Policy' src/functional_pages/guardrails_live.rs
+forbid 'Security Score' src/functional_pages/guardrails_live.rs
+forbid 'Threat Sources' src/functional_pages/guardrails_live.rs
+forbid 'Circuit breaker telemetry connected' src/functional_pages/guardrails_live.rs
+
 # Dangerous operational actions require explicit acknowledgement and stay in danger zones.
 require 'confirm_trip' src/functional_pages/guardrails_live.rs
 require 'DANGER ZONE' src/functional_pages/guardrails_live.rs
