@@ -28,21 +28,41 @@ line_of() {
   grep -nF "$needle" "$file" | head -n1 | cut -d: -f1
 }
 
-# Navigation follows the operator workflow: configure supply -> understand catalog/routing -> test traffic.
+# The Console has one product spine: Workspace -> Supply -> Access -> Verify/Observe -> Govern.
+require 'NavGroup { title:"Workspace"' src/functional_layout.rs
+require 'NavGroup { title:"Supply"' src/functional_layout.rs
+require 'NavGroup { title:"Access"' src/functional_layout.rs
+require 'NavGroup { title:"Verify & Observe"' src/functional_layout.rs
+require 'NavGroup { title:"Govern"' src/functional_layout.rs
+
+overview_line=$(line_of 'NavItem { to:Route::Overview' src/functional_layout.rs)
 providers_line=$(line_of 'NavItem { to:Route::Providers' src/functional_layout.rs)
 models_line=$(line_of 'NavItem { to:Route::Models' src/functional_layout.rs)
 routes_line=$(line_of 'NavItem { to:Route::Routes' src/functional_layout.rs)
+customers_line=$(line_of 'NavItem { to:Route::Customers' src/functional_layout.rs)
+keys_line=$(line_of 'NavItem { to:Route::APIKeys' src/functional_layout.rs)
 playground_line=$(line_of 'NavItem { to:Route::Playground' src/functional_layout.rs)
 logs_line=$(line_of 'NavItem { to:Route::Logs' src/functional_layout.rs)
 evaluation_line=$(line_of 'NavItem { to:Route::Evaluation' src/functional_layout.rs)
 billing_line=$(line_of 'NavItem { to:Route::Billing' src/functional_layout.rs)
+guardrails_line=$(line_of 'NavItem { to:Route::Guardrails' src/functional_layout.rs)
+team_line=$(line_of 'NavItem { to:Route::Team' src/functional_layout.rs)
+settings_line=$(line_of 'NavItem { to:Route::Settings' src/functional_layout.rs)
 
-if ! (( providers_line < models_line && models_line < routes_line && routes_line < playground_line )); then
-  echo "Traffic Setup navigation must remain Providers -> Models -> Routes -> Playground" >&2
+if ! (( overview_line < providers_line && providers_line < models_line && models_line < routes_line )); then
+  echo "Product flow must start Overview -> Providers -> Models -> Routes" >&2
   exit 1
 fi
-if ! (( logs_line < evaluation_line && evaluation_line < billing_line )); then
-  echo "Observe navigation must remain Logs -> Evaluation -> Billing" >&2
+if ! (( routes_line < customers_line && customers_line < keys_line && keys_line < playground_line )); then
+  echo "Product flow must hand off Supply -> Customers -> API Keys -> Playground" >&2
+  exit 1
+fi
+if ! (( playground_line < logs_line && logs_line < evaluation_line && evaluation_line < billing_line )); then
+  echo "Verification/observation must remain Playground -> Logs -> Evaluation -> Billing" >&2
+  exit 1
+fi
+if ! (( billing_line < guardrails_line && guardrails_line < team_line && team_line < settings_line )); then
+  echo "Govern navigation must remain Guardrails -> Team -> Settings" >&2
   exit 1
 fi
 
