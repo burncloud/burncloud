@@ -73,7 +73,6 @@ pub fn Logs() -> Element {
     let load_error = snapshot
         .as_ref()
         .and_then(|result| result.as_ref().err().cloned());
-    let has_load_error = load_error.is_some();
     let rows = snapshot
         .as_ref()
         .and_then(|result| result.as_ref().ok())
@@ -289,8 +288,9 @@ pub fn Logs() -> Element {
                                             let tokens = log.total_tokens();
                                             let cost = format!("${:.6}", log.cost_usd());
                                             let latency = format_latency(log.latency_ms);
+                                            let selected_log = log.clone();
                                             rsx! {
-                                                tr { key: "{log.id}-{log.request_id}", class: "logs-row", onclick: move |_| selected.set(Some(log.clone())),
+                                                tr { key: "{log.id}-{log.request_id}", class: "logs-row", onclick: move |_| selected.set(Some(selected_log.clone())),
                                                     td { class: "mono muted logs-time", title: "{timestamp}", "{timestamp}" }
                                                     td {
                                                         div { class: "two-line logs-request-cell",
