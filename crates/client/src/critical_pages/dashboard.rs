@@ -42,12 +42,9 @@ fn model_count(channels: &[Channel], active_only: bool) -> usize {
     models.len()
 }
 
-fn route_group_count(channels: &[Channel], active_only: bool) -> usize {
+fn route_group_count(channels: &[Channel]) -> usize {
     let mut groups = BTreeSet::new();
     for channel in channels {
-        if active_only && channel.status != 1 {
-            continue;
-        }
         for group in channel
             .group
             .split(',')
@@ -150,7 +147,8 @@ pub fn Overview() -> Element {
     let tokens_loading = tokens_result.is_none();
     let usage_loading = usage_result.is_none();
     let billing_loading = billing_result.is_none();
-    let refreshing = channels_loading || logs_loading || tokens_loading || usage_loading || billing_loading;
+    let readiness_loading = channels_loading || logs_loading || tokens_loading;
+    let refreshing = readiness_loading || usage_loading || billing_loading;
 
     let channels: Vec<Channel> = channels_result
         .as_ref()
@@ -176,7 +174,7 @@ pub fn Overview() -> Element {
         .and_then(|result| result.as_ref().ok())
         .cloned();
 
-    let errors: Vec<String> = [
+    let readiness_errors: Vec<String> = [
         channels_result
             .as_ref()
             .and_then(|value| value.as_ref().err())
@@ -189,27 +187,37 @@ pub fn Overview() -> Element {
             .as_ref()
             .and_then(|value| value.as_ref().err())
             .map(|error| format!("API access: {error}")),
-        usage_result
-            .as_ref()
-            .and_then(|value| value.as_ref().err())
-            .map(|error| format!("Usage: {error}")),
-        billing_result
-            .as_ref()
-            .and_then(|value| value.as_ref().err())
-            .map(|error| format!("Billing: {error}")),
     ]
     .into_iter()
     .flatten()
     .collect();
-    let has_errors = !errors.is_empty();
+    let supporting_errors: Vec<String> = [
+        usage_result
+            .as_ref()
+            .and_then(|value| value.as_ref().err())
+            .map(|error| format!("Current user usage: {error}")),
+        billing_result
+            .as_ref()
+            .and_then(|value| value.as_ref().err())
+            .map(|error| format!("Billing summary: {error}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let has_readiness_errors = !readiness_errors.is_empty();
+    let has_any_errors = has_readiness_errors || !supporting_errors.is_empty();
+    let all_errors: Vec<String> = readiness_errors
+        .iter()
+        .chain(supporting_errors.iter())
+        .cloned()
+        .collect();
 
     let active_providers = channels.iter().filter(|channel| channel.status == 1).count();
     let providers_needing_review = channels.len().saturating_sub(active_providers);
     let configured_models = model_count(&channels, false);
     let available_models = model_count(&channels, true);
     let unavailable_models = configured_models.saturating_sub(available_models);
-    let configured_route_groups = route_group_count(&channels, false);
-    let active_route_groups = route_group_count(&channels, true);
+    let configured_route_groups = route_group_count(&channels);
     let active_keys = api_tokens.iter().filter(|key| key.status == "active").count();
     let has_request = !logs.is_empty();
     let has_successful_request = logs.iter().any(|log| (200..300).contains(&log.status_code));
@@ -218,23 +226,26 @@ pub fn Overview() -> Element {
     let access_known = tokens_result.as_ref().is_some_and(|result| result.is_ok());
     let request_evidence_known = logs_result.as_ref().is_some_and(|result| result.is_ok());
 
-    let (status_class, status_badge, status_title, status_copy) = if refreshing {
+    let (status_class, badge_class, status_badge, status_title, status_copy) = if readiness_loading {
         (
             "product-status-card",
+            "badge badge-neutral",
             "CHECKING",
             "Building an evidence-backed overview",
-            "BurnCloud is loading supply, access, request, usage, and billing evidence before drawing an environment conclusion.",
+            "BurnCloud is loading supply, API access, and persisted request evidence before drawing a readiness conclusion.",
         )
-    } else if has_errors {
+    } else if has_readiness_errors {
         (
             "product-status-card status-blocked",
+            "badge badge-error",
             "UNKNOWN",
             "Overview evidence is incomplete",
-            "One or more source systems could not be read. BurnCloud will not replace missing evidence with zero-valued readiness conclusions.",
+            "One or more readiness sources could not be read. BurnCloud will not replace missing evidence with zero-valued readiness conclusions.",
         )
     } else if active_providers == 0 {
         (
             "product-status-card status-blocked",
+            "badge badge-error",
             "BLOCKED",
             "Supply is not available",
             "No active provider is currently visible to Overview. Start with Providers before testing traffic.",
@@ -242,6 +253,7 @@ pub fn Overview() -> Element {
     } else if available_models == 0 {
         (
             "product-status-card status-blocked",
+            "badge badge-error",
             "BLOCKED",
             "No model is currently available",
             "Provider supply exists, but none of the configured model IDs are exposed by an active provider.",
@@ -249,6 +261,7 @@ pub fn Overview() -> Element {
     } else if active_keys == 0 {
         (
             "product-status-card status-attention",
+            "badge badge-warning",
             "ATTENTION",
             "Create API access before verification",
             "Supply is available, but Overview cannot find an active API key for an end-to-end request test.",
@@ -256,6 +269,7 @@ pub fn Overview() -> Element {
     } else if !has_successful_request {
         (
             "product-status-card status-attention",
+            "badge badge-warning",
             "ATTENTION",
             "Configuration is present; verification is still missing",
             if has_request {
@@ -267,6 +281,7 @@ pub fn Overview() -> Element {
     } else {
         (
             "product-status-card status-ready",
+            "badge badge-success",
             "VERIFIED",
             "Verified traffic is observable",
             "Overview can see active supply, API access, and at least one persisted HTTP 2xx request. Detailed diagnosis remains on the owning pages.",
@@ -334,9 +349,7 @@ pub fn Overview() -> Element {
     let total_requests = billing.as_ref().map(|summary| {
         summary.models.iter().map(|model| model.requests).sum::<i64>() + summary.pre_migration_requests
     });
-    let request_text = total_requests
-        .map(compact)
-        .unwrap_or_else(|| "—".to_string());
+    let request_text = total_requests.map(compact).unwrap_or_else(|| "—".to_string());
     let token_text = usage
         .as_ref()
         .map(|value| compact(value.total_tokens))
@@ -347,21 +360,21 @@ pub fn Overview() -> Element {
         .unwrap_or_else(|| "—".to_string());
     let latest_http = logs
         .first()
-        .map(|log| format!("{}", log.status_code))
+        .map(|log| log.status_code.to_string())
         .unwrap_or_else(|| "—".to_string());
 
     let request_note = if billing.is_some() {
-        "billing summary activity".to_string()
+        "billing summary scope".to_string()
     } else {
         "billing evidence unavailable".to_string()
     };
     let token_note = if usage.is_some() {
-        "current user usage summary".to_string()
+        "current signed-in user scope".to_string()
     } else {
-        "usage evidence unavailable".to_string()
+        "current user usage unavailable".to_string()
     };
     let spend_note = if billing.is_some() {
-        "billing summary cost".to_string()
+        "billing summary scope".to_string()
     } else {
         "billing evidence unavailable".to_string()
     };
@@ -374,7 +387,9 @@ pub fn Overview() -> Element {
     };
 
     let latest = logs.first().cloned();
-    let has_attention = providers_needing_review > 0 || unavailable_models > 0 || (has_request && !has_successful_request);
+    let has_attention = providers_needing_review > 0
+        || unavailable_models > 0
+        || (has_request && !has_successful_request);
 
     rsx! {
         div { class: "page",
@@ -401,22 +416,22 @@ pub fn Overview() -> Element {
             div { class: "product-hero",
                 div { class: "card {status_class}",
                     div { class: "row gap-2",
-                        span { class: if status_badge == "VERIFIED" { "badge badge-success" } else if status_badge == "BLOCKED" || status_badge == "UNKNOWN" { "badge badge-error" } else { "badge badge-warning" }, "{status_badge}" }
+                        span { class: "{badge_class}", "{status_badge}" }
                     }
                     div {
                         div { class: "product-status-title", "{status_title}" }
                         p { class: "product-status-copy", "{status_copy}" }
                     }
                     div { class: "product-actions",
-                        if !refreshing && !has_errors && active_providers == 0 {
+                        if !readiness_loading && !has_readiness_errors && active_providers == 0 {
                             Link { class: "button button-primary", to: Route::Providers {}, "Open Providers" }
-                        } else if !refreshing && !has_errors && available_models == 0 {
+                        } else if !readiness_loading && !has_readiness_errors && available_models == 0 {
                             Link { class: "button button-primary", to: Route::Models {}, "Open Models" }
-                        } else if !refreshing && !has_errors && active_keys == 0 {
+                        } else if !readiness_loading && !has_readiness_errors && active_keys == 0 {
                             Link { class: "button button-primary", to: Route::APIKeys {}, "Create API key" }
-                        } else if !refreshing && !has_errors && !has_successful_request {
+                        } else if !readiness_loading && !has_readiness_errors && !has_successful_request {
                             Link { class: "button button-primary", to: Route::Playground {}, "Open Playground" }
-                        } else if !refreshing && !has_errors {
+                        } else if !readiness_loading && !has_readiness_errors {
                             Link { class: "button button-primary", to: Route::Logs {}, "Open Logs" }
                         }
                         Link { class: "button button-secondary", to: Route::Routes {}, "Review Routes" }
@@ -436,8 +451,8 @@ pub fn Overview() -> Element {
                             tone: supply_state.1,
                             title: "Supply",
                             detail: supply_detail,
-                            to: Route::Providers {},
-                            action: "Providers"
+                            to: Route::Routes {},
+                            action: "Routes"
                         }
                         EvidenceStep {
                             state: access_state.0,
@@ -467,7 +482,7 @@ pub fn Overview() -> Element {
                 }
             }
 
-            if has_errors {
+            if has_any_errors {
                 div { class: "card card-pad stack",
                     div { class: "product-section-head",
                         div {
@@ -475,7 +490,7 @@ pub fn Overview() -> Element {
                             p { "Unknown data stays unknown instead of becoming a zero or healthy state." }
                         }
                     }
-                    for message in errors.iter() {
+                    for message in all_errors.iter() {
                         code { class: "terminal", "{message}" }
                     }
                 }
@@ -488,7 +503,7 @@ pub fn Overview() -> Element {
                         p { "Only cross-page conclusions belong here. Use the owning page for diagnosis or changes." }
                     }
                 }
-                if !has_errors && !refreshing && has_attention {
+                if !has_readiness_errors && !readiness_loading && has_attention {
                     div { class: "stack",
                         if providers_needing_review > 0 {
                             div { class: "row between",
@@ -518,10 +533,10 @@ pub fn Overview() -> Element {
                             }
                         }
                     }
-                } else if !has_errors && !refreshing {
-                    div { class: "product-note", "No Overview-level attention item is derived from the currently loaded evidence." }
+                } else if !has_readiness_errors && !readiness_loading {
+                    div { class: "product-note", "No Overview-level attention item is derived from the currently loaded readiness evidence." }
                 } else {
-                    div { class: "product-note", "Attention conclusions wait until the required evidence is available." }
+                    div { class: "product-note", "Attention conclusions wait until readiness evidence is available." }
                 }
             }
 
@@ -529,7 +544,7 @@ pub fn Overview() -> Element {
                 div { class: "product-section-head",
                     div {
                         h3 { "Observed activity" }
-                        p { "Compact cross-page evidence only; detailed cost, performance, and request analysis remain in Billing, Evaluation, and Logs." }
+                        p { "Compact evidence with explicit scope; detailed cost, performance, and request analysis remain in Billing, Evaluation, and Logs." }
                     }
                     div { class: "row gap-2",
                         Link { class: "button button-ghost button-sm", to: Route::Evaluation {}, "Evaluation" }
@@ -537,9 +552,9 @@ pub fn Overview() -> Element {
                     }
                 }
                 div { class: "metrics",
-                    {metric("Requests", request_text, request_note, "activity", "tone-blue")}
-                    {metric("Tokens", token_text, token_note, "models", "tone-purple")}
-                    {metric("Spend", spend_text, spend_note, "dollar", "tone-amber")}
+                    {metric("Billing Requests", request_text, request_note, "activity", "tone-blue")}
+                    {metric("Current User Tokens", token_text, token_note, "models", "tone-purple")}
+                    {metric("Billing Spend", spend_text, spend_note, "dollar", "tone-amber")}
                     {metric("Latest HTTP", latest_http, latest_http_note, "logs", "tone-gray")}
                 }
             }
@@ -582,7 +597,7 @@ pub fn Overview() -> Element {
 
             div { class: "product-note",
                 strong { "Responsibility boundary: " }
-                "Overview summarizes the highest-confidence evidence and routes the operator to the owning page. Provider diagnosis belongs to Providers, routing configuration to Routes, request metadata to Logs, performance analysis to Evaluation, billing detail to Billing, and host/runtime state to Settings. Active routing groups currently visible from active providers: {active_route_groups}."
+                "Overview summarizes the highest-confidence evidence and routes the operator to the owning page. Provider diagnosis belongs to Providers, routing configuration to Routes, request metadata to Logs, performance analysis to Evaluation, billing detail to Billing, and host/runtime state to Settings."
             }
         }
     }
