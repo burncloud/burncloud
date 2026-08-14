@@ -1,14 +1,17 @@
 use crate::api::auth::{is_admin, Claims};
 use crate::AppState;
 use axum::{
+    body::Body,
     extract::{Extension, Json, Path, State},
-    http::StatusCode,
+    http::{header, Request, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
 use burncloud_service_token::{RouterToken, TokenService};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tower::ServiceExt;
 use uuid::Uuid;
 
 use super::response::{err, err_status, ok};
@@ -40,10 +43,29 @@ pub struct SetIpWhitelistRequest {
     pub ip_whitelist: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct PlaygroundMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaygroundChatRequest {
+    /// Opaque management-plane token reference returned by list_tokens.
+    token_ref: String,
+    model: String,
+    messages: Vec<PlaygroundMessage>,
+    temperature: f64,
+    max_tokens: i64,
+}
+
 /// A management-plane representation that never returns the bearer secret.
-/// The full token is only returned once by create/rotate operations.
+/// `token` is intentionally an opaque management reference for backwards
+/// compatibility with existing console DTOs; it is not accepted as a data-plane
+/// bearer credential. The human-readable `token_hint` is safe to display.
 #[derive(Debug, Serialize)]
 struct TokenSummary {
+    token: String,
     token_hint: String,
     user_id: String,
     status: String,
@@ -60,14 +82,34 @@ struct TokenSummary {
 }
 
 fn token_hint(token: &RouterToken) -> String {
-    let suffix: String = token.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    let suffix: String = token
+        .token
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("{}…{}", token.key_prefix, suffix)
+}
+
+/// Stable, non-bearer management identifier for a token record.
+///
+/// The source token is generated with high entropy. Returning its SHA-256 digest
+/// lets the authenticated management plane address the record without disclosing
+/// a credential that can be used against `/v1/*`.
+fn token_management_id(token: &str) -> String {
+    let digest = Sha256::digest(token.as_bytes());
+    format!("tok_{digest:x}")
 }
 
 impl From<RouterToken> for TokenSummary {
     fn from(token: RouterToken) -> Self {
+        let management_id = token_management_id(&token.token);
         let hint = token_hint(&token);
         Self {
+            token: management_id,
             token_hint: hint,
             user_id: token.user_id,
             status: token.status,
@@ -89,18 +131,22 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/console/api/tokens", post(create_token).get(list_tokens))
         .route(
-            "/console/api/tokens/{token}",
+            "/console/api/tokens/{token_ref}",
             get(get_token).delete(delete_token).put(update_token),
         )
-        .route("/console/api/tokens/{token}/rotate", post(rotate_token))
         .route(
-            "/console/api/tokens/{token}/revoke-old",
+            "/console/api/tokens/{token_ref}/rotate",
+            post(rotate_token),
+        )
+        .route(
+            "/console/api/tokens/{token_ref}/revoke-old",
             post(revoke_old_key),
         )
         .route(
-            "/console/api/tokens/{token}/ip-whitelist",
+            "/console/api/tokens/{token_ref}/ip-whitelist",
             post(set_ip_whitelist),
         )
+        .route("/console/api/playground/chat", post(playground_chat))
 }
 
 async fn principal_is_admin(state: &AppState, claims: &Claims) -> Result<bool, Response> {
@@ -109,10 +155,13 @@ async fn principal_is_admin(state: &AppState, claims: &Claims) -> Result<bool, R
         .map_err(|status| err_status(status, "Failed to authorize request").into_response())
 }
 
-async fn authorized_token(
+/// Resolve either the opaque management reference or, for backwards-compatible
+/// authenticated management calls, the exact bearer token. The latter is never
+/// returned by list/get responses.
+pub(crate) async fn authorized_token(
     state: &AppState,
     claims: &Claims,
-    token: &str,
+    token_ref: &str,
 ) -> Result<RouterToken, Response> {
     let admin = principal_is_admin(state, claims).await?;
     let tokens = TokenService::list(&state.db).await.map_err(|e| {
@@ -120,7 +169,9 @@ async fn authorized_token(
         err_status(StatusCode::INTERNAL_SERVER_ERROR, "Failed to load API token").into_response()
     })?;
 
-    let Some(record) = tokens.into_iter().find(|record| record.token == token) else {
+    let Some(record) = tokens.into_iter().find(|record| {
+        record.token == token_ref || token_management_id(&record.token) == token_ref
+    }) else {
         return Err(err_status(StatusCode::NOT_FOUND, "Token not found").into_response());
     };
 
@@ -221,9 +272,9 @@ async fn create_token(
 async fn get_token(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(token): Path<String>,
+    Path(token_ref): Path<String>,
 ) -> impl IntoResponse {
-    match authorized_token(&state, &claims, &token).await {
+    match authorized_token(&state, &claims, &token_ref).await {
         Ok(record) => ok(TokenSummary::from(record)).into_response(),
         Err(response) => response,
     }
@@ -233,14 +284,15 @@ async fn get_token(
 async fn update_token(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(token): Path<String>,
+    Path(token_ref): Path<String>,
     Json(payload): Json<UpdateTokenRequest>,
 ) -> impl IntoResponse {
-    if let Err(response) = authorized_token(&state, &claims, &token).await {
-        return response;
-    }
+    let record = match authorized_token(&state, &claims, &token_ref).await {
+        Ok(record) => record,
+        Err(response) => return response,
+    };
 
-    match TokenService::update_status(&state.db, &token, &payload.status).await {
+    match TokenService::update_status(&state.db, &record.token, &payload.status).await {
         Ok(_) => ok(serde_json::json!({ "status": "updated" })).into_response(),
         Err(e) => {
             tracing::error!("[API] update_token error: {}", e);
@@ -253,13 +305,14 @@ async fn update_token(
 async fn delete_token(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(token): Path<String>,
+    Path(token_ref): Path<String>,
 ) -> impl IntoResponse {
-    if let Err(response) = authorized_token(&state, &claims, &token).await {
-        return response;
-    }
+    let record = match authorized_token(&state, &claims, &token_ref).await {
+        Ok(record) => record,
+        Err(response) => return response,
+    };
 
-    match TokenService::delete(&state.db, &token).await {
+    match TokenService::delete(&state.db, &record.token).await {
         Ok(_) => ok(serde_json::json!({ "status": "deleted" })).into_response(),
         Err(e) => {
             tracing::error!("[API] delete_token error: {}", e);
@@ -272,16 +325,17 @@ async fn delete_token(
 async fn rotate_token(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(token): Path<String>,
+    Path(token_ref): Path<String>,
     Json(payload): Json<RotateTokenRequest>,
 ) -> impl IntoResponse {
-    if let Err(response) = authorized_token(&state, &claims, &token).await {
-        return response;
-    }
+    let record = match authorized_token(&state, &claims, &token_ref).await {
+        Ok(record) => record,
+        Err(response) => return response,
+    };
 
     match TokenService::rotate(
         &state.db,
-        &token,
+        &record.token,
         payload.transition_period_hours,
         payload.revoke_old,
     )
@@ -303,13 +357,14 @@ async fn rotate_token(
 async fn revoke_old_key(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(token): Path<String>,
+    Path(token_ref): Path<String>,
 ) -> impl IntoResponse {
-    if let Err(response) = authorized_token(&state, &claims, &token).await {
-        return response;
-    }
+    let record = match authorized_token(&state, &claims, &token_ref).await {
+        Ok(record) => record,
+        Err(response) => return response,
+    };
 
-    match TokenService::revoke_old_key(&state.db, &token).await {
+    match TokenService::revoke_old_key(&state.db, &record.token).await {
         Ok(true) => ok(serde_json::json!({ "status": "revoked" })).into_response(),
         Ok(false) => err_status(StatusCode::NOT_FOUND, "Token not found").into_response(),
         Err(e) => {
@@ -323,19 +378,88 @@ async fn revoke_old_key(
 async fn set_ip_whitelist(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(token): Path<String>,
+    Path(token_ref): Path<String>,
     Json(payload): Json<SetIpWhitelistRequest>,
 ) -> impl IntoResponse {
-    if let Err(response) = authorized_token(&state, &claims, &token).await {
-        return response;
-    }
+    let record = match authorized_token(&state, &claims, &token_ref).await {
+        Ok(record) => record,
+        Err(response) => return response,
+    };
 
-    match TokenService::set_ip_whitelist(&state.db, &token, &payload.ip_whitelist).await {
+    match TokenService::set_ip_whitelist(&state.db, &record.token, &payload.ip_whitelist).await {
         Ok(true) => ok(serde_json::json!({ "status": "updated" })).into_response(),
         Ok(false) => err_status(StatusCode::NOT_FOUND, "Token not found").into_response(),
         Err(e) => {
             tracing::error!("[API] set_ip_whitelist error: {}", e);
             err(e).into_response()
         }
+    }
+}
+
+/// Execute a console smoke-test request through the same data-plane router used
+/// by `/v1/*`, while keeping the selected bearer secret server-side.
+#[tracing::instrument(skip_all)]
+async fn playground_chat(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<PlaygroundChatRequest>,
+) -> Response {
+    let record = match authorized_token(&state, &claims, &payload.token_ref).await {
+        Ok(record) => record,
+        Err(response) => return response,
+    };
+
+    let body = serde_json::json!({
+        "model": payload.model,
+        "messages": payload.messages,
+        "stream": false,
+        "temperature": payload.temperature,
+        "max_tokens": payload.max_tokens,
+    });
+
+    let request = match Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .header(header::AUTHORIZATION, format!("Bearer {}", record.token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+    {
+        Ok(request) => request,
+        Err(error) => {
+            tracing::error!(%error, "Failed to build console playground request");
+            return err_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to build playground request",
+            )
+            .into_response();
+        }
+    };
+
+    match state.data_plane.clone().oneshot(request).await {
+        Ok(response) => response,
+        Err(error) => {
+            tracing::error!(%error, "Console playground data-plane request failed");
+            err_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Playground data-plane request failed",
+            )
+            .into_response()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::token_management_id;
+
+    #[test]
+    fn management_id_is_stable_and_not_the_bearer_secret() {
+        let token = "bc_live_super-secret-value";
+        let first = token_management_id(token);
+        let second = token_management_id(token);
+        assert_eq!(first, second);
+        assert_ne!(first, token);
+        assert!(first.starts_with("tok_"));
+        assert_ne!(first, token_management_id("bc_live_other-secret-value"));
     }
 }
