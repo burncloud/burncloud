@@ -146,10 +146,15 @@ async fn fix_bool_column(pool: &AnyPool, table: &str, column: &str, ddl_template
         return Ok(());
     }
 
+    // The table swap must stay on one SQLite connection. Running CREATE/COPY/DROP/RENAME
+    // directly against AnyPool lets SQLx schedule those statements on different pooled
+    // connections, which can expose an inconsistent schema during the migration.
+    let mut tx = pool.begin().await?;
+
     let temp = format!("{table}_boolfix");
     let create_sql = ddl_template.replace("{table}", &temp);
     sqlx::query(&create_sql)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("create {temp}: {e}")))?;
 
@@ -169,20 +174,21 @@ async fn fix_bool_column(pool: &AnyPool, table: &str, column: &str, ddl_template
     };
 
     sqlx::query(&copy_sql)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("copy {table} → {temp}: {e}")))?;
 
     sqlx::query(&format!("DROP TABLE {table}"))
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("drop {table}: {e}")))?;
 
     sqlx::query(&format!("ALTER TABLE {temp} RENAME TO {table}"))
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| DatabaseError::Migration(format!("rename {temp}: {e}")))?;
 
+    tx.commit().await?;
     Ok(())
 }
 
