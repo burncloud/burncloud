@@ -380,6 +380,15 @@
   background: var(--bc-color-warning-soft);
 }
 
+.readiness-strip.checking {
+  background: var(--surface-subtle);
+}
+
+.readiness-strip.error {
+  border-color: var(--bc-color-danger-border);
+  background: var(--bc-color-danger-soft);
+}
+
 .readiness-dot {
   width: 9px;
   height: 9px;
@@ -390,6 +399,14 @@
 
 .readiness-strip.ready .readiness-dot {
   background: var(--bc-color-success);
+}
+
+.readiness-strip.checking .readiness-dot {
+  background: var(--bc-color-text-tertiary);
+}
+
+.readiness-strip.error .readiness-dot {
+  background: var(--bc-color-danger);
 }
 
 .product-note {
@@ -406,6 +423,159 @@
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.playground-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--bc-space-5);
+  align-items: start;
+}
+
+.playground-workbench {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.playground-config {
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) minmax(320px, 1.2fr);
+  gap: var(--bc-space-4);
+  padding: var(--bc-space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.playground-config .field {
+  min-width: 0;
+}
+
+.playground-secret-help {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--bc-space-3);
+  margin-top: var(--bc-space-2);
+}
+
+.playground-secret-help small {
+  line-height: 1.45;
+}
+
+.playground-conversation {
+  min-height: 360px;
+  max-height: 470px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-5);
+  background: var(--bc-color-canvas);
+}
+
+.playground-conversation-empty {
+  min-height: 320px;
+  padding-block: var(--bc-space-8);
+}
+
+.playground-message {
+  width: fit-content;
+  max-width: min(86%, 760px);
+  padding: var(--bc-space-3) var(--bc-space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--bc-radius-lg);
+  background: var(--panel);
+}
+
+.playground-message-user {
+  align-self: flex-end;
+  background: var(--surface-subtle);
+}
+
+.playground-message-assistant {
+  align-self: flex-start;
+}
+
+.playground-message-role {
+  margin-bottom: var(--bc-space-2);
+  color: var(--bc-color-text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.playground-message-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.playground-feedback {
+  margin: var(--bc-space-3) var(--bc-space-5) 0;
+}
+
+.playground-usage {
+  padding: var(--bc-space-3) var(--bc-space-5) 0;
+}
+
+.playground-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-5);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.playground-composer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-4);
+}
+
+.playground-composer-meta > span {
+  max-width: 620px;
+  line-height: 1.45;
+}
+
+.playground-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-4);
+  min-width: 0;
+}
+
+.playground-route-state {
+  display: grid;
+  gap: var(--bc-space-1);
+  padding: var(--bc-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--bc-radius-md);
+  background: var(--surface-subtle);
+}
+
+.playground-route-state.success {
+  border-color: var(--bc-color-success-border);
+  background: var(--bc-color-success-soft);
+}
+
+.playground-route-state.failed {
+  border-color: var(--bc-color-danger-border);
+  background: var(--bc-color-danger-soft);
+}
+
+.playground-route-state.checking {
+  border-color: var(--bc-color-border-strong);
+}
+
+.playground-route-state span {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.playground-loading-state {
+  min-height: 240px;
 }
 
 @media (max-width: 1100px) {
@@ -432,6 +602,20 @@
   .provider-endpoint {
     max-width: 300px;
   }
+
+  .playground-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .playground-sidebar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .playground-sidebar .product-note {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 760px) {
@@ -450,5 +634,20 @@
 
   .route-group-heading h3 {
     max-width: 260px;
+  }
+
+  .playground-config,
+  .playground-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .playground-secret-help,
+  .playground-composer-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .playground-message {
+    max-width: 94%;
   }
 }
