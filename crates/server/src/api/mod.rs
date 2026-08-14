@@ -16,6 +16,9 @@ pub mod channel;
 pub mod log;
 pub mod monitor;
 pub mod openapi;
+pub(crate) mod registration;
+#[cfg(test)]
+mod registration_tests;
 pub mod response;
 pub mod token;
 pub mod user;

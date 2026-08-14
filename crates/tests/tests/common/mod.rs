@@ -15,6 +15,7 @@ pub mod evidence;
 
 use dotenvy::dotenv;
 use reqwest::Client;
+use serde_json::json;
 use std::env;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -23,19 +24,21 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 static SERVER_HANDLE: OnceLock<ServerHandle> = OnceLock::new();
+static TEST_BOOTSTRAP_DONE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+const TEST_BOOTSTRAP_TOKEN: &str = "burncloud-e2e-bootstrap-token-2026";
 
 #[derive(Debug)]
 struct ServerHandle {
     pub base_url: String,
     #[allow(dead_code)]
-    process: Option<Child>, // Keep child alive
+    process: Option<Child>,
 }
 
 pub async fn spawn_app() -> String {
-    // Load .env
     dotenv().ok();
 
-    // 0. Check E2E_BASE_URL environment variable first
+    // Externally managed E2E targets own their own bootstrap policy. Never
+    // inject the test bootstrap credential into a server this harness did not spawn.
     if let Ok(base_url) = env::var("E2E_BASE_URL") {
         println!("TEST: Using E2E_BASE_URL from env: {}", base_url);
         wait_for_server(&base_url).await;
@@ -43,7 +46,6 @@ pub async fn spawn_app() -> String {
     }
 
     let handle = SERVER_HANDLE.get_or_init(|| {
-        // 1. Reuse port 3000 only when not forcing an isolated test server
         let force_spawn = env::var("E2E_FORCE_SPAWN")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
@@ -58,11 +60,9 @@ pub async fn spawn_app() -> String {
             println!("TEST: E2E_FORCE_SPAWN set — spawning dedicated server (skip :3000 reuse)");
         }
 
-        // 2. Locate Binary
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
         let manifest_path = PathBuf::from(manifest_dir);
         let root_dir = manifest_path.parent().unwrap().parent().unwrap();
-
         let binary_path = if cfg!(target_os = "windows") {
             root_dir.join("target/debug/burncloud.exe")
         } else {
@@ -76,7 +76,6 @@ pub async fn spawn_app() -> String {
             );
         }
 
-        // 3. Pick Port & Spawn
         let port = get_free_port();
         println!("TEST: Spawning new server at http://127.0.0.1:{}", port);
 
@@ -84,36 +83,77 @@ pub async fn spawn_app() -> String {
             .arg("server")
             .arg("start")
             .env("PORT", port.to_string())
-            .env("RUST_LOG", "burncloud=warn") // Reduce log noise
-            .env("NO_PROXY", "*") // Prevent proxy issues
+            .env("RUST_LOG", "burncloud=warn")
+            .env("NO_PROXY", "*")
             .env(
                 "MASTER_KEY",
                 "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
-            ) // 64 hex chars for test
-            .env("PRICE_SYNC_INTERVAL_SECS", "999999") // Disable price sync for faster startup
-            .env("SKIP_INITIAL_PRICE_SYNC", "1") // Skip initial price sync in tests
+            )
+            .env("BURNCLOUD_BOOTSTRAP_TOKEN", TEST_BOOTSTRAP_TOKEN)
+            .env("BURNCLOUD_PUBLIC_REGISTRATION", "open")
+            .env("BURNCLOUD_PUBLIC_SIGNUP_BONUS_USD", "0")
+            .env("PRICE_SYNC_INTERVAL_SECS", "999999")
+            .env("SKIP_INITIAL_PRICE_SYNC", "1")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
             .expect("Failed to spawn server");
 
-        // Return handle immediately, wait async later
         ServerHandle {
             base_url: format!("http://127.0.0.1:{}", port),
             process: Some(process),
         }
     });
 
-    // 4. Async Wait for Readiness
-    // Since multiple tests run in parallel, they might all call this.
-    // It's idempotent (GET /status).
     wait_for_server(&handle.base_url).await;
+    if handle.process.is_some() {
+        let base_url = handle.base_url.clone();
+        TEST_BOOTSTRAP_DONE
+            .get_or_init(|| async move {
+                ensure_test_bootstrap(&base_url).await;
+            })
+            .await;
+    }
 
     handle.base_url.clone()
 }
 
+async fn ensure_test_bootstrap(base_url: &str) {
+    let client = Client::builder()
+        .no_proxy()
+        .build()
+        .expect("reqwest bootstrap client");
+    let body = json!({
+        "username": "e2e-bootstrap-admin",
+        "password": "E2eBootstrapAdmin123!",
+        "email": "e2e-bootstrap-admin@example.invalid",
+        "bootstrap_token": TEST_BOOTSTRAP_TOKEN
+    });
+
+    let payload: serde_json::Value = client
+        .post(format!("{base_url}/api/auth/register"))
+        .json(&body)
+        .send()
+        .await
+        .expect("bootstrap registration request")
+        .json()
+        .await
+        .expect("bootstrap registration response");
+
+    if payload["success"] == true {
+        assert_eq!(payload["data"]["roles"][0], "admin");
+        return;
+    }
+
+    let message = payload["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("already been completed") || message.contains("already exists"),
+        "unexpected bootstrap response: {payload}"
+    );
+}
+
 fn is_port_open(port: u16) -> bool {
-    std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok()
+    std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok()
 }
 
 fn get_free_port() -> u16 {
@@ -127,8 +167,6 @@ async fn wait_for_server(url: &str) {
         .build()
         .expect("reqwest client");
     for i in 0..120 {
-        // 60s timeout (price sync can take ~30s on first run)
-        // Use /health endpoint which doesn't require auth
         if client
             .get(format!("{}/health", url))
             .send()
@@ -165,9 +203,6 @@ pub fn get_openai_config() -> Option<(String, String)> {
     Some((key, url))
 }
 
-// Removed deprecated functions: get_base_url (sync), get_db_pool, seed_demo_data
-
-/// Insert a price entry for a mock model so the router's preflight check passes.
 #[allow(dead_code)]
 pub async fn insert_mock_price(model: &str) {
     let db_url = std::env::var("BURNCLOUD_DATABASE_URL")
@@ -178,7 +213,7 @@ pub async fn insert_mock_price(model: &str) {
         .await
         .expect("Failed to connect to test DB");
     sqlx::query(
-        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 0, 0, '')"
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 0, 0, '')",
     )
     .bind(model)
     .execute(&pool)
@@ -186,7 +221,6 @@ pub async fn insert_mock_price(model: &str) {
     .expect("Failed to insert mock price");
     pool.close().await;
 
-    // Trigger a price cache refresh via the internal API
     let base_url = SERVER_HANDLE
         .get()
         .map(|h| h.base_url.clone())

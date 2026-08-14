@@ -1,3 +1,7 @@
+use crate::api::registration::{
+    bootstrap_complete, public_registration_open, register_public_user, PublicRegistrationError,
+    PublicRegistrationInput,
+};
 use crate::api::response::{err, ok};
 use crate::AppState;
 use axum::{
@@ -18,6 +22,8 @@ pub struct RegisterDto {
     pub username: String,
     pub password: String,
     pub email: Option<String>,
+    /// Only required when the server is intentionally exposed on a non-loopback host.
+    pub bootstrap_token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +58,13 @@ struct AuthData {
     #[serde(skip_serializing_if = "Option::is_none")]
     roles: Option<Vec<String>>,
     token: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SetupStatus {
+    setup_required: bool,
+    setup_code_required: bool,
+    public_registration_open: bool,
 }
 
 fn get_jwt_secret() -> String {
@@ -180,15 +193,13 @@ pub async fn security_boundary_middleware(
     Ok(next.run(req).await)
 }
 
-/// Public routes - no authentication required
-/// - /api/auth/register - Registration
-/// - /api/auth/login - Login
-/// - /api/auth/forgot-password - Forgot password
-/// - /api/auth/reset-password - Reset password
-/// - /api/auth/google - Google OAuth
-/// - /api/auth/github - GitHub OAuth
+/// Public routes - no authentication required.
+///
+/// `/api/auth/setup` lets the UI distinguish first-run administrator setup from
+/// ordinary sign-up without exposing the generated remote setup code.
 pub fn public_routes() -> Router<AppState> {
     Router::new()
+        .route("/api/auth/setup", get(setup_status))
         .route("/api/auth/register", post(create_user))
         .route("/api/auth/login", post(login))
         .route("/api/auth/forgot-password", post(forgot_password))
@@ -197,14 +208,27 @@ pub fn public_routes() -> Router<AppState> {
         .route("/api/auth/github", get(oauth_github))
 }
 
-/// Protected routes - authentication required
-/// Currently empty, but available for future protected auth endpoints
-/// (e.g., logout, change-password)
 pub fn protected_routes() -> Router<AppState> {
     Router::new()
-    // Add protected auth routes here when needed:
-    // .route("/console/api/auth/logout", post(logout))
-    // .route("/console/api/auth/change-password", post(change_password))
+}
+
+async fn setup_status(State(state): State<AppState>) -> impl IntoResponse {
+    match bootstrap_complete(&state.db).await {
+        Ok(complete) => ok(SetupStatus {
+            setup_required: !complete,
+            setup_code_required: !complete && state.bootstrap_token_required,
+            public_registration_open: complete && public_registration_open(),
+        })
+        .into_response(),
+        Err(PublicRegistrationError::Database(message)) => {
+            tracing::error!(error = %message, "Failed to read first-run setup state");
+            err("Failed to read setup status").into_response()
+        }
+        Err(error) => {
+            tracing::error!(error = ?error, "Unexpected setup status error");
+            err("Failed to read setup status").into_response()
+        }
+    }
 }
 
 #[tracing::instrument(skip(state, payload), fields(username = %payload.username))]
@@ -212,42 +236,59 @@ async fn create_user(
     State(state): State<AppState>,
     Json(payload): Json<RegisterDto>,
 ) -> impl IntoResponse {
-    match state
-        .user_service
-        .register_user(
-            &state.db,
-            &payload.username,
-            &payload.password,
-            payload.email,
-        )
-        .await
+    let input = PublicRegistrationInput {
+        username: payload.username,
+        password: payload.password,
+        email: payload.email,
+        bootstrap_token: payload.bootstrap_token,
+    };
+
+    match register_public_user(
+        &state.db,
+        &input,
+        state.bootstrap_token_required,
+        Some(state.bootstrap_token.as_str()),
+    )
+    .await
     {
-        Ok(user_id) => {
-            let roles = state
-                .user_service
-                .get_user_roles(&state.db, &user_id)
-                .await
-                .unwrap_or_default();
-            match state
-                .user_service
-                .generate_token(&user_id, &payload.username)
-            {
-                Ok(auth_token) => ok(AuthData {
-                    id: user_id,
-                    username: payload.username,
-                    roles: Some(roles),
-                    token: auth_token.token,
-                })
-                .into_response(),
-                Err(e) => {
-                    tracing::error!("JWT generation failed: {}", e);
-                    err("Failed to generate authentication token").into_response()
-                }
+        Ok(created) => match state
+            .user_service
+            .generate_token(&created.user_id, &created.username)
+        {
+            Ok(auth_token) => ok(AuthData {
+                id: created.user_id,
+                username: created.username,
+                roles: Some(vec![created.role]),
+                token: auth_token.token,
+            })
+            .into_response(),
+            Err(e) => {
+                tracing::error!("JWT generation failed after registration: {}", e);
+                err("Failed to generate authentication token").into_response()
             }
+        },
+        Err(PublicRegistrationError::BootstrapRequired) => {
+            err("First-time remote setup requires the one-time setup code shown by BurnCloud at startup").into_response()
         }
-        Err(UserServiceError::UserAlreadyExists) => err("Username already exists").into_response(),
-        Err(e) => {
-            tracing::error!("Registration error: {}", e);
+        Err(PublicRegistrationError::InvalidBootstrapToken) => {
+            err("Invalid setup code").into_response()
+        }
+        Err(PublicRegistrationError::BootstrapAlreadyComplete) => {
+            err("Initial administrator setup has already been completed").into_response()
+        }
+        Err(PublicRegistrationError::RegistrationClosed) => {
+            err("Public registration is closed").into_response()
+        }
+        Err(PublicRegistrationError::UserAlreadyExists) => {
+            err("Username already exists").into_response()
+        }
+        Err(PublicRegistrationError::InvalidInput(message)) => err(message).into_response(),
+        Err(PublicRegistrationError::Configuration(message)) => {
+            tracing::error!(error = %message, "Public registration configuration is invalid");
+            err("Registration configuration is invalid").into_response()
+        }
+        Err(PublicRegistrationError::Database(message)) => {
+            tracing::error!(error = %message, "Public registration database transaction failed");
             err("Registration failed").into_response()
         }
     }
@@ -298,7 +339,6 @@ async fn forgot_password(
             ok(serde_json::json!({ "message": "If the email exists, a reset token has been generated" })).into_response()
         }
         Err(UserServiceError::UserNotFound) => {
-            // Return success even if user not found to prevent email enumeration
             ok(serde_json::json!({ "message": "If the email exists, a reset token has been generated" })).into_response()
         }
         Err(e) => {

@@ -15,194 +15,93 @@ use burncloud_tests::TestClient;
 use serde_json::json;
 use uuid::Uuid;
 
-// Helper function to generate unique test usernames
+const TEST_BOOTSTRAP_TOKEN: &str = "burncloud-e2e-bootstrap-token-2026";
+
 fn generate_test_username(prefix: &str) -> String {
-    format!(
-        "{}_{}",
-        prefix,
-        &Uuid::new_v4().to_string().replace("-", "")[..8]
-    )
+    format!("{}_{}", prefix, &Uuid::new_v4().to_string().replace('-', "")[..8])
 }
 
 #[tokio::test]
 async fn test_auth_register_success() -> anyhow::Result<()> {
-    let base_url = spawn_app().await;
-    let client = TestClient::new(&base_url);
-
+    let client = TestClient::new(&spawn_app().await);
     let username = generate_test_username("authuser");
-    let password = "SecurePass123!";
-
-    let body = json!({
-        "username": username,
-        "password": password,
-        "email": format!("{}@example.com", username)
-    });
-
+    let body = json!({"username": username, "password": "SecurePass123!", "email": format!("{}@example.com", username)});
     let res = client.post("/api/auth/register", &body).await?;
-    assert_eq!(res["success"], true, "Register should succeed");
-    assert!(!res["data"]["id"].is_null(), "Should return user ID");
-    assert_eq!(res["data"]["username"], username);
-    assert!(!res["data"]["token"].is_null(), "Should return JWT token");
+    assert_eq!(res["success"], true);
+    assert_eq!(res["data"]["roles"][0], "user");
+    assert!(!res["data"]["token"].as_str().unwrap_or_default().is_empty());
+    Ok(())
+}
 
-    // Verify token is a non-empty string
-    let token = res["data"]["token"].as_str().unwrap();
-    assert!(!token.is_empty(), "Token should not be empty");
-
+#[tokio::test]
+async fn test_auth_bootstrap_token_cannot_be_replayed() -> anyhow::Result<()> {
+    let client = TestClient::new(&spawn_app().await);
+    let body = json!({
+        "username": generate_test_username("replay"),
+        "password": "SecurePass123!",
+        "email": "replay@example.invalid",
+        "bootstrap_token": TEST_BOOTSTRAP_TOKEN
+    });
+    let res = client.post("/api/auth/register", &body).await?;
+    assert_eq!(res["success"], false);
+    assert!(res["message"].as_str().unwrap_or_default().contains("already been completed"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_auth_register_duplicate_username() -> anyhow::Result<()> {
-    let base_url = spawn_app().await;
-    let client = TestClient::new(&base_url);
-
+    let client = TestClient::new(&spawn_app().await);
     let username = generate_test_username("dupuser");
-    let password = "SecurePass123!";
-
-    let body = json!({
-        "username": username,
-        "password": password,
-        "email": format!("{}@example.com", username)
-    });
-
-    // First registration should succeed
-    let res1 = client.post("/api/auth/register", &body).await?;
-    assert_eq!(res1["success"], true);
-
-    // Second registration with same username should fail
-    let res2 = client.post("/api/auth/register", &body).await?;
-    assert_eq!(res2["success"], false);
-    assert!(res2["message"].as_str().unwrap().contains("already exists"));
-
+    let body = json!({"username": username, "password": "SecurePass123!", "email": format!("{}@example.com", username)});
+    assert_eq!(client.post("/api/auth/register", &body).await?["success"], true);
+    let second = client.post("/api/auth/register", &body).await?;
+    assert_eq!(second["success"], false);
+    assert!(second["message"].as_str().unwrap_or_default().contains("already exists"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_auth_login_success() -> anyhow::Result<()> {
-    let base_url = spawn_app().await;
-    let client = TestClient::new(&base_url);
-
+    let client = TestClient::new(&spawn_app().await);
     let username = generate_test_username("loginuser");
     let password = "SecurePass123!";
-
-    // Register first
-    let reg_body = json!({
-        "username": username,
-        "password": password,
-        "email": format!("{}@example.com", username)
-    });
-    client.post("/api/auth/register", &reg_body).await?;
-
-    // Now login
-    let login_body = json!({
-        "username": username,
-        "password": password
-    });
-
-    let res = client.post("/api/auth/login", &login_body).await?;
-    assert_eq!(res["success"], true, "Login should succeed");
-    assert_eq!(res["data"]["username"], username);
-    assert!(!res["data"]["token"].is_null(), "Should return JWT token");
-    assert!(!res["data"]["roles"].is_null(), "Should return user roles");
-
-    // Verify token is a non-empty string
-    let token = res["data"]["token"].as_str().unwrap();
-    assert!(!token.is_empty(), "Token should not be empty");
-
+    client.post("/api/auth/register", &json!({"username": username, "password": password, "email": format!("{}@example.com", username)})).await?;
+    let res = client.post("/api/auth/login", &json!({"username": username, "password": password})).await?;
+    assert_eq!(res["success"], true);
+    assert_eq!(res["data"]["roles"][0], "user");
     Ok(())
 }
 
 #[tokio::test]
 async fn test_auth_login_invalid_credentials() -> anyhow::Result<()> {
-    let base_url = spawn_app().await;
-    let client = TestClient::new(&base_url);
-
-    let username = generate_test_username("testuser");
-    let password = "SecurePass123!";
-
-    // Register first
-    let reg_body = json!({
-        "username": username,
-        "password": password,
-        "email": format!("{}@example.com", username)
-    });
-    client.post("/api/auth/register", &reg_body).await?;
-
-    // Try login with wrong password
-    let login_body = json!({
-        "username": username,
-        "password": "WrongPassword123!"
-    });
-
-    let res = client.post("/api/auth/login", &login_body).await?;
-    assert_eq!(
-        res["success"], false,
-        "Login should fail with wrong password"
-    );
-    assert!(res["message"]
-        .as_str()
-        .unwrap()
-        .contains("Invalid credentials"));
-
+    let client = TestClient::new(&spawn_app().await);
+    let username = generate_test_username("badlogin");
+    client.post("/api/auth/register", &json!({"username": username, "password": "SecurePass123!", "email": format!("{}@example.com", username)})).await?;
+    let res = client.post("/api/auth/login", &json!({"username": username, "password": "WrongPassword123!"})).await?;
+    assert_eq!(res["success"], false);
+    assert!(res["message"].as_str().unwrap_or_default().contains("Invalid credentials"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_auth_login_nonexistent_user() -> anyhow::Result<()> {
-    let base_url = spawn_app().await;
-    let client = TestClient::new(&base_url);
-
-    let login_body = json!({
-        "username": "nonexistent_user_12345",
-        "password": "SomePassword123!"
-    });
-
-    let res = client.post("/api/auth/login", &login_body).await?;
-    assert_eq!(
-        res["success"], false,
-        "Login should fail for nonexistent user"
-    );
-    assert!(res["message"].as_str().unwrap().contains("not found"));
-
+    let client = TestClient::new(&spawn_app().await);
+    let res = client.post("/api/auth/login", &json!({"username": "nonexistent_user_12345", "password": "SomePassword123!"})).await?;
+    assert_eq!(res["success"], false);
+    assert!(res["message"].as_str().unwrap_or_default().contains("not found"));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_auth_complete_flow() -> anyhow::Result<()> {
-    let base_url = spawn_app().await;
-    let client = TestClient::new(&base_url);
-
+    let client = TestClient::new(&spawn_app().await);
     let username = generate_test_username("flowuser");
     let password = "CompleteFlow123!";
-
-    // 1. Register
-    let reg_body = json!({
-        "username": username,
-        "password": password,
-        "email": format!("{}@example.com", username)
-    });
-
-    let reg_res = client.post("/api/auth/register", &reg_body).await?;
-    assert_eq!(reg_res["success"], true);
-    let reg_token = reg_res["data"]["token"].as_str().unwrap().to_string();
-
-    // 2. Login
-    let login_body = json!({
-        "username": username,
-        "password": password
-    });
-
-    let login_res = client.post("/api/auth/login", &login_body).await?;
-    assert_eq!(login_res["success"], true);
-    let login_token = login_res["data"]["token"].as_str().unwrap().to_string();
-
-    // Both tokens should be valid JWT tokens (non-empty strings)
-    assert!(!reg_token.is_empty());
-    assert!(!login_token.is_empty());
-
-    // Tokens should be different (different iat timestamps)
-    // Note: In rare cases they might be the same if generated in the same second,
-    // but this is unlikely in practice
-
+    let reg = client.post("/api/auth/register", &json!({"username": username, "password": password, "email": format!("{}@example.com", username)})).await?;
+    assert_eq!(reg["success"], true);
+    assert_eq!(reg["data"]["roles"][0], "user");
+    let login = client.post("/api/auth/login", &json!({"username": username, "password": password})).await?;
+    assert_eq!(login["success"], true);
+    assert_eq!(login["data"]["roles"][0], "user");
     Ok(())
 }
