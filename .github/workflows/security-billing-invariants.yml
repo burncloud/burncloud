@@ -44,25 +44,40 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      - name: Formatting
+      - name: Capture rustfmt diagnostic
         id: formatting
         shell: bash
         run: |
-          cargo fmt
+          set +e
+          cargo fmt > /tmp/rustfmt.log 2>&1
+          fmt_status=$?
+          set -e
           git diff --binary > /tmp/rustfmt.patch
           if [ -s /tmp/rustfmt.patch ]; then
+            has_diff=1
+          else
+            has_diff=0
+          fi
+          echo "fmt_status=$fmt_status" >> "$GITHUB_OUTPUT"
+          echo "has_diff=$has_diff" >> "$GITHUB_OUTPUT"
+          cat /tmp/rustfmt.log
+          if [ "$has_diff" = "1" ]; then
             echo "rustfmt changed these files:"
             git diff --name-only
-            exit 1
           fi
 
-      - name: Upload rustfmt diagnostic patch
-        if: failure() && steps.formatting.outcome == 'failure'
+      - name: Upload rustfmt diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: rustfmt-diagnostic-patch
-          path: /tmp/rustfmt.patch
+          name: rustfmt-diagnostic
+          path: |
+            /tmp/rustfmt.log
+            /tmp/rustfmt.patch
           if-no-files-found: error
+
+      - name: Enforce formatting
+        if: steps.formatting.outputs.fmt_status != '0' || steps.formatting.outputs.has_diff != '0'
+        run: exit 1
 
       - name: Check affected packages
         run: cargo check -p burncloud-router -p burncloud-server
