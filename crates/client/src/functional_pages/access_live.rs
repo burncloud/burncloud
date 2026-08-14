@@ -56,7 +56,6 @@ pub fn Team() -> Element {
         .any(|role| role.eq_ignore_ascii_case("admin"));
 
     let admin_count = admins.len();
-    let email_count = admins.iter().filter(|user| user.email.is_some()).count();
     let status_attention_count = admins.iter().filter(|user| user.status != 1).count();
     let inventory_class = if admin_count > 0 && status_attention_count == 0 {
         "readiness-strip ready"
@@ -132,11 +131,11 @@ pub fn Team() -> Element {
                     }
                     div { class: "card metric",
                         div { class: "metric-copy",
-                            span { class: "metric-label", "With Email" }
-                            span { class: "metric-value", "{email_count}" }
-                            span { class: "metric-note", "administrator identities" }
+                            span { class: "metric-label", "Role Changes" }
+                            span { class: "metric-value", "Read-only" }
+                            span { class: "metric-note", "no mutation endpoint" }
                         }
-                        div { class: "metric-icon tone-gray", Icon { name: "mail" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "lock" } }
                     }
                     div { class: "card metric",
                         div { class: "metric-copy",
