@@ -94,9 +94,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         .layer(CorsLayer::permissive())
         // Security boundary is intentionally global so it protects both the
         // explicitly merged internal routes and the data-plane fallback.
-        .layer(middleware::from_fn(
-            api::auth::security_boundary_middleware,
-        ));
+        .layer(middleware::from_fn(api::auth::security_boundary_middleware));
 
     Ok(app)
 }
