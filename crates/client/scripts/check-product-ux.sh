@@ -66,12 +66,28 @@ if ! (( billing_line < guardrails_line && guardrails_line < team_line && team_li
   exit 1
 fi
 
-# Overview must answer readiness and next action before technical diagnostics.
-require 'Setup & readiness' src/critical_pages/dashboard.rs
-require 'BurnCloud is ready to serve traffic' src/critical_pages/dashboard.rs
-require 'Finish setup before sending production traffic' src/critical_pages/dashboard.rs
-require 'Add first provider' src/critical_pages/dashboard.rs
-require 'Test a request' src/critical_pages/dashboard.rs
+# Overview is a conclusion + handoff surface. It must not become a second Providers/Logs/Billing/Settings page.
+require 'Evidence-backed overview' src/critical_pages/dashboard.rs
+require 'Product flow evidence' src/critical_pages/dashboard.rs
+require 'Building an evidence-backed overview' src/critical_pages/dashboard.rs
+require 'Overview evidence is incomplete' src/critical_pages/dashboard.rs
+require 'Configuration is present; verification is still missing' src/critical_pages/dashboard.rs
+require 'Verified traffic is observable' src/critical_pages/dashboard.rs
+require 'Unknown data stays unknown instead of becoming a zero or healthy state.' src/critical_pages/dashboard.rs
+require 'Needs attention' src/critical_pages/dashboard.rs
+require 'Observed activity' src/critical_pages/dashboard.rs
+require 'Latest request evidence' src/critical_pages/dashboard.rs
+require 'Responsibility boundary:' src/critical_pages/dashboard.rs
+require 'Open Providers' src/critical_pages/dashboard.rs
+require 'Open Models' src/critical_pages/dashboard.rs
+require 'Create API key' src/critical_pages/dashboard.rs
+require 'Open Playground' src/critical_pages/dashboard.rs
+require 'Open Logs' src/critical_pages/dashboard.rs
+forbid 'routing_configured' src/critical_pages/dashboard.rs
+forbid 'Provider health' src/critical_pages/dashboard.rs
+forbid 'Stored Request Route Receipt' src/critical_pages/dashboard.rs
+forbid 'Host resource pressure' src/critical_pages/dashboard.rs
+forbid 'Top billed models' src/critical_pages/dashboard.rs
 
 # Auth must expose only current backend capabilities, not prototype choices.
 forbid 'Onboarding Account Preference' src/critical_pages/auth.rs
