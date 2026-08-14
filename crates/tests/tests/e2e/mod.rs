@@ -25,6 +25,7 @@ pub mod monitor_flow;
 pub mod navigation;
 pub mod settings_interactions;
 pub mod user_flow;
+pub mod router_flow;
 
 use agent_browser::{is_agent_browser_available, AgentBrowser};
 use reqwest::Client;
