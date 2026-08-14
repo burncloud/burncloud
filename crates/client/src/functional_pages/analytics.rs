@@ -17,6 +17,16 @@ fn compact(n: i64) -> String {
     }
 }
 
+fn currency(value: f64) -> String {
+    if value == 0.0 {
+        "$0.00".to_string()
+    } else if value.abs() < 1.0 {
+        format!("${value:.6}")
+    } else {
+        format!("${value:.2}")
+    }
+}
+
 #[component]
 pub fn Billing() -> Element {
     let auth = use_auth();
@@ -52,7 +62,7 @@ pub fn Billing() -> Element {
     let model_count = data.models.len();
     let request_text = compact(request_count);
     let token_text = compact(total_tokens);
-    let cost_text = format!("${:.4}", data.total_cost_usd);
+    let cost_text = currency(data.total_cost_usd);
     let period_text = match (&data.period_start, &data.period_end) {
         (Some(start), Some(end)) => format!("{start} → {end}"),
         _ => "Current billing period".to_string(),
@@ -66,21 +76,60 @@ pub fn Billing() -> Element {
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
+    let top_model_name = models
+        .first()
+        .map(|model| model.model.clone())
+        .unwrap_or_else(|| "No model-level spend".to_string());
+    let top_model_share = models
+        .first()
+        .map(|model| {
+            if data.total_cost_usd > 0.0 {
+                model.cost_usd * 100.0 / data.total_cost_usd
+            } else {
+                0.0
+            }
+        })
+        .unwrap_or(0.0);
+    let top_model_share_text = format!("{top_model_share:.1}%");
+    let model_note = if model_count == 1 {
+        "1 model with billed usage".to_string()
+    } else {
+        format!("{model_count} models with billed usage")
+    };
+    let request_note = if data.pre_migration_requests > 0 {
+        format!("includes {} requests without model attribution", data.pre_migration_requests)
+    } else {
+        "billed request activity".to_string()
+    };
+
     rsx! {
         div { class: "page",
             div { class: "page-header",
                 div {
                     h2 { class: "page-title", "Billing" }
-                    p { class: "page-subtitle", "Understand how much this account spent, which models drove the cost, and the usage behind that spend." }
+                    p { class: "page-subtitle", "Understand total spend first, then which models drove it and the billed usage behind each model." }
                 }
                 div { class: "header-actions",
-                    span { class: "badge badge-neutral mono", "{period_text}" }
-                    button { class: "button button-secondary", onclick: move |_| summary_resource.restart(), "Refresh" }
+                    if !loading && load_error.is_none() {
+                        span { class: "badge badge-neutral mono", "{period_text}" }
+                    }
+                    button {
+                        class: "button button-secondary",
+                        disabled: loading,
+                        onclick: move |_| summary_resource.restart(),
+                        if loading { "Refreshing…" } else { "Refresh" }
+                    }
                 }
             }
 
             if loading {
-                div { class: "card card-pad", "Loading billing summary…" }
+                div { class: "card product-empty",
+                    div { class: "product-empty-inner",
+                        div { class: "product-empty-icon", Icon { name: "billing" } }
+                        h3 { "Loading billing summary" }
+                        p { "Reading the current billing period, total recorded cost, model-level spend, and token usage before showing financial conclusions." }
+                    }
+                }
             } else if let Some(message) = load_error {
                 div { class: "card card-pad stack",
                     strong { class: "danger", "Billing could not be loaded" }
@@ -88,31 +137,56 @@ pub fn Billing() -> Element {
                     button { class: "button button-primary", onclick: move |_| summary_resource.restart(), "Retry" }
                 }
             } else {
-                div { class: "metrics",
-                    div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Spend" } span { class: "metric-value", "{cost_text}" } span { class: "metric-note", "current billing period" } }
-                        div { class: "metric-icon tone-amber", Icon { name: "dollar" } }
-                    }
-                    div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Requests" } span { class: "metric-value", "{request_text}" } span { class: "metric-note", "billed request activity" } }
-                        div { class: "metric-icon tone-blue", Icon { name: "activity" } }
-                    }
-                    div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Tokens" } span { class: "metric-value", "{token_text}" } span { class: "metric-note", "input + cache + output + reasoning" } }
-                        div { class: "metric-icon tone-purple", Icon { name: "models" } }
-                    }
-                    div { class: "card metric",
-                        div { class: "metric-copy", span { class: "metric-label", "Models Used" } span { class: "metric-value", "{model_count}" } span { class: "metric-note", "models with billed usage" } }
-                        div { class: "metric-icon tone-green", Icon { name: "routes" } }
+                div { class: "card card-pad-lg stack",
+                    div { class: "row between gap-3",
+                        div {
+                            div { class: "section-label", "Billing period spend" }
+                            h2 { class: "page-title mono", "{cost_text}" }
+                            p { class: "page-subtitle", "Recorded billed cost for {period_text}. Spend is the primary billing conclusion; usage and concentration below explain what drove it." }
+                        }
+                        if let Some(top_model) = models.first() {
+                            div { class: "product-note",
+                                strong { "Top spend driver" }
+                                div { class: "small mono", "{top_model.model}" }
+                                div { class: "tiny muted", "{top_model_share_text} of recorded spend" }
+                            }
+                        }
                     }
                 }
 
-                if models.is_empty() {
+                div { class: "metrics",
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Requests" } span { class: "metric-value", "{request_text}" } span { class: "metric-note", "{request_note}" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "activity" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Tokens" } span { class: "metric-value", "{token_text}" } span { class: "metric-note", "input + cache read + output + reasoning" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "models" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Models Used" } span { class: "metric-value", "{model_count}" } span { class: "metric-note", "{model_note}" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "routes" } }
+                    }
+                    div { class: "card metric",
+                        div { class: "metric-copy", span { class: "metric-label", "Top Model Share" } span { class: "metric-value", "{top_model_share_text}" } span { class: "metric-note", "{top_model_name}" } }
+                        div { class: "metric-icon tone-gray", Icon { name: "dollar" } }
+                    }
+                }
+
+                if models.is_empty() && request_count == 0 {
                     div { class: "card product-empty",
                         div { class: "product-empty-inner",
                             div { class: "product-empty-icon", Icon { name: "billing" } }
                             h3 { "No billed usage yet" }
-                            p { "Once this account sends routed traffic, model-level spend and token usage will appear here." }
+                            p { "Once this account sends routed traffic with billable usage, model-level spend and token usage will appear here." }
+                        }
+                    }
+                } else if models.is_empty() {
+                    div { class: "card product-empty",
+                        div { class: "product-empty-inner",
+                            div { class: "product-empty-icon", Icon { name: "billing" } }
+                            h3 { "No model-level billing breakdown is available" }
+                            p { "Request activity exists, but it predates or falls outside the current model-attributed billing breakdown. The total request count above remains truthful while model spend stays empty." }
                         }
                     }
                 } else {
@@ -120,7 +194,7 @@ pub fn Billing() -> Element {
                         div { class: "card-pad product-section-head",
                             div {
                                 h3 { "Spend by model" }
-                                p { "Models are sorted by cost so the largest spend drivers are visible first." }
+                                p { "Models are sorted by recorded cost. Spend share explains concentration without treating high spend as an error state." }
                             }
                         }
                         div { class: "table-wrap",
@@ -138,7 +212,7 @@ pub fn Billing() -> Element {
                                 tbody {
                                     for model in models {
                                         {
-                                            let spend = format!("${:.6}", model.cost_usd);
+                                            let spend = currency(model.cost_usd);
                                             let share = if data.total_cost_usd > 0.0 {
                                                 model.cost_usd * 100.0 / data.total_cost_usd
                                             } else {
@@ -152,7 +226,7 @@ pub fn Billing() -> Element {
                                             let reasoning = compact(model.reasoning_tokens);
                                             rsx! {
                                                 tr { key: "{model.model}",
-                                                    td { class: "table-primary mono", "{model.model}" }
+                                                    td { class: "table-primary mono", title: "{model.model}", "{model.model}" }
                                                     td { class: "right strong tabular", "{spend}" }
                                                     td { class: "right tabular", "{share_text}" }
                                                     td { class: "right tabular", "{requests}" }
