@@ -38,20 +38,24 @@ fn search_route(query: &str) -> Option<Route> {
         ("providers provider channels channel upstream supply", Route::Providers {}),
         ("models model catalog", Route::Models {}),
         ("routes routing groups priority weight traffic", Route::Routes {}),
-        ("playground chat completion inference test", Route::Playground {}),
+        ("playground chat completion inference test verify", Route::Playground {}),
         ("logs requests router log observability errors", Route::Logs {}),
         ("evaluation metrics latency success performance", Route::Evaluation {}),
         ("billing cost usage spend finance", Route::Billing {}),
-        ("api keys key tokens token access", Route::APIKeys {}),
+        ("api keys key tokens token access credential", Route::APIKeys {}),
         ("customers users user accounts account balance", Route::Customers {}),
-        ("guardrails security filters risk circuit breaker", Route::Guardrails {}),
-        ("team members roles operators admins", Route::Team {}),
-        ("settings cache runtime server system", Route::Settings {}),
+        ("guardrails security filters risk circuit breaker govern", Route::Guardrails {}),
+        ("team members roles operators admins govern", Route::Team {}),
+        ("settings cache runtime server system govern", Route::Settings {}),
     ];
 
     pages
         .into_iter()
-        .find(|(keywords, _)| keywords.split_whitespace().any(|word| word.starts_with(&q) || q.contains(word)))
+        .find(|(keywords, _)| {
+            keywords
+                .split_whitespace()
+                .any(|word| word.starts_with(&q) || q.contains(word))
+        })
         .map(|(_, route)| route)
 }
 
@@ -96,22 +100,22 @@ pub fn FunctionalConsoleLayout() -> Element {
                     NavGroup { title:"Workspace",
                         NavItem { to:Route::Overview {}, icon:"overview", label:"Overview" }
                     }
-                    NavGroup { title:"Traffic Setup",
+                    NavGroup { title:"Supply",
                         NavItem { to:Route::Providers {}, icon:"providers", label:"Providers" }
                         NavItem { to:Route::Models {}, icon:"models", label:"Models" }
                         NavItem { to:Route::Routes {}, icon:"routes", label:"Routes" }
-                        NavItem { to:Route::Playground {}, icon:"terminal", label:"Playground" }
                     }
-                    NavGroup { title:"Observe",
+                    NavGroup { title:"Access",
+                        NavItem { to:Route::Customers {}, icon:"users", label:"Customers" }
+                        NavItem { to:Route::APIKeys {}, icon:"key", label:"API Keys" }
+                    }
+                    NavGroup { title:"Verify & Observe",
+                        NavItem { to:Route::Playground {}, icon:"terminal", label:"Playground" }
                         NavItem { to:Route::Logs {}, icon:"logs", label:"Logs" }
                         NavItem { to:Route::Evaluation {}, icon:"chart", label:"Evaluation" }
                         NavItem { to:Route::Billing {}, icon:"billing", label:"Billing" }
                     }
-                    NavGroup { title:"Access & Customers",
-                        NavItem { to:Route::APIKeys {}, icon:"key", label:"API Keys" }
-                        NavItem { to:Route::Customers {}, icon:"users", label:"Customers" }
-                    }
-                    NavGroup { title:"Security & System",
+                    NavGroup { title:"Govern",
                         NavItem { to:Route::Guardrails {}, icon:"shield", label:"Guardrails" }
                         NavItem { to:Route::Team {}, icon:"users", label:"Team" }
                         NavItem { to:Route::Settings {}, icon:"settings", label:"Settings" }
