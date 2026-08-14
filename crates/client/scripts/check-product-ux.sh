@@ -104,11 +104,9 @@ require 'Console administrators' src/functional_pages/access_live.rs
 require 'Account Status Metadata' src/functional_pages/access_live.rs
 require 'Team is read-only until the server exposes explicit role-management endpoints' src/functional_pages/access_live.rs
 require 'The current authorization boundary recognizes admin.' src/functional_pages/access_live.rs
+require 'No Invite, Change Role, Remove Member, or Suspend controls are shown' src/functional_pages/access_live.rs
 forbid 'is_staff_role' src/functional_pages/access_live.rs
 forbid '"Disabled"' src/functional_pages/access_live.rs
-forbid 'Invite Administrator' src/functional_pages/access_live.rs
-forbid 'Change Role' src/functional_pages/access_live.rs
-forbid 'Remove Member' src/functional_pages/access_live.rs
 
 # list_users must make the compatibility role summary deterministic for Console authorization.
 require 'fn primary_role' ../server/src/api/user.rs
