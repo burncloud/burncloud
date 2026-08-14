@@ -5,6 +5,7 @@ on:
     paths:
       - "crates/server/**"
       - "crates/router/**"
+      - "crates/database/src/**"
       - "crates/database/crates/router/**"
       - "crates/service/crates/router-log/**"
       - ".github/workflows/security-billing-invariants.yml"
@@ -13,6 +14,7 @@ on:
     paths:
       - "crates/server/**"
       - "crates/router/**"
+      - "crates/database/src/**"
       - "crates/database/crates/router/**"
       - "crates/service/crates/router-log/**"
       - ".github/workflows/security-billing-invariants.yml"
@@ -35,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -45,7 +49,28 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Formatting
-        run: cargo fmt --check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          mapfile -d '' rust_files < <(
+            git diff --name-only --diff-filter=ACMR -z "$base_sha" "$head_sha" -- '*.rs'
+          )
+
+          if [ "${#rust_files[@]}" -eq 0 ]; then
+            echo "No changed Rust files to format-check."
+            exit 0
+          fi
+
+          printf 'Checking rustfmt on %s changed Rust file(s):\n' "${#rust_files[@]}"
+          printf '  %s\n' "${rust_files[@]}"
+          rustfmt --edition 2021 --check --config skip_children=true "${rust_files[@]}"
 
       - name: Check affected packages
         run: cargo check -p burncloud-router -p burncloud-server

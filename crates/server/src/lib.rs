@@ -26,6 +26,10 @@ pub struct AppState {
     pub user_service: Arc<UserService>,
     pub cache: CacheService,
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
+    /// Ready-to-serve data-plane router used by authenticated console smoke tests.
+    /// Requests sent through this router still pass the router's bearer-token validation
+    /// and routing logic without exposing the bearer secret to the console client.
+    pub data_plane: Router,
 }
 
 #[tracing::instrument(skip(db))]
@@ -51,6 +55,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         user_service: Arc::new(UserService::new()),
         cache,
         force_sync_tx,
+        data_plane: router_app.clone(),
     };
 
     // 1. Management API Router
@@ -89,9 +94,7 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         .layer(CorsLayer::permissive())
         // Security boundary is intentionally global so it protects both the
         // explicitly merged internal routes and the data-plane fallback.
-        .layer(middleware::from_fn(
-            api::auth::security_boundary_middleware,
-        ));
+        .layer(middleware::from_fn(api::auth::security_boundary_middleware));
 
     Ok(app)
 }

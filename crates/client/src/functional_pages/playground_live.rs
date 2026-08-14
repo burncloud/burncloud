@@ -1,19 +1,104 @@
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
+use serde::Deserialize;
 
 use crate::{
     app::Route,
     backend::{
-        chat_completion, first_active_api_token, ChannelService, ChatMessage, RouteTrace, TokenDto,
-        TokenService,
+        first_active_api_token, server_root, use_auth, ChannelService, ChatMessage, ChatResult,
+        ChatUsage, RouteTrace, TokenDto, TokenService,
     },
     components::Icon,
 };
 
+#[derive(Debug, Deserialize)]
+struct PlaygroundChoiceMessage {
+    content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaygroundChoice {
+    message: Option<PlaygroundChoiceMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaygroundChatResponse {
+    #[serde(default)]
+    choices: Vec<PlaygroundChoice>,
+    #[serde(default)]
+    usage: ChatUsage,
+}
+
+/// Send a smoke-test request through the authenticated console proxy. The client
+/// supplies only the opaque token management reference; the bearer secret stays
+/// server-side and is injected into the real data-plane router there.
+async fn playground_chat_completion(
+    messages: &[ChatMessage],
+    model: &str,
+    token_ref: &str,
+    console_token: &str,
+    temperature: f64,
+    max_tokens: i64,
+) -> Result<ChatResult, String> {
+    if console_token.is_empty() {
+        return Err("No authenticated console session".to_string());
+    }
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/console/api/playground/chat", server_root()))
+        .header("Authorization", format!("Bearer {console_token}"))
+        .json(&serde_json::json!({
+            "token_ref": token_ref,
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let status = response.status();
+    let trace = RouteTrace {
+        channel_id: response
+            .headers()
+            .get("X-Channel-Id")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+        model_id: response
+            .headers()
+            .get("X-Model-Id")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+    };
+    let text = response.text().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(format!("Chat request failed ({status}): {text}"));
+    }
+
+    let parsed: PlaygroundChatResponse =
+        serde_json::from_str(&text).map_err(|error| format!("Invalid chat response: {error}"))?;
+    let content = parsed
+        .choices
+        .first()
+        .and_then(|choice| choice.message.as_ref())
+        .and_then(|message| message.content.clone())
+        .unwrap_or_default();
+
+    Ok(ChatResult {
+        content,
+        usage: parsed.usage,
+        trace,
+    })
+}
+
 #[component]
 pub fn Playground() -> Element {
-    let mut channels_resource = use_resource(move || async move { ChannelService::list(100).await });
+    let auth = use_auth();
+    let console_token = auth.token().unwrap_or_default();
+    let mut channels_resource =
+        use_resource(move || async move { ChannelService::list(100).await });
     let mut keys_resource = use_resource(move || async move { TokenService::list().await });
 
     let channel_snapshot = channels_resource.read().clone();
@@ -37,12 +122,20 @@ pub fn Playground() -> Element {
         .cloned()
         .unwrap_or_default();
 
-    let active_channels = channels.iter().filter(|channel| channel.status == 1).count();
+    let active_channels = channels
+        .iter()
+        .filter(|channel| channel.status == 1)
+        .count();
     let active_keys = keys.iter().filter(|key| key.status == "active").count();
     let mut model_set = BTreeSet::new();
     for channel in &channels {
         if channel.status == 1 {
-            for model in channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()) {
+            for model in channel
+                .models
+                .split(',')
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+            {
                 model_set.insert(model.to_string());
             }
         }
@@ -304,11 +397,20 @@ pub fn Playground() -> Element {
                                             usage.set("Routing request through BurnCloud…".to_string());
                                             let temp = temperature();
                                             let max = max_tokens();
+                                            let console_auth = console_token.clone();
 
                                             spawn(async move {
                                                 let result = async {
-                                                    let api_key = first_active_api_token().await?;
-                                                    chat_completion(&request_messages, &model_id, &api_key, temp, max).await
+                                                    let token_ref = first_active_api_token().await?;
+                                                    playground_chat_completion(
+                                                        &request_messages,
+                                                        &model_id,
+                                                        &token_ref,
+                                                        &console_auth,
+                                                        temp,
+                                                        max,
+                                                    )
+                                                    .await
                                                 }
                                                 .await;
 
@@ -390,7 +492,7 @@ pub fn Playground() -> Element {
                             }
 
                             div { class: "product-note",
-                                "Playground is an operational smoke test, not a separate inference path. A successful response proves that provider configuration, model exposure, API access and routing worked together for that request."
+                                "Playground is an operational smoke test, not a separate inference path. A successful response proves that provider configuration, model exposure, API access and routing worked together for that request. The bearer secret remains server-side during the test."
                             }
                         }
                     }

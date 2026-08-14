@@ -316,7 +316,7 @@ pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     let path = tmp.path().to_string_lossy().to_string();
     // Keep the NamedTempFile alive by leaking it; the OS will clean it up after the process exits.
     std::mem::forget(tmp);
-    let url = format!("sqlite:{}", path);
+    let url = format!("sqlite://{}?mode=rwc", path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let conn = db.get_connection()?;

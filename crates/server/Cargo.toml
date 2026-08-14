@@ -22,6 +22,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 axum = { workspace = true, features = ["macros"] }
 tower-http = { workspace = true, features = ["cors", "trace", "request-id"] }
+tower = { version = "0.5", features = ["util"] }
 burncloud-database = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-database-router = { workspace = true }
@@ -39,6 +40,7 @@ jsonwebtoken = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 chrono = { workspace = true }
 dirs = { workspace = true }
+sha2.workspace = true
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
