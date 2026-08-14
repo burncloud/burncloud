@@ -134,10 +134,7 @@ pub fn routes() -> Router<AppState> {
             "/console/api/tokens/{token_ref}",
             get(get_token).delete(delete_token).put(update_token),
         )
-        .route(
-            "/console/api/tokens/{token_ref}/rotate",
-            post(rotate_token),
-        )
+        .route("/console/api/tokens/{token_ref}/rotate", post(rotate_token))
         .route(
             "/console/api/tokens/{token_ref}/revoke-old",
             post(revoke_old_key),
@@ -166,13 +163,16 @@ pub(crate) async fn authorized_token(
     let admin = principal_is_admin(state, claims).await?;
     let tokens = TokenService::list(&state.db).await.map_err(|e| {
         tracing::error!(error = %e, "Failed to load API token for authorization");
-        err_status(StatusCode::INTERNAL_SERVER_ERROR, "Failed to load API token").into_response()
+        err_status(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load API token",
+        )
+        .into_response()
     })?;
 
-    let Some(record) = tokens
-        .into_iter()
-        .find(|record| record.token == token_ref || token_management_id(&record.token) == token_ref)
-    else {
+    let Some(record) = tokens.into_iter().find(|record| {
+        record.token == token_ref || token_management_id(&record.token) == token_ref
+    }) else {
         return Err(err_status(StatusCode::NOT_FOUND, "Token not found").into_response());
     };
 
