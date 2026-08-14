@@ -245,6 +245,48 @@
   margin-top: 12px;
 }
 
+.model-health-strip {
+  min-height: 58px;
+  padding: 12px 16px;
+}
+
+.model-health-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.model-health-meta {
+  margin-left: auto;
+}
+
+.model-loading-state {
+  min-height: 180px;
+}
+
+.model-name-cell {
+  min-width: 0;
+  max-width: 320px;
+}
+
+.model-name-cell strong {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-upstream-preview,
+.model-group-preview {
+  display: block;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .form-section {
   display: flex;
   flex-direction: column;
@@ -346,12 +388,14 @@
 }
 
 @media (max-width: 760px) {
-  .provider-health-strip {
+  .provider-health-strip,
+  .model-health-strip {
     align-items: flex-start;
     flex-wrap: wrap;
   }
 
-  .provider-health-meta {
+  .provider-health-meta,
+  .model-health-meta {
     margin-left: 19px;
   }
 }
