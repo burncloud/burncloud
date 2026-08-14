@@ -15,52 +15,91 @@ fn input(username: &str, bootstrap_token: Option<&str>) -> PublicRegistrationInp
     }
 }
 
-#[tokio::test]
-async fn fresh_install_requires_one_time_bootstrap_then_only_creates_users() {
-    let temp = tempfile::tempdir().expect("temporary database directory");
-    let path = temp.path().join("bootstrap.db");
-    let url = format!("sqlite://{}?mode=rwc", path.to_string_lossy().replace('\\', "/"));
-
-    std::env::set_var("BURNCLOUD_DATABASE_URL", &url);
-    std::env::set_var(
-        "BURNCLOUD_BOOTSTRAP_TOKEN",
-        "0123456789abcdef-bootstrap-test-token",
+async fn fresh_db(path: &std::path::Path) -> Database {
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        path.to_string_lossy().replace('\\', "/")
     );
+    std::env::set_var("BURNCLOUD_DATABASE_URL", &url);
+    let db = Database::new().await.expect("fresh sqlite database");
+    UserDatabase::init(&db).await.expect("user schema/roles");
+    let completed = initialize_bootstrap_state(&db)
+        .await
+        .expect("bootstrap state initialization");
+    assert!(!completed, "fresh database must require first-admin setup");
+    db
+}
+
+#[tokio::test]
+async fn first_admin_is_zero_config_locally_and_code_guarded_remotely() {
+    let temp = tempfile::tempdir().expect("temporary database directory");
     std::env::set_var("BURNCLOUD_PUBLIC_REGISTRATION", "open");
     std::env::set_var("BURNCLOUD_PUBLIC_SIGNUP_BONUS_USD", "1.25");
 
-    let db = Database::new().await.expect("fresh sqlite database");
-    UserDatabase::init(&db).await.expect("user schema/roles");
-    initialize_bootstrap_state(&db)
-        .await
-        .expect("bootstrap state initialization");
+    // Remote/exposed server policy: BurnCloud requires its generated setup code.
+    let remote_db = fresh_db(&temp.path().join("remote-bootstrap.db")).await;
+    let setup_code = "0123456789abcdef-remote-setup-code";
 
-    let missing = register_public_user(&db, &input("missing-token", None)).await;
+    let missing = register_public_user(
+        &remote_db,
+        &input("missing-code", None),
+        true,
+        Some(setup_code),
+    )
+    .await;
     assert_eq!(missing, Err(PublicRegistrationError::BootstrapRequired));
 
-    let wrong = register_public_user(&db, &input("wrong-token", Some("wrong-wrong-wrong-wrong"))).await;
+    let wrong = register_public_user(
+        &remote_db,
+        &input("wrong-code", Some("wrong-wrong-wrong-wrong")),
+        true,
+        Some(setup_code),
+    )
+    .await;
     assert_eq!(wrong, Err(PublicRegistrationError::InvalidBootstrapToken));
 
-    let admin = register_public_user(
-        &db,
-        &input(
-            "bootstrap-admin",
-            Some("0123456789abcdef-bootstrap-test-token"),
-        ),
+    let remote_admin = register_public_user(
+        &remote_db,
+        &input("remote-admin", Some(setup_code)),
+        true,
+        Some(setup_code),
     )
     .await
-    .expect("trusted bootstrap must create admin");
-    assert_eq!(admin.role, "admin");
+    .expect("correct remote setup code must create admin");
+    assert_eq!(remote_admin.role, "admin");
 
-    let connection = db.get_connection().expect("database connection");
+    let replay = register_public_user(
+        &remote_db,
+        &input("remote-replay", Some(setup_code)),
+        true,
+        Some(setup_code),
+    )
+    .await;
+    assert_eq!(
+        replay,
+        Err(PublicRegistrationError::BootstrapAlreadyComplete)
+    );
+
+    // Default BurnCloud policy: HOST=127.0.0.1, so first-run setup requires
+    // only username/password. No env bootstrap secret and no setup-code field.
+    let local_db = fresh_db(&temp.path().join("local-bootstrap.db")).await;
+    let local_admin = register_public_user(&local_db, &input("local-admin", None), false, None)
+        .await
+        .expect("local first-run setup must be zero configuration");
+    assert_eq!(local_admin.role, "admin");
+
+    let connection = local_db.get_connection().expect("database connection");
     let admin_balance: i64 = sqlx::query_scalar::<Any, i64>(
         "SELECT balance_usd FROM user_accounts WHERE id = ?",
     )
-    .bind(&admin.user_id)
+    .bind(&local_admin.user_id)
     .fetch_one(connection.pool())
     .await
     .expect("admin balance");
-    assert_eq!(admin_balance, 0, "bootstrap admin must not receive signup credit");
+    assert_eq!(
+        admin_balance, 0,
+        "bootstrap admin must not receive public signup credit"
+    );
 
     let marker_count: i64 = sqlx::query_scalar::<Any, i64>(
         "SELECT COUNT(*) FROM burncloud_bootstrap_state WHERE id = 1",
@@ -70,19 +109,9 @@ async fn fresh_install_requires_one_time_bootstrap_then_only_creates_users() {
     .expect("bootstrap marker");
     assert_eq!(marker_count, 1);
 
-    let replay = register_public_user(
-        &db,
-        &input(
-            "bootstrap-replay",
-            Some("0123456789abcdef-bootstrap-test-token"),
-        ),
-    )
-    .await;
-    assert_eq!(replay, Err(PublicRegistrationError::BootstrapAlreadyComplete));
-
-    let ordinary = register_public_user(&db, &input("ordinary-user", None))
+    let ordinary = register_public_user(&local_db, &input("ordinary-user", None), false, None)
         .await
-        .expect("open post-bootstrap registration");
+        .expect("open post-bootstrap public registration");
     assert_eq!(ordinary.role, "user");
 
     let ordinary_balance: i64 = sqlx::query_scalar::<Any, i64>(
@@ -97,7 +126,7 @@ async fn fresh_install_requires_one_time_bootstrap_then_only_creates_users() {
     let admin_roles: i64 = sqlx::query_scalar::<Any, i64>(
         "SELECT COUNT(*) FROM user_role_bindings b JOIN user_roles r ON r.id = b.role_id WHERE b.user_id = ? AND r.name = 'admin'",
     )
-    .bind(&admin.user_id)
+    .bind(&local_admin.user_id)
     .fetch_one(connection.pool())
     .await
     .expect("admin role binding");
@@ -113,7 +142,6 @@ async fn fresh_install_requires_one_time_bootstrap_then_only_creates_users() {
     assert_eq!(ordinary_admin_roles, 0);
 
     std::env::remove_var("BURNCLOUD_DATABASE_URL");
-    std::env::remove_var("BURNCLOUD_BOOTSTRAP_TOKEN");
     std::env::remove_var("BURNCLOUD_PUBLIC_REGISTRATION");
     std::env::remove_var("BURNCLOUD_PUBLIC_SIGNUP_BONUS_USD");
 }
