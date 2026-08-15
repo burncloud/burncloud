@@ -204,7 +204,10 @@ pub fn APIKeys() -> Element {
     let can_create = !users_loading && users_error.is_none() && !eligible_users.is_empty();
 
     let total = tokens.len();
-    let active = tokens.iter().filter(|token| token.status == "active").count();
+    let active = tokens
+        .iter()
+        .filter(|token| token.status == "active")
+        .count();
     let restricted = tokens
         .iter()
         .filter(|token| !ip_entries(token.ip_whitelist.as_deref()).is_empty())
@@ -231,7 +234,9 @@ pub fn APIKeys() -> Element {
         (
             "readiness-strip ready api-key-health-strip",
             "API access is controlled",
-            format!("{active} active credential records • {restricted} restricted by exact source IP."),
+            format!(
+                "{active} active credential records • {restricted} restricted by exact source IP."
+            ),
         )
     };
 

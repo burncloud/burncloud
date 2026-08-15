@@ -19,9 +19,9 @@ pub mod rate_budget;
 pub mod response_parser;
 pub mod response_quality;
 mod scheduler;
-mod stream_peek;
 mod state;
 pub mod stream_parser;
+mod stream_peek;
 pub mod token_counter;
 
 /// Peek first chunk timeout (seconds). Used to detect immediate errors (auth, rate limit).
@@ -31,8 +31,8 @@ const PEEK_FIRST_CHUNK_TIMEOUT_SECS: u64 = 36000;
 // ============================================================
 // Empty Response Counter - Track consecutive empty responses
 // ============================================================
-use std::sync::RwLock as StdRwLock;
 use std::collections::HashMap;
+use std::sync::RwLock as StdRwLock;
 
 /// Maximum consecutive empty responses before marking as failure
 const EMPTY_RESPONSE_THRESHOLD: u32 = 3;
@@ -58,7 +58,7 @@ impl EmptyResponseCounter {
         let count = counters.entry(channel_id.to_string()).or_insert(0);
         *count += 1;
         let exceeded = *count >= self.threshold;
-        
+
         // Warning when approaching threshold (threshold - 1)
         if *count == self.threshold - 1 {
             tracing::warn!(
@@ -472,13 +472,13 @@ fn safe_cut(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;
     }
-    
+
     // Find the character boundary at or before max_bytes
     let mut boundary = max_bytes;
     while boundary > 0 && !s.is_char_boundary(boundary) {
         boundary -= 1;
     }
-    
+
     &s[..boundary]
 }
 
@@ -502,9 +502,11 @@ fn sanitize_request_body(body_bytes: &[u8]) -> (Option<String>, bool) {
         let sanitized = if truncated {
             // Truncate the JSON string representation
             let json_str = json.to_string();
-            format!("{}... [TRUNCATED: {} bytes total]",
+            format!(
+                "{}... [TRUNCATED: {} bytes total]",
                 safe_cut(&json_str, MAX_LOG_BODY_SIZE),
-                body_bytes.len())
+                body_bytes.len()
+            )
         } else {
             json.to_string()
         };
@@ -512,9 +514,11 @@ fn sanitize_request_body(body_bytes: &[u8]) -> (Option<String>, bool) {
     } else {
         // Not valid JSON, treat as plain text
         let sanitized = if truncated {
-            format!("{}... [TRUNCATED: {} bytes total]",
+            format!(
+                "{}... [TRUNCATED: {} bytes total]",
                 safe_cut(&body_str, MAX_LOG_BODY_SIZE),
-                body_bytes.len())
+                body_bytes.len()
+            )
         } else {
             body_str.to_string()
         };
@@ -528,7 +532,10 @@ fn redact_sensitive_fields(value: &mut serde_json::Value) {
         serde_json::Value::Object(map) => {
             for key in map.keys().cloned().collect::<Vec<_>>() {
                 let key_lower = key.to_lowercase();
-                if SENSITIVE_FIELDS.iter().any(|f| key_lower.contains(&f.to_lowercase())) {
+                if SENSITIVE_FIELDS
+                    .iter()
+                    .any(|f| key_lower.contains(&f.to_lowercase()))
+                {
                     map.insert(key, serde_json::Value::String("***REDACTED***".to_string()));
                 } else if let Some(nested) = map.get_mut(&key) {
                     redact_sensitive_fields(nested);
@@ -554,7 +561,10 @@ fn sanitize_request_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     for (name, value) in headers {
         let name_str = name.as_str().to_lowercase();
         if SENSITIVE_HEADERS.iter().any(|h| name_str.contains(h)) {
-            sanitized_map.insert(name.to_string(), serde_json::Value::String("***REDACTED***".to_string()));
+            sanitized_map.insert(
+                name.to_string(),
+                serde_json::Value::String("***REDACTED***".to_string()),
+            );
         } else if let Ok(v) = value.to_str() {
             sanitized_map.insert(name.to_string(), serde_json::Value::String(v.to_string()));
         }
@@ -580,17 +590,27 @@ fn sanitize_response_body(body: &[u8]) -> (Option<String>, bool) {
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body_str) {
         let json_str = json.to_string();
         if truncated {
-            (Some(format!("{}... [TRUNCATED: {} bytes total]",
-                safe_cut(&json_str, MAX_LOG_BODY_SIZE),
-                body.len())), true)
+            (
+                Some(format!(
+                    "{}... [TRUNCATED: {} bytes total]",
+                    safe_cut(&json_str, MAX_LOG_BODY_SIZE),
+                    body.len()
+                )),
+                true,
+            )
         } else {
             (Some(json_str), false)
         }
     } else {
         if truncated {
-            (Some(format!("{}... [TRUNCATED: {} bytes total]",
-                safe_cut(&body_str, MAX_LOG_BODY_SIZE),
-                body.len())), true)
+            (
+                Some(format!(
+                    "{}... [TRUNCATED: {} bytes total]",
+                    safe_cut(&body_str, MAX_LOG_BODY_SIZE),
+                    body.len()
+                )),
+                true,
+            )
         } else {
             (Some(body_str.to_string()), false)
         }
@@ -892,7 +912,8 @@ pub async fn create_router_app(
     });
 
     // Setup Async Request Log Channel (detailed request/response logging)
-    let (request_log_tx, mut request_log_rx) = mpsc::channel::<RouterRequestLog>(LOG_CHANNEL_BUFFER);
+    let (request_log_tx, mut request_log_rx) =
+        mpsc::channel::<RouterRequestLog>(LOG_CHANNEL_BUFFER);
     let db_for_request_logger = db.clone();
 
     // Spawn Request Logging Task
@@ -931,7 +952,7 @@ pub async fn create_router_app(
         budget_update_tx,
         request_log_storage_policy,
         empty_response_counter: Arc::new(EmptyResponseCounter::new()),
-        channel_health_manager: Arc::new(crate::channel_health_manager::ChannelHealthManager::new())
+        channel_health_manager: Arc::new(crate::channel_health_manager::ChannelHealthManager::new()),
     };
 
     use burncloud_common::constants::INTERNAL_PREFIX;
@@ -976,7 +997,9 @@ async fn price_sync_handler(State(state): State<AppState>) -> Response {
             StatusCode::SERVICE_UNAVAILABLE,
             "content-type",
             "application/json",
-            Body::from(r#"{"error":{"message":"Price sync task is not running","type":"server_error"}}"#),
+            Body::from(
+                r#"{"error":{"message":"Price sync task is not running","type":"server_error"}}"#,
+            ),
         );
     }
     match tokio::time::timeout(
@@ -1005,13 +1028,17 @@ async fn price_sync_handler(State(state): State<AppState>) -> Response {
             StatusCode::INTERNAL_SERVER_ERROR,
             "content-type",
             "application/json",
-            Body::from(r#"{"error":{"message":"Price sync task dropped the reply channel","type":"server_error"}}"#),
+            Body::from(
+                r#"{"error":{"message":"Price sync task dropped the reply channel","type":"server_error"}}"#,
+            ),
         ),
         Err(_) => build_response_with_header(
             StatusCode::GATEWAY_TIMEOUT,
             "content-type",
             "application/json",
-            Body::from(r#"{"error":{"message":"Price sync timed out after 60 seconds","type":"timeout_error"}}"#),
+            Body::from(
+                r#"{"error":{"message":"Price sync timed out after 60 seconds","type":"timeout_error"}}"#,
+            ),
         ),
     }
 }
@@ -1387,7 +1414,9 @@ async fn proxy_handler(
                 StatusCode::UNAUTHORIZED,
                 "content-type",
                 "application/json",
-                Body::from(r#"{"error":{"message":"Unauthorized: Missing Bearer Token","type":"authentication_error","code":"missing_token"}}"#),
+                Body::from(
+                    r#"{"error":{"message":"Unauthorized: Missing Bearer Token","type":"authentication_error","code":"missing_token"}}"#,
+                ),
             );
         }
     };
@@ -1514,7 +1543,9 @@ async fn proxy_handler(
             StatusCode::TOO_MANY_REQUESTS,
             "content-type",
             "application/json",
-            Body::from(r#"{"error":{"message":"Too Many Requests","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#),
+            Body::from(
+                r#"{"error":{"message":"Too Many Requests","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#,
+            ),
         );
     }
 
@@ -1927,7 +1958,10 @@ async fn proxy_handler(
             candidates: if log_data.candidates.is_empty() {
                 None
             } else {
-                Some(serde_json::to_string(&log_data.candidates).unwrap_or_else(|_| "[]".to_string()))
+                Some(
+                    serde_json::to_string(&log_data.candidates)
+                        .unwrap_or_else(|_| "[]".to_string()),
+                )
             },
             candidates_count: log_data.candidates_count,
             affinity_key: log_data.affinity_key,
@@ -1935,7 +1969,10 @@ async fn proxy_handler(
             failover_history: if log_data.failover_history.is_empty() {
                 None
             } else {
-                Some(serde_json::to_string(&log_data.failover_history).unwrap_or_else(|_| "[]".to_string()))
+                Some(
+                    serde_json::to_string(&log_data.failover_history)
+                        .unwrap_or_else(|_| "[]".to_string()),
+                )
             },
             storage_policy: state.request_log_storage_policy.as_str().to_string(),
             created_at: None,
@@ -2293,7 +2330,7 @@ async fn proxy_logic(
             routing_decision: None,
             sched_request_color: shaper_color,
             error_type: Some("router_reject".to_string()),
-                        request_log_data: None,
+            request_log_data: None,
         };
     }
 
@@ -2325,7 +2362,7 @@ async fn proxy_logic(
                     routing_decision: None,
                     sched_request_color: shaper_color,
                     error_type: Some("router_reject".to_string()),
-                        request_log_data: None,
+                    request_log_data: None,
                 };
             } else {
                 tracing::warn!(model = %model, "Preflight billing check failed — non-strict mode, allowing request: {e}");
@@ -2348,12 +2385,15 @@ async fn proxy_logic(
 
     // Record candidates for request log (Issue #334)
     if let Some(ref mut log_data) = request_log_data {
-        log_data.candidates = candidates.iter().map(|u| CandidateInfo {
-            id: u.id.clone(),
-            name: u.name.clone(),
-            protocol: u.protocol.clone(),
-            priority: u.priority,
-        }).collect();
+        log_data.candidates = candidates
+            .iter()
+            .map(|u| CandidateInfo {
+                id: u.id.clone(),
+                name: u.name.clone(),
+                protocol: u.protocol.clone(),
+                priority: u.priority,
+            })
+            .collect();
         log_data.candidates_count = candidates.len() as i32;
 
         // Record affinity key and hit
@@ -2361,7 +2401,8 @@ async fn proxy_logic(
         // Check if we have an affinity hit (first candidate was from affinity cache)
         if let Some(ref decision) = sched_routing_decision {
             if matches!(decision, model_router::RoutingDecision::AffinityHit) {
-                log_data.affinity_hit_channel_id = candidates.first().and_then(|c| c.id.parse().ok());
+                log_data.affinity_hit_channel_id =
+                    candidates.first().and_then(|c| c.id.parse().ok());
             }
         }
     }
@@ -2606,40 +2647,80 @@ async fn proxy_logic(
                         // Handle streaming vs non-streaming passthrough
                         if is_stream {
                             // Peek first chunk to detect errors before sending HTTP response
-                            let peek_timeout = std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
+                            let peek_timeout =
+                                std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
                             let mut peek_error_handled = false;
                             let body_stream = resp.bytes_stream();
-                            
+
                             let body_stream = {
                                 let body_stream_for_peek = body_stream;
-                                match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
-                                    crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
-                                    tracing::debug!(channel_id = %upstream.id, chunk_len = first_chunk.len(), "Peek: got first chunk, checking for SSE error");
-                                        if let Some((error_code, error_msg, is_auth)) = 
-                                            crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
-                                            let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
+                                match crate::stream_peek::peek_first_chunk(
+                                    body_stream_for_peek,
+                                    peek_timeout,
+                                )
+                                .await
+                                {
+                                    crate::stream_peek::PeekResult::HasFirstChunk {
+                                        first_chunk,
+                                        remaining_stream,
+                                    } => {
+                                        tracing::debug!(channel_id = %upstream.id, chunk_len = first_chunk.len(), "Peek: got first chunk, checking for SSE error");
+                                        if let Some((error_code, error_msg, is_auth)) =
+                                            crate::stream_peek::check_sse_error_in_chunk(
+                                                &first_chunk,
+                                            )
+                                        {
+                                            let failure_type = if is_auth {
+                                                FailureType::AuthFailed
+                                            } else {
+                                                FailureType::ServerError
+                                            };
                                             tracing::warn!(channel_id = %upstream.id, error_code = error_code, error_msg = error_msg, ?failure_type, "SSE error in first chunk (Passthrough) - retrying");
-                                            state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
-                                            state.channel_state_tracker.record_error(upstream.id.parse().unwrap_or(0), model_name.as_deref(), &failure_type, &format!("SSE error: {}", error_msg));
-                                            if let Some(model) = model_name { state.affinity_cache.evict(&session_id.to_string(), model); }
-                                            last_error = format!("SSE error {}: {}", error_code, error_msg);
+                                            state.circuit_breaker.record_failure_with_type(
+                                                &upstream.id,
+                                                failure_type.clone(),
+                                            );
+                                            state.channel_state_tracker.record_error(
+                                                upstream.id.parse().unwrap_or(0),
+                                                model_name.as_deref(),
+                                                &failure_type,
+                                                &format!("SSE error: {}", error_msg),
+                                            );
+                                            if let Some(model) = model_name {
+                                                state
+                                                    .affinity_cache
+                                                    .evict(&session_id.to_string(), model);
+                                            }
+                                            last_error =
+                                                format!("SSE error {}: {}", error_code, error_msg);
                                             peek_error_handled = true;
-                                            futures::stream::empty::<Result<axum::body::Bytes, reqwest::Error>>().boxed()
+                                            futures::stream::empty::<
+                                                Result<axum::body::Bytes, reqwest::Error>,
+                                            >()
+                                            .boxed()
                                         } else {
-                                            let first_chunk_stream = futures::stream::once(async move { Ok(first_chunk) });
+                                            let first_chunk_stream = futures::stream::once(
+                                                async move { Ok(first_chunk) },
+                                            );
                                             first_chunk_stream.chain(remaining_stream).boxed()
                                         }
                                     }
                                     crate::stream_peek::PeekResult::Empty => {
                                         tracing::warn!(channel_id = %upstream.id, "Empty first chunk (Passthrough) - retrying");
-                                        state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                        state.circuit_breaker.record_failure_with_type(
+                                            &upstream.id,
+                                            FailureType::EmptyResponse,
+                                        );
                                         last_error = "Empty response".to_string();
                                         peek_error_handled = true;
                                         futures::stream::empty().boxed()
                                     }
                                     crate::stream_peek::PeekResult::Error(e) => {
                                         tracing::error!(channel_id = %upstream.id, error = ?e, "Peek error (Passthrough)");
-                                        state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::ServerError);
+                                        state.circuit_breaker.record_failure_with_type(
+                                            &upstream.id,
+                                            FailureType::ServerError,
+                                        );
                                         last_error = format!("Network error: {}", e);
                                         peek_error_handled = true;
                                         futures::stream::empty().boxed()
@@ -2650,9 +2731,11 @@ async fn proxy_logic(
                                     }
                                 }
                             };
-                            
-                            if peek_error_handled { continue; }
-                            
+
+                            if peek_error_handled {
+                                continue;
+                            }
+
                             let counter_clone = Arc::clone(&token_counter);
                             let counter_clone = Arc::clone(&token_counter);
 
@@ -2875,7 +2958,7 @@ async fn proxy_logic(
                                 );
                                 token_counter.set_from_usage(&resp_usage);
                             }
-                            
+
                             // Check response quality using the new quality detection system
                             // This replaces simple empty check with comprehensive quality analysis
                             let body_str = String::from_utf8_lossy(&resp_bytes);
@@ -2888,7 +2971,7 @@ async fn proxy_logic(
                                 status,
                                 &resp_headers,
                             );
-                            
+
                             if is_failure {
                                 tracing::warn!(
                                     channel_id = %upstream.id,
@@ -2930,7 +3013,7 @@ async fn proxy_logic(
                                 routing_decision: sched_routing_decision.clone(),
                                 sched_request_color: shaper_color,
                                 error_type: None,
-                            request_log_data: None,
+                                request_log_data: None,
                             };
                         }
                     } else {
@@ -2964,7 +3047,7 @@ async fn proxy_logic(
                                     routing_decision: sched_routing_decision.clone(),
                                     sched_request_color: shaper_color,
                                     error_type: Some("upstream_error".to_string()),
-                        request_log_data: None,
+                                    request_log_data: None,
                                 };
                             }
                         };
@@ -3281,7 +3364,7 @@ async fn proxy_logic(
                                 routing_decision: sched_routing_decision.clone(),
                                 sched_request_color: shaper_color,
                                 error_type: None,
-                            request_log_data: None,
+                                request_log_data: None,
                             };
                         }
                         // L2 Shaper success: OpenAI streaming path — keep est_tpm
@@ -3292,20 +3375,34 @@ async fn proxy_logic(
 
                         // Peek first chunk to detect errors before sending HTTP response
                         // This allows retry on auth errors instead of sending error to user
-                        let peek_timeout = std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
+                        let peek_timeout =
+                            std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
                         let mut peek_error_handled = false;
                         let body_stream = resp.bytes_stream();
-                        
+
                         // Peek and check for errors
                         let body_stream = {
                             let body_stream_for_peek = body_stream;
-                            match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
-                                crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                            match crate::stream_peek::peek_first_chunk(
+                                body_stream_for_peek,
+                                peek_timeout,
+                            )
+                            .await
+                            {
+                                crate::stream_peek::PeekResult::HasFirstChunk {
+                                    first_chunk,
+                                    remaining_stream,
+                                } => {
                                     tracing::debug!(channel_id = %upstream.id, chunk_len = first_chunk.len(), "Peek: got first chunk, checking for SSE error");
-                                    if let Some((error_code, error_msg, is_auth)) = 
-                                        crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
+                                    if let Some((error_code, error_msg, is_auth)) =
+                                        crate::stream_peek::check_sse_error_in_chunk(&first_chunk)
+                                    {
                                         // Error detected - record and mark for retry
-                                        let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
+                                        let failure_type = if is_auth {
+                                            FailureType::AuthFailed
+                                        } else {
+                                            FailureType::ServerError
+                                        };
                                         tracing::warn!(
                                             channel_id = %upstream.id,
                                             error_code = error_code,
@@ -3313,7 +3410,10 @@ async fn proxy_logic(
                                             ?failure_type,
                                             "SSE error in first chunk (OpenAI) - retrying"
                                         );
-                                        state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
+                                        state.circuit_breaker.record_failure_with_type(
+                                            &upstream.id,
+                                            failure_type.clone(),
+                                        );
                                         state.channel_state_tracker.record_error(
                                             upstream.id.parse().unwrap_or(0),
                                             model_name.as_deref(),
@@ -3321,28 +3421,41 @@ async fn proxy_logic(
                                             &format!("SSE error: {}", error_msg),
                                         );
                                         if let Some(model) = model_name {
-                                            state.affinity_cache.evict(&session_id.to_string(), model);
+                                            state
+                                                .affinity_cache
+                                                .evict(&session_id.to_string(), model);
                                         }
-                                        last_error = format!("SSE error {}: {}", error_code, error_msg);
+                                        last_error =
+                                            format!("SSE error {}: {}", error_code, error_msg);
                                         peek_error_handled = true;
                                         // Return empty stream since we will continue anyway
-                                        futures::stream::empty::<Result<axum::body::Bytes, reqwest::Error>>().boxed()
+                                        futures::stream::empty::<
+                                            Result<axum::body::Bytes, reqwest::Error>,
+                                        >()
+                                        .boxed()
                                     } else {
                                         // No error - prepend first chunk
-                                        let first_chunk_stream = futures::stream::once(async move { Ok(first_chunk) });
+                                        let first_chunk_stream =
+                                            futures::stream::once(async move { Ok(first_chunk) });
                                         first_chunk_stream.chain(remaining_stream).boxed()
                                     }
                                 }
                                 crate::stream_peek::PeekResult::Empty => {
                                     tracing::warn!(channel_id = %upstream.id, "Empty first chunk (OpenAI) - retrying");
-                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    state.circuit_breaker.record_failure_with_type(
+                                        &upstream.id,
+                                        FailureType::EmptyResponse,
+                                    );
                                     last_error = "Empty response".to_string();
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
                                 }
                                 crate::stream_peek::PeekResult::Error(e) => {
                                     tracing::error!(channel_id = %upstream.id, error = ?e, "Peek error (OpenAI)");
-                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    state.circuit_breaker.record_failure_with_type(
+                                        &upstream.id,
+                                        FailureType::EmptyResponse,
+                                    );
                                     last_error = format!("Network error: {}", e);
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
@@ -3353,12 +3466,12 @@ async fn proxy_logic(
                                 }
                             }
                         };
-                        
+
                         // If peek detected an error, skip this channel and try next
                         if peek_error_handled {
                             continue;
                         }
-                        
+
                         let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
 
@@ -3373,13 +3486,14 @@ async fn proxy_logic(
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let seen_tokens_clone = Arc::clone(&seen_tokens);
-                        
+
                         // Track if SSE error was detected during streaming
-                        let sse_error_detected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let sse_error_detected =
+                            Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let sse_error_detected_clone = Arc::clone(&sse_error_detected);
                         let sse_error_is_auth = Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let sse_error_is_auth_clone = Arc::clone(&sse_error_is_auth);
-                        
+
                         // Clone for stream closure (original will be used in done closure)
                         let upstream_id_str_for_stream = upstream_id_str.clone();
 
@@ -3462,15 +3576,17 @@ async fn proxy_logic(
                         let done = futures::stream::once(async move {
                             if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
                                 // Use sliding window counter: only penalize after consecutive empty responses
-                                let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
-                                
+                                let should_penalize = state_clone
+                                    .empty_response_counter
+                                    .record_empty(&upstream_id_str);
+
                                 if should_penalize {
                                     tracing::warn!(
                                         channel_id = %upstream_id_str,
                                         model = ?model_name_clone,
                                         "Consecutive empty streaming responses exceeded threshold, treating as failure"
                                     );
-                                    
+
                                     // Threshold exceeded - record failure
                                     state_clone.circuit_breaker.record_failure_with_type(
                                         &upstream_id_str,
@@ -3505,7 +3621,11 @@ async fn proxy_logic(
                                 // Now we can safely record success for the streaming response
                                 state_clone.circuit_breaker.record_success(&upstream_id_str);
                                 if let Some(model) = &model_name_clone {
-                                    state_clone.affinity_cache.insert(&session_id_clone, model, channel_id);
+                                    state_clone.affinity_cache.insert(
+                                        &session_id_clone,
+                                        model,
+                                        channel_id,
+                                    );
                                 }
                             }
                             Ok(axum::body::Bytes::new())
@@ -3544,18 +3664,32 @@ async fn proxy_logic(
                     // Handle Streaming for non-OpenAI with peek
                     if is_stream {
                         // Peek first chunk to detect errors before sending HTTP response
-                        let peek_timeout = std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
+                        let peek_timeout =
+                            std::time::Duration::from_secs(PEEK_FIRST_CHUNK_TIMEOUT_SECS);
                         let mut peek_error_handled = false;
                         let body_stream = resp.bytes_stream();
-                        
+
                         let body_stream = {
                             let body_stream_for_peek = body_stream;
-                            match crate::stream_peek::peek_first_chunk(body_stream_for_peek, peek_timeout).await {
-                                crate::stream_peek::PeekResult::HasFirstChunk { first_chunk, remaining_stream } => {
+                            match crate::stream_peek::peek_first_chunk(
+                                body_stream_for_peek,
+                                peek_timeout,
+                            )
+                            .await
+                            {
+                                crate::stream_peek::PeekResult::HasFirstChunk {
+                                    first_chunk,
+                                    remaining_stream,
+                                } => {
                                     tracing::debug!(channel_id = %upstream.id, chunk_len = first_chunk.len(), "Peek: got first chunk, checking for SSE error");
-                                    if let Some((error_code, error_msg, is_auth)) = 
-                                        crate::stream_peek::check_sse_error_in_chunk(&first_chunk) {
-                                        let failure_type = if is_auth { FailureType::AuthFailed } else { FailureType::ServerError };
+                                    if let Some((error_code, error_msg, is_auth)) =
+                                        crate::stream_peek::check_sse_error_in_chunk(&first_chunk)
+                                    {
+                                        let failure_type = if is_auth {
+                                            FailureType::AuthFailed
+                                        } else {
+                                            FailureType::ServerError
+                                        };
                                         tracing::warn!(
                                             channel_id = %upstream.id,
                                             error_code = error_code,
@@ -3563,7 +3697,10 @@ async fn proxy_logic(
                                             ?failure_type,
                                             "SSE error in first chunk (non-OpenAI) - retrying"
                                         );
-                                        state.circuit_breaker.record_failure_with_type(&upstream.id, failure_type.clone());
+                                        state.circuit_breaker.record_failure_with_type(
+                                            &upstream.id,
+                                            failure_type.clone(),
+                                        );
                                         state.channel_state_tracker.record_error(
                                             upstream.id.parse().unwrap_or(0),
                                             model_name.as_deref(),
@@ -3571,26 +3708,39 @@ async fn proxy_logic(
                                             &format!("SSE error: {}", error_msg),
                                         );
                                         if let Some(model) = model_name {
-                                            state.affinity_cache.evict(&session_id.to_string(), model);
+                                            state
+                                                .affinity_cache
+                                                .evict(&session_id.to_string(), model);
                                         }
-                                        last_error = format!("SSE error {}: {}", error_code, error_msg);
+                                        last_error =
+                                            format!("SSE error {}: {}", error_code, error_msg);
                                         peek_error_handled = true;
-                                        futures::stream::empty::<Result<axum::body::Bytes, reqwest::Error>>().boxed()
+                                        futures::stream::empty::<
+                                            Result<axum::body::Bytes, reqwest::Error>,
+                                        >()
+                                        .boxed()
                                     } else {
-                                        let first_chunk_stream = futures::stream::once(async move { Ok(first_chunk) });
+                                        let first_chunk_stream =
+                                            futures::stream::once(async move { Ok(first_chunk) });
                                         first_chunk_stream.chain(remaining_stream).boxed()
                                     }
                                 }
                                 crate::stream_peek::PeekResult::Empty => {
                                     tracing::warn!(channel_id = %upstream.id, "Empty first chunk (non-OpenAI) - retrying");
-                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    state.circuit_breaker.record_failure_with_type(
+                                        &upstream.id,
+                                        FailureType::EmptyResponse,
+                                    );
                                     last_error = "Empty response".to_string();
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
                                 }
                                 crate::stream_peek::PeekResult::Error(e) => {
                                     tracing::error!(channel_id = %upstream.id, error = ?e, "Peek error (non-OpenAI)");
-                                    state.circuit_breaker.record_failure_with_type(&upstream.id, FailureType::EmptyResponse);
+                                    state.circuit_breaker.record_failure_with_type(
+                                        &upstream.id,
+                                        FailureType::EmptyResponse,
+                                    );
                                     last_error = format!("Network error: {}", e);
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
@@ -3601,11 +3751,11 @@ async fn proxy_logic(
                                 }
                             }
                         };
-                        
+
                         if peek_error_handled {
                             continue;
                         }
-                        
+
                         let adaptor_clone = Arc::clone(&adaptor);
                         let counter_clone = Arc::clone(&token_counter);
                         let parser = get_parser(channel_type);
@@ -3621,13 +3771,14 @@ async fn proxy_logic(
                         // Track if we've seen any tokens during streaming
                         let seen_tokens = Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let seen_tokens_clone = Arc::clone(&seen_tokens);
-                        
+
                         // Track if SSE error was detected during streaming
-                        let sse_error_detected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        let sse_error_detected =
+                            Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let sse_error_detected_clone = Arc::clone(&sse_error_detected);
                         let sse_error_is_auth = Arc::new(std::sync::atomic::AtomicBool::new(false));
                         let sse_error_is_auth_clone = Arc::clone(&sse_error_is_auth);
-                        
+
                         // Clone for stream closure (original will be used in done closure)
                         let upstream_id_str_for_stream = upstream_id_str.clone();
 
@@ -3722,20 +3873,21 @@ async fn proxy_logic(
                             // Check for SSE error first (takes priority over empty response)
                             if sse_error_detected.load(std::sync::atomic::Ordering::Relaxed) {
                                 // SSE error was detected during streaming
-                                let is_auth = sse_error_is_auth.load(std::sync::atomic::Ordering::Relaxed);
+                                let is_auth =
+                                    sse_error_is_auth.load(std::sync::atomic::Ordering::Relaxed);
                                 let failure_type = if is_auth {
                                     FailureType::AuthFailed
                                 } else {
                                     FailureType::ServerError
                                 };
-                                
+
                                 tracing::warn!(
                                     channel_id = %upstream_id_str,
                                     model = ?model_name_clone,
                                     ?failure_type,
                                     "SSE streaming error - recording failure to circuit breaker"
                                 );
-                                
+
                                 // Record failure with correct type (AuthFailed triggers 30-min cooldown)
                                 state_clone.circuit_breaker.record_failure_with_type(
                                     &upstream_id_str,
@@ -3747,7 +3899,7 @@ async fn proxy_logic(
                                     &failure_type,
                                     "SSE streaming error detected",
                                 );
-                                
+
                                 // Evict affinity
                                 if let Some(model) = &model_name_clone {
                                     state_clone.affinity_cache.evict(&session_id_clone, model);
@@ -3756,15 +3908,17 @@ async fn proxy_logic(
                             // Check for empty response after stream ends with sliding window counter
                             else if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
                                 // Use sliding window counter: only penalize after consecutive empty responses
-                                let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
-                                
+                                let should_penalize = state_clone
+                                    .empty_response_counter
+                                    .record_empty(&upstream_id_str);
+
                                 if should_penalize {
                                     tracing::warn!(
                                         channel_id = %upstream_id_str,
                                         model = ?model_name_clone,
                                         "Consecutive empty streaming responses exceeded threshold, treating as failure"
                                     );
-                                    
+
                                     // Threshold exceeded - record failure to circuit breaker and channel state
                                     state_clone.circuit_breaker.record_failure_with_type(
                                         &upstream_id_str,
@@ -3800,7 +3954,11 @@ async fn proxy_logic(
                                 // Now we can safely record success for the streaming response
                                 state_clone.circuit_breaker.record_success(&upstream_id_str);
                                 if let Some(model) = &model_name_clone {
-                                    state_clone.affinity_cache.insert(&session_id_clone, model, channel_id);
+                                    state_clone.affinity_cache.insert(
+                                        &session_id_clone,
+                                        model,
+                                        channel_id,
+                                    );
                                 }
                             }
                             Ok(axum::body::Bytes::from(SSE_DONE_MARKER))
@@ -3904,7 +4062,7 @@ async fn proxy_logic(
                         status,
                         &resp_headers,
                     );
-                    
+
                     if is_failure {
                         tracing::warn!(
                             channel_id = %upstream.id,
@@ -3933,7 +4091,7 @@ async fn proxy_logic(
                         routing_decision: sched_routing_decision.clone(),
                         sched_request_color: shaper_color,
                         error_type: None,
-                            request_log_data: None,
+                        request_log_data: None,
                     };
                 } else {
                     // Handle non-success responses (4xx errors)
@@ -3947,14 +4105,14 @@ async fn proxy_logic(
                             // but no actual usage was billed).
                             return ProxyResult {
                                 response: build_response_with_header(
-                                        status,
-                                        "content-type",
-                                        "application/json",
-                                        Body::from(format!(
-                                            r#"{{"error":{{"message":"{}","type":"upstream_error","code":"read_error"}}}}"#,
-                                            last_error
-                                        )),
-                                    ),
+                                    status,
+                                    "content-type",
+                                    "application/json",
+                                    Body::from(format!(
+                                        r#"{{"error":{{"message":"{}","type":"upstream_error","code":"read_error"}}}}"#,
+                                        last_error
+                                    )),
+                                ),
                                 upstream_id: last_upstream_id,
                                 final_status: status,
                                 pricing_region: selected_pricing_region.clone(),
@@ -3966,7 +4124,7 @@ async fn proxy_logic(
                                 routing_decision: sched_routing_decision.clone(),
                                 sched_request_color: shaper_color,
                                 error_type: Some("upstream_error".to_string()),
-                        request_log_data: None,
+                                request_log_data: None,
                             };
                         }
                     };
@@ -4074,7 +4232,7 @@ async fn proxy_logic(
                         routing_decision: sched_routing_decision.clone(),
                         sched_request_color: shaper_color,
                         error_type: Some(et.to_string()),
-                            request_log_data: None,
+                        request_log_data: None,
                     };
                 }
             }
@@ -4136,7 +4294,7 @@ async fn proxy_logic(
             routing_decision: sched_routing_decision.clone(),
             sched_request_color: shaper_color,
             error_type: Some("router_reject".to_string()),
-                        request_log_data: None,
+            request_log_data: None,
         };
     }
 
@@ -4162,7 +4320,7 @@ async fn proxy_logic(
         routing_decision: sched_routing_decision.clone(),
         sched_request_color: shaper_color,
         error_type: Some("upstream_error".to_string()),
-                        request_log_data: None,
+        request_log_data: None,
     }
 }
 
@@ -4326,19 +4484,19 @@ async fn metrics_handler() -> Response {
         .body(Body::from(metrics_output))
         .expect("Failed to build metrics response")
 }
-pub mod smart_circuit_breaker;
 pub mod channel_health_manager;
 pub mod health_probe;
+pub mod smart_circuit_breaker;
 
 /// Check response quality using the new ResponseQuality system.
-/// 
+///
 /// This replaces the simple empty response check with a more sophisticated
 /// quality detection that considers:
 /// - Empty responses (zero tokens)
 /// - Partial responses
 /// - Malformed responses
 /// - Upstream errors
-/// 
+///
 /// Returns the response quality and whether the response should be treated as a failure.
 fn check_response_quality(
     state: &AppState,
@@ -4349,36 +4507,48 @@ fn check_response_quality(
     status_code: axum::http::StatusCode,
     headers: &axum::http::HeaderMap,
 ) -> (crate::response_quality::ResponseQuality, bool) {
+    use crate::response_quality::RateLimitScope as UpstreamRateLimitScope;
     use crate::response_quality::ResponseQuality;
     use crate::response_quality::ResponseQualityDetector;
     use crate::response_quality::UpstreamErrorType;
-    use crate::response_quality::RateLimitScope as UpstreamRateLimitScope;
-    
+
     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
     let model = model_name.unwrap_or("unknown");
     let http_status: u16 = status_code.as_u16();
-    
-    tracing::info!("check_response_quality called for channel={}, model={}, status={}", channel_id, model, http_status);
-    
+
+    tracing::info!(
+        "check_response_quality called for channel={}, model={}, status={}",
+        channel_id,
+        model,
+        http_status
+    );
+
     // Detect response quality using the detector
     let detector = ResponseQualityDetector::new();
-    
+
     // Determine channel_type based on upstream protocol
     let channel_type = match upstream.protocol.as_str() {
         "claude" | "anthropic" => "anthropic",
         "gemini" | "vertex" => "gemini",
         _ => "openai",
     };
-    
+
     let quality = detector.detect(http_status, headers, response_body, 0, false, channel_type);
-    
+
     // Process response through health manager (records to circuit breaker)
     state.channel_health_manager.process_response(
-        channel_id, model, http_status, headers, response_body, 0, false, channel_type,
+        channel_id,
+        model,
+        http_status,
+        headers,
+        response_body,
+        0,
+        false,
+        channel_type,
     );
-    
+
     let upstream_id_str = upstream.id.clone();
-    
+
     match quality {
         ResponseQuality::Healthy { .. } => {
             // Reset empty response counter
@@ -4397,7 +4567,7 @@ fn check_response_quality(
                 model = ?model_name,
                 "Empty response detected (new quality system)"
             );
-            
+
             let should_penalize = state.empty_response_counter.record_empty(&upstream_id_str);
             if should_penalize {
                 record_upstream_failure(
@@ -4418,7 +4588,7 @@ fn check_response_quality(
                 model = ?model_name,
                 "Malformed response detected"
             );
-            
+
             record_upstream_failure(
                 state,
                 upstream,
@@ -4432,16 +4602,23 @@ fn check_response_quality(
         ResponseQuality::UpstreamError { ref error_type, .. } => {
             // Upstream error - treat as failure
             let failure_type = match error_type {
-                UpstreamErrorType::RateLimited { ref scope, ref retry_after } => {
-                    FailureType::RateLimited {
-                        scope: match scope {
-                            UpstreamRateLimitScope::Account => crate::circuit_breaker::RateLimitScope::Account,
-                            UpstreamRateLimitScope::Model => crate::circuit_breaker::RateLimitScope::Model,
-                            UpstreamRateLimitScope::Unknown => crate::circuit_breaker::RateLimitScope::Unknown,
-                        },
-                        retry_after: retry_after.clone(),
-                    }
-                }
+                UpstreamErrorType::RateLimited {
+                    ref scope,
+                    ref retry_after,
+                } => FailureType::RateLimited {
+                    scope: match scope {
+                        UpstreamRateLimitScope::Account => {
+                            crate::circuit_breaker::RateLimitScope::Account
+                        }
+                        UpstreamRateLimitScope::Model => {
+                            crate::circuit_breaker::RateLimitScope::Model
+                        }
+                        UpstreamRateLimitScope::Unknown => {
+                            crate::circuit_breaker::RateLimitScope::Unknown
+                        }
+                    },
+                    retry_after: retry_after.clone(),
+                },
                 UpstreamErrorType::AuthFailed => FailureType::AuthFailed,
                 UpstreamErrorType::ModelNotFound => FailureType::ModelNotFound,
                 UpstreamErrorType::PaymentRequired => FailureType::PaymentRequired,
@@ -4451,7 +4628,7 @@ fn check_response_quality(
                 UpstreamErrorType::ConnectionError => FailureType::ConnectionError,
                 UpstreamErrorType::Overloaded { .. } => FailureType::ServerError,
             };
-            
+
             record_upstream_failure(
                 state,
                 upstream,

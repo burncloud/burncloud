@@ -100,11 +100,32 @@ fn wait_texts_for(screenshot: &str, fallback: &'static [&'static str]) -> &'stat
     match screenshot {
         "aesthetic-dashboard" => &["企业控制台", "仪表盘", "gpt-4o-mini", "Dashboard"],
         "aesthetic-models" => &["模型管理", "模型网络", "Model Management", "Models"],
-        "aesthetic-access" => &["访问凭证", "创建新凭证", "没有活跃的访问凭证", "没有活跃", "API Key", "Access", "凭证"],
+        "aesthetic-access" => &[
+            "访问凭证",
+            "创建新凭证",
+            "没有活跃的访问凭证",
+            "没有活跃",
+            "API Key",
+            "Access",
+            "凭证",
+        ],
         "aesthetic-settings" => &["系统设置", "Settings", "General"],
         "aesthetic-finance" => &["财务", "Finance", "账单", "充值记录", "Billing", "Recharge"],
-        "aesthetic-monitor" => &["风控雷达", "Risk Radar", "安全评分", "紧急熔断", "Blocked Attacks"],
-        "aesthetic-playground" => &["演练场", "Playground", "playground", "清空", "Clear", "渠道"],
+        "aesthetic-monitor" => &[
+            "风控雷达",
+            "Risk Radar",
+            "安全评分",
+            "紧急熔断",
+            "Blocked Attacks",
+        ],
+        "aesthetic-playground" => &[
+            "演练场",
+            "Playground",
+            "playground",
+            "清空",
+            "Clear",
+            "渠道",
+        ],
         _ => fallback,
     }
 }
@@ -119,9 +140,7 @@ fn aesthetic_pages_to_run() -> Vec<&'static AestheticPageSpec> {
                 .filter(|p| p.screenshot == focus)
                 .collect();
             if pages.is_empty() {
-                panic!(
-                    "AESTHETIC_FOCUS_PAGE={focus:?} does not match any aesthetic page key"
-                );
+                panic!("AESTHETIC_FOCUS_PAGE={focus:?} does not match any aesthetic page key");
             }
             eprintln!("E2E: aesthetic focus page only: {focus}");
             return pages;
@@ -130,7 +149,11 @@ fn aesthetic_pages_to_run() -> Vec<&'static AestheticPageSpec> {
     AESTHETIC_PAGES.iter().collect()
 }
 
-fn wait_page_text(browser: &mut AgentBrowser, texts: &[&str], timeout_ms: u64) -> anyhow::Result<()> {
+fn wait_page_text(
+    browser: &mut AgentBrowser,
+    texts: &[&str],
+    timeout_ms: u64,
+) -> anyhow::Result<()> {
     let timeout_ms = if e2e_preview_enabled() {
         timeout_ms.max(30_000)
     } else {
@@ -303,11 +326,7 @@ fn seed_review_json(dir: &Path, page_keys: &[&str]) {
     }
 }
 
-fn write_outputs(
-    screenshots: &[String],
-    metrics: &Value,
-    status: &str,
-) {
+fn write_outputs(screenshots: &[String], metrics: &Value, status: &str) {
     let dir = artifacts_dir();
     let _ = fs::create_dir_all(&dir);
 
@@ -335,7 +354,8 @@ fn write_outputs(
 #[tokio::test]
 #[ignore = "requires agent-browser and running burncloud server (cargo run -p burncloud-loops -- gate aesthetic-metrics)"]
 async fn aesthetic_acceptance() {
-    let _ = setup_browser().expect("agent-browser required: npm install -g agent-browser && agent-browser install");
+    let _ = setup_browser()
+        .expect("agent-browser required: npm install -g agent-browser && agent-browser install");
     let base_url = common::spawn_app().await;
 
     let dir = artifacts_dir();
@@ -379,7 +399,11 @@ async fn aesthetic_acceptance() {
                 page.screenshot, path
             );
             let _ = browser.screenshot(&format!("FAIL-load-{}", page.screenshot));
-            write_outputs(&screenshots, &json!({ "status": "fail", "pages": metrics_by_page }), "fail");
+            write_outputs(
+                &screenshots,
+                &json!({ "status": "fail", "pages": metrics_by_page }),
+                "fail",
+            );
             panic!("Page {} did not load: {}", path, e);
         }
 
@@ -389,7 +413,9 @@ async fn aesthetic_acceptance() {
         browser
             .screenshot(&viewport_name)
             .expect("viewport screenshot");
-        browser.screenshot_full(&full_name).expect("full screenshot");
+        browser
+            .screenshot_full(&full_name)
+            .expect("full screenshot");
         screenshots.push(format!("{viewport_name}.png"));
         screenshots.push(format!("{full_name}.png"));
         let _shot_ms = shot_started.elapsed().as_millis();

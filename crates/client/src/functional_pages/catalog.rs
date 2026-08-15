@@ -9,7 +9,11 @@ use crate::{
 };
 
 fn status_label(channel: &Channel) -> &'static str {
-    if channel.status == 1 { "Active" } else { "Down" }
+    if channel.status == 1 {
+        "Active"
+    } else {
+        "Down"
+    }
 }
 
 #[derive(Default)]
@@ -45,7 +49,12 @@ fn route_group_health(rows: &[Channel]) -> RouteGroupHealth {
     let mut active_model_upstreams: BTreeMap<String, usize> = BTreeMap::new();
 
     for channel in rows {
-        for model in channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()) {
+        for model in channel
+            .models
+            .split(',')
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+        {
             configured_models.insert(model.to_string());
             if channel.status == 1 {
                 *active_model_upstreams.entry(model.to_string()).or_default() += 1;
@@ -79,7 +88,9 @@ pub fn Models() -> Element {
     let mut resource = use_resource(move || async move { ChannelService::list(100).await });
     let snapshot = resource.read().clone();
     let is_loading = snapshot.is_none();
-    let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let load_error = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
     let has_load_error = load_error.is_some();
     let channels = snapshot
         .as_ref()
@@ -89,21 +100,37 @@ pub fn Models() -> Element {
 
     let mut model_map: BTreeMap<String, ModelAvailability> = BTreeMap::new();
     for channel in &channels {
-        for model in channel.models.split(',').map(str::trim).filter(|model| !model.is_empty()) {
+        for model in channel
+            .models
+            .split(',')
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+        {
             let entry = model_map.entry(model.to_string()).or_default();
             entry.providers.insert(channel.name.clone());
             if channel.status == 1 {
                 entry.active_providers.insert(channel.name.clone());
             }
-            for group in channel.group.split(',').map(str::trim).filter(|group| !group.is_empty()) {
+            for group in channel
+                .group
+                .split(',')
+                .map(str::trim)
+                .filter(|group| !group.is_empty())
+            {
                 entry.groups.insert(group.to_string());
             }
         }
     }
 
     let total_models = model_map.len();
-    let available_models = model_map.values().filter(|model| !model.active_providers.is_empty()).count();
-    let redundant_models = model_map.values().filter(|model| model.active_providers.len() >= 2).count();
+    let available_models = model_map
+        .values()
+        .filter(|model| !model.active_providers.is_empty())
+        .count();
+    let redundant_models = model_map
+        .values()
+        .filter(|model| model.active_providers.len() >= 2)
+        .count();
     let unavailable_models = total_models.saturating_sub(available_models);
     let single_upstream_models = available_models.saturating_sub(redundant_models);
     let health_class = if unavailable_models > 0 || single_upstream_models > 0 {
@@ -302,7 +329,9 @@ pub fn Routes() -> Element {
     let mut resource = use_resource(move || async move { ChannelService::list(100).await });
     let snapshot = resource.read().clone();
     let is_loading = snapshot.is_none();
-    let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let load_error = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
     let has_load_error = load_error.is_some();
     let channels = snapshot
         .as_ref()
@@ -312,8 +341,16 @@ pub fn Routes() -> Element {
 
     let mut groups: BTreeMap<String, Vec<Channel>> = BTreeMap::new();
     for channel in channels {
-        for group in channel.group.split(',').map(str::trim).filter(|group| !group.is_empty()) {
-            groups.entry(group.to_string()).or_default().push(channel.clone());
+        for group in channel
+            .group
+            .split(',')
+            .map(str::trim)
+            .filter(|group| !group.is_empty())
+        {
+            groups
+                .entry(group.to_string())
+                .or_default()
+                .push(channel.clone());
         }
     }
     for rows in groups.values_mut() {
@@ -325,10 +362,22 @@ pub fn Routes() -> Element {
     }
 
     let route_groups = groups.len();
-    let group_health = groups.values().map(|rows| route_group_health(rows)).collect::<Vec<_>>();
-    let fully_available_groups = group_health.iter().filter(|health| health.fully_available()).count();
-    let redundant_groups = group_health.iter().filter(|health| health.fully_redundant()).count();
-    let unavailable_groups = group_health.iter().filter(|health| health.available_models == 0).count();
+    let group_health = groups
+        .values()
+        .map(|rows| route_group_health(rows))
+        .collect::<Vec<_>>();
+    let fully_available_groups = group_health
+        .iter()
+        .filter(|health| health.fully_available())
+        .count();
+    let redundant_groups = group_health
+        .iter()
+        .filter(|health| health.fully_redundant())
+        .count();
+    let unavailable_groups = group_health
+        .iter()
+        .filter(|health| health.available_models == 0)
+        .count();
     let partial_groups = route_groups
         .saturating_sub(fully_available_groups)
         .saturating_sub(unavailable_groups);

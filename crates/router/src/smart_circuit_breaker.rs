@@ -224,7 +224,10 @@ impl SmartCircuitBreaker {
                     } else {
                         TripLevel::Channel {
                             until: reset_at,
-                            reason: self.trip_reason.clone().unwrap_or_else(|| "Circuit open".to_string()),
+                            reason: self
+                                .trip_reason
+                                .clone()
+                                .unwrap_or_else(|| "Circuit open".to_string()),
                         }
                     }
                 } else {
@@ -431,12 +434,11 @@ impl MultiLevelCircuitBreaker {
     /// Get health score for a model
     pub fn get_health_score(&self, model: Option<&str>) -> f64 {
         match model {
-            Some(m) => {
-                self.model_breakers
-                    .get(m)
-                    .map(|b| b.get_health_score())
-                    .unwrap_or_else(|| self.channel_breaker.get_health_score())
-            }
+            Some(m) => self
+                .model_breakers
+                .get(m)
+                .map(|b| b.get_health_score())
+                .unwrap_or_else(|| self.channel_breaker.get_health_score()),
             None => self.channel_breaker.get_health_score(),
         }
     }
@@ -588,7 +590,6 @@ mod tests {
     }
 
     #[test]
-
     #[test]
     fn test_multi_level_breaker() {
         let config = SmartCircuitBreakerConfig {

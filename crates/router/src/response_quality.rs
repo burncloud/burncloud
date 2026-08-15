@@ -129,7 +129,7 @@ impl Default for QualityDetectorConfig {
         Self {
             min_valid_tokens: MIN_VALID_TOKENS,
             capture_raw_body: true,
-            max_raw_body_len: 1024, // 1KB max
+            max_raw_body_len: 1024,          // 1KB max
             slow_latency_threshold_ms: 5000, // 5 seconds
         }
     }
@@ -204,9 +204,17 @@ impl ResponseQualityDetector {
                             .and_then(|m| m.as_str())
                             .map(|s| s.to_string())
                             .unwrap_or_else(|| "Upstream error in SSE response".to_string());
-                        let error_code = error.get("code").and_then(|c| c.as_u64()).map(|c| c as u16).unwrap_or(400);
+                        let error_code = error
+                            .get("code")
+                            .and_then(|c| c.as_u64())
+                            .map(|c| c as u16)
+                            .unwrap_or(400);
                         let error_type = self.classify_sse_error_code(error_code, &error_message);
-                        return ResponseQuality::UpstreamError { code: error_code, message: error_message, error_type };
+                        return ResponseQuality::UpstreamError {
+                            code: error_code,
+                            message: error_message,
+                            error_type,
+                        };
                     }
                 }
             }
@@ -214,13 +222,11 @@ impl ResponseQualityDetector {
 
         // 3. Try to parse tokens from response
         match self.parse_tokens(body, channel_type) {
-            Ok(tokens) if tokens >= self.config.min_valid_tokens => {
-                ResponseQuality::Healthy {
-                    tokens,
-                    latency_ms,
-                    is_streaming,
-                }
-            }
+            Ok(tokens) if tokens >= self.config.min_valid_tokens => ResponseQuality::Healthy {
+                tokens,
+                latency_ms,
+                is_streaming,
+            },
             Ok(tokens) => {
                 // Tokens below threshold - treat as empty
                 ResponseQuality::Empty {
@@ -323,18 +329,31 @@ impl ResponseQualityDetector {
     /// Classify SSE error based on error code and message.
     fn classify_sse_error_code(&self, error_code: u16, error_message: &str) -> UpstreamErrorType {
         let msg_lower = error_message.to_lowercase();
-        
+
         // Check for specific error patterns
-        if msg_lower.contains("rate limit") || msg_lower.contains("rate_limit") || error_code == 429 {
-            return UpstreamErrorType::RateLimited { scope: RateLimitScope::Unknown, retry_after: None };
+        if msg_lower.contains("rate limit") || msg_lower.contains("rate_limit") || error_code == 429
+        {
+            return UpstreamErrorType::RateLimited {
+                scope: RateLimitScope::Unknown,
+                retry_after: None,
+            };
         }
-        if msg_lower.contains("auth") || msg_lower.contains("appid") || msg_lower.contains("unauthorized") || msg_lower.contains("invalid key") {
+        if msg_lower.contains("auth")
+            || msg_lower.contains("appid")
+            || msg_lower.contains("unauthorized")
+            || msg_lower.contains("invalid key")
+        {
             return UpstreamErrorType::AuthFailed;
         }
-        if msg_lower.contains("quota") || msg_lower.contains("payment") || msg_lower.contains("billing") {
+        if msg_lower.contains("quota")
+            || msg_lower.contains("payment")
+            || msg_lower.contains("billing")
+        {
             return UpstreamErrorType::PaymentRequired;
         }
-        if msg_lower.contains("not found") || (msg_lower.contains("model") && msg_lower.contains("not")) {
+        if msg_lower.contains("not found")
+            || (msg_lower.contains("model") && msg_lower.contains("not"))
+        {
             return UpstreamErrorType::ModelNotFound;
         }
         if msg_lower.contains("overloaded") || msg_lower.contains("capacity") {
@@ -361,8 +380,8 @@ impl ResponseQualityDetector {
 
     /// Parse tokens from OpenAI format response.
     fn parse_openai_tokens(&self, body: &str) -> Result<u32, String> {
-        let json: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| format!("JSON parse error: {e}"))?;
+        let json: serde_json::Value =
+            serde_json::from_str(body).map_err(|e| format!("JSON parse error: {e}"))?;
 
         // Check for error response
         if json.get("error").is_some() {
@@ -379,8 +398,14 @@ impl ResponseQualityDetector {
                 return Ok(t);
             }
             // Fallback: sum prompt + completion
-            let prompt = usage.get("prompt_tokens").and_then(|p| p.as_u64()).unwrap_or(0);
-            let completion = usage.get("completion_tokens").and_then(|c| c.as_u64()).unwrap_or(0);
+            let prompt = usage
+                .get("prompt_tokens")
+                .and_then(|p| p.as_u64())
+                .unwrap_or(0);
+            let completion = usage
+                .get("completion_tokens")
+                .and_then(|c| c.as_u64())
+                .unwrap_or(0);
             return Ok((prompt + completion) as u32);
         }
 
@@ -409,8 +434,8 @@ impl ResponseQualityDetector {
 
     /// Parse tokens from Anthropic format response.
     fn parse_anthropic_tokens(&self, body: &str) -> Result<u32, String> {
-        let json: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| format!("JSON parse error: {e}"))?;
+        let json: serde_json::Value =
+            serde_json::from_str(body).map_err(|e| format!("JSON parse error: {e}"))?;
 
         // Check for error type
         if json.get("type").and_then(|t| t.as_str()) == Some("error") {
@@ -446,8 +471,8 @@ impl ResponseQualityDetector {
 
     /// Parse tokens from Gemini format response.
     fn parse_gemini_tokens(&self, body: &str) -> Result<u32, String> {
-        let json: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| format!("JSON parse error: {e}"))?;
+        let json: serde_json::Value =
+            serde_json::from_str(body).map_err(|e| format!("JSON parse error: {e}"))?;
 
         // Check for error
         if json.get("error").is_some() {
@@ -488,7 +513,10 @@ impl ResponseQualityDetector {
             }
             if let Some(usage) = json.get("usage") {
                 if usage.get("total_tokens").is_some() {
-                    return usage.get("total_tokens").and_then(|t| t.as_u64()).map(|t| t as u32)
+                    return usage
+                        .get("total_tokens")
+                        .and_then(|t| t.as_u64())
+                        .map(|t| t as u32)
                         .ok_or_else(|| "Could not parse total_tokens".to_string());
                 }
             }
@@ -540,17 +568,21 @@ impl ResponseQualityDetector {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             // Check for error type
             let error_type = json.get("type").and_then(|t| t.as_str());
-            
+
             match channel_type.to_lowercase().as_str() {
                 "anthropic" | "claude" => {
                     match error_type {
                         Some("error") | Some("api_error") => {
                             // Check for overloaded
-                            let msg = json.get("error").and_then(|e| e.as_str())
+                            let msg = json
+                                .get("error")
+                                .and_then(|e| e.as_str())
                                 .or_else(|| json.get("message").and_then(|m| m.as_str()));
                             if let Some(m) = msg {
                                 if m.to_lowercase().contains("overloaded") {
-                                    return Some(UpstreamErrorType::Overloaded { retry_after: None });
+                                    return Some(UpstreamErrorType::Overloaded {
+                                        retry_after: None,
+                                    });
                                 }
                             }
                             return Some(UpstreamErrorType::ServerError);
@@ -610,7 +642,9 @@ impl ResponseQualityDetector {
     /// This score feeds into the smart circuit breaker's health calculation.
     pub fn quality_to_health_score(quality: &ResponseQuality) -> f64 {
         match quality {
-            ResponseQuality::Healthy { tokens, latency_ms, .. } => {
+            ResponseQuality::Healthy {
+                tokens, latency_ms, ..
+            } => {
                 // Base score is 1.0, penalize for slow latency
                 let latency_penalty = if *latency_ms > 5000 {
                     0.7 // 30% penalty for slow responses
@@ -627,7 +661,9 @@ impl ResponseQualityDetector {
                 };
                 latency_penalty * token_bonus.min(1.0)
             }
-            ResponseQuality::Partial { received_tokens, .. } => {
+            ResponseQuality::Partial {
+                received_tokens, ..
+            } => {
                 // Partial response - moderate penalty
                 if *received_tokens > 0 {
                     0.5 // Got something, not complete failure
@@ -644,7 +680,7 @@ impl ResponseQualityDetector {
             ResponseQuality::UpstreamError { error_type, .. } => {
                 match error_type {
                     UpstreamErrorType::RateLimited { .. } => 0.3, // Temporary
-                    UpstreamErrorType::Overloaded { .. } => 0.3, // Temporary
+                    UpstreamErrorType::Overloaded { .. } => 0.3,  // Temporary
                     UpstreamErrorType::ServerError => 0.2,
                     UpstreamErrorType::GatewayError => 0.2,
                     UpstreamErrorType::Timeout => 0.2,
@@ -674,11 +710,11 @@ mod tests {
         let detector = ResponseQualityDetector::new();
         let mut headers = HeaderMap::new();
         headers.insert("content-type", HeaderValue::from_static("application/json"));
-        
+
         let body = r#"{"choices":[{"message":{"content":"Hello"}}],"usage":{"total_tokens":10}}"#;
-        
+
         let quality = detector.detect(200, &headers, body, 100, false, "openai");
-        
+
         match quality {
             ResponseQuality::Healthy { tokens, .. } => {
                 assert_eq!(tokens, 10);
@@ -691,9 +727,9 @@ mod tests {
     fn test_detect_empty_response() {
         let detector = ResponseQualityDetector::new();
         let headers = HeaderMap::new();
-        
+
         let quality = detector.detect(200, &headers, "", 100, false, "openai");
-        
+
         match quality {
             ResponseQuality::Empty { http_status, .. } => {
                 assert_eq!(http_status, 200);
@@ -707,13 +743,15 @@ mod tests {
         let detector = ResponseQualityDetector::new();
         let mut headers = HeaderMap::new();
         headers.insert("retry-after", HeaderValue::from_static("30"));
-        
+
         let body = r#"{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}"#;
-        
+
         let quality = detector.detect(429, &headers, body, 100, false, "anthropic");
-        
+
         match quality {
-            ResponseQuality::UpstreamError { code, error_type, .. } => {
+            ResponseQuality::UpstreamError {
+                code, error_type, ..
+            } => {
                 assert_eq!(code, 429);
                 match error_type {
                     UpstreamErrorType::RateLimited { retry_after, .. } => {
@@ -733,21 +771,30 @@ mod tests {
             latency_ms: 100,
             is_streaming: false,
         };
-        assert_eq!(ResponseQualityDetector::quality_to_health_score(&healthy), 1.0);
+        assert_eq!(
+            ResponseQualityDetector::quality_to_health_score(&healthy),
+            1.0
+        );
 
         let slow_healthy = ResponseQuality::Healthy {
             tokens: 100,
             latency_ms: 6000,
             is_streaming: false,
         };
-        assert_eq!(ResponseQualityDetector::quality_to_health_score(&slow_healthy), 0.7);
+        assert_eq!(
+            ResponseQualityDetector::quality_to_health_score(&slow_healthy),
+            0.7
+        );
 
         let empty = ResponseQuality::Empty {
             http_status: 200,
             raw_body: None,
             content_type: None,
         };
-        assert_eq!(ResponseQualityDetector::quality_to_health_score(&empty), 0.0);
+        assert_eq!(
+            ResponseQualityDetector::quality_to_health_score(&empty),
+            0.0
+        );
 
         let rate_limited = ResponseQuality::UpstreamError {
             code: 429,
@@ -757,7 +804,10 @@ mod tests {
                 retry_after: Some(30),
             },
         };
-        assert_eq!(ResponseQualityDetector::quality_to_health_score(&rate_limited), 0.3);
+        assert_eq!(
+            ResponseQualityDetector::quality_to_health_score(&rate_limited),
+            0.3
+        );
     }
 }
 
@@ -776,22 +826,21 @@ pub fn check_sse_error_in_chunk(chunk: &[u8]) -> Option<(u16, String, bool)> {
         }
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
             if let Some(error) = json.get("error") {
-                let error_msg = error.get("message")
+                let error_msg = error
+                    .get("message")
                     .and_then(|m| m.as_str())
                     .unwrap_or("Unknown SSE error")
                     .to_string();
-                let error_code = error.get("code")
-                    .and_then(|c| c.as_u64())
-                    .unwrap_or(400) as u16;
-                
+                let error_code = error.get("code").and_then(|c| c.as_u64()).unwrap_or(400) as u16;
+
                 // Check if this is an auth error
                 let msg_lower = error_msg.to_lowercase();
-                let is_auth_error = msg_lower.contains("auth") 
-                    || msg_lower.contains("appid") 
+                let is_auth_error = msg_lower.contains("auth")
+                    || msg_lower.contains("appid")
                     || msg_lower.contains("unauthorized")
                     || msg_lower.contains("invalid key")
                     || error_code == 401;
-                
+
                 return Some((error_code, error_msg, is_auth_error));
             }
         }

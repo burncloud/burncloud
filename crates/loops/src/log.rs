@@ -53,10 +53,7 @@ impl LoopLogger {
 
     pub fn gate_end(&mut self, gate: GateCategory, passed: bool, elapsed_secs: f64) {
         let status = if passed { "PASS" } else { "FAIL" };
-        self.line(
-            &gate.log_label(),
-            &format!("{status} ({elapsed_secs:.1}s)"),
-        );
+        self.line(&gate.log_label(), &format!("{status} ({elapsed_secs:.1}s)"));
     }
 
     pub fn gate_output(&mut self, _gate: GateCategory, lines: &[String]) {

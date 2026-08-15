@@ -5,40 +5,74 @@ use crate::backend::{server_root, ClientState};
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 pub struct FullRouterLog {
-    #[serde(default)] pub id: i64,
-    #[serde(default)] pub request_id: String,
-    #[serde(default)] pub user_id: Option<String>,
-    #[serde(default)] pub path: String,
-    #[serde(default)] pub upstream_id: Option<String>,
-    #[serde(default)] pub status_code: i32,
-    #[serde(default)] pub latency_ms: i64,
-    #[serde(default)] pub prompt_tokens: i32,
-    #[serde(default)] pub completion_tokens: i32,
-    #[serde(default)] pub cost: i64,
-    #[serde(default)] pub model: Option<String>,
-    #[serde(default)] pub cache_read_tokens: i32,
-    #[serde(default)] pub reasoning_tokens: i32,
-    #[serde(default)] pub pricing_region: Option<String>,
-    #[serde(default)] pub video_tokens: i32,
-    #[serde(default)] pub cache_write_tokens: i32,
-    #[serde(default)] pub audio_input_tokens: i32,
-    #[serde(default)] pub audio_output_tokens: i32,
-    #[serde(default)] pub image_tokens: i32,
-    #[serde(default)] pub embedding_tokens: i32,
-    #[serde(default)] pub input_cost: i64,
-    #[serde(default)] pub output_cost: i64,
-    #[serde(default)] pub cache_read_cost: i64,
-    #[serde(default)] pub cache_write_cost: i64,
-    #[serde(default)] pub audio_cost: i64,
-    #[serde(default)] pub image_cost: i64,
-    #[serde(default)] pub video_cost: i64,
-    #[serde(default)] pub reasoning_cost: i64,
-    #[serde(default)] pub embedding_cost: i64,
-    #[serde(default)] pub layer_decision: Option<String>,
-    #[serde(default)] pub traffic_color: Option<String>,
-    #[serde(default)] pub cost_status: Option<String>,
-    #[serde(default)] pub error_type: Option<String>,
-    #[serde(default)] pub created_at: Option<String>,
+    #[serde(default)]
+    pub id: i64,
+    #[serde(default)]
+    pub request_id: String,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub upstream_id: Option<String>,
+    #[serde(default)]
+    pub status_code: i32,
+    #[serde(default)]
+    pub latency_ms: i64,
+    #[serde(default)]
+    pub prompt_tokens: i32,
+    #[serde(default)]
+    pub completion_tokens: i32,
+    #[serde(default)]
+    pub cost: i64,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub cache_read_tokens: i32,
+    #[serde(default)]
+    pub reasoning_tokens: i32,
+    #[serde(default)]
+    pub pricing_region: Option<String>,
+    #[serde(default)]
+    pub video_tokens: i32,
+    #[serde(default)]
+    pub cache_write_tokens: i32,
+    #[serde(default)]
+    pub audio_input_tokens: i32,
+    #[serde(default)]
+    pub audio_output_tokens: i32,
+    #[serde(default)]
+    pub image_tokens: i32,
+    #[serde(default)]
+    pub embedding_tokens: i32,
+    #[serde(default)]
+    pub input_cost: i64,
+    #[serde(default)]
+    pub output_cost: i64,
+    #[serde(default)]
+    pub cache_read_cost: i64,
+    #[serde(default)]
+    pub cache_write_cost: i64,
+    #[serde(default)]
+    pub audio_cost: i64,
+    #[serde(default)]
+    pub image_cost: i64,
+    #[serde(default)]
+    pub video_cost: i64,
+    #[serde(default)]
+    pub reasoning_cost: i64,
+    #[serde(default)]
+    pub embedding_cost: i64,
+    #[serde(default)]
+    pub layer_decision: Option<String>,
+    #[serde(default)]
+    pub traffic_color: Option<String>,
+    #[serde(default)]
+    pub cost_status: Option<String>,
+    #[serde(default)]
+    pub error_type: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
 impl FullRouterLog {
@@ -66,7 +100,12 @@ impl FullRouterLog {
     pub fn status_label(&self) -> &'static str {
         if self.status_code >= 500 || self.error_type.as_deref() == Some("timeout") {
             "Timeout"
-        } else if self.layer_decision.as_deref().unwrap_or("").contains("failover") {
+        } else if self
+            .layer_decision
+            .as_deref()
+            .unwrap_or("")
+            .contains("failover")
+        {
             "Fallback"
         } else if self.status_code >= 400 {
             "Error"
@@ -78,7 +117,8 @@ impl FullRouterLog {
 
 #[derive(Deserialize)]
 struct LogPage {
-    #[serde(default)] data: Vec<FullRouterLog>,
+    #[serde(default)]
+    data: Vec<FullRouterLog>,
 }
 
 pub async fn full_logs(limit: usize) -> Result<Vec<FullRouterLog>, String> {
@@ -86,7 +126,10 @@ pub async fn full_logs(limit: usize) -> Result<Vec<FullRouterLog>, String> {
         .auth_token
         .ok_or_else(|| "No authenticated BurnCloud session".to_string())?;
     let page_size = limit.clamp(1, 500);
-    let url = format!("{}/console/api/logs?page=1&page_size={page_size}", server_root());
+    let url = format!(
+        "{}/console/api/logs?page=1&page_size={page_size}",
+        server_root()
+    );
     let response = Client::new()
         .get(url)
         .header("Authorization", format!("Bearer {token}"))

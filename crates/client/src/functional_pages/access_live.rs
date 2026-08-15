@@ -18,7 +18,9 @@ pub fn Team() -> Element {
     let session = auth.user();
     let mut resource = use_resource(move || async move { UserService::list().await });
     let snapshot = resource.read().clone();
-    let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let load_error = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
     let all_users = snapshot.and_then(Result::ok).unwrap_or_default();
     let staff: Vec<User> = all_users
         .iter()

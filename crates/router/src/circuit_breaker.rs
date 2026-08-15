@@ -145,7 +145,9 @@ impl CircuitBreaker {
             FailureType::AuthFailed | FailureType::PaymentRequired => {
                 // Auth/payment failures are permanent (bad key, exhausted quota).
                 // Set high failure count + long cooldown (30 min) to avoid retrying.
-                entry.failure_count.store(self.failure_threshold * 10, Ordering::Relaxed);
+                entry
+                    .failure_count
+                    .store(self.failure_threshold * 10, Ordering::Relaxed);
                 entry.last_failure_time = Some(Instant::now());
                 entry.rate_limit_until = Some(Instant::now() + Duration::from_secs(1800)); // 30 minutes
                 tracing::warn!(

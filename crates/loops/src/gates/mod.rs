@@ -6,7 +6,9 @@ mod ui_conventions;
 use std::path::Path;
 
 pub use aesthetic_review::{run_aesthetic_review, run_aesthetic_review_scoped, ReviewScope};
-pub use cargo_test::{ensure_api_tests_built, run_aesthetic_metrics, run_css_visual, timings_from_log_lines};
+pub use cargo_test::{
+    ensure_api_tests_built, run_aesthetic_metrics, run_css_visual, timings_from_log_lines,
+};
 pub use css_naming::run_css_naming;
 
 /// Gate categories for agent loops. Each maps to one acceptance layer.
@@ -220,11 +222,7 @@ pub enum GateSuite {
     AestheticFull,
 }
 
-pub fn run_gate_suite(
-    root: &Path,
-    suite: GateSuite,
-    logger: &mut crate::log::LoopLogger,
-) -> bool {
+pub fn run_gate_suite(root: &Path, suite: GateSuite, logger: &mut crate::log::LoopLogger) -> bool {
     match suite {
         GateSuite::JobsFast => {
             let g = run_jobs_fast_gates(root, false, None, logger);

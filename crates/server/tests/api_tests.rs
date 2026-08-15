@@ -55,7 +55,11 @@ async fn test_token_api_requires_auth() -> anyhow::Result<()> {
 
     // Token API now requires authentication - expect 401 without token
     let resp = client.get(&base_url).send().await?;
-    assert_eq!(resp.status(), 401, "Token list should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Token list should require authentication"
+    );
 
     // POST should also require authentication
     let resp = client
@@ -63,7 +67,11 @@ async fn test_token_api_requires_auth() -> anyhow::Result<()> {
         .json(&serde_json::json!({ "user_id": "test-user" }))
         .send()
         .await?;
-    assert_eq!(resp.status(), 401, "Token create should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Token create should require authentication"
+    );
 
     Ok(())
 }
@@ -111,7 +119,11 @@ async fn test_monitor_api_requires_auth() -> anyhow::Result<()> {
 
     // Monitor API now requires authentication - expect 401 without token
     let resp = client.get(&url).send().await?;
-    assert_eq!(resp.status(), 401, "Monitor API should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Monitor API should require authentication"
+    );
 
     Ok(())
 }
@@ -135,12 +147,20 @@ async fn test_cache_api_requires_auth() -> anyhow::Result<()> {
     // Cache stats endpoint should require authentication
     let stats_url = format!("http://localhost:{}/console/api/cache/stats", port);
     let resp = client.get(&stats_url).send().await?;
-    assert_eq!(resp.status(), 401, "Cache stats API should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Cache stats API should require authentication"
+    );
 
     // Cache clear endpoint should require authentication
     let clear_url = format!("http://localhost:{}/console/api/cache/clear", port);
     let resp = client.post(&clear_url).send().await?;
-    assert_eq!(resp.status(), 401, "Cache clear API should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Cache clear API should require authentication"
+    );
 
     Ok(())
 }

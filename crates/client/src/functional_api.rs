@@ -14,7 +14,9 @@ fn authenticated(request: RequestBuilder) -> Result<RequestBuilder, String> {
         .ok_or_else(|| "No authenticated BurnCloud session".to_string())
 }
 
-async fn response_json<T: serde::de::DeserializeOwned>(request: RequestBuilder) -> Result<T, String> {
+async fn response_json<T: serde::de::DeserializeOwned>(
+    request: RequestBuilder,
+) -> Result<T, String> {
     let response = request.send().await.map_err(|e| e.to_string())?;
     let status = response.status();
     let text = response.text().await.map_err(|e| e.to_string())?;
@@ -26,40 +28,62 @@ async fn response_json<T: serde::de::DeserializeOwned>(request: RequestBuilder) 
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq)]
 pub struct SecuritySummary {
-    #[serde(default)] pub success: bool,
-    #[serde(default)] pub score: u8,
-    #[serde(default)] pub blocked_count: u64,
-    #[serde(default)] pub threat_source_count: u64,
-    #[serde(default)] pub sparkline: Vec<u64>,
+    #[serde(default)]
+    pub success: bool,
+    #[serde(default)]
+    pub score: u8,
+    #[serde(default)]
+    pub blocked_count: u64,
+    #[serde(default)]
+    pub threat_source_count: u64,
+    #[serde(default)]
+    pub sparkline: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct SecurityFilters {
-    #[serde(default)] pub success: bool,
-    #[serde(default)] pub content_filter_enabled: bool,
-    #[serde(default)] pub blacklist_enabled: bool,
-    #[serde(default)] pub custom_rules: Vec<String>,
+    #[serde(default)]
+    pub success: bool,
+    #[serde(default)]
+    pub content_filter_enabled: bool,
+    #[serde(default)]
+    pub blacklist_enabled: bool,
+    #[serde(default)]
+    pub custom_rules: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq)]
 pub struct RiskEvent {
-    #[serde(default)] pub id: i64,
-    #[serde(default)] pub time: String,
-    #[serde(default)] pub source: String,
-    #[serde(default)] pub target: String,
-    #[serde(default)] pub event_type: String,
-    #[serde(default)] pub severity: String,
-    #[serde(default)] pub status: String,
-    #[serde(default)] pub detail: String,
+    #[serde(default)]
+    pub id: i64,
+    #[serde(default)]
+    pub time: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub target: String,
+    #[serde(default)]
+    pub event_type: String,
+    #[serde(default)]
+    pub severity: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq)]
 pub struct RiskEventPage {
-    #[serde(default)] pub success: bool,
-    #[serde(default)] pub data: Vec<RiskEvent>,
-    #[serde(default)] pub total: i64,
-    #[serde(default)] pub page: i32,
-    #[serde(default)] pub page_size: i32,
+    #[serde(default)]
+    pub success: bool,
+    #[serde(default)]
+    pub data: Vec<RiskEvent>,
+    #[serde(default)]
+    pub total: i64,
+    #[serde(default)]
+    pub page: i32,
+    #[serde(default)]
+    pub page_size: i32,
 }
 
 pub async fn security_summary() -> Result<SecuritySummary, String> {
@@ -78,45 +102,79 @@ pub async fn save_security_filters(filters: &SecurityFilters) -> Result<Security
         "blacklist_enabled": filters.blacklist_enabled,
         "custom_rules": filters.custom_rules,
     });
-    let request = authenticated(Client::new().put(url("/console/api/monitor/security/filters")))?.json(&body);
+    let request =
+        authenticated(Client::new().put(url("/console/api/monitor/security/filters")))?.json(&body);
     response_json(request).await
 }
 
 pub async fn risk_events() -> Result<RiskEventPage, String> {
-    let request = authenticated(Client::new().get(url("/console/api/monitor/security/events?page=1&page_size=100")))?;
+    let request = authenticated(Client::new().get(url(
+        "/console/api/monitor/security/events?page=1&page_size=100",
+    )))?;
     response_json(request).await
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct EnvelopeValue {
-    #[serde(default)] pub success: bool,
-    #[serde(default)] pub data: serde_json::Value,
-    #[serde(default)] pub message: Option<String>,
+    #[serde(default)]
+    pub success: bool,
+    #[serde(default)]
+    pub data: serde_json::Value,
+    #[serde(default)]
+    pub message: Option<String>,
 }
 
 pub async fn circuit_breaker_status() -> Result<serde_json::Value, String> {
-    let request = authenticated(Client::new().get(url("/console/api/monitor/security/circuit-breaker-status")))?;
+    let request = authenticated(
+        Client::new().get(url("/console/api/monitor/security/circuit-breaker-status")),
+    )?;
     let response: EnvelopeValue = response_json(request).await?;
-    if response.success { Ok(response.data) } else { Err(response.message.unwrap_or_else(|| "Circuit breaker status request failed".to_string())) }
+    if response.success {
+        Ok(response.data)
+    } else {
+        Err(response
+            .message
+            .unwrap_or_else(|| "Circuit breaker status request failed".to_string()))
+    }
 }
 
 pub async fn emergency_circuit_break(reason: &str) -> Result<serde_json::Value, String> {
-    let request = authenticated(Client::new().post(url("/console/api/monitor/security/emergency-circuit-break")))?
-        .json(&serde_json::json!({ "reason": reason }));
+    let request = authenticated(
+        Client::new().post(url("/console/api/monitor/security/emergency-circuit-break")),
+    )?
+    .json(&serde_json::json!({ "reason": reason }));
     let response: EnvelopeValue = response_json(request).await?;
-    if response.success { Ok(response.data) } else { Err(response.message.unwrap_or_else(|| "Emergency circuit break failed".to_string())) }
+    if response.success {
+        Ok(response.data)
+    } else {
+        Err(response
+            .message
+            .unwrap_or_else(|| "Emergency circuit break failed".to_string()))
+    }
 }
 
 pub async fn cache_stats() -> Result<serde_json::Value, String> {
     let request = authenticated(Client::new().get(url("/console/api/cache/stats")))?;
     let response: EnvelopeValue = response_json(request).await?;
-    if response.success { Ok(response.data) } else { Err(response.message.unwrap_or_else(|| "Cache stats request failed".to_string())) }
+    if response.success {
+        Ok(response.data)
+    } else {
+        Err(response
+            .message
+            .unwrap_or_else(|| "Cache stats request failed".to_string()))
+    }
 }
 
 pub async fn clear_cache() -> Result<(), String> {
     let request = authenticated(Client::new().post(url("/console/api/cache/clear")))?;
     let response: EnvelopeValue = response_json(request).await?;
-    if response.success { Ok(()) } else { Err(response.message.unwrap_or_else(|| "Cache clear failed".to_string())) }
+    if response.success {
+        Ok(())
+    } else {
+        Err(response
+            .message
+            .unwrap_or_else(|| "Cache clear failed".to_string()))
+    }
 }
 
 /// Update a provider without erasing L2 shaper reservation thresholds that are
@@ -131,13 +189,20 @@ pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result
         return Err("Channel id is required for update".to_string());
     }
 
-    let get_request = authenticated(Client::new().get(url(&format!("/console/api/channel/{}", channel.id))))?;
+    let get_request =
+        authenticated(Client::new().get(url(&format!("/console/api/channel/{}", channel.id))))?;
     let current: EnvelopeValue = response_json(get_request).await?;
     if !current.success {
-        return Err(current.message.unwrap_or_else(|| "Unable to load current channel before update".to_string()));
+        return Err(current
+            .message
+            .unwrap_or_else(|| "Unable to load current channel before update".to_string()));
     }
 
-    let current_status = current.data.get("status").and_then(|value| value.as_i64()).unwrap_or(1);
+    let current_status = current
+        .data
+        .get("status")
+        .and_then(|value| value.as_i64())
+        .unwrap_or(1);
     if current_status != 1 {
         return Err(
             "This provider is inactive/down. The current BurnCloud PUT /console/api/channel handler would implicitly reactivate it, so this client refuses the edit to preserve routing state."
@@ -145,9 +210,21 @@ pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result
         );
     }
 
-    let reservation_green = current.data.get("reservation_green").cloned().unwrap_or(serde_json::Value::Null);
-    let reservation_yellow = current.data.get("reservation_yellow").cloned().unwrap_or(serde_json::Value::Null);
-    let reservation_red = current.data.get("reservation_red").cloned().unwrap_or(serde_json::Value::Null);
+    let reservation_green = current
+        .data
+        .get("reservation_green")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let reservation_yellow = current
+        .data
+        .get("reservation_yellow")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let reservation_red = current
+        .data
+        .get("reservation_red")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     let payload = serde_json::json!({
         "id": channel.id,
@@ -175,6 +252,8 @@ pub async fn update_channel_preserving_reservations(channel: &Channel) -> Result
     if updated.success {
         Ok(())
     } else {
-        Err(updated.message.unwrap_or_else(|| "Provider update failed".to_string()))
+        Err(updated
+            .message
+            .unwrap_or_else(|| "Provider update failed".to_string()))
     }
 }

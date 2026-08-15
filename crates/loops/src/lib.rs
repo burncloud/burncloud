@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-pub mod lock;
 pub mod cli;
 pub mod gates;
+pub mod lock;
 pub mod log;
 pub mod loops;
 pub mod page_progress;

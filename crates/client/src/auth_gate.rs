@@ -1,10 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::{
-    app::Route,
-    backend::use_auth,
-    functional_layout::FunctionalConsoleLayout,
-};
+use crate::{app::Route, backend::use_auth, functional_layout::FunctionalConsoleLayout};
 
 #[component]
 pub fn AuthGate() -> Element {

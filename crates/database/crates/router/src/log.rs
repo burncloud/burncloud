@@ -764,15 +764,15 @@ pub struct RouterRequestLog {
 
     // Request information (sanitized)
     #[sqlx(default)]
-    pub request_body: Option<String>,        // JSON string (may be truncated)
+    pub request_body: Option<String>, // JSON string (may be truncated)
     #[sqlx(default)]
     pub request_body_truncated: bool,
     #[sqlx(default)]
-    pub request_headers: Option<String>,     // JSON string (sanitized)
+    pub request_headers: Option<String>, // JSON string (sanitized)
 
     // Response information
     #[sqlx(default)]
-    pub response_body: Option<String>,       // JSON string (may be truncated)
+    pub response_body: Option<String>, // JSON string (may be truncated)
     #[sqlx(default)]
     pub response_body_truncated: bool,
     #[sqlx(default)]
@@ -788,7 +788,7 @@ pub struct RouterRequestLog {
 
     // Routing decision information
     #[sqlx(default)]
-    pub candidates: Option<String>,          // JSON array string
+    pub candidates: Option<String>, // JSON array string
     #[sqlx(default)]
     pub candidates_count: i32,
     #[sqlx(default)]
@@ -796,7 +796,7 @@ pub struct RouterRequestLog {
     #[sqlx(default)]
     pub affinity_hit_channel_id: Option<i32>,
     #[sqlx(default)]
-    pub failover_history: Option<String>,     // JSON array string
+    pub failover_history: Option<String>, // JSON array string
 
     // Storage policy
     #[sqlx(default)]
@@ -869,7 +869,10 @@ impl RouterRequestLogModel {
     }
 
     /// Get request log by request_id
-    pub async fn get_by_request_id(db: &Database, request_id: &str) -> Result<Option<RouterRequestLog>> {
+    pub async fn get_by_request_id(
+        db: &Database,
+        request_id: &str,
+    ) -> Result<Option<RouterRequestLog>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
 
@@ -897,10 +900,7 @@ impl RouterRequestLogModel {
             "DELETE FROM router_request_logs WHERE datetime(created_at) < datetime('now', '-' || ? || ' days')"
         };
 
-        let result = sqlx::query(sql)
-            .bind(days)
-            .execute(conn.pool())
-            .await?;
+        let result = sqlx::query(sql).bind(days).execute(conn.pool()).await?;
 
         Ok(result.rows_affected())
     }

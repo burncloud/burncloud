@@ -45,10 +45,13 @@ pub fn Billing() -> Element {
 
     let snapshot = summary_resource.read().clone();
     let loading = snapshot.is_none();
-    let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let load_error = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
     let data: BillingSummary = snapshot.and_then(Result::ok).unwrap_or_default();
 
-    let request_count = data.models.iter().map(|model| model.requests).sum::<i64>() + data.pre_migration_requests;
+    let request_count =
+        data.models.iter().map(|model| model.requests).sum::<i64>() + data.pre_migration_requests;
     let total_tokens = data
         .models
         .iter()
@@ -97,7 +100,10 @@ pub fn Billing() -> Element {
         format!("{model_count} models with billed usage")
     };
     let request_note = if data.pre_migration_requests > 0 {
-        format!("includes {} requests without model attribution", data.pre_migration_requests)
+        format!(
+            "includes {} requests without model attribution",
+            data.pre_migration_requests
+        )
     } else {
         "billed request activity".to_string()
     };

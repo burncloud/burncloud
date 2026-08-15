@@ -8,10 +8,11 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 
-
 use crate::channel_state::ChannelStateTracker;
 use crate::response_quality::{ResponseQuality, ResponseQualityDetector};
-use crate::smart_circuit_breaker::{MultiLevelCircuitBreaker, SmartCircuitBreakerConfig, TripLevel};
+use crate::smart_circuit_breaker::{
+    MultiLevelCircuitBreaker, SmartCircuitBreakerConfig, TripLevel,
+};
 
 /// Integrated channel health manager combining:
 /// - Response quality detection
@@ -82,7 +83,11 @@ impl ChannelHealthManager {
                     "Empty response detected for channel/model"
                 );
             }
-            ResponseQuality::UpstreamError { code, message, error_type } => {
+            ResponseQuality::UpstreamError {
+                code,
+                message,
+                error_type,
+            } => {
                 tracing::warn!(
                     channel_id,
                     model,
@@ -93,12 +98,7 @@ impl ChannelHealthManager {
                 );
             }
             ResponseQuality::Malformed { error, .. } => {
-                tracing::warn!(
-                    channel_id,
-                    model,
-                    "Malformed response: {}",
-                    error
-                );
+                tracing::warn!(channel_id, model, "Malformed response: {}", error);
             }
             _ => {}
         }
@@ -124,7 +124,9 @@ impl ChannelHealthManager {
 
     /// Get all health scores for a channel
     pub fn get_channel_health(&self, channel_id: i32) -> Option<HashMap<String, f64>> {
-        self.breakers.get(&channel_id).map(|b| b.get_all_health_scores())
+        self.breakers
+            .get(&channel_id)
+            .map(|b| b.get_all_health_scores())
     }
 
     /// Manual reset for a channel
@@ -146,7 +148,7 @@ impl ChannelHealthManager {
         self.breakers.get(&channel_id).map(|breaker| {
             let model_scores = breaker.get_all_health_scores();
             let channel_score = breaker.get_health_score(None);
-            
+
             ChannelHealthStatus {
                 channel_id,
                 channel_health_score: channel_score,
@@ -164,7 +166,7 @@ impl ChannelHealthManager {
                 let channel_id = *entry.key();
                 let model_scores = breaker.get_all_health_scores();
                 let channel_score = breaker.get_health_score(None);
-                
+
                 ChannelHealthStatus {
                     channel_id,
                     channel_health_score: channel_score,
@@ -232,7 +234,7 @@ mod tests {
     fn test_channel_health_manager_basic() {
         let manager = ChannelHealthManager::new();
         let headers = HeaderMap::new();
-        
+
         // Process healthy response
         manager.process_response(
             1,
@@ -247,7 +249,10 @@ mod tests {
 
         // Should allow request
         let level = manager.check_availability(1, "gpt-4");
-        assert!(matches!(level, TripLevel::None | TripLevel::Degraded { .. }));
+        assert!(matches!(
+            level,
+            TripLevel::None | TripLevel::Degraded { .. }
+        ));
 
         // Health score should be high
         let score = manager.get_health_score(1, Some("gpt-4"));
@@ -261,16 +266,7 @@ mod tests {
 
         // Process multiple empty responses
         for _ in 0..15 {
-            manager.process_response(
-                1,
-                "gpt-4",
-                200,
-                &headers,
-                "",
-                100,
-                false,
-                "openai",
-            );
+            manager.process_response(1, "gpt-4", 200, &headers, "", 100, false, "openai");
         }
 
         // Health score should be low
@@ -285,16 +281,7 @@ mod tests {
 
         // Process failures for model-a
         for _ in 0..15 {
-            manager.process_response(
-                1,
-                "model-a",
-                200,
-                &headers,
-                "",
-                100,
-                false,
-                "openai",
-            );
+            manager.process_response(1, "model-a", 200, &headers, "", 100, false, "openai");
         }
 
         // Process successes for model-b
@@ -338,7 +325,7 @@ mod tests {
 
         let status = manager.get_status(1);
         assert!(status.is_some());
-        
+
         let status = status.unwrap();
         assert_eq!(status.channel_id, 1);
         assert!(status.channel_health_score > 0.5);

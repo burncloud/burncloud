@@ -116,7 +116,8 @@ const CHECK_RULES: &[CheckRule] = &[
 pub fn run_css_naming(root: &Path) -> anyhow::Result<(bool, Vec<String>)> {
     let client = client_crate_dir(root);
     let mut lines = vec![
-        "CSS optimize acceptance (see crates/loops/acceptance/css-optimize-acceptance.md)".to_string(),
+        "CSS optimize acceptance (see crates/loops/acceptance/css-optimize-acceptance.md)"
+            .to_string(),
         String::new(),
     ];
     let mut violations = 0usize;
@@ -188,15 +189,13 @@ pub fn run_css_naming(root: &Path) -> anyhow::Result<(bool, Vec<String>)> {
                     }
                     let label = rule.label;
                     violations += 1;
-                    if !lines.iter().any(|l| l.starts_with("::error::") && l.contains(label)) {
+                    if !lines
+                        .iter()
+                        .any(|l| l.starts_with("::error::") && l.contains(label))
+                    {
                         lines.push(format!("::error::{label}"));
                     }
-                    lines.push(format!(
-                        "{}:{}:{}",
-                        rel,
-                        line_num + 1,
-                        line.trim()
-                    ));
+                    lines.push(format!("{}:{}:{}", rel, line_num + 1, line.trim()));
                 }
             }
         }

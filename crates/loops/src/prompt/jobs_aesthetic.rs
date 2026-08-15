@@ -45,7 +45,10 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
     let mut screenshots: Vec<String> = Vec::new();
     let mut priority_pages: Vec<String> = Vec::new();
 
-    let check_log = input.check_log.clone().or_else(|| latest_check_log(&run_dir));
+    let check_log = input
+        .check_log
+        .clone()
+        .or_else(|| latest_check_log(&run_dir));
     let focus = input.focus_page.clone();
     if let Some(log_path) = check_log.as_ref() {
         parse_check_log(log_path, &focus, &mut failures, &mut priority_pages);
@@ -97,7 +100,8 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
 
     let max_files = if input.phase == "css" { 8 } else { 4 };
     let gate_hint = if !input.css_ok {
-        "Gate 1: fix CSS until `cargo run -p burncloud-loops -- gate css-naming` exits 0".to_string()
+        "Gate 1: fix CSS until `cargo run -p burncloud-loops -- gate css-naming` exits 0"
+            .to_string()
     } else if !input.metrics_ok {
         format!(
             "Gate 2: fix J1 on `{}` until metrics pass",
@@ -160,7 +164,9 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
     if screenshots.is_empty() {
         lines.push(format!(
             "- {}",
-            artifacts.join(format!("{}-viewport.png", input.focus_page)).display()
+            artifacts
+                .join(format!("{}-viewport.png", input.focus_page))
+                .display()
         ));
     } else {
         for s in screenshots.iter().take(4) {
@@ -400,7 +406,9 @@ fn collect_fail_screenshots(
         if !dir.is_dir() {
             continue;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if !name.starts_with("FAIL-") || !name.ends_with(".png") {
@@ -453,8 +461,12 @@ fn parse_metrics_file(
     failures: &mut Vec<Failure>,
     priority_pages: &mut Vec<String>,
 ) {
-    let Ok(text) = std::fs::read_to_string(path) else { return };
-    let Ok(metrics) = serde_json::from_str::<Value>(&text) else { return };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(metrics) = serde_json::from_str::<Value>(&text) else {
+        return;
+    };
     let Some(pages) = metrics.get("pages").and_then(|p| p.as_object()) else {
         return;
     };
@@ -491,8 +503,12 @@ fn parse_review_file(
         return;
     }
     let include_review = !review_ok && (metrics_ok || phase == "review");
-    let Ok(text) = std::fs::read_to_string(path) else { return };
-    let Ok(review) = serde_json::from_str::<Value>(&text) else { return };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(review) = serde_json::from_str::<Value>(&text) else {
+        return;
+    };
 
     if include_review {
         if let Some(pages) = review.get("pages").and_then(|p| p.as_object()) {

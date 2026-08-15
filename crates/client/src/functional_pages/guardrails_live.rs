@@ -97,7 +97,8 @@ pub fn Guardrails() -> Element {
     let content_enabled = filters.content_filter_enabled;
     let blacklist_enabled = filters.blacklist_enabled;
     let rules = filters.custom_rules.clone();
-    let enabled_controls = usize::from(content_enabled) + usize::from(blacklist_enabled) + rules.len();
+    let enabled_controls =
+        usize::from(content_enabled) + usize::from(blacklist_enabled) + rules.len();
     let policy_dirty = filters_ready
         && server_filters
             .as_ref()

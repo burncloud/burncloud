@@ -63,9 +63,11 @@ impl AgentBrowser {
             .or_else(|| std::env::var("CSS_VISUAL_ARTIFACTS_DIR").ok())
             .filter(|s| !s.is_empty())
             .or_else(|| {
-                std::env::current_dir()
-                    .ok()
-                    .map(|cwd| cwd.join("target/e2e-screenshots").to_string_lossy().to_string())
+                std::env::current_dir().ok().map(|cwd| {
+                    cwd.join("target/e2e-screenshots")
+                        .to_string_lossy()
+                        .to_string()
+                })
             })
             .unwrap_or_else(|| "target/e2e-screenshots".to_string());
         // Ensure directory exists

@@ -1,8 +1,4 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::disallowed_types
-)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 
 mod test_utils;
 
@@ -35,9 +31,7 @@ async fn spawn_server(db: Arc<Database>) -> anyhow::Result<String> {
     Ok(format!("http://{addr}"))
 }
 
-async fn create_principals(
-    db: &Database,
-) -> anyhow::Result<(String, String, String, String)> {
+async fn create_principals(db: &Database) -> anyhow::Result<(String, String, String, String)> {
     let service = UserService::new();
     let admin_id = service
         .register_user(db, "invariant-admin", "test-password", None)
@@ -46,12 +40,8 @@ async fn create_principals(
         .register_user(db, "invariant-user", "test-password", None)
         .await?;
 
-    let admin_jwt = service
-        .generate_token(&admin_id, "invariant-admin")?
-        .token;
-    let user_jwt = service
-        .generate_token(&user_id, "invariant-user")?
-        .token;
+    let admin_jwt = service.generate_token(&admin_id, "invariant-admin")?.token;
+    let user_jwt = service.generate_token(&user_id, "invariant-user")?.token;
 
     Ok((admin_id, admin_jwt, user_id, user_jwt))
 }
@@ -180,10 +170,22 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
         .await?;
     assert_eq!(user_list.status(), StatusCode::OK);
     let user_body = user_list.text().await?;
-    assert!(!user_body.contains(user_key), "token lists must redact bearer secrets");
-    assert!(!user_body.contains(admin_key), "users must not see another owner's secret");
-    assert!(user_body.contains("5678"), "owner should receive a non-secret token hint");
-    assert!(!user_body.contains("1234"), "owner list must exclude other users' tokens");
+    assert!(
+        !user_body.contains(user_key),
+        "token lists must redact bearer secrets"
+    );
+    assert!(
+        !user_body.contains(admin_key),
+        "users must not see another owner's secret"
+    );
+    assert!(
+        user_body.contains("5678"),
+        "owner should receive a non-secret token hint"
+    );
+    assert!(
+        !user_body.contains("1234"),
+        "owner list must exclude other users' tokens"
+    );
 
     let forbidden_delete = client
         .delete(format!("{base}/console/api/tokens/{admin_key}"))

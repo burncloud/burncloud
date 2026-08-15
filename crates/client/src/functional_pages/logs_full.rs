@@ -89,17 +89,43 @@ pub fn Logs() -> Element {
             let text_match = search.is_empty()
                 || log.request_id.to_lowercase().contains(&search)
                 || log.path.to_lowercase().contains(&search)
-                || log.user_id.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || log.model.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || log.upstream_id.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || log.error_type.as_deref().unwrap_or("").to_lowercase().contains(&search);
+                || log
+                    .user_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || log
+                    .model
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || log
+                    .upstream_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || log
+                    .error_type
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search);
             status_match && text_match
         })
         .cloned()
         .collect();
 
-    let success = rows.iter().filter(|log| log.status_label() == "Success").count();
-    let fallback = rows.iter().filter(|log| log.status_label() == "Fallback").count();
+    let success = rows
+        .iter()
+        .filter(|log| log.status_label() == "Success")
+        .count();
+    let fallback = rows
+        .iter()
+        .filter(|log| log.status_label() == "Fallback")
+        .count();
     let failures = rows.len().saturating_sub(success + fallback);
     let avg_latency = if rows.is_empty() {
         0

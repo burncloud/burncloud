@@ -21,8 +21,12 @@ async fn test_monitor_page_loads() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
     let _ = browser.screenshot("monitor-page-load");
 }
 
@@ -33,8 +37,12 @@ async fn test_security_score_component() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
     assert!(
@@ -51,11 +59,16 @@ async fn test_trend_chart_rendering() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_trend = snap.text.contains("趋势") || snap.text.contains("7天") || snap.text.contains("Trend");
+    let has_trend =
+        snap.text.contains("趋势") || snap.text.contains("7天") || snap.text.contains("Trend");
     let _ = browser.screenshot("trend-chart");
 }
 
@@ -68,8 +81,12 @@ async fn test_security_score_value_display() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
     // Score might be displayed as number or percentage
@@ -83,13 +100,21 @@ async fn test_security_score_color_indicator() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     // Color indicator would be visual, check for status text
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_status = snap.text.contains("良好") || snap.text.contains("警告") || snap.text.contains("危险")
-        || snap.text.contains("Good") || snap.text.contains("Warning") || snap.text.contains("Danger");
+    let has_status = snap.text.contains("良好")
+        || snap.text.contains("警告")
+        || snap.text.contains("危险")
+        || snap.text.contains("Good")
+        || snap.text.contains("Warning")
+        || snap.text.contains("Danger");
     let _ = browser.screenshot("security-score-color");
 }
 
@@ -102,11 +127,16 @@ async fn test_risk_events_list() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_events = snap.text.contains("事件") || snap.text.contains("风险") || snap.text.contains("Event");
+    let has_events =
+        snap.text.contains("事件") || snap.text.contains("风险") || snap.text.contains("Event");
     let _ = browser.screenshot("risk-events-list");
 }
 
@@ -117,8 +147,12 @@ async fn test_risk_events_filter() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let _ = browser.click_by_name("button:筛选", 5_000);
     let _ = browser.click_by_name("button:Filter", 3_000);
@@ -134,11 +168,16 @@ async fn test_content_filter_config() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_filter = snap.text.contains("过滤") || snap.text.contains("黑名单") || snap.text.contains("Filter");
+    let has_filter =
+        snap.text.contains("过滤") || snap.text.contains("黑名单") || snap.text.contains("Filter");
     let _ = browser.screenshot("content-filter-config");
 }
 
@@ -149,8 +188,12 @@ async fn test_blacklist_add_rule() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let _ = browser.click_by_name("button:添加", 5_000);
     let _ = browser.click_by_name("button:黑名单", 5_000);
@@ -166,11 +209,16 @@ async fn test_emergency_circuit_break_button() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_breaker = snap.text.contains("熔断") || snap.text.contains("紧急") || snap.text.contains("Circuit");
+    let has_breaker =
+        snap.text.contains("熔断") || snap.text.contains("紧急") || snap.text.contains("Circuit");
     let _ = browser.screenshot("circuit-break-button");
 }
 
@@ -181,8 +229,12 @@ async fn test_emergency_circuit_break_confirmation() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let _ = browser.click_by_name("button:熔断", 5_000);
     let _ = browser.wait_for_text("确认", 5_000);
@@ -196,11 +248,16 @@ async fn test_circuit_breaker_status_indicator() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_status = snap.text.contains("正常") || snap.text.contains("熔断") || snap.text.contains("恢复");
+    let has_status =
+        snap.text.contains("正常") || snap.text.contains("熔断") || snap.text.contains("恢复");
     let _ = browser.screenshot("circuit-breaker-status");
 }
 
@@ -213,8 +270,12 @@ async fn test_circuit_breaker_recovery() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/monitor").expect("Failed to open monitor page");
-    browser.wait_for_text("风控雷达", 10_000).expect("Monitor page did not load");
+    browser
+        .open("/console/monitor")
+        .expect("Failed to open monitor page");
+    browser
+        .wait_for_text("风控雷达", 10_000)
+        .expect("Monitor page did not load");
 
     let _ = browser.click_by_name("button:恢复", 5_000);
     let _ = browser.click_by_name("button:Recover", 3_000);

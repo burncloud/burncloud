@@ -36,28 +36,28 @@ pub fn Overview() -> Element {
         div { class: "page",
             {page_header(
                 "Good morning, Wei.",
-                "Every request is fully traceable. 12.8M requests routed today.",
+                "Review configured routes, observed traffic, and current account state.",
                 rsx! {
                     button {
                         class: "button button-secondary",
                         onclick: move |_| audit_open.set(true),
                         Icon { name: "spark" }
-                        "Steve's Critique"
+                        "Review status"
                     }
                     button {
                         class: "button button-primary",
                         onclick: move |_| audit_open.set(true),
                         Icon { name: "activity" }
-                        "Cryptographic Scan"
+                        "Refresh status"
                     }
                 },
             )}
 
             div { class: "metrics",
-                MetricCard { label: "Verified Requests", value: "12.8M", note: "Fully cloud attested", icon: "activity", tone: "tone-blue" }
-                MetricCard { label: "Source Transparent", value: "100%", note: "Direct hardware keys", icon: "shield", tone: "tone-green" }
-                MetricCard { label: "Model Identity Match", value: "99.99%", note: "Silicon handshake hash", icon: "server", tone: "tone-purple" }
-                MetricCard { label: "Est. Cost Saved", value: "$4,766", note: "Smart fallback routing", icon: "dollar", tone: "tone-amber" }
+                MetricCard { label: "Requests", value: "UNKNOWN", note: "Source unavailable", icon: "activity", tone: "tone-blue" }
+                MetricCard { label: "Provider state", value: "UNKNOWN", note: "Source unavailable", icon: "shield", tone: "tone-green" }
+                MetricCard { label: "Model state", value: "UNKNOWN", note: "Source unavailable", icon: "server", tone: "tone-purple" }
+                MetricCard { label: "Spend", value: "UNKNOWN", note: "Source unavailable", icon: "dollar", tone: "tone-amber" }
             }
 
             div { class: "grid-2",
@@ -78,14 +78,14 @@ pub fn Overview() -> Element {
                     div {
                         class: "tiny subtle mono",
                         style: "text-align:center;border-top:1px solid #f3f4f6;padding-top:14px",
-                        "Pristine silicon attestation active."
+                        "Provider observations come from persisted configuration and request records."
                     }
                 }
 
                 div { class: "card card-pad stack",
                     div { class: "row between",
                         span { class: "section-label", "Latest Model Receipt" }
-                        Badge { text: "SECURE TPM", tone: "success" }
+                        Badge { text: "OBSERVED", tone: "neutral" }
                     }
                     div { class: "receipt",
                         ReceiptRow { label: "Requested:", value: "claude-fable-5" }
@@ -130,12 +130,12 @@ pub fn Overview() -> Element {
             }
 
             Drawer {
-                title: "Verifiable Model Receipt",
+                title: "Stored Request Metadata",
                 open: receipt_open(),
                 on_close: move |_| receipt_open.set(false),
                 div { class: "stack-lg",
                     div { class: "card card-pad stack",
-                        span { class: "section-label", "Chain of Trust" }
+                        span { class: "section-label", "Request Metadata" }
                         div { class: "receipt",
                             ReceiptRow { label: "Request", value: "req_8f29a1" }
                             ReceiptRow { label: "Model", value: "claude-fable-5" }
@@ -156,13 +156,13 @@ pub fn Overview() -> Element {
             }
 
             Drawer {
-                title: "Steve's Critique",
+                title: "Overview status",
                 open: audit_open(),
                 on_close: move |_| audit_open.set(false),
                 div { class: "stack-lg",
-                    div { class: "metric-value", "100.0" }
+                    div { class: "metric-value", "UNKNOWN" }
                     p { class: "muted text-14",
-                        "Pixel geometry, information hierarchy, route transparency, hardware attestation and visual density match the BurnCloud product language."
+                        "The overview uses source-backed configuration, request, usage, and billing state."
                     }
                     div { class: "terminal",
                         div { class: "terminal-line", "✓ 240px navigation rail calibrated" }
@@ -399,7 +399,11 @@ fn RouteTableRow(row: RouteRow) -> Element {
     let success = format!("{:.2}%", row.success);
     let latency = format!("{}ms", row.latency);
     let cost = format!("${:.2}", row.cost);
-    let env_tone = if row.environment == "Production" { "neutral" } else { "warning" };
+    let env_tone = if row.environment == "Production" {
+        "neutral"
+    } else {
+        "warning"
+    };
 
     rsx! {
         tr {
@@ -476,7 +480,11 @@ fn ProviderCard(provider: Provider) -> Element {
     let usage = format!("{}%", provider.usage);
     let latency = format!("{}ms", provider.latency);
     let width = format!("width:{}%", provider.usage);
-    let incident_class = if provider.incident == "None" { "muted small" } else { "warning small strong" };
+    let incident_class = if provider.incident == "None" {
+        "muted small"
+    } else {
+        "warning small strong"
+    };
 
     rsx! {
         div { class: "card card-hover provider-card",
@@ -511,7 +519,12 @@ fn ProviderCard(provider: Provider) -> Element {
 }
 
 #[component]
-fn ProviderRow(icon: &'static str, label: &'static str, value: String, #[props(default)] value_class: String) -> Element {
+fn ProviderRow(
+    icon: &'static str,
+    label: &'static str,
+    value: String,
+    #[props(default)] value_class: String,
+) -> Element {
     rsx! {
         div { class: "provider-row",
             span { class: "provider-row-label", Icon { name: icon } "{label}" }
@@ -686,7 +699,11 @@ fn CustomerRow(customer: Customer) -> Element {
     let budget = format!("${}", customer.budget);
     let pct = (customer.spend as f64 / customer.budget as f64 * 100.0).min(100.0);
     let width = format!("width:{pct:.0}%");
-    let env_tone = if customer.environment == "Production" { "neutral" } else { "warning" };
+    let env_tone = if customer.environment == "Production" {
+        "neutral"
+    } else {
+        "warning"
+    };
 
     rsx! {
         tr {
@@ -910,7 +927,15 @@ fn score_class(value: u32) -> &'static str {
 
 #[component]
 fn EvalTableRow(row: EvalRow) -> Element {
-    let scores = [row.reasoning, row.coding, row.chinese, row.context, row.tools, row.stability, row.cost];
+    let scores = [
+        row.reasoning,
+        row.coding,
+        row.chinese,
+        row.context,
+        row.tools,
+        row.stability,
+        row.cost,
+    ];
 
     rsx! {
         tr {

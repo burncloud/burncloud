@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
 use crate::app::Route;
+use dioxus::prelude::*;
 
 #[component]
 pub fn Logo(#[props(default = "brand-logo".to_string())] class: String) -> Element {
@@ -28,33 +28,87 @@ pub fn Icon(name: &'static str) -> Element {
     let common = rsx! {};
     let _ = common;
     match name {
-        "overview" => rsx! { svg { class: "nav-icon", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", rect { x:"3", y:"3", width:"7", height:"7", rx:"1" } rect { x:"14", y:"3", width:"7", height:"7", rx:"1" } rect { x:"3", y:"14", width:"7", height:"7", rx:"1" } rect { x:"14", y:"14", width:"7", height:"7", rx:"1" } } },
-        "terminal" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"3",y:"4",width:"18",height:"16",rx:"2"} path{d:"m7 9 3 3-3 3"} path{d:"M13 15h4"} } },
-        "routes" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"6",cy:"6",r:"2"} circle{cx:"18",cy:"6",r:"2"} circle{cx:"12",cy:"18",r:"2"} path{d:"M8 6h8M7.4 7.7l3.3 8.4M16.6 7.7l-3.3 8.4"} } },
-        "models" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"5",y:"5",width:"14",height:"14",rx:"2"} path{d:"M9 9h6v6H9zM9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M19 9h4M1 15h4M19 15h4"} } },
-        "providers" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"3",y:"4",width:"18",height:"6",rx:"2"} rect{x:"3",y:"14",width:"18",height:"6",rx:"2"} path{d:"M7 7h.01M7 17h.01"} } },
-        "key" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"8",cy:"15",r:"4"} path{d:"m11 12 8-8M15 8l3 3M17 6l3 3"} } },
-        "users" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"} circle{cx:"9",cy:"7",r:"4"} path{d:"M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"} } },
-        "shield" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"} path{d:"m9 12 2 2 4-4"} } },
-        "logs" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M6 2h9l3 3v17H6z"} path{d:"M9 9h6M9 13h6M9 17h4"} } },
-        "chart" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M3 3v18h18"} path{d:"m7 16 4-5 4 3 5-7"} } },
-        "billing" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"2",y:"5",width:"20",height:"14",rx:"2"} path{d:"M2 10h20"} } },
-        "settings" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"3"} path{d:"M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.07 14H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63h.01A1.7 1.7 0 0 0 10 3.07V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9v.01A1.7 1.7 0 0 0 20.93 10H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"} } },
-        "globe" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"9"} path{d:"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"} } },
-        "logout" => rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-5"} } },
-        "search" => rsx! { svg { class:"search-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"11",cy:"11",r:"7"} path{d:"m20 20-3.5-3.5"} } },
-        "bell" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", width:"19", height:"19", path{d:"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"} } },
-        "help" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", width:"19", height:"19", circle{cx:"12",cy:"12",r:"9"} path{d:"M9.1 9a3 3 0 1 1 5.8 1c-.6 1-1.9 1.3-2.4 2.3-.2.4-.3.8-.3 1.2M12 17h.01"} } },
-        "activity" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M3 12h4l2-7 4 14 2-7h6"} } },
-        "dollar" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"9"} path{d:"M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8M12 6v12"} } },
-        "server" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"3",y:"4",width:"18",height:"6",rx:"2"} rect{x:"3",y:"14",width:"18",height:"6",rx:"2"} path{d:"M7 7h.01M7 17h.01"} } },
-        "spark" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"} } },
-        "plus" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M12 5v14M5 12h14"} } },
-        "play" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"m8 5 11 7-11 7V5z"} } },
-        "download" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M12 3v12M7 10l5 5 5-5M5 21h14"} } },
-        "wifi" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M5 12.5a11 11 0 0 1 14 0M8 16a6 6 0 0 1 8 0M11 19.5a1.5 1.5 0 0 1 2 0"} } },
-        "lock" => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"4",y:"10",width:"16",height:"11",rx:"2"} path{d:"M8 10V7a4 4 0 0 1 8 0v3"} } },
-        _ => rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"8"} } },
+        "overview" => {
+            rsx! { svg { class: "nav-icon", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", rect { x:"3", y:"3", width:"7", height:"7", rx:"1" } rect { x:"14", y:"3", width:"7", height:"7", rx:"1" } rect { x:"3", y:"14", width:"7", height:"7", rx:"1" } rect { x:"14", y:"14", width:"7", height:"7", rx:"1" } } }
+        }
+        "terminal" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"3",y:"4",width:"18",height:"16",rx:"2"} path{d:"m7 9 3 3-3 3"} path{d:"M13 15h4"} } }
+        }
+        "routes" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"6",cy:"6",r:"2"} circle{cx:"18",cy:"6",r:"2"} circle{cx:"12",cy:"18",r:"2"} path{d:"M8 6h8M7.4 7.7l3.3 8.4M16.6 7.7l-3.3 8.4"} } }
+        }
+        "models" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"5",y:"5",width:"14",height:"14",rx:"2"} path{d:"M9 9h6v6H9zM9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M19 9h4M1 15h4M19 15h4"} } }
+        }
+        "providers" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"3",y:"4",width:"18",height:"6",rx:"2"} rect{x:"3",y:"14",width:"18",height:"6",rx:"2"} path{d:"M7 7h.01M7 17h.01"} } }
+        }
+        "key" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"8",cy:"15",r:"4"} path{d:"m11 12 8-8M15 8l3 3M17 6l3 3"} } }
+        }
+        "users" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"} circle{cx:"9",cy:"7",r:"4"} path{d:"M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"} } }
+        }
+        "shield" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"} path{d:"m9 12 2 2 4-4"} } }
+        }
+        "logs" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M6 2h9l3 3v17H6z"} path{d:"M9 9h6M9 13h6M9 17h4"} } }
+        }
+        "chart" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M3 3v18h18"} path{d:"m7 16 4-5 4 3 5-7"} } }
+        }
+        "billing" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"2",y:"5",width:"20",height:"14",rx:"2"} path{d:"M2 10h20"} } }
+        }
+        "settings" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"3"} path{d:"M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.07 14H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63h.01A1.7 1.7 0 0 0 10 3.07V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9v.01A1.7 1.7 0 0 0 20.93 10H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"} } }
+        }
+        "globe" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"9"} path{d:"M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"} } }
+        }
+        "logout" => {
+            rsx! { svg { class:"nav-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-5"} } }
+        }
+        "search" => {
+            rsx! { svg { class:"search-icon", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"11",cy:"11",r:"7"} path{d:"m20 20-3.5-3.5"} } }
+        }
+        "bell" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", width:"19", height:"19", path{d:"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"} } }
+        }
+        "help" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", width:"19", height:"19", circle{cx:"12",cy:"12",r:"9"} path{d:"M9.1 9a3 3 0 1 1 5.8 1c-.6 1-1.9 1.3-2.4 2.3-.2.4-.3.8-.3 1.2M12 17h.01"} } }
+        }
+        "activity" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M3 12h4l2-7 4 14 2-7h6"} } }
+        }
+        "dollar" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"9"} path{d:"M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8M12 6v12"} } }
+        }
+        "server" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"3",y:"4",width:"18",height:"6",rx:"2"} rect{x:"3",y:"14",width:"18",height:"6",rx:"2"} path{d:"M7 7h.01M7 17h.01"} } }
+        }
+        "spark" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"} } }
+        }
+        "plus" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M12 5v14M5 12h14"} } }
+        }
+        "play" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"m8 5 11 7-11 7V5z"} } }
+        }
+        "download" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M12 3v12M7 10l5 5 5-5M5 21h14"} } }
+        }
+        "wifi" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", path{d:"M5 12.5a11 11 0 0 1 14 0M8 16a6 6 0 0 1 8 0M11 19.5a1.5 1.5 0 0 1 2 0"} } }
+        }
+        "lock" => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", rect{x:"4",y:"10",width:"16",height:"11",rx:"2"} path{d:"M8 10V7a4 4 0 0 1 8 0v3"} } }
+        }
+        _ => {
+            rsx! { svg { view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", circle{cx:"12",cy:"12",r:"8"} } }
+        }
     }
 }
 
@@ -164,7 +218,13 @@ fn NavItem(to: Route, icon: &'static str, label: &'static str) -> Element {
 }
 
 #[component]
-pub fn MetricCard(label: &'static str, value: &'static str, note: &'static str, icon: &'static str, tone: &'static str) -> Element {
+pub fn MetricCard(
+    label: &'static str,
+    value: &'static str,
+    note: &'static str,
+    icon: &'static str,
+    tone: &'static str,
+) -> Element {
     rsx! {
         div { class:"card metric card-hover",
             div { class:"metric-copy",
@@ -178,13 +238,23 @@ pub fn MetricCard(label: &'static str, value: &'static str, note: &'static str, 
 }
 
 #[component]
-pub fn Badge(text: &'static str, #[props(default = "neutral".to_string())] tone: String) -> Element {
+pub fn Badge(
+    text: &'static str,
+    #[props(default = "neutral".to_string())] tone: String,
+) -> Element {
     rsx! { span { class:"badge badge-{tone}", "{text}" } }
 }
 
 #[component]
-pub fn Drawer(title: &'static str, open: bool, on_close: EventHandler<MouseEvent>, children: Element) -> Element {
-    if !open { return rsx! {}; }
+pub fn Drawer(
+    title: &'static str,
+    open: bool,
+    on_close: EventHandler<MouseEvent>,
+    children: Element,
+) -> Element {
+    if !open {
+        return rsx! {};
+    }
     rsx! {
         div { class:"drawer-backdrop", onclick:move |evt| on_close.call(evt) }
         aside { class:"drawer",

@@ -84,7 +84,11 @@ const CONSOLE_PAGES: &[ConsolePageSpec] = &[
     },
 ];
 
-fn wait_page_text(browser: &mut AgentBrowser, texts: &[&str], timeout_ms: u64) -> anyhow::Result<()> {
+fn wait_page_text(
+    browser: &mut AgentBrowser,
+    texts: &[&str],
+    timeout_ms: u64,
+) -> anyhow::Result<()> {
     browser
         .wait_for_any_text(texts, timeout_ms)
         .map(|_| ())
@@ -156,7 +160,8 @@ fn write_manifest(screenshots: &[String], status: &str) {
 #[tokio::test]
 #[ignore = "requires agent-browser and running burncloud server (cargo run -p burncloud-loops -- gate css-visual)"]
 async fn css_visual_acceptance() {
-    let _ = setup_browser().expect("agent-browser required: npm install -g agent-browser && agent-browser install");
+    let _ = setup_browser()
+        .expect("agent-browser required: npm install -g agent-browser && agent-browser install");
     let base_url = common::spawn_app().await;
 
     let mut screenshots = Vec::new();
@@ -189,11 +194,32 @@ async fn css_visual_acceptance() {
             "visual-dashboard" => &["企业控制台", "仪表盘", "gpt-4o-mini", "Dashboard"],
             "visual-logs" => &["日志审查", "Logs", "审计"],
             "visual-users" => &["用户管理", "客户列表", "Users"],
-            "visual-playground" => &["演练场", "Playground", "playground", "清空", "Clear", "渠道"],
+            "visual-playground" => &[
+                "演练场",
+                "Playground",
+                "playground",
+                "清空",
+                "Clear",
+                "渠道",
+            ],
             "visual-access" => &["访问凭证", "创建新凭证", "没有活跃", "API Key", "Access"],
-            "visual-deploy" => &["Model Deployment", "Deploy new models", "MODEL ID", "OpenAI", "模型部署"],
+            "visual-deploy" => &[
+                "Model Deployment",
+                "Deploy new models",
+                "MODEL ID",
+                "OpenAI",
+                "模型部署",
+            ],
             "visual-models" => &["模型管理", "模型网络", "Model Management", "Models"],
-            "visual-monitor" => &["风控雷达", "Risk Radar", "当前安全评分", "安全评分", "紧急熔断", "Blocked Attacks", "内容风控"],
+            "visual-monitor" => &[
+                "风控雷达",
+                "Risk Radar",
+                "当前安全评分",
+                "安全评分",
+                "紧急熔断",
+                "Blocked Attacks",
+                "内容风控",
+            ],
             "visual-settings" => &["系统设置", "Settings", "General"],
             "visual-finance" => &["财务", "Finance", "账单", "充值记录", "Billing", "Recharge"],
             "visual-connect" => &["算力互联", "Connect", "互联", "结算"],
@@ -222,6 +248,7 @@ async fn css_visual_acceptance() {
     eprintln!(
         "CSS visual acceptance passed ({} screenshots). Dir: {}",
         screenshots.len(),
-        std::env::var("CSS_VISUAL_ARTIFACTS_DIR").unwrap_or_else(|_| "data/loops/css-visual/latest".into())
+        std::env::var("CSS_VISUAL_ARTIFACTS_DIR")
+            .unwrap_or_else(|_| "data/loops/css-visual/latest".into())
     );
 }

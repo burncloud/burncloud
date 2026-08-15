@@ -34,24 +34,52 @@ fn search_route(query: &str) -> Option<Route> {
     }
 
     let pages = [
-        ("overview dashboard health status home console", Route::Overview {}),
-        ("providers provider channels channel upstream supply", Route::Providers {}),
+        (
+            "overview dashboard health status home console",
+            Route::Overview {},
+        ),
+        (
+            "providers provider channels channel upstream supply",
+            Route::Providers {},
+        ),
         ("models model catalog", Route::Models {}),
-        ("routes routing groups priority weight traffic", Route::Routes {}),
-        ("playground chat completion inference test", Route::Playground {}),
-        ("logs requests router log observability errors", Route::Logs {}),
-        ("evaluation metrics latency success performance", Route::Evaluation {}),
+        (
+            "routes routing groups priority weight traffic",
+            Route::Routes {},
+        ),
+        (
+            "playground chat completion inference test",
+            Route::Playground {},
+        ),
+        (
+            "logs requests router log observability errors",
+            Route::Logs {},
+        ),
+        (
+            "evaluation metrics latency success performance",
+            Route::Evaluation {},
+        ),
         ("billing cost usage spend finance", Route::Billing {}),
         ("api keys key tokens token access", Route::APIKeys {}),
-        ("customers users user accounts account balance", Route::Customers {}),
-        ("guardrails security filters risk circuit breaker", Route::Guardrails {}),
+        (
+            "customers users user accounts account balance",
+            Route::Customers {},
+        ),
+        (
+            "guardrails security filters risk circuit breaker",
+            Route::Guardrails {},
+        ),
         ("team members roles operators admins", Route::Team {}),
         ("settings cache runtime server system", Route::Settings {}),
     ];
 
     pages
         .into_iter()
-        .find(|(keywords, _)| keywords.split_whitespace().any(|word| word.starts_with(&q) || q.contains(word)))
+        .find(|(keywords, _)| {
+            keywords
+                .split_whitespace()
+                .any(|word| word.starts_with(&q) || q.contains(word))
+        })
         .map(|(_, route)| route)
 }
 
@@ -65,7 +93,10 @@ fn initials(name: &str) -> String {
         let b = words[1].chars().next().unwrap_or('C');
         format!("{}{}", a.to_ascii_uppercase(), b.to_ascii_uppercase())
     } else {
-        name.chars().take(2).collect::<String>().to_ascii_uppercase()
+        name.chars()
+            .take(2)
+            .collect::<String>()
+            .to_ascii_uppercase()
     }
 }
 
@@ -82,7 +113,10 @@ pub fn FunctionalConsoleLayout() -> Element {
         .map(|u| u.username.clone())
         .unwrap_or_else(|| "BurnCloud".to_string());
     let avatar = initials(&username);
-    let roles = user.as_ref().map(|u| u.roles.join(", ")).unwrap_or_default();
+    let roles = user
+        .as_ref()
+        .map(|u| u.roles.join(", "))
+        .unwrap_or_default();
     let mut search = use_signal(String::new);
     let mut search_status = use_signal(String::new);
 

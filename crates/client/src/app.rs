@@ -112,8 +112,12 @@ pub fn launch_gui_with_tray() {
     };
 
     let data_dir = std::env::temp_dir().join("burncloud_dioxus_ui");
-    let config = Config::new().with_window(window).with_data_directory(data_dir);
-    dioxus::LaunchBuilder::desktop().with_cfg(config).launch(AppWithDesktop);
+    let config = Config::new()
+        .with_window(window)
+        .with_data_directory(data_dir);
+    dioxus::LaunchBuilder::desktop()
+        .with_cfg(config)
+        .launch(AppWithDesktop);
 }
 
 #[cfg(feature = "desktop")]

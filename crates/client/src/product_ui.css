@@ -27,6 +27,92 @@
   background: linear-gradient(135deg, var(--bc-color-danger-soft), var(--panel));
 }
 
+.overview-page .product-status-card,
+.overview-page .product-status-card.status-ready,
+.overview-page .product-status-card.status-attention,
+.overview-page .product-status-card.status-blocked,
+.overview-page .product-status-card.status-loading {
+  background: var(--panel);
+}
+
+.overview-page .product-status-card.status-loading {
+  border-color: var(--border);
+}
+
+.overview-page .product-status-card.status-ready {
+  box-shadow: inset 3px 0 0 var(--bc-color-success), var(--bc-shadow-card);
+}
+
+.overview-page .product-status-card.status-attention {
+  box-shadow: inset 3px 0 0 var(--bc-color-warning), var(--bc-shadow-card);
+}
+
+.overview-page .product-status-card.status-blocked {
+  box-shadow: inset 3px 0 0 var(--bc-color-danger), var(--bc-shadow-card);
+}
+
+.overview-state-placeholder {
+  min-height: 112px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.overview-attention {
+  border-color: var(--bc-color-danger-border);
+}
+
+.overview-error-line {
+  padding: 10px 12px;
+  border: 1px solid var(--bc-color-danger-border);
+  border-radius: 6px;
+  background: var(--bc-color-danger-soft);
+  color: var(--bc-color-danger);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.overview-provider-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.overview-provider-row:last-child {
+  border-bottom: 0;
+}
+
+.overview-compact-empty {
+  min-height: 180px;
+}
+
+.overview-supporting-section {
+  display: grid;
+  gap: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.overview-supporting-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.overview-supporting-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.overview-runtime-grid {
+  padding: 12px 0;
+}
+
 .product-status-title {
   font-size: 22px;
   line-height: 1.25;

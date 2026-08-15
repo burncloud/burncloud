@@ -1,13 +1,7 @@
 use crate::AppState;
 pub mod security;
 
-use axum::{
-    http::StatusCode,
-    middleware,
-    response::IntoResponse,
-    routing::get,
-    Router,
-};
+use axum::{http::StatusCode, middleware, response::IntoResponse, routing::get, Router};
 
 pub mod auth;
 pub mod billing;

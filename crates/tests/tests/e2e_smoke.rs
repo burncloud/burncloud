@@ -147,10 +147,10 @@ async fn e2e_smoke_v04() {
             ("testadmin", "TestAdmin123!"),
             ("admin", "Admin123!"),
         ];
-        
+
         let mut token = String::new();
         let mut found_admin = false;
-        
+
         for (username, password) in existing_admins {
             let (success, t, _) = login_user(username, password).await;
             if success && !t.is_empty() {
@@ -160,14 +160,14 @@ async fn e2e_smoke_v04() {
                 break;
             }
         }
-        
+
         // If no existing admin, use the newly created user (might have admin role on fresh DB)
         if !found_admin {
             let (_, t, _) = login_user(&admin_user, "QaTest169!").await;
             token = t;
             eprintln!("  INFO  Using newly created user: {admin_user}");
         }
-        
+
         token
     };
     {

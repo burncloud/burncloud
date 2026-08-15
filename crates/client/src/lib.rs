@@ -34,7 +34,10 @@ use burncloud_common::constants::WS_PATH;
 pub fn liveview_router(_db: Arc<Database>) -> Router {
     let view = LiveViewPool::new();
     let html_handler = axum::routing::get(move |headers: axum::http::HeaderMap| async move {
-        let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("localhost:3000");
+        let host = headers
+            .get("host")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("localhost:3000");
         axum::response::Html(format!(
             r#"<!doctype html>
 <html>
@@ -55,9 +58,24 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
 
     let mut app = Router::new().route("/", html_handler.clone());
     for path in [
-        "/dashboard", "/home", "/landing", "/login", "/register", "/playground", "/routes",
-        "/models", "/providers", "/keys", "/customers", "/users", "/guardrails", "/logs",
-        "/evaluation", "/billing", "/team", "/settings",
+        "/dashboard",
+        "/home",
+        "/landing",
+        "/login",
+        "/register",
+        "/playground",
+        "/routes",
+        "/models",
+        "/providers",
+        "/keys",
+        "/customers",
+        "/users",
+        "/guardrails",
+        "/logs",
+        "/evaluation",
+        "/billing",
+        "/team",
+        "/settings",
     ] {
         app = app.route(path, html_handler.clone());
     }
@@ -65,7 +83,10 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
     app.route(
         "/favicon.ico",
         axum::routing::get(|| async {
-            ([(axum::http::header::CONTENT_TYPE, "image/x-icon")], include_bytes!("../assets/favicon.ico"))
+            (
+                [(axum::http::header::CONTENT_TYPE, "image/x-icon")],
+                include_bytes!("../assets/favicon.ico"),
+            )
         }),
     )
     .route(

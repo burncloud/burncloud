@@ -3,8 +3,8 @@ use dioxus::prelude::*;
 use crate::{
     app::Route,
     backend::{
-        billing_summary, system_metrics, user_usage, BillingSummary, Channel, ChannelService,
-        LogService, RouterLog, SystemMetrics, TokenDto, TokenService, UsageStats,
+        billing_summary, system_metrics, user_usage, Channel, ChannelService, LogService,
+        RouterLog, TokenService,
     },
     components::{Drawer, Icon},
 };
@@ -22,7 +22,13 @@ fn compact(n: i64) -> String {
     }
 }
 
-fn kpi(label: &str, value: String, note: String, icon: &'static str, tone: &'static str) -> Element {
+fn kpi(
+    label: &str,
+    value: String,
+    note: String,
+    icon: &'static str,
+    tone: &'static str,
+) -> Element {
     rsx! {
         div { class: "card metric card-hover",
             div { class: "metric-copy",
@@ -35,9 +41,10 @@ fn kpi(label: &str, value: String, note: String, icon: &'static str, tone: &'sta
     }
 }
 
-fn channel_model_count(channels: &[Channel]) -> usize {
+fn enabled_channel_model_count(channels: &[Channel]) -> usize {
     let mut models: Vec<String> = channels
         .iter()
+        .filter(|channel| channel.status == 1)
         .flat_map(|channel| {
             channel
                 .models
@@ -56,7 +63,10 @@ fn route_receipt(log: &RouterLog) -> String {
     let user_id = log.user_id.clone().unwrap_or_else(|| "-".to_string());
     let model = log.model.clone().unwrap_or_else(|| "-".to_string());
     let upstream = log.upstream_id.clone().unwrap_or_else(|| "-".to_string());
-    let decision = log.layer_decision.clone().unwrap_or_else(|| "-".to_string());
+    let decision = log
+        .layer_decision
+        .clone()
+        .unwrap_or_else(|| "-".to_string());
     let traffic = log.traffic_color.clone().unwrap_or_else(|| "-".to_string());
     let error_type = log.error_type.clone().unwrap_or_else(|| "-".to_string());
     let cost_status = log.cost_status.clone().unwrap_or_else(|| "-".to_string());
@@ -88,13 +98,13 @@ fn SetupStep(
 ) -> Element {
     rsx! {
         div { class: if complete { "setup-step complete" } else { "setup-step" },
-            div { class: "setup-step-dot", if complete { "✓" } else { "·" } }
+            div { class: "setup-step-dot", if complete { "OK" } else { "-" } }
             div {
                 strong { "{title}" }
                 small { "{detail}" }
             }
             if complete {
-                span { class: "badge badge-success", "Done" }
+                span { class: "badge badge-success", "Present" }
             } else {
                 Link { class: "button button-ghost button-sm", to: to, "{action}" }
             }
@@ -107,14 +117,18 @@ pub fn Overview() -> Element {
     let auth = crate::backend::use_auth();
     let current_user = auth.user();
     let token = auth.token().unwrap_or_default();
-    let user_id = current_user.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+    let user_id = current_user
+        .as_ref()
+        .map(|u| u.id.clone())
+        .unwrap_or_default();
 
     let token_for_usage = token.clone();
     let user_for_usage = user_id.clone();
     let token_for_billing = token.clone();
 
     let mut metrics_resource = use_resource(move || async move { system_metrics().await });
-    let mut channels_resource = use_resource(move || async move { ChannelService::list(100).await });
+    let mut channels_resource =
+        use_resource(move || async move { ChannelService::list(100).await });
     let mut logs_resource = use_resource(move || async move { LogService::list(50).await });
     let mut tokens_resource = use_resource(move || async move { TokenService::list().await });
     let mut usage_resource = use_resource(move || {
@@ -146,98 +160,198 @@ pub fn Overview() -> Element {
     let usage_result = usage_resource.read().clone();
     let billing_result = billing_resource.read().clone();
 
-    let metrics: SystemMetrics = metrics_result.clone().and_then(Result::ok).unwrap_or_default();
-    let channels: Vec<Channel> = channels_result.clone().and_then(Result::ok).unwrap_or_default();
-    let logs: Vec<RouterLog> = logs_result.clone().and_then(Result::ok).unwrap_or_default();
-    let api_tokens: Vec<TokenDto> = tokens_result.clone().and_then(Result::ok).unwrap_or_default();
-    let usage: UsageStats = usage_result.clone().and_then(Result::ok).unwrap_or_default();
-    let billing: BillingSummary = billing_result.clone().and_then(Result::ok).unwrap_or_default();
+    let channels = channels_result
+        .as_ref()
+        .and_then(|result| result.as_ref().ok());
+    let logs = logs_result.as_ref().and_then(|result| result.as_ref().ok());
+    let api_tokens = tokens_result
+        .as_ref()
+        .and_then(|result| result.as_ref().ok());
+    let billing = billing_result
+        .as_ref()
+        .and_then(|result| result.as_ref().ok());
+    let metrics = metrics_result
+        .as_ref()
+        .and_then(|result| result.as_ref().ok());
 
-    let errors: Vec<String> = [
-        metrics_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Runtime: {e}")),
-        channels_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Providers: {e}")),
-        logs_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Logs: {e}")),
-        tokens_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("API keys: {e}")),
-        usage_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Usage: {e}")),
-        billing_result.as_ref().and_then(|v| v.as_ref().err()).map(|e| format!("Billing: {e}")),
+    let primary_loading =
+        channels_result.is_none() || logs_result.is_none() || tokens_result.is_none();
+    let primary_errors: Vec<String> = [
+        channels_result
+            .as_ref()
+            .and_then(|v| v.as_ref().err())
+            .map(|e| format!("Provider configuration: {e}")),
+        logs_result
+            .as_ref()
+            .and_then(|v| v.as_ref().err())
+            .map(|e| format!("Request observations: {e}")),
+        tokens_result
+            .as_ref()
+            .and_then(|v| v.as_ref().err())
+            .map(|e| format!("API access: {e}")),
     ]
     .into_iter()
     .flatten()
     .collect();
-    let has_errors = !errors.is_empty();
-    let errors_for_panel = errors.clone();
+    let supporting_errors: Vec<String> = [
+        metrics_result
+            .as_ref()
+            .and_then(|v| v.as_ref().err())
+            .map(|e| format!("Runtime metrics: {e}")),
+        usage_result
+            .as_ref()
+            .and_then(|v| v.as_ref().err())
+            .map(|e| format!("Token usage: {e}")),
+        billing_result
+            .as_ref()
+            .and_then(|v| v.as_ref().err())
+            .map(|e| format!("Billing summary: {e}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let primary_unknown = !primary_errors.is_empty();
 
-    let total_requests = billing.models.iter().map(|m| m.requests).sum::<i64>() + billing.pre_migration_requests;
-    let active_channels = channels.iter().filter(|channel| channel.status == 1).count();
-    let down_channels = channels.iter().filter(|channel| channel.status != 1).count();
-    let model_count = channel_model_count(&channels);
-    let active_keys = api_tokens.iter().filter(|key| key.status == "active").count();
-    let has_provider = active_channels > 0;
-    let has_model = model_count > 0;
-    let has_key = active_keys > 0;
-    let has_request = !logs.is_empty();
-    let has_successful_request = logs.iter().any(|log| (200..300).contains(&log.status_code));
+    let active_channels =
+        channels.map(|items| items.iter().filter(|channel| channel.status == 1).count());
+    let disabled_channels =
+        channels.map(|items| items.iter().filter(|channel| channel.status != 1).count());
+    let model_count = channels.map(|items| enabled_channel_model_count(items));
+    let active_keys =
+        api_tokens.map(|items| items.iter().filter(|key| key.status == "active").count());
+    let has_provider = active_channels.is_some_and(|count| count > 0);
+    let has_model = model_count.is_some_and(|count| count > 0);
+    let has_key = active_keys.is_some_and(|count| count > 0);
+    let has_request = logs.is_some_and(|items| !items.is_empty());
+    let has_successful_request = logs.is_some_and(|items| {
+        items
+            .iter()
+            .any(|log| (200..300).contains(&log.status_code))
+    });
     let routing_configured = has_provider && has_model && has_key;
-    let setup_complete = routing_configured && has_successful_request;
+    let setup_complete =
+        !primary_loading && !primary_unknown && routing_configured && has_successful_request;
 
-    let (status_class, status_title, status_copy) = if has_errors {
-        (
-            "product-status-card status-blocked",
-            "Some system data is unavailable",
-            "BurnCloud is reachable, but one or more operational data sources could not be loaded. Review the errors below before relying on this environment.",
-        )
-    } else if !routing_configured {
-        (
-            "product-status-card status-attention",
-            "Finish setup before sending production traffic",
-            "BurnCloud still needs one or more routing prerequisites. Complete the checklist before attempting a production request.",
-        )
-    } else if !has_successful_request {
-        (
-            "product-status-card status-attention",
-            "Verify a successful routed request",
-            if has_request {
-                "Requests are reaching BurnCloud, but no HTTP 2xx response is visible yet. Use Playground and Logs to verify the route before production traffic."
-            } else {
-                "Routing is configured, but no successful request has been observed yet. Run a controlled Playground request before production traffic."
-            },
-        )
-    } else if down_channels > 0 {
-        (
-            "product-status-card status-attention",
-            "Traffic is available, but a provider needs attention",
-            "At least one provider is inactive or down. Healthy providers can still serve traffic, but routing resilience may be reduced.",
-        )
-    } else {
-        (
-            "product-status-card status-ready",
-            "BurnCloud is ready to serve traffic",
-            "Providers, models and API access are configured, and a successful routed request has been observed. Inspect recent request activity below or run another controlled test in Playground.",
-        )
+    let (status_class, status_badge_class, status_badge, status_title, status_copy) =
+        if primary_loading {
+            (
+                "product-status-card status-loading",
+                "badge badge-neutral",
+                "LOADING",
+                "Loading current system state",
+                "BurnCloud is reading routing prerequisites and the latest persisted request observations.",
+            )
+        } else if primary_unknown {
+            (
+                "product-status-card status-blocked",
+                "badge badge-error",
+                "UNKNOWN",
+                "Current system state is incomplete",
+                "One or more primary sources could not be loaded. BurnCloud cannot conclude whether routing is configured from the available evidence.",
+            )
+        } else if !routing_configured {
+            (
+                "product-status-card status-attention",
+                "badge badge-warning",
+                "SETUP NEEDED",
+                "Routing setup is incomplete",
+                "At least one enabled provider, an exposed model, or an active API key is missing. Complete the readiness checklist before sending traffic.",
+            )
+        } else if !has_successful_request {
+            (
+                "product-status-card status-attention",
+                "badge badge-warning",
+                "CONFIGURED",
+                "Routing is configured; observation pending",
+                if has_request {
+                    "The latest 50 persisted requests contain no HTTP 2xx result. Review Logs or run a controlled request before relying on the route."
+                } else {
+                    "The routing prerequisites are configured, but no persisted request has been observed. Run a controlled request in Playground."
+                },
+            )
+        } else {
+            (
+                "product-status-card status-ready",
+                "badge badge-success",
+                "OBSERVED",
+                "Routing is configured and a recent success was observed",
+                "Providers, models, and API access are configured. At least one HTTP 2xx result is present in the latest 50 persisted request records.",
+            )
+        };
+
+    let (request_text, request_note) = match &billing_result {
+        None => (
+            "Loading".to_string(),
+            "Fetching billing summary".to_string(),
+        ),
+        Some(Err(_)) => (
+            "UNKNOWN".to_string(),
+            "Billing summary unavailable".to_string(),
+        ),
+        Some(Ok(summary)) => {
+            let total = summary
+                .models
+                .iter()
+                .map(|model| model.requests)
+                .sum::<i64>()
+                + summary.pre_migration_requests;
+            (compact(total), "Current billing summary".to_string())
+        }
+    };
+    let (token_text, usage_note) = match &usage_result {
+        None => ("Loading".to_string(), "Fetching user usage".to_string()),
+        Some(Err(_)) => ("UNKNOWN".to_string(), "Token usage unavailable".to_string()),
+        Some(Ok(stats)) => (
+            compact(stats.total_tokens),
+            format!(
+                "{} prompt / {} completion",
+                compact(stats.prompt_tokens),
+                compact(stats.completion_tokens)
+            ),
+        ),
+    };
+    let (spend_text, spend_note) = match &billing_result {
+        None => (
+            "Loading".to_string(),
+            "Fetching billing summary".to_string(),
+        ),
+        Some(Err(_)) => (
+            "UNKNOWN".to_string(),
+            "Billing summary unavailable".to_string(),
+        ),
+        Some(Ok(summary)) => (
+            format!("${:.2}", summary.total_cost_usd),
+            format!("{} billed models", summary.models.len()),
+        ),
+    };
+    let (provider_text, provider_note) = match &channels_result {
+        None => ("Loading".to_string(), "Fetching configuration".to_string()),
+        Some(Err(_)) => (
+            "UNKNOWN".to_string(),
+            "Provider configuration unavailable".to_string(),
+        ),
+        Some(Ok(items)) => (
+            active_channels.map_or_else(|| "UNKNOWN".to_string(), |count| count.to_string()),
+            format!(
+                "{} configured / {} disabled",
+                items.len(),
+                disabled_channels.map_or_else(|| "UNKNOWN".to_string(), |count| count.to_string())
+            ),
+        ),
     };
 
-    let latest = logs.first().cloned();
+    let latest = logs.and_then(|items| items.first()).cloned();
     let latest_for_card = latest.clone();
     let latest_for_drawer = latest.clone();
     let has_latest = latest.is_some();
-    let request_text = compact(total_requests);
-    let token_text = compact(usage.total_tokens);
-    let spend_text = format!("${:.2}", billing.total_cost_usd);
-    let provider_note = format!("{} total • {} need attention", channels.len(), down_channels);
-    let request_note = if has_request { "Billing period activity".to_string() } else { "No requests observed yet".to_string() };
-    let usage_note = format!("{} prompt • {} completion", compact(usage.prompt_tokens), compact(usage.completion_tokens));
-    let spend_note = format!("{} billed models", billing.models.len());
-    let runtime_cpu = format!("{:.0}%", metrics.cpu.usage_percent);
-    let runtime_memory = format!("{:.0}%", metrics.memory.usage_percent);
-    let runtime_detail = format!("{} CPU cores • {} mounted disks", metrics.cpu.core_count, metrics.disks.len());
     let mut receipt_open = use_signal(|| false);
 
     rsx! {
-        div { class: "page",
+        div { class: "page overview-page",
             div { class: "page-header",
                 div {
-                    h2 { class: "page-title", "System Overview" }
-                    p { class: "page-subtitle", "Know whether BurnCloud can serve traffic, what needs attention, and where to act next." }
+                    h2 { class: "page-title", "Overview" }
+                    p { class: "page-subtitle", "Current routing readiness, observed traffic, and supporting operational state." }
                 }
                 button {
                     class: "button button-secondary",
@@ -256,21 +370,17 @@ pub fn Overview() -> Element {
 
             div { class: "product-hero",
                 div { class: "card {status_class}",
-                    div { class: "row gap-2",
-                        span { class: if setup_complete && !has_errors && down_channels == 0 { "badge badge-success" } else { "badge badge-warning" },
-                            if setup_complete && !has_errors && down_channels == 0 { "READY" } else { "ATTENTION" }
-                        }
-                    }
+                    div { span { class: "{status_badge_class}", "{status_badge}" } }
                     div {
                         div { class: "product-status-title", "{status_title}" }
                         p { class: "product-status-copy", "{status_copy}" }
                     }
                     div { class: "product-actions",
-                        if !has_provider {
-                            Link { class: "button button-primary", to: Route::Providers {}, Icon { name: "plus" } "Add first provider" }
-                        } else if !has_key {
+                        if !primary_loading && !primary_unknown && !has_provider {
+                            Link { class: "button button-primary", to: Route::Providers {}, Icon { name: "plus" } "Add provider" }
+                        } else if !primary_loading && !primary_unknown && !has_key {
                             Link { class: "button button-primary", to: Route::APIKeys {}, Icon { name: "key" } "Create API key" }
-                        } else {
+                        } else if !primary_loading && !primary_unknown {
                             Link { class: "button button-primary", to: Route::Playground {}, Icon { name: "play" } "Test a request" }
                         }
                         Link { class: "button button-secondary", to: Route::Logs {}, "View request logs" }
@@ -279,170 +389,194 @@ pub fn Overview() -> Element {
 
                 div { class: "card setup-card",
                     div { class: "product-section-head",
-                        div {
-                            h3 { "Setup & readiness" }
-                            p { "The minimum path to a verified routed request." }
-                        }
+                        div { h3 { "Routing readiness" } p { "Required configuration plus a scoped traffic observation." } }
                         span { class: if setup_complete { "badge badge-success" } else { "badge badge-neutral" },
-                            if setup_complete { "Ready" } else { "In progress" }
+                            if primary_loading { "Loading" } else if primary_unknown { "Unknown" } else if setup_complete { "Observed" } else { "Incomplete" }
                         }
                     }
-                    div { class: "setup-list",
-                        SetupStep { complete: has_provider, title: "Provider connected", detail: format!("{} active providers", active_channels), to: Route::Providers {}, action: "Configure" }
-                        SetupStep { complete: has_model, title: "Model available", detail: format!("{} unique models exposed", model_count), to: Route::Models {}, action: "Review" }
-                        SetupStep { complete: has_key, title: "API access created", detail: format!("{} active API keys", active_keys), to: Route::APIKeys {}, action: "Create" }
-                        SetupStep {
-                            complete: has_successful_request,
-                            title: "Successful request observed",
-                            detail: if has_successful_request {
-                                "HTTP 2xx traffic is visible in Logs".to_string()
-                            } else if has_request {
-                                "Requests exist, but no successful response is visible yet".to_string()
-                            } else {
-                                "Send a test from Playground".to_string()
-                            },
-                            to: Route::Playground {},
-                            action: "Test"
+                    if primary_loading {
+                        div { class: "overview-state-placeholder", "Loading routing prerequisites..." }
+                    } else if primary_unknown {
+                        div { class: "overview-state-placeholder", "Readiness is unknown until the primary data sources are available." }
+                    } else {
+                        div { class: "setup-list",
+                            SetupStep { complete: has_provider, title: "Enabled provider", detail: format!("{} enabled providers", active_channels.map_or_else(|| "UNKNOWN".to_string(), |count| count.to_string())), to: Route::Providers {}, action: "Configure" }
+                            SetupStep { complete: has_model, title: "Exposed model", detail: format!("{} models on enabled providers", model_count.map_or_else(|| "UNKNOWN".to_string(), |count| count.to_string())), to: Route::Models {}, action: "Review" }
+                            SetupStep { complete: has_key, title: "Active API access", detail: format!("{} active API keys", active_keys.map_or_else(|| "UNKNOWN".to_string(), |count| count.to_string())), to: Route::APIKeys {}, action: "Create" }
+                            SetupStep {
+                                complete: has_successful_request,
+                                title: "Successful request observed",
+                                detail: if has_successful_request {
+                                    "HTTP 2xx present in the latest 50 persisted logs".to_string()
+                                } else if has_request {
+                                    "No HTTP 2xx present in the latest 50 persisted logs".to_string()
+                                } else {
+                                    "No persisted requests in the loaded sample".to_string()
+                                },
+                                to: Route::Playground {},
+                                action: "Test"
+                            }
                         }
                     }
                 }
             }
 
-            if has_errors {
-                div { class: "card card-pad stack",
+            if !primary_errors.is_empty() || !supporting_errors.is_empty() {
+                div { class: "card card-pad stack overview-attention",
                     div { class: "product-section-head",
-                        div { h3 { class: "danger", "Needs attention" } p { "These sources failed to load on the latest refresh." } }
+                        div {
+                            h3 { class: "danger", "Data unavailable" }
+                            p { "Failed sources remain unknown; they are not represented as zero or empty." }
+                        }
                     }
-                    for message in errors_for_panel { code { class: "terminal", "{message}" } }
+                    for message in primary_errors.iter().chain(supporting_errors.iter()) {
+                        code { class: "overview-error-line", "{message}" }
+                    }
                 }
             }
 
-            div { class: "metrics",
+            div { class: "metrics overview-metrics",
                 {kpi("Requests", request_text, request_note, "activity", "tone-blue")}
                 {kpi("Tokens", token_text, usage_note, "models", "tone-purple")}
                 {kpi("Spend", spend_text, spend_note, "dollar", "tone-amber")}
-                {kpi("Active Providers", active_channels.to_string(), provider_note, "server", "tone-green")}
+                {kpi("Enabled Providers", provider_text, provider_note, "server", "tone-green")}
             }
 
             div { class: "grid-2",
                 div { class: "card card-pad stack",
                     div { class: "product-section-head",
-                        div {
-                            h3 { "Provider health" }
-                            p { "The upstream supply currently available to the router." }
-                        }
+                        div { h3 { "Provider configuration" } p { "Enabled state from the configured upstream channel records." } }
                         Link { class: "button button-ghost button-sm", to: Route::Providers {}, "Manage providers" }
                     }
-                    if channels.is_empty() {
-                        div { class: "product-empty", style: "min-height:150px",
-                            div { class: "product-empty-inner",
-                                div { class: "product-empty-icon", Icon { name: "providers" } }
-                                h3 { "No providers configured" }
-                                p { "Add an upstream provider before BurnCloud can expose models or route requests." }
-                                Link { class: "button button-primary button-sm", to: Route::Providers {}, "Add provider" }
+                    match &channels_result {
+                        None => rsx! { div { class: "overview-state-placeholder", "Loading provider configuration..." } },
+                        Some(Err(_)) => rsx! { div { class: "overview-state-placeholder", strong { "UNKNOWN" } span { " Provider configuration could not be loaded." } } },
+                        Some(Ok(items)) if items.is_empty() => rsx! {
+                            div { class: "product-empty overview-compact-empty",
+                                div { class: "product-empty-inner",
+                                    div { class: "product-empty-icon", Icon { name: "providers" } }
+                                    h3 { "No providers configured" }
+                                    p { "Add an upstream provider before BurnCloud can expose models or route requests." }
+                                    Link { class: "button button-primary button-sm", to: Route::Providers {}, "Add provider" }
+                                }
                             }
-                        }
-                    } else {
-                        div { class: "stack",
-                            for channel in channels.iter().take(6) {
-                                {
-                                    let mut model_summary = channel.models.chars().take(52).collect::<String>();
-                                    if channel.models.chars().count() > 52 {
-                                        model_summary.push('…');
-                                    }
-                                    rsx! {
-                                        div { class: "source-line",
-                                            div { class: "source-meta",
-                                                span { class: "strong", "{channel.name}" }
-                                                span { class: if channel.status == 1 { "badge badge-success" } else { "badge badge-error" },
-                                                    if channel.status == 1 { "ACTIVE" } else { "DOWN" }
+                        },
+                        Some(Ok(items)) => rsx! {
+                            div { class: "stack",
+                                for channel in items.iter().take(6) {
+                                    {
+                                        let mut model_summary = channel.models.chars().take(52).collect::<String>();
+                                        if channel.models.chars().count() > 52 { model_summary.push_str("..."); }
+                                        if model_summary.is_empty() { model_summary.push_str("No models configured"); }
+                                        rsx! {
+                                            div { class: "source-line overview-provider-row",
+                                                div { class: "source-meta",
+                                                    span { class: "strong", "{channel.name}" }
+                                                    span { class: if channel.status == 1 { "badge badge-success" } else { "badge badge-neutral" },
+                                                        if channel.status == 1 { "ENABLED" } else { "DISABLED" }
+                                                    }
                                                 }
+                                                div { class: "tiny subtle mono", "{model_summary}" }
                                             }
-                                            div { class: "tiny subtle mono", "{model_summary}" }
                                         }
                                     }
                                 }
                             }
-                        }
+                        },
                     }
                 }
 
                 div { class: "card card-pad stack",
                     div { class: "product-section-head",
-                        div {
-                            h3 { "Latest request" }
-                            p { "A fast confidence check that traffic reached the router." }
-                        }
+                        div { h3 { "Latest persisted request" } p { "The first record returned by the latest 50-request log query." } }
                         Link { class: "button button-ghost button-sm", to: Route::Logs {}, "Open logs" }
                     }
-                    if let Some(log) = latest_for_card {
-                        {
+                    match (&logs_result, latest_for_card) {
+                        (None, _) => rsx! { div { class: "overview-state-placeholder", "Loading request observations..." } },
+                        (Some(Err(_)), _) => rsx! { div { class: "overview-state-placeholder", strong { "UNKNOWN" } span { " Request observations could not be loaded." } } },
+                        (Some(Ok(_)), Some(log)) => {
                             let model_text = log.model.clone().unwrap_or_else(|| "-".to_string());
                             let upstream_text = log.upstream_id.clone().unwrap_or_else(|| "-".to_string());
-                            let status_text = format!("HTTP {} • {}", log.status_code, log.status_label());
+                            let status_text = format!("HTTP {} / {}", log.status_code, log.status_label());
                             rsx! {
                                 div { class: "receipt",
                                     div { class: "receipt-row", label { "Request" } strong { class: "mono", "{log.request_id}" } }
                                     div { class: "receipt-row", label { "Model" } strong { "{model_text}" } }
-                                    div { class: "receipt-row", label { "Upstream" } strong { "{upstream_text}" } }
+                                    div { class: "receipt-row", label { "Selected upstream" } strong { "{upstream_text}" } }
                                     div { class: "receipt-row", label { "Result" } strong { "{status_text}" } }
                                 }
-                                button { class: "button button-secondary", style: "width:100%", onclick: move |_| receipt_open.set(true), "Inspect routing metadata" }
+                                button { class: "button button-secondary", style: "width:100%", onclick: move |_| receipt_open.set(true), "Inspect stored metadata" }
                             }
-                        }
-                    } else {
-                        div { class: "product-empty", style: "min-height:150px",
-                            div { class: "product-empty-inner",
-                                div { class: "product-empty-icon", Icon { name: "logs" } }
-                                h3 { "No request activity yet" }
-                                p { "Use Playground to make the first routed request, then return here to verify the result." }
-                                Link { class: "button button-primary button-sm", to: Route::Playground {}, "Open Playground" }
+                        },
+                        (Some(Ok(_)), None) => rsx! {
+                            div { class: "product-empty overview-compact-empty",
+                                div { class: "product-empty-inner",
+                                    div { class: "product-empty-icon", Icon { name: "logs" } }
+                                    h3 { "No request activity observed" }
+                                    p { "The loaded 50-request sample is empty. Use Playground to make a controlled request." }
+                                    Link { class: "button button-primary button-sm", to: Route::Playground {}, "Open Playground" }
+                                }
                             }
-                        }
+                        },
                     }
                 }
             }
 
-            div { class: "grid-2",
-                div { class: "card card-pad stack",
-                    div { class: "product-section-head",
-                        div { h3 { "Runtime" } p { "Host resource pressure is secondary to traffic health, but useful for capacity diagnosis." } }
-                        Link { class: "button button-ghost button-sm", to: Route::Settings {}, "System details" }
-                    }
-                    div { class: "grid-2",
-                        div { class: "receipt-row", label { "CPU" } strong { class: "mono", "{runtime_cpu}" } }
-                        div { class: "receipt-row", label { "Memory" } strong { class: "mono", "{runtime_memory}" } }
-                    }
-                    span { class: "tiny subtle mono", "{runtime_detail}" }
+            div { class: "overview-supporting-section",
+                div { class: "overview-supporting-head",
+                    h3 { "Supporting state" }
+                    p { "Capacity and billing context; these sources do not determine routing readiness." }
                 }
-
-                div { class: "card card-pad stack",
-                    div { class: "product-section-head",
-                        div { h3 { "Spend by model" } p { "Top billed models for the current billing period." } }
-                        Link { class: "button button-ghost button-sm", to: Route::Billing {}, "Open billing" }
+                div { class: "grid-2",
+                    div { class: "card card-pad stack",
+                        div { class: "product-section-head",
+                            div { h3 { "Host resources" } p { "Latest monitor API sample." } }
+                            Link { class: "button button-ghost button-sm", to: Route::Settings {}, "System details" }
+                        }
+                        match metrics {
+                            None if metrics_result.is_none() => rsx! { div { class: "overview-state-placeholder", "Loading runtime metrics..." } },
+                            None => rsx! { div { class: "overview-state-placeholder", strong { "UNKNOWN" } span { " Runtime metrics could not be loaded." } } },
+                            Some(data) => {
+                                let runtime_cpu = format!("{:.0}%", data.cpu.usage_percent);
+                                let runtime_memory = format!("{:.0}%", data.memory.usage_percent);
+                                let runtime_detail = format!("{} CPU cores / {} mounted disks", data.cpu.core_count, data.disks.len());
+                                rsx! {
+                                    div { class: "grid-2 overview-runtime-grid",
+                                        div { class: "receipt-row", label { "CPU" } strong { class: "mono", "{runtime_cpu}" } }
+                                        div { class: "receipt-row", label { "Memory" } strong { class: "mono", "{runtime_memory}" } }
+                                    }
+                                    span { class: "tiny subtle mono", "{runtime_detail}" }
+                                }
+                            },
+                        }
                     }
-                    if billing.models.is_empty() {
-                        p { class: "small muted", "No billed usage is available yet." }
-                    } else {
-                        div { class: "stack",
-                            for model in billing.models.iter().take(5) {
-                                {
-                                    let cost = format!("${:.6}", model.cost_usd);
-                                    rsx! {
-                                        div { class: "row between",
-                                            span { class: "mono small", "{model.model}" }
-                                            strong { class: "mono small", "{cost}" }
+
+                    div { class: "card card-pad stack",
+                        div { class: "product-section-head",
+                            div { h3 { "Spend by model" } p { "Current billing summary." } }
+                            Link { class: "button button-ghost button-sm", to: Route::Billing {}, "Open billing" }
+                        }
+                        match billing {
+                            None if billing_result.is_none() => rsx! { div { class: "overview-state-placeholder", "Loading billing summary..." } },
+                            None => rsx! { div { class: "overview-state-placeholder", strong { "UNKNOWN" } span { " Billing summary could not be loaded." } } },
+                            Some(summary) if summary.models.is_empty() => rsx! { p { class: "small muted", "No billed model usage is present in the current summary." } },
+                            Some(summary) => rsx! {
+                                div { class: "stack",
+                                    for model in summary.models.iter().take(5) {
+                                        {
+                                            let cost = format!("${:.6}", model.cost_usd);
+                                            rsx! { div { class: "row between", span { class: "mono small", "{model.model}" } strong { class: "mono small", "{cost}" } } }
                                         }
                                     }
                                 }
-                            }
+                            },
                         }
                     }
                 }
             }
 
             Drawer {
-                title: "Stored Request Route Receipt",
+                title: "Stored Request Routing Metadata",
                 open: receipt_open() && has_latest,
                 on_close: move |_| receipt_open.set(false),
                 if let Some(log) = latest_for_drawer {
@@ -451,7 +585,7 @@ pub fn Overview() -> Element {
                         rsx! {
                             div { class: "stack-lg",
                                 div { class: "product-note",
-                                    "This is the routing metadata BurnCloud actually persisted for the request. It is useful for operational traceability; it is not presented as a cryptographic attestation."
+                                    "This is persisted routing and response metadata. A selected upstream and an HTTP result are operational observations; they do not cryptographically prove which provider executed the request."
                                 }
                                 pre { class: "terminal", style: "white-space:pre-wrap;line-height:1.65", "{receipt}" }
                             }
@@ -466,4 +600,35 @@ pub fn Overview() -> Element {
 #[component]
 pub fn Dashboard() -> Element {
     rsx! { Overview {} }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn channel(status: i32, models: &str) -> Channel {
+        Channel {
+            status,
+            models: models.to_string(),
+            ..Channel::default()
+        }
+    }
+
+    #[test]
+    fn model_readiness_uses_only_enabled_channels_and_deduplicates_models() {
+        let channels = vec![
+            channel(1, "gpt-4o, claude-3"),
+            channel(1, "gpt-4o"),
+            channel(0, "disabled-only-model"),
+        ];
+
+        assert_eq!(enabled_channel_model_count(&channels), 2);
+    }
+
+    #[test]
+    fn compact_formats_observed_counts_without_changing_zero() {
+        assert_eq!(compact(0), "0");
+        assert_eq!(compact(1_250), "1.25K");
+        assert_eq!(compact(2_500_000), "2.50M");
+    }
 }

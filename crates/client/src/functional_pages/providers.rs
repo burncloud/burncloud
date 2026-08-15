@@ -81,7 +81,9 @@ pub fn Providers() -> Element {
 
     let snapshot = resource.read().clone();
     let is_loading = snapshot.is_none();
-    let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let load_error = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
     let has_load_error = load_error.is_some();
     let channels = snapshot
         .as_ref()
@@ -89,7 +91,10 @@ pub fn Providers() -> Element {
         .cloned()
         .unwrap_or_default();
     let total = channels.len();
-    let active = channels.iter().filter(|channel| channel.status == 1).count();
+    let active = channels
+        .iter()
+        .filter(|channel| channel.status == 1)
+        .count();
     let attention = total.saturating_sub(active);
     let mut unique_models = BTreeSet::new();
     let mut routing_groups = BTreeSet::new();
@@ -97,7 +102,12 @@ pub fn Providers() -> Element {
         for model in model_list(channel) {
             unique_models.insert(model);
         }
-        for route_group in channel.group.split(',').map(str::trim).filter(|group| !group.is_empty()) {
+        for route_group in channel
+            .group
+            .split(',')
+            .map(str::trim)
+            .filter(|group| !group.is_empty())
+        {
             routing_groups.insert(route_group.to_string());
         }
     }
@@ -119,7 +129,9 @@ pub fn Providers() -> Element {
         "Provider supply needs attention"
     };
     let health_copy = if attention == 0 {
-        format!("{active} of {total} providers are active and exposing {model_count} unique model IDs.")
+        format!(
+            "{active} of {total} providers are active and exposing {model_count} unique model IDs."
+        )
     } else {
         format!("{attention} of {total} providers are inactive or down. Verify route redundancy before production changes.")
     };

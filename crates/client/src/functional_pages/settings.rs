@@ -20,17 +20,33 @@ pub fn Settings() -> Element {
 
     let metrics_result = metrics_resource.read().clone();
     let cache_result = cache_resource.read().clone();
-    let metrics: SystemMetrics = metrics_result.clone().and_then(Result::ok).unwrap_or_default();
-    let metrics_error = metrics_result.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let metrics: SystemMetrics = metrics_result
+        .clone()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    let metrics_error = metrics_result
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
     let cache_text = match cache_result {
-        Some(Ok(value)) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+        Some(Ok(value)) => {
+            serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
+        }
         Some(Err(message)) => format!("Cache statistics unavailable: {message}"),
         None => "Loading cache statistics…".to_string(),
     };
 
-    let roles = user.as_ref().map(|user| user.roles.join(", ")).unwrap_or_else(|| "-".to_string());
-    let username = user.as_ref().map(|user| user.username.clone()).unwrap_or_else(|| "-".to_string());
-    let user_id = user.as_ref().map(|user| user.id.clone()).unwrap_or_else(|| "-".to_string());
+    let roles = user
+        .as_ref()
+        .map(|user| user.roles.join(", "))
+        .unwrap_or_else(|| "-".to_string());
+    let username = user
+        .as_ref()
+        .map(|user| user.username.clone())
+        .unwrap_or_else(|| "-".to_string());
+    let user_id = user
+        .as_ref()
+        .map(|user| user.id.clone())
+        .unwrap_or_else(|| "-".to_string());
     let memory_used_gib = metrics.memory.used as f64 / 1024.0 / 1024.0 / 1024.0;
     let memory_total_gib = metrics.memory.total as f64 / 1024.0 / 1024.0 / 1024.0;
     let memory_text = format!("{memory_used_gib:.1} / {memory_total_gib:.1} GiB");

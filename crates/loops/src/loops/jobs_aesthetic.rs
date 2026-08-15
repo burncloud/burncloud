@@ -102,7 +102,10 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
     );
     println!("  E2E server : {} (persistent)", server.base_url);
     if let Some(ref pages) = progress.active_pages {
-        println!("  Scope      : {} (pilot — one page at a time)", pages.join(", "));
+        println!(
+            "  Scope      : {} (pilot — one page at a time)",
+            pages.join(", ")
+        );
     }
     println!(
         "  Page queue : {} done, current={}, {} remaining",
@@ -111,10 +114,7 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
         progress.remaining_count()
     );
     if !progress.completed_pages.is_empty() {
-        println!(
-            "  Completed  : {}",
-            progress.completed_pages.join(", ")
-        );
+        println!("  Completed  : {}", progress.completed_pages.join(", "));
     }
     if opts.check_only {
         println!("  Mode       : check only (no agent)");
@@ -147,7 +147,8 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
         let check_log = run_dir.join(format!("loop-check-{i}.log"));
         let mut logger = LoopLogger::for_iteration(i, Some(&check_log))?;
 
-        let gates = run_jobs_fast_gates(&root, opts.full_css_gate, Some(&review_scope), &mut logger);
+        let gates =
+            run_jobs_fast_gates(&root, opts.full_css_gate, Some(&review_scope), &mut logger);
         let phase = phase_from_gates(gates.css_ok, gates.metrics_ok, gates.review_ok);
         let elapsed = iter_start.elapsed().as_secs();
         println!(
@@ -180,7 +181,10 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
                 })).collect::<Vec<_>>(),
                 "e2e": timings,
             });
-            let _ = std::fs::write(&timings_path, serde_json::to_string_pretty(&payload).unwrap_or_default());
+            let _ = std::fs::write(
+                &timings_path,
+                serde_json::to_string_pretty(&payload).unwrap_or_default(),
+            );
             println!("  Timings log : {}", timings_path.display());
         }
 
@@ -218,7 +222,11 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
                 agent_prompt: agent_prompt_path.display().to_string(),
                 fast_mode: !opts.full_css_gate,
                 preview_routes: true,
-                pages: progress.page_order().iter().map(|s| s.to_string()).collect(),
+                pages: progress
+                    .page_order()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
                 current_page: Some(progress.current_page.clone()),
                 completed_pages: progress.completed_pages.clone(),
                 pages_remaining: Some(progress.remaining_count()),
@@ -250,7 +258,10 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
 
         if opts.check_only {
             println!();
-            println!("CheckOnly: stopping after diagnostics (phase={phase}, page={}).", progress.current_page);
+            println!(
+                "CheckOnly: stopping after diagnostics (phase={phase}, page={}).",
+                progress.current_page
+            );
             println!("  Prompt preview: {}", agent_prompt_path.display());
             println!("  Gate log: {}", check_log.display());
             return Ok(1);
@@ -300,7 +311,11 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
             agent_prompt: run_dir.join("agent-prompt.md").display().to_string(),
             fast_mode: !opts.full_css_gate,
             preview_routes: true,
-            pages: progress.page_order().iter().map(|s| s.to_string()).collect(),
+            pages: progress
+                .page_order()
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             current_page: Some(progress.current_page.clone()),
             completed_pages: progress.completed_pages.clone(),
             pages_remaining: Some(progress.remaining_count()),
@@ -319,6 +334,10 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
 
 fn default_agent_cmd() -> PathBuf {
     std::env::var("LOCALAPPDATA")
-        .map(|appdata| PathBuf::from(appdata).join("cursor-agent").join("agent.cmd"))
+        .map(|appdata| {
+            PathBuf::from(appdata)
+                .join("cursor-agent")
+                .join("agent.cmd")
+        })
         .unwrap_or_else(|_| PathBuf::from("agent.cmd"))
 }

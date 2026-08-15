@@ -102,7 +102,11 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    assert_eq!(resp_usage.status(), 401, "Usage API should require authentication");
+    assert_eq!(
+        resp_usage.status(),
+        401,
+        "Usage API should require authentication"
+    );
 
     Ok(())
 }

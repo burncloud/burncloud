@@ -59,12 +59,17 @@ pub fn Evaluation() -> Element {
     let mut resource = use_resource(move || async move { full_logs(500).await });
     let snapshot = resource.read().clone();
     let loading = snapshot.is_none();
-    let load_error = snapshot.as_ref().and_then(|result| result.as_ref().err().cloned());
+    let load_error = snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err().cloned());
     let logs: Vec<FullRouterLog> = snapshot.and_then(Result::ok).unwrap_or_default();
 
     let mut models: BTreeMap<String, ModelEval> = BTreeMap::new();
     for log in &logs {
-        let model_name = log.model.clone().unwrap_or_else(|| "unattributed".to_string());
+        let model_name = log
+            .model
+            .clone()
+            .unwrap_or_else(|| "unattributed".to_string());
         let entry = models.entry(model_name).or_default();
         let outcome = log.status_label();
         entry.requests += 1;
@@ -95,7 +100,10 @@ pub fn Evaluation() -> Element {
         .iter()
         .filter(|log| matches!(log.status_label(), "Success" | "Fallback"))
         .count() as i64;
-    let fallback_requests = logs.iter().filter(|log| log.status_label() == "Fallback").count() as i64;
+    let fallback_requests = logs
+        .iter()
+        .filter(|log| log.status_label() == "Fallback")
+        .count() as i64;
     let total_latency = logs.iter().map(|log| log.latency_ms).sum::<i64>();
     let overall_success = if total_requests == 0 {
         0.0
@@ -103,12 +111,19 @@ pub fn Evaluation() -> Element {
         successful_requests as f64 * 100.0 / total_requests as f64
     };
     let overall_success_text = format!("{overall_success:.1}%");
-    let avg_latency = if total_requests == 0 { 0 } else { total_latency / total_requests };
+    let avg_latency = if total_requests == 0 {
+        0
+    } else {
+        total_latency / total_requests
+    };
     let avg_latency_text = format_latency(avg_latency);
     let model_count = models.len();
     let models_with_errors = models.values().filter(|model| model.failures() > 0).count();
     let models_with_fallbacks = models.values().filter(|model| model.fallbacks > 0).count();
-    let one_or_fewer_observed_upstreams = models.values().filter(|model| model.upstreams.len() <= 1).count();
+    let one_or_fewer_observed_upstreams = models
+        .values()
+        .filter(|model| model.upstreams.len() <= 1)
+        .count();
 
     let sample_class = if models_with_errors > 0 {
         "readiness-strip danger-zone"
@@ -117,7 +132,9 @@ pub fn Evaluation() -> Element {
     } else {
         "readiness-strip ready"
     };
-    let (sample_badge_class, sample_badge_text, sample_title, sample_copy) = if models_with_errors > 0 {
+    let (sample_badge_class, sample_badge_text, sample_title, sample_copy) = if models_with_errors
+        > 0
+    {
         (
             "badge badge-error",
             "FAILURES OBSERVED",

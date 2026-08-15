@@ -172,7 +172,9 @@ async fn test_topup_modal_quick_buttons() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_as_admin(&base_url).await;
 
-    browser.open("/console/users").expect("Failed to open users page");
+    browser
+        .open("/console/users")
+        .expect("Failed to open users page");
     browser
         .wait_for_text("客户列表", 10_000)
         .expect("User list page did not load");
@@ -309,7 +311,9 @@ async fn test_invite_user_modal() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_as_admin(&base_url).await;
 
-    browser.open("/console/users").expect("Failed to open users page");
+    browser
+        .open("/console/users")
+        .expect("Failed to open users page");
     browser
         .wait_for_text("客户列表", 10_000)
         .expect("User list page did not load");
@@ -400,9 +404,7 @@ async fn test_user_list_tabs() {
 
     // Tabs should exist (based on UI code: "all" and "vip" tabs)
     assert!(
-        snap.text.contains("全部")
-            || snap.text.contains("VIP")
-            || snap.text.contains("All"),
+        snap.text.contains("全部") || snap.text.contains("VIP") || snap.text.contains("All"),
         "User list should have tabs. Snapshot: {}",
         snap.text
     );
