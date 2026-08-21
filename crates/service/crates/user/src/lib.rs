@@ -10,7 +10,7 @@ use burncloud_database_user::UserDatabase;
 use dashmap::DashMap;
 
 // Re-export domain types so server can depend on service-user instead of database-user
-pub use burncloud_database_user::{UserAccount, UserRecharge};
+pub use burncloud_database_user::{UserAccount, UserFundingRequest, UserRecharge};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -357,6 +357,37 @@ impl UserService {
     /// List recharge history for a user
     pub async fn list_recharges(&self, db: &Database, user_id: &str) -> Result<Vec<UserRecharge>> {
         UserDatabase::list_recharges(db, user_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn create_funding_request(
+        &self,
+        db: &Database,
+        user_id: &str,
+        amount: i64,
+        currency: &str,
+        note: Option<String>,
+    ) -> Result<UserFundingRequest> {
+        let mut request = UserFundingRequest {
+            id: 0,
+            user_id: user_id.to_string(),
+            amount,
+            currency: currency.to_string(),
+            note,
+            status: "pending".to_string(),
+            created_at: None,
+        };
+        request.id = UserDatabase::create_funding_request(db, &request).await?;
+        Ok(request)
+    }
+
+    pub async fn list_funding_requests(
+        &self,
+        db: &Database,
+        user_id: &str,
+    ) -> Result<Vec<UserFundingRequest>> {
+        UserDatabase::list_funding_requests(db, user_id)
             .await
             .map_err(Into::into)
     }

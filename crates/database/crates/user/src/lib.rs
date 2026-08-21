@@ -13,11 +13,13 @@ mod common;
 mod password_reset;
 mod user_account;
 mod user_api_key;
+mod user_funding_request;
 mod user_recharge;
 
 pub use password_reset::{PasswordResetDatabase, PasswordResetToken};
 pub use user_account::{UserAccount, UserAccountInput};
 pub use user_api_key::{UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
+pub use user_funding_request::UserFundingRequest;
 pub use user_recharge::UserRecharge;
 
 use burncloud_database::{Database, Result};
@@ -105,6 +107,36 @@ impl UserDatabase {
             .execute(conn.pool())
             .await?;
         sqlx::query(user_recharges_sql).execute(conn.pool()).await?;
+        let funding_requests_sql = if kind == "sqlite" {
+            r#"
+            CREATE TABLE IF NOT EXISTS user_funding_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                amount BIGINT NOT NULL,
+                currency VARCHAR(10) NOT NULL,
+                note TEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            );
+            "#
+        } else {
+            r#"
+            CREATE TABLE IF NOT EXISTS user_funding_requests (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                amount BIGINT NOT NULL,
+                currency VARCHAR(10) NOT NULL,
+                note TEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            );
+            "#
+        };
+        sqlx::query(funding_requests_sql)
+            .execute(conn.pool())
+            .await?;
 
         // Migrations for SQLite (Add columns if missing)
         if kind == "sqlite" {
@@ -513,5 +545,55 @@ impl UserDatabase {
             .fetch_all(conn.pool())
             .await?;
         Ok(recharges)
+    }
+
+    pub async fn create_funding_request(
+        db: &Database,
+        request: &UserFundingRequest,
+    ) -> Result<i32> {
+        let conn = db.get_connection()?;
+        match db.kind().as_str() {
+            "sqlite" => {
+                sqlx::query("INSERT INTO user_funding_requests (user_id, amount, currency, note, status) VALUES (?, ?, ?, ?, ?)")
+                    .bind(&request.user_id)
+                    .bind(request.amount)
+                    .bind(&request.currency)
+                    .bind(&request.note)
+                    .bind(&request.status)
+                    .execute(conn.pool())
+                    .await?;
+                sqlx::query_scalar("SELECT last_insert_rowid()")
+                    .fetch_one(conn.pool())
+                    .await
+                    .map_err(Into::into)
+            }
+            "postgres" => sqlx::query_scalar("INSERT INTO user_funding_requests (user_id, amount, currency, note, status) VALUES ($1, $2, $3, $4, $5) RETURNING id")
+                .bind(&request.user_id)
+                .bind(request.amount)
+                .bind(&request.currency)
+                .bind(&request.note)
+                .bind(&request.status)
+                .fetch_one(conn.pool())
+                .await
+                .map_err(Into::into),
+            _ => unreachable!(),
+        }
+    }
+
+    pub async fn list_funding_requests(
+        db: &Database,
+        user_id: &str,
+    ) -> Result<Vec<UserFundingRequest>> {
+        let conn = db.get_connection()?;
+        let sql = if db.kind() == "postgres" {
+            "SELECT * FROM user_funding_requests WHERE user_id = $1 ORDER BY created_at DESC"
+        } else {
+            "SELECT * FROM user_funding_requests WHERE user_id = ? ORDER BY created_at DESC"
+        };
+        sqlx::query_as::<_, UserFundingRequest>(sql)
+            .bind(user_id)
+            .fetch_all(conn.pool())
+            .await
+            .map_err(Into::into)
     }
 }

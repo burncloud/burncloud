@@ -10,11 +10,13 @@ use axum::{
 };
 use burncloud_database_user::UserDatabase;
 use burncloud_service_channel::{Channel, ChannelService};
-use burncloud_service_router_log::{BillingModelSummary, BillingService, RouterLogService};
+use burncloud_service_router_log::{
+    BillingModelSummary, BillingService, RouterLog, RouterLogService,
+};
 use burncloud_service_token::TokenService as ApiTokenService;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const AVAILABILITY_SAMPLE_LIMIT: i32 = 500;
 const DEFAULT_USD_LOW_NANO: i64 = 5_000_000_000;
@@ -53,6 +55,31 @@ struct BuyerModelSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct BuyerLogSummary {
+    request_id: String,
+    model: Option<String>,
+    status_code: i32,
+    latency_ms: i64,
+    tokens: i64,
+    cost_usd: f64,
+    created_at_utc: Option<String>,
+}
+
+impl From<RouterLog> for BuyerLogSummary {
+    fn from(log: RouterLog) -> Self {
+        Self {
+            request_id: log.request_id,
+            model: log.model,
+            status_code: log.status_code,
+            latency_ms: log.latency_ms,
+            tokens: i64::from(log.prompt_tokens) + i64::from(log.completion_tokens),
+            cost_usd: log.cost as f64 / 1_000_000_000.0,
+            created_at_utc: log.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct BuyerActivityEvent {
     kind: String,
     title: String,
@@ -77,7 +104,33 @@ struct BuyerOverviewSnapshot {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/console/api/buyer/overview", get(buyer_overview))
+    Router::new()
+        .route("/console/api/buyer/overview", get(buyer_overview))
+        .route("/console/api/buyer/models", get(buyer_models))
+        .route("/console/api/buyer/logs", get(buyer_logs))
+}
+
+async fn require_buyer(state: &AppState, claims: &Claims) -> Result<(), Response> {
+    let roles = state
+        .user_service
+        .get_user_roles(&state.db, &claims.sub)
+        .await
+        .map_err(|error| {
+            tracing::error!(user_id = %claims.sub, error = %error, "Failed to resolve Buyer roles");
+            err_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Could not verify Buyer access",
+            )
+            .into_response()
+        })?;
+    if roles
+        .iter()
+        .any(|role| role.eq_ignore_ascii_case("buyer") || role.eq_ignore_ascii_case("user"))
+    {
+        Ok(())
+    } else {
+        Err(err_status(StatusCode::FORBIDDEN, "Buyer access is required").into_response())
+    }
 }
 
 fn env_i64(name: &str, fallback: i64) -> i64 {
@@ -152,6 +205,48 @@ fn summarize_models(usage: &[BillingModelSummary], channels: &[Channel]) -> Vec<
         .collect()
 }
 
+fn catalog_models(channels: &[Channel]) -> Vec<BuyerModelSummary> {
+    let mut models: BTreeMap<String, (BTreeSet<String>, bool)> = BTreeMap::new();
+    for channel in channels {
+        for model in channel
+            .models
+            .split(',')
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+        {
+            let entry = models.entry(model.to_string()).or_default();
+            entry.0.extend(
+                channel
+                    .group
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|group| !group.is_empty())
+                    .map(str::to_string),
+            );
+            entry.1 |= channel.status == 1;
+        }
+    }
+    models
+        .into_iter()
+        .map(|(name, (tiers, available))| BuyerModelSummary {
+            name,
+            tier: if tiers.is_empty() {
+                "Standard".to_string()
+            } else {
+                tiers.into_iter().collect::<Vec<_>>().join(" / ")
+            },
+            tokens_today: 0,
+            status: if available {
+                "available"
+            } else {
+                "unavailable"
+            }
+            .to_string(),
+            destination: "/console/buyer/playground".to_string(),
+        })
+        .collect()
+}
+
 fn classify_availability(
     successful: i64,
     total: i64,
@@ -174,30 +269,56 @@ fn classify_availability(
     (state, Some(percent))
 }
 
+async fn buyer_models(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> Response {
+    if let Err(response) = require_buyer(&state, &claims).await {
+        return response;
+    }
+    match ChannelService::list(&state.db, 1000, 0).await {
+        Ok(channels) => ok(catalog_models(&channels)).into_response(),
+        Err(error) => {
+            tracing::error!(user_id = %claims.sub, error = %error, "Failed to load Buyer model catalog");
+            err_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Buyer model catalog is unavailable",
+            )
+            .into_response()
+        }
+    }
+}
+
+async fn buyer_logs(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> Response {
+    if let Err(response) = require_buyer(&state, &claims).await {
+        return response;
+    }
+    match RouterLogService::get_filtered(&state.db, Some(&claims.sub), None, None, 100, 0).await {
+        Ok(logs) => ok(logs
+            .into_iter()
+            .map(BuyerLogSummary::from)
+            .collect::<Vec<_>>())
+        .into_response(),
+        Err(error) => {
+            tracing::error!(user_id = %claims.sub, error = %error, "Failed to load Buyer request logs");
+            err_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Buyer request logs are unavailable",
+            )
+            .into_response()
+        }
+    }
+}
+
 async fn buyer_overview(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
 ) -> Response {
-    let roles = match state
-        .user_service
-        .get_user_roles(&state.db, &claims.sub)
-        .await
-    {
-        Ok(roles) => roles,
-        Err(error) => {
-            tracing::error!(user_id = %claims.sub, error = %error, "Failed to resolve Buyer roles");
-            return err_status(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Could not verify Buyer access",
-            )
-            .into_response();
-        }
-    };
-    let has_buyer_access = roles
-        .iter()
-        .any(|role| role.eq_ignore_ascii_case("buyer") || role.eq_ignore_ascii_case("user"));
-    if !has_buyer_access {
-        return err_status(StatusCode::FORBIDDEN, "Buyer access is required").into_response();
+    if let Err(response) = require_buyer(&state, &claims).await {
+        return response;
     }
 
     let account = match UserDatabase::get_user_by_id(&state.db, &claims.sub).await {

@@ -584,6 +584,65 @@ pub async fn buyer_overview_snapshot(token: &str) -> Result<BuyerOverviewSnapsho
     decode_envelope(response).await
 }
 
+pub async fn buyer_models(token: &str) -> Result<Vec<BuyerModelSummary>, String> {
+    let response = with_token(Client::new().get(url("/console/api/buyer/models")), token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    decode_envelope(response).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BuyerLogSummary {
+    #[serde(default)] pub request_id: String,
+    pub model: Option<String>,
+    #[serde(default)] pub status_code: i32,
+    #[serde(default)] pub latency_ms: i64,
+    #[serde(default)] pub tokens: i64,
+    #[serde(default)] pub cost_usd: f64,
+    pub created_at_utc: Option<String>,
+}
+
+pub async fn buyer_logs(token: &str) -> Result<Vec<BuyerLogSummary>, String> {
+    let response = with_token(Client::new().get(url("/console/api/buyer/logs")), token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    decode_envelope(response).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct FundingRequest {
+    #[serde(default)] pub id: i32,
+    #[serde(default)] pub user_id: String,
+    #[serde(default)] pub amount: i64,
+    #[serde(default)] pub currency: String,
+    pub note: Option<String>,
+    #[serde(default)] pub status: String,
+    pub created_at: Option<String>,
+}
+
+pub async fn create_funding_request(
+    amount: i64,
+    currency: &str,
+    note: Option<&str>,
+) -> Result<FundingRequest, String> {
+    let response = with_auth(Client::new().post(url("/console/api/user/funding-requests")))
+        .json(&serde_json::json!({ "amount": amount, "currency": currency, "note": note }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    decode_envelope(response).await
+}
+
+pub async fn funding_requests() -> Result<Vec<FundingRequest>, String> {
+    let response = with_auth(Client::new().get(url("/console/api/user/funding-requests")))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    decode_envelope(response).await
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct UsageStats {
     #[serde(default)] pub prompt_tokens: i64,
