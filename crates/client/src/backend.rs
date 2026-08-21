@@ -544,6 +544,23 @@ impl TokenService {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BuyerModelSummary {
+    #[serde(default)] pub name: String,
+    #[serde(default)] pub tier: String,
+    #[serde(default)] pub tokens_today: i64,
+    #[serde(default)] pub status: String,
+    #[serde(default)] pub destination: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BuyerActivityEvent {
+    #[serde(default)] pub kind: String,
+    #[serde(default)] pub title: String,
+    #[serde(default)] pub detail: String,
+    #[serde(default)] pub occurred_at_utc: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BuyerOverviewSnapshot {
     #[serde(default)] pub as_of_utc: String,
     #[serde(default)] pub balance_nano: i64,
@@ -554,6 +571,8 @@ pub struct BuyerOverviewSnapshot {
     #[serde(default)] pub api_availability: String,
     pub availability_percent: Option<f64>,
     #[serde(default)] pub availability_sample_requests: i64,
+    #[serde(default)] pub models_today: Vec<BuyerModelSummary>,
+    #[serde(default)] pub recent_activity: Vec<BuyerActivityEvent>,
     #[serde(default)] pub issues: Vec<String>,
 }
 
