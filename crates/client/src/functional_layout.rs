@@ -34,7 +34,7 @@ fn page_title(route: &Route) -> &'static str {
     }
 }
 
-fn search_route(query: &str, buyer_workspace: bool) -> Option<Route> {
+fn search_route_for_workspace(query: &str, buyer_workspace: bool) -> Option<Route> {
     let q = query.trim().to_ascii_lowercase();
     if q.is_empty() {
         return None;
@@ -108,6 +108,10 @@ fn search_route(query: &str, buyer_workspace: bool) -> Option<Route> {
                 .any(|word| word.starts_with(&q) || q.contains(word))
         })
         .map(|(_, route)| route)
+}
+
+fn search_route(query: &str) -> Option<Route> {
+    search_route_for_workspace(query, false)
 }
 
 fn is_buyer_workspace_route(route: &Route) -> bool {
@@ -284,7 +288,12 @@ pub fn FunctionalConsoleLayout() -> Element {
                                 onkeydown:move |evt| {
                                     if evt.key() == Key::Enter {
                                         let query = search();
-                                        if let Some(route) = search_route(&query, buyer_route) {
+                                        let destination = if buyer_route {
+                                            search_route_for_workspace(&query, true)
+                                        } else {
+                                            search_route(&query)
+                                        };
+                                        if let Some(route) = destination {
                                             search_navigator.replace(route);
                                             search.set(String::new());
                                             search_status.set(String::new());

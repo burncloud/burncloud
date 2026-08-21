@@ -59,7 +59,8 @@ impl ClientState {
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt;
-                        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+                        let _ =
+                            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
                     }
                 }
             }
@@ -87,7 +88,11 @@ impl AuthContext {
             .user_info
             .as_deref()
             .and_then(|json| serde_json::from_str::<CurrentUser>(json).ok());
-        let token = if user.is_some() { state.auth_token } else { None };
+        let token = if user.is_some() {
+            state.auth_token
+        } else {
+            None
+        };
         Self {
             token: Signal::new(token),
             user: Signal::new(user),
@@ -180,7 +185,9 @@ async fn decode_envelope<T: DeserializeOwned>(response: Response) -> Result<T, S
     let envelope: ApiEnvelope<T> = serde_json::from_str(&text)
         .map_err(|e| format!("Invalid API response ({status}): {e}; body={text}"))?;
     if status.is_success() && envelope.success {
-        envelope.data.ok_or_else(|| "API response did not include data".to_string())
+        envelope
+            .data
+            .ok_or_else(|| "API response did not include data".to_string())
     } else {
         Err(envelope
             .message
@@ -193,7 +200,12 @@ async fn decode_unit(response: Response) -> Result<(), String> {
     let text = response.text().await.map_err(|e| e.to_string())?;
     let value: serde_json::Value = serde_json::from_str(&text)
         .map_err(|e| format!("Invalid API response ({status}): {e}; body={text}"))?;
-    if status.is_success() && value.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if status.is_success()
+        && value
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    {
         Ok(())
     } else {
         Err(value
@@ -226,10 +238,16 @@ impl AuthService {
         decode_envelope(response).await
     }
 
-    pub async fn register(username: &str, password: &str, email: Option<&str>) -> Result<AuthData, String> {
+    pub async fn register(
+        username: &str,
+        password: &str,
+        email: Option<&str>,
+    ) -> Result<AuthData, String> {
         let response = Client::new()
             .post(url("/api/auth/register"))
-            .json(&serde_json::json!({ "username": username, "password": password, "email": email }))
+            .json(
+                &serde_json::json!({ "username": username, "password": password, "email": email }),
+            )
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -280,9 +298,15 @@ impl UserService {
         decode_envelope(response).await
     }
 
-    pub async fn create(username: &str, password: &str, email: Option<&str>) -> Result<AuthData, String> {
+    pub async fn create(
+        username: &str,
+        password: &str,
+        email: Option<&str>,
+    ) -> Result<AuthData, String> {
         let response = with_auth(Client::new().post(url("/console/api/user/register")))
-            .json(&serde_json::json!({ "username": username, "password": password, "email": email }))
+            .json(
+                &serde_json::json!({ "username": username, "password": password, "email": email }),
+            )
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -291,42 +315,68 @@ impl UserService {
 
     pub async fn topup(user_id: &str, amount_nano: i64, currency: &str) -> Result<i64, String> {
         #[derive(Deserialize)]
-        struct TopupData { balance: i64 }
+        struct TopupData {
+            balance: i64,
+        }
         let response = with_auth(Client::new().post(url("/console/api/user/topup")))
             .json(&serde_json::json!({ "user_id": user_id, "amount": amount_nano, "currency": currency }))
             .send()
             .await
             .map_err(|e| e.to_string())?;
-        decode_envelope::<TopupData>(response).await.map(|v| v.balance)
+        decode_envelope::<TopupData>(response)
+            .await
+            .map(|v| v.balance)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct RouterLog {
-    #[serde(default)] pub id: i64,
-    #[serde(default)] pub request_id: String,
-    #[serde(default)] pub user_id: Option<String>,
-    #[serde(default)] pub path: String,
-    #[serde(default)] pub upstream_id: Option<String>,
-    #[serde(default)] pub status_code: i32,
-    #[serde(default)] pub latency_ms: i64,
-    #[serde(default)] pub prompt_tokens: i32,
-    #[serde(default)] pub completion_tokens: i32,
-    #[serde(default)] pub cost: i64,
-    #[serde(default)] pub model: Option<String>,
-    #[serde(default)] pub cache_read_tokens: i32,
-    #[serde(default)] pub reasoning_tokens: i32,
-    #[serde(default)] pub pricing_region: Option<String>,
-    #[serde(default)] pub layer_decision: Option<String>,
-    #[serde(default)] pub traffic_color: Option<String>,
-    #[serde(default)] pub cost_status: Option<String>,
-    #[serde(default)] pub error_type: Option<String>,
-    #[serde(default)] pub created_at: Option<String>,
+    #[serde(default)]
+    pub id: i64,
+    #[serde(default)]
+    pub request_id: String,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub upstream_id: Option<String>,
+    #[serde(default)]
+    pub status_code: i32,
+    #[serde(default)]
+    pub latency_ms: i64,
+    #[serde(default)]
+    pub prompt_tokens: i32,
+    #[serde(default)]
+    pub completion_tokens: i32,
+    #[serde(default)]
+    pub cost: i64,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub cache_read_tokens: i32,
+    #[serde(default)]
+    pub reasoning_tokens: i32,
+    #[serde(default)]
+    pub pricing_region: Option<String>,
+    #[serde(default)]
+    pub layer_decision: Option<String>,
+    #[serde(default)]
+    pub traffic_color: Option<String>,
+    #[serde(default)]
+    pub cost_status: Option<String>,
+    #[serde(default)]
+    pub error_type: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
 impl RouterLog {
     pub fn total_tokens(&self) -> i64 {
-        self.prompt_tokens as i64 + self.completion_tokens as i64 + self.cache_read_tokens as i64 + self.reasoning_tokens as i64
+        self.prompt_tokens as i64
+            + self.completion_tokens as i64
+            + self.cache_read_tokens as i64
+            + self.reasoning_tokens as i64
     }
 
     pub fn cost_usd(&self) -> f64 {
@@ -336,7 +386,12 @@ impl RouterLog {
     pub fn status_label(&self) -> &'static str {
         if self.status_code >= 500 || self.error_type.as_deref() == Some("timeout") {
             "Timeout"
-        } else if self.layer_decision.as_deref().unwrap_or("").contains("failover") {
+        } else if self
+            .layer_decision
+            .as_deref()
+            .unwrap_or("")
+            .contains("failover")
+        {
             "Fallback"
         } else if self.status_code >= 400 {
             "Error"
@@ -348,17 +403,20 @@ impl RouterLog {
 
 #[derive(Debug, Deserialize)]
 struct LogPage {
-    #[serde(default)] data: Vec<RouterLog>,
+    #[serde(default)]
+    data: Vec<RouterLog>,
 }
 
 pub struct LogService;
 impl LogService {
     pub async fn list(limit: usize) -> Result<Vec<RouterLog>, String> {
         let page_size = limit.clamp(1, 500);
-        let response = with_auth(Client::new().get(url(&format!("/console/api/logs?page=1&page_size={page_size}"))))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let response = with_auth(Client::new().get(url(&format!(
+            "/console/api/logs?page=1&page_size={page_size}"
+        ))))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
         let status = response.status();
         let text = response.text().await.map_err(|e| e.to_string())?;
         if !status.is_success() {
@@ -372,27 +430,44 @@ impl LogService {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Channel {
-    #[serde(default)] pub id: i32,
-    #[serde(rename = "type", default)] pub type_: i32,
-    #[serde(default)] pub key: String,
-    #[serde(default)] pub name: String,
-    #[serde(default)] pub base_url: Option<String>,
-    #[serde(default)] pub models: String,
-    #[serde(default)] pub group: String,
-    #[serde(default)] pub status: i32,
-    #[serde(default)] pub weight: i32,
-    #[serde(default)] pub priority: i64,
-    #[serde(default)] pub param_override: Option<String>,
-    #[serde(default)] pub header_override: Option<String>,
-    #[serde(default)] pub api_version: Option<String>,
-    #[serde(default)] pub model_mapping: Option<String>,
-    #[serde(default)] pub rpm_cap: Option<i32>,
-    #[serde(default)] pub tpm_cap: Option<i64>,
+    #[serde(default)]
+    pub id: i32,
+    #[serde(rename = "type", default)]
+    pub type_: i32,
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub models: String,
+    #[serde(default)]
+    pub group: String,
+    #[serde(default)]
+    pub status: i32,
+    #[serde(default)]
+    pub weight: i32,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default)]
+    pub param_override: Option<String>,
+    #[serde(default)]
+    pub header_override: Option<String>,
+    #[serde(default)]
+    pub api_version: Option<String>,
+    #[serde(default)]
+    pub model_mapping: Option<String>,
+    #[serde(default)]
+    pub rpm_cap: Option<i32>,
+    #[serde(default)]
+    pub tpm_cap: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChannelListData {
-    #[serde(default)] channels: Vec<Channel>,
+    #[serde(default)]
+    channels: Vec<Channel>,
 }
 
 #[derive(Debug, Serialize)]
@@ -417,7 +492,11 @@ struct ChannelPayload<'a> {
 
 fn channel_payload(channel: &Channel) -> ChannelPayload<'_> {
     ChannelPayload {
-        id: if channel.id > 0 { Some(channel.id) } else { None },
+        id: if channel.id > 0 {
+            Some(channel.id)
+        } else {
+            None
+        },
         type_: channel.type_,
         key: &channel.key,
         name: &channel.name,
@@ -439,11 +518,15 @@ pub struct ChannelService;
 impl ChannelService {
     pub async fn list(limit: usize) -> Result<Vec<Channel>, String> {
         let limit = limit.clamp(1, 100);
-        let response = with_auth(Client::new().get(url(&format!("/console/api/channel?limit={limit}&offset=0"))))
-            .send()
+        let response = with_auth(
+            Client::new().get(url(&format!("/console/api/channel?limit={limit}&offset=0"))),
+        )
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+        decode_envelope::<ChannelListData>(response)
             .await
-            .map_err(|e| e.to_string())?;
-        decode_envelope::<ChannelListData>(response).await.map(|d| d.channels)
+            .map(|d| d.channels)
     }
 
     pub async fn create(channel: &Channel) -> Result<(), String> {
@@ -475,17 +558,27 @@ impl ChannelService {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct TokenDto {
-    #[serde(default)] pub token: String,
-    #[serde(default)] pub user_id: String,
-    #[serde(default)] pub status: String,
-    #[serde(default = "default_quota")] pub quota_limit: i64,
-    #[serde(default)] pub used_quota: i64,
-    #[serde(default)] pub key_version: i32,
-    #[serde(default)] pub ip_whitelist: Option<String>,
-    #[serde(default)] pub created_at: i64,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub user_id: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default = "default_quota")]
+    pub quota_limit: i64,
+    #[serde(default)]
+    pub used_quota: i64,
+    #[serde(default)]
+    pub key_version: i32,
+    #[serde(default)]
+    pub ip_whitelist: Option<String>,
+    #[serde(default)]
+    pub created_at: i64,
 }
 
-fn default_quota() -> i64 { -1 }
+fn default_quota() -> i64 {
+    -1
+}
 
 pub struct TokenService;
 impl TokenService {
@@ -498,7 +591,10 @@ impl TokenService {
     }
 
     pub async fn create(user_id: &str, quota_limit: Option<i64>) -> Result<String, String> {
-        #[derive(Deserialize)] struct Created { token: String }
+        #[derive(Deserialize)]
+        struct Created {
+            token: String,
+        }
         let response = with_auth(Client::new().post(url("/console/api/tokens")))
             .json(&serde_json::json!({ "user_id": user_id, "quota_limit": quota_limit }))
             .send()
@@ -517,63 +613,90 @@ impl TokenService {
     }
 
     pub async fn delete(token: &str) -> Result<(), String> {
-        let response = with_auth(Client::new().delete(url(&format!("/console/api/tokens/{token}"))))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let response =
+            with_auth(Client::new().delete(url(&format!("/console/api/tokens/{token}"))))
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
         decode_unit(response).await
     }
 
-    pub async fn rotate(token: &str, hours: i32, revoke_old: bool) -> Result<serde_json::Value, String> {
-        let response = with_auth(Client::new().post(url(&format!("/console/api/tokens/{token}/rotate"))))
-            .json(&serde_json::json!({ "transition_period_hours": hours, "revoke_old": revoke_old }))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+    pub async fn rotate(
+        token: &str,
+        hours: i32,
+        revoke_old: bool,
+    ) -> Result<serde_json::Value, String> {
+        let response = with_auth(
+            Client::new().post(url(&format!("/console/api/tokens/{token}/rotate"))),
+        )
+        .json(&serde_json::json!({ "transition_period_hours": hours, "revoke_old": revoke_old }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
         decode_envelope(response).await
     }
 
     pub async fn set_ip_whitelist(token: &str, whitelist: &str) -> Result<(), String> {
-        let response = with_auth(Client::new().post(url(&format!("/console/api/tokens/{token}/ip-whitelist"))))
-            .json(&serde_json::json!({ "ip_whitelist": whitelist }))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
+        let response = with_auth(
+            Client::new().post(url(&format!("/console/api/tokens/{token}/ip-whitelist"))),
+        )
+        .json(&serde_json::json!({ "ip_whitelist": whitelist }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
         decode_unit(response).await
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BuyerModelSummary {
-    #[serde(default)] pub name: String,
-    #[serde(default)] pub tier: String,
-    #[serde(default)] pub tokens_today: i64,
-    #[serde(default)] pub status: String,
-    #[serde(default)] pub destination: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub tier: String,
+    #[serde(default)]
+    pub tokens_today: i64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub destination: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BuyerActivityEvent {
-    #[serde(default)] pub kind: String,
-    #[serde(default)] pub title: String,
-    #[serde(default)] pub detail: String,
-    #[serde(default)] pub occurred_at_utc: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub detail: String,
+    #[serde(default)]
+    pub occurred_at_utc: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BuyerOverviewSnapshot {
-    #[serde(default)] pub as_of_utc: String,
-    #[serde(default)] pub balance_nano: i64,
-    #[serde(default)] pub balance_currency: String,
-    #[serde(default)] pub balance_state: String,
+    #[serde(default)]
+    pub as_of_utc: String,
+    #[serde(default)]
+    pub balance_nano: i64,
+    #[serde(default)]
+    pub balance_currency: String,
+    #[serde(default)]
+    pub balance_state: String,
     pub today_spend_usd: Option<f64>,
     pub tokens_today: Option<i64>,
-    #[serde(default)] pub api_availability: String,
+    #[serde(default)]
+    pub api_availability: String,
     pub availability_percent: Option<f64>,
-    #[serde(default)] pub availability_sample_requests: i64,
-    #[serde(default)] pub models_today: Vec<BuyerModelSummary>,
-    #[serde(default)] pub recent_activity: Vec<BuyerActivityEvent>,
-    #[serde(default)] pub issues: Vec<String>,
+    #[serde(default)]
+    pub availability_sample_requests: i64,
+    #[serde(default)]
+    pub models_today: Vec<BuyerModelSummary>,
+    #[serde(default)]
+    pub recent_activity: Vec<BuyerActivityEvent>,
+    #[serde(default)]
+    pub issues: Vec<String>,
 }
 
 pub async fn buyer_overview_snapshot(token: &str) -> Result<BuyerOverviewSnapshot, String> {
@@ -594,12 +717,17 @@ pub async fn buyer_models(token: &str) -> Result<Vec<BuyerModelSummary>, String>
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BuyerLogSummary {
-    #[serde(default)] pub request_id: String,
+    #[serde(default)]
+    pub request_id: String,
     pub model: Option<String>,
-    #[serde(default)] pub status_code: i32,
-    #[serde(default)] pub latency_ms: i64,
-    #[serde(default)] pub tokens: i64,
-    #[serde(default)] pub cost_usd: f64,
+    #[serde(default)]
+    pub status_code: i32,
+    #[serde(default)]
+    pub latency_ms: i64,
+    #[serde(default)]
+    pub tokens: i64,
+    #[serde(default)]
+    pub cost_usd: f64,
     pub created_at_utc: Option<String>,
 }
 
@@ -646,12 +774,17 @@ pub async fn buyer_playground_chat(
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FundingRequest {
-    #[serde(default)] pub id: i32,
-    #[serde(default)] pub user_id: String,
-    #[serde(default)] pub amount: i64,
-    #[serde(default)] pub currency: String,
+    #[serde(default)]
+    pub id: i32,
+    #[serde(default)]
+    pub user_id: String,
+    #[serde(default)]
+    pub amount: i64,
+    #[serde(default)]
+    pub currency: String,
     pub note: Option<String>,
-    #[serde(default)] pub status: String,
+    #[serde(default)]
+    pub status: String,
     pub created_at: Option<String>,
 }
 
@@ -678,40 +811,58 @@ pub async fn funding_requests() -> Result<Vec<FundingRequest>, String> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct UsageStats {
-    #[serde(default)] pub prompt_tokens: i64,
-    #[serde(default)] pub completion_tokens: i64,
-    #[serde(default)] pub total_tokens: i64,
+    #[serde(default)]
+    pub prompt_tokens: i64,
+    #[serde(default)]
+    pub completion_tokens: i64,
+    #[serde(default)]
+    pub total_tokens: i64,
 }
 
 pub async fn user_usage(user_id: &str, token: &str) -> Result<UsageStats, String> {
-    let response = with_token(Client::new().get(url(&format!("/console/api/usage/{user_id}"))), token)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let response = with_token(
+        Client::new().get(url(&format!("/console/api/usage/{user_id}"))),
+        token,
+    )
+    .send()
+    .await
+    .map_err(|e| e.to_string())?;
     let status = response.status();
     let text = response.text().await.map_err(|e| e.to_string())?;
-    if !status.is_success() { return Err(format!("Usage API failed ({status}): {text}")); }
+    if !status.is_success() {
+        return Err(format!("Usage API failed ({status}): {text}"));
+    }
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BillingModelSummary {
-    #[serde(default)] pub model: String,
-    #[serde(default)] pub requests: i64,
-    #[serde(default)] pub prompt_tokens: i64,
-    #[serde(default)] pub cache_read_tokens: i64,
-    #[serde(default)] pub completion_tokens: i64,
-    #[serde(default)] pub reasoning_tokens: i64,
-    #[serde(default)] pub cost_usd: f64,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub requests: i64,
+    #[serde(default)]
+    pub prompt_tokens: i64,
+    #[serde(default)]
+    pub cache_read_tokens: i64,
+    #[serde(default)]
+    pub completion_tokens: i64,
+    #[serde(default)]
+    pub reasoning_tokens: i64,
+    #[serde(default)]
+    pub cost_usd: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BillingSummary {
     pub period_start: Option<String>,
     pub period_end: Option<String>,
-    #[serde(default)] pub pre_migration_requests: i64,
-    #[serde(default)] pub models: Vec<BillingModelSummary>,
-    #[serde(default)] pub total_cost_usd: f64,
+    #[serde(default)]
+    pub pre_migration_requests: i64,
+    #[serde(default)]
+    pub models: Vec<BillingModelSummary>,
+    #[serde(default)]
+    pub total_cost_usd: f64,
 }
 
 pub async fn billing_summary(token: &str) -> Result<BillingSummary, String> {
@@ -724,32 +875,49 @@ pub async fn billing_summary(token: &str) -> Result<BillingSummary, String> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MemoryInfo {
-    #[serde(default)] pub total: u64,
-    #[serde(default)] pub used: u64,
-    #[serde(default)] pub available: u64,
-    #[serde(default)] pub usage_percent: f32,
+    #[serde(default)]
+    pub total: u64,
+    #[serde(default)]
+    pub used: u64,
+    #[serde(default)]
+    pub available: u64,
+    #[serde(default)]
+    pub usage_percent: f32,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CpuInfo {
-    #[serde(default)] pub usage_percent: f32,
-    #[serde(default)] pub core_count: usize,
-    #[serde(default)] pub frequency: u64,
-    #[serde(default)] pub brand: String,
+    #[serde(default)]
+    pub usage_percent: f32,
+    #[serde(default)]
+    pub core_count: usize,
+    #[serde(default)]
+    pub frequency: u64,
+    #[serde(default)]
+    pub brand: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DiskInfo {
-    #[serde(default)] pub total: u64,
-    #[serde(default)] pub used: u64,
-    #[serde(default)] pub available: u64,
-    #[serde(default)] pub usage_percent: f32,
-    #[serde(default)] pub mount_point: String,
+    #[serde(default)]
+    pub total: u64,
+    #[serde(default)]
+    pub used: u64,
+    #[serde(default)]
+    pub available: u64,
+    #[serde(default)]
+    pub usage_percent: f32,
+    #[serde(default)]
+    pub mount_point: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SystemMetrics {
-    #[serde(default)] pub cpu: CpuInfo,
-    #[serde(default)] pub memory: MemoryInfo,
-    #[serde(default)] pub disks: Vec<DiskInfo>,
-    #[serde(default)] pub timestamp: u64,
+    #[serde(default)]
+    pub cpu: CpuInfo,
+    #[serde(default)]
+    pub memory: MemoryInfo,
+    #[serde(default)]
+    pub disks: Vec<DiskInfo>,
+    #[serde(default)]
+    pub timestamp: u64,
 }
 
 pub async fn system_metrics() -> Result<SystemMetrics, String> {
@@ -762,35 +930,48 @@ pub async fn system_metrics() -> Result<SystemMetrics, String> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct SecuritySummary {
-    #[serde(default)] pub score: u8,
-    #[serde(default)] pub blocked_count: u64,
-    #[serde(default)] pub threat_source_count: u64,
-    #[serde(default)] pub sparkline: Vec<u64>,
+    #[serde(default)]
+    pub score: u8,
+    #[serde(default)]
+    pub blocked_count: u64,
+    #[serde(default)]
+    pub threat_source_count: u64,
+    #[serde(default)]
+    pub sparkline: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FilterConfig {
-    #[serde(default)] pub content_filter_enabled: bool,
-    #[serde(default)] pub blacklist_enabled: bool,
-    #[serde(default)] pub custom_rules: Vec<String>,
+    #[serde(default)]
+    pub content_filter_enabled: bool,
+    #[serde(default)]
+    pub blacklist_enabled: bool,
+    #[serde(default)]
+    pub custom_rules: Vec<String>,
 }
 
 pub async fn security_summary() -> Result<SecuritySummary, String> {
     let response = with_auth(Client::new().get(url("/console/api/monitor/security")))
-        .send().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     decode_envelope(response).await
 }
 
 pub async fn filter_config() -> Result<FilterConfig, String> {
     let response = with_auth(Client::new().get(url("/console/api/monitor/security/filters")))
-        .send().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     decode_envelope(response).await
 }
 
 pub async fn update_filter_config(config: &FilterConfig) -> Result<FilterConfig, String> {
     let response = with_auth(Client::new().put(url("/console/api/monitor/security/filters")))
         .json(config)
-        .send().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     decode_envelope(response).await
 }
 
@@ -802,9 +983,12 @@ pub struct ChatMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChatUsage {
-    #[serde(default)] pub prompt_tokens: i64,
-    #[serde(default)] pub completion_tokens: i64,
-    #[serde(default)] pub total_tokens: i64,
+    #[serde(default)]
+    pub prompt_tokens: i64,
+    #[serde(default)]
+    pub completion_tokens: i64,
+    #[serde(default)]
+    pub total_tokens: i64,
 }
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct RouteTrace {
@@ -812,13 +996,19 @@ pub struct RouteTrace {
     pub model_id: Option<String>,
 }
 #[derive(Debug, Deserialize)]
-struct ChatChoiceMessage { content: Option<String> }
+struct ChatChoiceMessage {
+    content: Option<String>,
+}
 #[derive(Debug, Deserialize)]
-struct ChatChoice { message: Option<ChatChoiceMessage> }
+struct ChatChoice {
+    message: Option<ChatChoiceMessage>,
+}
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
-    #[serde(default)] choices: Vec<ChatChoice>,
-    #[serde(default)] usage: ChatUsage,
+    #[serde(default)]
+    choices: Vec<ChatChoice>,
+    #[serde(default)]
+    usage: ChatUsage,
 }
 
 #[derive(Debug, Clone)]
@@ -850,14 +1040,34 @@ pub async fn chat_completion(
         .map_err(|e| e.to_string())?;
     let status = response.status();
     let trace = RouteTrace {
-        channel_id: response.headers().get("X-Channel-Id").and_then(|v| v.to_str().ok()).map(str::to_string),
-        model_id: response.headers().get("X-Model-Id").and_then(|v| v.to_str().ok()).map(str::to_string),
+        channel_id: response
+            .headers()
+            .get("X-Channel-Id")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string),
+        model_id: response
+            .headers()
+            .get("X-Model-Id")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string),
     };
     let text = response.text().await.map_err(|e| e.to_string())?;
-    if !status.is_success() { return Err(format!("Chat request failed ({status}): {text}")); }
-    let parsed: ChatResponse = serde_json::from_str(&text).map_err(|e| format!("Invalid chat response: {e}"))?;
-    let content = parsed.choices.first().and_then(|c| c.message.as_ref()).and_then(|m| m.content.clone()).unwrap_or_default();
-    Ok(ChatResult { content, usage: parsed.usage, trace })
+    if !status.is_success() {
+        return Err(format!("Chat request failed ({status}): {text}"));
+    }
+    let parsed: ChatResponse =
+        serde_json::from_str(&text).map_err(|e| format!("Invalid chat response: {e}"))?;
+    let content = parsed
+        .choices
+        .first()
+        .and_then(|c| c.message.as_ref())
+        .and_then(|m| m.content.clone())
+        .unwrap_or_default();
+    Ok(ChatResult {
+        content,
+        usage: parsed.usage,
+        trace,
+    })
 }
 
 pub async fn first_active_api_token() -> Result<String, String> {
