@@ -544,6 +544,28 @@ impl TokenService {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BuyerOverviewSnapshot {
+    #[serde(default)] pub as_of_utc: String,
+    #[serde(default)] pub balance_nano: i64,
+    #[serde(default)] pub balance_currency: String,
+    #[serde(default)] pub balance_state: String,
+    pub today_spend_usd: Option<f64>,
+    pub tokens_today: Option<i64>,
+    #[serde(default)] pub api_availability: String,
+    pub availability_percent: Option<f64>,
+    #[serde(default)] pub availability_sample_requests: i64,
+    #[serde(default)] pub issues: Vec<String>,
+}
+
+pub async fn buyer_overview_snapshot(token: &str) -> Result<BuyerOverviewSnapshot, String> {
+    let response = with_token(Client::new().get(url("/console/api/buyer/overview")), token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    decode_envelope(response).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct UsageStats {
     #[serde(default)] pub prompt_tokens: i64,
     #[serde(default)] pub completion_tokens: i64,
