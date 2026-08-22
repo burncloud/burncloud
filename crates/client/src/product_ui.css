@@ -974,25 +974,6 @@
   color: var(--bc-color-info);
 }
 
-.buyer-overview-recorded-usage {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: baseline;
-  padding: 2px 4px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.buyer-overview-recorded-usage strong {
-  color: var(--text);
-  font-size: 14px;
-}
-
-.buyer-overview-recorded-usage small {
-  overflow-wrap: anywhere;
-}
-
 .buyer-overview .button:focus-visible {
   outline: 2px solid var(--bc-color-focus);
   outline-offset: 2px;
@@ -1141,11 +1122,4 @@
     align-self: flex-start;
   }
 
-  .buyer-overview-recorded-usage {
-    grid-template-columns: auto 1fr;
-  }
-
-  .buyer-overview-recorded-usage small {
-    grid-column: 1 / -1;
-  }
 }

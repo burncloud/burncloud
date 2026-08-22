@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::{
     app::Route,
     backend::{
-        buyer_overview_snapshot, user_usage, BuyerOverviewSnapshot, TokenService, UsageStats,
+        buyer_logs, buyer_overview_snapshot, BuyerLogSummary, BuyerOverviewSnapshot, TokenService,
     },
     components::Icon,
 };
@@ -160,7 +160,7 @@ enum ApiKeyReadiness {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RecordedUsage {
+enum RequestHistoryState {
     Loading,
     Unknown,
     Empty,
@@ -196,18 +196,74 @@ fn derive_api_key_readiness(
     ApiKeyReadiness::NonActive
 }
 
-fn derive_recorded_usage(result: Option<&Result<UsageStats, String>>) -> RecordedUsage {
+fn derive_request_history(
+    result: Option<&Result<Vec<BuyerLogSummary>, String>>,
+) -> RequestHistoryState {
     let Some(result) = result else {
-        return RecordedUsage::Loading;
+        return RequestHistoryState::Loading;
     };
-    let Ok(usage) = result else {
-        return RecordedUsage::Unknown;
+    let Ok(logs) = result else {
+        return RequestHistoryState::Unknown;
     };
-    if usage.total_tokens == 0 {
-        RecordedUsage::Empty
+    if logs.is_empty() {
+        RequestHistoryState::Empty
     } else {
-        RecordedUsage::Present
+        RequestHistoryState::Present
     }
+}
+
+fn spend_metric(
+    snapshot: Option<&BuyerOverviewSnapshot>,
+    no_recorded_usage: bool,
+) -> (String, String) {
+    snapshot
+        .and_then(|snapshot| snapshot.today_spend_usd.map(|value| (snapshot, value)))
+        .map(|(snapshot, value)| {
+            if no_recorded_usage && value == 0.0 {
+                (
+                    "No spend yet".to_string(),
+                    "No requests recorded today".to_string(),
+                )
+            } else {
+                (
+                    format!("${value:.4}"),
+                    format!("Today in UTC · {}", snapshot.as_of_utc),
+                )
+            }
+        })
+        .unwrap_or_else(|| {
+            (
+                "Unavailable".to_string(),
+                "Daily spend could not be confirmed".to_string(),
+            )
+        })
+}
+
+fn tokens_metric(
+    snapshot: Option<&BuyerOverviewSnapshot>,
+    no_recorded_usage: bool,
+) -> (String, String) {
+    snapshot
+        .and_then(|snapshot| snapshot.tokens_today.map(|tokens| (snapshot, tokens)))
+        .map(|(snapshot, tokens)| {
+            if no_recorded_usage && tokens == 0 {
+                (
+                    "No usage yet".to_string(),
+                    "No requests recorded today".to_string(),
+                )
+            } else {
+                (
+                    compact(tokens),
+                    format!("Today in UTC · {}", snapshot.as_of_utc),
+                )
+            }
+        })
+        .unwrap_or_else(|| {
+            (
+                "Unavailable".to_string(),
+                "Daily token usage could not be confirmed".to_string(),
+            )
+        })
 }
 
 fn derive_overview_conclusion(
@@ -316,9 +372,7 @@ fn availability_attention_copy(state: &str) -> &'static str {
 pub fn BuyerOverview() -> Element {
     let auth = crate::backend::use_auth();
     let token = auth.token().unwrap_or_default();
-    let user_id = auth.user().map(|user| user.id).unwrap_or_default();
-    let usage_token = token.clone();
-    let usage_user = user_id.clone();
+    let history_token = token.clone();
     let overview_token = token.clone();
 
     let mut overview_resource = use_resource(move || {
@@ -331,35 +385,33 @@ pub fn BuyerOverview() -> Element {
             }
         }
     });
-    let mut usage_resource = use_resource(move || {
-        let token = usage_token.clone();
-        let user_id = usage_user.clone();
+    let mut history_resource = use_resource(move || {
+        let token = history_token.clone();
         async move {
-            if token.is_empty() || user_id.is_empty() {
-                Err("No authenticated buyer context".to_string())
+            if token.is_empty() {
+                Err("No authenticated token".to_string())
             } else {
-                user_usage(&user_id, &token).await
+                buyer_logs(&token).await
             }
         }
     });
     let mut tokens_resource = use_resource(move || async move { TokenService::list().await });
 
     let overview_result = overview_resource.read().clone();
-    let usage_result = usage_resource.read().clone();
+    let history_result = history_resource.read().clone();
     let tokens_result = tokens_resource.read().clone();
     let overview: Option<BuyerOverviewSnapshot> = overview_result.clone().and_then(Result::ok);
-    let usage: Option<UsageStats> = usage_result.clone().and_then(Result::ok);
     let metrics_loading = overview_result.is_none();
     let overview_failed = source_error(&overview_result);
     let model_state = model_module_state(overview_result.as_ref());
     let activity_state = activity_module_state(overview_result.as_ref());
     let tokens_loading = tokens_result.is_none();
-    let usage_failed = source_error(&usage_result);
+    let history_failed = source_error(&history_result);
     let tokens_failed = source_error(&tokens_result);
     let api_key_readiness = derive_api_key_readiness(tokens_result.as_ref());
-    let recorded_usage = derive_recorded_usage(usage_result.as_ref());
+    let request_history = derive_request_history(history_result.as_ref());
     let conclusion = derive_overview_conclusion(api_key_readiness, overview.as_ref());
-    let no_recorded_usage = recorded_usage == RecordedUsage::Empty;
+    let no_recorded_usage = request_history == RequestHistoryState::Empty;
     let no_api_keys = api_key_readiness == ApiKeyReadiness::Missing;
     let non_active_api_keys = api_key_readiness == ApiKeyReadiness::NonActive;
     let balance_needs_action = overview.as_ref().is_some_and(|snapshot| {
@@ -389,21 +441,7 @@ pub fn BuyerOverview() -> Element {
         .map(|snapshot| availability_attention_copy(&snapshot.api_availability))
         .unwrap_or("Service impact and BurnCloud action are unavailable. Contact support if requests are failing.");
 
-    let (spend_value, spend_note) = overview
-        .as_ref()
-        .and_then(|snapshot| snapshot.today_spend_usd.map(|value| (snapshot, value)))
-        .map(|(snapshot, value)| {
-            (
-                format!("${value:.4}"),
-                format!("Today in UTC · {}", snapshot.as_of_utc),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                "Unavailable".to_string(),
-                "Daily spend could not be confirmed".to_string(),
-            )
-        });
+    let (spend_value, spend_note) = spend_metric(overview.as_ref(), no_recorded_usage);
     let (balance_value, balance_note) = overview
         .as_ref()
         .map(|snapshot| {
@@ -438,21 +476,7 @@ pub fn BuyerOverview() -> Element {
                 "Buyer service status could not be confirmed".to_string(),
             )
         });
-    let (tokens_value, tokens_note) = overview
-        .as_ref()
-        .and_then(|snapshot| snapshot.tokens_today.map(|tokens| (snapshot, tokens)))
-        .map(|(snapshot, tokens)| {
-            (
-                compact(tokens),
-                format!("Today in UTC · {}", snapshot.as_of_utc),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                "Unavailable".to_string(),
-                "Daily token usage could not be confirmed".to_string(),
-            )
-        });
+    let (tokens_value, tokens_note) = tokens_metric(overview.as_ref(), no_recorded_usage);
 
     rsx! {
         div { class: "page buyer-overview",
@@ -462,7 +486,7 @@ pub fn BuyerOverview() -> Element {
                     p { class: "page-subtitle", "Your account and API usage at a glance." }
                 }
                 if balance_needs_action {
-                    Link { class: "button button-primary button-sm", to: Route::BuyerBilling {}, Icon { name: "billing" } "Review funding options" }
+                    Link { class: "button button-primary button-sm", to: Route::BuyerBilling {}, Icon { name: "billing" } "Request funding" }
                 } else if no_api_keys || non_active_api_keys {
                     Link { class: "button button-primary button-sm", to: Route::BuyerAPIKeys {}, Icon { name: "key" } if no_api_keys { "Create API key" } else { "Review API keys" } }
                 } else if availability_needs_attention {
@@ -485,10 +509,10 @@ pub fn BuyerOverview() -> Element {
                 aria_label: if metrics_loading { "Loading Buyer account metrics" } else { "Buyer account metrics" },
                 aria_busy: metrics_loading,
                 role: "status",
-                {metric("Today Spend", spend_value, spend_note, "dollar", "tone-amber", metrics_loading)}
-                {metric("Balance", balance_value, balance_note, "billing", "tone-blue", metrics_loading)}
-                {metric("API Availability", availability_value, availability_note, "wifi", "tone-purple", metrics_loading)}
-                {metric("Tokens Today", tokens_value, tokens_note, "models", "tone-green", metrics_loading)}
+                {metric("Today Spend", spend_value, spend_note, "dollar", "tone-gray", metrics_loading)}
+                {metric("Balance", balance_value, balance_note, "billing", "tone-gray", metrics_loading)}
+                {metric("API Availability", availability_value, availability_note, "wifi", "tone-gray", metrics_loading)}
+                {metric("Tokens Today", tokens_value, tokens_note, "models", "tone-gray", metrics_loading)}
             }
 
             if overview_failed {
@@ -562,13 +586,13 @@ pub fn BuyerOverview() -> Element {
                     div { class: "buyer-overview-setup-copy",
                         span { class: "badge badge-neutral", "GET STARTED" }
                         h3 { "Welcome to BurnCloud" }
-                        p { "Aggregate usage confirms no recorded token usage. Other setup status remains independent." }
+                        p { "Request history confirms that this account has not sent a request. Other setup status remains independent." }
                     }
                     ol { class: "buyer-overview-setup-steps",
                         li { span { "1" } div { strong { "Confirm funding" } small { "{balance_state_label}; contact your account administrator or support if funding is required" } } }
                         li { span { "2" } div { strong { "Choose a model" } small { "Model selection not confirmed" } } }
                         li { span { "3" } div { strong { "Create an API key" } small { if no_api_keys { "No key found; open API Keys to create one" } else if non_active_api_keys { "Open API Keys to review the non-active credential" } else if api_key_readiness == ApiKeyReadiness::Ready { "Active API key confirmed" } else { "Key readiness not confirmed" } } } }
-                        li { span { "4" } div { strong { "Send your first request" } small { "No recorded token usage" } } }
+                        li { span { "4" } div { strong { "Send your first request" } small { "No request has been recorded" } } }
                     }
                 }
             }
@@ -649,7 +673,7 @@ pub fn BuyerOverview() -> Element {
                         .iter()
                         .all(|event| !activity_is_supported(&event.kind))
                     {
-                        div { class: "buyer-overview-module-state", div { strong { "No recent activity" } p { "Recorded account, credential, model usage, balance, and recharge activity appears here." } } }
+                        div { class: "buyer-overview-module-state", div { strong { "No recent activity" } p { "Recorded recharges and API key creation appear here." } } }
                     } else {
                         div { class: "buyer-overview-model-list",
                             for event in snapshot
@@ -668,19 +692,13 @@ pub fn BuyerOverview() -> Element {
                 }
             }
 
-            if usage_failed {
+            if history_failed {
                 section { class: "buyer-overview-module-state buyer-overview-module-error buyer-overview-usage-error", role: "alert",
                     div {
-                        strong { "Recorded token usage unavailable" }
-                        p { "Usage totals could not be loaded. Other overview information remains available." }
+                        strong { "Setup status unavailable" }
+                        p { "Request history could not be loaded. Other overview information remains available." }
                     }
-                    button { class: "button button-secondary button-sm buyer-overview-retry", aria_label: "Retry recorded token usage", onclick: move |_| usage_resource.restart(), Icon { name: "activity" } "Retry usage" }
-                }
-            } else if let Some(usage) = usage.as_ref() {
-                section { class: "buyer-overview-recorded-usage",
-                    span { "Recorded usage total" }
-                    strong { {compact(usage.total_tokens)} }
-                    small { {format!("{} input · {} output · Period not confirmed", compact(usage.prompt_tokens), compact(usage.completion_tokens))} }
+                    button { class: "button button-secondary button-sm buyer-overview-retry", aria_label: "Retry request history", onclick: move |_| history_resource.restart(), Icon { name: "activity" } "Retry history" }
                 }
             }
         }
@@ -690,14 +708,7 @@ pub fn BuyerOverview() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::{TokenDto, UsageStats};
-
-    fn usage(total_tokens: i64) -> Result<UsageStats, String> {
-        Ok(UsageStats {
-            total_tokens,
-            ..UsageStats::default()
-        })
-    }
+    use crate::backend::TokenDto;
 
     fn key(status: &str) -> TokenDto {
         TokenDto {
@@ -736,16 +747,19 @@ mod tests {
     }
 
     #[test]
-    fn recorded_usage_distinguishes_loading_failure_and_zero() {
-        assert_eq!(derive_recorded_usage(None), RecordedUsage::Loading);
+    fn request_history_distinguishes_loading_failure_empty_and_present() {
+        assert_eq!(derive_request_history(None), RequestHistoryState::Loading);
         assert_eq!(
-            derive_recorded_usage(Some(&Err("failed".into()))),
-            RecordedUsage::Unknown
+            derive_request_history(Some(&Err("failed".into()))),
+            RequestHistoryState::Unknown
         );
-        assert_eq!(derive_recorded_usage(Some(&usage(0))), RecordedUsage::Empty);
         assert_eq!(
-            derive_recorded_usage(Some(&usage(12))),
-            RecordedUsage::Present
+            derive_request_history(Some(&Ok(Vec::new()))),
+            RequestHistoryState::Empty
+        );
+        assert_eq!(
+            derive_request_history(Some(&Ok(vec![BuyerLogSummary::default()]))),
+            RequestHistoryState::Present
         );
     }
 
@@ -864,5 +878,28 @@ mod tests {
             derive_overview_conclusion(ApiKeyReadiness::Missing, None),
             OverviewConclusion::SetupRequired
         );
+    }
+
+    #[test]
+    fn confirmed_new_buyer_metrics_do_not_render_meaningless_usage_zeroes() {
+        let mut snapshot = snapshot("exhausted", "unknown");
+        snapshot.as_of_utc = "2026-08-22".to_string();
+
+        assert_eq!(
+            spend_metric(Some(&snapshot), true),
+            (
+                "No spend yet".to_string(),
+                "No requests recorded today".to_string()
+            )
+        );
+        assert_eq!(
+            tokens_metric(Some(&snapshot), true),
+            (
+                "No usage yet".to_string(),
+                "No requests recorded today".to_string()
+            )
+        );
+        assert_eq!(spend_metric(Some(&snapshot), false).0, "$0.0000");
+        assert_eq!(tokens_metric(Some(&snapshot), false).0, "0");
     }
 }
