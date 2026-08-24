@@ -1,0 +1,145 @@
+name: ChatGPT site screenshots
+
+on:
+  push:
+    branches:
+      - chatgpt/site-screenshots-20260825
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: |
+          mkdir -p /tmp/burncloud-shot-runner
+          cd /tmp/burncloud-shot-runner
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Capture all BurnCloud AI Studio pages
+        env:
+          BASE_URL: https://burncloud.ai.studio
+        run: |
+          cd /tmp/burncloud-shot-runner
+          cat > capture.js <<'NODE'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          const path = require('path');
+
+          const base = process.env.BASE_URL.replace(/\/$/, '');
+          const routes = [
+            ['00-home', '/home'],
+            ['01-login', '/login'],
+            ['02-register', '/register'],
+            ['03-buyer-overview', '/buyer/overview'],
+            ['04-buyer-playground', '/buyer/playground'],
+            ['05-buyer-marketplace', '/buyer/marketplace'],
+            ['06-buyer-api-keys', '/buyer/api-keys'],
+            ['07-buyer-usage', '/buyer/usage'],
+            ['08-buyer-billing', '/buyer/billing'],
+            ['09-buyer-logs', '/buyer/logs'],
+            ['10-supplier-overview', '/supplier/overview'],
+            ['11-supplier-resources', '/supplier/resources'],
+            ['12-supplier-deployments', '/supplier/deployments'],
+            ['13-supplier-earnings', '/supplier/earnings'],
+            ['14-supplier-settlements', '/supplier/settlements'],
+            ['15-supplier-reliability', '/supplier/reliability'],
+            ['16-supplier-settings', '/supplier/settings'],
+            ['17-admin-overview', '/admin/overview'],
+            ['18-admin-supply', '/admin/supply'],
+            ['19-admin-capacity', '/admin/capacity'],
+            ['20-admin-demand', '/admin/demand'],
+            ['21-admin-models', '/admin/models'],
+            ['22-admin-revenue', '/admin/revenue'],
+            ['23-admin-settlements', '/admin/settlements'],
+            ['24-admin-suppliers', '/admin/suppliers'],
+            ['25-admin-customers', '/admin/customers'],
+            ['26-admin-operations', '/admin/operations'],
+            ['27-admin-settings', '/admin/settings'],
+          ];
+
+          const out = path.resolve(process.env.GITHUB_WORKSPACE, 'burncloud-site-screenshots');
+          fs.mkdirSync(out, { recursive: true });
+          const manifest = [];
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({
+              viewport: { width: 1440, height: 1000 },
+              deviceScaleFactor: 1,
+              locale: 'en-US',
+              colorScheme: 'light',
+              reducedMotion: 'reduce',
+            });
+
+            for (const [name, route] of routes) {
+              const page = await context.newPage();
+              const target = base + route;
+              let status = null;
+              let error = '';
+              try {
+                const response = await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                status = response ? response.status() : null;
+                await page.waitForTimeout(3500);
+                await page.evaluate(async () => {
+                  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+                }).catch(() => {});
+                await page.screenshot({ path: path.join(out, `${name}.png`), fullPage: true });
+              } catch (e) {
+                error = String(e && e.message ? e.message : e);
+                try {
+                  await page.screenshot({ path: path.join(out, `${name}-ERROR.png`), fullPage: true });
+                } catch (_) {}
+              }
+              manifest.push({
+                file: `${name}.png`,
+                route,
+                requested_url: target,
+                final_url: page.url(),
+                title: await page.title().catch(() => ''),
+                http_status: status,
+                error,
+              });
+              console.log(`${route} -> ${status || 'no-status'} ${error ? 'ERROR ' + error : 'OK'}`);
+              await page.close();
+            }
+
+            await browser.close();
+            fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify(manifest, null, 2));
+            const csv = ['file,route,requested_url,final_url,title,http_status,error']
+              .concat(manifest.map(r => [r.file,r.route,r.requested_url,r.final_url,r.title,r.http_status ?? '',r.error]
+                .map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')))
+              .join('\n');
+            fs.writeFileSync(path.join(out, 'manifest.csv'), csv);
+
+            const failed = manifest.filter(x => x.error || (x.http_status && x.http_status >= 400));
+            fs.writeFileSync(path.join(out, 'summary.txt'),
+              `Base URL: ${base}\nPages attempted: ${manifest.length}\nFailures: ${failed.length}\n` +
+              failed.map(x => `${x.route}: status=${x.http_status} error=${x.error}`).join('\n') + '\n');
+
+            if (failed.length) process.exitCode = 2;
+          })();
+          NODE
+          node capture.js
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: burncloud-ai-studio-all-pages
+          path: burncloud-site-screenshots/
+          if-no-files-found: error
+          retention-days: 7
