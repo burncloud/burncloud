@@ -53,6 +53,20 @@ require 'Finish setup before sending production traffic' src/critical_pages/dash
 require 'Add first provider' src/critical_pages/dashboard.rs
 require 'Test a request' src/critical_pages/dashboard.rs
 
+# Buyer overview uses owner-scoped data and keeps unavailable metrics explicit.
+buyer_spend_line=$(line_of '"Today Spend"' src/critical_pages/buyer_overview.rs)
+buyer_balance_line=$(line_of '"Balance"' src/critical_pages/buyer_overview.rs)
+buyer_availability_line=$(line_of '"API Availability"' src/critical_pages/buyer_overview.rs)
+buyer_tokens_line=$(line_of '"Tokens Today"' src/critical_pages/buyer_overview.rs)
+if ! (( buyer_spend_line < buyer_balance_line && buyer_balance_line < buyer_availability_line && buyer_availability_line < buyer_tokens_line )); then
+  echo "Buyer metrics must remain Today Spend -> Balance -> API Availability -> Tokens Today" >&2
+  exit 1
+fi
+require '"Unknown"' src/critical_pages/buyer_overview.rs
+forbid '99.99%' src/critical_pages/buyer_overview.rs
+forbid '1.84M' src/critical_pages/buyer_overview.rs
+forbid '20.0' src/critical_pages/buyer_overview.rs
+
 # Auth must expose only current backend capabilities, not prototype choices.
 forbid 'Onboarding Account Preference' src/critical_pages/auth.rs
 forbid 'TierButton' src/critical_pages/auth.rs

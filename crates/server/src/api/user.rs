@@ -65,8 +65,21 @@ struct UserSummary {
     group: &'static str,
 }
 
+#[derive(Serialize)]
+struct CurrentAccount {
+    id: String,
+    username: String,
+    email: Option<String>,
+    status: i32,
+    balance_usd: i64,
+    balance_cny: i64,
+    preferred_currency: Option<String>,
+    roles: Vec<String>,
+}
+
 pub fn routes() -> Router<AppState> {
     let authenticated = Router::new()
+        .route("/console/api/user/me", get(current_account))
         .route("/console/api/user/recharges", get(list_recharges))
         .route("/console/api/list_users", get(list_users));
 
@@ -76,6 +89,40 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/user/topup", post(topup))
         .route("/console/api/user/check_username", get(check_username))
         .merge(authenticated)
+}
+
+#[tracing::instrument(skip_all)]
+async fn current_account(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> impl IntoResponse {
+    match state.user_service.get_user(&state.db, &claims.sub).await {
+        Ok(user) => {
+            let roles = match state
+                .user_service
+                .get_user_roles(&state.db, &user.id)
+                .await
+            {
+                Ok(roles) => roles,
+                Err(e) => return err(e).into_response(),
+            };
+            ok(CurrentAccount {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                status: user.status,
+                balance_usd: user.balance_usd,
+                balance_cny: user.balance_cny,
+                preferred_currency: user.preferred_currency,
+                roles,
+            })
+            .into_response()
+        }
+        Err(UserServiceError::UserNotFound) => {
+            err_status(StatusCode::NOT_FOUND, "User not found").into_response()
+        }
+        Err(e) => err(e).into_response(),
+    }
 }
 
 async fn require_admin_or_response(state: &AppState, claims: &Claims) -> Option<axum::response::Response> {

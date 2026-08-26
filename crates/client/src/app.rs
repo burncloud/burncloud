@@ -6,7 +6,7 @@ mod desktop_chrome;
 
 use crate::{
     auth_gate::AuthGate,
-    critical_pages::{Customers, Login, Overview, Register},
+    critical_pages::{BuyerHome, BuyerOverview, Customers, Login, Overview, Register},
     functional_pages::{
         APIKeys, Billing, Evaluation, Guardrails, Logs, Models, Playground, Providers, Routes,
         Settings, Team,
@@ -22,6 +22,10 @@ pub enum Route {
     Overview {},
     #[route("/dashboard")]
     Dashboard {},
+    #[route("/buyer")]
+    BuyerHome {},
+    #[route("/buyer/overview")]
+    BuyerOverview {},
     #[route("/playground")]
     Playground {},
     #[route("/routes")]
@@ -87,7 +91,6 @@ pub fn App() -> Element {
             style { dangerous_inner_html: include_str!("desktop_chrome.css") }
             style { dangerous_inner_html: include_str!("visual_system.css") }
         }
-        DesktopChrome {}
         Router::<Route> {}
     }
 }
@@ -150,7 +153,10 @@ fn AppWithDesktop() -> Element {
         });
     }
 
-    rsx! { App {} }
+    rsx! {
+        DesktopChrome {}
+        App {}
+    }
 }
 
 #[cfg(feature = "web")]

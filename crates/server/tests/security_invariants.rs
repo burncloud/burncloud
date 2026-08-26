@@ -162,6 +162,41 @@ async fn regular_users_cannot_execute_admin_management_actions() -> anyhow::Resu
 }
 
 #[tokio::test]
+async fn current_account_is_authenticated_and_owner_scoped() -> anyhow::Result<()> {
+    configure_security_env();
+    let db = test_utils::make_isolated_db().await;
+    let (admin_id, _admin_jwt, user_id, user_jwt) = create_principals(&db).await?;
+    UserService::new()
+        .topup(&db, &user_id, 3_000_000_000, "USD")
+        .await?;
+    let base = spawn_server(db).await?;
+    let client = Client::new();
+
+    let unauthenticated = client
+        .get(format!("{base}/console/api/user/me"))
+        .send()
+        .await?;
+    assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+    let response = client
+        .get(format!("{base}/console/api/user/me"))
+        .bearer_auth(&user_jwt)
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await?;
+    let data = &body["data"];
+    assert_eq!(data["id"], user_id);
+    assert_eq!(data["username"], "invariant-user");
+    assert_eq!(data["balance_usd"], 13_000_000_000_i64);
+    assert_ne!(data["id"], admin_id);
+    assert!(data.get("password_hash").is_none());
+    assert!(data.get("github_id").is_none());
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;

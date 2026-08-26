@@ -35,6 +35,8 @@ require 'Authorization' src/backend.rs
 require '/console/api/list_users' src/backend.rs
 require '/console/api/user/register' src/backend.rs
 require '/console/api/user/topup' src/backend.rs
+require '/console/api/user/me' src/backend.rs
+require '/console/api/user/recharges' src/backend.rs
 require '/console/api/channel?limit=' src/backend.rs
 require '/console/api/tokens' src/backend.rs
 require '/console/api/usage/' src/backend.rs
@@ -62,6 +64,10 @@ require 'AuthService::register' src/critical_pages/auth.rs
 require 'UserService::list' src/critical_pages/customers_portable.rs
 require 'UserService::topup' src/critical_pages/customers_portable.rs
 require 'billing_summary' src/critical_pages/dashboard.rs
+require 'billing_summary_for_period' src/critical_pages/buyer_overview.rs
+require 'UserService::current_account' src/critical_pages/buyer_overview.rs
+require 'UserService::recharges' src/critical_pages/buyer_overview.rs
+require 'TokenService::list_with_token' src/critical_pages/buyer_overview.rs
 require 'ChannelService::list' src/critical_pages/dashboard.rs
 require 'TokenService::create' src/functional_pages/api_keys_live.rs
 require 'TokenService::rotate' src/functional_pages/api_keys_live.rs
