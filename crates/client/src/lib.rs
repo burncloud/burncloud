@@ -10,6 +10,7 @@ pub mod functional_pages;
 pub mod observability;
 pub mod pages;
 pub mod route_aliases;
+pub mod workbench;
 
 pub use app::App;
 

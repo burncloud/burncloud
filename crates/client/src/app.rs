@@ -6,13 +6,14 @@ mod desktop_chrome;
 
 use crate::{
     auth_gate::AuthGate,
-    critical_pages::{Customers, Login, Overview, Register},
+    critical_pages::{Customers, Login, Register},
     functional_pages::{
         APIKeys, Billing, Evaluation, Guardrails, Logs, Models, Playground, Providers, Routes,
         Settings, Team,
     },
     pages::{Home, Landing},
     route_aliases::{Dashboard, Users},
+    workbench::Workbench as Overview,
 };
 
 #[derive(Clone, Routable, Debug, PartialEq)]
@@ -63,13 +64,13 @@ pub enum Route {
 fn DesktopChrome() -> Element {
     #[cfg(feature = "desktop")]
     {
-        return rsx! { desktop_chrome::DesktopTitleBar {} };
+        let has_desktop = try_use_context::<std::rc::Rc<dioxus::desktop::DesktopService>>().is_some();
+        if has_desktop {
+            return rsx! { desktop_chrome::DesktopTitleBar {} };
+        }
     }
 
-    #[cfg(not(feature = "desktop"))]
-    {
-        rsx! {}
-    }
+    rsx! {}
 }
 
 #[component]
@@ -86,6 +87,7 @@ pub fn App() -> Element {
             style { dangerous_inner_html: include_str!("product_ui.css") }
             style { dangerous_inner_html: include_str!("desktop_chrome.css") }
             style { dangerous_inner_html: include_str!("visual_system.css") }
+            style { dangerous_inner_html: include_str!("workbench.css") }
         }
         DesktopChrome {}
         Router::<Route> {}
