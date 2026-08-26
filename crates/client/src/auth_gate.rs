@@ -4,6 +4,7 @@ use crate::{
     app::Route,
     backend::use_auth,
     functional_layout::FunctionalConsoleLayout,
+    workbench::WorkbenchLayout,
 };
 
 #[component]
@@ -18,6 +19,8 @@ pub fn AuthGate() -> Element {
         }
     });
 
+    let current = use_route::<Route>();
+
     if !authenticated {
         return rsx! {
             div { class: "auth-page",
@@ -31,5 +34,9 @@ pub fn AuthGate() -> Element {
         };
     }
 
-    rsx! { FunctionalConsoleLayout {} }
+    if matches!(current, Route::Overview {}) {
+        rsx! { WorkbenchLayout {} }
+    } else {
+        rsx! { FunctionalConsoleLayout {} }
+    }
 }
