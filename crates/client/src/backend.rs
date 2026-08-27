@@ -269,9 +269,64 @@ pub struct User {
     pub status: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct CurrentAccount {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub status: i32,
+    #[serde(default)]
+    pub balance_usd: i64,
+    #[serde(default)]
+    pub balance_cny: i64,
+    #[serde(default)]
+    pub preferred_currency: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct UserRecharge {
+    #[serde(default)]
+    pub id: i32,
+    #[serde(default)]
+    pub user_id: String,
+    #[serde(default)]
+    pub amount: i64,
+    #[serde(default)]
+    pub currency: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+}
+
 pub struct UserService;
 
 impl UserService {
+    pub async fn current_account(token: &str) -> Result<CurrentAccount, String> {
+        let response = with_token(Client::new().get(url("/console/api/user/me")), token)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        decode_envelope(response).await
+    }
+
+    pub async fn recharges(token: &str) -> Result<Vec<UserRecharge>, String> {
+        let response = with_token(
+            Client::new().get(url("/console/api/user/recharges")),
+            token,
+        )
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        decode_envelope(response).await
+    }
+
     pub async fn list() -> Result<Vec<User>, String> {
         let response = with_auth(Client::new().get(url("/console/api/list_users")))
             .send()
@@ -497,6 +552,14 @@ impl TokenService {
         decode_envelope(response).await
     }
 
+    pub async fn list_with_token(token: &str) -> Result<Vec<TokenDto>, String> {
+        let response = with_token(Client::new().get(url("/console/api/tokens")), token)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        decode_envelope(response).await
+    }
+
     pub async fn create(user_id: &str, quota_limit: Option<i64>) -> Result<String, String> {
         #[derive(Deserialize)] struct Created { token: String }
         let response = with_auth(Client::new().post(url("/console/api/tokens")))
@@ -586,6 +649,23 @@ pub async fn billing_summary(token: &str) -> Result<BillingSummary, String> {
         .send()
         .await
         .map_err(|e| e.to_string())?;
+    decode_envelope(response).await
+}
+
+pub async fn billing_summary_for_period(
+    token: &str,
+    start: &str,
+    end: &str,
+) -> Result<BillingSummary, String> {
+    let response = with_token(
+        Client::new()
+            .get(url("/api/billing/summary"))
+            .query(&[("start", start), ("end", end)]),
+        token,
+    )
+    .send()
+    .await
+    .map_err(|e| e.to_string())?;
     decode_envelope(response).await
 }
 

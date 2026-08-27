@@ -57,7 +57,7 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
     for path in [
         "/dashboard", "/home", "/landing", "/login", "/register", "/playground", "/routes",
         "/models", "/providers", "/keys", "/customers", "/users", "/guardrails", "/logs",
-        "/evaluation", "/billing", "/team", "/settings",
+        "/evaluation", "/billing", "/team", "/settings", "/buyer", "/buyer/overview",
     ] {
         app = app.route(path, html_handler.clone());
     }

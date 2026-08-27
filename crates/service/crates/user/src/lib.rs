@@ -314,6 +314,13 @@ impl UserService {
         UserDatabase::list_users(db).await.map_err(Into::into)
     }
 
+    /// Get one account by ID for authenticated self-service views.
+    pub async fn get_user(&self, db: &Database, user_id: &str) -> Result<UserAccount> {
+        UserDatabase::get_user_by_id(db, user_id)
+            .await?
+            .ok_or(UserServiceError::UserNotFound)
+    }
+
     /// Check whether a username is already taken. Returns `true` if available.
     pub async fn is_username_available(&self, db: &Database, username: &str) -> Result<bool> {
         let existing = UserDatabase::get_user_by_username(db, username).await?;

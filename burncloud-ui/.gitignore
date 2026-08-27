@@ -1,0 +1,12 @@
+node_modules/
+.toolchains/
+rust-ui/target/
+rust-ui/target-codex/
+build/
+dist/
+coverage/
+archives/*.zip
+.DS_Store
+*.log
+.env*
+!.env.example

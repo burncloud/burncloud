@@ -1,0 +1,12 @@
+[package]
+name = "burncloud-ui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.9"
+chrono = { version = "0.4.42", default-features = false, features = ["clock"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread"] }

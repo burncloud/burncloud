@@ -9,6 +9,7 @@ use crate::{
 fn page_title(route: &Route) -> &'static str {
     match route {
         Route::Overview {} | Route::Dashboard {} => "Overview",
+        Route::BuyerHome {} | Route::BuyerOverview {} => "Buyer Overview",
         Route::Playground {} => "Playground",
         Route::Routes {} => "Routes",
         Route::Models {} => "Models",

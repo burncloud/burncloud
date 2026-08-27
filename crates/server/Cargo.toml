@@ -26,6 +26,7 @@ tower = { version = "0.5", features = ["util"] }
 burncloud-database = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-database-router = { workspace = true }
+burncloud-database-billing = { workspace = true }
 burncloud-database-user = { workspace = true }
 burncloud-router = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

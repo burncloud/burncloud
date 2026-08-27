@@ -24,6 +24,7 @@ serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true
 dirs.workspace = true
+chrono.workspace = true
 
 # LiveView integration used by the BurnCloud server binary.
 dioxus-liveview = { workspace = true, optional = true }

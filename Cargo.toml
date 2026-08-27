@@ -1,4 +1,5 @@
 [workspace]
+exclude = ["burncloud-ui/rust-ui"]
 members = [
     "crates/auto-update",
     "crates/client",
