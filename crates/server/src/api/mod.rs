@@ -12,6 +12,7 @@ use axum::{
 pub mod auth;
 pub mod billing;
 pub mod cache;
+pub mod catalog;
 pub mod channel;
 pub mod log;
 pub mod monitor;
@@ -51,6 +52,7 @@ pub fn routes(state: AppState) -> Router {
     let protected_routes = Router::new()
         .merge(auth::protected_routes())
         .merge(billing::routes())
+        .merge(catalog::routes())
         .merge(token::routes())
         .merge(user::routes())
         .merge(openapi::routes())

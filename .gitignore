@@ -7,6 +7,7 @@
 !/deploy/
 !/docs/
 !/src/
+!/burncloud-ui/
 
 !/.env.example
 !/.gitattributes
@@ -22,6 +23,7 @@
 !/deploy/**
 !/docs/**
 !/src/**
+!/burncloud-ui/**
 
 # Rust build artifacts
 /target/
@@ -29,6 +31,7 @@ crates/tests/target/
 **/*.rs.bk
 *.pdb
 Cargo.lock
+!/burncloud-ui/rust-ui/Cargo.lock
 
 # Tailwind CSS standalone CLI (downloaded locally, invoked by build.rs)
 # See crates/client/build.rs — contributors download the binary to this path.

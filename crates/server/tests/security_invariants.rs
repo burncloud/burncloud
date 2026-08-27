@@ -255,6 +255,29 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn buyer_model_catalog_requires_auth_without_exposing_channel_secrets() -> anyhow::Result<()>
+{
+    configure_security_env();
+    let db = test_utils::make_isolated_db().await;
+    let (_admin_id, _admin_jwt, _user_id, user_jwt) = create_principals(&db).await?;
+    let base = spawn_server(db).await?;
+    let client = Client::new();
+    let url = format!("{base}/api/models/catalog");
+
+    let anonymous = client.get(&url).send().await?;
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+    let authenticated = client.get(&url).bearer_auth(user_jwt).send().await?;
+    assert_eq!(authenticated.status(), StatusCode::OK);
+    let body = authenticated.text().await?;
+    assert!(!body.contains("base_url"));
+    assert!(!body.contains("header_override"));
+    assert!(!body.contains("param_override"));
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn sensitive_internal_mutations_require_internal_secret() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
