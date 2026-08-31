@@ -13,6 +13,7 @@ members = [
     "crates/database/crates/user",
     "crates/download",
     "crates/download/crates/download-aria2",
+    "crates/node",
     "crates/router",
     "crates/router/crates/router-aws",
     "crates/server",
