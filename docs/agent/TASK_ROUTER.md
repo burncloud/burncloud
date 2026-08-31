@@ -24,6 +24,7 @@ Use this before repository-wide search. Paths are starting points, not substitut
 | Logs / usage / monitoring | server log/monitor API modules | router log service/database and monitor service | `crates/tests/tests/api/log.rs`, `api/monitor.rs` |
 | UI / Console page behavior | affected crate under `crates/client/crates/` | `crates/client` shared components/routes | `crates/tests/tests/e2e/console_pages.rs`, `css_visual_acceptance.rs`, `aesthetic_acceptance.rs`, relevant flow tests |
 | Process startup / CLI dispatch | `src/main.rs`, `src/cli/` | `crates/server`, `crates/client` | affected crate tests and startup/status tests |
+| BurnCloud Node hardware profile / GPU discovery | `crates/node/src/hardware.rs` | `crates/service/crates/monitor` | `burncloud-node` unit tests; hardware-specific smoke checks when available |
 | Database dialect / SQL | `crates/database`, affected child database crate | `crates/database/src/placeholder.rs` | affected database/service tests plus relevant E2E flow |
 | Installer / download / update | corresponding crate under `crates/installer`, `crates/download`, `crates/auto-update` | caller crate | package-local tests/examples and affected E2E |
 
