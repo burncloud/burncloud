@@ -14,7 +14,10 @@ They are not a repository encyclopedia. They are an execution system that routes
 ## Operating model
 
 ```text
-User Task
+Implementation Plan / User Task
+   |
+   v
+Engineering Issue
    |
    v
 Task Contract
@@ -55,7 +58,8 @@ Domain Contract       Runtime / Contract      Playbook
 - `AGENTS.md` — highest repository-level agent rules and document router.
 - `START_HERE.md` — required execution loop.
 - `TASK_ROUTER.md` — recurring behavior -> source/test starting points.
-- `TASK_CONTRACT.md` — minimum contract before non-trivial edits.
+- `ISSUE_STANDARD.md` — required structure and boundary rules for non-trivial engineering issues.
+- `TASK_CONTRACT.md` — minimum execution contract before non-trivial edits.
 
 ### 2. Domain contracts
 
@@ -97,9 +101,11 @@ Do not load the entire documentation tree by default.
 Use this path:
 
 ```text
-Task
+Issue / Task
  -> AGENTS.md
  -> START_HERE.md
+ -> ISSUE_STANDARD.md (when creating or validating an Issue)
+ -> TASK_CONTRACT.md (before non-trivial edits)
  -> TASK_ROUTER.md
  -> relevant domain/runtime/contract docs
  -> relevant invariants
