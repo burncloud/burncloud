@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         This form follows `docs/agent/ISSUE_STANDARD.md`.
-        One issue should deliver one primary observable capability.
+        A PLANNED issue is not implementation authorization. Codex should only implement issues that pass the READY Gate.
 
   - type: dropdown
     id: issue_type
@@ -36,7 +36,7 @@ body:
     id: goal
     attributes:
       label: 目标（Goal）
-      description: Describe one observable user/operator/system outcome.
+      description: Describe exactly one primary observable user/operator/system outcome.
       placeholder: What becomes possible or reliably true after this issue is complete?
     validations:
       required: true
@@ -45,10 +45,38 @@ body:
     id: current_evidence
     attributes:
       label: 当前事实与证据（Current Evidence）
-      description: Cite source/tests/runtime/docs and classify material claims as STATIC CONFIRMED / DYNAMIC / INFERRED / UNKNOWN / RUNTIME VERIFIED.
+      description: Cite current source/tests/runtime/accepted docs and classify claims as STATIC CONFIRMED / DYNAMIC / INFERRED / UNKNOWN / RUNTIME VERIFIED.
       placeholder: |
         STATIC CONFIRMED — crates/.../file.rs :: Symbol
-        UNKNOWN — runtime behavior has not yet been verified
+        RUNTIME VERIFIED — ...
+        UNKNOWN — behavior has not yet been established
+    validations:
+      required: true
+
+  - type: textarea
+    id: entry
+    attributes:
+      label: 入口 / 调查起点（Entry / Starting Point）
+      description: Give a real CLI, route, UI event, background trigger, source symbol, or other concrete place where Codex should begin investigation.
+      placeholder: |
+        CLI: burncloud node
+        Source: src/main.rs :: main
+    validations:
+      required: true
+
+  - type: textarea
+    id: reuse_targets
+    attributes:
+      label: 复用目标（Reuse Targets）
+      description: State existing components this issue should reuse and duplicate systems it must not recreate.
+      placeholder: |
+        Reuse:
+        - existing burncloud-server startup
+        - existing ModelRouter
+
+        Do not recreate:
+        - second HTTP server
+        - second router
     validations:
       required: true
 
@@ -56,7 +84,39 @@ body:
     id: expected_behavior
     attributes:
       label: 期望行为（Expected Behavior）
-      description: State the behavior or stable contract after the change.
+      description: State the observable behavior or stable internal semantics after the change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior_contract
+    attributes:
+      label: 行为合同（Behavior Contract）
+      description: Define semantic Inputs / Outputs / Ownership / Side effects. Write not-applicable only when there is genuinely no cross-component contract.
+      placeholder: |
+        Inputs:
+        - ...
+        Outputs:
+        - ...
+        Ownership:
+        - ...
+        Side effects:
+        - none
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure_behavior
+    attributes:
+      label: 失败行为（Failure Behavior）
+      description: Define explicit failure semantics and forbidden silent fallbacks.
+      placeholder: |
+        On failure:
+        - return explicit structured error
+
+        Forbidden fallback:
+        - do not silently choose another provider
+        - do not hide the failure by widening scope
     validations:
       required: true
 
@@ -64,7 +124,7 @@ body:
     id: allowed_scope
     attributes:
       label: 允许范围（Allowed Scope）
-      description: Expected domains/components that may need changes.
+      description: Expected domains/components that may need changes. This is an authority boundary, not permission to edit everything listed.
       placeholder: |
         - crates/node
         - existing monitor interfaces needed by HardwareProfile
@@ -75,7 +135,7 @@ body:
     id: avoid_scope
     attributes:
       label: 禁止/避免范围（Avoid Scope）
-      description: Boundaries that must not be changed silently.
+      description: Boundaries that must not be crossed silently.
       placeholder: |
         - do not create a second router
         - do not change billing semantics
@@ -86,7 +146,7 @@ body:
     id: impact
     attributes:
       label: 影响面（Impact）
-      description: Explicitly mark each area as none or describe the impact.
+      description: Explicitly mark every area as none or describe the expected impact.
       placeholder: |
         persistence: none
         external_calls: none
@@ -114,22 +174,38 @@ body:
     id: dependencies
     attributes:
       label: 依赖与阻塞（Dependencies / Blockers）
-      description: List prerequisite issues, decisions, or external dependencies. Write none when independent.
+      description: List prerequisite issues, decisions, environments, or test assets. Hard dependencies must be DONE or explicitly waived before READY.
       placeholder: none
+    validations:
+      required: true
+
+  - type: textarea
+    id: stop_conditions
+    attributes:
+      label: 停止条件（Stop Conditions）
+      description: Conditions under which Codex must stop and report instead of widening scope or repairing unrelated modules.
+      placeholder: |
+        STOP IF:
+        - current source disproves a material issue assumption
+        - implementation requires changing an Avoid domain
+        - an undeclared architecture/invariant change is required
+        - a prerequisite is not actually available
     validations:
       required: true
 
   - type: textarea
     id: verification
     attributes:
-      label: 验证计划（Verification）
-      description: Define targeted, regression, and runtime/E2E verification where applicable.
+      label: 验证目标（Verification Targets）
+      description: Define targeted, regression, runtime/E2E, and protected-behavior verification where applicable. Exact commands may be finalized in the Task Contract.
       placeholder: |
         Targeted:
         - ...
         Regression:
         - ...
         Runtime/E2E:
+        - ...
+        Protected behavior:
         - ...
     validations:
       required: true
@@ -138,7 +214,7 @@ body:
     id: done_when
     attributes:
       label: 完成条件（Done When）
-      description: Use independently verifiable completion criteria.
+      description: Use independently verifiable acceptance conditions, not implementation steps.
       placeholder: |
         - observable condition 1
         - observable condition 2
@@ -149,19 +225,44 @@ body:
     id: plan_page
     attributes:
       label: 实施计划页面（Plan Page）
-      description: Link to the relevant BurnCloud Node implementation-plan child page when applicable.
+      description: Link to the relevant implementation-plan child page when applicable.
       placeholder: https://burncloud.github.io/burncloud-node/implementation-plan/...
 
-  - type: checkboxes
-    id: discipline
+  - type: dropdown
+    id: readiness
     attributes:
-      label: 边界确认
+      label: 当前状态（Readiness）
+      description: Select READY only after every READY Gate checkbox below is satisfied against current main.
       options:
-        - label: This issue has one primary outcome and is not a bundle of independent tasks.
+        - PLANNED
+        - READY
+        - BLOCKED
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: ready_gate
+    attributes:
+      label: READY Gate
+      description: All boxes are required before this issue may be marked READY and handed to Codex.
+      options:
+        - label: The issue has one primary outcome and is not a bundle of independent tasks.
           required: true
-        - label: Current behavior is evidence-backed or explicitly marked UNKNOWN.
+        - label: Hard dependencies are DONE or explicitly waived.
           required: true
-        - label: Architecture/invariant changes are explicit rather than hidden inside implementation work.
+        - label: Current Evidence has been checked against current main or marked UNKNOWN where evidence is genuinely missing.
+          required: true
+        - label: Entry / Starting Point and Reuse Targets are known.
+          required: true
+        - label: Allowed / Avoid boundaries and Impact are explicit.
+          required: true
+        - label: Behavior Contract and Failure Behavior are explicit where applicable.
+          required: true
+        - label: Relevant invariants and any architecture change are explicit.
+          required: true
+        - label: Verification Targets and Done When are independently verifiable.
+          required: true
+        - label: Stop Conditions are explicit; Codex must stop rather than silently widen scope.
           required: true
         - label: Implementation will be submitted through a Pull Request, not directly to main.
           required: true
