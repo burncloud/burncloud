@@ -1,5 +1,5 @@
 name: Engineering Task
-about: Create a bounded, evidence-backed engineering issue
+about: Create a bounded, evidence-backed implementation issue
 title: "[domain] "
 labels: []
 body:
@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         This form follows `docs/agent/ISSUE_STANDARD.md`.
-        A PLANNED issue is not implementation authorization. Codex should only implement issues that pass the READY Gate.
+        Long-term PLANNED work belongs in the Implementation Plan. Create an Engineering Issue only when the task is being prepared for implementation and can satisfy the READY Gate below.
 
   - type: dropdown
     id: issue_type
@@ -174,7 +174,7 @@ body:
     id: dependencies
     attributes:
       label: 依赖与阻塞（Dependencies / Blockers）
-      description: List prerequisite issues, decisions, environments, or test assets. Hard dependencies must be DONE or explicitly waived before READY.
+      description: List prerequisite issues, decisions, environments, or test assets. Hard dependencies must be DONE or explicitly waived before implementation.
       placeholder: none
     validations:
       required: true
@@ -228,23 +228,11 @@ body:
       description: Link to the relevant implementation-plan child page when applicable.
       placeholder: https://burncloud.github.io/burncloud-node/implementation-plan/...
 
-  - type: dropdown
-    id: readiness
-    attributes:
-      label: 当前状态（Readiness）
-      description: Select READY only after every READY Gate checkbox below is satisfied against current main.
-      options:
-        - PLANNED
-        - READY
-        - BLOCKED
-    validations:
-      required: true
-
   - type: checkboxes
     id: ready_gate
     attributes:
       label: READY Gate
-      description: All boxes are required before this issue may be marked READY and handed to Codex.
+      description: All boxes are required. Submitting this form means the issue is proposed as implementation-ready; Codex still performs Task Contract preflight against current main before editing.
       options:
         - label: The issue has one primary outcome and is not a bundle of independent tasks.
           required: true
