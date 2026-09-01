@@ -1,0 +1,167 @@
+name: Engineering Task
+about: Create a bounded, evidence-backed engineering issue
+title: "[domain] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form follows `docs/agent/ISSUE_STANDARD.md`.
+        One issue should deliver one primary observable capability.
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue 类型
+      options:
+        - Feature
+        - Bug
+        - Refactor
+        - Architecture
+        - Documentation
+        - Verification
+    validations:
+      required: true
+
+  - type: input
+    id: domain
+    attributes:
+      label: Domain
+      description: Primary ownership domain, for example node, router, billing, auth, provider.
+      placeholder: node
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标（Goal）
+      description: Describe one observable user/operator/system outcome.
+      placeholder: What becomes possible or reliably true after this issue is complete?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_evidence
+    attributes:
+      label: 当前事实与证据（Current Evidence）
+      description: Cite source/tests/runtime/docs and classify material claims as STATIC CONFIRMED / DYNAMIC / INFERRED / UNKNOWN / RUNTIME VERIFIED.
+      placeholder: |
+        STATIC CONFIRMED — crates/.../file.rs :: Symbol
+        UNKNOWN — runtime behavior has not yet been verified
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: 期望行为（Expected Behavior）
+      description: State the behavior or stable contract after the change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: allowed_scope
+    attributes:
+      label: 允许范围（Allowed Scope）
+      description: Expected domains/components that may need changes.
+      placeholder: |
+        - crates/node
+        - existing monitor interfaces needed by HardwareProfile
+    validations:
+      required: true
+
+  - type: textarea
+    id: avoid_scope
+    attributes:
+      label: 禁止/避免范围（Avoid Scope）
+      description: Boundaries that must not be changed silently.
+      placeholder: |
+        - do not create a second router
+        - do not change billing semantics
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 影响面（Impact）
+      description: Explicitly mark each area as none or describe the impact.
+      placeholder: |
+        persistence: none
+        external_calls: none
+        billing_usage_quota: none
+        auth_authorization: none
+        routing_provider: none
+        concurrency_transactions: none
+        public_api_cli: none
+        process_runtime_lifecycle: describe
+    validations:
+      required: true
+
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Invariants / Architecture
+      description: List relevant INV-* IDs. If a change is required, write ARCHITECTURE / INVARIANT CHANGE REQUIRED.
+      placeholder: |
+        - INV-...
+        - No invariant change expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依赖与阻塞（Dependencies / Blockers）
+      description: List prerequisite issues, decisions, or external dependencies. Write none when independent.
+      placeholder: none
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: 验证计划（Verification）
+      description: Define targeted, regression, and runtime/E2E verification where applicable.
+      placeholder: |
+        Targeted:
+        - ...
+        Regression:
+        - ...
+        Runtime/E2E:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: done_when
+    attributes:
+      label: 完成条件（Done When）
+      description: Use independently verifiable completion criteria.
+      placeholder: |
+        - observable condition 1
+        - observable condition 2
+    validations:
+      required: true
+
+  - type: input
+    id: plan_page
+    attributes:
+      label: 实施计划页面（Plan Page）
+      description: Link to the relevant BurnCloud Node implementation-plan child page when applicable.
+      placeholder: https://burncloud.github.io/burncloud-node/implementation-plan/...
+
+  - type: checkboxes
+    id: discipline
+    attributes:
+      label: 边界确认
+      options:
+        - label: This issue has one primary outcome and is not a bundle of independent tasks.
+          required: true
+        - label: Current behavior is evidence-backed or explicitly marked UNKNOWN.
+          required: true
+        - label: Architecture/invariant changes are explicit rather than hidden inside implementation work.
+          required: true
+        - label: Implementation will be submitted through a Pull Request, not directly to main.
+          required: true
