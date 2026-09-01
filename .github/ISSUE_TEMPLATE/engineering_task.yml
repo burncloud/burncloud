@@ -1,5 +1,5 @@
 name: Engineering Task
-about: Create a bounded, evidence-backed implementation issue
+description: Create a bounded, evidence-backed implementation issue
 title: "[domain] "
 labels: []
 body:
