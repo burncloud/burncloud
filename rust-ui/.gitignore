@@ -1,0 +1,22 @@
+# Rust build output
+/target/
+
+# Trunk-generated WebAssembly site output
+/dist/
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+/.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local environment and tooling state
+.env
+.env.*
+!.env.example
+**/.rustc_info.json
+**/*.rs.bk
