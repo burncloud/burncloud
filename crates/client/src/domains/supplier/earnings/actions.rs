@@ -1,0 +1,1 @@
+//! supplier/earnings page boundary.

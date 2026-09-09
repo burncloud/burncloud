@@ -1,40 +1,30 @@
 [package]
-publish.workspace = true
 name = "burncloud-client"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2021"
-description = "Dioxus client for the BurnCloud AI routing platform"
-license = "MIT"
-repository = "https://github.com/burncloud/burncloud"
-authors = ["burncloud contributors"]
+publish.workspace = true
+description = "BurnCloud Dioxus client and console UI"
+license.workspace = true
 
 [features]
-default = ["desktop"]
-desktop = ["dioxus/desktop", "dioxus/launch"]
-web = ["dioxus/web", "dioxus/launch"]
-liveview = ["dep:dioxus-liveview", "dep:axum", "dep:burncloud-database"]
+default = []
+liveview = [
+    "dep:axum",
+    "dep:burncloud-database",
+    "dep:dioxus-liveview",
+    "dioxus/liveview",
+    "dioxus/server",
+]
+desktop = ["dep:dioxus-desktop", "dioxus/desktop"]
 
 [dependencies]
-burncloud-common.workspace = true
-dioxus = { workspace = true, features = ["router", "lib"] }
+dioxus = { workspace = true, features = ["lib", "router"] }
 dioxus-router.workspace = true
-tokio.workspace = true
-anyhow.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-reqwest.workspace = true
-dirs.workspace = true
 
-# LiveView integration used by the BurnCloud server binary.
-dioxus-liveview = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 burncloud-database = { workspace = true, optional = true }
-
-[target.'cfg(windows)'.dependencies]
-systray.workspace = true
-
-[build-dependencies]
-winres = "0.1"
+dioxus-liveview = { workspace = true, optional = true }
+dioxus-desktop = { workspace = true, optional = true }
 
 [lints]
 workspace = true
