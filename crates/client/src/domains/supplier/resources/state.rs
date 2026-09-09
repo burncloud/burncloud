@@ -1,0 +1,1 @@
+//! supplier/resources page boundary.
