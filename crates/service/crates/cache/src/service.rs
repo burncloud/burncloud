@@ -127,24 +127,24 @@ impl CacheService {
         let redis_url = config
             .redis_url
             .as_ref()
-            .ok_or_else(|| CacheError::Connection("REDIS_URL not configured".to_string()))?;
+            .ok_or(CacheError::Connection)?;
 
-        tracing::info!("Connecting to Redis at {}", redis_url);
+        tracing::info!(backend = "redis", "connecting to cache backend");
 
         let client =
-            Client::open(redis_url.as_str()).map_err(|e| CacheError::Connection(e.to_string()))?;
+            Client::open(redis_url.as_str()).map_err(|_| CacheError::Connection)?;
 
         // Test connection
         let mut conn = client
             .get_connection_manager()
             .await
-            .map_err(|e| CacheError::Connection(e.to_string()))?;
+            .map_err(|_| CacheError::Connection)?;
 
         // Ping to verify connection
         let _: String = redis::cmd("PING")
             .query_async(&mut conn)
             .await
-            .map_err(|e| CacheError::Connection(e.to_string()))?;
+            .map_err(|_| CacheError::Connection)?;
 
         tracing::info!("Redis connection established");
 
@@ -173,7 +173,7 @@ impl CacheService {
         let conn = client
             .get_connection_manager()
             .await
-            .map_err(|e| CacheError::Connection(e.to_string()))?;
+            .map_err(|_| CacheError::Connection)?;
 
         Ok(Some(conn))
     }
@@ -186,11 +186,11 @@ impl CacheService {
             let data: Option<String> = conn
                 .get(key)
                 .await
-                .map_err(|e| CacheError::Operation(e.to_string()))?;
+                .map_err(|_| CacheError::Operation)?;
 
             if let Some(data) = data {
                 let value: T = serde_json::from_str(&data)
-                    .map_err(|e| CacheError::Serialization(e.to_string()))?;
+                    .map_err(|_| CacheError::Serialization)?;
                 return Ok(Some(value));
             }
         }
@@ -204,12 +204,12 @@ impl CacheService {
 
         if let Some(mut conn) = conn {
             let data = serde_json::to_string(value)
-                .map_err(|e| CacheError::Serialization(e.to_string()))?;
+                .map_err(|_| CacheError::Serialization)?;
 
             let _: () = conn
                 .set_ex(key, data, ttl)
                 .await
-                .map_err(|e| CacheError::Operation(e.to_string()))?;
+                .map_err(|_| CacheError::Operation)?;
         }
 
         Ok(())
@@ -223,7 +223,7 @@ impl CacheService {
             let _: () = conn
                 .del(key)
                 .await
-                .map_err(|e| CacheError::Operation(e.to_string()))?;
+                .map_err(|_| CacheError::Operation)?;
         }
 
         Ok(())
@@ -335,13 +335,13 @@ impl CacheService {
                 .arg("bc:*")
                 .query_async(&mut conn)
                 .await
-                .map_err(|e| CacheError::Operation(e.to_string()))?;
+                .map_err(|_| CacheError::Operation)?;
 
             if !keys.is_empty() {
                 let _: () = conn
                     .del(&keys)
                     .await
-                    .map_err(|e| CacheError::Operation(e.to_string()))?;
+                    .map_err(|_| CacheError::Operation)?;
                 tracing::info!("Cleared {} cache keys", keys.len());
             }
         }
@@ -368,7 +368,7 @@ impl CacheService {
                 .arg("bc:*")
                 .query_async(&mut conn)
                 .await
-                .map_err(|e| CacheError::Operation(e.to_string()))?;
+                .map_err(|_| CacheError::Operation)?;
             stats.key_count = keys.len();
 
             // Get memory usage (approximate)
@@ -376,7 +376,7 @@ impl CacheService {
                 .arg("memory")
                 .query_async(&mut conn)
                 .await
-                .map_err(|e| CacheError::Operation(e.to_string()))?;
+                .map_err(|_| CacheError::Operation)?;
 
             // Parse used_memory from INFO output
             for line in info.lines() {
@@ -430,5 +430,35 @@ mod tests {
 
         let result = cache.get_token("test-token").await;
         assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_connection_error_redacts_redis_url() {
+        let redis_url =
+            "redis://secret-user:secret-password@internal-cache.example:not-a-port/0";
+        let config = CacheConfig {
+            redis_url: Some(redis_url.to_string()),
+            enabled: true,
+            ..Default::default()
+        };
+
+        let error = match CacheService::with_config(config).await {
+            Ok(_) => panic!("invalid Redis URL unexpectedly connected"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+
+        assert_eq!(message, "cache connection failed");
+        for secret in [
+            "secret-user",
+            "secret-password",
+            "internal-cache.example",
+            redis_url,
+        ] {
+            assert!(
+                !message.contains(secret),
+                "public cache error leaked sensitive Redis connection data"
+            );
+        }
     }
 }
