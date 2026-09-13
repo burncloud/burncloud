@@ -4,20 +4,20 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CacheError {
-    #[error("Redis connection error: {0}")]
-    Connection(String),
+    #[error("cache connection failed")]
+    Connection,
 
-    #[error("Redis operation error: {0}")]
-    Operation(String),
+    #[error("cache backend operation failed")]
+    Operation,
 
-    #[error("Serialization error: {0}")]
-    Serialization(String),
+    #[error("cache data is invalid")]
+    Serialization,
 
-    #[error("Cache disabled")]
+    #[error("cache is disabled")]
     Disabled,
 
-    #[error("Key not found: {0}")]
-    NotFound(String),
+    #[error("cache key was not found")]
+    NotFound,
 }
 
 pub type CacheResult<T> = Result<T, CacheError>;
