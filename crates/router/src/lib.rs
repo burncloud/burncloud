@@ -4624,6 +4624,3 @@ fn check_response_quality(
         }
     }
 }
-            sanitized_map.insert(
-                name.to_string(),
-                Body::from(
