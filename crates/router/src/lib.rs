@@ -2753,7 +2753,7 @@ async fn proxy_logic(
                                                 }
                                                 counter_clone.set_from_usage(&u);
                                             }
-                                            
+
                                             // Also check for actual content in the stream (not just usage)
                                             // This handles cases where usage is sent separately at the end
                                             // or not sent at all (some providers do not send usage in streams)
@@ -2794,7 +2794,7 @@ async fn proxy_logic(
                                     if !seen_tokens.load(std::sync::atomic::Ordering::Relaxed) {
                                         // Use sliding window counter: only penalize after consecutive empty responses
                                         let should_penalize = state_clone.empty_response_counter.record_empty(&upstream_id_str);
-                                        
+
                                         if should_penalize {
                                             // Threshold exceeded - record failure
                                             state_clone.circuit_breaker.record_failure_with_type(
@@ -3493,7 +3493,7 @@ async fn proxy_logic(
                                             _ => counter_clone.set_from_usage(&u),
                                         }
                                     }
-                                    
+
                                     // Check for SSE errors and content in the stream
                                     if !seen_tokens_clone.load(std::sync::atomic::Ordering::Relaxed) {
                                         for line in text.lines() {
@@ -3514,15 +3514,15 @@ async fn proxy_logic(
                                                     let error_code = error.get("code")
                                                         .and_then(|c| c.as_u64())
                                                         .unwrap_or(400) as u16;
-                                                    
+
                                                     // Check if this is an auth error
                                                     let msg_lower = error_msg.to_lowercase();
-                                                    let is_auth_error = msg_lower.contains("auth") 
-                                                        || msg_lower.contains("appid") 
+                                                    let is_auth_error = msg_lower.contains("auth")
+                                                        || msg_lower.contains("appid")
                                                         || msg_lower.contains("unauthorized")
                                                         || msg_lower.contains("invalid key")
                                                         || error_code == 401;
-                                                    
+
                                                     tracing::error!(
                                                         channel_id = %upstream_id_str_for_stream,
                                                         error_code,
@@ -3530,7 +3530,7 @@ async fn proxy_logic(
                                                         is_auth = is_auth_error,
                                                         "SSE streaming error detected"
                                                     );
-                                                    
+
                                                     // Set error flags for done closure to handle
                                                     sse_error_detected_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                                                     sse_error_is_auth_clone.store(is_auth_error, std::sync::atomic::Ordering::Relaxed);
@@ -3783,7 +3783,7 @@ async fn proxy_logic(
                                             _ => counter_clone.set_from_usage(&u),
                                         }
                                     }
-                                    
+
                                     // Check for SSE errors and content in the stream
                                     if !seen_tokens_clone.load(std::sync::atomic::Ordering::Relaxed) {
                                         for line in text.lines() {
@@ -3804,15 +3804,15 @@ async fn proxy_logic(
                                                     let error_code = error.get("code")
                                                         .and_then(|c| c.as_u64())
                                                         .unwrap_or(400) as u16;
-                                                    
+
                                                     // Check if this is an auth error
                                                     let msg_lower = error_msg.to_lowercase();
-                                                    let is_auth_error = msg_lower.contains("auth") 
-                                                        || msg_lower.contains("appid") 
+                                                    let is_auth_error = msg_lower.contains("auth")
+                                                        || msg_lower.contains("appid")
                                                         || msg_lower.contains("unauthorized")
                                                         || msg_lower.contains("invalid key")
                                                         || error_code == 401;
-                                                    
+
                                                     tracing::error!(
                                                         channel_id = %upstream_id_str_for_stream,
                                                         error_code,
@@ -3820,7 +3820,7 @@ async fn proxy_logic(
                                                         is_auth = is_auth_error,
                                                         "SSE streaming error detected"
                                                     );
-                                                    
+
                                                     // Set error flags for done closure to handle
                                                     sse_error_detected_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                                                     sse_error_is_auth_clone.store(is_auth_error, std::sync::atomic::Ordering::Relaxed);
