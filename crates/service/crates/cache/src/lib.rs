@@ -4,7 +4,6 @@
 //!
 //! # Cache Targets
 //! - Model prices: TTL 10 minutes
-//! - User quota balance: TTL 1 minute
 //!
 //! # Environment Variables
 //! - `REDIS_URL`: Redis connection URL (default: none, cache disabled)
@@ -25,4 +24,4 @@ mod error;
 mod service;
 
 pub use error::{CacheError, CacheResult};
-pub use service::{CacheService, CachedQuota};
+pub use service::CacheService;
