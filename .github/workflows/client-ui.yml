@@ -6,7 +6,6 @@ on:
       - 'Cargo.toml'
       - 'crates/client/**'
       - 'deploy/Dockerfile'
-      - 'docs/ui/**'
       - '.github/workflows/client-ui.yml'
 
 permissions:

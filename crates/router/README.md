@@ -41,12 +41,6 @@ Current `Cargo.toml` directly depends on database/common crates and currently tw
 
 `crates/router/scripts/check-router-deps.sh` enforces these two service crates as the current whitelist. Adding another direct `burncloud-service-*` dependency requires deliberate architecture review and updating the enforced rule if accepted.
 
-See:
-
-- `docs/agent/INVARIANTS.md`
-- `docs/architecture/CURRENT_SYSTEM.md`
-- `docs/contracts/ROUTER.md`
-
 ## Passthrough and conversion
 
 Passthrough is **conditional**, not a universal “never parse the body” rule. Current code contains native passthrough branches and parsing/conversion branches. Preserve the semantics of the active path and check `src/passthrough.rs` plus the selected branch in `src/lib.rs`.

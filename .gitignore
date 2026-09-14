@@ -5,7 +5,6 @@
 !/.github/
 !/crates/
 !/deploy/
-!/docs/
 !/src/
 
 !/.env.example
@@ -20,7 +19,6 @@
 !/.github/**
 !/crates/**
 !/deploy/**
-!/docs/**
 !/src/**
 
 # Rust build artifacts

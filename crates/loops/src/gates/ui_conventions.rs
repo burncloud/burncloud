@@ -66,9 +66,7 @@ pub fn run_ui_conventions(root: &Path) -> anyhow::Result<(bool, Vec<String>)> {
     }
 
     if violations > 0 {
-        lines.push(format!(
-            "Found {violations} UI convention violation(s). See docs/ui/components.md"
-        ));
+        lines.push(format!("Found {violations} UI convention violation(s)."));
         Ok((false, lines))
     } else {
         Ok((true, lines))
