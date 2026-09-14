@@ -123,22 +123,12 @@ pub async fn security_boundary_middleware(
     let path = req.uri().path();
 
     if is_sensitive_internal_mutation(req.method(), path) {
-        let expected = std::env::var("BURNCLOUD_INTERNAL_SECRET")
-            .ok()
-            .filter(|secret| !secret.is_empty())
-            .ok_or_else(|| {
-                tracing::error!(
-                    path,
-                    "Sensitive internal endpoint disabled: BURNCLOUD_INTERNAL_SECRET is not configured"
-                );
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
         let provided = req
             .headers()
             .get("x-internal-secret")
             .and_then(|value| value.to_str().ok())
             .unwrap_or("");
-        if provided != expected {
+        if !state.internal_secret.matches(provided) {
             tracing::warn!(path, "Rejected unauthorized internal mutation");
             return Err(StatusCode::UNAUTHORIZED);
         }

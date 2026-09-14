@@ -5,20 +5,22 @@ mod test_utils;
 use burncloud_database::Database;
 use burncloud_database_router::RouterToken;
 use burncloud_service_token::TokenService;
+use burncloud_server::InternalSecret;
 use burncloud_service_user::{JwtSecret, UserService};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use std::sync::Arc;
 
-const INTERNAL_SECRET: &str = "burncloud-security-invariant-internal-secret";
-
 fn configure_security_env() {
-    std::env::set_var("BURNCLOUD_INTERNAL_SECRET", INTERNAL_SECRET);
     std::env::set_var("SKIP_INITIAL_PRICE_SYNC", "1");
 }
 
-async fn spawn_server(db: Arc<Database>, jwt_secret: JwtSecret) -> anyhow::Result<String> {
-    let app = burncloud_server::create_app(db, false, jwt_secret).await?;
+async fn spawn_server(
+    db: Arc<Database>,
+    jwt_secret: JwtSecret,
+    internal_secret: InternalSecret,
+) -> anyhow::Result<String> {
+    let app = burncloud_server::create_app(db, false, jwt_secret, internal_secret).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
     tokio::spawn(async move {
@@ -75,7 +77,7 @@ async fn console_jwt_cannot_authenticate_data_plane() -> anyhow::Result<()> {
         create_principals(&db, jwt_secret.clone()).await?;
     let api_key = "bc_live_security_data_plane_key";
     TokenService::create(&db, &router_token(api_key, &user_id)).await?;
-    let base = spawn_server(db, jwt_secret).await?;
+    let base = spawn_server(db, jwt_secret, test_utils::test_internal_secret()).await?;
     let client = Client::new();
     let body = serde_json::json!({
         "model": "security-invariant-model",
@@ -116,7 +118,7 @@ async fn regular_users_cannot_execute_admin_management_actions() -> anyhow::Resu
     let jwt_secret = test_utils::test_jwt_secret();
     let (_admin_id, admin_jwt, user_id, user_jwt) =
         create_principals(&db, jwt_secret.clone()).await?;
-    let base = spawn_server(db, jwt_secret).await?;
+    let base = spawn_server(db, jwt_secret, test_utils::test_internal_secret()).await?;
     let client = Client::new();
 
     let logs = client
@@ -167,7 +169,12 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
     let user_key = "bc_live_user_secret_5678";
     TokenService::create(&db, &router_token(admin_key, &admin_id)).await?;
     TokenService::create(&db, &router_token(user_key, &user_id)).await?;
-    let base = spawn_server(db.clone(), jwt_secret).await?;
+    let base = spawn_server(
+        db.clone(),
+        jwt_secret,
+        test_utils::test_internal_secret(),
+    )
+    .await?;
     let client = Client::new();
 
     let user_list = client
@@ -232,7 +239,13 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
 async fn sensitive_internal_mutations_require_internal_secret() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
-    let base = spawn_server(db, test_utils::test_jwt_secret()).await?;
+    let internal_secret = test_utils::test_internal_secret();
+    let base = spawn_server(
+        db,
+        test_utils::test_jwt_secret(),
+        internal_secret.clone(),
+    )
+    .await?;
     let client = Client::new();
     let url = format!("{base}/console/internal/circuit-breaker/trip-all");
 
@@ -248,7 +261,7 @@ async fn sensitive_internal_mutations_require_internal_secret() -> anyhow::Resul
 
     let allowed = client
         .post(&url)
-        .header("X-Internal-Secret", INTERNAL_SECRET)
+        .header("X-Internal-Secret", test_utils::TEST_INTERNAL_SECRET)
         .send()
         .await?;
     assert_eq!(
@@ -256,6 +269,40 @@ async fn sensitive_internal_mutations_require_internal_secret() -> anyhow::Resul
         StatusCode::OK,
         "authorized internal operations must remain available"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn billing_summary_requires_internal_secret() -> anyhow::Result<()> {
+    configure_security_env();
+    let db = test_utils::make_isolated_db().await;
+    let internal_secret = test_utils::test_internal_secret();
+    let base = spawn_server(
+        db,
+        test_utils::test_jwt_secret(),
+        internal_secret.clone(),
+    )
+    .await?;
+    let client = Client::new();
+    let url = format!("{base}/console/internal/billing/summary");
+
+    let missing = client.get(&url).send().await?;
+    assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+
+    let wrong = client
+        .get(&url)
+        .header("X-Internal-Secret", "wrong-secret")
+        .send()
+        .await?;
+    assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+
+    let allowed = client
+        .get(&url)
+        .header("X-Internal-Secret", test_utils::TEST_INTERNAL_SECRET)
+        .send()
+        .await?;
+    assert_eq!(allowed.status(), StatusCode::OK);
 
     Ok(())
 }

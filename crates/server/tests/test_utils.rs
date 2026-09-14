@@ -9,11 +9,19 @@ use burncloud_database::{create_database_with_url, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
 use burncloud_service_user::JwtSecret;
+use burncloud_server::InternalSecret;
 use std::sync::Arc;
+
+pub const TEST_INTERNAL_SECRET: &str = "burncloud-server-test-internal-secret";
 
 pub fn test_jwt_secret() -> JwtSecret {
     JwtSecret::new("burncloud-server-test-jwt-secret")
         .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}"))
+}
+
+pub fn test_internal_secret() -> InternalSecret {
+    InternalSecret::new(TEST_INTERNAL_SECRET)
+        .unwrap_or_else(|e| panic!("test internal secret must be valid: {e}"))
 }
 
 /// Create an isolated temp-file database for a server test.

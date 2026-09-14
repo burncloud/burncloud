@@ -11,6 +11,7 @@ use burncloud_router::create_router_app;
 use burncloud_router::price_sync::SyncResult;
 use burncloud_service_monitor::SystemMonitorService;
 use burncloud_service_user::{JwtSecret, UserService};
+use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -18,12 +19,50 @@ use tower_http::cors::CorsLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
+/// Validated shared secret for trusted internal HTTP calls.
+///
+/// The inner value is private and its `Debug` implementation is redacted so
+/// application state and diagnostics cannot accidentally expose it.
+#[derive(Clone)]
+pub struct InternalSecret(Arc<str>);
+
+impl InternalSecret {
+    /// Validate an explicitly supplied internal API secret.
+    pub fn new(value: impl Into<String>) -> anyhow::Result<Self> {
+        let value = value.into();
+        let value = value.trim();
+        if value.is_empty() {
+            anyhow::bail!("BURNCLOUD_INTERNAL_SECRET is missing or empty");
+        }
+        if value.parse::<axum::http::HeaderValue>().is_err() {
+            anyhow::bail!("BURNCLOUD_INTERNAL_SECRET is invalid");
+        }
+
+        Ok(Self(Arc::from(value)))
+    }
+
+    pub(crate) fn header_value(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn matches(&self, provided: &str) -> bool {
+        provided == self.0.as_ref()
+    }
+}
+
+impl fmt::Debug for InternalSecret {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("InternalSecret([REDACTED])")
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
     pub monitor: Arc<SystemMonitorService>,
     pub user_service: Arc<UserService>,
     pub jwt_secret: JwtSecret,
+    pub internal_secret: InternalSecret,
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
     /// Ready-to-serve data-plane router used by authenticated console smoke tests.
     /// Requests sent through this router still pass the router's bearer-token validation
@@ -36,6 +75,7 @@ pub async fn create_app(
     db: Arc<Database>,
     enable_liveview: bool,
     jwt_secret: JwtSecret,
+    internal_secret: InternalSecret,
 ) -> anyhow::Result<Router> {
     let monitor = Arc::new(SystemMonitorService::new());
     // Start auto collection in background
@@ -50,6 +90,7 @@ pub async fn create_app(
         monitor,
         user_service: Arc::new(UserService::new(jwt_secret.clone())),
         jwt_secret,
+        internal_secret,
         force_sync_tx,
         data_plane: router_app.clone(),
     };
@@ -103,13 +144,16 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| anyhow::anyhow!("JWT_SECRET is missing or empty"))?;
     let jwt_secret = JwtSecret::new(jwt_secret)?;
+    let internal_secret = std::env::var("BURNCLOUD_INTERNAL_SECRET")
+        .map_err(|_| anyhow::anyhow!("BURNCLOUD_INTERNAL_SECRET is missing or empty"))?;
+    let internal_secret = InternalSecret::new(internal_secret)?;
 
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
     let db = Arc::new(db);
 
-    let app = create_app(db, enable_liveview, jwt_secret).await?;
+    let app = create_app(db, enable_liveview, jwt_secret, internal_secret).await?;
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     tracing::info!("Unified Gateway listening on {}", addr);
@@ -122,4 +166,27 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InternalSecret;
+
+    #[test]
+    fn internal_secret_rejects_empty_and_invalid_values() {
+        for value in ["", "   ", "\n\t", "secret\nheader"] {
+            assert!(InternalSecret::new(value).is_err());
+        }
+    }
+
+    #[test]
+    fn internal_secret_debug_is_redacted() {
+        let plaintext = "must-never-appear";
+        let secret = InternalSecret::new(plaintext)
+            .unwrap_or_else(|e| panic!("test internal secret must be valid: {e}"));
+        let rendered = format!("{secret:?}");
+
+        assert!(!rendered.contains(plaintext));
+        assert_eq!(rendered, "InternalSecret([REDACTED])");
+    }
 }
