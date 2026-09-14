@@ -561,7 +561,9 @@ fn sanitize_request_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     for (name, value) in headers {
         let name_str = name.as_str().to_lowercase();
         if SENSITIVE_HEADERS.iter().any(|h| name_str.contains(h)) {
-            sanitized_map.insert(name.to_string(), serde_json::Value::String("***REDACTED***".to_string()));
+            sanitized_map.insert(
+                name.to_string(),
+                serde_json::Value::String("***REDACTED***".to_string()),
             );
         } else if let Ok(v) = value.to_str() {
             sanitized_map.insert(name.to_string(), serde_json::Value::String(v.to_string()));
@@ -1407,7 +1409,8 @@ async fn proxy_handler(
                 StatusCode::UNAUTHORIZED,
                 "content-type",
                 "application/json",
-                Body::from(r#"{"error":{"message":"Unauthorized: Missing Bearer Token","type":"authentication_error","code":"missing_token"}}"#),
+                Body::from(
+                    r#"{"error":{"message":"Unauthorized: Missing Bearer Token","type":"authentication_error","code":"missing_token"}}"#,
                 ),
             );
         }
