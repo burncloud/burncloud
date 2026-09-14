@@ -56,7 +56,10 @@ pub fn routes(state: AppState) -> Router {
         // Catch-all for any unmatched /console/api/* paths. This prevents
         // LiveView from returning HTML for non-existent API endpoints.
         .route("/console/api/{*path}", get(api_not_found))
-        .layer(middleware::from_fn(crate::auth_middleware))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth_middleware,
+        ))
         .with_state(state);
 
     public_routes.merge(protected_routes)

@@ -16,6 +16,7 @@ use crate::channel_health_manager::ChannelHealthManager;
 use burncloud_database::Database;
 use burncloud_database_router::{RouterLog, RouterRequestLog, StoragePolicy};
 use burncloud_service_billing::{CostCalculator, PriceCache};
+use burncloud_service_user::JwtSecret;
 use reqwest::Client;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -34,6 +35,7 @@ pub struct BudgetUpdate {
 pub struct AppState {
     pub client: Client,
     pub db: Arc<Database>,
+    pub jwt_secret: JwtSecret,
     pub balancer: Arc<RoundRobinBalancer>,
     pub limiter: Arc<RateLimiter>,
     pub circuit_breaker: Arc<CircuitBreaker>,

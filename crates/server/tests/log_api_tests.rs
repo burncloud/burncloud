@@ -73,7 +73,8 @@ async fn test_log_api_endpoints() -> anyhow::Result<()> {
 
     // 2. Start Server using create_app with the test DB
     let db_arc = Arc::new(db);
-    let app = burncloud_server::create_app(db_arc, false).await?;
+    let app =
+        burncloud_server::create_app(db_arc, false, test_utils::test_jwt_secret()).await?;
 
     let port = 4002_u16;
     tokio::spawn(async move {

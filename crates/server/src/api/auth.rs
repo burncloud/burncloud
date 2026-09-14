@@ -9,8 +9,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_service_user::UserServiceError;
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use burncloud_service_user::{JwtSecret, UserServiceError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -54,18 +53,11 @@ struct AuthData {
     token: String,
 }
 
-fn get_jwt_secret() -> String {
-    burncloud_common::constants::jwt_secret()
-}
-
-pub fn verify_jwt(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
-    let secret = get_jwt_secret();
-    let token_data = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
-    )?;
-    Ok(token_data.claims)
+pub fn verify_jwt(
+    token: &str,
+    jwt_secret: &JwtSecret,
+) -> Result<Claims, jsonwebtoken::errors::Error> {
+    jwt_secret.verify(token)
 }
 
 /// Resolve whether the authenticated principal currently has the admin role.
@@ -127,6 +119,7 @@ fn is_sensitive_internal_mutation(method: &Method, path: &str) -> bool {
 ///   `BURNCLOUD_INTERNAL_SECRET` is configured and presented.
 #[tracing::instrument(skip_all)]
 pub async fn security_boundary_middleware(
+    State(state): State<AppState>,
     req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -171,7 +164,7 @@ pub async fn security_boundary_middleware(
                     .and_then(|header| header.to_str().ok())
             });
 
-        if credential.is_some_and(|token| verify_jwt(token).is_ok()) {
+        if credential.is_some_and(|token| verify_jwt(token, &state.jwt_secret).is_ok()) {
             tracing::warn!(path, "Rejected Console JWT on data-plane route");
             return Err(StatusCode::UNAUTHORIZED);
         }
@@ -351,7 +344,11 @@ async fn oauth_github(State(_state): State<AppState>) -> impl IntoResponse {
 /// Authentication middleware for protected routes.
 /// Validates JWT token from Authorization header and injects Claims into request extensions.
 #[tracing::instrument(skip_all)]
-pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn auth_middleware(
+    State(state): State<AppState>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
     let auth_header = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
@@ -367,7 +364,7 @@ pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Respo
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    match verify_jwt(token) {
+    match verify_jwt(token, &state.jwt_secret) {
         Ok(claims) => {
             req.extensions_mut().insert(claims);
             Ok(next.run(req).await)
@@ -379,16 +376,19 @@ pub async fn auth_middleware(mut req: Request<Body>, next: Next) -> Result<Respo
 #[cfg(test)]
 mod tests {
     use super::verify_jwt;
-    use burncloud_service_user::UserService;
+    use burncloud_service_user::{JwtSecret, UserService};
 
     #[test]
     fn verify_jwt_accepts_tokens_signed_by_user_service() {
-        let service = UserService::new();
+        let jwt_secret = JwtSecret::new("server-auth-test-secret")
+            .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}"));
+        let service = UserService::new(jwt_secret.clone());
         let auth = service
             .generate_token("user-1", "alice")
             .expect("token generation");
 
-        let claims = verify_jwt(&auth.token).expect("middleware must accept UserService JWT");
+        let claims = verify_jwt(&auth.token, &jwt_secret)
+            .expect("middleware must accept UserService JWT");
         assert_eq!(claims.sub, "user-1");
         assert_eq!(claims.username, "alice");
     }

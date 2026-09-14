@@ -8,7 +8,13 @@
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
+use burncloud_service_user::JwtSecret;
 use std::sync::Arc;
+
+pub fn test_jwt_secret() -> JwtSecret {
+    JwtSecret::new("burncloud-server-test-jwt-secret")
+        .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}"))
+}
 
 /// Create an isolated temp-file database for a server test.
 /// Each call returns a fresh `Arc<Database>` backed by a unique temp file,

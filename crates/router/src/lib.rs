@@ -742,6 +742,7 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
 
 pub async fn create_router_app(
     db: Arc<Database>,
+    jwt_secret: burncloud_service_user::JwtSecret,
 ) -> anyhow::Result<(
     Router,
     Router,
@@ -908,6 +909,7 @@ pub async fn create_router_app(
     let state = AppState {
         client,
         db, // Arc<Database>
+        jwt_secret,
         balancer,
         limiter,
         circuit_breaker,
@@ -1105,16 +1107,9 @@ async fn extract_token_user(
                 Ok(RouterTokenValidationResult::Valid(t)) => Ok(t.user_id),
                 _ => {
                     // Fall back to JWT: decode and extract sub (user_id)
-                    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
-                        "burncloud-default-secret-change-in-production".to_string()
-                    });
-                    let decoded = jsonwebtoken::decode::<JwtClaims>(
-                        &token,
-                        &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
-                        &jsonwebtoken::Validation::default(),
-                    );
+                    let decoded = state.jwt_secret.verify::<JwtClaims>(&token);
                     match decoded {
-                        Ok(data) => Ok(data.claims.sub),
+                        Ok(claims) => Ok(claims.sub),
                         _ => Err(build_response(
                             StatusCode::UNAUTHORIZED,
                             Body::from(
@@ -1442,17 +1437,10 @@ async fn proxy_handler(
                     }
                     Ok(RouterTokenValidationResult::Invalid) => {
                         // Fall back to JWT: decode and extract sub (user_id)
-                        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
-                            "burncloud-default-secret-change-in-production".to_string()
-                        });
-                        let decoded = jsonwebtoken::decode::<JwtClaims>(
-                            &user_token,
-                            &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
-                            &jsonwebtoken::Validation::default(),
-                        );
+                        let decoded = state.jwt_secret.verify::<JwtClaims>(&user_token);
                         match decoded {
-                            Ok(data) => (
-                                data.claims.sub,
+                            Ok(claims) => (
+                                claims.sub,
                                 "default".to_string(),
                                 -1_i64,
                                 0_i64,
