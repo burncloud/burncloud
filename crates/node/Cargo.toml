@@ -1,0 +1,19 @@
+[package]
+publish.workspace = true
+name = "burncloud-node"
+version = "0.1.0"
+edition = "2021"
+description = "Local BurnCloud Node orchestration core"
+license = "MIT"
+repository = "https://github.com/burncloud/burncloud"
+authors = ["burncloud contributors"]
+
+[dependencies]
+burncloud-service-monitor.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
