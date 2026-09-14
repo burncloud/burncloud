@@ -14,7 +14,19 @@ They are not a repository encyclopedia. They are an execution system that routes
 ## Operating model
 
 ```text
-User Task
+Implementation Plan / User Task
+   |
+   v
+Engineering Issue (PLANNED)
+   |
+   v
+Evidence Audit
+   |
+   v
+READY Gate
+   |
+   v
+Engineering Issue (READY)
    |
    v
 Task Contract
@@ -36,7 +48,7 @@ Domain Contract       Runtime / Contract      Playbook
                       Source Code
                           |
                           v
-                        Change
+                   Candidate Patch
                           |
                           v
                     Verification
@@ -46,7 +58,12 @@ Domain Contract       Runtime / Contract      Playbook
                           |
                           v
                     Evidence Report
+                          |
+                          v
+                    Pull Request
 ```
+
+A planning page does not authorize implementation. Codex / Coding Agents may implement only a `READY` Issue, or an explicit direct user task that is converted into an equivalent Task Contract before editing.
 
 ## Documentation layers
 
@@ -55,7 +72,8 @@ Domain Contract       Runtime / Contract      Playbook
 - `AGENTS.md` — highest repository-level agent rules and document router.
 - `START_HERE.md` — required execution loop.
 - `TASK_ROUTER.md` — recurring behavior -> source/test starting points.
-- `TASK_CONTRACT.md` — minimum contract before non-trivial edits.
+- `ISSUE_STANDARD.md` — issue authority, READY Gate, scope, contract, failure, stop, and verification rules.
+- `TASK_CONTRACT.md` — current-main execution contract before non-trivial edits.
 
 ### 2. Domain contracts
 
@@ -97,9 +115,14 @@ Do not load the entire documentation tree by default.
 Use this path:
 
 ```text
-Task
+Plan / User Task
+ -> ISSUE_STANDARD.md
+ -> Evidence Audit
+ -> READY Gate
+ -> READY Issue
  -> AGENTS.md
  -> START_HERE.md
+ -> TASK_CONTRACT.md
  -> TASK_ROUTER.md
  -> relevant domain/runtime/contract docs
  -> relevant invariants
@@ -107,6 +130,21 @@ Task
 ```
 
 Only open additional documents when the current task crosses that boundary.
+
+## Agent authority model
+
+The execution agent owns implementation choices only inside the approved task boundary.
+
+It does **not** own the authority to:
+
+- promote a PLANNED item to implemented reality by assumption;
+- redefine architecture to make an Issue easier;
+- silently cross Avoid boundaries;
+- create duplicate sources of truth or parallel subsystems without approval;
+- change failure semantics merely to keep the happy path running;
+- weaken tests, invariants, or documentation to legitimize its patch.
+
+When current evidence conflicts with the Issue, the correct result is a conflict report, not broader code changes.
 
 ## Evidence vocabulary
 
@@ -151,6 +189,7 @@ Did a runtime path change?
 Did an invariant change?
 Did verification ownership change?
 Did a contract/architecture fact change?
+Did the Implementation Plan status need to change?
 ```
 
 Update only the documents whose declared truth changed. Avoid documentation churn for refactors that preserve all externally relevant truths.
