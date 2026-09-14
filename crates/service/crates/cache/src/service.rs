@@ -23,27 +23,6 @@ pub struct CachedToken {
     pub traffic_class: Option<String>,
 }
 
-/// Cached channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachedChannel {
-    /// Channel ID
-    pub id: i32,
-    /// Channel name
-    pub name: String,
-    /// Provider type (openai, anthropic, etc.)
-    pub provider: String,
-    /// Base URL
-    pub base_url: String,
-    /// API key (encrypted)
-    pub api_key: String,
-    /// Weight for load balancing
-    pub weight: i32,
-    /// Status
-    pub status: String,
-    /// Supported models list
-    pub models: Vec<String>,
-}
-
 /// Cached quota balance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedQuota {
@@ -64,8 +43,6 @@ pub struct CacheConfig {
     pub enabled: bool,
     /// Token TTL in seconds
     pub token_ttl: u64,
-    /// Channel TTL in seconds
-    pub channel_ttl: u64,
     /// Price TTL in seconds
     pub price_ttl: u64,
     /// Quota TTL in seconds
@@ -80,7 +57,6 @@ impl Default for CacheConfig {
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             token_ttl: 300,  // 5 minutes
-            channel_ttl: 60, // 1 minute
             price_ttl: 600,  // 10 minutes
             quota_ttl: 60,   // 1 minute
         }
@@ -90,8 +66,6 @@ impl Default for CacheConfig {
 /// Cache key prefixes.
 mod keys {
     pub const TOKEN: &str = "bc:token:";
-    pub const CHANNEL: &str = "bc:channel:";
-    pub const CHANNEL_LIST: &str = "bc:channels:all";
     pub const PRICE: &str = "bc:price:";
     pub const QUOTA: &str = "bc:quota:";
 }
@@ -249,40 +223,6 @@ impl CacheService {
         self.delete(&key).await
     }
 
-    // === Channel Operations ===
-
-    /// Get cached channel by ID.
-    pub async fn get_channel(&self, channel_id: i32) -> CacheResult<Option<CachedChannel>> {
-        let key = format!("{}{}", keys::CHANNEL, channel_id);
-        self.get::<CachedChannel>(&key).await
-    }
-
-    /// Cache channel information.
-    pub async fn set_channel(&self, channel_id: i32, channel: &CachedChannel) -> CacheResult<()> {
-        let key = format!("{}{}", keys::CHANNEL, channel_id);
-        self.set(&key, channel, self.config.channel_ttl).await
-    }
-
-    /// Get all cached channels list.
-    pub async fn get_all_channels(&self) -> CacheResult<Option<Vec<CachedChannel>>> {
-        self.get::<Vec<CachedChannel>>(keys::CHANNEL_LIST).await
-    }
-
-    /// Cache all channels list.
-    pub async fn set_all_channels(&self, channels: &Vec<CachedChannel>) -> CacheResult<()> {
-        self.set(keys::CHANNEL_LIST, channels, self.config.channel_ttl)
-            .await
-    }
-
-    /// Invalidate channel cache.
-    pub async fn invalidate_channel(&self, channel_id: i32) -> CacheResult<()> {
-        let key = format!("{}{}", keys::CHANNEL, channel_id);
-        self.delete(&key).await?;
-        // Also invalidate the all-channels list
-        self.delete(keys::CHANNEL_LIST).await?;
-        Ok(())
-    }
-
     // === Price Operations ===
 
     /// Get cached price by model name.
@@ -415,7 +355,6 @@ mod tests {
         let config = CacheConfig::default();
         assert!(!config.enabled); // Disabled by default without REDIS_URL
         assert_eq!(config.token_ttl, 300);
-        assert_eq!(config.channel_ttl, 60);
     }
 
     #[tokio::test]

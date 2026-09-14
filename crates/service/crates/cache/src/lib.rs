@@ -4,7 +4,6 @@
 //!
 //! # Cache Targets
 //! - Token information: TTL 5 minutes
-//! - Channel configuration: TTL 1 minute
 //! - Model prices: TTL 10 minutes
 //! - User quota balance: TTL 1 minute
 //!
@@ -30,4 +29,4 @@ mod error;
 mod service;
 
 pub use error::{CacheError, CacheResult};
-pub use service::{CacheService, CachedChannel, CachedQuota, CachedToken};
+pub use service::{CacheService, CachedQuota, CachedToken};
