@@ -6,23 +6,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Cached token information.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachedToken {
-    /// Token ID
-    pub id: i64,
-    /// Token string (hashed for security)
-    pub token_hash: String,
-    /// User ID
-    pub user_id: String,
-    /// Quota balance in nanodollars
-    pub quota_balance: i64,
-    /// Token status
-    pub status: String,
-    /// Traffic class for routing
-    pub traffic_class: Option<String>,
-}
-
 /// Cached quota balance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedQuota {
@@ -41,8 +24,6 @@ pub struct CacheConfig {
     pub redis_url: Option<String>,
     /// Whether cache is enabled
     pub enabled: bool,
-    /// Token TTL in seconds
-    pub token_ttl: u64,
     /// Price TTL in seconds
     pub price_ttl: u64,
     /// Quota TTL in seconds
@@ -56,7 +37,6 @@ impl Default for CacheConfig {
             enabled: std::env::var("CACHE_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
-            token_ttl: 300,  // 5 minutes
             price_ttl: 600,  // 10 minutes
             quota_ttl: 60,   // 1 minute
         }
@@ -65,7 +45,6 @@ impl Default for CacheConfig {
 
 /// Cache key prefixes.
 mod keys {
-    pub const TOKEN: &str = "bc:token:";
     pub const PRICE: &str = "bc:price:";
     pub const QUOTA: &str = "bc:quota:";
 }
@@ -203,26 +182,6 @@ impl CacheService {
         Ok(())
     }
 
-    // === Token Operations ===
-
-    /// Get cached token by key.
-    pub async fn get_token(&self, token_key: &str) -> CacheResult<Option<CachedToken>> {
-        let key = format!("{}{}", keys::TOKEN, token_key);
-        self.get::<CachedToken>(&key).await
-    }
-
-    /// Cache token information.
-    pub async fn set_token(&self, token_key: &str, token: &CachedToken) -> CacheResult<()> {
-        let key = format!("{}{}", keys::TOKEN, token_key);
-        self.set(&key, token, self.config.token_ttl).await
-    }
-
-    /// Invalidate token cache.
-    pub async fn invalidate_token(&self, token_key: &str) -> CacheResult<()> {
-        let key = format!("{}{}", keys::TOKEN, token_key);
-        self.delete(&key).await
-    }
-
     // === Price Operations ===
 
     /// Get cached price by model name.
@@ -354,21 +313,24 @@ mod tests {
     fn test_cache_config_default() {
         let config = CacheConfig::default();
         assert!(!config.enabled); // Disabled by default without REDIS_URL
-        assert_eq!(config.token_ttl, 300);
     }
 
     #[tokio::test]
-    async fn test_disabled_cache_returns_none() {
+    async fn test_disabled_cache_is_unavailable() {
         let config = CacheConfig {
             redis_url: None,
             enabled: false,
             ..Default::default()
         };
         let cache = CacheService::with_config(config).await.unwrap();
+
         assert!(!cache.is_available().await);
 
-        let result = cache.get_token("test-token").await;
-        assert!(result.unwrap().is_none());
+        let stats = cache.stats().await.unwrap();
+        assert!(!stats.enabled);
+        assert!(!stats.connected);
+        assert_eq!(stats.key_count, 0);
+        assert_eq!(stats.memory_usage, 0);
     }
 
     #[tokio::test]
