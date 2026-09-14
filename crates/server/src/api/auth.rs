@@ -96,10 +96,7 @@ pub async fn admin_middleware(
 }
 
 fn is_data_plane_path(path: &str) -> bool {
-    path == "/v1"
-        || path.starts_with("/v1/")
-        || path == "/api/v1"
-        || path.starts_with("/api/v1/")
+    path == "/v1" || path.starts_with("/v1/") || path == "/api/v1" || path.starts_with("/api/v1/")
 }
 
 fn is_sensitive_internal_mutation(method: &Method, path: &str) -> bool {
@@ -387,8 +384,8 @@ mod tests {
             .generate_token("user-1", "alice")
             .expect("token generation");
 
-        let claims = verify_jwt(&auth.token, &jwt_secret)
-            .expect("middleware must accept UserService JWT");
+        let claims =
+            verify_jwt(&auth.token, &jwt_secret).expect("middleware must accept UserService JWT");
         assert_eq!(claims.sub, "user-1");
         assert_eq!(claims.username, "alice");
     }
