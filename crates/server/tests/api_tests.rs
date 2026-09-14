@@ -115,4 +115,3 @@ async fn test_monitor_api_requires_auth() -> anyhow::Result<()> {
 
     Ok(())
 }
-
