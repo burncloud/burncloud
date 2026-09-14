@@ -2,7 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use crate::api::response::err;
-use crate::AppState;
+use crate::{AppState, InternalSecret};
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
@@ -115,7 +115,10 @@ pub fn security_routes() -> Router<AppState> {
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 /// Call a router internal endpoint and return the JSON response body.
-async fn call_router_internal(path: &str) -> Result<serde_json::Value, String> {
+async fn call_router_internal(
+    path: &str,
+    internal_secret: &InternalSecret,
+) -> Result<serde_json::Value, String> {
     let port = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
@@ -123,11 +126,10 @@ async fn call_router_internal(path: &str) -> Result<serde_json::Value, String> {
     let url = format!("http://127.0.0.1:{port}{path}");
 
     let client = reqwest::Client::new();
-    let mut req = client.get(&url).timeout(std::time::Duration::from_secs(5));
-
-    if let Ok(secret) = std::env::var("BURNCLOUD_INTERNAL_SECRET") {
-        req = req.header("X-Internal-Secret", secret);
-    }
+    let req = client
+        .get(&url)
+        .header("X-Internal-Secret", internal_secret.header_value())
+        .timeout(std::time::Duration::from_secs(5));
 
     let resp = req
         .send()
@@ -149,6 +151,7 @@ async fn call_router_internal(path: &str) -> Result<serde_json::Value, String> {
 async fn post_router_internal(
     path: &str,
     body: &serde_json::Value,
+    internal_secret: &InternalSecret,
 ) -> Result<serde_json::Value, String> {
     let port = std::env::var("PORT")
         .ok()
@@ -157,14 +160,11 @@ async fn post_router_internal(
     let url = format!("http://127.0.0.1:{port}{path}");
 
     let client = reqwest::Client::new();
-    let mut req = client
+    let req = client
         .post(&url)
+        .header("X-Internal-Secret", internal_secret.header_value())
         .json(body)
         .timeout(std::time::Duration::from_secs(10));
-
-    if let Ok(secret) = std::env::var("BURNCLOUD_INTERNAL_SECRET") {
-        req = req.header("X-Internal-Secret", secret);
-    }
 
     let resp = req
         .send()
@@ -382,9 +382,9 @@ async fn security_filters_put(
 /// POST /console/api/monitor/security/emergency-circuit-break
 ///
 /// Proxy to router's internal trip-all endpoint. Requires a reason.
-#[tracing::instrument(skip(_state), fields(reason = %body.reason))]
+#[tracing::instrument(skip(state), fields(reason = %body.reason))]
 async fn security_emergency_circuit_break(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(body): Json<EmergencyBreakRequest>,
 ) -> impl IntoResponse {
     if body.reason.trim().is_empty() {
@@ -399,6 +399,7 @@ async fn security_emergency_circuit_break(
     match post_router_internal(
         "/console/internal/circuit-breaker/trip-all",
         &serde_json::json!({}),
+        &state.internal_secret,
     )
     .await
     {
@@ -419,8 +420,8 @@ async fn security_emergency_circuit_break(
 ///
 /// Proxy to router's internal health endpoint to get circuit breaker states.
 #[tracing::instrument(skip_all)]
-async fn security_circuit_breaker_status(State(_state): State<AppState>) -> impl IntoResponse {
-    match call_router_internal("/console/internal/health").await {
+async fn security_circuit_breaker_status(State(state): State<AppState>) -> impl IntoResponse {
+    match call_router_internal("/console/internal/health", &state.internal_secret).await {
         Ok(data) => {
             let mut resp = serde_json::Map::new();
             resp.insert("success".into(), serde_json::Value::Bool(true));

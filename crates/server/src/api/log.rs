@@ -107,7 +107,7 @@ async fn billing_summary_handler(
         &headers,
         params.start.as_deref(),
         params.end.as_deref(),
-        std::env::var("BURNCLOUD_INTERNAL_SECRET").ok().as_deref(),
+        &state.internal_secret,
     )
     .await
 }
@@ -117,16 +117,14 @@ async fn billing_summary_inner(
     headers: &HeaderMap,
     start: Option<&str>,
     end: Option<&str>,
-    secret: Option<&str>,
+    secret: &crate::InternalSecret,
 ) -> Response {
-    if let Some(expected) = secret {
-        let provided = headers
-            .get("x-internal-secret")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if provided != expected {
-            return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
-        }
+    let provided = headers
+        .get("x-internal-secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !secret.matches(provided) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
 
     match BillingService::get_billing_summary(&state.db, start, end).await {
