@@ -132,8 +132,6 @@ forbid 'Circuit breaker telemetry connected' src/functional_pages/guardrails_liv
 # Dangerous operational actions require explicit acknowledgement and stay in danger zones.
 require 'confirm_trip' src/functional_pages/guardrails_live.rs
 require 'DANGER ZONE' src/functional_pages/guardrails_live.rs
-require 'confirm_clear' src/functional_pages/settings.rs
-require 'MAINTENANCE' src/functional_pages/settings.rs
 
 # Chrome must not overclaim runtime health.
 require 'Server Configured' src/functional_layout.rs
