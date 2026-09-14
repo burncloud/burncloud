@@ -267,16 +267,20 @@ async fn sensitive_internal_mutations_require_internal_secret() -> anyhow::Resul
 async fn billing_summary_requires_internal_secret() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
+    let jwt_secret = test_utils::test_jwt_secret();
+    let (_admin_id, admin_jwt, _user_id, _user_jwt) =
+        create_principals(&db, jwt_secret.clone()).await?;
     let internal_secret = test_utils::test_internal_secret();
-    let base = spawn_server(db, test_utils::test_jwt_secret(), internal_secret.clone()).await?;
+    let base = spawn_server(db, jwt_secret, internal_secret.clone()).await?;
     let client = Client::new();
     let url = format!("{base}/console/internal/billing/summary");
 
-    let missing = client.get(&url).send().await?;
+    let missing = client.get(&url).bearer_auth(&admin_jwt).send().await?;
     assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
 
     let wrong = client
         .get(&url)
+        .bearer_auth(&admin_jwt)
         .header("X-Internal-Secret", "wrong-secret")
         .send()
         .await?;
@@ -284,6 +288,7 @@ async fn billing_summary_requires_internal_secret() -> anyhow::Result<()> {
 
     let allowed = client
         .get(&url)
+        .bearer_auth(&admin_jwt)
         .header("X-Internal-Secret", test_utils::TEST_INTERNAL_SECRET)
         .send()
         .await?;
