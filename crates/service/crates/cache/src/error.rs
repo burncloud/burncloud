@@ -10,14 +10,9 @@ pub enum CacheError {
     #[error("cache backend operation failed")]
     Operation,
 
-    #[error("cache data is invalid")]
-    Serialization,
-
     #[error("cache is disabled")]
     Disabled,
 
-    #[error("cache key was not found")]
-    NotFound,
 }
 
 pub type CacheResult<T> = Result<T, CacheError>;
