@@ -4,8 +4,8 @@ mod test_utils;
 
 use burncloud_database::Database;
 use burncloud_database_router::RouterToken;
-use burncloud_service_token::TokenService;
 use burncloud_server::InternalSecret;
+use burncloud_service_token::TokenService;
 use burncloud_service_user::{JwtSecret, UserService};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
@@ -169,12 +169,7 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
     let user_key = "bc_live_user_secret_5678";
     TokenService::create(&db, &router_token(admin_key, &admin_id)).await?;
     TokenService::create(&db, &router_token(user_key, &user_id)).await?;
-    let base = spawn_server(
-        db.clone(),
-        jwt_secret,
-        test_utils::test_internal_secret(),
-    )
-    .await?;
+    let base = spawn_server(db.clone(), jwt_secret, test_utils::test_internal_secret()).await?;
     let client = Client::new();
 
     let user_list = client
@@ -240,12 +235,7 @@ async fn sensitive_internal_mutations_require_internal_secret() -> anyhow::Resul
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
     let internal_secret = test_utils::test_internal_secret();
-    let base = spawn_server(
-        db,
-        test_utils::test_jwt_secret(),
-        internal_secret.clone(),
-    )
-    .await?;
+    let base = spawn_server(db, test_utils::test_jwt_secret(), internal_secret.clone()).await?;
     let client = Client::new();
     let url = format!("{base}/console/internal/circuit-breaker/trip-all");
 
@@ -278,12 +268,7 @@ async fn billing_summary_requires_internal_secret() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
     let internal_secret = test_utils::test_internal_secret();
-    let base = spawn_server(
-        db,
-        test_utils::test_jwt_secret(),
-        internal_secret.clone(),
-    )
-    .await?;
+    let base = spawn_server(db, test_utils::test_jwt_secret(), internal_secret.clone()).await?;
     let client = Client::new();
     let url = format!("{base}/console/internal/billing/summary");
 

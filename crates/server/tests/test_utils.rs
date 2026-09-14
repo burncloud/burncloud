@@ -8,8 +8,8 @@
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
-use burncloud_service_user::JwtSecret;
 use burncloud_server::InternalSecret;
+use burncloud_service_user::JwtSecret;
 use std::sync::Arc;
 
 pub const TEST_INTERNAL_SECRET: &str = "burncloud-server-test-internal-secret";
