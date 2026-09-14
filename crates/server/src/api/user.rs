@@ -25,6 +25,13 @@ pub struct LoginDto {
 }
 
 #[derive(Deserialize)]
+pub struct FundingRequestDto {
+    pub amount: i64,
+    pub currency: String,
+    pub note: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct TopupDto {
     pub user_id: String,
     /// Amount in nanodollars ($1 = 1_000_000_000)
@@ -68,6 +75,10 @@ struct UserSummary {
 pub fn routes() -> Router<AppState> {
     let authenticated = Router::new()
         .route("/console/api/user/recharges", get(list_recharges))
+        .route(
+            "/console/api/user/funding-requests",
+            get(list_funding_requests).post(create_funding_request),
+        )
         .route("/console/api/list_users", get(list_users));
 
     Router::new()
@@ -78,10 +89,15 @@ pub fn routes() -> Router<AppState> {
         .merge(authenticated)
 }
 
-async fn require_admin_or_response(state: &AppState, claims: &Claims) -> Option<axum::response::Response> {
+async fn require_admin_or_response(
+    state: &AppState,
+    claims: &Claims,
+) -> Option<axum::response::Response> {
     match is_admin(state, claims).await {
         Ok(true) => None,
-        Ok(false) => Some(err_status(StatusCode::FORBIDDEN, "Admin access required").into_response()),
+        Ok(false) => {
+            Some(err_status(StatusCode::FORBIDDEN, "Admin access required").into_response())
+        }
         Err(status) => Some(err_status(status, "Failed to authorize request").into_response()),
     }
 }
@@ -273,6 +289,49 @@ async fn list_users(
             ok(summaries).into_response()
         }
         Err(e) => err(e).into_response(),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn create_funding_request(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<FundingRequestDto>,
+) -> impl IntoResponse {
+    let currency = payload.currency.trim().to_ascii_uppercase();
+    if payload.amount <= 0 {
+        return err_status(StatusCode::BAD_REQUEST, "Funding amount must be positive")
+            .into_response();
+    }
+    if !matches!(currency.as_str(), "USD" | "CNY") {
+        return err_status(StatusCode::BAD_REQUEST, "Currency must be USD or CNY").into_response();
+    }
+    let note = payload
+        .note
+        .map(|note| note.trim().chars().take(500).collect::<String>())
+        .filter(|note| !note.is_empty());
+    match state
+        .user_service
+        .create_funding_request(&state.db, &claims.sub, payload.amount, &currency, note)
+        .await
+    {
+        Ok(request) => ok(request).into_response(),
+        Err(error) => err_status(StatusCode::INTERNAL_SERVER_ERROR, error).into_response(),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn list_funding_requests(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> impl IntoResponse {
+    match state
+        .user_service
+        .list_funding_requests(&state.db, &claims.sub)
+        .await
+    {
+        Ok(requests) => ok(requests).into_response(),
+        Err(error) => err_status(StatusCode::INTERNAL_SERVER_ERROR, error).into_response(),
     }
 }
 

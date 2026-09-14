@@ -6,7 +6,10 @@ mod desktop_chrome;
 
 use crate::{
     auth_gate::AuthGate,
-    critical_pages::{Customers, Login, Overview, Register},
+    critical_pages::{
+        BuyerAPIKeys, BuyerBilling, BuyerLogs, BuyerMarketplace, BuyerOverview, BuyerPlayground,
+        BuyerUsage, Customers, Login, Overview, Register, SupplierWorkspace,
+    },
     functional_pages::{
         APIKeys, Billing, Evaluation, Guardrails, Logs, Models, Playground, Providers, Routes,
         Settings, Team,
@@ -20,6 +23,22 @@ pub enum Route {
     #[layout(AuthGate)]
     #[route("/")]
     Overview {},
+    #[route("/console/buyer")]
+    BuyerOverview {},
+    #[route("/console/buyer/playground")]
+    BuyerPlayground {},
+    #[route("/console/buyer/marketplace")]
+    BuyerMarketplace {},
+    #[route("/console/buyer/api-keys")]
+    BuyerAPIKeys {},
+    #[route("/console/buyer/usage")]
+    BuyerUsage {},
+    #[route("/console/buyer/billing")]
+    BuyerBilling {},
+    #[route("/console/buyer/logs")]
+    BuyerLogs {},
+    #[route("/console/supplier")]
+    SupplierWorkspace {},
     #[route("/dashboard")]
     Dashboard {},
     #[route("/playground")]
@@ -112,8 +131,12 @@ pub fn launch_gui_with_tray() {
     };
 
     let data_dir = std::env::temp_dir().join("burncloud_dioxus_ui");
-    let config = Config::new().with_window(window).with_data_directory(data_dir);
-    dioxus::LaunchBuilder::desktop().with_cfg(config).launch(AppWithDesktop);
+    let config = Config::new()
+        .with_window(window)
+        .with_data_directory(data_dir);
+    dioxus::LaunchBuilder::desktop()
+        .with_cfg(config)
+        .launch(AppWithDesktop);
 }
 
 #[cfg(feature = "desktop")]

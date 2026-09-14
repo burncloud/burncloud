@@ -1,16 +1,11 @@
 use crate::AppState;
 pub mod security;
 
-use axum::{
-    http::StatusCode,
-    middleware,
-    response::IntoResponse,
-    routing::get,
-    Router,
-};
+use axum::{http::StatusCode, middleware, response::IntoResponse, routing::get, Router};
 
 pub mod auth;
 pub mod billing;
+pub mod buyer;
 pub mod cache;
 pub mod channel;
 pub mod log;
@@ -51,6 +46,7 @@ pub fn routes(state: AppState) -> Router {
     let protected_routes = Router::new()
         .merge(auth::protected_routes())
         .merge(billing::routes())
+        .merge(buyer::routes())
         .merge(token::routes())
         .merge(user::routes())
         .merge(openapi::routes())

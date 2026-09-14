@@ -1,13 +1,10 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::disallowed_types
-)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 
 mod test_utils;
 
 use burncloud_database::Database;
 use burncloud_database_router::RouterToken;
+use burncloud_database_user::UserDatabase;
 use burncloud_service_token::TokenService;
 use burncloud_service_user::UserService;
 use reqwest::{Client, StatusCode};
@@ -35,9 +32,7 @@ async fn spawn_server(db: Arc<Database>) -> anyhow::Result<String> {
     Ok(format!("http://{addr}"))
 }
 
-async fn create_principals(
-    db: &Database,
-) -> anyhow::Result<(String, String, String, String)> {
+async fn create_principals(db: &Database) -> anyhow::Result<(String, String, String, String)> {
     let service = UserService::new();
     let admin_id = service
         .register_user(db, "invariant-admin", "test-password", None)
@@ -46,12 +41,8 @@ async fn create_principals(
         .register_user(db, "invariant-user", "test-password", None)
         .await?;
 
-    let admin_jwt = service
-        .generate_token(&admin_id, "invariant-admin")?
-        .token;
-    let user_jwt = service
-        .generate_token(&user_id, "invariant-user")?
-        .token;
+    let admin_jwt = service.generate_token(&admin_id, "invariant-admin")?.token;
+    let user_jwt = service.generate_token(&user_id, "invariant-user")?.token;
 
     Ok((admin_id, admin_jwt, user_id, user_jwt))
 }
@@ -131,6 +122,19 @@ async fn regular_users_cannot_execute_admin_management_actions() -> anyhow::Resu
         .await?;
     assert_eq!(logs.status(), StatusCode::FORBIDDEN);
 
+    let buyer_logs = client
+        .get(format!("{base}/console/api/buyer/logs"))
+        .bearer_auth(&user_jwt)
+        .send()
+        .await?;
+    assert_eq!(buyer_logs.status(), StatusCode::OK);
+    let buyer_models = client
+        .get(format!("{base}/console/api/buyer/models"))
+        .bearer_auth(&user_jwt)
+        .send()
+        .await?;
+    assert_eq!(buyer_models.status(), StatusCode::OK);
+
     let topup = client
         .post(format!("{base}/console/api/user/topup"))
         .bearer_auth(&user_jwt)
@@ -162,6 +166,63 @@ async fn regular_users_cannot_execute_admin_management_actions() -> anyhow::Resu
 }
 
 #[tokio::test]
+async fn funding_requests_are_self_scoped_and_do_not_mint_balance() -> anyhow::Result<()> {
+    configure_security_env();
+    let db = test_utils::make_isolated_db().await;
+    let (_admin_id, admin_jwt, user_id, user_jwt) = create_principals(&db).await?;
+    let balance_before = UserDatabase::get_user_by_id(&db, &user_id)
+        .await?
+        .expect("user account")
+        .balance_usd;
+    let base = spawn_server(db.clone()).await?;
+    let client = Client::new();
+
+    let created = client
+        .post(format!("{base}/console/api/user/funding-requests"))
+        .bearer_auth(&user_jwt)
+        .json(&serde_json::json!({
+            "amount": 2_000_000_000_i64,
+            "currency": "USD",
+            "note": "Production launch"
+        }))
+        .send()
+        .await?;
+    assert_eq!(created.status(), StatusCode::OK);
+    let created_body = created.text().await?;
+    assert!(created_body.contains("pending"));
+    assert!(created_body.contains(&user_id));
+
+    let balance_after = UserDatabase::get_user_by_id(&db, &user_id)
+        .await?
+        .expect("user account")
+        .balance_usd;
+    assert_eq!(
+        balance_after, balance_before,
+        "a request must not mint balance"
+    );
+
+    let user_requests = client
+        .get(format!("{base}/console/api/user/funding-requests"))
+        .bearer_auth(&user_jwt)
+        .send()
+        .await?
+        .text()
+        .await?;
+    assert!(user_requests.contains("Production launch"));
+
+    let admin_requests = client
+        .get(format!("{base}/console/api/user/funding-requests"))
+        .bearer_auth(&admin_jwt)
+        .send()
+        .await?
+        .text()
+        .await?;
+    assert!(!admin_requests.contains("Production launch"));
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
@@ -180,10 +241,22 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
         .await?;
     assert_eq!(user_list.status(), StatusCode::OK);
     let user_body = user_list.text().await?;
-    assert!(!user_body.contains(user_key), "token lists must redact bearer secrets");
-    assert!(!user_body.contains(admin_key), "users must not see another owner's secret");
-    assert!(user_body.contains("5678"), "owner should receive a non-secret token hint");
-    assert!(!user_body.contains("1234"), "owner list must exclude other users' tokens");
+    assert!(
+        !user_body.contains(user_key),
+        "token lists must redact bearer secrets"
+    );
+    assert!(
+        !user_body.contains(admin_key),
+        "users must not see another owner's secret"
+    );
+    assert!(
+        user_body.contains("5678"),
+        "owner should receive a non-secret token hint"
+    );
+    assert!(
+        !user_body.contains("1234"),
+        "owner list must exclude other users' tokens"
+    );
 
     let forbidden_delete = client
         .delete(format!("{base}/console/api/tokens/{admin_key}"))
