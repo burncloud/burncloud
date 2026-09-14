@@ -12,7 +12,6 @@ pub enum CacheError {
 
     #[error("cache is disabled")]
     Disabled,
-
 }
 
 pub type CacheResult<T> = Result<T, CacheError>;
