@@ -2,20 +2,9 @@
 
 use crate::{CacheError, CacheResult};
 use redis::{AsyncCommands, Client};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-/// Cached quota balance.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachedQuota {
-    /// User ID
-    pub user_id: String,
-    /// Quota balance in nanodollars
-    pub balance: i64,
-    /// Currency
-    pub currency: String,
-}
 
 /// Cache configuration.
 #[derive(Debug, Clone)]
@@ -26,8 +15,6 @@ pub struct CacheConfig {
     pub enabled: bool,
     /// Price TTL in seconds
     pub price_ttl: u64,
-    /// Quota TTL in seconds
-    pub quota_ttl: u64,
 }
 
 impl Default for CacheConfig {
@@ -38,7 +25,6 @@ impl Default for CacheConfig {
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             price_ttl: 600,  // 10 minutes
-            quota_ttl: 60,   // 1 minute
         }
     }
 }
@@ -46,7 +32,6 @@ impl Default for CacheConfig {
 /// Cache key prefixes.
 mod keys {
     pub const PRICE: &str = "bc:price:";
-    pub const QUOTA: &str = "bc:quota:";
 }
 
 /// Redis cache service.
@@ -199,26 +184,6 @@ impl CacheService {
     /// Invalidate price cache.
     pub async fn invalidate_price(&self, model: &str) -> CacheResult<()> {
         let key = format!("{}{}", keys::PRICE, model.to_lowercase());
-        self.delete(&key).await
-    }
-
-    // === Quota Operations ===
-
-    /// Get cached quota balance.
-    pub async fn get_quota(&self, user_id: &str) -> CacheResult<Option<CachedQuota>> {
-        let key = format!("{}{}", keys::QUOTA, user_id);
-        self.get::<CachedQuota>(&key).await
-    }
-
-    /// Cache quota balance.
-    pub async fn set_quota(&self, user_id: &str, quota: &CachedQuota) -> CacheResult<()> {
-        let key = format!("{}{}", keys::QUOTA, user_id);
-        self.set(&key, quota, self.config.quota_ttl).await
-    }
-
-    /// Invalidate quota cache.
-    pub async fn invalidate_quota(&self, user_id: &str) -> CacheResult<()> {
-        let key = format!("{}{}", keys::QUOTA, user_id);
         self.delete(&key).await
     }
 
