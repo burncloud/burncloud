@@ -49,8 +49,6 @@ require 'embedding_tokens' src/observability.rs
 require '/console/api/monitor/security/filters' src/functional_api.rs
 require '/console/api/monitor/security/events' src/functional_api.rs
 require '/console/api/monitor/security/emergency-circuit-break' src/functional_api.rs
-require '/console/api/cache/stats' src/functional_api.rs
-require '/console/api/cache/clear' src/functional_api.rs
 require 'reservation_green' src/functional_api.rs
 require 'reservation_yellow' src/functional_api.rs
 require 'reservation_red' src/functional_api.rs
