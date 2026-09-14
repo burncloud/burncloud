@@ -2,7 +2,7 @@
 
 use crate::{CacheError, CacheResult};
 use redis::{AsyncCommands, Client};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -13,8 +13,6 @@ pub struct CacheConfig {
     pub redis_url: Option<String>,
     /// Whether cache is enabled
     pub enabled: bool,
-    /// Price TTL in seconds
-    pub price_ttl: u64,
 }
 
 impl Default for CacheConfig {
@@ -24,14 +22,8 @@ impl Default for CacheConfig {
             enabled: std::env::var("CACHE_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
-            price_ttl: 600,  // 10 minutes
         }
     }
-}
-
-/// Cache key prefixes.
-mod keys {
-    pub const PRICE: &str = "bc:price:";
 }
 
 /// Redis cache service.
@@ -39,8 +31,6 @@ mod keys {
 pub struct CacheService {
     /// Redis client (None if cache disabled)
     client: Option<Arc<Client>>,
-    /// Cache configuration
-    config: CacheConfig,
     /// Whether cache is connected
     connected: Arc<RwLock<bool>>,
 }
@@ -57,7 +47,6 @@ impl CacheService {
             tracing::info!("Cache disabled by configuration");
             return Ok(Self {
                 client: None,
-                config,
                 connected: Arc::new(RwLock::new(false)),
             });
         }
@@ -88,7 +77,6 @@ impl CacheService {
 
         Ok(Self {
             client: Some(Arc::new(client)),
-            config,
             connected: Arc::new(RwLock::new(true)),
         })
     }
@@ -114,77 +102,6 @@ impl CacheService {
             .map_err(|_| CacheError::Connection)?;
 
         Ok(Some(conn))
-    }
-
-    /// Get a value from cache.
-    async fn get<T: DeserializeOwned>(&self, key: &str) -> CacheResult<Option<T>> {
-        let conn = self.get_connection().await?;
-
-        if let Some(mut conn) = conn {
-            let data: Option<String> = conn
-                .get(key)
-                .await
-                .map_err(|_| CacheError::Operation)?;
-
-            if let Some(data) = data {
-                let value: T = serde_json::from_str(&data)
-                    .map_err(|_| CacheError::Serialization)?;
-                return Ok(Some(value));
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Set a value in cache with TTL.
-    async fn set<T: Serialize>(&self, key: &str, value: &T, ttl: u64) -> CacheResult<()> {
-        let conn = self.get_connection().await?;
-
-        if let Some(mut conn) = conn {
-            let data = serde_json::to_string(value)
-                .map_err(|_| CacheError::Serialization)?;
-
-            let _: () = conn
-                .set_ex(key, data, ttl)
-                .await
-                .map_err(|_| CacheError::Operation)?;
-        }
-
-        Ok(())
-    }
-
-    /// Delete a value from cache.
-    async fn delete(&self, key: &str) -> CacheResult<()> {
-        let conn = self.get_connection().await?;
-
-        if let Some(mut conn) = conn {
-            let _: () = conn
-                .del(key)
-                .await
-                .map_err(|_| CacheError::Operation)?;
-        }
-
-        Ok(())
-    }
-
-    // === Price Operations ===
-
-    /// Get cached price by model name.
-    pub async fn get_price<T: DeserializeOwned>(&self, model: &str) -> CacheResult<Option<T>> {
-        let key = format!("{}{}", keys::PRICE, model.to_lowercase());
-        self.get::<T>(&key).await
-    }
-
-    /// Cache price information.
-    pub async fn set_price<T: Serialize>(&self, model: &str, price: &T) -> CacheResult<()> {
-        let key = format!("{}{}", keys::PRICE, model.to_lowercase());
-        self.set(&key, price, self.config.price_ttl).await
-    }
-
-    /// Invalidate price cache.
-    pub async fn invalidate_price(&self, model: &str) -> CacheResult<()> {
-        let key = format!("{}{}", keys::PRICE, model.to_lowercase());
-        self.delete(&key).await
     }
 
     // === Utility Operations ===

@@ -2,9 +2,6 @@
 //!
 //! Provides a caching layer for hot data to reduce database load and improve response times.
 //!
-//! # Cache Targets
-//! - Model prices: TTL 10 minutes
-//!
 //! # Environment Variables
 //! - `REDIS_URL`: Redis connection URL (default: none, cache disabled)
 //! - `CACHE_ENABLED`: Enable/disable cache (default: false)
