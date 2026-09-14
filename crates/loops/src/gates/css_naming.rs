@@ -34,7 +34,7 @@ struct CheckRule {
 
 const CHECK_RULES: &[CheckRule] = &[
     CheckRule {
-        label: "[A1] Legacy spacing short name (09_*.css) - use *-bc-* per docs/ui/naming.md SS5",
+        label: "[A1] Legacy spacing short name (09_*.css) - use *-bc-*",
         pattern: r"\b(gap-xs|gap-sm|gap-md|gap-lg|gap-xl|gap-xxl|gap-xxxl|p-xs|p-sm|p-md|p-lg|p-xl|p-xxl|p-xxxl|m-xs|m-sm|m-md|m-lg|m-xl|m-xxl|m-xxxl|mb-xs|mb-sm|mb-md|mb-lg|mb-xl|mb-xxl|mb-xxxl|mt-xs|mt-sm|mt-md|mt-lg|mt-xl|mt-xxl|mt-xxxl|ml-xs|ml-sm|ml-md|ml-lg|mr-xs|mr-sm|mr-md|mr-lg|mx-xs|mx-sm|mx-md|mx-lg|my-xs|my-sm|my-md|my-lg|px-xs|px-sm|px-md|px-lg|px-xxl|px-xxxl|py-xs|py-sm|py-md|py-lg|py-xxl|py-xxxl|pl-xs|pl-sm|pl-md|pl-lg|pr-xs|pr-sm|pr-md|pr-lg|pt-xs|pt-sm|pt-md|pt-lg|pb-xs|pb-sm|pb-md|pb-lg)\b",
         skip_numeric_zero: false,
         require_non_identifier_prefix: false,

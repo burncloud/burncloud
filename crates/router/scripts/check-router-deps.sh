@@ -83,7 +83,5 @@ echo "  The current router service-dependency boundary is enforced by this scrip
 echo "  Adding a new burncloud-service-* dependency requires architecture review"
 echo "  and an explicit update to the whitelist if the new dependency is accepted."
 echo ""
-echo "  See: docs/agent/INVARIANTS.md"
-echo "  See: docs/contracts/ROUTER.md"
-echo "  Or:  crates/router/README.md \"Dependency boundary\" section"
+echo "  See: crates/router/README.md \"Dependency boundary\" section"
 exit 1

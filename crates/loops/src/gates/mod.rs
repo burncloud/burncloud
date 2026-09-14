@@ -49,7 +49,7 @@ impl GateCategory {
 
     pub fn description(self) -> &'static str {
         match self {
-            Self::CssNaming => "Console CSS naming (docs/ui/naming.md + BCButton conventions)",
+            Self::CssNaming => "Console CSS naming and BCButton conventions",
             Self::CssAll => "CSS naming + 11-page visual acceptance",
             Self::CssVisual => "CSS visual acceptance (11 pages, screenshots + layout JS)",
             Self::AestheticMetrics => "Aesthetic J1 metrics (9 pages, preview mock routes)",

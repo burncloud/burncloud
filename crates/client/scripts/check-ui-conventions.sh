@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fail when console UI uses raw <button class="btn ..."> instead of BCButton.
-# Guest / client-api crates are excluded (see docs/ui/components.md).
+# Guest / client-api crates are excluded from this check.
 
 set -euo pipefail
 
@@ -50,7 +50,7 @@ scan_pattern "Raw button with btn-* class — use BCButton" "$BUTTON_RE"
 scan_pattern "BCButton duplicates variant in class prop" "$BC_DUP_RE"
 
 if ((violations > 0)); then
-  echo "Found $violations UI convention violation(s). See docs/ui/components.md"
+  echo "Found $violations UI convention violation(s)."
   exit 1
 fi
 
