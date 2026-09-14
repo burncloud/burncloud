@@ -49,8 +49,6 @@ require 'embedding_tokens' src/observability.rs
 require '/console/api/monitor/security/filters' src/functional_api.rs
 require '/console/api/monitor/security/events' src/functional_api.rs
 require '/console/api/monitor/security/emergency-circuit-break' src/functional_api.rs
-require '/console/api/cache/stats' src/functional_api.rs
-require '/console/api/cache/clear' src/functional_api.rs
 require 'reservation_green' src/functional_api.rs
 require 'reservation_yellow' src/functional_api.rs
 require 'reservation_red' src/functional_api.rs
@@ -76,7 +74,6 @@ require 'full_logs' src/functional_pages/logs_full.rs
 require 'full_logs' src/functional_pages/analytics_full.rs
 require 'chat_completion' src/functional_pages/playground_live.rs
 require 'save_security_filters' src/functional_pages/guardrails_live.rs
-require 'clear_cache' src/functional_pages/settings.rs
 require 'billing_summary' src/functional_pages/analytics.rs
 
 # Unsupported prototype actions must not reappear as fake success paths.

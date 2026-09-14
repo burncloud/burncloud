@@ -11,7 +11,6 @@ use axum::{
 
 pub mod auth;
 pub mod billing;
-pub mod cache;
 pub mod channel;
 pub mod log;
 pub mod monitor;
@@ -39,7 +38,6 @@ pub fn routes(state: AppState) -> Router {
         .merge(log::routes())
         .merge(monitor::routes())
         .merge(security::security_routes())
-        .merge(cache::routes())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::admin_middleware,

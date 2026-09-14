@@ -107,18 +107,6 @@ pub async fn emergency_circuit_break(reason: &str) -> Result<serde_json::Value, 
     if response.success { Ok(response.data) } else { Err(response.message.unwrap_or_else(|| "Emergency circuit break failed".to_string())) }
 }
 
-pub async fn cache_stats() -> Result<serde_json::Value, String> {
-    let request = authenticated(Client::new().get(url("/console/api/cache/stats")))?;
-    let response: EnvelopeValue = response_json(request).await?;
-    if response.success { Ok(response.data) } else { Err(response.message.unwrap_or_else(|| "Cache stats request failed".to_string())) }
-}
-
-pub async fn clear_cache() -> Result<(), String> {
-    let request = authenticated(Client::new().post(url("/console/api/cache/clear")))?;
-    let response: EnvelopeValue = response_json(request).await?;
-    if response.success { Ok(()) } else { Err(response.message.unwrap_or_else(|| "Cache clear failed".to_string())) }
-}
-
 /// Update a provider without erasing L2 shaper reservation thresholds that are
 /// present in the current server ChannelDto but not editable in this UI yet.
 ///
