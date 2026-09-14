@@ -10,7 +10,7 @@ use burncloud_database_user::UserDatabase;
 use burncloud_router::create_router_app;
 use burncloud_router::price_sync::SyncResult;
 use burncloud_service_monitor::SystemMonitorService;
-use burncloud_service_user::UserService;
+use burncloud_service_user::{JwtSecret, UserService};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -23,6 +23,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub monitor: Arc<SystemMonitorService>,
     pub user_service: Arc<UserService>,
+    pub jwt_secret: JwtSecret,
     pub force_sync_tx: mpsc::Sender<oneshot::Sender<SyncResult>>,
     /// Ready-to-serve data-plane router used by authenticated console smoke tests.
     /// Requests sent through this router still pass the router's bearer-token validation
@@ -31,18 +32,24 @@ pub struct AppState {
 }
 
 #[tracing::instrument(skip(db))]
-pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Result<Router> {
+pub async fn create_app(
+    db: Arc<Database>,
+    enable_liveview: bool,
+    jwt_secret: JwtSecret,
+) -> anyhow::Result<Router> {
     let monitor = Arc::new(SystemMonitorService::new());
     // Start auto collection in background
     let _ = monitor.start_auto_update().await;
 
     // 3. Data Plane Router (Fallback) — must be created first to get force_sync_tx
-    let (router_app, internal_app, force_sync_tx) = create_router_app(db.clone()).await?;
+    let (router_app, internal_app, force_sync_tx) =
+        create_router_app(db.clone(), jwt_secret.clone()).await?;
 
     let state = AppState {
         db: db.clone(),
         monitor,
-        user_service: Arc::new(UserService::new()),
+        user_service: Arc::new(UserService::new(jwt_secret.clone())),
+        jwt_secret,
         force_sync_tx,
         data_plane: router_app.clone(),
     };
@@ -83,19 +90,26 @@ pub async fn create_app(db: Arc<Database>, enable_liveview: bool) -> anyhow::Res
         .layer(CorsLayer::permissive())
         // Security boundary is intentionally global so it protects both the
         // explicitly merged internal routes and the data-plane fallback.
-        .layer(middleware::from_fn(api::auth::security_boundary_middleware));
+        .layer(middleware::from_fn_with_state(
+            state,
+            api::auth::security_boundary_middleware,
+        ));
 
     Ok(app)
 }
 
 #[tracing::instrument(skip_all)]
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .map_err(|_| anyhow::anyhow!("JWT_SECRET is missing or empty"))?;
+    let jwt_secret = JwtSecret::new(jwt_secret)?;
+
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
     let db = Arc::new(db);
 
-    let app = create_app(db, enable_liveview).await?;
+    let app = create_app(db, enable_liveview, jwt_secret).await?;
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     tracing::info!("Unified Gateway listening on {}", addr);

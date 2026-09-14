@@ -341,9 +341,12 @@ pub async fn start_test_server(port: u16, db_url: &str) {
         .unwrap_or_else(|e| panic!("Failed to open DB: {e}"));
     let db_arc = Arc::new(db);
 
-    let (app, internal_app, _force_sync_tx) = burncloud_router::create_router_app(db_arc)
-        .await
-        .unwrap_or_else(|e| panic!("Failed to create app: {e}"));
+    let jwt_secret = burncloud_service_user::JwtSecret::new("burncloud-router-test-jwt-secret")
+        .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}"));
+    let (app, internal_app, _force_sync_tx) =
+        burncloud_router::create_router_app(db_arc, jwt_secret)
+            .await
+            .unwrap_or_else(|e| panic!("Failed to create app: {e}"));
 
     // Merge internal_app before the main app so internal routes
     // (e.g. /console/internal/health) are reachable in tests.

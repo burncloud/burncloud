@@ -3,6 +3,7 @@
 use crate::adaptor;
 use crate::affinity::AffinityCache;
 use crate::balancer::RoundRobinBalancer;
+use crate::channel_health_manager::ChannelHealthManager;
 use crate::channel_state::ChannelStateTracker;
 use crate::circuit_breaker::CircuitBreaker;
 use crate::exchange_rate::ExchangeRateService;
@@ -10,12 +11,12 @@ use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
 use crate::price_sync::SyncResult;
 use crate::rate_budget::InMemoryBudget;
-use crate::EmptyResponseCounter;
 use crate::scheduler::SchedulerPolicyMap;
-use crate::channel_health_manager::ChannelHealthManager;
+use crate::EmptyResponseCounter;
 use burncloud_database::Database;
 use burncloud_database_router::{RouterLog, RouterRequestLog, StoragePolicy};
 use burncloud_service_billing::{CostCalculator, PriceCache};
+use burncloud_service_user::JwtSecret;
 use reqwest::Client;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -34,6 +35,7 @@ pub struct BudgetUpdate {
 pub struct AppState {
     pub client: Client,
     pub db: Arc<Database>,
+    pub jwt_secret: JwtSecret,
     pub balancer: Arc<RoundRobinBalancer>,
     pub limiter: Arc<RateLimiter>,
     pub circuit_breaker: Arc<CircuitBreaker>,

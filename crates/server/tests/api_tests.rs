@@ -15,7 +15,7 @@ mod test_utils;
 #[tokio::test]
 async fn test_api_health() -> anyhow::Result<()> {
     let db_arc = test_utils::make_isolated_db().await;
-    let app = create_app(db_arc, false).await?;
+    let app = create_app(db_arc, false, test_utils::test_jwt_secret()).await?;
 
     let port = 4000_u16;
     tokio::spawn(async move {
@@ -39,7 +39,7 @@ async fn test_api_health() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_token_api_requires_auth() -> anyhow::Result<()> {
     let db_arc = test_utils::make_isolated_db().await;
-    let app = create_app(db_arc, false).await?;
+    let app = create_app(db_arc, false, test_utils::test_jwt_secret()).await?;
 
     let port = 4001_u16;
     tokio::spawn(async move {
@@ -55,7 +55,11 @@ async fn test_token_api_requires_auth() -> anyhow::Result<()> {
 
     // Token API now requires authentication - expect 401 without token
     let resp = client.get(&base_url).send().await?;
-    assert_eq!(resp.status(), 401, "Token list should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Token list should require authentication"
+    );
 
     // POST should also require authentication
     let resp = client
@@ -63,7 +67,11 @@ async fn test_token_api_requires_auth() -> anyhow::Result<()> {
         .json(&serde_json::json!({ "user_id": "test-user" }))
         .send()
         .await?;
-    assert_eq!(resp.status(), 401, "Token create should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Token create should require authentication"
+    );
 
     Ok(())
 }
@@ -71,7 +79,7 @@ async fn test_token_api_requires_auth() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_log_api_requires_auth() -> anyhow::Result<()> {
     let db_arc = test_utils::make_isolated_db().await;
-    let app = create_app(db_arc, false).await?;
+    let app = create_app(db_arc, false, test_utils::test_jwt_secret()).await?;
 
     let port = 4002_u16;
     tokio::spawn(async move {
@@ -95,7 +103,7 @@ async fn test_log_api_requires_auth() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_monitor_api_requires_auth() -> anyhow::Result<()> {
     let db_arc = test_utils::make_isolated_db().await;
-    let app = create_app(db_arc, false).await?;
+    let app = create_app(db_arc, false, test_utils::test_jwt_secret()).await?;
 
     let port = 4003_u16;
     tokio::spawn(async move {
@@ -111,7 +119,11 @@ async fn test_monitor_api_requires_auth() -> anyhow::Result<()> {
 
     // Monitor API now requires authentication - expect 401 without token
     let resp = client.get(&url).send().await?;
-    assert_eq!(resp.status(), 401, "Monitor API should require authentication");
+    assert_eq!(
+        resp.status(),
+        401,
+        "Monitor API should require authentication"
+    );
 
     Ok(())
 }

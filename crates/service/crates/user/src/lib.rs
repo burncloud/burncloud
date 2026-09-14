@@ -13,7 +13,10 @@ use dashmap::DashMap;
 pub use burncloud_database_user::{UserAccount, UserRecharge};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -56,6 +59,48 @@ pub enum UserServiceError {
 
 pub type Result<T> = std::result::Result<T, UserServiceError>;
 
+/// Validated JWT signing and verification secret owned by Identity.
+///
+/// The inner value is intentionally private and its `Debug` implementation is
+/// redacted so application state and errors cannot accidentally expose it.
+#[derive(Clone)]
+pub struct JwtSecret(Arc<str>);
+
+impl JwtSecret {
+    /// Validate an explicitly supplied JWT secret.
+    pub fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(UserServiceError::ConfigError(
+                "JWT_SECRET is missing or empty".to_string(),
+            ));
+        }
+
+        Ok(Self(Arc::from(value)))
+    }
+
+    /// Verify a JWT with this secret and return its claims.
+    pub fn verify<T: DeserializeOwned>(&self, token: &str) -> jsonwebtoken::errors::Result<T> {
+        decode::<T>(
+            token,
+            &DecodingKey::from_secret(self.0.as_bytes()),
+            &Validation::default(),
+        )
+        .map(|token_data| token_data.claims)
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl fmt::Debug for JwtSecret {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("JwtSecret([REDACTED])")
+    }
+}
+
 /// Authentication token structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthToken {
@@ -76,27 +121,13 @@ struct Claims {
 
 /// User service providing business logic for user operations
 pub struct UserService {
-    jwt_secret: String,
+    jwt_secret: JwtSecret,
     token_expiration_hours: i64,
 }
 
 impl UserService {
-    /// Create a new UserService instance
-    ///
-    /// # Panics
-    /// Panics if JWT_SECRET environment variable is not set in production builds
-    pub fn new() -> Self {
-        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
-            #[cfg(not(debug_assertions))]
-            panic!("JWT_SECRET environment variable must be set in production");
-
-            #[cfg(debug_assertions)]
-            {
-                tracing::warn!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
-                burncloud_common::constants::DEFAULT_JWT_SECRET.to_string()
-            }
-        });
-
+    /// Create a service with an explicitly validated JWT secret.
+    pub fn new(jwt_secret: JwtSecret) -> Self {
         Self {
             jwt_secret,
             token_expiration_hours: DEFAULT_TOKEN_EXPIRATION_HOURS,
@@ -105,14 +136,15 @@ impl UserService {
 
     /// Create a new UserService instance with a custom JWT secret
     pub fn with_secret(jwt_secret: String) -> Self {
-        Self {
-            jwt_secret,
-            token_expiration_hours: DEFAULT_TOKEN_EXPIRATION_HOURS,
-        }
+        let jwt_secret = JwtSecret::new(jwt_secret)
+            .unwrap_or_else(|_| panic!("JWT secret supplied to UserService must not be empty"));
+        Self::new(jwt_secret)
     }
 
     /// Create a new UserService instance with custom JWT secret and token expiration
     pub fn with_config(jwt_secret: String, token_expiration_hours: i64) -> Self {
+        let jwt_secret = JwtSecret::new(jwt_secret)
+            .unwrap_or_else(|_| panic!("JWT secret supplied to UserService must not be empty"));
         Self {
             jwt_secret,
             token_expiration_hours,
@@ -453,24 +485,44 @@ impl UserService {
     }
 }
 
-impl Default for UserService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use burncloud_database::create_default_database;
 
+    fn test_service() -> UserService {
+        UserService::new(
+            JwtSecret::new("burncloud-service-user-test-secret")
+                .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}")),
+        )
+    }
+
+    #[test]
+    fn jwt_secret_rejects_empty_values() {
+        for value in ["", "   ", "\n\t"] {
+            let result = JwtSecret::new(value);
+            assert!(matches!(result, Err(UserServiceError::ConfigError(_))));
+        }
+    }
+
+    #[test]
+    fn jwt_secret_debug_is_redacted() {
+        let plaintext = "must-never-appear";
+        let secret = JwtSecret::new(plaintext)
+            .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}"));
+        let rendered = format!("{secret:?}");
+
+        assert!(!rendered.contains(plaintext));
+        assert_eq!(rendered, "JwtSecret([REDACTED])");
+    }
+
     #[tokio::test]
     async fn test_register_user() -> anyhow::Result<()> {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
 
-        let service = UserService::new();
+        let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
 
         let user_id = service
@@ -501,7 +553,7 @@ mod tests {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
 
-        let service = UserService::new();
+        let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
 
         // First registration should succeed
@@ -527,7 +579,7 @@ mod tests {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
 
-        let service = UserService::new();
+        let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
         let password = "password123";
 
@@ -551,7 +603,7 @@ mod tests {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
 
-        let service = UserService::new();
+        let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
 
         // Register user
@@ -575,7 +627,7 @@ mod tests {
         let db = create_default_database().await?;
         UserDatabase::init(&db).await?;
 
-        let service = UserService::new();
+        let service = test_service();
 
         // Login non-existent user should fail
         let result = service.login_user(&db, "nonexistent", "password").await;

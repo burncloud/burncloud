@@ -1,30 +1,24 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::disallowed_types
-)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 
 mod test_utils;
 
 use burncloud_database::Database;
 use burncloud_database_router::RouterToken;
 use burncloud_service_token::TokenService;
-use burncloud_service_user::UserService;
+use burncloud_service_user::{JwtSecret, UserService};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use std::sync::Arc;
 
-const JWT_SECRET: &str = "burncloud-security-invariant-jwt-secret-2026";
 const INTERNAL_SECRET: &str = "burncloud-security-invariant-internal-secret";
 
 fn configure_security_env() {
-    std::env::set_var("JWT_SECRET", JWT_SECRET);
     std::env::set_var("BURNCLOUD_INTERNAL_SECRET", INTERNAL_SECRET);
     std::env::set_var("SKIP_INITIAL_PRICE_SYNC", "1");
 }
 
-async fn spawn_server(db: Arc<Database>) -> anyhow::Result<String> {
-    let app = burncloud_server::create_app(db, false).await?;
+async fn spawn_server(db: Arc<Database>, jwt_secret: JwtSecret) -> anyhow::Result<String> {
+    let app = burncloud_server::create_app(db, false, jwt_secret).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
     tokio::spawn(async move {
@@ -37,8 +31,9 @@ async fn spawn_server(db: Arc<Database>) -> anyhow::Result<String> {
 
 async fn create_principals(
     db: &Database,
+    jwt_secret: JwtSecret,
 ) -> anyhow::Result<(String, String, String, String)> {
-    let service = UserService::new();
+    let service = UserService::new(jwt_secret);
     let admin_id = service
         .register_user(db, "invariant-admin", "test-password", None)
         .await?;
@@ -46,12 +41,8 @@ async fn create_principals(
         .register_user(db, "invariant-user", "test-password", None)
         .await?;
 
-    let admin_jwt = service
-        .generate_token(&admin_id, "invariant-admin")?
-        .token;
-    let user_jwt = service
-        .generate_token(&user_id, "invariant-user")?
-        .token;
+    let admin_jwt = service.generate_token(&admin_id, "invariant-admin")?.token;
+    let user_jwt = service.generate_token(&user_id, "invariant-user")?.token;
 
     Ok((admin_id, admin_jwt, user_id, user_jwt))
 }
@@ -79,10 +70,12 @@ fn router_token(token: &str, user_id: &str) -> RouterToken {
 async fn console_jwt_cannot_authenticate_data_plane() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
-    let (_admin_id, _admin_jwt, user_id, user_jwt) = create_principals(&db).await?;
+    let jwt_secret = test_utils::test_jwt_secret();
+    let (_admin_id, _admin_jwt, user_id, user_jwt) =
+        create_principals(&db, jwt_secret.clone()).await?;
     let api_key = "bc_live_security_data_plane_key";
     TokenService::create(&db, &router_token(api_key, &user_id)).await?;
-    let base = spawn_server(db).await?;
+    let base = spawn_server(db, jwt_secret).await?;
     let client = Client::new();
     let body = serde_json::json!({
         "model": "security-invariant-model",
@@ -120,8 +113,10 @@ async fn console_jwt_cannot_authenticate_data_plane() -> anyhow::Result<()> {
 async fn regular_users_cannot_execute_admin_management_actions() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
-    let (_admin_id, admin_jwt, user_id, user_jwt) = create_principals(&db).await?;
-    let base = spawn_server(db).await?;
+    let jwt_secret = test_utils::test_jwt_secret();
+    let (_admin_id, admin_jwt, user_id, user_jwt) =
+        create_principals(&db, jwt_secret.clone()).await?;
+    let base = spawn_server(db, jwt_secret).await?;
     let client = Client::new();
 
     let logs = client
@@ -165,12 +160,14 @@ async fn regular_users_cannot_execute_admin_management_actions() -> anyhow::Resu
 async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
-    let (admin_id, admin_jwt, user_id, user_jwt) = create_principals(&db).await?;
+    let jwt_secret = test_utils::test_jwt_secret();
+    let (admin_id, admin_jwt, user_id, user_jwt) =
+        create_principals(&db, jwt_secret.clone()).await?;
     let admin_key = "bc_live_admin_secret_1234";
     let user_key = "bc_live_user_secret_5678";
     TokenService::create(&db, &router_token(admin_key, &admin_id)).await?;
     TokenService::create(&db, &router_token(user_key, &user_id)).await?;
-    let base = spawn_server(db.clone()).await?;
+    let base = spawn_server(db.clone(), jwt_secret).await?;
     let client = Client::new();
 
     let user_list = client
@@ -180,10 +177,22 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
         .await?;
     assert_eq!(user_list.status(), StatusCode::OK);
     let user_body = user_list.text().await?;
-    assert!(!user_body.contains(user_key), "token lists must redact bearer secrets");
-    assert!(!user_body.contains(admin_key), "users must not see another owner's secret");
-    assert!(user_body.contains("5678"), "owner should receive a non-secret token hint");
-    assert!(!user_body.contains("1234"), "owner list must exclude other users' tokens");
+    assert!(
+        !user_body.contains(user_key),
+        "token lists must redact bearer secrets"
+    );
+    assert!(
+        !user_body.contains(admin_key),
+        "users must not see another owner's secret"
+    );
+    assert!(
+        user_body.contains("5678"),
+        "owner should receive a non-secret token hint"
+    );
+    assert!(
+        !user_body.contains("1234"),
+        "owner list must exclude other users' tokens"
+    );
 
     let forbidden_delete = client
         .delete(format!("{base}/console/api/tokens/{admin_key}"))
@@ -223,7 +232,7 @@ async fn token_management_is_owner_scoped_and_redacted() -> anyhow::Result<()> {
 async fn sensitive_internal_mutations_require_internal_secret() -> anyhow::Result<()> {
     configure_security_env();
     let db = test_utils::make_isolated_db().await;
-    let base = spawn_server(db).await?;
+    let base = spawn_server(db, test_utils::test_jwt_secret()).await?;
     let client = Client::new();
     let url = format!("{base}/console/internal/circuit-breaker/trip-all");
 

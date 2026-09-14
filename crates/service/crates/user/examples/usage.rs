@@ -7,7 +7,7 @@
 
 use burncloud_database::create_default_database;
 use burncloud_database_user::UserDatabase;
-use burncloud_service_user::UserService;
+use burncloud_service_user::{JwtSecret, UserService};
 use uuid::Uuid;
 
 #[tokio::main]
@@ -20,7 +20,9 @@ async fn main() -> anyhow::Result<()> {
     println!("✓ Database initialized\n");
 
     // Create service
-    let service = UserService::new();
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .map_err(|_| anyhow::anyhow!("JWT_SECRET must be set to run this example"))?;
+    let service = UserService::new(JwtSecret::new(jwt_secret)?);
     println!("✓ UserService created\n");
 
     // Use a unique username for this run
