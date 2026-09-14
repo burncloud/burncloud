@@ -74,7 +74,6 @@ require 'full_logs' src/functional_pages/logs_full.rs
 require 'full_logs' src/functional_pages/analytics_full.rs
 require 'chat_completion' src/functional_pages/playground_live.rs
 require 'save_security_filters' src/functional_pages/guardrails_live.rs
-require 'clear_cache' src/functional_pages/settings.rs
 require 'billing_summary' src/functional_pages/analytics.rs
 
 # Unsupported prototype actions must not reappear as fake success paths.
