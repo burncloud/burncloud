@@ -18,6 +18,109 @@ use crate::software::{
     GitHubAsset, GitHubRelease, InstallMethod, InstallStatus, ShellType, Software,
 };
 
+const CHINA_NPM_MIRROR: &str = "https://registry.npmmirror.com";
+
+/// A validated npm registry URL.
+///
+/// This type stays private so callers cannot bypass validation. It deliberately
+/// does not implement `Debug` or `Display`, because registry URLs may contain
+/// sensitive query parameters even though URL userinfo is forbidden.
+struct NpmRegistry {
+    url: reqwest::Url,
+}
+
+impl NpmRegistry {
+    fn parse(value: &str) -> InstallerResult<Self> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(InstallerError::Configuration(
+                "NPM_MIRROR is empty".to_string(),
+            ));
+        }
+
+        // Direct process arguments already prevent shell interpretation. Reject
+        // raw shell metacharacters as an additional boundary and require callers
+        // to percent-encode any such character that is genuinely part of a URL.
+        if value.chars().any(|character| {
+            character.is_control()
+                || character.is_whitespace()
+                || matches!(
+                    character,
+                    ';' | '|' | '&' | '`' | '$' | '<' | '>' | '\'' | '"' | '\\'
+                )
+        }) {
+            return Err(InstallerError::Configuration(
+                "NPM_MIRROR contains unsupported characters".to_string(),
+            ));
+        }
+
+        let url = reqwest::Url::parse(value).map_err(|_| {
+            InstallerError::Configuration(
+                "NPM_MIRROR must be a valid absolute HTTP(S) URL".to_string(),
+            )
+        })?;
+
+        if !matches!(url.scheme(), "http" | "https") {
+            return Err(InstallerError::Configuration(
+                "NPM_MIRROR must use http or https".to_string(),
+            ));
+        }
+        if url.host_str().is_none() {
+            return Err(InstallerError::Configuration(
+                "NPM_MIRROR must include a host".to_string(),
+            ));
+        }
+        if !url.username().is_empty() || url.password().is_some() {
+            return Err(InstallerError::Configuration(
+                "NPM_MIRROR must not include URL userinfo".to_string(),
+            ));
+        }
+
+        Ok(Self { url })
+    }
+
+    fn as_str(&self) -> &str {
+        self.url.as_str()
+    }
+
+    fn safe_origin(&self) -> String {
+        // A URL with a validated host always reaches this branch. Keep the
+        // fallback generic rather than risk logging the original URL.
+        self.url
+            .host_str()
+            .map(|host| format!("{}://{}", self.url.scheme(), host))
+            .unwrap_or_else(|| "custom registry".to_string())
+    }
+}
+
+fn resolve_npm_registry(
+    custom_mirror: Option<&str>,
+    in_china: bool,
+) -> InstallerResult<Option<NpmRegistry>> {
+    if let Some(value) = custom_mirror.filter(|value| !value.trim().is_empty()) {
+        return NpmRegistry::parse(value).map(Some);
+    }
+
+    if in_china {
+        NpmRegistry::parse(CHINA_NPM_MIRROR).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn npm_install_command(platform: &Platform, args: &[String], current_path: &str) -> Command {
+    // npm is installed as npm.cmd on Windows. Invoking it directly avoids cmd
+    // parsing while preserving the same argument boundaries as Unix.
+    let executable = if platform.is_windows() {
+        "npm.cmd"
+    } else {
+        "npm"
+    };
+    let mut command = Command::new(executable);
+    command.args(args).env("PATH", current_path);
+    command
+}
+
 /// Installer configuration
 #[derive(Debug, Clone)]
 pub struct InstallerConfig {
@@ -1039,63 +1142,46 @@ impl Installer {
             None => package.to_string(),
         };
 
-        // Check if we should use a mirror for faster downloads in China
-        let use_mirror = std::env::var("NPM_MIRROR")
-            .map(|m| {
-                info!("[npm] Using custom mirror: {}", m);
-                m
-            })
-            .unwrap_or_else(|_| {
-                // Check if we're in China (simple heuristic: check language/region)
-                let in_china = std::env::var("LANG")
-                    .map(|l| l.contains("zh") || l.contains("CN"))
-                    .unwrap_or(false)
-                    || std::env::var("LC_ALL")
-                        .map(|l| l.contains("zh") || l.contains("CN"))
-                        .unwrap_or(false);
+        let custom_mirror = std::env::var("NPM_MIRROR").ok();
+        let use_region_default = custom_mirror
+            .as_deref()
+            .map(str::trim)
+            .map(str::is_empty)
+            .unwrap_or(true);
 
-                if in_china {
-                    let mirror = "https://registry.npmmirror.com".to_string();
-                    info!(
-                        "[npm] Detected China region, using taobao mirror: {}",
-                        mirror
-                    );
-                    mirror
-                } else {
-                    String::new()
-                }
-            });
+        // Preserve the existing region selection exactly when NPM_MIRROR is
+        // missing or blank. An invalid non-blank custom value fails closed.
+        let in_china = use_region_default
+            && (std::env::var("LANG")
+                .map(|language| language.contains("zh") || language.contains("CN"))
+                .unwrap_or(false)
+                || std::env::var("LC_ALL")
+                    .map(|language| language.contains("zh") || language.contains("CN"))
+                    .unwrap_or(false));
+        let registry = resolve_npm_registry(custom_mirror.as_deref(), in_china)?;
 
-        let mut args = vec!["install"];
+        if let Some(registry) = registry.as_ref() {
+            info!(
+                "[npm] Custom registry enabled: {}",
+                registry.safe_origin()
+            );
+        }
+
+        let mut args = vec!["install".to_string()];
         if global {
-            args.push("-g");
+            args.push("-g".to_string());
         }
-        args.push(&package_spec);
+        args.push(package_spec);
 
-        // Add mirror registry if specified
-        let registry_arg;
-        if !use_mirror.is_empty() {
-            registry_arg = format!("--registry={}", use_mirror);
-            args.push(&registry_arg);
+        if let Some(registry) = registry.as_ref() {
+            args.push(format!("--registry={}", registry.as_str()));
         }
 
-        info!("[npm] Running: npm {}", args.join(" "));
+        info!("[npm] Starting npm install");
 
         // Get current PATH to pass to child process (includes Node.js path if installed from bundle)
         let current_path = std::env::var("PATH").unwrap_or_default();
-
-        let result = if self.config.platform.is_windows() {
-            Command::new("cmd")
-                .args(["/C", "npm"])
-                .args(&args)
-                .env("PATH", &current_path)
-                .status()
-        } else {
-            Command::new("sh")
-                .args(["-c", &format!("npm {}", args.join(" "))])
-                .env("PATH", &current_path)
-                .status()
-        };
+        let result = npm_install_command(&self.config.platform, &args, &current_path).status();
 
         let elapsed = start.elapsed();
         info!(
@@ -1188,7 +1274,7 @@ impl Installer {
         }
         args.push(&tarball_str);
 
-        info!("[bundle] Running: npm {}", args.join(" "));
+        info!("[bundle] Starting npm install from local bundle");
 
         let npm_start = Instant::now();
 
@@ -1196,11 +1282,11 @@ impl Installer {
         let current_path = std::env::var("PATH").unwrap_or_default();
         info!("[bundle] Current PATH: {}", current_path);
 
-        // Check if npm is accessible
+        // Check if npm is accessible without involving a command shell.
         let npm_check = if self.config.platform.is_windows() {
-            Command::new("cmd").args(["/C", "where", "npm"]).output()
+            Command::new("where").arg("npm.cmd").output()
         } else {
-            Command::new("sh").args(["-c", "which npm"]).output()
+            Command::new("which").arg("npm").output()
         };
 
         match npm_check {
@@ -1223,18 +1309,8 @@ impl Installer {
             }
         }
 
-        let result = if self.config.platform.is_windows() {
-            Command::new("cmd")
-                .args(["/C", "npm"])
-                .args(&args)
-                .env("PATH", &current_path)
-                .output()
-        } else {
-            Command::new("sh")
-                .args(["-c", &format!("npm {}", args.join(" "))])
-                .env("PATH", &current_path)
-                .output()
-        };
+        let args: Vec<String> = args.into_iter().map(str::to_string).collect();
+        let result = npm_install_command(&self.config.platform, &args, &current_path).output();
 
         let npm_elapsed = npm_start.elapsed();
         info!(
@@ -1704,6 +1780,7 @@ impl Installer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::{Arch, OS};
 
     #[test]
     fn test_installer_config() {
@@ -1723,5 +1800,92 @@ mod tests {
         let installer = Installer::with_default_config();
         let software = installer.get_software("openclaw");
         assert!(software.is_some());
+    }
+
+    #[test]
+    fn npm_mirror_missing_and_blank_preserve_region_fallback() {
+        assert!(resolve_npm_registry(None, false)
+            .unwrap_or_else(|error| panic!("missing mirror must be accepted: {error}"))
+            .is_none());
+        assert!(resolve_npm_registry(Some("  \t "), false)
+            .unwrap_or_else(|error| panic!("blank mirror must be accepted: {error}"))
+            .is_none());
+
+        let registry = resolve_npm_registry(Some(""), true)
+            .unwrap_or_else(|error| panic!("China fallback must be valid: {error}"))
+            .unwrap_or_else(|| panic!("China fallback must select a registry"));
+        assert_eq!(registry.as_str(), "https://registry.npmmirror.com/");
+    }
+
+    #[test]
+    fn npm_mirror_accepts_valid_https_url_and_redacts_log_label() {
+        let registry = NpmRegistry::parse("https://registry.example.com/npm?token=test-marker")
+            .unwrap_or_else(|error| panic!("valid HTTPS mirror rejected: {error}"));
+        assert!(NpmRegistry::parse("http://localhost:4873/npm").is_ok());
+
+        assert_eq!(
+            registry.as_str(),
+            "https://registry.example.com/npm?token=test-marker"
+        );
+        assert_eq!(registry.safe_origin(), "https://registry.example.com");
+        assert!(!registry.safe_origin().contains("test-marker"));
+    }
+
+    #[test]
+    fn npm_mirror_rejects_shell_metacharacters_without_echoing_input() {
+        let marker = "must-not-appear";
+        for metacharacter in [';', '|', '&', '`', '$', '<', '>'] {
+            let value = format!("https://registry.example.com/{marker}{metacharacter}echo");
+            let error = NpmRegistry::parse(&value)
+                .err()
+                .unwrap_or_else(|| panic!("shell metacharacter must be rejected"));
+
+            let rendered = error.to_string();
+            assert!(!rendered.contains(marker));
+            assert!(!rendered.contains(&value));
+        }
+    }
+
+    #[test]
+    fn npm_mirror_rejects_userinfo_without_echoing_credentials() {
+        let password = "must-not-appear";
+        let value = format!("https://user:{password}@registry.example.com");
+        let error = NpmRegistry::parse(&value)
+            .err()
+            .unwrap_or_else(|| panic!("URL userinfo must be rejected"));
+
+        assert!(!error.to_string().contains(password));
+    }
+
+    #[test]
+    fn npm_mirror_rejects_empty_host_and_unapproved_scheme() {
+        for value in ["https://", "file:///tmp/registry", "ftp://registry.example.com"] {
+            assert!(NpmRegistry::parse(value).is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn npm_command_never_uses_a_shell_and_keeps_registry_as_one_argument() {
+        let registry = NpmRegistry::parse("https://registry.example.com/npm")
+            .unwrap_or_else(|error| panic!("test mirror must be valid: {error}"));
+        let args = vec![
+            "install".to_string(),
+            "-g".to_string(),
+            "example-package@1.0.0".to_string(),
+            format!("--registry={}", registry.as_str()),
+        ];
+
+        for (os, expected_program) in [(OS::Linux, "npm"), (OS::Windows, "npm.cmd")] {
+            let platform = Platform { os, arch: Arch::X64 };
+            let command = npm_install_command(&platform, &args, "test-path");
+            let actual_args: Vec<String> = command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect();
+
+            assert_eq!(command.get_program(), expected_program);
+            assert_eq!(actual_args, args);
+            assert!(!actual_args.iter().any(|arg| arg == "-c" || arg == "/C"));
+        }
     }
 }
