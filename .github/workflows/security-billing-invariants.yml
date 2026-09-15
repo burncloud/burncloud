@@ -3,20 +3,20 @@ name: Security & Billing Invariants
 on:
   pull_request:
     paths:
-      - "crates/server/**"
-      - "crates/router/**"
-      - "crates/database/src/**"
-      - "crates/database/crates/router/**"
-      - "crates/service/crates/router-log/**"
+      - "crates/interfaces/server/**"
+      - "crates/traffic/router/**"
+      - "crates/platform/storage/database/src/**"
+      - "crates/traffic/database-router/**"
+      - "crates/traffic/service-router-log/**"
       - ".github/workflows/security-billing-invariants.yml"
   push:
     branches: [main]
     paths:
-      - "crates/server/**"
-      - "crates/router/**"
-      - "crates/database/src/**"
-      - "crates/database/crates/router/**"
-      - "crates/service/crates/router-log/**"
+      - "crates/interfaces/server/**"
+      - "crates/traffic/router/**"
+      - "crates/platform/storage/database/src/**"
+      - "crates/traffic/database-router/**"
+      - "crates/traffic/service-router-log/**"
       - ".github/workflows/security-billing-invariants.yml"
 
 permissions:

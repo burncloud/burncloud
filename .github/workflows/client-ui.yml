@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'Cargo.toml'
-      - 'crates/client/**'
+      - 'crates/interfaces/client/**'
       - 'deploy/Dockerfile'
       - '.github/workflows/client-ui.yml'
 
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: crates/client
+        working-directory: crates/interfaces/client
     steps:
       - name: Checkout
         uses: actions/checkout@v4

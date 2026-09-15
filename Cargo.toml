@@ -1,34 +1,34 @@
 [workspace]
 members = [
-    "crates/auto-update",
-    "crates/client",
-    "crates/installer",
-    "crates/common",
-    "crates/database",
-    "crates/database/crates/billing",
-    "crates/database/crates/channel",
-    "crates/database/crates/model",
-    "crates/database/crates/router",
-    "crates/database/crates/sys",
-    "crates/database/crates/user",
-    "crates/download",
-    "crates/download/crates/download-aria2",
-    "crates/router",
-    "crates/router/crates/router-aws",
-    "crates/server",
-    "crates/service",
-    "crates/service/crates/ip",
-    "crates/service/crates/models",
-    "crates/service/crates/monitor",
-    "crates/service/crates/setting",
-    "crates/service/crates/inference",
-    "crates/service/crates/user",
-    "crates/service/crates/token",
-    "crates/service/crates/router-log",
-    "crates/service/crates/billing",
-    "crates/service/crates/channel",
-    "crates/tests",
-    "crates/loops",
+    "crates/interfaces/common",
+    "crates/identity/database-user",
+    "crates/identity/service-token",
+    "crates/identity/service-user",
+    "crates/supply/database-channel",
+    "crates/supply/database-model",
+    "crates/supply/service-channel",
+    "crates/supply/service-models",
+    "crates/traffic/database-router",
+    "crates/traffic/router",
+    "crates/traffic/router-aws",
+    "crates/traffic/service-router-log",
+    "crates/commerce/database-billing",
+    "crates/commerce/service-billing",
+    "crates/trust/inference",
+    "crates/platform/configuration/setting",
+    "crates/platform/lifecycle/installer",
+    "crates/platform/lifecycle/loops",
+    "crates/platform/lifecycle/update",
+    "crates/platform/observability/ip",
+    "crates/platform/observability/monitor",
+    "crates/platform/storage/database",
+    "crates/platform/storage/database-sys",
+    "crates/platform/storage/download",
+    "crates/platform/storage/download-aria2",
+    "crates/interfaces/client",
+    "crates/interfaces/server",
+    "crates/interfaces/service",
+    "crates/interfaces/tests",
 ]
 
 [workspace.package]
@@ -119,33 +119,33 @@ tracing-appender = "0.2"
 tracing-log = "0.2"
 
 # Internal crates
-burncloud-auto-update = { path = "crates/auto-update" }
-burncloud-client = { path = "crates/client", default-features = false }
-burncloud-common = { path = "crates/common" }
-burncloud-database = { path = "crates/database" }
-burncloud-database-billing = { path = "crates/database/crates/billing" }
-burncloud-database-channel = { path = "crates/database/crates/channel" }
-burncloud-database-model = { path = "crates/database/crates/model" }
-burncloud-database-router = { path = "crates/database/crates/router" }
-burncloud-database-sys = { path = "crates/database/crates/sys" }
-burncloud-database-user = { path = "crates/database/crates/user" }
-burncloud-download = { path = "crates/download" }
-burncloud-download-aria2 = { path = "crates/download/crates/download-aria2" }
-burncloud-installer = { path = "crates/installer" }
-burncloud-router = { path = "crates/router" }
-burncloud-router-aws = { path = "crates/router/crates/router-aws" }
-burncloud-server = { path = "crates/server" }
-burncloud-service = { path = "crates/service" }
-burncloud-service-ip = { path = "crates/service/crates/ip" }
-burncloud-service-models = { path = "crates/service/crates/models" }
-burncloud-service-monitor = { path = "crates/service/crates/monitor" }
-burncloud-service-setting = { path = "crates/service/crates/setting" }
-burncloud-service-inference = { path = "crates/service/crates/inference" }
-burncloud-service-user = { path = "crates/service/crates/user" }
-burncloud-service-token = { path = "crates/service/crates/token" }
-burncloud-service-router-log = { path = "crates/service/crates/router-log" }
-burncloud-service-billing = { path = "crates/service/crates/billing" }
-burncloud-service-channel = { path = "crates/service/crates/channel" }
+burncloud-auto-update = { path = "crates/platform/lifecycle/update" }
+burncloud-client = { path = "crates/interfaces/client", default-features = false }
+burncloud-common = { path = "crates/interfaces/common" }
+burncloud-database = { path = "crates/platform/storage/database" }
+burncloud-database-billing = { path = "crates/commerce/database-billing" }
+burncloud-database-channel = { path = "crates/supply/database-channel" }
+burncloud-database-model = { path = "crates/supply/database-model" }
+burncloud-database-router = { path = "crates/traffic/database-router" }
+burncloud-database-sys = { path = "crates/platform/storage/database-sys" }
+burncloud-database-user = { path = "crates/identity/database-user" }
+burncloud-download = { path = "crates/platform/storage/download" }
+burncloud-download-aria2 = { path = "crates/platform/storage/download-aria2" }
+burncloud-installer = { path = "crates/platform/lifecycle/installer" }
+burncloud-router = { path = "crates/traffic/router" }
+burncloud-router-aws = { path = "crates/traffic/router-aws" }
+burncloud-server = { path = "crates/interfaces/server" }
+burncloud-service = { path = "crates/interfaces/service" }
+burncloud-service-ip = { path = "crates/platform/observability/ip" }
+burncloud-service-models = { path = "crates/supply/service-models" }
+burncloud-service-monitor = { path = "crates/platform/observability/monitor" }
+burncloud-service-setting = { path = "crates/platform/configuration/setting" }
+burncloud-service-inference = { path = "crates/trust/inference" }
+burncloud-service-user = { path = "crates/identity/service-user" }
+burncloud-service-token = { path = "crates/identity/service-token" }
+burncloud-service-router-log = { path = "crates/traffic/service-router-log" }
+burncloud-service-billing = { path = "crates/commerce/service-billing" }
+burncloud-service-channel = { path = "crates/supply/service-channel" }
 
 [package]
 name = "burncloud"
@@ -164,7 +164,7 @@ default = []
 
 [[bin]]
 name = "burncloud"
-path = "src/main.rs"
+path = "crates/interfaces/cli/src/main.rs"
 
 [dependencies]
 burncloud-common.workspace = true

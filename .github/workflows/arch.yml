@@ -3,7 +3,7 @@ name: Architecture Checks
 on:
   pull_request:
     paths:
-      - 'crates/router/Cargo.toml'
+      - 'crates/traffic/router/Cargo.toml'
       - 'deny.toml'
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Check router service dependency whitelist
-        run: ./crates/router/scripts/check-router-deps.sh --ci
+        run: ./crates/traffic/router/scripts/check-router-deps.sh --ci
 
   cargo-deny-bans:
     runs-on: ubuntu-latest
