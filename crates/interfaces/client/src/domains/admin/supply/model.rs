@@ -1,0 +1,1 @@
+//! admin/supply page boundary.

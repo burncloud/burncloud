@@ -1,0 +1,1 @@
+//! Shared UI state helpers.
