@@ -1,0 +1,1 @@
+//! admin/capacity page boundary.

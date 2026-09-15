@@ -1,0 +1,1 @@
+//! Administrator navigation model.

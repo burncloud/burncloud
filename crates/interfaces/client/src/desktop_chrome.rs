@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 
-#[cfg(feature = "desktop")]
 #[component]
 pub fn DesktopTitleBar() -> Element {
     let window = dioxus::desktop::use_window();
@@ -8,12 +7,13 @@ pub fn DesktopTitleBar() -> Element {
 
     let min_window = window.clone();
     let max_window = window.clone();
+    let restore_window = window.clone();
     let close_window = window.clone();
 
     rsx! {
-        div { class: "desktop-titlebar app-drag-region",
-            div { class: "desktop-titlebar-spacer" }
-            div { class: "desktop-window-controls app-no-drag",
+        style { dangerous_inner_html: include_str!("desktop_chrome.css") }
+        div { class: "desktop-titlebar",
+            div { class: "desktop-window-controls",
                 button {
                     class: "desktop-window-control",
                     title: "Minimize",
@@ -23,23 +23,31 @@ pub fn DesktopTitleBar() -> Element {
                 }
                 button {
                     class: "desktop-window-control",
-                    title: if is_maximized() { "Restore" } else { "Maximize" },
-                    aria_label: if is_maximized() { "Restore window" } else { "Maximize window" },
+                    title: "Maximize",
+                    aria_label: "Maximize window",
+                    disabled: is_maximized(),
                     onclick: move |_| {
-                        let next = !is_maximized();
-                        max_window.set_maximized(next);
-                        is_maximized.set(next);
+                        max_window.set_maximized(true);
+                        is_maximized.set(true);
                     },
-                    span {
-                        class: "desktop-win-icon",
-                        if is_maximized() { "\u{E923}" } else { "\u{E922}" }
-                    }
+                    span { class: "desktop-win-icon", "\u{E922}" }
+                }
+                button {
+                    class: "desktop-window-control",
+                    title: "Restore",
+                    aria_label: "Restore window",
+                    disabled: !is_maximized(),
+                    onclick: move |_| {
+                        restore_window.set_maximized(false);
+                        is_maximized.set(false);
+                    },
+                    span { class: "desktop-win-icon", "\u{E923}" }
                 }
                 button {
                     class: "desktop-window-control danger",
-                    title: "Close to tray",
-                    aria_label: "Hide window to system tray",
-                    onclick: move |_| close_window.set_visible(false),
+                    title: "Close",
+                    aria_label: "Close window",
+                    onclick: move |_| close_window.close(),
                     span { class: "desktop-win-icon", "\u{E8BB}" }
                 }
             }
