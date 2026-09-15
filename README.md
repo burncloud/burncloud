@@ -22,14 +22,13 @@ The repository is evolving quickly, so current source and executable tests are t
 
 ## Current executable shape
 
-The process entry is `src/main.rs`.
+The process entry is `crates/interfaces/cli/src/main.rs`.
 
-- `crates/server` builds the unified Axum application.
-- `crates/router` owns the data-plane fallback and upstream execution.
-- `crates/service/*` contains service/business components.
-- `crates/database/*` contains database core and domain persistence code using SQLx.
-- `crates/client` and `crates/client/crates/*` contain Dioxus client/features.
-- `crates/tests` is the integration/E2E test crate.
+- `crates/interfaces/common` preserves the legacy shared contract package pending domain-owned contract extraction; no existing type is claimed as Kernel.
+- `crates/identity`, `crates/supply`, `crates/traffic`, `crates/commerce`, and `crates/trust` contain domain-owned packages.
+- `crates/platform` contains configuration, lifecycle, observability, storage, and repository tooling packages.
+- `crates/interfaces/server` builds the unified Axum application, while `crates/interfaces/client` contains the Dioxus client.
+- `crates/interfaces/service` preserves the existing service facade, and `crates/interfaces/tests` contains integration/E2E tests.
 
 `burncloud_server::create_app()` currently composes management routes, router internal endpoints, optional LiveView, and the data-plane router as a fallback service.
 
@@ -44,7 +43,7 @@ For the progressive user-action → End-to-End Flow → ICFG → Source view, us
 ### Requirements
 
 - A current stable Rust toolchain suitable for this workspace.
-- Windows, Linux, or macOS. The desktop GUI path is Windows-specific in current `src/main.rs`; non-Windows uses the server/LiveView path.
+- Windows, Linux, or macOS. The desktop GUI path is Windows-specific in current `crates/interfaces/cli/src/main.rs`; non-Windows uses the server/LiveView path.
 
 ### Build
 
@@ -79,7 +78,7 @@ Other configuration is environment-driven; use `.env.example` and current source
 
 ## Data-plane entry
 
-`crates/router/src/lib.rs :: create_router_app` explicitly registers:
+`crates/traffic/router/src/lib.rs :: create_router_app` explicitly registers:
 
 - `GET /v1/models`
 - `GET /api/v1/usage`
