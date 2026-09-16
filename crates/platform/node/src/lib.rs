@@ -1,5 +1,6 @@
 mod context;
 mod contracts;
+mod fake;
 mod lifecycle;
 
 pub use context::NodeContext;
@@ -7,6 +8,7 @@ pub use contracts::{
     AcceleratorKind, AcceleratorProfile, HardwareProbe, HardwareProbeError, HardwareProfile,
     ProcessError, ProcessHandle, ProcessManager, ProcessSpec,
 };
+pub use fake::{FakeHardwareProbe, FakeProcessManager};
 pub use lifecycle::NodeRuntime;
 
 /// Node runtime skeleton invariant:
