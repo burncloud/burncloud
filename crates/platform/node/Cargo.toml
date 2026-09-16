@@ -9,4 +9,6 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+async-trait.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
