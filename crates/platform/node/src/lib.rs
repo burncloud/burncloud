@@ -9,6 +9,7 @@ mod context;
 mod contracts;
 mod fake;
 mod lifecycle;
+mod preparation;
 mod reconciler;
 mod state;
 
@@ -18,7 +19,15 @@ pub use contracts::{
     AcceleratorKind, AcceleratorProfile, HardwareProbe, HardwareProbeError, HardwareProfile,
     ProcessError, ProcessHandle, ProcessManager, ProcessSpec,
 };
-pub use fake::{FakeHardwareProbe, FakeProcessManager};
+pub use fake::{
+    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
+    FakeReadinessProbe, FakeRuntimePreparer,
+};
 pub use lifecycle::NodeRuntime;
+pub use preparation::{
+    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, HealthError, HealthProbe,
+    PreparedArtifact, PreparedRuntime, ReadinessError, ReadinessProbe, ReadinessTarget,
+    RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+};
 pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
 pub use state::{InvalidNodeTransition, NodeState, NodeStateMachine};
