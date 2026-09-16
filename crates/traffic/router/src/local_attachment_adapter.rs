@@ -1,5 +1,5 @@
 use crate::local_attachment::{
-    LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttacher,
+    LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError,
 };
 use async_trait::async_trait;
 use burncloud_common::types::{Channel, ChannelType};
