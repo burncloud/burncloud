@@ -181,10 +181,20 @@ mod tests {
     use super::InternalSecret;
 
     #[test]
+    fn internal_secret_rejects_empty_and_invalid_values() {
+        for value in ["", "   ", "\n\t", "secret\nheader"] {
+            assert!(InternalSecret::new(value).is_err());
+        }
+    }
+
+    #[test]
     fn internal_secret_debug_is_redacted() {
-        let secret = InternalSecret::new("top-secret-value").unwrap();
-        let debug = format!("{secret:?}");
-        assert!(!debug.contains("top-secret-value"));
-        assert!(debug.contains("REDACTED"));
+        let plaintext = "must-never-appear";
+        let secret = InternalSecret::new(plaintext)
+            .unwrap_or_else(|e| panic!("test internal secret must be valid: {e}"));
+        let rendered = format!("{secret:?}");
+
+        assert!(!rendered.contains(plaintext));
+        assert_eq!(rendered, "InternalSecret([REDACTED])");
     }
 }
