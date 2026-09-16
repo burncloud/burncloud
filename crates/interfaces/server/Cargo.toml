@@ -27,6 +27,7 @@ burncloud-database = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-database-router = { workspace = true }
 burncloud-database-user = { workspace = true }
+burncloud-node-runtime = { workspace = true }
 burncloud-router = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }

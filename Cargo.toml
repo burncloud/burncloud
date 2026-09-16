@@ -19,6 +19,7 @@ members = [
     "crates/platform/lifecycle/installer",
     "crates/platform/lifecycle/loops",
     "crates/platform/lifecycle/update",
+    "crates/platform/node",
     "crates/platform/observability/ip",
     "crates/platform/observability/monitor",
     "crates/platform/storage/database",
@@ -132,6 +133,7 @@ burncloud-database-user = { path = "crates/identity/database-user" }
 burncloud-download = { path = "crates/platform/storage/download" }
 burncloud-download-aria2 = { path = "crates/platform/storage/download-aria2" }
 burncloud-installer = { path = "crates/platform/lifecycle/installer" }
+burncloud-node-runtime = { path = "crates/platform/node" }
 burncloud-router = { path = "crates/traffic/router" }
 burncloud-router-aws = { path = "crates/traffic/router-aws" }
 burncloud-server = { path = "crates/interfaces/server" }
