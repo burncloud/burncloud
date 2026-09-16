@@ -1,0 +1,1 @@
+//! admin/revenue page boundary.
