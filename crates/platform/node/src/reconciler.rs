@@ -1,9 +1,7 @@
 use crate::{InvalidNodeTransition, NodeState, NodeStateMachine};
 
 /// One orchestration action requested by the Node runtime skeleton.
-///
-/// The reconciler chooses *which stage comes next*. It does not implement the
-/// stage and does not make BurnCloud Model / Provider / Route decisions.
+/// The reconciler chooses the next stage; it does not implement that stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReconcileAction {
     Resolve,
@@ -16,7 +14,7 @@ pub enum ReconcileAction {
     Noop,
 }
 
-/// Evidence reported back after an action has been executed by its owner.
+/// Evidence reported by the owner that actually executed a stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReconcileEvidence {
     Resolved,
@@ -35,26 +33,18 @@ pub struct DemandReconciler {
 }
 
 impl Default for DemandReconciler {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 impl DemandReconciler {
     pub const fn new() -> Self {
-        Self {
-            machine: NodeStateMachine::new(),
-        }
+        Self { machine: NodeStateMachine::new() }
     }
 
-    pub const fn state(&self) -> NodeState {
-        self.machine.state()
-    }
+    pub const fn state(&self) -> NodeState { self.machine.state() }
 
-    /// Start or continue convergence and return the next required action.
     pub fn next_action(&mut self) -> Result<ReconcileAction, InvalidNodeTransition> {
         use NodeState::*;
-
         match self.machine.state() {
             Absent => {
                 self.machine.transition(Resolving)?;
@@ -68,16 +58,14 @@ impl DemandReconciler {
             }
             PreparingRuntime => Ok(ReconcileAction::PrepareRuntime),
             Starting => Ok(ReconcileAction::StartProcess),
+            WaitingReady => Ok(ReconcileAction::VerifyReadiness),
             Ready => Ok(ReconcileAction::AttachToExistingRouter),
             Routable => Ok(ReconcileAction::Noop),
             Failed | Unhealthy => Ok(ReconcileAction::Recover),
         }
     }
 
-    /// Accept evidence from a stage owner and advance the state machine.
-    ///
-    /// Evidence never means "sleep finished". Real implementations must only
-    /// emit evidence after the corresponding stage has actually succeeded.
+    /// Evidence is proof, not elapsed time. A spawned process is not READY.
     pub fn observe(&mut self, evidence: ReconcileEvidence) -> Result<(), InvalidNodeTransition> {
         use NodeState::*;
         use ReconcileEvidence::*;
@@ -86,21 +74,15 @@ impl DemandReconciler {
             (Resolving, Resolved) => PreparingArtifact,
             (PreparingArtifact, ArtifactPrepared) => ArtifactReady,
             (PreparingRuntime, RuntimePrepared) => Starting,
-            (Starting, ProcessStarted) => Ready,
-            (Ready, ReadinessVerified) => Ready,
+            (Starting, ProcessStarted) => WaitingReady,
+            (WaitingReady, ReadinessVerified) => Ready,
             (Ready, RouterAttached) => Routable,
             (Ready | Routable, BecameUnhealthy) => Unhealthy,
-            (Resolving | PreparingArtifact | PreparingRuntime | Starting | Unhealthy, Failed) => Failed,
-            (Failed, Resolved) => Resolving,
-            (from, _) => {
-                return Err(InvalidNodeTransition { from, to: from });
-            }
+            (Resolving | PreparingArtifact | PreparingRuntime | Starting | WaitingReady | Unhealthy, Failed) => Failed,
+            (from, _) => return Err(InvalidNodeTransition { from, to: from }),
         };
 
-        if next != self.machine.state() {
-            self.machine.transition(next)?;
-        }
-        Ok(())
+        self.machine.transition(next)
     }
 
     pub fn retry(&mut self) -> Result<(), InvalidNodeTransition> {
