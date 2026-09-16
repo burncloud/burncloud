@@ -4,34 +4,25 @@
 /// BurnCloud model/provider/router business decisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum NodeState {
-    /// Nothing has been requested or prepared yet.
     #[default]
     Absent,
-    /// A higher-level owner is resolving what should run.
     Resolving,
-    /// Required local artifacts are being prepared.
     PreparingArtifact,
-    /// Required local artifacts are ready.
     ArtifactReady,
-    /// The local execution runtime is being prepared.
     PreparingRuntime,
-    /// The local process is being started.
+    /// The local process is being spawned.
     Starting,
-    /// The process passed readiness checks.
+    /// The process exists, but readiness has not yet been proven.
+    WaitingReady,
+    /// Readiness evidence has been observed.
     Ready,
-    /// The ready local capability has been attached to the existing BurnCloud routing path.
+    /// Attached to the existing BurnCloud routing path.
     Routable,
-    /// A recoverable or terminal preparation/runtime step failed.
     Failed,
-    /// A previously ready workload is no longer healthy.
     Unhealthy,
 }
 
 impl NodeState {
-    /// Returns whether the skeleton permits a direct transition.
-    ///
-    /// The future reconciler must advance through these edges rather than
-    /// skipping intermediate evidence-producing states.
     pub const fn can_transition_to(self, next: Self) -> bool {
         use NodeState::*;
 
@@ -45,8 +36,10 @@ impl NodeState {
                 | (ArtifactReady, PreparingRuntime)
                 | (PreparingRuntime, Starting)
                 | (PreparingRuntime, Failed)
-                | (Starting, Ready)
+                | (Starting, WaitingReady)
                 | (Starting, Failed)
+                | (WaitingReady, Ready)
+                | (WaitingReady, Failed)
                 | (Ready, Routable)
                 | (Ready, Unhealthy)
                 | (Routable, Unhealthy)
@@ -81,7 +74,6 @@ impl std::fmt::Display for InvalidNodeTransition {
 
 impl std::error::Error for InvalidNodeTransition {}
 
-/// Minimal state holder for the future reconciler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NodeStateMachine {
     state: NodeState,
@@ -98,12 +90,8 @@ impl NodeStateMachine {
 
     pub fn transition(&mut self, next: NodeState) -> Result<(), InvalidNodeTransition> {
         if !self.state.can_transition_to(next) {
-            return Err(InvalidNodeTransition {
-                from: self.state,
-                to: next,
-            });
+            return Err(InvalidNodeTransition { from: self.state, to: next });
         }
-
         self.state = next;
         Ok(())
     }
