@@ -7,6 +7,7 @@ use axum::{middleware, routing::get, Router};
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
+use burncloud_node_runtime::NodeRuntime;
 use burncloud_router::create_router_app;
 use burncloud_router::price_sync::SyncResult;
 use burncloud_service_monitor::SystemMonitorService;
@@ -152,6 +153,12 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
     let db = Arc::new(db);
+
+    // Attach the local Node runtime to the existing BurnCloud process before
+    // the unified HTTP gateway is built. The Node runtime must never bind its
+    // own API port or create a second Router/Server.
+    let node_context = NodeRuntime::new().start();
+    debug_assert!(node_context.started());
 
     let app = create_app(db, enable_liveview, jwt_secret, internal_secret).await?;
 
