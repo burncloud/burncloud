@@ -1,5 +1,9 @@
 use async_trait::async_trait;
 
+#[path = "local_attachment_adapter.rs"]
+mod adapter;
+pub use adapter::ExistingRouterLocalAttacher;
+
 /// A local inference capability that has already passed runtime readiness.
 ///
 /// Traffic owns the contract for making that capability visible to the existing
