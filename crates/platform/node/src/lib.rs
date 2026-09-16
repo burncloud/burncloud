@@ -2,6 +2,7 @@ mod context;
 mod contracts;
 mod fake;
 mod lifecycle;
+mod reconciler;
 mod state;
 
 pub use context::NodeContext;
@@ -11,6 +12,7 @@ pub use contracts::{
 };
 pub use fake::{FakeHardwareProbe, FakeProcessManager};
 pub use lifecycle::NodeRuntime;
+pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
 pub use state::{InvalidNodeTransition, NodeState, NodeStateMachine};
 
 /// Node runtime skeleton invariant:
