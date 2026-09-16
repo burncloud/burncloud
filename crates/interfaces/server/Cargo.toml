@@ -14,7 +14,6 @@ categories = ["web-programming"]
 [dependencies]
 tokio.workspace = true
 anyhow.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
@@ -44,7 +43,6 @@ dirs = { workspace = true }
 sha2.workspace = true
 
 [dev-dependencies]
-async-trait.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 tempfile = { workspace = true }
 burncloud-service-user = { workspace = true }
