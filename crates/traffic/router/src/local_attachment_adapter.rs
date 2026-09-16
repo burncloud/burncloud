@@ -1,5 +1,5 @@
 use crate::local_attachment::{
-    LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError,
+    LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttachmentId,
 };
 use async_trait::async_trait;
 use burncloud_common::types::{Channel, ChannelType};
@@ -61,19 +61,20 @@ impl LocalRouteAttacher for ExistingRouterLocalAttacher {
     async fn attach(
         &self,
         attachment: LocalRouteAttachment,
-    ) -> Result<(), LocalRouteAttachmentError> {
+    ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError> {
         let mut channel = Self::build_channel(&attachment);
-        ChannelProviderModel::create(self.db.as_ref(), &mut channel)
+        let channel_id = ChannelProviderModel::create(self.db.as_ref(), &mut channel)
             .await
             .map_err(|error| LocalRouteAttachmentError::AttachFailed(error.to_string()))?;
-        Ok(())
+        Ok(LocalRouteAttachmentId(channel_id))
     }
 
-    async fn detach(&self, _model: &str) -> Result<(), LocalRouteAttachmentError> {
-        // Detach needs a stable ownership identity, not a model-name delete.
-        // Keep this fail-closed until the contract carries the created channel id.
-        Err(LocalRouteAttachmentError::DetachFailed(
-            "detach requires stable local channel identity".to_string(),
-        ))
+    async fn detach(
+        &self,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> Result<(), LocalRouteAttachmentError> {
+        ChannelProviderModel::delete(self.db.as_ref(), attachment_id.0)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))
     }
 }
