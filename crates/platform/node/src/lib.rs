@@ -1,3 +1,4 @@
+mod composition;
 mod context;
 mod contracts;
 mod fake;
@@ -5,6 +6,7 @@ mod lifecycle;
 mod reconciler;
 mod state;
 
+pub use composition::NodeComposition;
 pub use context::NodeContext;
 pub use contracts::{
     AcceleratorKind, AcceleratorProfile, HardwareProbe, HardwareProbeError, HardwareProfile,
