@@ -14,6 +14,10 @@ pub struct LocalRouteAttachment {
     pub base_url: String,
 }
 
+/// Stable identity of the existing BurnCloud channel created for a local route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LocalRouteAttachmentId(pub i32);
+
 #[derive(Debug, thiserror::Error)]
 pub enum LocalRouteAttachmentError {
     #[error("local route attachment failed: {0}")]
@@ -29,7 +33,10 @@ pub trait LocalRouteAttacher: Send + Sync {
     async fn attach(
         &self,
         attachment: LocalRouteAttachment,
-    ) -> Result<(), LocalRouteAttachmentError>;
+    ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError>;
 
-    async fn detach(&self, model: &str) -> Result<(), LocalRouteAttachmentError>;
+    async fn detach(
+        &self,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> Result<(), LocalRouteAttachmentError>;
 }
