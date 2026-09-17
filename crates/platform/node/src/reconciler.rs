@@ -78,7 +78,10 @@ impl DemandReconciler {
             (WaitingReady, ReadinessVerified) => Ready,
             (Ready, RouterAttached) => Routable,
             (Ready | Routable, BecameUnhealthy) => Unhealthy,
-            (Resolving | PreparingArtifact | PreparingRuntime | Starting | WaitingReady | Unhealthy, Failed) => Failed,
+            (
+                Resolving | PreparingArtifact | PreparingRuntime | Starting | WaitingReady | Unhealthy,
+                ReconcileEvidence::Failed,
+            ) => NodeState::Failed,
             (from, _) => return Err(InvalidNodeTransition { from, to: from }),
         };
 
