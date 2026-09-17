@@ -4,16 +4,17 @@ use burncloud_node_runtime::{
     NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget,
     ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
+use burncloud_service_models::{FakeModelResolver, ModelResolutionRequest, ModelResolver};
 
-/// Phase-0.5 acceptance: each machine-level evidence item must follow a
-/// successful fake capability call. Tests may not simply claim that artifact,
-/// runtime, process, readiness, or health work happened.
+/// Phase-0.5 acceptance: every success evidence item must follow a successful
+/// call to the capability that owns that work. Tests may not claim work happened.
 #[tokio::test]
 async fn fake_golden_path_converges_from_absent_to_routable() {
     let mut node = NodeComposition::start(
         FakeHardwareProbe::default(),
         FakeProcessManager::new(4242),
     );
+    let resolver = FakeModelResolver;
     let artifacts = FakeArtifactPreparer;
     let runtimes = FakeRuntimePreparer;
     let readiness = FakeReadinessProbe;
@@ -25,16 +26,20 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     let hardware = node.hardware().inspect().await.expect("fake hardware probe");
     assert!(!hardware.accelerators.is_empty());
 
-    // Resolution remains higher-level business evidence; platform/node must not
-    // own model/variant selection.
     assert_eq!(node.reconciler_mut().next_action().unwrap(), ReconcileAction::Resolve);
+    let resolved = resolver
+        .resolve(ModelResolutionRequest { model: "qwen-4b".into() })
+        .await
+        .expect("supply-owned fake model resolution");
+    assert_eq!(resolved.runtime, "llama.cpp");
+    assert!(resolved.artifact.ends_with(".gguf"));
     node.reconciler_mut().observe(ReconcileEvidence::Resolved).unwrap();
 
     assert_eq!(node.reconciler_mut().next_action().unwrap(), ReconcileAction::PrepareArtifact);
     let artifact = artifacts
         .prepare(ArtifactRequest {
-            source: "fake-model.gguf".into(),
-            expected_digest: Some("fake-digest".into()),
+            source: resolved.artifact,
+            expected_digest: None,
         })
         .await
         .expect("fake artifact preparation");
@@ -44,8 +49,8 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     assert_eq!(node.reconciler_mut().next_action().unwrap(), ReconcileAction::PrepareRuntime);
     let runtime = runtimes
         .prepare(RuntimeRequest {
-            runtime: "llama.cpp".into(),
-            version: Some("fake-v0".into()),
+            runtime: resolved.runtime,
+            version: None,
         })
         .await
         .expect("fake runtime preparation");
@@ -64,7 +69,6 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     assert_eq!(handle.pid, 4242);
     node.reconciler_mut().observe(ReconcileEvidence::ProcessStarted).unwrap();
 
-    // Spawn is not readiness. The readiness port must succeed first.
     assert_eq!(node.reconciler().state(), NodeState::WaitingReady);
     assert_eq!(node.reconciler_mut().next_action().unwrap(), ReconcileAction::VerifyReadiness);
     let target = ReadinessTarget {
@@ -76,9 +80,6 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
 
     assert_eq!(node.reconciler().state(), NodeState::Ready);
     assert!(!node.reconciler().state().is_serving());
-
-    // Router attachment evidence is still owned by the application/traffic
-    // integration proven by the existing-router acceptance test.
     assert_eq!(
         node.reconciler_mut().next_action().unwrap(),
         ReconcileAction::AttachToExistingRouter
@@ -88,7 +89,6 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     assert_eq!(node.reconciler().state(), NodeState::Routable);
     assert!(node.reconciler().state().is_serving());
     assert_eq!(node.reconciler_mut().next_action().unwrap(), ReconcileAction::Noop);
-
     node.processes().stop(handle).await.expect("fake process stop");
 }
 
@@ -98,28 +98,27 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
         FakeHardwareProbe::default(),
         FakeProcessManager::default(),
     );
+    let resolver = FakeModelResolver;
     let artifacts = FakeArtifactPreparer;
     let runtimes = FakeRuntimePreparer;
     let readiness = FakeReadinessProbe;
 
     node.reconciler_mut().next_action().unwrap();
+    let resolved = resolver
+        .resolve(ModelResolutionRequest { model: "qwen-4b".into() })
+        .await
+        .unwrap();
     node.reconciler_mut().observe(ReconcileEvidence::Resolved).unwrap();
 
     artifacts
-        .prepare(ArtifactRequest {
-            source: "fake-model.gguf".into(),
-            expected_digest: None,
-        })
+        .prepare(ArtifactRequest { source: resolved.artifact, expected_digest: None })
         .await
         .unwrap();
     node.reconciler_mut().observe(ReconcileEvidence::ArtifactPrepared).unwrap();
 
     node.reconciler_mut().next_action().unwrap();
     runtimes
-        .prepare(RuntimeRequest {
-            runtime: "llama.cpp".into(),
-            version: None,
-        })
+        .prepare(RuntimeRequest { runtime: resolved.runtime, version: None })
         .await
         .unwrap();
     node.reconciler_mut().observe(ReconcileEvidence::RuntimePrepared).unwrap();
@@ -135,9 +134,7 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
     node.reconciler_mut().observe(ReconcileEvidence::ProcessStarted).unwrap();
 
     readiness
-        .wait_ready(ReadinessTarget {
-            endpoint: "http://127.0.0.1:39122/health".into(),
-        })
+        .wait_ready(ReadinessTarget { endpoint: "http://127.0.0.1:39122/health".into() })
         .await
         .unwrap();
     node.reconciler_mut().observe(ReconcileEvidence::ReadinessVerified).unwrap();
