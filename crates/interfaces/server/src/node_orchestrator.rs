@@ -3,6 +3,7 @@ use burncloud_node_runtime::{
     RuntimePreparer,
 };
 use burncloud_service_models::ModelResolver;
+use std::fmt;
 
 /// Desired local model capability requested from the Node application layer.
 ///
@@ -24,11 +25,20 @@ impl ModelDemand {
     }
 }
 
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelDemandError {
-    #[error("model demand must name a model")]
     EmptyModel,
 }
+
+impl fmt::Display for ModelDemandError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyModel => formatter.write_str("model demand must name a model"),
+        }
+    }
+}
+
+impl std::error::Error for ModelDemandError {}
 
 /// Application-level composition root for BurnCloud Node.
 ///
