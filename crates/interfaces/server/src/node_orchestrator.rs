@@ -70,6 +70,7 @@ where M: ModelResolver, T: RuntimeAdapter, H: HardwareProbe, A: ArtifactPreparer
                             self.machine.reconciler_mut().observe(ReconcileEvidence::Resolved)?;
                         }
                         ModelResolutionOutcome::Unsupported(reason) => {
+                            self.machine.reconciler_mut().observe(ReconcileEvidence::LocalUnsupported)?;
                             return Ok(LocalPreparationOutcome::Unsupported(reason));
                         }
                     }
@@ -172,8 +173,10 @@ mod tests {
         let mut orchestrator = NodeOrchestrator::new(UnsupportedResolver, FakeRuntimeAdapter, machine);
         let outcome = orchestrator.prepare_until_ready(ModelDemand::new("qwen-4b").unwrap()).await.unwrap();
         assert!(matches!(outcome, LocalPreparationOutcome::Unsupported(_)));
-        assert_eq!(orchestrator.machine().reconciler().state(), NodeState::Resolving);
+        assert_eq!(orchestrator.machine().reconciler().state(), NodeState::LocalUnsupported);
+        assert_eq!(orchestrator.machine_mut().reconciler_mut().next_action().unwrap(), ReconcileAction::Noop);
         assert!(!orchestrator.machine().reconciler().state().is_serving());
+        assert!(!orchestrator.machine().reconciler().state().is_failure());
         assert!(orchestrator.active_plan().is_none());
     }
 }
