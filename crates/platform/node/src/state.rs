@@ -7,6 +7,9 @@ pub enum NodeState {
     #[default]
     Absent,
     Resolving,
+    /// Supply proved that this machine has no acceptable local variant.
+    /// This is a settled non-serving outcome, not a runtime failure.
+    LocalUnsupported,
     PreparingArtifact,
     ArtifactReady,
     PreparingRuntime,
@@ -29,6 +32,7 @@ impl NodeState {
         matches!(
             (self, next),
             (Absent, Resolving)
+                | (Resolving, LocalUnsupported)
                 | (Resolving, PreparingArtifact)
                 | (Resolving, Failed)
                 | (PreparingArtifact, ArtifactReady)
@@ -47,6 +51,7 @@ impl NodeState {
                 | (Unhealthy, Failed)
                 | (Failed, Resolving)
                 | (Failed, Absent)
+                | (LocalUnsupported, Absent)
                 | (Routable, Absent)
         )
     }

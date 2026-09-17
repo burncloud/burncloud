@@ -18,6 +18,7 @@ pub enum ReconcileAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReconcileEvidence {
     Resolved,
+    LocalUnsupported,
     ArtifactPrepared,
     RuntimePrepared,
     ProcessStarted,
@@ -51,6 +52,7 @@ impl DemandReconciler {
                 Ok(ReconcileAction::Resolve)
             }
             Resolving => Ok(ReconcileAction::Resolve),
+            LocalUnsupported => Ok(ReconcileAction::Noop),
             PreparingArtifact => Ok(ReconcileAction::PrepareArtifact),
             ArtifactReady => {
                 self.machine.transition(PreparingRuntime)?;
@@ -72,6 +74,7 @@ impl DemandReconciler {
 
         let next = match (self.machine.state(), evidence) {
             (Resolving, Resolved) => PreparingArtifact,
+            (Resolving, ReconcileEvidence::LocalUnsupported) => NodeState::LocalUnsupported,
             (PreparingArtifact, ArtifactPrepared) => ArtifactReady,
             (PreparingRuntime, RuntimePrepared) => Starting,
             (Starting, ProcessStarted) => WaitingReady,
