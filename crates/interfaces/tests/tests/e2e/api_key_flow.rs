@@ -21,8 +21,12 @@ async fn test_access_page_loads() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
     let _ = browser.screenshot("access-page-load");
 }
 
@@ -33,8 +37,12 @@ async fn test_api_key_list_rendering() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
     assert!(
@@ -53,14 +61,20 @@ async fn test_api_key_create_button() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
-    browser.click_by_name("button:创建", 5_000)
+    browser
+        .click_by_name("button:创建", 5_000)
         .or_else(|_| browser.click_by_name("button:添加", 3_000))
         .expect("Failed to click create button");
 
-    let result = browser.wait_for_text("名称", 10_000)
+    let result = browser
+        .wait_for_text("名称", 10_000)
         .or_else(|_| browser.wait_for_text("Key", 5_000));
     assert!(result.is_ok(), "Create form should appear");
     let _ = browser.screenshot("api-key-create-button");
@@ -73,13 +87,18 @@ async fn test_api_key_create_form_validation() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:创建", 5_000);
     let _ = browser.wait_for_text("名称", 5_000);
 
-    browser.click("button[type='submit']")
+    browser
+        .click("button[type='submit']")
         .or_else(|_| browser.click_by_name("button:提交", 3_000))
         .expect("Failed to submit");
 
@@ -98,20 +117,31 @@ async fn test_api_key_create_success() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:创建", 5_000);
     let _ = browser.wait_for_text("名称", 5_000);
 
-    let key_name = format!("test_key_{}", &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]);
-    browser.fill("input", &key_name).expect("Failed to fill key name");
+    let key_name = format!(
+        "test_key_{}",
+        &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
+    );
+    browser
+        .fill("input", &key_name)
+        .expect("Failed to fill key name");
 
-    browser.click("button[type='submit']")
+    browser
+        .click("button[type='submit']")
         .or_else(|_| browser.click_by_name("button:提交", 3_000))
         .expect("Failed to submit");
 
-    let result = browser.wait_for_text("成功", 10_000)
+    let result = browser
+        .wait_for_text("成功", 10_000)
         .or_else(|_| browser.wait_for_text("sk-", 5_000))
         .or_else(|_| browser.wait_for_text("访问凭证", 5_000));
     assert!(result.is_ok(), "API Key creation should succeed");
@@ -127,11 +157,16 @@ async fn test_api_key_status_display() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_status = snap.text.contains("启用") || snap.text.contains("禁用") || snap.text.contains("状态");
+    let has_status =
+        snap.text.contains("启用") || snap.text.contains("禁用") || snap.text.contains("状态");
     let _ = browser.screenshot("api-key-status-display");
 }
 
@@ -142,8 +177,12 @@ async fn test_api_key_enable_disable() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:启用", 3_000);
     let _ = browser.click_by_name("button:禁用", 3_000);
@@ -159,8 +198,12 @@ async fn test_api_key_rotate_button() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:轮换", 5_000);
     let _ = browser.click_by_name("button:Rotate", 3_000);
@@ -174,14 +217,19 @@ async fn test_api_key_rotate_confirmation() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:轮换", 5_000);
     let _ = browser.wait_for_text("确认", 5_000);
 
     let _ = browser.click_by_name("button:确认", 3_000);
-    let result = browser.wait_for_text("成功", 10_000)
+    let result = browser
+        .wait_for_text("成功", 10_000)
         .or_else(|_| browser.wait_for_text("sk-", 5_000));
     let _ = browser.screenshot("api-key-rotate-confirm");
 }
@@ -195,8 +243,12 @@ async fn test_api_key_delete_button() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:删除", 5_000);
     let _ = browser.screenshot("api-key-delete-button");
@@ -209,8 +261,12 @@ async fn test_api_key_delete_cancel() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:删除", 5_000);
     let _ = browser.wait_for_text("确认", 3_000);
@@ -230,8 +286,12 @@ async fn test_api_key_ip_whitelist_button() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/access").expect("Failed to open access page");
-    browser.wait_for_text("访问凭证", 10_000).expect("Access page did not load");
+    browser
+        .open("/console/access")
+        .expect("Failed to open access page");
+    browser
+        .wait_for_text("访问凭证", 10_000)
+        .expect("Access page did not load");
 
     let _ = browser.click_by_name("button:白名单", 5_000);
     let _ = browser.click_by_name("button:IP", 3_000);

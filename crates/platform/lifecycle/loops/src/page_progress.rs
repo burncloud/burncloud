@@ -26,11 +26,7 @@ impl PageProgress {
 
     pub fn with_scope(only_pages: Option<Vec<String>>) -> Self {
         let order = effective_order(only_pages.as_deref());
-        let first = order
-            .first()
-            .copied()
-            .unwrap_or(PAGE_ORDER[0])
-            .to_string();
+        let first = order.first().copied().unwrap_or(PAGE_ORDER[0]).to_string();
         Self {
             completed_pages: Vec::new(),
             current_page: first,
@@ -118,11 +114,7 @@ impl PageProgress {
         self.completed_pages
             .retain(|p| order.iter().any(|k| *k == p));
         if !order.iter().any(|p| *p == self.current_page.as_str()) {
-            self.current_page = order
-                .first()
-                .copied()
-                .unwrap_or(PAGE_ORDER[0])
-                .to_string();
+            self.current_page = order.first().copied().unwrap_or(PAGE_ORDER[0]).to_string();
         }
         Ok(())
     }
