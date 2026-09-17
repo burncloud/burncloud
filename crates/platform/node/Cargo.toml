@@ -12,3 +12,7 @@ workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+burncloud-service-models.workspace = true
+tokio.workspace = true
