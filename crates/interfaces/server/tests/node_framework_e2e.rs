@@ -1,6 +1,7 @@
 use burncloud_node_runtime::{
     FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimePreparer, NodeComposition, NodeState, ReconcileEvidence,
+    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+    ReconcileEvidence,
 };
 use burncloud_server::node_attachment::{
     attach_ready_node_route, begin_detached_route_recovery, detach_unhealthy_node_route,
@@ -10,6 +11,7 @@ use burncloud_service_models::FakeModelResolver;
 
 fn fake_orchestrator() -> NodeOrchestrator<
     FakeModelResolver,
+    FakeRuntimeAdapter,
     FakeHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
@@ -19,6 +21,7 @@ fn fake_orchestrator() -> NodeOrchestrator<
 > {
     NodeOrchestrator::new(
         FakeModelResolver,
+        FakeRuntimeAdapter,
         NodeComposition::start(
             FakeHardwareProbe::default(),
             FakeArtifactPreparer,
@@ -66,9 +69,8 @@ async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() 
     begin_detached_route_recovery(node.machine_mut().reconciler_mut(), detached).unwrap();
     assert_eq!(node.machine().reconciler().state(), NodeState::Starting);
 
-    // Recovery reuses the same application orchestrator and owner ports. The
-    // framework emits ProcessStarted and ReadinessVerified only after the fake
-    // capability calls complete.
+    // Recovery reuses the exact runtime-owned ProcessPlan that produced the
+    // original process; application code does not invent a command or port.
     node.recover_until_ready().await.unwrap();
     assert_eq!(node.machine().reconciler().state(), NodeState::Ready);
 

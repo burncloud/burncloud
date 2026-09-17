@@ -3,8 +3,9 @@ use async_trait::async_trait;
 use crate::{
     AcceleratorKind, AcceleratorProfile, ArtifactPrepareError, ArtifactPreparer, ArtifactRequest,
     HardwareProbe, HardwareProbeError, HardwareProfile, HealthError, HealthProbe, PreparedArtifact,
-    PreparedRuntime, ProcessError, ProcessHandle, ProcessManager, ProcessSpec, ReadinessError,
-    ReadinessProbe, ReadinessTarget, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    PreparedRuntime, ProcessError, ProcessHandle, ProcessManager, ProcessPlan, ProcessSpec,
+    ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter, RuntimeAdapterError,
+    RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
 
 /// Deterministic fake used to assemble and test the Node skeleton before real
@@ -74,6 +75,31 @@ impl RuntimePreparer for FakeRuntimePreparer {
     ) -> Result<PreparedRuntime, RuntimePrepareError> {
         Ok(PreparedRuntime {
             executable: format!("/fake/runtime/{}/server", request.runtime),
+        })
+    }
+}
+
+/// Deterministic fake runtime adapter. It owns fake launch details so the
+/// application orchestrator never invents process arguments or endpoints.
+#[derive(Debug, Clone, Default)]
+pub struct FakeRuntimeAdapter;
+
+#[async_trait]
+impl RuntimeAdapter for FakeRuntimeAdapter {
+    async fn plan(
+        &self,
+        runtime: &PreparedRuntime,
+        artifact: &PreparedArtifact,
+    ) -> Result<ProcessPlan, RuntimeAdapterError> {
+        Ok(ProcessPlan {
+            process: ProcessSpec {
+                program: runtime.executable.clone(),
+                args: vec![artifact.local_path.clone()],
+            },
+            readiness: ReadinessTarget {
+                endpoint: "http://127.0.0.1:39122/health".into(),
+            },
+            local_endpoint: "http://127.0.0.1:39122".into(),
         })
     }
 }

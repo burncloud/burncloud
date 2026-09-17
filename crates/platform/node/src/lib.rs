@@ -21,13 +21,13 @@ pub use contracts::{
 };
 pub use fake::{
     FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimePreparer,
+    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
 };
 pub use lifecycle::NodeRuntime;
 pub use preparation::{
     ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, HealthError, HealthProbe,
-    PreparedArtifact, PreparedRuntime, ReadinessError, ReadinessProbe, ReadinessTarget,
-    RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    PreparedArtifact, PreparedRuntime, ProcessPlan, ReadinessError, ReadinessProbe, ReadinessTarget,
+    RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
 pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
 pub use state::{InvalidNodeTransition, NodeState, NodeStateMachine};
