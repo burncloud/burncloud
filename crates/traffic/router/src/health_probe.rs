@@ -13,8 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::interval;
 
-use crate::response_quality::{ResponseQuality, ResponseQualityDetector};
-use crate::smart_circuit_breaker::{CircuitState, SmartCircuitBreaker, TripLevel};
+use crate::smart_circuit_breaker::{CircuitState, SmartCircuitBreaker};
 
 /// Configuration for health probing
 #[derive(Debug, Clone)]
@@ -48,7 +47,8 @@ impl Default for HealthProbeConfig {
                 "claude-3-haiku".to_string(),
                 "gemini-pro".to_string(),
             ],
-            probe_body: r#"{"messages":[{"role":"user","content":"hi"}],"max_tokens":1}"#.to_string(),
+            probe_body: r#"{"messages":[{"role":"user","content":"hi"}],"max_tokens":1}"#
+                .to_string(),
         }
     }
 }
@@ -102,8 +102,6 @@ pub struct HealthProbeManager {
     config: HealthProbeConfig,
     /// Per-channel probe state
     probe_states: RwLock<HashMap<i32, ChannelProbeState>>,
-    /// Response quality detector
-    detector: ResponseQualityDetector,
     /// Last probe results (for monitoring)
     last_results: RwLock<Vec<ProbeResult>>,
 }
@@ -114,7 +112,6 @@ impl HealthProbeManager {
         Self {
             config,
             probe_states: RwLock::new(HashMap::new()),
-            detector: ResponseQualityDetector::new(),
             last_results: RwLock::new(Vec::new()),
         }
     }
@@ -247,7 +244,7 @@ pub enum ProbeAction {
 
 /// Background task that periodically checks for channels needing probing
 pub struct ProbeScheduler {
-    manager: Arc<HealthProbeManager>,
+    _manager: Arc<HealthProbeManager>,
     running: Arc<AtomicBool>,
 }
 
@@ -255,7 +252,7 @@ impl ProbeScheduler {
     /// Create a new probe scheduler
     pub fn new(manager: Arc<HealthProbeManager>) -> Self {
         Self {
-            manager,
+            _manager: manager,
             running: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -266,21 +263,20 @@ impl ProbeScheduler {
             return; // Already running
         }
 
-        let manager = Arc::clone(&self.manager);
         let running = Arc::clone(&self.running);
 
         tokio::spawn(async move {
             let mut ticker = interval(Duration::from_secs(10));
-            
+
             while running.load(Ordering::Relaxed) {
                 ticker.tick().await;
-                
+
                 // In a real implementation, this would:
                 // 1. Get all channels with Half-Open breakers
                 // 2. For each channel, check if probing is needed
                 // 3. Send probe request through the appropriate adaptor
                 // 4. Record the result
-                
+
                 tracing::debug!("Probe scheduler tick");
             }
         });
@@ -315,7 +311,11 @@ mod tests {
         let channel_id = 1;
 
         // Initial state
-        assert!(manager.should_probe(channel_id, &SmartCircuitBreaker::with_defaults()).await);
+        assert!(
+            manager
+                .should_probe(channel_id, &SmartCircuitBreaker::with_defaults())
+                .await
+        );
 
         // Start probe
         manager.start_probe(channel_id).await;
@@ -325,7 +325,7 @@ mod tests {
         // Force to HalfOpen
         breaker.trip("test", Duration::from_secs(60));
         // Need to wait for half-open transition
-        
+
         // Record success
         let result = ProbeResult {
             channel_id,
@@ -336,7 +336,7 @@ mod tests {
             error: None,
             timestamp: 0,
         };
-        
+
         let action = manager.record_probe_result(result).await;
         assert_eq!(action, ProbeAction::CloseCircuit);
     }
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn test_probe_model_selection() {
         let manager = HealthProbeManager::with_defaults();
-        
+
         // Should select first preferred model
         let models = vec!["gpt-3.5-turbo".to_string(), "gpt-4".to_string()];
         let selected = manager.get_probe_model(&models);

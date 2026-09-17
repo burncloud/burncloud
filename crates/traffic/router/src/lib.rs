@@ -368,6 +368,7 @@ fn record_upstream_success(
 ///
 /// Returns `true` if empty response was detected (caller should continue to next candidate),
 /// `false` if response has valid tokens (caller should proceed normally).
+#[allow(dead_code)]
 fn check_empty_response(
     state: &AppState,
     upstream: &Upstream,
@@ -577,6 +578,7 @@ fn sanitize_request_headers(headers: &axum::http::HeaderMap) -> Option<String> {
 }
 
 /// Sanitize response body for logging: truncate if too large.
+#[allow(dead_code)]
 fn sanitize_response_body(body: &[u8]) -> (Option<String>, bool) {
     if body.is_empty() {
         return (None, false);
@@ -2715,7 +2717,6 @@ async fn proxy_logic(
                                 continue;
                             }
 
-                            let counter_clone = Arc::clone(&token_counter);
                             let counter_clone = Arc::clone(&token_counter);
 
                             // Clone state and upstream info for post-stream empty response check
