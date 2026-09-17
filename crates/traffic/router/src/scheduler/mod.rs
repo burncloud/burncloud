@@ -8,6 +8,7 @@
 mod combined;
 #[cfg(test)]
 mod passthrough;
+pub mod route_preference;
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
