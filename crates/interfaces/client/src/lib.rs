@@ -93,15 +93,30 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
 pub fn launch_gui_with_tray() {
     use dioxus::desktop::{Config, LogicalPosition, LogicalSize, WindowBuilder};
 
+    let icon = dioxus::desktop::icon_from_memory::<dioxus::desktop::tao::window::Icon>(
+        include_bytes!("../assets/favicon.ico"),
+    )
+    .expect("failed to decode the embedded BurnCloud window icon");
     let window = WindowBuilder::new()
-        .with_title("BurnCloud App")
+        .with_title("BurnCloud")
+        .with_window_icon(Some(icon.clone()))
         .with_inner_size(LogicalSize::new(1440.0, 900.0))
         .with_position(LogicalPosition::new(100.0, 80.0))
         .with_visible(true)
         .with_maximized(true)
         .with_resizable(true)
         .with_decorations(false);
-    let config = Config::new().with_window(window);
+    #[cfg(target_os = "windows")]
+    let window = {
+        use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
+
+        window.with_taskbar_icon(Some(icon))
+    };
+    let config = Config::new()
+        .with_window(window)
+        .with_on_window(|window, _| window.set_decorations(false));
+    #[cfg(target_os = "windows")]
+    let config = config.with_tray_icon_show_window_on_click(false);
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)
         .launch(AppWithDesktop);
@@ -110,33 +125,8 @@ pub fn launch_gui_with_tray() {
 #[cfg(feature = "desktop")]
 #[component]
 fn AppWithDesktop() -> Element {
-    let window = dioxus::desktop::use_window();
-
     #[cfg(target_os = "windows")]
-    {
-        use_effect(move || {
-            std::thread::spawn(move || {
-                if let Err(error) = desktop_chrome::start_tray() {
-                    eprintln!("Failed to start BurnCloud system tray: {error}");
-                }
-            });
-        });
-
-        let tray_window = window.clone();
-        use_effect(move || {
-            let poll_window = tray_window.clone();
-            spawn(async move {
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    if desktop_chrome::should_show_window() {
-                        poll_window.set_visible(false);
-                        poll_window.set_visible(true);
-                        poll_window.set_focus();
-                    }
-                }
-            });
-        });
-    }
+    desktop_chrome::use_windows_tray(dioxus::desktop::use_window());
 
     rsx! { app::App {} }
 }
