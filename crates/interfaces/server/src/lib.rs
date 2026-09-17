@@ -2,6 +2,7 @@ pub mod api;
 pub mod logging;
 pub mod node_attachment;
 pub mod node_orchestrator;
+pub mod node_request;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::http::HeaderName;
