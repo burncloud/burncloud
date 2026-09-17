@@ -7,8 +7,9 @@ use burncloud_node_runtime::NodeState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeRequestDisposition {
     /// Existing BurnCloud routing truth already has a candidate. Serve it now;
-    /// local preparation must stay invisible to the customer.
-    UseExistingProvider,
+    /// the candidate may be an external Provider or a READY local Node channel.
+    /// Candidate preference remains owned by Traffic/Scheduler, never Node.
+    UseExistingRoute,
     /// No existing candidate can serve the request, but Node is actively
     /// converging toward a local route.
     ModelPreparing(NodeState),
@@ -18,14 +19,15 @@ pub enum NodeRequestDisposition {
 
 /// Decide the request result without changing routing truth.
 ///
-/// Existing Provider candidates always win. Node state is consulted only when
-/// the existing ModelRouter has no candidate for the model.
+/// Existing ModelRouter candidates always win. Node state is consulted only
+/// when the existing ModelRouter has no candidate for the model. This layer
+/// must not decide local-vs-external preference; that belongs to Traffic.
 pub const fn node_request_disposition(
     has_existing_candidate: bool,
     node_state: NodeState,
 ) -> NodeRequestDisposition {
     if has_existing_candidate {
-        return NodeRequestDisposition::UseExistingProvider;
+        return NodeRequestDisposition::UseExistingRoute;
     }
 
     match node_state {
@@ -44,7 +46,7 @@ pub const fn node_request_disposition(
     }
 }
 
-/// Stable client contract for the "no Provider yet, local model is preparing"
+/// Stable client contract for the "no route yet, local model is preparing"
 /// case. The request returns immediately instead of waiting for download/startup.
 pub fn model_preparing_response(model: &str, state: NodeState) -> Response<Body> {
     let body = serde_json::json!({
@@ -69,23 +71,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn existing_provider_always_serves_even_while_local_model_is_preparing() {
+    fn existing_route_always_serves_even_while_local_model_is_preparing() {
         for state in [
             NodeState::Resolving,
             NodeState::PreparingArtifact,
             NodeState::PreparingRuntime,
             NodeState::Starting,
             NodeState::WaitingReady,
+            NodeState::Routable,
         ] {
             assert_eq!(
                 node_request_disposition(true, state),
-                NodeRequestDisposition::UseExistingProvider
+                NodeRequestDisposition::UseExistingRoute
             );
         }
     }
 
     #[test]
-    fn missing_provider_reports_model_preparing_for_every_active_prepare_state() {
+    fn missing_route_reports_model_preparing_for_every_active_prepare_state() {
         for state in [
             NodeState::Resolving,
             NodeState::PreparingArtifact,
@@ -103,12 +106,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_provider_is_not_called_preparing_when_node_is_not_converging() {
+    fn missing_route_is_not_called_preparing_when_node_is_not_converging() {
         for state in [
             NodeState::Absent,
             NodeState::LocalUnsupported,
             NodeState::Failed,
             NodeState::Unhealthy,
+            NodeState::Routable,
         ] {
             assert_eq!(
                 node_request_disposition(false, state),
