@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::response_quality::{ResponseQuality, ResponseQualityDetector, UpstreamErrorType};
+use crate::response_quality::{ResponseQuality, ResponseQualityDetector};
 
 /// Default error rate threshold for circuit breaking (10%)
 pub const DEFAULT_ERROR_RATE_THRESHOLD: f64 = 0.1;
@@ -99,7 +99,6 @@ struct RequestRecord {
     timestamp: Instant,
     is_success: bool,
     latency_ms: u64,
-    health_score: f64,
 }
 
 /// Configuration for smart circuit breaker
@@ -175,7 +174,6 @@ impl SmartCircuitBreaker {
             timestamp: now,
             is_success,
             latency_ms,
-            health_score,
         });
 
         // Remove old records
@@ -224,7 +222,10 @@ impl SmartCircuitBreaker {
                     } else {
                         TripLevel::Channel {
                             until: reset_at,
-                            reason: self.trip_reason.clone().unwrap_or_else(|| "Circuit open".to_string()),
+                            reason: self
+                                .trip_reason
+                                .clone()
+                                .unwrap_or_else(|| "Circuit open".to_string()),
                         }
                     }
                 } else {
@@ -394,8 +395,6 @@ impl MultiLevelCircuitBreaker {
 
     /// Check if request is allowed for a model
     pub fn allow_request(&self, model: &str) -> TripLevel {
-        let now = Instant::now();
-
         // Check channel-level first
         match self.channel_breaker.allow_request() {
             TripLevel::Channel { until, reason } => {
@@ -431,12 +430,11 @@ impl MultiLevelCircuitBreaker {
     /// Get health score for a model
     pub fn get_health_score(&self, model: Option<&str>) -> f64 {
         match model {
-            Some(m) => {
-                self.model_breakers
-                    .get(m)
-                    .map(|b| b.get_health_score())
-                    .unwrap_or_else(|| self.channel_breaker.get_health_score())
-            }
+            Some(m) => self
+                .model_breakers
+                .get(m)
+                .map(|b| b.get_health_score())
+                .unwrap_or_else(|| self.channel_breaker.get_health_score()),
             None => self.channel_breaker.get_health_score(),
         }
     }
@@ -588,7 +586,6 @@ mod tests {
     }
 
     #[test]
-
     #[test]
     fn test_multi_level_breaker() {
         let config = SmartCircuitBreakerConfig {
