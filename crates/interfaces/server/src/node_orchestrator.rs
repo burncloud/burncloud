@@ -25,8 +25,6 @@ impl fmt::Display for ModelDemandError {
 }
 impl std::error::Error for ModelDemandError {}
 
-/// Temporary application-owned facts carried between owner ports while one
-/// demand converges. These are wiring receipts, not a second source of truth.
 #[derive(Debug, Default)]
 struct DemandWork {
     resolved: Option<ResolvedModel>,
@@ -57,11 +55,6 @@ where
     pub const fn machine(&self) -> &NodeComposition<H, A, R, P, Q, E> { &self.machine }
     pub fn machine_mut(&mut self) -> &mut NodeComposition<H, A, R, P, Q, E> { &mut self.machine }
 
-    /// Drive machine preparation from a desired model until it is READY.
-    ///
-    /// Every state transition is emitted only after the owner port succeeds.
-    /// Router attachment is intentionally not dispatched here; Traffic owns it
-    /// and S0-13 will add that application seam together with detach/recovery.
     pub async fn prepare_until_ready(&mut self, demand: ModelDemand) -> anyhow::Result<()> {
         let mut work = DemandWork::default();
         loop {
@@ -108,7 +101,38 @@ where
                     self.machine.reconciler_mut().observe(ReconcileEvidence::ReadinessVerified)?;
                 }
                 ReconcileAction::AttachToExistingRouter => return Ok(()),
-                ReconcileAction::Recover => anyhow::bail!("recovery dispatch belongs to S0-13"),
+                ReconcileAction::Recover => anyhow::bail!("route must be detached before recovery begins"),
+                ReconcileAction::Noop => return Ok(()),
+            }
+        }
+    }
+
+    /// Drive only the machine-owned recovery rail after application wiring has
+    /// proved the old Traffic attachment was detached and moved state to Starting.
+    pub async fn recover_until_ready(&mut self) -> anyhow::Result<()> {
+        let mut readiness = None;
+        loop {
+            match self.machine.reconciler_mut().next_action()? {
+                ReconcileAction::StartProcess => {
+                    // Recovery does not resolve/download again. The real process
+                    // owner will replace this skeleton ProcessSpec construction.
+                    self.machine.processes().start(ProcessSpec {
+                        program: "recovery-runtime".into(),
+                        args: Vec::new(),
+                    }).await?;
+                    readiness = Some(ReadinessTarget {
+                        endpoint: "http://127.0.0.1:39122/health".into(),
+                    });
+                    self.machine.reconciler_mut().observe(ReconcileEvidence::ProcessStarted)?;
+                }
+                ReconcileAction::VerifyReadiness => {
+                    let target = readiness.clone().ok_or_else(|| anyhow::anyhow!("recovery readiness target receipt missing"))?;
+                    self.machine.readiness().wait_ready(target.clone()).await?;
+                    if !self.machine.health().is_healthy(target).await? { anyhow::bail!("recovered runtime is unhealthy"); }
+                    self.machine.reconciler_mut().observe(ReconcileEvidence::ReadinessVerified)?;
+                }
+                ReconcileAction::AttachToExistingRouter => return Ok(()),
+                other => anyhow::bail!("unexpected recovery action: {other:?}"),
             }
         }
     }
