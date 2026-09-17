@@ -134,7 +134,7 @@ pub fn BuyerOverview() -> Element {
                                 td { class: "mono", {format!("{} ms", item.latency_ms)} }
                                 td { class: "mono strong", {currency(item.cost)} }
                                 td { {status_cell(item.status, copy)} }
-                                td { class: "align-right", a { role: "button", class: "table-link", href: "/buyer/playground", {copy.test_playground} } }
+                                td { class: "align-right", Link { role: "button", class: "table-link", to: "/buyer/playground", {copy.test_playground} } }
                             }
                         } }
                     } }
