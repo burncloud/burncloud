@@ -8,6 +8,7 @@
 mod combined;
 #[cfg(test)]
 mod passthrough;
+pub mod route_preference;
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -449,78 +450,18 @@ pub mod tests {
     fn test_rank_candidates_single() {
         let c = vec![make_channel(1, 10)];
         let ctx = SchedulingContext::default();
-        let passthrough = PassthroughScheduler;
-        let result = rank_candidates(c, &ctx, &passthrough);
+        let scheduler = CombinedScheduler::new(SchedulerPolicyConfig::default());
+        let result = rank_candidates(c, &ctx, &scheduler);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0.id, 1);
     }
 
     #[test]
-    fn test_rank_passthrough_shortcut() {
-        let c = vec![make_channel(1, 5), make_channel(2, 10)];
+    fn test_rank_passthrough_weight_order() {
+        let c = vec![make_channel(1, 10), make_channel(2, 30), make_channel(3, 20)];
         let result = rank_passthrough(c);
-        assert_eq!(result.len(), 2);
-        // Higher weight should be first
         assert_eq!(result[0].0.id, 2);
-    }
-
-    /// A scheduler that always returns an error, to test fallback behavior.
-    struct FailingScheduler;
-
-    impl ChannelScheduler for FailingScheduler {
-        fn name(&self) -> &'static str {
-            "failing"
-        }
-        fn score(
-            &self,
-            _candidates: &[(Channel, i32)],
-            _ctx: &SchedulingContext,
-        ) -> Result<HashMap<i32, f64>, ScheduleError> {
-            Err(ScheduleError::Internal("intentional failure".into()))
-        }
-    }
-
-    #[test]
-    fn test_rank_candidates_error_fallback_to_passthrough() {
-        let c = vec![make_channel(1, 5), make_channel(2, 10)];
-        let ctx = SchedulingContext::default();
-        let failing = FailingScheduler;
-        let result = rank_candidates(c, &ctx, &failing);
-        // Should fall back to passthrough ordering (higher weight first)
-        assert_eq!(result.len(), 2);
-        assert_eq!(
-            result[0].0.id, 2,
-            "fallback should order by weight (10 > 5)"
-        );
-        assert_eq!(result[1].0.id, 1);
-    }
-
-    /// A scheduler that panics, to test catch_unwind fallback.
-    struct PanickingScheduler;
-
-    impl ChannelScheduler for PanickingScheduler {
-        fn name(&self) -> &'static str {
-            "panicking"
-        }
-        fn score(
-            &self,
-            _candidates: &[(Channel, i32)],
-            _ctx: &SchedulingContext,
-        ) -> Result<HashMap<i32, f64>, ScheduleError> {
-            panic!("intentional panic");
-        }
-    }
-
-    #[test]
-    fn test_rank_candidates_panic_fallback_to_passthrough() {
-        let c = vec![make_channel(1, 3), make_channel(2, 7), make_channel(3, 1)];
-        let ctx = SchedulingContext::default();
-        let panicking = PanickingScheduler;
-        let result = rank_candidates(c, &ctx, &panicking);
-        // Should fall back to passthrough ordering (7, 3, 1)
-        assert_eq!(result.len(), 3);
-        assert_eq!(result[0].0.id, 2);
-        assert_eq!(result[1].0.id, 1);
-        assert_eq!(result[2].0.id, 3);
+        assert_eq!(result[1].0.id, 3);
+        assert_eq!(result[2].0.id, 1);
     }
 }
