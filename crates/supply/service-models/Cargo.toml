@@ -13,6 +13,8 @@ burncloud-download.workspace = true
 tokio.workspace = true
 serde.workspace = true
 reqwest.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
 
 [[example]]
 name = "service-models-usage"

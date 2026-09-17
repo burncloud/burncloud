@@ -2,6 +2,12 @@
 //!
 //! 模型服务层，提供简洁的增删改查接口
 
+mod resolver;
+
+pub use resolver::{
+    FakeModelResolver, ModelResolutionError, ModelResolutionRequest, ModelResolver, ResolvedModel,
+};
+
 use burncloud_database_model::ModelDatabase;
 use burncloud_service_setting::{SettingDatabase, SettingService};
 use serde::Deserialize;
@@ -258,21 +264,3 @@ pub async fn build_download_url(
         host, model_id, path
     ))
 }
-
-/// 下载模型文件
-pub async fn download_model_file(
-    model_id: &str,
-    path: &str,
-) -> std::result::Result<String, Box<dyn std::error::Error>> {
-    let url = build_download_url(model_id, path).await?;
-    let base_dir = get_data_dir().await?;
-    let download_dir = format!("{}/{}", base_dir, model_id);
-
-    let manager = burncloud_download::DownloadManager::new().await?;
-    let gid = manager.add_download(&url, Some(&download_dir)).await?;
-
-    Ok(gid)
-}
-
-/// 重新导出常用类型
-pub use burncloud_database_model::{DatabaseError, ModelInfo};
