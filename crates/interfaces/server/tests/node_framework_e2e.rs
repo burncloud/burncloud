@@ -96,7 +96,10 @@ async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() 
     .unwrap();
     assert_eq!(second_route, 202);
     assert_eq!(node.machine().reconciler().state(), NodeState::Routable);
-    assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Routable));
+    assert_eq!(
+        request_state.state_for("qwen-4b"),
+        Some(NodeState::Routable)
+    );
 }
 
 #[tokio::test]
@@ -114,19 +117,21 @@ async fn failed_detach_cannot_enter_recovery_rail() {
     .await
     .unwrap();
 
-    let result =
-        detach_unhealthy_node_route(
-            node.machine_mut().reconciler_mut(),
-            "qwen-4b",
-            &request_state,
-            route,
-            |_| async { anyhow::bail!("detach failed") },
-        )
-        .await;
+    let result = detach_unhealthy_node_route(
+        node.machine_mut().reconciler_mut(),
+        "qwen-4b",
+        &request_state,
+        route,
+        |_| async { anyhow::bail!("detach failed") },
+    )
+    .await;
 
     assert!(result.is_err());
     assert_eq!(node.machine().reconciler().state(), NodeState::Unhealthy);
-    assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Unhealthy));
+    assert_eq!(
+        request_state.state_for("qwen-4b"),
+        Some(NodeState::Unhealthy)
+    );
     assert!(!node.machine().reconciler().state().is_serving());
 }
 
