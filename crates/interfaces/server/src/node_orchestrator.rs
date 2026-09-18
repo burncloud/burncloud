@@ -1,25 +1,40 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, HardwareProbe, HealthProbe, NodeComposition, PreparedArtifact,
-    PreparedRuntime, ProcessHandle, ProcessManager, ProcessPlan, ReadinessProbe, ReadinessTarget,
-    ReconcileAction, ReconcileEvidence, RuntimeAdapter, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparer, ArtifactRequest, HardwareProbe, HealthProbe, NodeComposition,
+    PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager, ProcessPlan, ReadinessProbe,
+    ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimeAdapter, RuntimePreparer,
+    RuntimeRequest,
 };
 use burncloud_service_models::{
-    LocalModelUnsupported, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,
+    LocalModelUnsupported, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
+    ResolvedModel,
 };
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModelDemand { pub model: String }
+pub struct ModelDemand {
+    pub model: String,
+}
 impl ModelDemand {
     pub fn new(model: impl Into<String>) -> Result<Self, ModelDemandError> {
-        let model = model.into(); let model = model.trim();
-        if model.is_empty() { return Err(ModelDemandError::EmptyModel); }
-        Ok(Self { model: model.into() })
+        let model = model.into();
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(ModelDemandError::EmptyModel);
+        }
+        Ok(Self {
+            model: model.into(),
+        })
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModelDemandError { EmptyModel }
-impl fmt::Display for ModelDemandError { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str("model demand must name a model") } }
+pub enum ModelDemandError {
+    EmptyModel,
+}
+impl fmt::Display for ModelDemandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("model demand must name a model")
+    }
+}
 impl std::error::Error for ModelDemandError {}
 
 /// Result of the optional local-supply preparation rail.
@@ -32,97 +47,198 @@ pub enum LocalPreparationOutcome {
 
 #[derive(Debug, Default)]
 struct DemandWork {
-    resolved: Option<ResolvedModel>, artifact: Option<PreparedArtifact>, runtime: Option<PreparedRuntime>,
-    process: Option<ProcessHandle>, readiness: Option<ReadinessTarget>,
+    resolved: Option<ResolvedModel>,
+    artifact: Option<PreparedArtifact>,
+    runtime: Option<PreparedRuntime>,
+    process: Option<ProcessHandle>,
+    readiness: Option<ReadinessTarget>,
 }
 
 #[derive(Debug)]
 pub struct NodeOrchestrator<M, T, H, A, R, P, Q, E> {
-    resolver: M, runtime_adapter: T, machine: NodeComposition<H, A, R, P, Q, E>,
+    resolver: M,
+    runtime_adapter: T,
+    machine: NodeComposition<H, A, R, P, Q, E>,
     active_plan: Option<ProcessPlan>,
 }
 
 impl<M, T, H, A, R, P, Q, E> NodeOrchestrator<M, T, H, A, R, P, Q, E>
-where M: ModelResolver, T: RuntimeAdapter, H: HardwareProbe, A: ArtifactPreparer, R: RuntimePreparer,
-      P: ProcessManager, Q: ReadinessProbe, E: HealthProbe,
+where
+    M: ModelResolver,
+    T: RuntimeAdapter,
+    H: HardwareProbe,
+    A: ArtifactPreparer,
+    R: RuntimePreparer,
+    P: ProcessManager,
+    Q: ReadinessProbe,
+    E: HealthProbe,
 {
-    pub const fn new(resolver: M, runtime_adapter: T, machine: NodeComposition<H, A, R, P, Q, E>) -> Self {
-        Self { resolver, runtime_adapter, machine, active_plan: None }
+    pub const fn new(
+        resolver: M,
+        runtime_adapter: T,
+        machine: NodeComposition<H, A, R, P, Q, E>,
+    ) -> Self {
+        Self {
+            resolver,
+            runtime_adapter,
+            machine,
+            active_plan: None,
+        }
     }
-    pub const fn resolver(&self) -> &M { &self.resolver }
-    pub const fn machine(&self) -> &NodeComposition<H, A, R, P, Q, E> { &self.machine }
-    pub fn machine_mut(&mut self) -> &mut NodeComposition<H, A, R, P, Q, E> { &mut self.machine }
-    pub const fn active_plan(&self) -> Option<&ProcessPlan> { self.active_plan.as_ref() }
+    pub const fn resolver(&self) -> &M {
+        &self.resolver
+    }
+    pub const fn machine(&self) -> &NodeComposition<H, A, R, P, Q, E> {
+        &self.machine
+    }
+    pub fn machine_mut(&mut self) -> &mut NodeComposition<H, A, R, P, Q, E> {
+        &mut self.machine
+    }
+    pub const fn active_plan(&self) -> Option<&ProcessPlan> {
+        self.active_plan.as_ref()
+    }
 
     /// Prepare an optional local supply. If Supply says the machine cannot run
     /// the model, stop immediately: no artifact, runtime, process or route work
     /// is performed. The existing request/router path is deliberately untouched.
-    pub async fn prepare_until_ready(&mut self, demand: ModelDemand) -> anyhow::Result<LocalPreparationOutcome> {
+    pub async fn prepare_until_ready(
+        &mut self,
+        demand: ModelDemand,
+    ) -> anyhow::Result<LocalPreparationOutcome> {
         let mut work = DemandWork::default();
         loop {
             match self.machine.reconciler_mut().next_action()? {
                 ReconcileAction::Resolve => {
                     let hardware = self.machine.hardware().inspect().await?;
-                    let accelerator_memory_bytes = hardware.accelerators.iter().filter_map(|a| a.memory_bytes).max();
-                    match self.resolver.resolve(ModelResolutionRequest { model: demand.model.clone(), accelerator_memory_bytes }).await? {
+                    let accelerator_memory_bytes = hardware
+                        .accelerators
+                        .iter()
+                        .filter_map(|a| a.memory_bytes)
+                        .max();
+                    match self
+                        .resolver
+                        .resolve(ModelResolutionRequest {
+                            model: demand.model.clone(),
+                            accelerator_memory_bytes,
+                        })
+                        .await?
+                    {
                         ModelResolutionOutcome::Local(resolved) => {
                             work.resolved = Some(resolved);
-                            self.machine.reconciler_mut().observe(ReconcileEvidence::Resolved)?;
+                            self.machine
+                                .reconciler_mut()
+                                .observe(ReconcileEvidence::Resolved)?;
                         }
                         ModelResolutionOutcome::Unsupported(reason) => {
-                            self.machine.reconciler_mut().observe(ReconcileEvidence::LocalUnsupported)?;
+                            self.machine
+                                .reconciler_mut()
+                                .observe(ReconcileEvidence::LocalUnsupported)?;
                             return Ok(LocalPreparationOutcome::Unsupported(reason));
                         }
                     }
                 }
                 ReconcileAction::PrepareArtifact => {
-                    let resolved = work.resolved.as_ref().ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
-                    let artifact = self.machine.artifacts().prepare(ArtifactRequest { source: resolved.artifact_source.clone(), expected_digest: resolved.artifact_digest.clone() }).await?;
-                    if !artifact.verified { anyhow::bail!("artifact preparer returned unverified artifact"); }
+                    let resolved = work
+                        .resolved
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
+                    let artifact = self
+                        .machine
+                        .artifacts()
+                        .prepare(ArtifactRequest {
+                            source: resolved.artifact_source.clone(),
+                            expected_digest: resolved.artifact_digest.clone(),
+                        })
+                        .await?;
+                    if !artifact.verified {
+                        anyhow::bail!("artifact preparer returned unverified artifact");
+                    }
                     work.artifact = Some(artifact);
-                    self.machine.reconciler_mut().observe(ReconcileEvidence::ArtifactPrepared)?;
+                    self.machine
+                        .reconciler_mut()
+                        .observe(ReconcileEvidence::ArtifactPrepared)?;
                 }
                 ReconcileAction::PrepareRuntime => {
-                    let resolved = work.resolved.as_ref().ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
-                    let runtime = self.machine.runtimes().prepare(RuntimeRequest { runtime: resolved.runtime.clone(), version: resolved.runtime_version.clone() }).await?;
+                    let resolved = work
+                        .resolved
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
+                    let runtime = self
+                        .machine
+                        .runtimes()
+                        .prepare(RuntimeRequest {
+                            runtime: resolved.runtime.clone(),
+                            version: resolved.runtime_version.clone(),
+                        })
+                        .await?;
                     work.runtime = Some(runtime);
-                    self.machine.reconciler_mut().observe(ReconcileEvidence::RuntimePrepared)?;
+                    self.machine
+                        .reconciler_mut()
+                        .observe(ReconcileEvidence::RuntimePrepared)?;
                 }
                 ReconcileAction::StartProcess => {
-                    let runtime = work.runtime.as_ref().ok_or_else(|| anyhow::anyhow!("runtime receipt missing"))?;
-                    let artifact = work.artifact.as_ref().ok_or_else(|| anyhow::anyhow!("artifact receipt missing"))?;
+                    let runtime = work
+                        .runtime
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("runtime receipt missing"))?;
+                    let artifact = work
+                        .artifact
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("artifact receipt missing"))?;
                     let plan = self.runtime_adapter.plan(runtime, artifact).await?;
                     let handle = self.machine.processes().start(plan.process.clone()).await?;
                     work.process = Some(handle);
                     work.readiness = Some(plan.readiness.clone());
                     self.active_plan = Some(plan);
-                    self.machine.reconciler_mut().observe(ReconcileEvidence::ProcessStarted)?;
+                    self.machine
+                        .reconciler_mut()
+                        .observe(ReconcileEvidence::ProcessStarted)?;
                 }
                 ReconcileAction::VerifyReadiness => {
-                    let target = work.readiness.clone().ok_or_else(|| anyhow::anyhow!("readiness target receipt missing"))?;
+                    let target = work
+                        .readiness
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("readiness target receipt missing"))?;
                     self.machine.readiness().wait_ready(target.clone()).await?;
-                    if !self.machine.health().is_healthy(target).await? { anyhow::bail!("runtime is ready but unhealthy"); }
-                    self.machine.reconciler_mut().observe(ReconcileEvidence::ReadinessVerified)?;
+                    if !self.machine.health().is_healthy(target).await? {
+                        anyhow::bail!("runtime is ready but unhealthy");
+                    }
+                    self.machine
+                        .reconciler_mut()
+                        .observe(ReconcileEvidence::ReadinessVerified)?;
                 }
-                ReconcileAction::AttachToExistingRouter | ReconcileAction::Noop => return Ok(LocalPreparationOutcome::Ready),
-                ReconcileAction::Recover => anyhow::bail!("route must be detached before recovery begins"),
+                ReconcileAction::AttachToExistingRouter | ReconcileAction::Noop => {
+                    return Ok(LocalPreparationOutcome::Ready)
+                }
+                ReconcileAction::Recover => {
+                    anyhow::bail!("route must be detached before recovery begins")
+                }
             }
         }
     }
 
     pub async fn recover_until_ready(&mut self) -> anyhow::Result<()> {
-        let plan = self.active_plan.clone().ok_or_else(|| anyhow::anyhow!("active process plan missing"))?;
+        let plan = self
+            .active_plan
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("active process plan missing"))?;
         loop {
             match self.machine.reconciler_mut().next_action()? {
                 ReconcileAction::StartProcess => {
                     self.machine.processes().start(plan.process.clone()).await?;
-                    self.machine.reconciler_mut().observe(ReconcileEvidence::ProcessStarted)?;
+                    self.machine
+                        .reconciler_mut()
+                        .observe(ReconcileEvidence::ProcessStarted)?;
                 }
                 ReconcileAction::VerifyReadiness => {
                     let target = plan.readiness.clone();
                     self.machine.readiness().wait_ready(target.clone()).await?;
-                    if !self.machine.health().is_healthy(target).await? { anyhow::bail!("recovered runtime is unhealthy"); }
-                    self.machine.reconciler_mut().observe(ReconcileEvidence::ReadinessVerified)?;
+                    if !self.machine.health().is_healthy(target).await? {
+                        anyhow::bail!("recovered runtime is unhealthy");
+                    }
+                    self.machine
+                        .reconciler_mut()
+                        .observe(ReconcileEvidence::ReadinessVerified)?;
                 }
                 ReconcileAction::AttachToExistingRouter => return Ok(()),
                 other => anyhow::bail!("unexpected recovery action: {other:?}"),
@@ -135,17 +251,46 @@ where M: ModelResolver, T: RuntimeAdapter, H: HardwareProbe, A: ArtifactPreparer
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use burncloud_node_runtime::{FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeState};
-    use burncloud_service_models::{FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError};
+    use burncloud_node_runtime::{
+        FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
+        FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeState,
+    };
+    use burncloud_service_models::{
+        FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
+    };
 
-    fn fake_orchestrator() -> NodeOrchestrator<FakeModelResolver, FakeRuntimeAdapter, FakeHardwareProbe, FakeArtifactPreparer, FakeRuntimePreparer, FakeProcessManager, FakeReadinessProbe, FakeHealthProbe> {
-        NodeOrchestrator::new(FakeModelResolver, FakeRuntimeAdapter, NodeComposition::start(FakeHardwareProbe::default(), FakeArtifactPreparer, FakeRuntimePreparer, FakeProcessManager::default(), FakeReadinessProbe, FakeHealthProbe))
+    fn fake_orchestrator() -> NodeOrchestrator<
+        FakeModelResolver,
+        FakeRuntimeAdapter,
+        FakeHardwareProbe,
+        FakeArtifactPreparer,
+        FakeRuntimePreparer,
+        FakeProcessManager,
+        FakeReadinessProbe,
+        FakeHealthProbe,
+    > {
+        NodeOrchestrator::new(
+            FakeModelResolver,
+            FakeRuntimeAdapter,
+            NodeComposition::start(
+                FakeHardwareProbe::default(),
+                FakeArtifactPreparer,
+                FakeRuntimePreparer,
+                FakeProcessManager::default(),
+                FakeReadinessProbe,
+                FakeHealthProbe,
+            ),
+        )
     }
 
-    #[derive(Debug)] struct UnsupportedResolver;
+    #[derive(Debug)]
+    struct UnsupportedResolver;
     #[async_trait]
     impl ModelResolver for UnsupportedResolver {
-        async fn resolve(&self, request: ModelResolutionRequest) -> Result<ModelResolutionOutcome, ModelResolutionError> {
+        async fn resolve(
+            &self,
+            request: ModelResolutionRequest,
+        ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
             Ok(ModelResolutionOutcome::Unsupported(LocalModelUnsupported {
                 model: request.model,
                 reason: LocalModelUnsupportedReason::NoCompatibleVariant,
@@ -162,19 +307,52 @@ mod tests {
     #[tokio::test]
     async fn supported_demand_reaches_ready() {
         let mut orchestrator = fake_orchestrator();
-        assert_eq!(orchestrator.prepare_until_ready(ModelDemand::new("qwen-4b").unwrap()).await.unwrap(), LocalPreparationOutcome::Ready);
-        assert_eq!(orchestrator.machine().reconciler().state(), NodeState::Ready);
-        assert_eq!(orchestrator.active_plan().unwrap().local_endpoint, "http://127.0.0.1:39122");
+        assert_eq!(
+            orchestrator
+                .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+                .await
+                .unwrap(),
+            LocalPreparationOutcome::Ready
+        );
+        assert_eq!(
+            orchestrator.machine().reconciler().state(),
+            NodeState::Ready
+        );
+        assert_eq!(
+            orchestrator.active_plan().unwrap().local_endpoint,
+            "http://127.0.0.1:39122"
+        );
     }
 
     #[tokio::test]
     async fn unsupported_local_model_stops_before_any_preparation_or_route_state() {
-        let machine = NodeComposition::start(FakeHardwareProbe::default(), FakeArtifactPreparer, FakeRuntimePreparer, FakeProcessManager::default(), FakeReadinessProbe, FakeHealthProbe);
-        let mut orchestrator = NodeOrchestrator::new(UnsupportedResolver, FakeRuntimeAdapter, machine);
-        let outcome = orchestrator.prepare_until_ready(ModelDemand::new("qwen-4b").unwrap()).await.unwrap();
+        let machine = NodeComposition::start(
+            FakeHardwareProbe::default(),
+            FakeArtifactPreparer,
+            FakeRuntimePreparer,
+            FakeProcessManager::default(),
+            FakeReadinessProbe,
+            FakeHealthProbe,
+        );
+        let mut orchestrator =
+            NodeOrchestrator::new(UnsupportedResolver, FakeRuntimeAdapter, machine);
+        let outcome = orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
         assert!(matches!(outcome, LocalPreparationOutcome::Unsupported(_)));
-        assert_eq!(orchestrator.machine().reconciler().state(), NodeState::LocalUnsupported);
-        assert_eq!(orchestrator.machine_mut().reconciler_mut().next_action().unwrap(), ReconcileAction::Noop);
+        assert_eq!(
+            orchestrator.machine().reconciler().state(),
+            NodeState::LocalUnsupported
+        );
+        assert_eq!(
+            orchestrator
+                .machine_mut()
+                .reconciler_mut()
+                .next_action()
+                .unwrap(),
+            ReconcileAction::Noop
+        );
         assert!(!orchestrator.machine().reconciler().state().is_serving());
         assert!(!orchestrator.machine().reconciler().state().is_failure());
         assert!(orchestrator.active_plan().is_none());

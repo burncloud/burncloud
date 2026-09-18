@@ -20,8 +20,12 @@ async fn test_models_page_loads() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
     let _ = browser.screenshot("models-page");
 }
 
@@ -33,11 +37,16 @@ async fn test_models_filter_all() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Click "全部" or "All" filter button
-    let _ = browser.click_by_name("button:全部", 3_000)
+    let _ = browser
+        .click_by_name("button:全部", 3_000)
         .or_else(|_| browser.click_by_name("button:All", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -52,11 +61,16 @@ async fn test_models_filter_ok() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Click "正常" or "OK" filter button
-    let _ = browser.click_by_name("button:正常", 3_000)
+    let _ = browser
+        .click_by_name("button:正常", 3_000)
         .or_else(|_| browser.click_by_name("button:OK", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -71,11 +85,16 @@ async fn test_models_filter_throttle() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Click "限流" or "Throttle" filter button
-    let _ = browser.click_by_name("button:限流", 3_000)
+    let _ = browser
+        .click_by_name("button:限流", 3_000)
         .or_else(|_| browser.click_by_name("button:Throttle", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -90,11 +109,16 @@ async fn test_models_filter_down() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Click "停用" or "Down" filter button
-    let _ = browser.click_by_name("button:停用", 3_000)
+    let _ = browser
+        .click_by_name("button:停用", 3_000)
         .or_else(|_| browser.click_by_name("button:Down", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -109,11 +133,16 @@ async fn test_models_filter_maintenance() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Click "维护" or "Maintenance" filter button
-    let _ = browser.click_by_name("button:维护", 3_000)
+    let _ = browser
+        .click_by_name("button:维护", 3_000)
         .or_else(|_| browser.click_by_name("button:Maintenance", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -128,11 +157,16 @@ async fn test_models_open_create_modal() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Click "创建" or "添加" button
-    let _ = browser.click_by_name("button:创建", 5_000)
+    let _ = browser
+        .click_by_name("button:创建", 5_000)
         .or_else(|_| browser.click_by_name("button:添加", 3_000))
         .or_else(|_| browser.click_by_name("button:Create", 3_000));
 
@@ -141,7 +175,9 @@ async fn test_models_open_create_modal() {
     // Verify modal opened
     let modal_snap = browser.snapshot().expect("Failed to snapshot modal");
     assert!(
-        modal_snap.text.contains("选择") || modal_snap.text.contains("Provider") || modal_snap.text.contains("提供商"),
+        modal_snap.text.contains("选择")
+            || modal_snap.text.contains("Provider")
+            || modal_snap.text.contains("提供商"),
         "Create channel modal should open with provider selection"
     );
 
@@ -156,11 +192,16 @@ async fn test_models_select_provider_openai() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Open create modal first
-    let _ = browser.click_by_name("button:创建", 5_000)
+    let _ = browser
+        .click_by_name("button:创建", 5_000)
         .or_else(|_| browser.click_by_name("button:添加", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -173,7 +214,9 @@ async fn test_models_select_provider_openai() {
     // Verify form appeared
     let form_snap = browser.snapshot().expect("Failed to snapshot form");
     assert!(
-        form_snap.text.contains("API Key") || form_snap.text.contains("密钥") || form_snap.text.contains("Base URL"),
+        form_snap.text.contains("API Key")
+            || form_snap.text.contains("密钥")
+            || form_snap.text.contains("Base URL"),
         "Channel configuration form should appear after selecting provider"
     );
 
@@ -188,17 +231,23 @@ async fn test_models_close_create_modal() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Open create modal first
-    let _ = browser.click_by_name("button:创建", 5_000)
+    let _ = browser
+        .click_by_name("button:创建", 5_000)
         .or_else(|_| browser.click_by_name("button:添加", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
     // Close modal with Cancel button
-    let _ = browser.click_by_name("button:取消", 3_000)
+    let _ = browser
+        .click_by_name("button:取消", 3_000)
         .or_else(|_| browser.click_by_name("button:Cancel", 3_000));
 
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -221,11 +270,16 @@ async fn test_models_restart_channels() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     // Click "筛选" or "Filter" or "重启" button
-    let _ = browser.click_by_name("button:筛选", 3_000)
+    let _ = browser
+        .click_by_name("button:筛选", 3_000)
         .or_else(|_| browser.click_by_name("button:Filter", 3_000))
         .or_else(|_| browser.click_by_name("button:重启", 3_000));
 
@@ -241,20 +295,31 @@ async fn test_models_table_rendering() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open models page");
-    browser.wait_for_text("模型网络", 10_000).expect("Models page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open models page");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Models page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
 
     // Verify table structure exists
-    let has_table_headers = snap.text.contains("CHANNEL") || snap.text.contains("渠道") ||
-                            snap.text.contains("WEIGHT") || snap.text.contains("权重") ||
-                            snap.text.contains("TYPE") || snap.text.contains("类型") ||
-                            snap.text.contains("MODELS") || snap.text.contains("模型");
+    let has_table_headers = snap.text.contains("CHANNEL")
+        || snap.text.contains("渠道")
+        || snap.text.contains("WEIGHT")
+        || snap.text.contains("权重")
+        || snap.text.contains("TYPE")
+        || snap.text.contains("类型")
+        || snap.text.contains("MODELS")
+        || snap.text.contains("模型");
 
     // If channels exist, table should be present
     if !snap.text.contains("暂无") && !snap.text.contains("No channels") {
-        assert!(has_table_headers, "Channel table should have proper headers when channels exist");
+        assert!(
+            has_table_headers,
+            "Channel table should have proper headers when channels exist"
+        );
     }
 
     let _ = browser.screenshot("models-table");

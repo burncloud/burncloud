@@ -73,7 +73,11 @@ pub struct InvalidNodeTransition {
 
 impl std::fmt::Display for InvalidNodeTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid node state transition: {:?} -> {:?}", self.from, self.to)
+        write!(
+            f,
+            "invalid node state transition: {:?} -> {:?}",
+            self.from, self.to
+        )
     }
 }
 
@@ -86,7 +90,9 @@ pub struct NodeStateMachine {
 
 impl NodeStateMachine {
     pub const fn new() -> Self {
-        Self { state: NodeState::Absent }
+        Self {
+            state: NodeState::Absent,
+        }
     }
 
     pub const fn state(&self) -> NodeState {
@@ -95,7 +101,10 @@ impl NodeStateMachine {
 
     pub fn transition(&mut self, next: NodeState) -> Result<(), InvalidNodeTransition> {
         if !self.state.can_transition_to(next) {
-            return Err(InvalidNodeTransition { from: self.state, to: next });
+            return Err(InvalidNodeTransition {
+                from: self.state,
+                to: next,
+            });
         }
         self.state = next;
         Ok(())

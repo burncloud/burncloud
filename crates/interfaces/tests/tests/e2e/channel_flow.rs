@@ -21,8 +21,12 @@ async fn test_channel_list_page_loads() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
     let _ = browser.screenshot("channel-list-page");
 }
 
@@ -33,8 +37,12 @@ async fn test_channel_list_empty_state() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
     assert!(
@@ -53,14 +61,20 @@ async fn test_channel_create_form_open() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
-    browser.click_by_name("button:创建", 5_000)
+    browser
+        .click_by_name("button:创建", 5_000)
         .or_else(|_| browser.click_by_name("button:添加", 3_000))
         .expect("Failed to click create button");
 
-    let result = browser.wait_for_text("名称", 10_000)
+    let result = browser
+        .wait_for_text("名称", 10_000)
         .or_else(|_| browser.wait_for_text("类型", 5_000));
     assert!(result.is_ok(), "Create form should appear");
     let _ = browser.screenshot("channel-create-form-open");
@@ -73,13 +87,18 @@ async fn test_channel_create_form_validation() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
     let _ = browser.click_by_name("button:创建", 5_000);
     let _ = browser.wait_for_text("名称", 5_000);
 
-    browser.click("button[type='submit']")
+    browser
+        .click("button[type='submit']")
         .or_else(|_| browser.click_by_name("button:提交", 3_000))
         .expect("Failed to submit");
 
@@ -98,20 +117,31 @@ async fn test_channel_create_success() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
     let _ = browser.click_by_name("button:创建", 5_000);
     let _ = browser.wait_for_text("名称", 5_000);
 
-    let channel_name = format!("test_{}", &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]);
-    browser.fill("input", &channel_name).expect("Failed to fill channel name");
+    let channel_name = format!(
+        "test_{}",
+        &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
+    );
+    browser
+        .fill("input", &channel_name)
+        .expect("Failed to fill channel name");
 
-    browser.click("button[type='submit']")
+    browser
+        .click("button[type='submit']")
         .or_else(|_| browser.click_by_name("button:提交", 3_000))
         .expect("Failed to submit");
 
-    let result = browser.wait_for_text("成功", 10_000)
+    let result = browser
+        .wait_for_text("成功", 10_000)
         .or_else(|_| browser.wait_for_text("模型网络", 5_000));
     assert!(result.is_ok(), "Channel creation should succeed");
     let _ = browser.screenshot("channel-create-success");
@@ -126,8 +156,12 @@ async fn test_channel_edit_button_visible() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
     let _ = browser.screenshot("channel-edit-button");
@@ -142,8 +176,12 @@ async fn test_channel_delete_confirmation_dialog() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
     let _ = browser.click_by_name("button:删除", 5_000);
     let _ = browser.screenshot("channel-delete-confirm");
@@ -156,8 +194,12 @@ async fn test_channel_delete_cancel() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
     let _ = browser.click_by_name("button:删除", 5_000);
     let _ = browser.wait_for_text("确认", 3_000);
@@ -177,8 +219,12 @@ async fn test_channel_status_toggle() {
     let base_url = common::spawn_app().await;
     let (mut browser, _) = login_browser(&base_url).await;
 
-    browser.open("/console/models").expect("Failed to open channel list");
-    browser.wait_for_text("模型网络", 10_000).expect("Channel list page did not load");
+    browser
+        .open("/console/models")
+        .expect("Failed to open channel list");
+    browser
+        .wait_for_text("模型网络", 10_000)
+        .expect("Channel list page did not load");
 
     let _ = browser.click_by_name("button:启用", 3_000);
     let _ = browser.screenshot("channel-status-toggle");

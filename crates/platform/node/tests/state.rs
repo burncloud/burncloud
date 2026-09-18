@@ -17,7 +17,9 @@ fn golden_path() -> [NodeState; 8] {
 fn golden_runtime_path_reaches_routable_without_skipping_states() {
     let mut machine = NodeStateMachine::new();
     for next in golden_path() {
-        machine.transition(next).expect("golden transition must be valid");
+        machine
+            .transition(next)
+            .expect("golden transition must be valid");
     }
     assert_eq!(machine.state(), NodeState::Routable);
     assert!(machine.state().is_serving());
@@ -38,7 +40,9 @@ fn process_spawn_does_not_prove_readiness() {
 #[test]
 fn cannot_claim_ready_without_runtime_evidence() {
     let mut machine = NodeStateMachine::new();
-    let error = machine.transition(NodeState::Ready).expect_err("Absent -> Ready must be forbidden");
+    let error = machine
+        .transition(NodeState::Ready)
+        .expect_err("Absent -> Ready must be forbidden");
     assert_eq!(error.from, NodeState::Absent);
     assert_eq!(error.to, NodeState::Ready);
 }

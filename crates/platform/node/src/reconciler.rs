@@ -34,15 +34,21 @@ pub struct DemandReconciler {
 }
 
 impl Default for DemandReconciler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DemandReconciler {
     pub const fn new() -> Self {
-        Self { machine: NodeStateMachine::new() }
+        Self {
+            machine: NodeStateMachine::new(),
+        }
     }
 
-    pub const fn state(&self) -> NodeState { self.machine.state() }
+    pub const fn state(&self) -> NodeState {
+        self.machine.state()
+    }
 
     pub fn next_action(&mut self) -> Result<ReconcileAction, InvalidNodeTransition> {
         use NodeState::*;
@@ -82,7 +88,8 @@ impl DemandReconciler {
             (Ready, RouterAttached) => Routable,
             (Ready | Routable, BecameUnhealthy) => Unhealthy,
             (
-                Resolving | PreparingArtifact | PreparingRuntime | Starting | WaitingReady | Unhealthy,
+                Resolving | PreparingArtifact | PreparingRuntime | Starting | WaitingReady
+                | Unhealthy,
                 ReconcileEvidence::Failed,
             ) => NodeState::Failed,
             (from, _) => return Err(InvalidNodeTransition { from, to: from }),
@@ -95,7 +102,10 @@ impl DemandReconciler {
         match self.machine.state() {
             NodeState::Failed => self.machine.transition(NodeState::Resolving),
             NodeState::Unhealthy => self.machine.transition(NodeState::Starting),
-            state => Err(InvalidNodeTransition { from: state, to: state }),
+            state => Err(InvalidNodeTransition {
+                from: state,
+                to: state,
+            }),
         }
     }
 }

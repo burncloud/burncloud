@@ -1161,10 +1161,7 @@ impl Installer {
         let registry = resolve_npm_registry(custom_mirror.as_deref(), in_china)?;
 
         if let Some(registry) = registry.as_ref() {
-            info!(
-                "[npm] Custom registry enabled: {}",
-                registry.safe_origin()
-            );
+            info!("[npm] Custom registry enabled: {}", registry.safe_origin());
         }
 
         let mut args = vec!["install".to_string()];
@@ -1859,7 +1856,11 @@ mod tests {
 
     #[test]
     fn npm_mirror_rejects_empty_host_and_unapproved_scheme() {
-        for value in ["https://", "file:///tmp/registry", "ftp://registry.example.com"] {
+        for value in [
+            "https://",
+            "file:///tmp/registry",
+            "ftp://registry.example.com",
+        ] {
             assert!(NpmRegistry::parse(value).is_err(), "accepted {value}");
         }
     }
@@ -1876,7 +1877,10 @@ mod tests {
         ];
 
         for (os, expected_program) in [(OS::Linux, "npm"), (OS::Windows, "npm.cmd")] {
-            let platform = Platform { os, arch: Arch::X64 };
+            let platform = Platform {
+                os,
+                arch: Arch::X64,
+            };
             let command = npm_install_command(&platform, &args, "test-path");
             let actual_args: Vec<String> = command
                 .get_args()

@@ -51,21 +51,39 @@ where
         }
     }
 
-    pub const fn context(&self) -> &NodeContext { &self.context }
+    pub const fn context(&self) -> &NodeContext {
+        &self.context
+    }
 
-    pub const fn reconciler(&self) -> &DemandReconciler { &self.reconciler }
+    pub const fn reconciler(&self) -> &DemandReconciler {
+        &self.reconciler
+    }
 
-    pub fn reconciler_mut(&mut self) -> &mut DemandReconciler { &mut self.reconciler }
+    pub fn reconciler_mut(&mut self) -> &mut DemandReconciler {
+        &mut self.reconciler
+    }
 
-    pub const fn hardware(&self) -> &H { &self.hardware }
+    pub const fn hardware(&self) -> &H {
+        &self.hardware
+    }
 
-    pub const fn artifacts(&self) -> &A { &self.artifacts }
+    pub const fn artifacts(&self) -> &A {
+        &self.artifacts
+    }
 
-    pub const fn runtimes(&self) -> &R { &self.runtimes }
+    pub const fn runtimes(&self) -> &R {
+        &self.runtimes
+    }
 
-    pub const fn processes(&self) -> &P { &self.processes }
+    pub const fn processes(&self) -> &P {
+        &self.processes
+    }
 
-    pub const fn readiness(&self) -> &Q { &self.readiness }
+    pub const fn readiness(&self) -> &Q {
+        &self.readiness
+    }
 
-    pub const fn health(&self) -> &E { &self.health }
+    pub const fn health(&self) -> &E {
+        &self.health
+    }
 }

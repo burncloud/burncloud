@@ -39,7 +39,6 @@ Cargo.lock
 # Python
 *.pyc
 __pycache__
-*bundle*
 
 # ZIP files
 *.zip
