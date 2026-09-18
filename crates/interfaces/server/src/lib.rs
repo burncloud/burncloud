@@ -83,13 +83,30 @@ pub async fn create_app(
     jwt_secret: JwtSecret,
     internal_secret: InternalSecret,
 ) -> anyhow::Result<Router> {
+    create_app_with_node_request_state(
+        db,
+        enable_liveview,
+        jwt_secret,
+        internal_secret,
+        node_request::NodeRequestState::default(),
+    )
+    .await
+}
+
+#[tracing::instrument(skip(db, node_request_state))]
+pub async fn create_app_with_node_request_state(
+    db: Arc<Database>,
+    enable_liveview: bool,
+    jwt_secret: JwtSecret,
+    internal_secret: InternalSecret,
+    node_request_state: node_request::NodeRequestState,
+) -> anyhow::Result<Router> {
     let monitor = Arc::new(SystemMonitorService::new());
     // Start auto collection in background
     let _ = monitor.start_auto_update().await;
 
     // Keep the Node runtime and its request-visible status alive with the server.
     let node_context = NodeRuntime::new().start();
-    let node_request_state = node_request::NodeRequestState::default();
     let route_miss_state = node_request_state.clone();
 
     // 3. Data Plane Router (Fallback) — must be created first to get force_sync_tx
