@@ -293,7 +293,10 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert_eq!(reconciler.state(), NodeState::Unhealthy);
-        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Unhealthy));
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
         assert!(!reconciler.state().is_serving());
     }
 }
