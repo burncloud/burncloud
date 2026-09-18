@@ -208,7 +208,7 @@ const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 const HTTP_TCP_KEEPALIVE_SECS: u64 = 30;
 
 pub use scheduler::SchedulingRequest;
-pub use state::AppState;
+pub use state::{AppState, RouteMissResponder};
 
 /// Data collected during request processing for router_request_logs table.
 /// Populated by proxy_logic and sent asynchronously to the database.
@@ -769,6 +769,18 @@ pub async fn create_router_app(
     Router,
     mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
 )> {
+    create_router_app_with_route_miss(db, jwt_secret, Arc::new(|_| None)).await
+}
+
+pub async fn create_router_app_with_route_miss(
+    db: Arc<Database>,
+    jwt_secret: burncloud_service_user::JwtSecret,
+    route_miss_responder: RouteMissResponder,
+) -> anyhow::Result<(
+    Router,
+    Router,
+    mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
+)> {
     let client = Client::builder()
         .connect_timeout(std::time::Duration::from_secs(HTTP_CONNECT_TIMEOUT_SECS))
         .timeout(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
@@ -938,6 +950,7 @@ pub async fn create_router_app(
         log_tx,
         request_log_tx,
         model_router,
+        route_miss_responder,
         channel_state_tracker,
         adaptor_factory,
         api_version_detector,
@@ -2288,6 +2301,24 @@ async fn proxy_logic(
     }
 
     if candidates.is_empty() {
+        if let Some(model) = model_name {
+            if let Some(response) = (state.route_miss_responder)(model) {
+                let final_status = response.status();
+                return ProxyResult {
+                    response,
+                    upstream_id: None,
+                    final_status,
+                    pricing_region: None,
+                    video_task_id: None,
+                    shaper_outcome: None,
+                    routing_decision: None,
+                    sched_request_color: shaper_color,
+                    error_type: Some("router_reject".to_string()),
+                    request_log_data: None,
+                };
+            }
+        }
+
         // Return proper Anthropic-style error for Claude Code compatibility
         let error_body = serde_json::json!({
             "error": {
