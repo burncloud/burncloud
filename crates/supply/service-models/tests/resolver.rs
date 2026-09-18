@@ -14,7 +14,9 @@ async fn fake_resolver_returns_runtime_and_artifact_choice() {
 
     let resolved = match outcome {
         ModelResolutionOutcome::Local(resolved) => resolved,
-        ModelResolutionOutcome::Unsupported(reason) => panic!("fake unexpectedly unsupported: {reason:?}"),
+        ModelResolutionOutcome::Unsupported(reason) => {
+            panic!("fake unexpectedly unsupported: {reason:?}")
+        }
     };
     assert_eq!(resolved.model, "qwen-4b");
     assert_eq!(resolved.runtime, "llama.cpp");

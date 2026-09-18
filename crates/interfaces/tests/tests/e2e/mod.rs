@@ -10,12 +10,12 @@
     clippy::to_string_in_format_args,
     clippy::redundant_pattern_matching
 )]
+pub mod aesthetic_acceptance;
 pub mod agent_browser;
 pub mod api_key_flow;
 pub mod auth_flow;
 pub mod channel_flow;
 pub mod console_pages;
-pub mod aesthetic_acceptance;
 pub mod css_visual_acceptance;
 pub mod design_tokens;
 pub mod guest_pages;
@@ -43,7 +43,10 @@ pub fn setup_browser() -> Option<()> {
 /// Click a button in Dioxus LiveView using dispatchEvent.
 /// Dioxus uses custom event handling via data-dioxus-id attributes.
 /// Standard .click() methods don't trigger Dioxus event handlers correctly.
-pub fn dioxus_click(browser: &mut AgentBrowser, selector: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn dioxus_click(
+    browser: &mut AgentBrowser,
+    selector: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let js = format!(
         r#"
         (function() {{
@@ -199,10 +202,7 @@ pub async fn resolve_admin_credentials(base_url: &str) -> (String, String) {
         .await
         .expect("Failed to register testadmin2");
 
-    let body: serde_json::Value = reg_resp
-        .json()
-        .await
-        .unwrap_or_else(|_| json!({}));
+    let body: serde_json::Value = reg_resp.json().await.unwrap_or_else(|_| json!({}));
     eprintln!("resolve_admin_credentials register: {body}");
     (username.to_string(), password.to_string())
 }
@@ -212,7 +212,10 @@ pub async fn resolve_admin_credentials(base_url: &str) -> (String, String) {
 pub async fn ensure_test_admin_exists(base_url: &str) {
     let _ = resolve_admin_credentials(base_url).await;
 }
-pub fn dioxus_click_checkbox(browser: &mut AgentBrowser, selector: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn dioxus_click_checkbox(
+    browser: &mut AgentBrowser,
+    selector: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let js = format!(
         r#"
         (function() {{
@@ -257,8 +260,11 @@ pub async fn create_test_user(base_url: &str) -> (String, String) {
         .await
         .expect("Failed to create test user");
 
-    let body: serde_json::Value = resp.json().await.expect("Failed to parse register response");
-    
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .expect("Failed to parse register response");
+
     // Debug: print registration response
     eprintln!("Register response for {}: {}", username, body);
 
@@ -272,22 +278,36 @@ pub async fn create_test_user(base_url: &str) -> (String, String) {
             .send()
             .await
             .expect("Failed to login test user");
-        let login_body: serde_json::Value = login_resp.json().await.expect("Failed to parse login response");
-        let token = login_body["data"]["token"].as_str().expect("No token in login response").to_string();
+        let login_body: serde_json::Value = login_resp
+            .json()
+            .await
+            .expect("Failed to parse login response");
+        let token = login_body["data"]["token"]
+            .as_str()
+            .expect("No token in login response")
+            .to_string();
         return (username, token);
     }
 
-    let token = body["data"]["token"].as_str().expect("No token in register response").to_string();
+    let token = body["data"]["token"]
+        .as_str()
+        .expect("No token in register response")
+        .to_string();
     (username, token)
 }
 
 pub fn test_page_loads(base_url: &str, path: &str, expected_text: &str, screenshot_name: &str) {
     let mut browser = AgentBrowser::new(base_url);
     browser.open(path).expect("Failed to open page");
-    browser.wait_for_text(expected_text, 10_000).unwrap_or_else(|e| {
-        let _ = browser.screenshot(&format!("FAIL-{}", screenshot_name));
-        panic!("Page {} failed to load expected text '{}': {}", path, expected_text, e);
-    });
+    browser
+        .wait_for_text(expected_text, 10_000)
+        .unwrap_or_else(|e| {
+            let _ = browser.screenshot(&format!("FAIL-{}", screenshot_name));
+            panic!(
+                "Page {} failed to load expected text '{}': {}",
+                path, expected_text, e
+            );
+        });
     let _ = browser.screenshot(screenshot_name);
 }
 
@@ -308,10 +328,7 @@ pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
     (browser, username)
 }
 
-pub async fn login_as_admin_in_browser(
-    base_url: &str,
-    browser: &mut AgentBrowser,
-) -> String {
+pub async fn login_as_admin_in_browser(base_url: &str, browser: &mut AgentBrowser) -> String {
     login_via_api_in_browser(base_url, browser)
         .await
         .expect("API auth seed for browser failed")

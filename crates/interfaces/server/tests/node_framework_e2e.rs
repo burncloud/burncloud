@@ -44,10 +44,9 @@ async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() 
     node.prepare_until_ready(demand.clone()).await.unwrap();
     assert_eq!(node.machine().reconciler().state(), NodeState::Ready);
 
-    let first_route = attach_ready_node_route(
-        node.machine_mut().reconciler_mut(),
-        || async { Ok(101_i32) },
-    )
+    let first_route = attach_ready_node_route(node.machine_mut().reconciler_mut(), || async {
+        Ok(101_i32)
+    })
     .await
     .unwrap();
     assert_eq!(first_route, 101);
@@ -74,10 +73,9 @@ async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() 
     node.recover_until_ready().await.unwrap();
     assert_eq!(node.machine().reconciler().state(), NodeState::Ready);
 
-    let second_route = attach_ready_node_route(
-        node.machine_mut().reconciler_mut(),
-        || async { Ok(202_i32) },
-    )
+    let second_route = attach_ready_node_route(node.machine_mut().reconciler_mut(), || async {
+        Ok(202_i32)
+    })
     .await
     .unwrap();
     assert_eq!(second_route, 202);
@@ -89,19 +87,17 @@ async fn failed_detach_cannot_enter_recovery_rail() {
     let demand = ModelDemand::new("qwen-4b").unwrap();
     let mut node = fake_orchestrator();
     node.prepare_until_ready(demand).await.unwrap();
-    let route = attach_ready_node_route(
-        node.machine_mut().reconciler_mut(),
-        || async { Ok(303_i32) },
-    )
+    let route = attach_ready_node_route(node.machine_mut().reconciler_mut(), || async {
+        Ok(303_i32)
+    })
     .await
     .unwrap();
 
-    let result = detach_unhealthy_node_route(
-        node.machine_mut().reconciler_mut(),
-        route,
-        |_| async { anyhow::bail!("detach failed") },
-    )
-    .await;
+    let result =
+        detach_unhealthy_node_route(node.machine_mut().reconciler_mut(), route, |_| async {
+            anyhow::bail!("detach failed")
+        })
+        .await;
 
     assert!(result.is_err());
     assert_eq!(node.machine().reconciler().state(), NodeState::Unhealthy);

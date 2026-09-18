@@ -69,11 +69,15 @@ pub fn run(opts: CssOptimizeOptions) -> anyhow::Result<i32> {
     println!();
 
     for i in 1..=opts.max_iterations {
-        println!("========== CSS iteration {i} / {} ==========", opts.max_iterations);
+        println!(
+            "========== CSS iteration {i} / {} ==========",
+            opts.max_iterations
+        );
         let check_log = run_dir.join(format!("loop-check-{i}.log"));
         let mut logger = LoopLogger::for_iteration(i, Some(&check_log))?;
 
-        let (naming_ok, _, _) = logger.timed_gate(GateCategory::CssNaming, || run_css_naming(&root));
+        let (naming_ok, _, _) =
+            logger.timed_gate(GateCategory::CssNaming, || run_css_naming(&root));
 
         let visual_ok = if opts.skip_visual {
             true
@@ -129,6 +133,10 @@ pub fn run(opts: CssOptimizeOptions) -> anyhow::Result<i32> {
 
 fn default_agent_cmd() -> PathBuf {
     std::env::var("LOCALAPPDATA")
-        .map(|appdata| PathBuf::from(appdata).join("cursor-agent").join("agent.cmd"))
+        .map(|appdata| {
+            PathBuf::from(appdata)
+                .join("cursor-agent")
+                .join("agent.cmd")
+        })
         .unwrap_or_else(|_| PathBuf::from("agent.cmd"))
 }

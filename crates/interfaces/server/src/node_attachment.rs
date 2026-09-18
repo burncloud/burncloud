@@ -63,11 +63,11 @@ where
                 .ok_or_else(|| anyhow::anyhow!("ready local runtime has no process plan"))?
                 .local_endpoint
                 .clone();
-            let attachment_id = attach_ready_node_route(
-                orchestrator.machine_mut().reconciler_mut(),
-                || attach(model, base_url),
-            )
-            .await?;
+            let attachment_id =
+                attach_ready_node_route(orchestrator.machine_mut().reconciler_mut(), || {
+                    attach(model, base_url)
+                })
+                .await?;
             Ok(LocalRouteOutcome::Routable(attachment_id))
         }
     }
@@ -117,7 +117,9 @@ mod tests {
         let mut reconciler = DemandReconciler::new();
         assert_eq!(reconciler.next_action().unwrap(), ReconcileAction::Resolve);
         reconciler.observe(ReconcileEvidence::Resolved).unwrap();
-        reconciler.observe(ReconcileEvidence::ArtifactPrepared).unwrap();
+        reconciler
+            .observe(ReconcileEvidence::ArtifactPrepared)
+            .unwrap();
         assert_eq!(
             reconciler.next_action().unwrap(),
             ReconcileAction::PrepareRuntime

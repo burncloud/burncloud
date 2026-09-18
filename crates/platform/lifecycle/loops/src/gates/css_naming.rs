@@ -188,15 +188,13 @@ pub fn run_css_naming(root: &Path) -> anyhow::Result<(bool, Vec<String>)> {
                     }
                     let label = rule.label;
                     violations += 1;
-                    if !lines.iter().any(|l| l.starts_with("::error::") && l.contains(label)) {
+                    if !lines
+                        .iter()
+                        .any(|l| l.starts_with("::error::") && l.contains(label))
+                    {
                         lines.push(format!("::error::{label}"));
                     }
-                    lines.push(format!(
-                        "{}:{}:{}",
-                        rel,
-                        line_num + 1,
-                        line.trim()
-                    ));
+                    lines.push(format!("{}:{}:{}", rel, line_num + 1, line.trim()));
                 }
             }
         }
