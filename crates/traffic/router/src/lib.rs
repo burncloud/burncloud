@@ -2074,6 +2074,9 @@ async fn proxy_logic(
 
     // Model Routing
     let mut candidates: Vec<Upstream> = Vec::new();
+    // True only when ModelRouter itself returned zero candidates for the model.
+    // Later protocol/path filtering must not be reclassified as a Node route miss.
+    let mut model_router_missed = false;
     // L6 Observability: routing decision from route_with_scheduler.
     // Used by the priority chain to compute layer_decision for RouterLog.
     let mut sched_routing_decision: Option<model_router::RoutingDecision> = None;
@@ -2241,6 +2244,7 @@ async fn proxy_logic(
                     }
                 }
                 Ok(_) => {
+                    model_router_missed = true;
                     tracing::debug!(
                         "ModelRouter: No candidates for {} (Group: {})",
                         model,
@@ -2301,7 +2305,8 @@ async fn proxy_logic(
     }
 
     if candidates.is_empty() {
-        if let Some(model) = model_name {
+        if model_router_missed {
+            if let Some(model) = model_name {
             if let Some(response) = (state.route_miss_responder)(model) {
                 let final_status = response.status();
                 return ProxyResult {
@@ -2317,6 +2322,7 @@ async fn proxy_logic(
                     request_log_data: None,
                 };
             }
+        }
         }
 
         // Return proper Anthropic-style error for Claude Code compatibility
