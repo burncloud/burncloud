@@ -1,4 +1,5 @@
 use crate::node_orchestrator::{LocalPreparationOutcome, ModelDemand, NodeOrchestrator};
+use crate::node_request::NodeRequestState;
 use burncloud_node_runtime::{
     ArtifactPreparer, DemandReconciler, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe,
     ReconcileEvidence, RuntimeAdapter, RuntimePreparer,
@@ -21,6 +22,8 @@ pub enum LocalRouteOutcome<T> {
 /// only after it succeeds.
 pub async fn attach_ready_node_route<T, F, Fut>(
     reconciler: &mut DemandReconciler,
+    model: &str,
+    request_state: &NodeRequestState,
     attach: F,
 ) -> anyhow::Result<T>
 where
@@ -29,6 +32,7 @@ where
 {
     let attachment_id = attach().await?;
     reconciler.observe(ReconcileEvidence::RouterAttached)?;
+    request_state.publish(model, reconciler.state());
     Ok(attachment_id)
 }
 
@@ -63,11 +67,15 @@ where
                 .ok_or_else(|| anyhow::anyhow!("ready local runtime has no process plan"))?
                 .local_endpoint
                 .clone();
-            let attachment_id =
-                attach_ready_node_route(orchestrator.machine_mut().reconciler_mut(), || {
-                    attach(model, base_url)
-                })
-                .await?;
+            let request_state = orchestrator.request_state();
+            let attach_model = model.clone();
+            let attachment_id = attach_ready_node_route(
+                orchestrator.machine_mut().reconciler_mut(),
+                &model,
+                &request_state,
+                || attach(attach_model, base_url),
+            )
+            .await?;
             Ok(LocalRouteOutcome::Routable(attachment_id))
         }
     }
@@ -81,6 +89,8 @@ where
 /// a route that was never removed.
 pub async fn detach_unhealthy_node_route<T, F, Fut>(
     reconciler: &mut DemandReconciler,
+    model: &str,
+    request_state: &NodeRequestState,
     attachment_id: T,
     detach: F,
 ) -> anyhow::Result<DetachedRoute<T>>
@@ -90,6 +100,7 @@ where
     Fut: Future<Output = anyhow::Result<()>>,
 {
     reconciler.observe(ReconcileEvidence::BecameUnhealthy)?;
+    request_state.publish(model, reconciler.state());
     detach(attachment_id).await?;
     Ok(DetachedRoute(attachment_id))
 }
@@ -97,9 +108,12 @@ where
 /// Open the recovery rail only after successful route detachment.
 pub fn begin_detached_route_recovery<T>(
     reconciler: &mut DemandReconciler,
+    model: &str,
+    request_state: &NodeRequestState,
     _detached: DetachedRoute<T>,
 ) -> anyhow::Result<()> {
     reconciler.retry()?;
+    request_state.publish(model, reconciler.state());
     Ok(())
 }
 
