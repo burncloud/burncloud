@@ -1,3 +1,8 @@
+.desktop-titlebar,
+:root {
+    --desktop-window-controls-width: 138px;
+}
+
 .desktop-titlebar {
     position: fixed;
     top: 0;
@@ -10,11 +15,25 @@
     user-select: none;
 }
 
+.desktop-drag-region {
+    -webkit-app-region: drag;
+    app-region: drag;
+}
+
+.desktop-no-drag,
+.desktop-no-drag * {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+}
+
 .desktop-window-controls {
     display: inline-flex;
+    width: var(--desktop-window-controls-width);
     height: 32px;
     align-items: stretch;
     pointer-events: auto;
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
 }
 
 .desktop-window-control {
@@ -52,8 +71,8 @@
 .desktop-window-control.danger:hover .desktop-win-icon,
 .desktop-window-control.danger:active .desktop-win-icon { color: #fff; }
 
-.desktop-titlebar ~ .app-shell .topbar { padding-right: 192px; }
+.desktop-titlebar ~ .app-shell .topbar { padding-right: calc(var(--desktop-window-controls-width) + 8px); }
 
 @media (max-width: 800px) {
-    .desktop-titlebar ~ .app-shell .topbar { padding-right: 188px; }
+    .desktop-titlebar ~ .app-shell .topbar { padding-right: calc(var(--desktop-window-controls-width) + 4px); }
 }

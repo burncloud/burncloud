@@ -212,6 +212,16 @@ fn is_active(path: &str, item_path: &str) -> bool {
         || path.starts_with(item_path)
 }
 
+fn start_window_drag(event: Event<MouseData>) {
+    if event.data().trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+        crate::platform::desktop::drag_window();
+    }
+}
+
+fn stop_window_drag(event: Event<MouseData>) {
+    event.stop_propagation();
+}
+
 #[component]
 pub fn BuyerShell(children: Element) -> Element {
     let mut locale = use_context::<Signal<Locale>>();
@@ -241,9 +251,9 @@ pub fn BuyerShell(children: Element) -> Element {
             if menu_is_open { div { class: "dropdown-scrim", role: "presentation", onclick: move |_| { role_menu_open.set(false); language_menu_open.set(false); } } }
             if drawer_open() { div { class: "mobile-scrim visible", role: "presentation", onclick: move |_| drawer_open.set(false) } }
             aside { class: if drawer_open() { "sidebar open" } else { "sidebar" },
-                div { class: "sidebar-brand-area",
-                    button { class: "icon-button sidebar-close", aria_label: copy.close, onclick: move |_| drawer_open.set(false), Icon { name: IconName::X, size: 18 } }
-                    div { class: "role-switcher",
+                div { class: "sidebar-brand-area desktop-drag-region", onmousedown: start_window_drag,
+                    button { class: "icon-button sidebar-close desktop-no-drag", aria_label: copy.close, onmousedown: stop_window_drag, onclick: move |_| drawer_open.set(false), Icon { name: IconName::X, size: 18 } }
+                    div { class: "role-switcher desktop-no-drag", onmousedown: stop_window_drag,
                         button { class: "brand-button", aria_haspopup: "true", aria_expanded: role_menu_open(), onclick: move |_| { language_menu_open.set(false); role_menu_open.set(!role_menu_open()); },
                             span { class: "brand-identity", Logo { size: 26 } span { class: "brand-copy",
                                 span { class: "brand-name-row", strong { "BurnCloud" } span { class: if current_role == Role::Supplier { "role-color-dot supplier" } else if current_role == Role::Admin { "role-color-dot admin" } else { "role-color-dot" } } }
@@ -275,7 +285,7 @@ pub fn BuyerShell(children: Element) -> Element {
                 nav { class: "side-nav",
                     div { class: "nav-list",
                         for item in nav_items(current_role) {
-                            a { class: if is_active(current_path, item.path) { "nav-link active" } else { "nav-link" }, href: item.path, onclick: move |_| drawer_open.set(false),
+                            Link { class: if is_active(current_path, item.path) { "nav-link active" } else { "nav-link" }, to: item.path, onclick: move |_| drawer_open.set(false),
                                 span { class: "nav-label", Icon { name: item.icon, size: 16 } span { {nav_label(locale(), copy, item.key)} } }
                                 if item.key == NavKey::Playground {
                                     span { class: "nav-badge", {copy.live} }
@@ -292,10 +302,10 @@ pub fn BuyerShell(children: Element) -> Element {
                 }
             }
             div { class: "app-main",
-                header { class: "topbar",
-                    button { class: "icon-button mobile-menu-button", aria_label: copy.menu, onclick: move |_| drawer_open.set(true), Icon { name: IconName::Menu, size: 18 } }
-                    div { class: "global-search", Icon { name: IconName::Search, size: 14 } input { r#type: "text", placeholder: search_placeholder(current_role, copy), value: search(), oninput: move |event| search.set(event.value()) } }
-                    div { class: "topbar-actions",
+                header { class: "topbar desktop-drag-region", onmousedown: start_window_drag,
+                    button { class: "icon-button mobile-menu-button desktop-no-drag", aria_label: copy.menu, onmousedown: stop_window_drag, onclick: move |_| drawer_open.set(true), Icon { name: IconName::Menu, size: 18 } }
+                    div { class: "global-search desktop-no-drag", onmousedown: stop_window_drag, Icon { name: IconName::Search, size: 14 } input { r#type: "text", placeholder: search_placeholder(current_role, copy), value: search(), oninput: move |event| search.set(event.value()) } }
+                    div { class: "topbar-actions desktop-no-drag", onmousedown: stop_window_drag,
                         div { class: "autopilot", span {}, span { class: "autopilot-label", {copy.autopilot} } }
                         div { class: "language-switcher",
                             button { id: "language-switcher-button", class: "language-button", title: copy.select_language, aria_haspopup: "true", aria_expanded: language_menu_open(), onclick: move |_| { role_menu_open.set(false); language_menu_open.set(!language_menu_open()); }, Icon { name: IconName::Globe, size: 14 } span { class: "language-copy", span { class: "language-flag", {locale().flag()} } span { class: "language-name", {locale().native_name()} } } Icon { name: IconName::ChevronDown, size: 14 } }

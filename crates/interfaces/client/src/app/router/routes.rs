@@ -1,5 +1,5 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
-use crate::domains::buyer::overview::BuyerOverview;
+use crate::domains::buyer::{overview::BuyerOverview, playground::BuyerPlayground};
 use crate::shared::types::Role;
 use dioxus::prelude::*;
 
@@ -137,7 +137,7 @@ pub fn ConsoleBuyerOverview() -> Element {
 }
 #[component]
 pub fn Playground() -> Element {
-    rsx! { PlaceholderPage { title: "Playground".to_string() } }
+    rsx! { BuyerPlayground {} }
 }
 #[component]
 pub fn Marketplace() -> Element {
