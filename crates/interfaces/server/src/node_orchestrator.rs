@@ -375,7 +375,9 @@ mod tests {
             &self,
             _request: ModelResolutionRequest,
         ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
-            Err(ModelResolutionError::ResolutionFailed("resolver offline".into()))
+            Err(ModelResolutionError::ResolutionFailed(
+                "resolver offline".into(),
+            ))
         }
     }
     #[async_trait]
@@ -408,9 +410,8 @@ mod tests {
             FakeReadinessProbe,
             FakeHealthProbe,
         );
-        let mut orchestrator =
-            NodeOrchestrator::new(FailingResolver, FakeRuntimeAdapter, machine)
-                .with_request_state(request_state.clone());
+        let mut orchestrator = NodeOrchestrator::new(FailingResolver, FakeRuntimeAdapter, machine)
+            .with_request_state(request_state.clone());
 
         assert!(orchestrator
             .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
