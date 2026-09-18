@@ -189,17 +189,17 @@ mod tests {
         let mut reconciler = ready_reconciler();
         let request_state = NodeRequestState::default();
         request_state.publish("qwen-4b", NodeState::Ready);
-        let id = attach_ready_node_route(
-            &mut reconciler,
-            "qwen-4b",
-            &request_state,
-            || async { Ok(42_i32) },
-        )
+        let id = attach_ready_node_route(&mut reconciler, "qwen-4b", &request_state, || async {
+            Ok(42_i32)
+        })
         .await
         .unwrap();
         assert_eq!(id, 42);
         assert_eq!(reconciler.state(), NodeState::Routable);
-        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Routable));
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Routable)
+        );
         assert!(reconciler.state().is_serving());
     }
 
@@ -231,13 +231,11 @@ mod tests {
         let mut reconciler = ready_reconciler();
         let request_state = NodeRequestState::default();
         request_state.publish("qwen-4b", NodeState::Ready);
-        let result: anyhow::Result<i32> = attach_ready_node_route(
-            &mut reconciler,
-            "qwen-4b",
-            &request_state,
-            || async { anyhow::bail!("database write failed") },
-        )
-        .await;
+        let result: anyhow::Result<i32> =
+            attach_ready_node_route(&mut reconciler, "qwen-4b", &request_state, || async {
+                anyhow::bail!("database write failed")
+            })
+            .await;
         assert!(result.is_err());
         assert_eq!(reconciler.state(), NodeState::Ready);
         assert!(!reconciler.state().is_serving());
@@ -261,17 +259,18 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(reconciler.state(), NodeState::Unhealthy);
-        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Unhealthy));
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
         assert!(!reconciler.state().is_serving());
 
-        begin_detached_route_recovery(
-            &mut reconciler,
-            "qwen-4b",
-            &request_state,
-            detached,
-        )
-        .unwrap();
-        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Starting));
+        begin_detached_route_recovery(&mut reconciler, "qwen-4b", &request_state, detached)
+            .unwrap();
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Starting)
+        );
         assert_eq!(reconciler.state(), NodeState::Starting);
         assert_eq!(
             reconciler.next_action().unwrap(),
