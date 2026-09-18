@@ -77,7 +77,7 @@ where
     Q: ReadinessProbe,
     E: HealthProbe,
 {
-    pub const fn new(
+    pub fn new(
         resolver: M,
         runtime_adapter: T,
         machine: NodeComposition<H, A, R, P, Q, E>,
