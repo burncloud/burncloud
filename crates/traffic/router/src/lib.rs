@@ -2307,22 +2307,22 @@ async fn proxy_logic(
     if candidates.is_empty() {
         if model_router_missed {
             if let Some(model) = model_name {
-            if let Some(response) = (state.route_miss_responder)(model) {
-                let final_status = response.status();
-                return ProxyResult {
-                    response,
-                    upstream_id: None,
-                    final_status,
-                    pricing_region: None,
-                    video_task_id: None,
-                    shaper_outcome: None,
-                    routing_decision: None,
-                    sched_request_color: shaper_color,
-                    error_type: Some("router_reject".to_string()),
-                    request_log_data: None,
-                };
+                if let Some(response) = (state.route_miss_responder)(model) {
+                    let final_status = response.status();
+                    return ProxyResult {
+                        response,
+                        upstream_id: None,
+                        final_status,
+                        pricing_region: None,
+                        video_task_id: None,
+                        shaper_outcome: None,
+                        routing_decision: None,
+                        sched_request_color: shaper_color,
+                        error_type: Some("router_reject".to_string()),
+                        request_log_data: None,
+                    };
+                }
             }
-        }
         }
 
         // Return proper Anthropic-style error for Claude Code compatibility
