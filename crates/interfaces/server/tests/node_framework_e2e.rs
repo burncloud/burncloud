@@ -7,6 +7,7 @@ use burncloud_server::node_attachment::{
     attach_ready_node_route, begin_detached_route_recovery, detach_unhealthy_node_route,
 };
 use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
+use burncloud_server::node_request::NodeRequestState;
 use burncloud_service_models::FakeModelResolver;
 
 fn fake_orchestrator() -> NodeOrchestrator<
@@ -39,14 +40,18 @@ fn fake_orchestrator() -> NodeOrchestrator<
 #[tokio::test]
 async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() {
     let demand = ModelDemand::new("qwen-4b").unwrap();
-    let mut node = fake_orchestrator();
+    let request_state = NodeRequestState::default();
+    let mut node = fake_orchestrator().with_request_state(request_state.clone());
 
     node.prepare_until_ready(demand.clone()).await.unwrap();
     assert_eq!(node.machine().reconciler().state(), NodeState::Ready);
 
-    let first_route = attach_ready_node_route(node.machine_mut().reconciler_mut(), || async {
-        Ok(101_i32)
-    })
+    let first_route = attach_ready_node_route(
+        node.machine_mut().reconciler_mut(),
+        "qwen-4b",
+        &request_state,
+        || async { Ok(101_i32) },
+    )
     .await
     .unwrap();
     assert_eq!(first_route, 101);
@@ -54,6 +59,8 @@ async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() 
 
     let detached = detach_unhealthy_node_route(
         node.machine_mut().reconciler_mut(),
+        "qwen-4b",
+        &request_state,
         first_route,
         |id| async move {
             assert_eq!(id, 101);
@@ -65,7 +72,13 @@ async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() 
     assert_eq!(node.machine().reconciler().state(), NodeState::Unhealthy);
     assert!(!node.machine().reconciler().state().is_serving());
 
-    begin_detached_route_recovery(node.machine_mut().reconciler_mut(), detached).unwrap();
+    begin_detached_route_recovery(
+        node.machine_mut().reconciler_mut(),
+        "qwen-4b",
+        &request_state,
+        detached,
+    )
+    .unwrap();
     assert_eq!(node.machine().reconciler().state(), NodeState::Starting);
 
     // Recovery reuses the exact runtime-owned ProcessPlan that produced the
@@ -73,34 +86,47 @@ async fn model_demand_runs_full_fake_route_failure_recovery_and_reattach_rail() 
     node.recover_until_ready().await.unwrap();
     assert_eq!(node.machine().reconciler().state(), NodeState::Ready);
 
-    let second_route = attach_ready_node_route(node.machine_mut().reconciler_mut(), || async {
-        Ok(202_i32)
-    })
+    let second_route = attach_ready_node_route(
+        node.machine_mut().reconciler_mut(),
+        "qwen-4b",
+        &request_state,
+        || async { Ok(202_i32) },
+    )
     .await
     .unwrap();
     assert_eq!(second_route, 202);
     assert_eq!(node.machine().reconciler().state(), NodeState::Routable);
+    assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Routable));
 }
 
 #[tokio::test]
 async fn failed_detach_cannot_enter_recovery_rail() {
     let demand = ModelDemand::new("qwen-4b").unwrap();
-    let mut node = fake_orchestrator();
+    let request_state = NodeRequestState::default();
+    let mut node = fake_orchestrator().with_request_state(request_state.clone());
     node.prepare_until_ready(demand).await.unwrap();
-    let route = attach_ready_node_route(node.machine_mut().reconciler_mut(), || async {
-        Ok(303_i32)
-    })
+    let route = attach_ready_node_route(
+        node.machine_mut().reconciler_mut(),
+        "qwen-4b",
+        &request_state,
+        || async { Ok(303_i32) },
+    )
     .await
     .unwrap();
 
     let result =
-        detach_unhealthy_node_route(node.machine_mut().reconciler_mut(), route, |_| async {
-            anyhow::bail!("detach failed")
-        })
+        detach_unhealthy_node_route(
+            node.machine_mut().reconciler_mut(),
+            "qwen-4b",
+            &request_state,
+            route,
+            |_| async { anyhow::bail!("detach failed") },
+        )
         .await;
 
     assert!(result.is_err());
     assert_eq!(node.machine().reconciler().state(), NodeState::Unhealthy);
+    assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Unhealthy));
     assert!(!node.machine().reconciler().state().is_serving());
 }
 
