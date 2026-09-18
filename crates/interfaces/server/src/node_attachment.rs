@@ -187,11 +187,19 @@ mod tests {
     #[tokio::test]
     async fn successful_existing_route_attachment_is_required_for_routable() {
         let mut reconciler = ready_reconciler();
-        let id = attach_ready_node_route(&mut reconciler, || async { Ok(42_i32) })
-            .await
-            .unwrap();
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Ready);
+        let id = attach_ready_node_route(
+            &mut reconciler,
+            "qwen-4b",
+            &request_state,
+            || async { Ok(42_i32) },
+        )
+        .await
+        .unwrap();
         assert_eq!(id, 42);
         assert_eq!(reconciler.state(), NodeState::Routable);
+        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Routable));
         assert!(reconciler.state().is_serving());
     }
 
@@ -221,9 +229,14 @@ mod tests {
     #[tokio::test]
     async fn failed_existing_route_attachment_must_not_become_routable() {
         let mut reconciler = ready_reconciler();
-        let result: anyhow::Result<i32> = attach_ready_node_route(&mut reconciler, || async {
-            anyhow::bail!("database write failed")
-        })
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Ready);
+        let result: anyhow::Result<i32> = attach_ready_node_route(
+            &mut reconciler,
+            "qwen-4b",
+            &request_state,
+            || async { anyhow::bail!("database write failed") },
+        )
         .await;
         assert!(result.is_err());
         assert_eq!(reconciler.state(), NodeState::Ready);
@@ -233,16 +246,32 @@ mod tests {
     #[tokio::test]
     async fn unhealthy_route_becomes_non_serving_before_detach_and_can_then_recover() {
         let mut reconciler = routable_reconciler();
-        let detached = detach_unhealthy_node_route(&mut reconciler, 42_i32, |id| async move {
-            assert_eq!(id, 42);
-            Ok(())
-        })
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Routable);
+        let detached = detach_unhealthy_node_route(
+            &mut reconciler,
+            "qwen-4b",
+            &request_state,
+            42_i32,
+            |id| async move {
+                assert_eq!(id, 42);
+                Ok(())
+            },
+        )
         .await
         .unwrap();
         assert_eq!(reconciler.state(), NodeState::Unhealthy);
+        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Unhealthy));
         assert!(!reconciler.state().is_serving());
 
-        begin_detached_route_recovery(&mut reconciler, detached).unwrap();
+        begin_detached_route_recovery(
+            &mut reconciler,
+            "qwen-4b",
+            &request_state,
+            detached,
+        )
+        .unwrap();
+        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Starting));
         assert_eq!(reconciler.state(), NodeState::Starting);
         assert_eq!(
             reconciler.next_action().unwrap(),
@@ -253,12 +282,19 @@ mod tests {
     #[tokio::test]
     async fn failed_detach_stays_unhealthy_and_cannot_produce_recovery_receipt() {
         let mut reconciler = routable_reconciler();
-        let result = detach_unhealthy_node_route(&mut reconciler, 42_i32, |_| async {
-            anyhow::bail!("existing router detach failed")
-        })
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Routable);
+        let result = detach_unhealthy_node_route(
+            &mut reconciler,
+            "qwen-4b",
+            &request_state,
+            42_i32,
+            |_| async { anyhow::bail!("existing router detach failed") },
+        )
         .await;
         assert!(result.is_err());
         assert_eq!(reconciler.state(), NodeState::Unhealthy);
+        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Unhealthy));
         assert!(!reconciler.state().is_serving());
     }
 }
