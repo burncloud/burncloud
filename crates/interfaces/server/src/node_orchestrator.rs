@@ -97,6 +97,10 @@ where
         self
     }
 
+    pub fn request_state(&self) -> NodeRequestState {
+        self.request_state.clone()
+    }
+
     fn publish_state(&self, model: &str) {
         self.request_state
             .publish(model, self.machine.reconciler().state());
