@@ -1,8 +1,5 @@
-#[path = "../src/local_attachment.rs"]
-mod local_attachment;
-
 use async_trait::async_trait;
-use local_attachment::{
+use burncloud_router::local_attachment::{
     LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttachmentId,
 };
 use std::sync::Mutex;
