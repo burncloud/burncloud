@@ -23,6 +23,13 @@ impl LocalRouteAttacher for FakeExistingRouterAttachment {
         Ok(id)
     }
 
+    async fn quarantine(
+        &self,
+        _attachment_id: LocalRouteAttachmentId,
+    ) -> Result<(), LocalRouteAttachmentError> {
+        Ok(())
+    }
+
     async fn detach(
         &self,
         attachment_id: LocalRouteAttachmentId,
