@@ -49,6 +49,17 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
     );
 
     attacher
+        .quarantine(attachment_id)
+        .await
+        .expect("quarantine unhealthy local channel");
+
+    assert!(model_router
+        .get_candidates("default", model)
+        .await
+        .expect("query after quarantine")
+        .is_empty());
+
+    attacher
         .detach(attachment_id)
         .await
         .expect("detach exact local channel");
