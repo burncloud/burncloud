@@ -135,7 +135,9 @@ where
     }
 
     pub fn workload_state(&self, model: &str) -> Option<NodeState> {
-        self.workloads.get(model).map(|workload| workload.reconciler.state())
+        self.workloads
+            .get(model)
+            .map(|workload| workload.reconciler.state())
     }
 
     pub fn workload_plan(&self, model: &str) -> Option<&ProcessPlan> {
