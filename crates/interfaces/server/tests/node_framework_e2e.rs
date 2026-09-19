@@ -125,10 +125,7 @@ async fn two_models_keep_independent_state_plan_and_attachment() {
     );
     assert_eq!(node.workload_plan("qwen-4b"), Some(&qwen_plan));
 
-    assert_eq!(
-        node.workload_state("deepseek-8b"),
-        Some(NodeState::Ready)
-    );
+    assert_eq!(node.workload_state("deepseek-8b"), Some(NodeState::Ready));
     assert_eq!(node.workload_attachment_id("deepseek-8b"), None);
 }
 
