@@ -1,9 +1,8 @@
-#[path = "../src/local_attachment.rs"]
-mod local_attachment;
-
 use burncloud_database::create_database_with_url;
+use burncloud_router::local_attachment::{
+    ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment,
+};
 use burncloud_router::model_router::ModelRouter;
-use local_attachment::{ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment};
 use std::sync::Arc;
 
 /// Phase-0 S0-08 acceptance: a READY local Node endpoint becomes discoverable
