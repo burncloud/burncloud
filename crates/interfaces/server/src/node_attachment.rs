@@ -279,10 +279,7 @@ mod tests {
             orchestrator.workload_state("qwen-4b"),
             Some(NodeState::Failed)
         );
-        assert_eq!(
-            request_state.state_for("qwen-4b"),
-            Some(NodeState::Failed)
-        );
+        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Failed));
         assert!(request_state.route_miss_response("qwen-4b").is_none());
         assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
     }
