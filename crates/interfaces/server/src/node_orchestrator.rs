@@ -10,6 +10,8 @@ use burncloud_service_models::{
 };
 use std::fmt;
 
+use crate::node_request::NodeRequestState;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelDemand {
     pub model: String,
@@ -60,6 +62,8 @@ pub struct NodeOrchestrator<M, T, H, A, R, P, Q, E> {
     runtime_adapter: T,
     machine: NodeComposition<H, A, R, P, Q, E>,
     active_plan: Option<ProcessPlan>,
+    active_model: Option<String>,
+    request_state: NodeRequestState,
 }
 
 impl<M, T, H, A, R, P, Q, E> NodeOrchestrator<M, T, H, A, R, P, Q, E>
@@ -73,7 +77,7 @@ where
     Q: ReadinessProbe,
     E: HealthProbe,
 {
-    pub const fn new(
+    pub fn new(
         resolver: M,
         runtime_adapter: T,
         machine: NodeComposition<H, A, R, P, Q, E>,
@@ -83,7 +87,33 @@ where
             runtime_adapter,
             machine,
             active_plan: None,
+            active_model: None,
+            request_state: NodeRequestState::default(),
         }
+    }
+
+    pub fn with_request_state(mut self, request_state: NodeRequestState) -> Self {
+        self.request_state = request_state;
+        self
+    }
+
+    pub fn request_state(&self) -> NodeRequestState {
+        self.request_state.clone()
+    }
+
+    fn publish_state(&self, model: &str) {
+        self.request_state
+            .publish(model, self.machine.reconciler().state());
+    }
+
+    fn observe(&mut self, model: &str, evidence: ReconcileEvidence) -> anyhow::Result<()> {
+        self.machine.reconciler_mut().observe(evidence)?;
+        self.publish_state(model);
+        Ok(())
+    }
+
+    fn mark_failed(&mut self, model: &str) -> anyhow::Result<()> {
+        self.observe(model, ReconcileEvidence::Failed)
     }
     pub const fn resolver(&self) -> &M {
         &self.resolver
@@ -106,10 +136,19 @@ where
         demand: ModelDemand,
     ) -> anyhow::Result<LocalPreparationOutcome> {
         let mut work = DemandWork::default();
+        self.active_model = Some(demand.model.clone());
         loop {
-            match self.machine.reconciler_mut().next_action()? {
+            let action = self.machine.reconciler_mut().next_action()?;
+            self.publish_state(&demand.model);
+            match action {
                 ReconcileAction::Resolve => {
-                    let hardware = self.machine.hardware().inspect().await?;
+                    let hardware = match self.machine.hardware().inspect().await {
+                        Ok(hardware) => hardware,
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(error.into());
+                        }
+                    };
                     let accelerator_memory_bytes = hardware
                         .accelerators
                         .iter()
@@ -121,19 +160,19 @@ where
                             model: demand.model.clone(),
                             accelerator_memory_bytes,
                         })
-                        .await?
+                        .await
                     {
-                        ModelResolutionOutcome::Local(resolved) => {
+                        Ok(ModelResolutionOutcome::Local(resolved)) => {
                             work.resolved = Some(resolved);
-                            self.machine
-                                .reconciler_mut()
-                                .observe(ReconcileEvidence::Resolved)?;
+                            self.observe(&demand.model, ReconcileEvidence::Resolved)?;
                         }
-                        ModelResolutionOutcome::Unsupported(reason) => {
-                            self.machine
-                                .reconciler_mut()
-                                .observe(ReconcileEvidence::LocalUnsupported)?;
+                        Ok(ModelResolutionOutcome::Unsupported(reason)) => {
+                            self.observe(&demand.model, ReconcileEvidence::LocalUnsupported)?;
                             return Ok(LocalPreparationOutcome::Unsupported(reason));
+                        }
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(error.into());
                         }
                     }
                 }
@@ -142,39 +181,50 @@ where
                         .resolved
                         .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
-                    let artifact = self
+                    let artifact = match self
                         .machine
                         .artifacts()
                         .prepare(ArtifactRequest {
                             source: resolved.artifact_source.clone(),
                             expected_digest: resolved.artifact_digest.clone(),
                         })
-                        .await?;
+                        .await
+                    {
+                        Ok(artifact) => artifact,
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(error.into());
+                        }
+                    };
                     if !artifact.verified {
+                        self.mark_failed(&demand.model)?;
                         anyhow::bail!("artifact preparer returned unverified artifact");
                     }
                     work.artifact = Some(artifact);
-                    self.machine
-                        .reconciler_mut()
-                        .observe(ReconcileEvidence::ArtifactPrepared)?;
+                    self.observe(&demand.model, ReconcileEvidence::ArtifactPrepared)?;
                 }
                 ReconcileAction::PrepareRuntime => {
                     let resolved = work
                         .resolved
                         .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
-                    let runtime = self
+                    let runtime = match self
                         .machine
                         .runtimes()
                         .prepare(RuntimeRequest {
                             runtime: resolved.runtime.clone(),
                             version: resolved.runtime_version.clone(),
                         })
-                        .await?;
+                        .await
+                    {
+                        Ok(runtime) => runtime,
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(error.into());
+                        }
+                    };
                     work.runtime = Some(runtime);
-                    self.machine
-                        .reconciler_mut()
-                        .observe(ReconcileEvidence::RuntimePrepared)?;
+                    self.observe(&demand.model, ReconcileEvidence::RuntimePrepared)?;
                 }
                 ReconcileAction::StartProcess => {
                     let runtime = work
@@ -185,27 +235,46 @@ where
                         .artifact
                         .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("artifact receipt missing"))?;
-                    let plan = self.runtime_adapter.plan(runtime, artifact).await?;
-                    let handle = self.machine.processes().start(plan.process.clone()).await?;
+                    let plan = match self.runtime_adapter.plan(runtime, artifact).await {
+                        Ok(plan) => plan,
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(error.into());
+                        }
+                    };
+                    let handle = match self.machine.processes().start(plan.process.clone()).await {
+                        Ok(handle) => handle,
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(error.into());
+                        }
+                    };
                     work.process = Some(handle);
                     work.readiness = Some(plan.readiness.clone());
                     self.active_plan = Some(plan);
-                    self.machine
-                        .reconciler_mut()
-                        .observe(ReconcileEvidence::ProcessStarted)?;
+                    self.observe(&demand.model, ReconcileEvidence::ProcessStarted)?;
                 }
                 ReconcileAction::VerifyReadiness => {
                     let target = work
                         .readiness
                         .clone()
                         .ok_or_else(|| anyhow::anyhow!("readiness target receipt missing"))?;
-                    self.machine.readiness().wait_ready(target.clone()).await?;
-                    if !self.machine.health().is_healthy(target).await? {
-                        anyhow::bail!("runtime is ready but unhealthy");
+                    if let Err(error) = self.machine.readiness().wait_ready(target.clone()).await {
+                        self.mark_failed(&demand.model)?;
+                        return Err(error.into());
                     }
-                    self.machine
-                        .reconciler_mut()
-                        .observe(ReconcileEvidence::ReadinessVerified)?;
+                    match self.machine.health().is_healthy(target).await {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            self.mark_failed(&demand.model)?;
+                            anyhow::bail!("runtime is ready but unhealthy");
+                        }
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(error.into());
+                        }
+                    }
+                    self.observe(&demand.model, ReconcileEvidence::ReadinessVerified)?;
                 }
                 ReconcileAction::AttachToExistingRouter | ReconcileAction::Noop => {
                     return Ok(LocalPreparationOutcome::Ready)
@@ -218,27 +287,43 @@ where
     }
 
     pub async fn recover_until_ready(&mut self) -> anyhow::Result<()> {
+        let model = self
+            .active_model
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("active model missing"))?;
         let plan = self
             .active_plan
             .clone()
             .ok_or_else(|| anyhow::anyhow!("active process plan missing"))?;
         loop {
-            match self.machine.reconciler_mut().next_action()? {
+            let action = self.machine.reconciler_mut().next_action()?;
+            self.publish_state(&model);
+            match action {
                 ReconcileAction::StartProcess => {
-                    self.machine.processes().start(plan.process.clone()).await?;
-                    self.machine
-                        .reconciler_mut()
-                        .observe(ReconcileEvidence::ProcessStarted)?;
+                    if let Err(error) = self.machine.processes().start(plan.process.clone()).await {
+                        self.mark_failed(&model)?;
+                        return Err(error.into());
+                    }
+                    self.observe(&model, ReconcileEvidence::ProcessStarted)?;
                 }
                 ReconcileAction::VerifyReadiness => {
                     let target = plan.readiness.clone();
-                    self.machine.readiness().wait_ready(target.clone()).await?;
-                    if !self.machine.health().is_healthy(target).await? {
-                        anyhow::bail!("recovered runtime is unhealthy");
+                    if let Err(error) = self.machine.readiness().wait_ready(target.clone()).await {
+                        self.mark_failed(&model)?;
+                        return Err(error.into());
                     }
-                    self.machine
-                        .reconciler_mut()
-                        .observe(ReconcileEvidence::ReadinessVerified)?;
+                    match self.machine.health().is_healthy(target).await {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            self.mark_failed(&model)?;
+                            anyhow::bail!("recovered runtime is unhealthy");
+                        }
+                        Err(error) => {
+                            self.mark_failed(&model)?;
+                            return Err(error.into());
+                        }
+                    }
+                    self.observe(&model, ReconcileEvidence::ReadinessVerified)?;
                 }
                 ReconcileAction::AttachToExistingRouter => return Ok(()),
                 other => anyhow::bail!("unexpected recovery action: {other:?}"),
@@ -285,6 +370,20 @@ mod tests {
 
     #[derive(Debug)]
     struct UnsupportedResolver;
+
+    #[derive(Debug)]
+    struct FailingResolver;
+    #[async_trait]
+    impl ModelResolver for FailingResolver {
+        async fn resolve(
+            &self,
+            _request: ModelResolutionRequest,
+        ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
+            Err(ModelResolutionError::ResolutionFailed(
+                "resolver offline".into(),
+            ))
+        }
+    }
     #[async_trait]
     impl ModelResolver for UnsupportedResolver {
         async fn resolve(
@@ -302,6 +401,31 @@ mod tests {
     fn demand_contains_only_the_requested_model() {
         assert_eq!(ModelDemand::new(" qwen-4b ").unwrap().model, "qwen-4b");
         assert_eq!(ModelDemand::new("   "), Err(ModelDemandError::EmptyModel));
+    }
+
+    #[tokio::test]
+    async fn failed_resolution_converges_to_failed_and_stops_reporting_preparing() {
+        let request_state = NodeRequestState::default();
+        let machine = NodeComposition::start(
+            FakeHardwareProbe::default(),
+            FakeArtifactPreparer,
+            FakeRuntimePreparer,
+            FakeProcessManager::default(),
+            FakeReadinessProbe,
+            FakeHealthProbe,
+        );
+        let mut orchestrator = NodeOrchestrator::new(FailingResolver, FakeRuntimeAdapter, machine)
+            .with_request_state(request_state.clone());
+
+        assert!(orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .is_err());
+        assert_eq!(
+            orchestrator.machine().reconciler().state(),
+            NodeState::Failed
+        );
+        assert!(request_state.route_miss_response("qwen-4b").is_none());
     }
 
     #[tokio::test]

@@ -1,6 +1,8 @@
 use axum::body::Body;
 use axum::http::{Response, StatusCode};
 use burncloud_node_runtime::NodeState;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 /// What the synchronous request path should do after checking the existing
 /// ModelRouter for the requested model.
@@ -15,6 +17,35 @@ pub enum NodeRequestDisposition {
     ModelPreparing(NodeState),
     /// No existing candidate exists and Node is not actively preparing one.
     Unavailable,
+}
+
+/// Application-owned view of per-model Node progress used only after a true
+/// existing-router miss. It stores status, not routing preference.
+#[derive(Debug, Clone, Default)]
+pub struct NodeRequestState {
+    states: Arc<RwLock<HashMap<String, NodeState>>>,
+}
+
+impl NodeRequestState {
+    pub fn publish(&self, model: &str, state: NodeState) {
+        if let Ok(mut states) = self.states.write() {
+            states.insert(model.to_string(), state);
+        }
+    }
+
+    pub fn state_for(&self, model: &str) -> Option<NodeState> {
+        self.states.read().ok()?.get(model).copied()
+    }
+
+    pub fn route_miss_response(&self, model: &str) -> Option<Response<Body>> {
+        let state = self.state_for(model)?;
+        match node_request_disposition(false, state) {
+            NodeRequestDisposition::ModelPreparing(state) => {
+                Some(model_preparing_response(model, state))
+            }
+            NodeRequestDisposition::UseExistingRoute | NodeRequestDisposition::Unavailable => None,
+        }
+    }
 }
 
 /// Decide the request result without changing routing truth.
@@ -126,5 +157,16 @@ mod tests {
         let response = model_preparing_response("qwen-4b", NodeState::PreparingArtifact);
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(response.headers().get("Retry-After").unwrap(), "5");
+    }
+
+    #[test]
+    fn request_state_answers_only_for_the_requested_preparing_model() {
+        let state = NodeRequestState::default();
+        state.publish("qwen-4b", NodeState::PreparingArtifact);
+        state.publish("other-model", NodeState::Failed);
+
+        assert!(state.route_miss_response("qwen-4b").is_some());
+        assert!(state.route_miss_response("other-model").is_none());
+        assert!(state.route_miss_response("unknown-model").is_none());
     }
 }

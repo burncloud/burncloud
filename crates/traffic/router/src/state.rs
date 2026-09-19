@@ -13,6 +13,7 @@ use crate::price_sync::SyncResult;
 use crate::rate_budget::InMemoryBudget;
 use crate::scheduler::SchedulerPolicyMap;
 use crate::EmptyResponseCounter;
+use axum::{body::Body, response::Response};
 use burncloud_database::Database;
 use burncloud_database_router::{RouterLog, RouterRequestLog, StoragePolicy};
 use burncloud_service_billing::{CostCalculator, PriceCache};
@@ -26,6 +27,8 @@ use tokio::sync::{mpsc, oneshot, RwLock};
 /// new limit, this update is sent via a capacity-1 mpsc channel so the budget
 /// can be reconfigured asynchronously (audit decision D6/D10 — no lock
 /// contention, natural debounce).
+pub type RouteMissResponder = Arc<dyn Fn(&str) -> Option<Response<Body>> + Send + Sync>;
+
 pub struct BudgetUpdate {
     pub channel_id: i32,
     pub learned_limit: u32,
@@ -44,6 +47,9 @@ pub struct AppState {
     /// Capacity matches log_tx for consistent throughput.
     pub request_log_tx: mpsc::Sender<RouterRequestLog>,
     pub model_router: Arc<ModelRouter>,
+    /// Optional application-level answer for a true model route miss.
+    /// Traffic does not inspect Node state or change candidate selection.
+    pub route_miss_responder: RouteMissResponder,
     pub channel_state_tracker: Arc<ChannelStateTracker>,
     pub adaptor_factory: Arc<adaptor::factory::DynamicAdaptorFactory>,
     pub api_version_detector: Arc<adaptor::detector::ApiVersionDetector>,

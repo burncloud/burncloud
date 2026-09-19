@@ -1,4 +1,5 @@
 use crate::node_orchestrator::{LocalPreparationOutcome, ModelDemand, NodeOrchestrator};
+use crate::node_request::NodeRequestState;
 use burncloud_node_runtime::{
     ArtifactPreparer, DemandReconciler, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe,
     ReconcileEvidence, RuntimeAdapter, RuntimePreparer,
@@ -21,6 +22,8 @@ pub enum LocalRouteOutcome<T> {
 /// only after it succeeds.
 pub async fn attach_ready_node_route<T, F, Fut>(
     reconciler: &mut DemandReconciler,
+    model: &str,
+    request_state: &NodeRequestState,
     attach: F,
 ) -> anyhow::Result<T>
 where
@@ -29,6 +32,7 @@ where
 {
     let attachment_id = attach().await?;
     reconciler.observe(ReconcileEvidence::RouterAttached)?;
+    request_state.publish(model, reconciler.state());
     Ok(attachment_id)
 }
 
@@ -63,11 +67,15 @@ where
                 .ok_or_else(|| anyhow::anyhow!("ready local runtime has no process plan"))?
                 .local_endpoint
                 .clone();
-            let attachment_id =
-                attach_ready_node_route(orchestrator.machine_mut().reconciler_mut(), || {
-                    attach(model, base_url)
-                })
-                .await?;
+            let request_state = orchestrator.request_state();
+            let attach_model = model.clone();
+            let attachment_id = attach_ready_node_route(
+                orchestrator.machine_mut().reconciler_mut(),
+                &model,
+                &request_state,
+                || attach(attach_model, base_url),
+            )
+            .await?;
             Ok(LocalRouteOutcome::Routable(attachment_id))
         }
     }
@@ -81,6 +89,8 @@ where
 /// a route that was never removed.
 pub async fn detach_unhealthy_node_route<T, F, Fut>(
     reconciler: &mut DemandReconciler,
+    model: &str,
+    request_state: &NodeRequestState,
     attachment_id: T,
     detach: F,
 ) -> anyhow::Result<DetachedRoute<T>>
@@ -90,6 +100,7 @@ where
     Fut: Future<Output = anyhow::Result<()>>,
 {
     reconciler.observe(ReconcileEvidence::BecameUnhealthy)?;
+    request_state.publish(model, reconciler.state());
     detach(attachment_id).await?;
     Ok(DetachedRoute(attachment_id))
 }
@@ -97,9 +108,12 @@ where
 /// Open the recovery rail only after successful route detachment.
 pub fn begin_detached_route_recovery<T>(
     reconciler: &mut DemandReconciler,
+    model: &str,
+    request_state: &NodeRequestState,
     _detached: DetachedRoute<T>,
 ) -> anyhow::Result<()> {
     reconciler.retry()?;
+    request_state.publish(model, reconciler.state());
     Ok(())
 }
 
@@ -173,11 +187,19 @@ mod tests {
     #[tokio::test]
     async fn successful_existing_route_attachment_is_required_for_routable() {
         let mut reconciler = ready_reconciler();
-        let id = attach_ready_node_route(&mut reconciler, || async { Ok(42_i32) })
-            .await
-            .unwrap();
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Ready);
+        let id = attach_ready_node_route(&mut reconciler, "qwen-4b", &request_state, || async {
+            Ok(42_i32)
+        })
+        .await
+        .unwrap();
         assert_eq!(id, 42);
         assert_eq!(reconciler.state(), NodeState::Routable);
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Routable)
+        );
         assert!(reconciler.state().is_serving());
     }
 
@@ -207,10 +229,13 @@ mod tests {
     #[tokio::test]
     async fn failed_existing_route_attachment_must_not_become_routable() {
         let mut reconciler = ready_reconciler();
-        let result: anyhow::Result<i32> = attach_ready_node_route(&mut reconciler, || async {
-            anyhow::bail!("database write failed")
-        })
-        .await;
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Ready);
+        let result: anyhow::Result<i32> =
+            attach_ready_node_route(&mut reconciler, "qwen-4b", &request_state, || async {
+                anyhow::bail!("database write failed")
+            })
+            .await;
         assert!(result.is_err());
         assert_eq!(reconciler.state(), NodeState::Ready);
         assert!(!reconciler.state().is_serving());
@@ -219,16 +244,33 @@ mod tests {
     #[tokio::test]
     async fn unhealthy_route_becomes_non_serving_before_detach_and_can_then_recover() {
         let mut reconciler = routable_reconciler();
-        let detached = detach_unhealthy_node_route(&mut reconciler, 42_i32, |id| async move {
-            assert_eq!(id, 42);
-            Ok(())
-        })
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Routable);
+        let detached = detach_unhealthy_node_route(
+            &mut reconciler,
+            "qwen-4b",
+            &request_state,
+            42_i32,
+            |id| async move {
+                assert_eq!(id, 42);
+                Ok(())
+            },
+        )
         .await
         .unwrap();
         assert_eq!(reconciler.state(), NodeState::Unhealthy);
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
         assert!(!reconciler.state().is_serving());
 
-        begin_detached_route_recovery(&mut reconciler, detached).unwrap();
+        begin_detached_route_recovery(&mut reconciler, "qwen-4b", &request_state, detached)
+            .unwrap();
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Starting)
+        );
         assert_eq!(reconciler.state(), NodeState::Starting);
         assert_eq!(
             reconciler.next_action().unwrap(),
@@ -239,12 +281,22 @@ mod tests {
     #[tokio::test]
     async fn failed_detach_stays_unhealthy_and_cannot_produce_recovery_receipt() {
         let mut reconciler = routable_reconciler();
-        let result = detach_unhealthy_node_route(&mut reconciler, 42_i32, |_| async {
-            anyhow::bail!("existing router detach failed")
-        })
+        let request_state = NodeRequestState::default();
+        request_state.publish("qwen-4b", NodeState::Routable);
+        let result = detach_unhealthy_node_route(
+            &mut reconciler,
+            "qwen-4b",
+            &request_state,
+            42_i32,
+            |_| async { anyhow::bail!("existing router detach failed") },
+        )
         .await;
         assert!(result.is_err());
         assert_eq!(reconciler.state(), NodeState::Unhealthy);
+        assert_eq!(
+            request_state.state_for("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
         assert!(!reconciler.state().is_serving());
     }
 }
