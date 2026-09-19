@@ -1,13 +1,15 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, HardwareProbe, HealthProbe, NodeComposition,
-    PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager, ProcessPlan, ReadinessProbe,
-    ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimeAdapter, RuntimePreparer,
-    RuntimeRequest,
+    ArtifactPreparer, ArtifactRequest, DemandReconciler, HardwareProbe, HealthProbe,
+    NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager,
+    ProcessPlan, ReadinessProbe, ReadinessTarget, ReconcileAction, ReconcileEvidence,
+    RuntimeAdapter, RuntimePreparer, RuntimeRequest,
 };
+use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_service_models::{
     LocalModelUnsupported, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
     ResolvedModel,
 };
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::node_request::NodeRequestState;
@@ -16,6 +18,7 @@ use crate::node_request::NodeRequestState;
 pub struct ModelDemand {
     pub model: String,
 }
+
 impl ModelDemand {
     pub fn new(model: impl Into<String>) -> Result<Self, ModelDemandError> {
         let model = model.into();
@@ -28,15 +31,18 @@ impl ModelDemand {
         })
     }
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelDemandError {
     EmptyModel,
 }
+
 impl fmt::Display for ModelDemandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("model demand must name a model")
     }
 }
+
 impl std::error::Error for ModelDemandError {}
 
 /// Result of the optional local-supply preparation rail.
@@ -56,13 +62,25 @@ struct DemandWork {
     readiness: Option<ReadinessTarget>,
 }
 
+/// Application-owned lifecycle for exactly one requested model.
+///
+/// The machine capabilities are shared, but convergence truth is not: every
+/// model owns an independent reconciler, process plan, process receipt and
+/// Traffic attachment identity.
+#[derive(Debug, Default)]
+struct ModelWorkload {
+    reconciler: DemandReconciler,
+    plan: Option<ProcessPlan>,
+    process: Option<ProcessHandle>,
+    attachment_id: Option<LocalRouteAttachmentId>,
+}
+
 #[derive(Debug)]
 pub struct NodeOrchestrator<M, T, H, A, R, P, Q, E> {
     resolver: M,
     runtime_adapter: T,
     machine: NodeComposition<H, A, R, P, Q, E>,
-    active_plan: Option<ProcessPlan>,
-    active_model: Option<String>,
+    workloads: HashMap<String, ModelWorkload>,
     request_state: NodeRequestState,
 }
 
@@ -86,8 +104,7 @@ where
             resolver,
             runtime_adapter,
             machine,
-            active_plan: None,
-            active_model: None,
+            workloads: HashMap::new(),
             request_state: NodeRequestState::default(),
         }
     }
@@ -101,31 +118,116 @@ where
         self.request_state.clone()
     }
 
+    pub const fn resolver(&self) -> &M {
+        &self.resolver
+    }
+
+    pub const fn machine(&self) -> &NodeComposition<H, A, R, P, Q, E> {
+        &self.machine
+    }
+
+    pub fn machine_mut(&mut self) -> &mut NodeComposition<H, A, R, P, Q, E> {
+        &mut self.machine
+    }
+
+    pub fn workload_count(&self) -> usize {
+        self.workloads.len()
+    }
+
+    pub fn workload_state(&self, model: &str) -> Option<NodeState> {
+        self.workloads.get(model).map(|workload| workload.reconciler.state())
+    }
+
+    pub fn workload_plan(&self, model: &str) -> Option<&ProcessPlan> {
+        self.workloads.get(model)?.plan.as_ref()
+    }
+
+    pub fn workload_attachment_id(&self, model: &str) -> Option<LocalRouteAttachmentId> {
+        self.workloads.get(model)?.attachment_id
+    }
+
+    fn ensure_workload(&mut self, model: &str) {
+        self.workloads.entry(model.to_string()).or_default();
+    }
+
     fn publish_state(&self, model: &str) {
-        self.request_state
-            .publish(model, self.machine.reconciler().state());
+        if let Some(state) = self.workload_state(model) {
+            self.request_state.publish(model, state);
+        }
+    }
+
+    fn next_action(&mut self, model: &str) -> anyhow::Result<ReconcileAction> {
+        self.ensure_workload(model);
+        let action = self
+            .workloads
+            .get_mut(model)
+            .expect("workload must exist")
+            .reconciler
+            .next_action()?;
+        self.publish_state(model);
+        Ok(action)
     }
 
     fn observe(&mut self, model: &str, evidence: ReconcileEvidence) -> anyhow::Result<()> {
-        self.machine.reconciler_mut().observe(evidence)?;
+        self.ensure_workload(model);
+        self.workloads
+            .get_mut(model)
+            .expect("workload must exist")
+            .reconciler
+            .observe(evidence)?;
         self.publish_state(model);
         Ok(())
     }
 
-    fn mark_failed(&mut self, model: &str) -> anyhow::Result<()> {
+    pub(crate) fn mark_failed(&mut self, model: &str) -> anyhow::Result<()> {
         self.observe(model, ReconcileEvidence::Failed)
     }
-    pub const fn resolver(&self) -> &M {
-        &self.resolver
+
+    pub(crate) fn record_attachment(
+        &mut self,
+        model: &str,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> anyhow::Result<()> {
+        self.observe(model, ReconcileEvidence::RouterAttached)?;
+        self.workloads
+            .get_mut(model)
+            .expect("workload must exist")
+            .attachment_id = Some(attachment_id);
+        Ok(())
     }
-    pub const fn machine(&self) -> &NodeComposition<H, A, R, P, Q, E> {
-        &self.machine
+
+    pub(crate) fn mark_unhealthy(&mut self, model: &str) -> anyhow::Result<()> {
+        self.observe(model, ReconcileEvidence::BecameUnhealthy)
     }
-    pub fn machine_mut(&mut self) -> &mut NodeComposition<H, A, R, P, Q, E> {
-        &mut self.machine
+
+    pub(crate) fn clear_attachment(
+        &mut self,
+        model: &str,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> anyhow::Result<()> {
+        let workload = self
+            .workloads
+            .get_mut(model)
+            .ok_or_else(|| anyhow::anyhow!("workload missing for model '{model}'"))?;
+        if workload.attachment_id != Some(attachment_id) {
+            anyhow::bail!(
+                "attachment mismatch for model '{model}': expected {:?}, got {:?}",
+                workload.attachment_id,
+                attachment_id
+            );
+        }
+        workload.attachment_id = None;
+        Ok(())
     }
-    pub const fn active_plan(&self) -> Option<&ProcessPlan> {
-        self.active_plan.as_ref()
+
+    pub(crate) fn begin_recovery(&mut self, model: &str) -> anyhow::Result<()> {
+        let workload = self
+            .workloads
+            .get_mut(model)
+            .ok_or_else(|| anyhow::anyhow!("workload missing for model '{model}'"))?;
+        workload.reconciler.retry()?;
+        self.publish_state(model);
+        Ok(())
     }
 
     /// Prepare an optional local supply. If Supply says the machine cannot run
@@ -136,10 +238,10 @@ where
         demand: ModelDemand,
     ) -> anyhow::Result<LocalPreparationOutcome> {
         let mut work = DemandWork::default();
-        self.active_model = Some(demand.model.clone());
+        self.ensure_workload(&demand.model);
+
         loop {
-            let action = self.machine.reconciler_mut().next_action()?;
-            self.publish_state(&demand.model);
+            let action = self.next_action(&demand.model)?;
             match action {
                 ReconcileAction::Resolve => {
                     let hardware = match self.machine.hardware().inspect().await {
@@ -249,15 +351,24 @@ where
                             return Err(error.into());
                         }
                     };
-                    work.process = Some(handle);
+                    work.process = Some(handle.clone());
                     work.readiness = Some(plan.readiness.clone());
-                    self.active_plan = Some(plan);
+                    let workload = self
+                        .workloads
+                        .get_mut(&demand.model)
+                        .expect("workload must exist");
+                    workload.process = Some(handle);
+                    workload.plan = Some(plan);
                     self.observe(&demand.model, ReconcileEvidence::ProcessStarted)?;
                 }
                 ReconcileAction::VerifyReadiness => {
                     let target = work
                         .readiness
                         .clone()
+                        .or_else(|| {
+                            self.workload_plan(&demand.model)
+                                .map(|plan| plan.readiness.clone())
+                        })
                         .ok_or_else(|| anyhow::anyhow!("readiness target receipt missing"))?;
                     if let Err(error) = self.machine.readiness().wait_ready(target.clone()).await {
                         self.mark_failed(&demand.model)?;
@@ -280,53 +391,56 @@ where
                     return Ok(LocalPreparationOutcome::Ready)
                 }
                 ReconcileAction::Recover => {
-                    anyhow::bail!("route must be detached before recovery begins")
+                    anyhow::bail!("explicit recovery is required for model '{}'", demand.model)
                 }
             }
         }
     }
 
-    pub async fn recover_until_ready(&mut self) -> anyhow::Result<()> {
-        let model = self
-            .active_model
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("active model missing"))?;
+    pub async fn recover_until_ready(&mut self, model: &str) -> anyhow::Result<()> {
         let plan = self
-            .active_plan
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("active process plan missing"))?;
+            .workload_plan(model)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("process plan missing for model '{model}'"))?;
+
         loop {
-            let action = self.machine.reconciler_mut().next_action()?;
-            self.publish_state(&model);
+            let action = self.next_action(model)?;
             match action {
                 ReconcileAction::StartProcess => {
-                    if let Err(error) = self.machine.processes().start(plan.process.clone()).await {
-                        self.mark_failed(&model)?;
-                        return Err(error.into());
-                    }
-                    self.observe(&model, ReconcileEvidence::ProcessStarted)?;
+                    let handle = match self.machine.processes().start(plan.process.clone()).await {
+                        Ok(handle) => handle,
+                        Err(error) => {
+                            self.mark_failed(model)?;
+                            return Err(error.into());
+                        }
+                    };
+                    self.workloads
+                        .get_mut(model)
+                        .expect("workload must exist")
+                        .process = Some(handle);
+                    self.observe(model, ReconcileEvidence::ProcessStarted)?;
                 }
                 ReconcileAction::VerifyReadiness => {
                     let target = plan.readiness.clone();
                     if let Err(error) = self.machine.readiness().wait_ready(target.clone()).await {
-                        self.mark_failed(&model)?;
+                        self.mark_failed(model)?;
                         return Err(error.into());
                     }
                     match self.machine.health().is_healthy(target).await {
                         Ok(true) => {}
                         Ok(false) => {
-                            self.mark_failed(&model)?;
+                            self.mark_failed(model)?;
                             anyhow::bail!("recovered runtime is unhealthy");
                         }
                         Err(error) => {
-                            self.mark_failed(&model)?;
+                            self.mark_failed(model)?;
                             return Err(error.into());
                         }
                     }
-                    self.observe(&model, ReconcileEvidence::ReadinessVerified)?;
+                    self.observe(model, ReconcileEvidence::ReadinessVerified)?;
                 }
                 ReconcileAction::AttachToExistingRouter => return Ok(()),
-                other => anyhow::bail!("unexpected recovery action: {other:?}"),
+                other => anyhow::bail!("unexpected recovery action for '{model}': {other:?}"),
             }
         }
     }
@@ -338,7 +452,7 @@ mod tests {
     use async_trait::async_trait;
     use burncloud_node_runtime::{
         FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-        FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeState,
+        FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
     };
     use burncloud_service_models::{
         FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
@@ -373,6 +487,7 @@ mod tests {
 
     #[derive(Debug)]
     struct FailingResolver;
+
     #[async_trait]
     impl ModelResolver for FailingResolver {
         async fn resolve(
@@ -384,6 +499,7 @@ mod tests {
             ))
         }
     }
+
     #[async_trait]
     impl ModelResolver for UnsupportedResolver {
         async fn resolve(
@@ -422,8 +538,8 @@ mod tests {
             .await
             .is_err());
         assert_eq!(
-            orchestrator.machine().reconciler().state(),
-            NodeState::Failed
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Failed)
         );
         assert!(request_state.route_miss_response("qwen-4b").is_none());
     }
@@ -439,12 +555,77 @@ mod tests {
             LocalPreparationOutcome::Ready
         );
         assert_eq!(
-            orchestrator.machine().reconciler().state(),
-            NodeState::Ready
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Ready)
         );
         assert_eq!(
-            orchestrator.active_plan().unwrap().local_endpoint,
+            orchestrator
+                .workload_plan("qwen-4b")
+                .unwrap()
+                .local_endpoint,
             "http://127.0.0.1:39122"
+        );
+    }
+
+    #[tokio::test]
+    async fn two_models_own_independent_workloads() {
+        let mut orchestrator = fake_orchestrator();
+
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+        orchestrator
+            .record_attachment("qwen-4b", LocalRouteAttachmentId(101))
+            .unwrap();
+
+        let qwen_plan = orchestrator.workload_plan("qwen-4b").cloned().unwrap();
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Routable)
+        );
+
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("deepseek-8b").unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(orchestrator.workload_count(), 2);
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Routable)
+        );
+        assert_eq!(
+            orchestrator.workload_attachment_id("qwen-4b"),
+            Some(LocalRouteAttachmentId(101))
+        );
+        assert_eq!(orchestrator.workload_plan("qwen-4b"), Some(&qwen_plan));
+        assert_eq!(
+            orchestrator.workload_state("deepseek-8b"),
+            Some(NodeState::Ready)
+        );
+        assert_eq!(orchestrator.workload_attachment_id("deepseek-8b"), None);
+    }
+
+    #[tokio::test]
+    async fn repeated_same_model_demand_reuses_one_workload() {
+        let mut orchestrator = fake_orchestrator();
+
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+        assert_eq!(orchestrator.workload_count(), 1);
+
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(orchestrator.workload_count(), 1);
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Ready)
         );
     }
 
@@ -466,19 +647,10 @@ mod tests {
             .unwrap();
         assert!(matches!(outcome, LocalPreparationOutcome::Unsupported(_)));
         assert_eq!(
-            orchestrator.machine().reconciler().state(),
-            NodeState::LocalUnsupported
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::LocalUnsupported)
         );
-        assert_eq!(
-            orchestrator
-                .machine_mut()
-                .reconciler_mut()
-                .next_action()
-                .unwrap(),
-            ReconcileAction::Noop
-        );
-        assert!(!orchestrator.machine().reconciler().state().is_serving());
-        assert!(!orchestrator.machine().reconciler().state().is_failure());
-        assert!(orchestrator.active_plan().is_none());
+        assert_eq!(orchestrator.workload_plan("qwen-4b"), None);
+        assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
     }
 }
