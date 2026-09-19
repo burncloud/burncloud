@@ -69,6 +69,29 @@ impl LocalRouteAttacher for ExistingRouterLocalAttacher {
         Ok(LocalRouteAttachmentId(channel_id))
     }
 
+    async fn quarantine(
+        &self,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> Result<(), LocalRouteAttachmentError> {
+        let mut channel = ChannelProviderModel::get_by_id(self.db.as_ref(), attachment_id.0)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?
+            .ok_or_else(|| {
+                LocalRouteAttachmentError::DetachFailed(format!(
+                    "local route attachment {} no longer exists",
+                    attachment_id.0
+                ))
+            })?;
+
+        // Traffic truth owns routability. Mark disabled first; update() also
+        // removes channel_abilities so Existing ModelRouter can no longer
+        // discover the unhealthy local channel even if later deletion fails.
+        channel.status = 3;
+        ChannelProviderModel::update(self.db.as_ref(), &channel)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))
+    }
+
     async fn detach(
         &self,
         attachment_id: LocalRouteAttachmentId,

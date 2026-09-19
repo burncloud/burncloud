@@ -2,6 +2,13 @@
 
 mod common;
 
+// #564 BDD boundary lock: execute local-route contract and fail-closed
+// integration scenarios in the router invariant CI target.
+#[path = "local_attachment_contract.rs"]
+mod local_attachment_contract;
+#[path = "node_existing_router_integration.rs"]
+mod node_existing_router_integration;
+
 use burncloud_database::sqlx;
 use burncloud_database_router::{RouterDatabase, RouterLog, RouterTokenModel};
 use common::{insert_router_token, setup_db};

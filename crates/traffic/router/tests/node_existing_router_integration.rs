@@ -1,9 +1,8 @@
-#[path = "../src/local_attachment.rs"]
-mod local_attachment;
-
 use burncloud_database::create_database_with_url;
+use burncloud_router::local_attachment::{
+    ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment,
+};
 use burncloud_router::model_router::ModelRouter;
-use local_attachment::{ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment};
 use std::sync::Arc;
 
 /// Phase-0 S0-08 acceptance: a READY local Node endpoint becomes discoverable
@@ -47,6 +46,17 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
         candidates[0].0.base_url.as_deref(),
         Some("http://127.0.0.1:18080")
     );
+
+    attacher
+        .quarantine(attachment_id)
+        .await
+        .expect("quarantine unhealthy local channel");
+
+    assert!(model_router
+        .get_candidates("default", model)
+        .await
+        .expect("query after quarantine")
+        .is_empty());
 
     attacher
         .detach(attachment_id)

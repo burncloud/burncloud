@@ -1,8 +1,5 @@
-#[path = "../src/local_attachment.rs"]
-mod local_attachment;
-
 use async_trait::async_trait;
-use local_attachment::{
+use burncloud_router::local_attachment::{
     LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttachmentId,
 };
 use std::sync::Mutex;
@@ -21,6 +18,13 @@ impl LocalRouteAttacher for FakeExistingRouterAttachment {
         let id = LocalRouteAttachmentId(42);
         self.attached.lock().unwrap().push((id, attachment));
         Ok(id)
+    }
+
+    async fn quarantine(
+        &self,
+        _attachment_id: LocalRouteAttachmentId,
+    ) -> Result<(), LocalRouteAttachmentError> {
+        Ok(())
     }
 
     async fn detach(
