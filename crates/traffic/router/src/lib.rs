@@ -9,6 +9,7 @@ pub mod channel_state;
 mod circuit_breaker;
 mod config;
 pub mod exchange_rate;
+pub mod local_attachment;
 mod limiter;
 pub mod model_router;
 pub mod order_type;
