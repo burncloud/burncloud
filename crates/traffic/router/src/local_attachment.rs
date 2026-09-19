@@ -35,6 +35,13 @@ pub trait LocalRouteAttacher: Send + Sync {
         attachment: LocalRouteAttachment,
     ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError>;
 
+    /// Make the local channel immediately non-routable without deleting its
+    /// identity. Recovery/cleanup may proceed only after this succeeds.
+    async fn quarantine(
+        &self,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> Result<(), LocalRouteAttachmentError>;
+
     async fn detach(
         &self,
         attachment_id: LocalRouteAttachmentId,
