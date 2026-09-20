@@ -201,17 +201,13 @@ pub fn validate_bind_host(host: &str, test_api_enabled: bool) -> anyhow::Result<
     }
 
     let ip = host.parse::<std::net::IpAddr>().map_err(|_| {
-        anyhow::anyhow!(
-            "BURNCLOUD_NODE_TEST_API requires a loopback bind host; got '{host}'"
-        )
+        anyhow::anyhow!("BURNCLOUD_NODE_TEST_API requires a loopback bind host; got '{host}'")
     })?;
 
     if ip.is_loopback() {
         Ok(())
     } else {
-        anyhow::bail!(
-            "BURNCLOUD_NODE_TEST_API requires a loopback bind host; got '{host}'"
-        )
+        anyhow::bail!("BURNCLOUD_NODE_TEST_API requires a loopback bind host; got '{host}'")
     }
 }
 
