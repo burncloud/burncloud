@@ -187,6 +187,9 @@ pub async fn create_app_with_node_request_state(
 
 #[tracing::instrument(skip_all)]
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
+    let node_test_api_enabled = node_test::enabled_from_env();
+    node_test::validate_bind_host(host, node_test_api_enabled)?;
+
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| anyhow::anyhow!("JWT_SECRET is missing or empty"))?;
     let jwt_secret = JwtSecret::new(jwt_secret)?;
