@@ -274,6 +274,98 @@ async fn detached_route_receipt_cannot_recover_another_model() {
 }
 
 #[tokio::test]
+async fn failed_detach_can_retry_cleanup_without_requarantine() {
+    let mut node = fake_orchestrator();
+
+    let route = match prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("qwen-4b").unwrap(),
+        |_, _| async { Ok(LocalRouteAttachmentId(601)) },
+    )
+    .await
+    .unwrap()
+    {
+        LocalRouteOutcome::Routable(id) => id,
+        LocalRouteOutcome::Unsupported(reason) => panic!("unexpected unsupported: {reason:?}"),
+    };
+
+    let first = detach_unhealthy_node_route(
+        &mut node,
+        "qwen-4b",
+        route,
+        |_| async { Ok(()) },
+        |_| async { anyhow::bail!("cleanup failed") },
+    )
+    .await;
+    assert!(first.is_err());
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Unhealthy));
+
+    let receipt = detach_unhealthy_node_route(
+        &mut node,
+        "qwen-4b",
+        route,
+        |_| async { panic!("quarantine must not repeat") },
+        |_| async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+    begin_detached_route_recovery(&mut node, "qwen-4b", receipt).unwrap();
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Starting));
+}
+
+#[tokio::test]
+async fn stale_same_model_receipt_cannot_open_latest_recovery() {
+    let mut node = fake_orchestrator();
+
+    let first_route = match prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("qwen-4b").unwrap(),
+        |_, _| async { Ok(LocalRouteAttachmentId(611)) },
+    )
+    .await
+    .unwrap()
+    {
+        LocalRouteOutcome::Routable(id) => id,
+        LocalRouteOutcome::Unsupported(reason) => panic!("unexpected unsupported: {reason:?}"),
+    };
+    let first_receipt = detach_unhealthy_node_route(
+        &mut node,
+        "qwen-4b",
+        first_route,
+        |_| async { Ok(()) },
+        |_| async { Ok(()) },
+    )
+    .await
+    .unwrap();
+    let stale_receipt = first_receipt.clone();
+
+    begin_detached_route_recovery(&mut node, "qwen-4b", first_receipt).unwrap();
+    node.recover_until_ready("qwen-4b").await.unwrap();
+    attach_ready_node_route(&mut node, "qwen-4b", || async {
+        Ok(LocalRouteAttachmentId(612))
+    })
+    .await
+    .unwrap();
+
+    let current_receipt = detach_unhealthy_node_route(
+        &mut node,
+        "qwen-4b",
+        LocalRouteAttachmentId(612),
+        |_| async { Ok(()) },
+        |_| async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+    assert!(begin_detached_route_recovery(&mut node, "qwen-4b", stale_receipt).is_err());
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Unhealthy));
+
+    begin_detached_route_recovery(&mut node, "qwen-4b", current_receipt).unwrap();
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Starting));
+}
+
+#[tokio::test]
 async fn failed_detach_cannot_enter_recovery_rail() {
     let mut node = fake_orchestrator();
 
