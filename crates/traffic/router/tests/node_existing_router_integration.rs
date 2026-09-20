@@ -70,7 +70,6 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
         .is_empty());
 }
 
-
 /// #564 P0-A: quarantine is one Traffic transaction. If disabling the channel
 /// cannot commit, channel_abilities must roll back too; Node may then keep the
 /// lifecycle Routable instead of believing a half-quarantine succeeded.
