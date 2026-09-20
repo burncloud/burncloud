@@ -54,15 +54,6 @@ pub enum LocalPreparationOutcome {
     Unsupported(LocalModelUnsupported),
 }
 
-#[derive(Debug, Default)]
-struct DemandWork {
-    resolved: Option<ResolvedModel>,
-    artifact: Option<PreparedArtifact>,
-    runtime: Option<PreparedRuntime>,
-    process: Option<ProcessHandle>,
-    readiness: Option<ReadinessTarget>,
-}
-
 /// Application-owned lifecycle for exactly one requested model.
 ///
 /// The machine capabilities are shared, but convergence truth is not: every
@@ -71,6 +62,9 @@ struct DemandWork {
 #[derive(Debug, Default)]
 struct ModelWorkload {
     reconciler: DemandReconciler,
+    resolved: Option<ResolvedModel>,
+    artifact: Option<PreparedArtifact>,
+    runtime: Option<PreparedRuntime>,
     plan: Option<ProcessPlan>,
     process: Option<ProcessHandle>,
     attachment_id: Option<LocalRouteAttachmentId>,
@@ -292,7 +286,6 @@ where
         &mut self,
         demand: ModelDemand,
     ) -> anyhow::Result<LocalPreparationOutcome> {
-        let mut work = DemandWork::default();
         self.ensure_workload(&demand.model);
 
         loop {
@@ -320,7 +313,10 @@ where
                         .await
                     {
                         Ok(ModelResolutionOutcome::Local(resolved)) => {
-                            work.resolved = Some(resolved);
+                            self.workloads
+                                .get_mut(&demand.model)
+                                .expect("workload must exist")
+                                .resolved = Some(resolved);
                             self.observe(&demand.model, ReconcileEvidence::Resolved)?;
                         }
                         Ok(ModelResolutionOutcome::Unsupported(reason)) => {
@@ -338,16 +334,17 @@ where
                     }
                 }
                 ReconcileAction::PrepareArtifact => {
-                    let resolved = work
-                        .resolved
-                        .as_ref()
+                    let resolved = self
+                        .workloads
+                        .get(&demand.model)
+                        .and_then(|workload| workload.resolved.clone())
                         .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
                     let artifact = match self
                         .machine
                         .artifacts()
                         .prepare(ArtifactRequest {
-                            source: resolved.artifact_source.clone(),
-                            expected_digest: resolved.artifact_digest.clone(),
+                            source: resolved.artifact_source,
+                            expected_digest: resolved.artifact_digest,
                         })
                         .await
                     {
@@ -361,20 +358,24 @@ where
                         self.mark_failed(&demand.model)?;
                         anyhow::bail!("artifact preparer returned unverified artifact");
                     }
-                    work.artifact = Some(artifact);
+                    self.workloads
+                        .get_mut(&demand.model)
+                        .expect("workload must exist")
+                        .artifact = Some(artifact);
                     self.observe(&demand.model, ReconcileEvidence::ArtifactPrepared)?;
                 }
                 ReconcileAction::PrepareRuntime => {
-                    let resolved = work
-                        .resolved
-                        .as_ref()
+                    let resolved = self
+                        .workloads
+                        .get(&demand.model)
+                        .and_then(|workload| workload.resolved.clone())
                         .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
                     let runtime = match self
                         .machine
                         .runtimes()
                         .prepare(RuntimeRequest {
-                            runtime: resolved.runtime.clone(),
-                            version: resolved.runtime_version.clone(),
+                            runtime: resolved.runtime,
+                            version: resolved.runtime_version,
                         })
                         .await
                     {
@@ -384,25 +385,40 @@ where
                             return Err(error.into());
                         }
                     };
-                    work.runtime = Some(runtime);
+                    self.workloads
+                        .get_mut(&demand.model)
+                        .expect("workload must exist")
+                        .runtime = Some(runtime);
                     self.observe(&demand.model, ReconcileEvidence::RuntimePrepared)?;
                 }
                 ReconcileAction::StartProcess => {
-                    let runtime = work
-                        .runtime
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("runtime receipt missing"))?;
-                    let artifact = work
-                        .artifact
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("artifact receipt missing"))?;
-                    let plan = match self.runtime_adapter.plan(runtime, artifact).await {
+                    let (runtime, artifact) = self
+                        .workloads
+                        .get(&demand.model)
+                        .map(|workload| (workload.runtime.clone(), workload.artifact.clone()))
+                        .ok_or_else(|| anyhow::anyhow!("workload missing for model '{}'", demand.model))?;
+                    let runtime =
+                        runtime.ok_or_else(|| anyhow::anyhow!("runtime receipt missing"))?;
+                    let artifact =
+                        artifact.ok_or_else(|| anyhow::anyhow!("artifact receipt missing"))?;
+
+                    let plan = match self.runtime_adapter.plan(&runtime, &artifact).await {
                         Ok(plan) => plan,
                         Err(error) => {
                             self.mark_failed(&demand.model)?;
                             return Err(error.into());
                         }
                     };
+
+                    // Persist the launch receipt before awaiting process start.
+                    // If this orchestration call is cancelled while start() is
+                    // pending, a later reconcile call still has all framework
+                    // evidence needed to continue from Starting.
+                    self.workloads
+                        .get_mut(&demand.model)
+                        .expect("workload must exist")
+                        .plan = Some(plan.clone());
+
                     let handle = match self.machine.processes().start(plan.process.clone()).await {
                         Ok(handle) => handle,
                         Err(error) => {
@@ -410,24 +426,16 @@ where
                             return Err(error.into());
                         }
                     };
-                    work.process = Some(handle.clone());
-                    work.readiness = Some(plan.readiness.clone());
-                    let workload = self
-                        .workloads
+                    self.workloads
                         .get_mut(&demand.model)
-                        .expect("workload must exist");
-                    workload.process = Some(handle);
-                    workload.plan = Some(plan);
+                        .expect("workload must exist")
+                        .process = Some(handle);
                     self.observe(&demand.model, ReconcileEvidence::ProcessStarted)?;
                 }
                 ReconcileAction::VerifyReadiness => {
-                    let target = work
-                        .readiness
-                        .clone()
-                        .or_else(|| {
-                            self.workload_plan(&demand.model)
-                                .map(|plan| plan.readiness.clone())
-                        })
+                    let target = self
+                        .workload_plan(&demand.model)
+                        .map(|plan| plan.readiness.clone())
                         .ok_or_else(|| anyhow::anyhow!("readiness target receipt missing"))?;
                     if let Err(error) = self.machine.readiness().wait_ready(target.clone()).await {
                         self.mark_failed(&demand.model)?;
