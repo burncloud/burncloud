@@ -172,12 +172,47 @@ fn api_error(
     )
 }
 
+/// Parse the explicit human black-box API switch without reading process-global state.
+pub fn enabled_from_value(value: Option<&str>) -> bool {
+    value
+        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true"))
+        .unwrap_or(false)
+}
+
 /// The human black-box API is deliberately opt-in and disabled by default.
 /// It is mounted on the existing BurnCloud router; this module never binds a socket.
 pub fn enabled_from_env() -> bool {
-    std::env::var("BURNCLOUD_NODE_TEST_API")
-        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true"))
-        .unwrap_or(false)
+    enabled_from_value(std::env::var("BURNCLOUD_NODE_TEST_API").ok().as_deref())
+}
+
+/// Enforce the #567 local-only boundary before the server binds a socket.
+///
+/// The test API intentionally bypasses normal product authentication so a human
+/// can use simple local curl commands. Therefore enabling it on any non-loopback
+/// bind address is a startup error, not a warning.
+pub fn validate_bind_host(host: &str, test_api_enabled: bool) -> anyhow::Result<()> {
+    if !test_api_enabled {
+        return Ok(());
+    }
+
+    let host = host.trim();
+    if host.eq_ignore_ascii_case("localhost") {
+        return Ok(());
+    }
+
+    let ip = host.parse::<std::net::IpAddr>().map_err(|_| {
+        anyhow::anyhow!(
+            "BURNCLOUD_NODE_TEST_API requires a loopback bind host; got '{host}'"
+        )
+    })?;
+
+    if ip.is_loopback() {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "BURNCLOUD_NODE_TEST_API requires a loopback bind host; got '{host}'"
+        )
+    }
 }
 
 pub fn router() -> Router {
@@ -404,11 +439,29 @@ mod tests {
     }
 
     #[test]
-    fn test_api_is_disabled_unless_explicitly_enabled() {
-        assert!(!matches!(
-            "".trim().to_ascii_lowercase().as_str(),
-            "1" | "true"
-        ));
+    fn test_api_switch_is_disabled_unless_explicitly_enabled() {
+        for value in [None, Some(""), Some("0"), Some("false"), Some("yes")] {
+            assert!(!enabled_from_value(value));
+        }
+
+        for value in [Some("1"), Some("true"), Some(" TRUE ")] {
+            assert!(enabled_from_value(value));
+        }
+    }
+
+    #[test]
+    fn test_api_bind_is_allowed_only_on_loopback() {
+        for host in ["127.0.0.1", "127.0.0.2", "::1", "localhost"] {
+            assert!(validate_bind_host(host, true).is_ok(), "{host}");
+        }
+
+        for host in ["0.0.0.0", "::", "192.168.1.20", "8.8.8.8", "example.com"] {
+            assert!(validate_bind_host(host, true).is_err(), "{host}");
+        }
+
+        // The production server remains unrestricted when the test API is off.
+        assert!(validate_bind_host("0.0.0.0", false).is_ok());
+        assert!(validate_bind_host("example.com", false).is_ok());
     }
 
     #[tokio::test]
