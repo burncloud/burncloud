@@ -437,12 +437,11 @@ mod tests {
             .prepare_until_ready(ModelDemand::new("deepseek-8b").unwrap())
             .await
             .unwrap();
-        let deepseek_route =
-            attach_ready_node_route(&mut orchestrator, "deepseek-8b", || async {
-                Ok(LocalRouteAttachmentId(42))
-            })
-            .await
-            .unwrap();
+        let deepseek_route = attach_ready_node_route(&mut orchestrator, "deepseek-8b", || async {
+            Ok(LocalRouteAttachmentId(42))
+        })
+        .await
+        .unwrap();
         let deepseek_receipt = detach_unhealthy_node_route(
             &mut orchestrator,
             "deepseek-8b",
@@ -458,16 +457,14 @@ mod tests {
             Some(NodeState::Unhealthy)
         );
 
-        let result =
-            begin_detached_route_recovery(&mut orchestrator, "deepseek-8b", qwen_receipt);
+        let result = begin_detached_route_recovery(&mut orchestrator, "deepseek-8b", qwen_receipt);
         assert!(result.is_err());
         assert_eq!(
             orchestrator.workload_state("deepseek-8b"),
             Some(NodeState::Unhealthy)
         );
 
-        begin_detached_route_recovery(&mut orchestrator, "deepseek-8b", deepseek_receipt)
-            .unwrap();
+        begin_detached_route_recovery(&mut orchestrator, "deepseek-8b", deepseek_receipt).unwrap();
         assert_eq!(
             orchestrator.workload_state("deepseek-8b"),
             Some(NodeState::Starting)
