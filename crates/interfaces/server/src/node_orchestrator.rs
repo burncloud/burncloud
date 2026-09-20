@@ -869,11 +869,14 @@ mod tests {
         orchestrator
             .observe(model, ReconcileEvidence::Resolved)
             .unwrap();
-        orchestrator.workloads.get_mut(model).expect("workload").artifact =
-            Some(PreparedArtifact {
-                local_path: "/fake/artifacts/qwen_fake.gguf".into(),
-                verified: true,
-            });
+        orchestrator
+            .workloads
+            .get_mut(model)
+            .expect("workload")
+            .artifact = Some(PreparedArtifact {
+            local_path: "/fake/artifacts/qwen_fake.gguf".into(),
+            verified: true,
+        });
         orchestrator
             .observe(model, ReconcileEvidence::ArtifactPrepared)
             .unwrap();
