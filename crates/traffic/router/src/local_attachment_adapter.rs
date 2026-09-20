@@ -3,7 +3,7 @@ use crate::local_attachment::{
 };
 use async_trait::async_trait;
 use burncloud_common::types::{Channel, ChannelType};
-use burncloud_database::Database;
+use burncloud_database::{adapt_sql, sqlx, Database};
 use burncloud_database_channel::ChannelProviderModel;
 use std::sync::Arc;
 
@@ -73,21 +73,50 @@ impl LocalRouteAttacher for ExistingRouterLocalAttacher {
         &self,
         attachment_id: LocalRouteAttachmentId,
     ) -> Result<(), LocalRouteAttachmentError> {
-        let mut channel = ChannelProviderModel::get_by_id(self.db.as_ref(), attachment_id.0)
-            .await
-            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?
-            .ok_or_else(|| {
-                LocalRouteAttachmentError::DetachFailed(format!(
-                    "local route attachment {} no longer exists",
-                    attachment_id.0
-                ))
-            })?;
+        let conn = self
+            .db
+            .get_connection()
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+        let pool = conn.pool();
+        let is_postgres = self.db.kind() == "postgres";
 
-        // Traffic truth owns routability. Mark disabled first; update() also
-        // removes channel_abilities so Existing ModelRouter can no longer
-        // discover the unhealthy local channel even if later deletion fails.
-        channel.status = 3;
-        ChannelProviderModel::update(self.db.as_ref(), &channel)
+        // Fail-closed must be atomic from Traffic's point of view:
+        // either both the routing ability and channel status change, or neither
+        // does. This prevents a half-quarantined channel from remaining
+        // discoverable through channel_abilities.
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+
+        let delete_abilities = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
+        sqlx::query(&delete_abilities)
+            .bind(attachment_id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+
+        let disable_channel = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET status = 3 WHERE id = ?",
+        );
+        let result = sqlx::query(&disable_channel)
+            .bind(attachment_id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+
+        if result.rows_affected() != 1 {
+            return Err(LocalRouteAttachmentError::DetachFailed(format!(
+                "local route attachment {} no longer exists",
+                attachment_id.0
+            )));
+        }
+
+        tx.commit()
             .await
             .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))
     }
