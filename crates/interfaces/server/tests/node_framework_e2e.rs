@@ -130,6 +130,67 @@ async fn two_models_keep_independent_state_plan_and_attachment() {
 }
 
 #[tokio::test]
+async fn repeated_routable_demand_does_not_attach_again() {
+    let mut node = fake_orchestrator();
+    let first = prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("qwen-4b").unwrap(),
+        |_, _| async { Ok(LocalRouteAttachmentId(401)) },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first,
+        LocalRouteOutcome::Routable(LocalRouteAttachmentId(401))
+    );
+
+    let plan_before = node.workload_plan("qwen-4b").cloned().unwrap();
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls_for_attach = calls.clone();
+
+    let repeated = prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("qwen-4b").unwrap(),
+        move |_, _| async move {
+            calls_for_attach.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(LocalRouteAttachmentId(999))
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        repeated,
+        LocalRouteOutcome::Routable(LocalRouteAttachmentId(401))
+    );
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(
+        node.workload_attachment_id("qwen-4b"),
+        Some(LocalRouteAttachmentId(401))
+    );
+    assert_eq!(node.workload_plan("qwen-4b"), Some(&plan_before));
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Routable));
+}
+
+#[tokio::test]
+async fn non_ready_model_cannot_trigger_attach_side_effect() {
+    let mut node = fake_orchestrator();
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls_for_attach = calls.clone();
+
+    let result = attach_ready_node_route(&mut node, "qwen-4b", move || async move {
+        calls_for_attach.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(LocalRouteAttachmentId(999))
+    })
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(node.workload_state("qwen-4b"), None);
+    assert_eq!(node.workload_attachment_id("qwen-4b"), None);
+}
+
+#[tokio::test]
 async fn attach_failure_stops_permanent_model_preparing() {
     let request_state = NodeRequestState::default();
     let mut node = fake_orchestrator().with_request_state(request_state.clone());
@@ -147,6 +208,69 @@ async fn attach_failure_stops_permanent_model_preparing() {
     assert!(result.is_err());
     assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Failed));
     assert!(request_state.route_miss_response("qwen-4b").is_none());
+}
+
+#[tokio::test]
+async fn detached_route_receipt_cannot_recover_another_model() {
+    let mut node = fake_orchestrator();
+
+    let qwen_route = match prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("qwen-4b").unwrap(),
+        |_, _| async { Ok(LocalRouteAttachmentId(501)) },
+    )
+    .await
+    .unwrap()
+    {
+        LocalRouteOutcome::Routable(id) => id,
+        LocalRouteOutcome::Unsupported(reason) => panic!("unexpected unsupported: {reason:?}"),
+    };
+    let qwen_receipt = detach_unhealthy_node_route(
+        &mut node,
+        "qwen-4b",
+        qwen_route,
+        |_| async { Ok(()) },
+        |_| async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+    let deepseek_route = match prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("deepseek-8b").unwrap(),
+        |_, _| async { Ok(LocalRouteAttachmentId(502)) },
+    )
+    .await
+    .unwrap()
+    {
+        LocalRouteOutcome::Routable(id) => id,
+        LocalRouteOutcome::Unsupported(reason) => panic!("unexpected unsupported: {reason:?}"),
+    };
+    let deepseek_receipt = detach_unhealthy_node_route(
+        &mut node,
+        "deepseek-8b",
+        deepseek_route,
+        |_| async { Ok(()) },
+        |_| async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        node.workload_state("deepseek-8b"),
+        Some(NodeState::Unhealthy)
+    );
+    assert!(begin_detached_route_recovery(&mut node, "deepseek-8b", qwen_receipt).is_err());
+    assert_eq!(
+        node.workload_state("deepseek-8b"),
+        Some(NodeState::Unhealthy)
+    );
+
+    begin_detached_route_recovery(&mut node, "deepseek-8b", deepseek_receipt).unwrap();
+    assert_eq!(
+        node.workload_state("deepseek-8b"),
+        Some(NodeState::Starting)
+    );
 }
 
 #[tokio::test]
