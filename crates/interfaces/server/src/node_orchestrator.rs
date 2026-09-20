@@ -50,6 +50,7 @@ impl std::error::Error for ModelDemandError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalPreparationOutcome {
     Ready,
+    Routable(LocalRouteAttachmentId),
     Unsupported(LocalModelUnsupported),
 }
 
@@ -73,6 +74,7 @@ struct ModelWorkload {
     plan: Option<ProcessPlan>,
     process: Option<ProcessHandle>,
     attachment_id: Option<LocalRouteAttachmentId>,
+    unsupported: Option<LocalModelUnsupported>,
 }
 
 #[derive(Debug)]
@@ -185,16 +187,53 @@ where
         self.observe(model, ReconcileEvidence::Failed)
     }
 
+    pub(crate) fn ensure_ready_for_attachment(&self, model: &str) -> anyhow::Result<()> {
+        let workload = self
+            .workloads
+            .get(model)
+            .ok_or_else(|| anyhow::anyhow!("workload missing for model '{model}'"))?;
+
+        if workload.reconciler.state() != NodeState::Ready {
+            anyhow::bail!(
+                "model '{model}' is not ready for attachment: {:?}",
+                workload.reconciler.state()
+            );
+        }
+        if workload.attachment_id.is_some() {
+            anyhow::bail!("model '{model}' already owns a route attachment");
+        }
+        if workload.plan.is_none() {
+            anyhow::bail!("model '{model}' is Ready without a process plan");
+        }
+        Ok(())
+    }
+
     pub(crate) fn record_attachment(
         &mut self,
         model: &str,
         attachment_id: LocalRouteAttachmentId,
     ) -> anyhow::Result<()> {
-        self.observe(model, ReconcileEvidence::RouterAttached)?;
-        self.workloads
-            .get_mut(model)
-            .expect("workload must exist")
-            .attachment_id = Some(attachment_id);
+        self.ensure_ready_for_attachment(model)?;
+
+        // Store the Traffic receipt before publishing Routable. This method is
+        // synchronous, so no observer can see a Routable request projection
+        // without the workload already owning the exact attachment identity.
+        {
+            let workload = self
+                .workloads
+                .get_mut(model)
+                .expect("workload must exist");
+            workload.attachment_id = Some(attachment_id);
+            if let Err(error) = workload
+                .reconciler
+                .observe(ReconcileEvidence::RouterAttached)
+            {
+                workload.attachment_id = None;
+                return Err(error.into());
+            }
+        }
+
+        self.publish_state(model);
         Ok(())
     }
 
@@ -271,6 +310,10 @@ where
                             self.observe(&demand.model, ReconcileEvidence::Resolved)?;
                         }
                         Ok(ModelResolutionOutcome::Unsupported(reason)) => {
+                            self.workloads
+                                .get_mut(&demand.model)
+                                .expect("workload must exist")
+                                .unsupported = Some(reason.clone());
                             self.observe(&demand.model, ReconcileEvidence::LocalUnsupported)?;
                             return Ok(LocalPreparationOutcome::Unsupported(reason));
                         }
@@ -389,9 +432,39 @@ where
                     }
                     self.observe(&demand.model, ReconcileEvidence::ReadinessVerified)?;
                 }
-                ReconcileAction::AttachToExistingRouter | ReconcileAction::Noop => {
+                ReconcileAction::AttachToExistingRouter => {
                     return Ok(LocalPreparationOutcome::Ready)
                 }
+                ReconcileAction::Noop => match self.workload_state(&demand.model) {
+                    Some(NodeState::Routable) => {
+                        let attachment_id = self
+                            .workload_attachment_id(&demand.model)
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "routable model '{}' has no route attachment receipt",
+                                    demand.model
+                                )
+                            })?;
+                        return Ok(LocalPreparationOutcome::Routable(attachment_id));
+                    }
+                    Some(NodeState::LocalUnsupported) => {
+                        let reason = self
+                            .workloads
+                            .get(&demand.model)
+                            .and_then(|workload| workload.unsupported.clone())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unsupported model '{}' has no unsupported receipt",
+                                    demand.model
+                                )
+                            })?;
+                        return Ok(LocalPreparationOutcome::Unsupported(reason));
+                    }
+                    state => anyhow::bail!(
+                        "unexpected no-op state for model '{}': {state:?}",
+                        demand.model
+                    ),
+                },
                 ReconcileAction::Recover => {
                     anyhow::bail!("explicit recovery is required for model '{}'", demand.model)
                 }
@@ -632,6 +705,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn repeated_routable_demand_returns_existing_attachment() {
+        let mut orchestrator = fake_orchestrator();
+
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+        orchestrator
+            .record_attachment("qwen-4b", LocalRouteAttachmentId(101))
+            .unwrap();
+
+        let outcome = orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome,
+            LocalPreparationOutcome::Routable(LocalRouteAttachmentId(101))
+        );
+        assert_eq!(orchestrator.workload_count(), 1);
+        assert_eq!(
+            orchestrator.workload_attachment_id("qwen-4b"),
+            Some(LocalRouteAttachmentId(101))
+        );
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Routable)
+        );
+    }
+
+    #[tokio::test]
     async fn unsupported_local_model_stops_before_any_preparation_or_route_state() {
         let machine = NodeComposition::start(
             FakeHardwareProbe::default(),
@@ -654,5 +759,18 @@ mod tests {
         );
         assert_eq!(orchestrator.workload_plan("qwen-4b"), None);
         assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
+
+        let repeated = orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+        assert!(matches!(
+            repeated,
+            LocalPreparationOutcome::Unsupported(_)
+        ));
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::LocalUnsupported)
+        );
     }
 }
