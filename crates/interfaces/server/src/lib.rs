@@ -3,6 +3,7 @@ pub mod logging;
 pub mod node_attachment;
 pub mod node_orchestrator;
 pub mod node_request;
+pub mod node_test;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::http::HeaderName;
@@ -154,7 +155,7 @@ pub async fn create_app_with_node_request_state(
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
-    let app = app
+    let mut app = app
         .fallback_service(router_app)
         .layer(SetRequestIdLayer::new(
             x_request_id.clone(),
@@ -170,11 +171,25 @@ pub async fn create_app_with_node_request_state(
             api::auth::security_boundary_middleware,
         ));
 
+    // #567 human black-box harness. It is deliberately merged after the
+    // production security stack because it is not a product API and must be
+    // reachable by simple local curl commands. The explicit env gate is the
+    // boundary: without it these routes do not exist at all.
+    if node_test::enabled_from_env() {
+        tracing::warn!(
+            "BURNCLOUD_NODE_TEST_API is enabled; mounting test-only Node routes on the existing server"
+        );
+        app = app.merge(node_test::router());
+    }
+
     Ok(app)
 }
 
 #[tracing::instrument(skip_all)]
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
+    let node_test_api_enabled = node_test::enabled_from_env();
+    node_test::validate_bind_host(host, node_test_api_enabled)?;
+
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| anyhow::anyhow!("JWT_SECRET is missing or empty"))?;
     let jwt_secret = JwtSecret::new(jwt_secret)?;

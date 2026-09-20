@@ -83,6 +83,9 @@ jobs:
       - name: Node P0 interrupted-preparation invariants
         run: cargo test -p burncloud-server --lib node_orchestrator::tests::interrupted_
 
+      - name: Node black-box API tests
+        run: cargo test -p burncloud-server --lib node_test
+
       - name: Billing invariants
         run: cargo test -p burncloud-router --test billing_invariants --test quota_tests
 
