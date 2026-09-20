@@ -144,15 +144,25 @@ where
             attachment_id.0
         );
     }
-    if orchestrator.workload_state(model) != Some(burncloud_node_runtime::NodeState::Routable) {
-        anyhow::bail!("model '{model}' is not routable");
+
+    match orchestrator.workload_state(model) {
+        Some(burncloud_node_runtime::NodeState::Routable) => {
+            // Critical ordering: Traffic truth first, lifecycle state second.
+            quarantine(attachment_id).await?;
+            orchestrator.mark_unhealthy(model)?;
+        }
+        Some(burncloud_node_runtime::NodeState::Unhealthy) => {
+            // A previous delete attempt failed after quarantine succeeded.
+            // Traffic is already fail-closed, so cleanup may be retried without
+            // re-quarantining or changing lifecycle state again.
+        }
+        state => anyhow::bail!(
+            "model '{model}' cannot detach local route from state {state:?}"
+        ),
     }
 
-    // Critical ordering: Traffic truth first, lifecycle state second.
-    quarantine(attachment_id).await?;
-    orchestrator.mark_unhealthy(model)?;
-
-    // Delete is cleanup. If it fails, Traffic is already fail-closed.
+    // Delete is cleanup. If it fails, Traffic remains fail-closed and a later
+    // call may retry this exact attachment while the workload stays Unhealthy.
     detach(attachment_id).await?;
     orchestrator.clear_attachment(model, attachment_id)?;
     Ok(DetachedRoute {
@@ -186,7 +196,7 @@ where
     if orchestrator.workload_attachment_id(model).is_some() {
         anyhow::bail!("model '{model}' still owns a route attachment");
     }
-    orchestrator.begin_recovery(model)
+    orchestrator.begin_recovery(model, detached.attachment_id())
 }
 
 #[cfg(test)]
@@ -411,6 +421,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_detach_can_retry_cleanup_without_requarantine() {
+        let (mut orchestrator, _) = ready_orchestrator().await;
+        let route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(40))
+        })
+        .await
+        .unwrap();
+
+        let first = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            route,
+            |_| async { Ok(()) },
+            |_| async { anyhow::bail!("first cleanup failed") },
+        )
+        .await;
+        assert!(first.is_err());
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
+
+        let detached = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            route,
+            |_| async { panic!("quarantine must not repeat on cleanup retry") },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(detached.model(), "qwen-4b");
+        assert_eq!(detached.attachment_id(), LocalRouteAttachmentId(40));
+        assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
+
+        begin_detached_route_recovery(&mut orchestrator, "qwen-4b", detached).unwrap();
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Starting)
+        );
+    }
+
+    #[tokio::test]
     async fn detached_route_receipt_cannot_recover_another_model() {
         let mut orchestrator = fake_orchestrator();
 
@@ -467,6 +521,59 @@ mod tests {
         begin_detached_route_recovery(&mut orchestrator, "deepseek-8b", deepseek_receipt).unwrap();
         assert_eq!(
             orchestrator.workload_state("deepseek-8b"),
+            Some(NodeState::Starting)
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_receipt_from_same_model_cannot_recover_latest_detach() {
+        let (mut orchestrator, _) = ready_orchestrator().await;
+
+        let first_route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(61))
+        })
+        .await
+        .unwrap();
+        let old_receipt = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            first_route,
+            |_| async { Ok(()) },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+        let old_receipt_copy = old_receipt.clone();
+
+        begin_detached_route_recovery(&mut orchestrator, "qwen-4b", old_receipt).unwrap();
+        orchestrator.recover_until_ready("qwen-4b").await.unwrap();
+        attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(62))
+        })
+        .await
+        .unwrap();
+
+        let current_receipt = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            LocalRouteAttachmentId(62),
+            |_| async { Ok(()) },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            begin_detached_route_recovery(&mut orchestrator, "qwen-4b", old_receipt_copy).is_err()
+        );
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
+
+        begin_detached_route_recovery(&mut orchestrator, "qwen-4b", current_receipt).unwrap();
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
             Some(NodeState::Starting)
         );
     }
