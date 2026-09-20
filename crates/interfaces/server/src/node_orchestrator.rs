@@ -74,6 +74,7 @@ struct ModelWorkload {
     plan: Option<ProcessPlan>,
     process: Option<ProcessHandle>,
     attachment_id: Option<LocalRouteAttachmentId>,
+    detached_attachment_id: Option<LocalRouteAttachmentId>,
     unsupported: Option<LocalModelUnsupported>,
 }
 
@@ -221,6 +222,7 @@ where
         {
             let workload = self.workloads.get_mut(model).expect("workload must exist");
             workload.attachment_id = Some(attachment_id);
+            workload.detached_attachment_id = None;
             if let Err(error) = workload
                 .reconciler
                 .observe(ReconcileEvidence::RouterAttached)
@@ -255,15 +257,30 @@ where
             );
         }
         workload.attachment_id = None;
+        workload.detached_attachment_id = Some(attachment_id);
         Ok(())
     }
 
-    pub(crate) fn begin_recovery(&mut self, model: &str) -> anyhow::Result<()> {
+    pub(crate) fn begin_recovery(
+        &mut self,
+        model: &str,
+        detached_attachment_id: LocalRouteAttachmentId,
+    ) -> anyhow::Result<()> {
         let workload = self
             .workloads
             .get_mut(model)
             .ok_or_else(|| anyhow::anyhow!("workload missing for model '{model}'"))?;
+
+        if workload.detached_attachment_id != Some(detached_attachment_id) {
+            anyhow::bail!(
+                "detached route receipt mismatch for model '{model}': expected {:?}, got {:?}",
+                workload.detached_attachment_id,
+                detached_attachment_id
+            );
+        }
+
         workload.reconciler.retry()?;
+        workload.detached_attachment_id = None;
         self.publish_state(model);
         Ok(())
     }
