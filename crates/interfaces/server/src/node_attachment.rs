@@ -1,38 +1,70 @@
 use crate::node_orchestrator::{LocalPreparationOutcome, ModelDemand, NodeOrchestrator};
-use crate::node_request::NodeRequestState;
 use burncloud_node_runtime::{
-    ArtifactPreparer, DemandReconciler, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe,
-    ReconcileEvidence, RuntimeAdapter, RuntimePreparer,
+    ArtifactPreparer, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe, RuntimeAdapter,
+    RuntimePreparer,
 };
+use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_service_models::{LocalModelUnsupported, ModelResolver};
 use std::future::Future;
 
 /// Proof that the exact route attachment was removed before recovery begins.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DetachedRoute<T>(pub T);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetachedRoute {
+    model: String,
+    attachment_id: LocalRouteAttachmentId,
+}
+
+impl DetachedRoute {
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    pub const fn attachment_id(&self) -> LocalRouteAttachmentId {
+        self.attachment_id
+    }
+}
 
 /// Final result of composing local preparation with the existing routing path.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LocalRouteOutcome<T> {
-    Routable(T),
+pub enum LocalRouteOutcome {
+    Routable(LocalRouteAttachmentId),
     Unsupported(LocalModelUnsupported),
 }
 
-/// Execute the traffic-owned attachment side effect and record routing evidence
+/// Execute the Traffic-owned attachment side effect and record routing evidence
 /// only after it succeeds.
-pub async fn attach_ready_node_route<T, F, Fut>(
-    reconciler: &mut DemandReconciler,
+///
+/// If Traffic attachment fails, READY must not become a permanent pseudo-progress
+/// state: the model workload converges to Failed and request-side
+/// MODEL_PREPARING stops.
+pub async fn attach_ready_node_route<M, T, H, A, R, P, Q, E, F, Fut>(
+    orchestrator: &mut NodeOrchestrator<M, T, H, A, R, P, Q, E>,
     model: &str,
-    request_state: &NodeRequestState,
     attach: F,
-) -> anyhow::Result<T>
+) -> anyhow::Result<LocalRouteAttachmentId>
 where
+    M: ModelResolver,
+    T: RuntimeAdapter,
+    H: HardwareProbe,
+    A: ArtifactPreparer,
+    R: RuntimePreparer,
+    P: ProcessManager,
+    Q: ReadinessProbe,
+    E: HealthProbe,
     F: FnOnce() -> Fut,
-    Fut: Future<Output = anyhow::Result<T>>,
+    Fut: Future<Output = anyhow::Result<LocalRouteAttachmentId>>,
 {
-    let attachment_id = attach().await?;
-    reconciler.observe(ReconcileEvidence::RouterAttached)?;
-    request_state.publish(model, reconciler.state());
+    // Validate the lifecycle gate before creating any Traffic side effect.
+    orchestrator.ensure_ready_for_attachment(model)?;
+
+    let attachment_id = match attach().await {
+        Ok(attachment_id) => attachment_id,
+        Err(error) => {
+            orchestrator.mark_failed(model)?;
+            return Err(error);
+        }
+    };
+    orchestrator.record_attachment(model, attachment_id)?;
     Ok(attachment_id)
 }
 
@@ -41,11 +73,11 @@ where
 ///
 /// The caller supplies the Traffic-owned side effect. This application seam
 /// never creates a second router and never invents a local endpoint.
-pub async fn prepare_and_attach_node_route<M, T, H, A, R, P, Q, E, I, F, Fut>(
+pub async fn prepare_and_attach_node_route<M, T, H, A, R, P, Q, E, F, Fut>(
     orchestrator: &mut NodeOrchestrator<M, T, H, A, R, P, Q, E>,
     demand: ModelDemand,
     attach: F,
-) -> anyhow::Result<LocalRouteOutcome<I>>
+) -> anyhow::Result<LocalRouteOutcome>
 where
     M: ModelResolver,
     T: RuntimeAdapter,
@@ -56,26 +88,24 @@ where
     Q: ReadinessProbe,
     E: HealthProbe,
     F: FnOnce(String, String) -> Fut,
-    Fut: Future<Output = anyhow::Result<I>>,
+    Fut: Future<Output = anyhow::Result<LocalRouteAttachmentId>>,
 {
     let model = demand.model.clone();
     match orchestrator.prepare_until_ready(demand).await? {
         LocalPreparationOutcome::Unsupported(reason) => Ok(LocalRouteOutcome::Unsupported(reason)),
+        LocalPreparationOutcome::Routable(attachment_id) => {
+            Ok(LocalRouteOutcome::Routable(attachment_id))
+        }
         LocalPreparationOutcome::Ready => {
             let base_url = orchestrator
-                .active_plan()
+                .workload_plan(&model)
                 .ok_or_else(|| anyhow::anyhow!("ready local runtime has no process plan"))?
                 .local_endpoint
                 .clone();
-            let request_state = orchestrator.request_state();
             let attach_model = model.clone();
-            let attachment_id = attach_ready_node_route(
-                orchestrator.machine_mut().reconciler_mut(),
-                &model,
-                &request_state,
-                || attach(attach_model, base_url),
-            )
-            .await?;
+            let attachment_id =
+                attach_ready_node_route(orchestrator, &model, || attach(attach_model, base_url))
+                    .await?;
             Ok(LocalRouteOutcome::Routable(attachment_id))
         }
     }
@@ -83,82 +113,99 @@ where
 
 /// Fail closed when a routable local runtime becomes unhealthy.
 ///
-/// State is made non-serving first, then Traffic is asked to remove the exact
-/// existing-router attachment. Recovery receives a `DetachedRoute` receipt only
-/// when that side effect succeeds, so callers cannot accidentally reattach over
-/// a route that was never removed.
-pub async fn detach_unhealthy_node_route<T, F, Fut>(
-    reconciler: &mut DemandReconciler,
+/// Traffic quarantine is deliberately first. Only after Existing ModelRouter can
+/// no longer discover/select the local channel do we publish Unhealthy and try
+/// exact deletion. A failed delete therefore leaves a disabled, non-routable
+/// channel and cannot manufacture a recovery receipt.
+pub async fn detach_unhealthy_node_route<M, T, H, A, R, P, Q, E, FQ, QFut, FD, DFut>(
+    orchestrator: &mut NodeOrchestrator<M, T, H, A, R, P, Q, E>,
     model: &str,
-    request_state: &NodeRequestState,
-    attachment_id: T,
-    detach: F,
-) -> anyhow::Result<DetachedRoute<T>>
+    attachment_id: LocalRouteAttachmentId,
+    quarantine: FQ,
+    detach: FD,
+) -> anyhow::Result<DetachedRoute>
 where
-    T: Copy,
-    F: FnOnce(T) -> Fut,
-    Fut: Future<Output = anyhow::Result<()>>,
+    M: ModelResolver,
+    T: RuntimeAdapter,
+    H: HardwareProbe,
+    A: ArtifactPreparer,
+    R: RuntimePreparer,
+    P: ProcessManager,
+    Q: ReadinessProbe,
+    E: HealthProbe,
+    FQ: FnOnce(LocalRouteAttachmentId) -> QFut,
+    QFut: Future<Output = anyhow::Result<()>>,
+    FD: FnOnce(LocalRouteAttachmentId) -> DFut,
+    DFut: Future<Output = anyhow::Result<()>>,
 {
-    reconciler.observe(ReconcileEvidence::BecameUnhealthy)?;
-    request_state.publish(model, reconciler.state());
+    if orchestrator.workload_attachment_id(model) != Some(attachment_id) {
+        anyhow::bail!(
+            "attachment {} does not belong to model '{model}'",
+            attachment_id.0
+        );
+    }
+
+    match orchestrator.workload_state(model) {
+        Some(burncloud_node_runtime::NodeState::Routable) => {
+            // Critical ordering: Traffic truth first, lifecycle state second.
+            quarantine(attachment_id).await?;
+            orchestrator.mark_unhealthy(model)?;
+        }
+        Some(burncloud_node_runtime::NodeState::Unhealthy) => {
+            // A previous delete attempt failed after quarantine succeeded.
+            // Traffic is already fail-closed, so cleanup may be retried without
+            // re-quarantining or changing lifecycle state again.
+        }
+        state => anyhow::bail!("model '{model}' cannot detach local route from state {state:?}"),
+    }
+
+    // Delete is cleanup. If it fails, Traffic remains fail-closed and a later
+    // call may retry this exact attachment while the workload stays Unhealthy.
     detach(attachment_id).await?;
-    Ok(DetachedRoute(attachment_id))
+    orchestrator.clear_attachment(model, attachment_id)?;
+    Ok(DetachedRoute {
+        model: model.to_string(),
+        attachment_id,
+    })
 }
 
 /// Open the recovery rail only after successful route detachment.
-pub fn begin_detached_route_recovery<T>(
-    reconciler: &mut DemandReconciler,
+pub fn begin_detached_route_recovery<M, T, H, A, R, P, Q, E>(
+    orchestrator: &mut NodeOrchestrator<M, T, H, A, R, P, Q, E>,
     model: &str,
-    request_state: &NodeRequestState,
-    _detached: DetachedRoute<T>,
-) -> anyhow::Result<()> {
-    reconciler.retry()?;
-    request_state.publish(model, reconciler.state());
-    Ok(())
+    detached: DetachedRoute,
+) -> anyhow::Result<()>
+where
+    M: ModelResolver,
+    T: RuntimeAdapter,
+    H: HardwareProbe,
+    A: ArtifactPreparer,
+    R: RuntimePreparer,
+    P: ProcessManager,
+    Q: ReadinessProbe,
+    E: HealthProbe,
+{
+    if detached.model() != model {
+        anyhow::bail!(
+            "detached route receipt belongs to model '{}', not '{model}'",
+            detached.model()
+        );
+    }
+    if orchestrator.workload_attachment_id(model).is_some() {
+        anyhow::bail!("model '{model}' still owns a route attachment");
+    }
+    orchestrator.begin_recovery(model, detached.attachment_id())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node_request::NodeRequestState;
     use burncloud_node_runtime::{
         FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
         FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
-        ReconcileAction,
     };
     use burncloud_service_models::FakeModelResolver;
-
-    fn ready_reconciler() -> DemandReconciler {
-        let mut reconciler = DemandReconciler::new();
-        assert_eq!(reconciler.next_action().unwrap(), ReconcileAction::Resolve);
-        reconciler.observe(ReconcileEvidence::Resolved).unwrap();
-        reconciler
-            .observe(ReconcileEvidence::ArtifactPrepared)
-            .unwrap();
-        assert_eq!(
-            reconciler.next_action().unwrap(),
-            ReconcileAction::PrepareRuntime
-        );
-        reconciler
-            .observe(ReconcileEvidence::RuntimePrepared)
-            .unwrap();
-        reconciler
-            .observe(ReconcileEvidence::ProcessStarted)
-            .unwrap();
-        reconciler
-            .observe(ReconcileEvidence::ReadinessVerified)
-            .unwrap();
-        assert_eq!(reconciler.state(), NodeState::Ready);
-        reconciler
-    }
-
-    fn routable_reconciler() -> DemandReconciler {
-        let mut reconciler = ready_reconciler();
-        reconciler
-            .observe(ReconcileEvidence::RouterAttached)
-            .unwrap();
-        assert_eq!(reconciler.state(), NodeState::Routable);
-        reconciler
-    }
 
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
@@ -184,23 +231,50 @@ mod tests {
         )
     }
 
+    async fn ready_orchestrator() -> (
+        NodeOrchestrator<
+            FakeModelResolver,
+            FakeRuntimeAdapter,
+            FakeHardwareProbe,
+            FakeArtifactPreparer,
+            FakeRuntimePreparer,
+            FakeProcessManager,
+            FakeReadinessProbe,
+            FakeHealthProbe,
+        >,
+        NodeRequestState,
+    ) {
+        let request_state = NodeRequestState::default();
+        let mut orchestrator = fake_orchestrator().with_request_state(request_state.clone());
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+        (orchestrator, request_state)
+    }
+
     #[tokio::test]
     async fn successful_existing_route_attachment_is_required_for_routable() {
-        let mut reconciler = ready_reconciler();
-        let request_state = NodeRequestState::default();
-        request_state.publish("qwen-4b", NodeState::Ready);
-        let id = attach_ready_node_route(&mut reconciler, "qwen-4b", &request_state, || async {
-            Ok(42_i32)
+        let (mut orchestrator, request_state) = ready_orchestrator().await;
+        let id = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(42))
         })
         .await
         .unwrap();
-        assert_eq!(id, 42);
-        assert_eq!(reconciler.state(), NodeState::Routable);
+
+        assert_eq!(id, LocalRouteAttachmentId(42));
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Routable)
+        );
+        assert_eq!(
+            orchestrator.workload_attachment_id("qwen-4b"),
+            Some(LocalRouteAttachmentId(42))
+        );
         assert_eq!(
             request_state.state_for("qwen-4b"),
             Some(NodeState::Routable)
         );
-        assert!(reconciler.state().is_serving());
     }
 
     #[tokio::test]
@@ -212,91 +286,322 @@ mod tests {
             |model, base_url| async move {
                 assert_eq!(model, "qwen-4b");
                 assert_eq!(base_url, "http://127.0.0.1:39122");
-                Ok(77_i32)
+                Ok(LocalRouteAttachmentId(77))
             },
         )
         .await
         .unwrap();
 
-        assert_eq!(outcome, LocalRouteOutcome::Routable(77));
         assert_eq!(
-            orchestrator.machine().reconciler().state(),
-            NodeState::Routable
+            outcome,
+            LocalRouteOutcome::Routable(LocalRouteAttachmentId(77))
         );
-        assert!(orchestrator.machine().reconciler().state().is_serving());
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Routable)
+        );
     }
 
     #[tokio::test]
-    async fn failed_existing_route_attachment_must_not_become_routable() {
-        let mut reconciler = ready_reconciler();
-        let request_state = NodeRequestState::default();
-        request_state.publish("qwen-4b", NodeState::Ready);
-        let result: anyhow::Result<i32> =
-            attach_ready_node_route(&mut reconciler, "qwen-4b", &request_state, || async {
-                anyhow::bail!("database write failed")
-            })
-            .await;
+    async fn non_ready_model_cannot_create_attachment_side_effect() {
+        let mut orchestrator = fake_orchestrator();
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let calls_for_attach = calls.clone();
+
+        let result = attach_ready_node_route(&mut orchestrator, "qwen-4b", move || async move {
+            calls_for_attach.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(LocalRouteAttachmentId(999))
+        })
+        .await;
+
         assert!(result.is_err());
-        assert_eq!(reconciler.state(), NodeState::Ready);
-        assert!(!reconciler.state().is_serving());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(orchestrator.workload_state("qwen-4b"), None);
+        assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
     }
 
     #[tokio::test]
-    async fn unhealthy_route_becomes_non_serving_before_detach_and_can_then_recover() {
-        let mut reconciler = routable_reconciler();
-        let request_state = NodeRequestState::default();
-        request_state.publish("qwen-4b", NodeState::Routable);
+    async fn failed_existing_route_attachment_converges_to_failed() {
+        let (mut orchestrator, request_state) = ready_orchestrator().await;
+        let result = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            anyhow::bail!("database write failed")
+        })
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Failed)
+        );
+        assert_eq!(request_state.state_for("qwen-4b"), Some(NodeState::Failed));
+        assert!(request_state.route_miss_response("qwen-4b").is_none());
+        assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
+    }
+
+    #[tokio::test]
+    async fn unhealthy_route_is_quarantined_before_detach_and_can_then_recover() {
+        let (mut orchestrator, request_state) = ready_orchestrator().await;
+        let route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(42))
+        })
+        .await
+        .unwrap();
+
+        let quarantined = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let quarantine_flag = quarantined.clone();
+        let detach_flag = quarantined.clone();
         let detached = detach_unhealthy_node_route(
-            &mut reconciler,
+            &mut orchestrator,
             "qwen-4b",
-            &request_state,
-            42_i32,
-            |id| async move {
-                assert_eq!(id, 42);
+            route,
+            move |id| async move {
+                assert_eq!(id, LocalRouteAttachmentId(42));
+                quarantine_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+            move |id| async move {
+                assert_eq!(id, LocalRouteAttachmentId(42));
+                assert!(detach_flag.load(std::sync::atomic::Ordering::SeqCst));
                 Ok(())
             },
         )
         .await
         .unwrap();
-        assert_eq!(reconciler.state(), NodeState::Unhealthy);
+
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
         assert_eq!(
             request_state.state_for("qwen-4b"),
             Some(NodeState::Unhealthy)
         );
-        assert!(!reconciler.state().is_serving());
+        assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
 
-        begin_detached_route_recovery(&mut reconciler, "qwen-4b", &request_state, detached)
-            .unwrap();
+        begin_detached_route_recovery(&mut orchestrator, "qwen-4b", detached).unwrap();
         assert_eq!(
-            request_state.state_for("qwen-4b"),
+            orchestrator.workload_state("qwen-4b"),
             Some(NodeState::Starting)
-        );
-        assert_eq!(reconciler.state(), NodeState::Starting);
-        assert_eq!(
-            reconciler.next_action().unwrap(),
-            ReconcileAction::StartProcess
         );
     }
 
     #[tokio::test]
     async fn failed_detach_stays_unhealthy_and_cannot_produce_recovery_receipt() {
-        let mut reconciler = routable_reconciler();
-        let request_state = NodeRequestState::default();
-        request_state.publish("qwen-4b", NodeState::Routable);
+        let (mut orchestrator, request_state) = ready_orchestrator().await;
+        let route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(42))
+        })
+        .await
+        .unwrap();
+
         let result = detach_unhealthy_node_route(
-            &mut reconciler,
+            &mut orchestrator,
             "qwen-4b",
-            &request_state,
-            42_i32,
+            route,
+            |_| async { Ok(()) },
             |_| async { anyhow::bail!("existing router detach failed") },
         )
         .await;
+
         assert!(result.is_err());
-        assert_eq!(reconciler.state(), NodeState::Unhealthy);
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
         assert_eq!(
             request_state.state_for("qwen-4b"),
             Some(NodeState::Unhealthy)
         );
-        assert!(!reconciler.state().is_serving());
+        assert_eq!(
+            orchestrator.workload_attachment_id("qwen-4b"),
+            Some(LocalRouteAttachmentId(42))
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_detach_can_retry_cleanup_without_requarantine() {
+        let (mut orchestrator, _) = ready_orchestrator().await;
+        let route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(40))
+        })
+        .await
+        .unwrap();
+
+        let first = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            route,
+            |_| async { Ok(()) },
+            |_| async { anyhow::bail!("first cleanup failed") },
+        )
+        .await;
+        assert!(first.is_err());
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
+
+        let detached = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            route,
+            |_| async { panic!("quarantine must not repeat on cleanup retry") },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(detached.model(), "qwen-4b");
+        assert_eq!(detached.attachment_id(), LocalRouteAttachmentId(40));
+        assert_eq!(orchestrator.workload_attachment_id("qwen-4b"), None);
+
+        begin_detached_route_recovery(&mut orchestrator, "qwen-4b", detached).unwrap();
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Starting)
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_route_receipt_cannot_recover_another_model() {
+        let mut orchestrator = fake_orchestrator();
+
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
+            .await
+            .unwrap();
+        let qwen_route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(41))
+        })
+        .await
+        .unwrap();
+        let qwen_receipt = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            qwen_route,
+            |_| async { Ok(()) },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+
+        orchestrator
+            .prepare_until_ready(ModelDemand::new("deepseek-8b").unwrap())
+            .await
+            .unwrap();
+        let deepseek_route = attach_ready_node_route(&mut orchestrator, "deepseek-8b", || async {
+            Ok(LocalRouteAttachmentId(42))
+        })
+        .await
+        .unwrap();
+        let deepseek_receipt = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "deepseek-8b",
+            deepseek_route,
+            |_| async { Ok(()) },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            orchestrator.workload_state("deepseek-8b"),
+            Some(NodeState::Unhealthy)
+        );
+
+        let result = begin_detached_route_recovery(&mut orchestrator, "deepseek-8b", qwen_receipt);
+        assert!(result.is_err());
+        assert_eq!(
+            orchestrator.workload_state("deepseek-8b"),
+            Some(NodeState::Unhealthy)
+        );
+
+        begin_detached_route_recovery(&mut orchestrator, "deepseek-8b", deepseek_receipt).unwrap();
+        assert_eq!(
+            orchestrator.workload_state("deepseek-8b"),
+            Some(NodeState::Starting)
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_receipt_from_same_model_cannot_recover_latest_detach() {
+        let (mut orchestrator, _) = ready_orchestrator().await;
+
+        let first_route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(61))
+        })
+        .await
+        .unwrap();
+        let old_receipt = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            first_route,
+            |_| async { Ok(()) },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+        let old_receipt_copy = old_receipt.clone();
+
+        begin_detached_route_recovery(&mut orchestrator, "qwen-4b", old_receipt).unwrap();
+        orchestrator.recover_until_ready("qwen-4b").await.unwrap();
+        attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(62))
+        })
+        .await
+        .unwrap();
+
+        let current_receipt = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            LocalRouteAttachmentId(62),
+            |_| async { Ok(()) },
+            |_| async { Ok(()) },
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            begin_detached_route_recovery(&mut orchestrator, "qwen-4b", old_receipt_copy).is_err()
+        );
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Unhealthy)
+        );
+
+        begin_detached_route_recovery(&mut orchestrator, "qwen-4b", current_receipt).unwrap();
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Starting)
+        );
+    }
+
+    #[tokio::test]
+    async fn quarantine_failure_stops_before_unhealthy_or_recovery() {
+        let (mut orchestrator, _) = ready_orchestrator().await;
+        let route = attach_ready_node_route(&mut orchestrator, "qwen-4b", || async {
+            Ok(LocalRouteAttachmentId(42))
+        })
+        .await
+        .unwrap();
+
+        let result = detach_unhealthy_node_route(
+            &mut orchestrator,
+            "qwen-4b",
+            route,
+            |_| async { anyhow::bail!("traffic quarantine failed") },
+            |_| async { panic!("detach must not run after quarantine failure") },
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            orchestrator.workload_state("qwen-4b"),
+            Some(NodeState::Routable)
+        );
+        assert_eq!(
+            orchestrator.workload_attachment_id("qwen-4b"),
+            Some(LocalRouteAttachmentId(42))
+        );
     }
 }

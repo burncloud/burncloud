@@ -88,7 +88,7 @@ impl DemandReconciler {
             (Ready, RouterAttached) => Routable,
             (Ready | Routable, BecameUnhealthy) => Unhealthy,
             (
-                Resolving | PreparingArtifact | PreparingRuntime | Starting | WaitingReady
+                Resolving | PreparingArtifact | PreparingRuntime | Starting | WaitingReady | Ready
                 | Unhealthy,
                 ReconcileEvidence::Failed,
             ) => NodeState::Failed,

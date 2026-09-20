@@ -10,6 +10,7 @@ mod circuit_breaker;
 mod config;
 pub mod exchange_rate;
 mod limiter;
+pub mod local_attachment;
 pub mod model_router;
 pub mod order_type;
 pub mod passthrough;

@@ -46,6 +46,7 @@ impl NodeState {
                 | (WaitingReady, Failed)
                 | (Ready, Routable)
                 | (Ready, Unhealthy)
+                | (Ready, Failed)
                 | (Routable, Unhealthy)
                 | (Unhealthy, Starting)
                 | (Unhealthy, Failed)
