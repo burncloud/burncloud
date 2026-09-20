@@ -1,8 +1,8 @@
 use burncloud_node_runtime::{
     ArtifactPreparer, ArtifactRequest, DemandReconciler, HardwareProbe, HealthProbe,
     NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager,
-    ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence,
-    RuntimeAdapter, RuntimePreparer, RuntimeRequest,
+    ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence, RuntimeAdapter,
+    RuntimePreparer, RuntimeRequest,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_service_models::{
@@ -396,7 +396,9 @@ where
                         .workloads
                         .get(&demand.model)
                         .map(|workload| (workload.runtime.clone(), workload.artifact.clone()))
-                        .ok_or_else(|| anyhow::anyhow!("workload missing for model '{}'", demand.model))?;
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("workload missing for model '{}'", demand.model)
+                        })?;
                     let runtime =
                         runtime.ok_or_else(|| anyhow::anyhow!("runtime receipt missing"))?;
                     let artifact =
@@ -817,11 +819,14 @@ mod tests {
         orchestrator
             .observe(model, ReconcileEvidence::Resolved)
             .unwrap();
-        orchestrator.workloads.get_mut(model).expect("workload").artifact =
-            Some(PreparedArtifact {
-                local_path: "/fake/artifacts/qwen_fake.gguf".into(),
-                verified: true,
-            });
+        orchestrator
+            .workloads
+            .get_mut(model)
+            .expect("workload")
+            .artifact = Some(PreparedArtifact {
+            local_path: "/fake/artifacts/qwen_fake.gguf".into(),
+            verified: true,
+        });
         orchestrator
             .observe(model, ReconcileEvidence::ArtifactPrepared)
             .unwrap();
@@ -873,15 +878,21 @@ mod tests {
             .observe(model, ReconcileEvidence::ArtifactPrepared)
             .unwrap();
         orchestrator.next_action(model).unwrap();
-        orchestrator.workloads.get_mut(model).expect("workload").runtime =
-            Some(PreparedRuntime {
-                executable: "/fake/runtime/llama.cpp/server".into(),
-            });
+        orchestrator
+            .workloads
+            .get_mut(model)
+            .expect("workload")
+            .runtime = Some(PreparedRuntime {
+            executable: "/fake/runtime/llama.cpp/server".into(),
+        });
         orchestrator
             .observe(model, ReconcileEvidence::RuntimePrepared)
             .unwrap();
 
-        assert_eq!(orchestrator.workload_state(model), Some(NodeState::Starting));
+        assert_eq!(
+            orchestrator.workload_state(model),
+            Some(NodeState::Starting)
+        );
 
         assert_eq!(
             orchestrator
