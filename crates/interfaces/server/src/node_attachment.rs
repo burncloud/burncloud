@@ -156,9 +156,7 @@ where
             // Traffic is already fail-closed, so cleanup may be retried without
             // re-quarantining or changing lifecycle state again.
         }
-        state => anyhow::bail!(
-            "model '{model}' cannot detach local route from state {state:?}"
-        ),
+        state => anyhow::bail!("model '{model}' cannot detach local route from state {state:?}"),
     }
 
     // Delete is cleanup. If it fails, Traffic remains fail-closed and a later
