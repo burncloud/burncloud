@@ -75,6 +75,9 @@ jobs:
       - name: Check affected packages
         run: cargo check -p burncloud-router -p burncloud-server
 
+      - name: Node P0 interrupted-preparation invariants
+        run: cargo test -p burncloud-server --lib node_orchestrator::tests::interrupted_
+
       - name: Billing invariants
         run: cargo test -p burncloud-router --test billing_invariants --test quota_tests
 
