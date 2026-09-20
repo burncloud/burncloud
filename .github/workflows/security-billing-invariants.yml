@@ -5,6 +5,7 @@ on:
     paths:
       - "crates/interfaces/server/**"
       - "crates/traffic/router/**"
+      - "crates/platform/node/**"
       - "crates/platform/storage/database/src/**"
       - "crates/traffic/database-router/**"
       - "crates/traffic/service-router-log/**"
@@ -14,6 +15,7 @@ on:
     paths:
       - "crates/interfaces/server/**"
       - "crates/traffic/router/**"
+      - "crates/platform/node/**"
       - "crates/platform/storage/database/src/**"
       - "crates/traffic/database-router/**"
       - "crates/traffic/service-router-log/**"
