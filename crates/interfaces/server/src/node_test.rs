@@ -108,7 +108,10 @@ impl TestHarness {
         })
     }
 
-    fn receipt_by_attachment(&self, attachment_id: LocalRouteAttachmentId) -> Option<DetachedRoute> {
+    fn receipt_by_attachment(
+        &self,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> Option<DetachedRoute> {
         self.receipt_history
             .iter()
             .rev()
@@ -153,7 +156,11 @@ struct RecoveryOptions {
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
-fn api_error(status: StatusCode, code: &str, error: impl std::fmt::Display) -> (StatusCode, Json<Value>) {
+fn api_error(
+    status: StatusCode,
+    code: &str,
+    error: impl std::fmt::Display,
+) -> (StatusCode, Json<Value>) {
     (
         status,
         Json(json!({
@@ -182,10 +189,7 @@ fn router_with_state(state: NodeTestApiState) -> Router {
         .route("/test/node/models", get(list_models))
         .route("/test/node/demand", post(demand_model))
         .route("/test/node/models/{model}", get(model_status))
-        .route(
-            "/test/node/models/{model}/unhealthy",
-            post(mark_unhealthy),
-        )
+        .route("/test/node/models/{model}/unhealthy", post(mark_unhealthy))
         .route("/test/node/models/{model}/recover", post(recover_model))
         .with_state(state)
 }
@@ -220,9 +224,8 @@ async fn demand_model(
     Query(options): Query<DemandOptions>,
     Json(request): Json<DemandRequest>,
 ) -> ApiResult {
-    let demand = ModelDemand::new(request.model.clone()).map_err(|error| {
-        api_error(StatusCode::BAD_REQUEST, "invalid_model_demand", error)
-    })?;
+    let demand = ModelDemand::new(request.model.clone())
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, "invalid_model_demand", error))?;
 
     let mut harness = state.inner.lock().await;
     let model = demand.model.clone();
@@ -231,23 +234,19 @@ async fn demand_model(
     let next_attachment = harness.next_attachment.clone();
     let fail_attach = options.attach.as_deref() == Some("fail");
 
-    let outcome = prepare_and_attach_node_route(
-        &mut harness.orchestrator,
-        demand,
-        move |_, _| {
-            let effects = effects.clone();
-            let next_attachment = next_attachment.clone();
-            async move {
-                effects.attach.fetch_add(1, Ordering::SeqCst);
-                if fail_attach {
-                    anyhow::bail!("injected attach failure");
-                }
-                Ok(LocalRouteAttachmentId(
-                    next_attachment.fetch_add(1, Ordering::SeqCst),
-                ))
+    let outcome = prepare_and_attach_node_route(&mut harness.orchestrator, demand, move |_, _| {
+        let effects = effects.clone();
+        let next_attachment = next_attachment.clone();
+        async move {
+            effects.attach.fetch_add(1, Ordering::SeqCst);
+            if fail_attach {
+                anyhow::bail!("injected attach failure");
             }
-        },
-    )
+            Ok(LocalRouteAttachmentId(
+                next_attachment.fetch_add(1, Ordering::SeqCst),
+            ))
+        }
+    })
     .await
     .map_err(|error| api_error(StatusCode::CONFLICT, "node_demand_failed", error))?;
 
@@ -307,7 +306,9 @@ async fn mark_unhealthy(
     .await
     .map_err(|error| api_error(StatusCode::CONFLICT, "node_unhealthy_failed", error))?;
 
-    harness.latest_detached.insert(model.clone(), detached.attachment_id());
+    harness
+        .latest_detached
+        .insert(model.clone(), detached.attachment_id());
     harness.receipt_history.push(detached);
     Ok(Json(harness.response_for(&model)))
 }
@@ -321,13 +322,17 @@ async fn recover_model(
 
     let requested_attachment = match options.attachment_id {
         Some(id) => LocalRouteAttachmentId(id),
-        None => harness.latest_detached.get(&model).copied().ok_or_else(|| {
-            api_error(
-                StatusCode::CONFLICT,
-                "detached_receipt_missing",
-                format!("model '{model}' has no latest detached route receipt"),
-            )
-        })?,
+        None => harness
+            .latest_detached
+            .get(&model)
+            .copied()
+            .ok_or_else(|| {
+                api_error(
+                    StatusCode::CONFLICT,
+                    "detached_receipt_missing",
+                    format!("model '{model}' has no latest detached route receipt"),
+                )
+            })?,
     };
 
     let receipt = harness
@@ -358,20 +363,16 @@ async fn recover_model(
 
     let effects = harness.effects_for(&model);
     let next_attachment = harness.next_attachment.clone();
-    crate::node_attachment::attach_ready_node_route(
-        &mut harness.orchestrator,
-        &model,
-        move || {
-            let effects = effects.clone();
-            let next_attachment = next_attachment.clone();
-            async move {
-                effects.attach.fetch_add(1, Ordering::SeqCst);
-                Ok(LocalRouteAttachmentId(
-                    next_attachment.fetch_add(1, Ordering::SeqCst),
-                ))
-            }
-        },
-    )
+    crate::node_attachment::attach_ready_node_route(&mut harness.orchestrator, &model, move || {
+        let effects = effects.clone();
+        let next_attachment = next_attachment.clone();
+        async move {
+            effects.attach.fetch_add(1, Ordering::SeqCst);
+            Ok(LocalRouteAttachmentId(
+                next_attachment.fetch_add(1, Ordering::SeqCst),
+            ))
+        }
+    })
     .await
     .map_err(|error| api_error(StatusCode::CONFLICT, "node_reattach_failed", error))?;
 
