@@ -219,10 +219,7 @@ where
         // synchronous, so no observer can see a Routable request projection
         // without the workload already owning the exact attachment identity.
         {
-            let workload = self
-                .workloads
-                .get_mut(model)
-                .expect("workload must exist");
+            let workload = self.workloads.get_mut(model).expect("workload must exist");
             workload.attachment_id = Some(attachment_id);
             if let Err(error) = workload
                 .reconciler
@@ -437,9 +434,8 @@ where
                 }
                 ReconcileAction::Noop => match self.workload_state(&demand.model) {
                     Some(NodeState::Routable) => {
-                        let attachment_id = self
-                            .workload_attachment_id(&demand.model)
-                            .ok_or_else(|| {
+                        let attachment_id =
+                            self.workload_attachment_id(&demand.model).ok_or_else(|| {
                                 anyhow::anyhow!(
                                     "routable model '{}' has no route attachment receipt",
                                     demand.model
@@ -764,10 +760,7 @@ mod tests {
             .prepare_until_ready(ModelDemand::new("qwen-4b").unwrap())
             .await
             .unwrap();
-        assert!(matches!(
-            repeated,
-            LocalPreparationOutcome::Unsupported(_)
-        ));
+        assert!(matches!(repeated, LocalPreparationOutcome::Unsupported(_)));
         assert_eq!(
             orchestrator.workload_state("qwen-4b"),
             Some(NodeState::LocalUnsupported)
