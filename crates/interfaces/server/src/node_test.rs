@@ -16,7 +16,7 @@ use burncloud_service_models::FakeModelResolver;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -54,7 +54,7 @@ struct TestHarness {
     receipt_history: Vec<DetachedRoute>,
     latest_detached: HashMap<String, LocalRouteAttachmentId>,
     effects: HashMap<String, Arc<EffectCounters>>,
-    next_attachment: Arc<AtomicU64>,
+    next_attachment: Arc<AtomicI32>,
 }
 
 impl TestHarness {
@@ -76,7 +76,7 @@ impl TestHarness {
             receipt_history: Vec::new(),
             latest_detached: HashMap::new(),
             effects: HashMap::new(),
-            next_attachment: Arc::new(AtomicU64::new(100)),
+            next_attachment: Arc::new(AtomicI32::new(100)),
         }
     }
 
@@ -151,7 +151,7 @@ struct UnhealthyOptions {
 
 #[derive(Debug, Default, Deserialize)]
 struct RecoveryOptions {
-    attachment_id: Option<u64>,
+    attachment_id: Option<i32>,
 }
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
