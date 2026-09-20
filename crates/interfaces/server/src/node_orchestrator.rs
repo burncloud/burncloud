@@ -1,7 +1,7 @@
 use burncloud_node_runtime::{
     ArtifactPreparer, ArtifactRequest, DemandReconciler, HardwareProbe, HealthProbe,
     NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager,
-    ProcessPlan, ReadinessProbe, ReadinessTarget, ReconcileAction, ReconcileEvidence,
+    ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence,
     RuntimeAdapter, RuntimePreparer, RuntimeRequest,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
@@ -755,6 +755,142 @@ mod tests {
             orchestrator.workload_state("qwen-4b"),
             Some(NodeState::Routable)
         );
+    }
+
+    #[tokio::test]
+    async fn interrupted_preparing_artifact_reuses_persisted_resolution_receipt() {
+        let mut orchestrator = fake_orchestrator();
+        let model = "qwen-4b";
+
+        assert_eq!(
+            orchestrator.next_action(model).unwrap(),
+            ReconcileAction::Resolve
+        );
+        orchestrator
+            .workloads
+            .get_mut(model)
+            .expect("workload")
+            .resolved = Some(ResolvedModel {
+            model: model.into(),
+            artifact_source: "qwen/fake.gguf".into(),
+            artifact_digest: Some("sha256:fake".into()),
+            runtime: "llama.cpp".into(),
+            runtime_version: Some("fake-v0".into()),
+        });
+        orchestrator
+            .observe(model, ReconcileEvidence::Resolved)
+            .unwrap();
+
+        assert_eq!(
+            orchestrator.workload_state(model),
+            Some(NodeState::PreparingArtifact)
+        );
+
+        // A new orchestration call must continue from the workload receipt,
+        // not depend on a previous function-local variable.
+        assert_eq!(
+            orchestrator
+                .prepare_until_ready(ModelDemand::new(model).unwrap())
+                .await
+                .unwrap(),
+            LocalPreparationOutcome::Ready
+        );
+        assert_eq!(orchestrator.workload_state(model), Some(NodeState::Ready));
+    }
+
+    #[tokio::test]
+    async fn interrupted_preparing_runtime_reuses_persisted_artifact_receipt() {
+        let mut orchestrator = fake_orchestrator();
+        let model = "qwen-4b";
+
+        orchestrator.next_action(model).unwrap();
+        {
+            let workload = orchestrator.workloads.get_mut(model).expect("workload");
+            workload.resolved = Some(ResolvedModel {
+                model: model.into(),
+                artifact_source: "qwen/fake.gguf".into(),
+                artifact_digest: Some("sha256:fake".into()),
+                runtime: "llama.cpp".into(),
+                runtime_version: Some("fake-v0".into()),
+            });
+        }
+        orchestrator
+            .observe(model, ReconcileEvidence::Resolved)
+            .unwrap();
+        orchestrator.workloads.get_mut(model).expect("workload").artifact =
+            Some(PreparedArtifact {
+                local_path: "/fake/artifacts/qwen_fake.gguf".into(),
+                verified: true,
+            });
+        orchestrator
+            .observe(model, ReconcileEvidence::ArtifactPrepared)
+            .unwrap();
+
+        assert_eq!(
+            orchestrator.next_action(model).unwrap(),
+            ReconcileAction::PrepareRuntime
+        );
+        assert_eq!(
+            orchestrator.workload_state(model),
+            Some(NodeState::PreparingRuntime)
+        );
+
+        assert_eq!(
+            orchestrator
+                .prepare_until_ready(ModelDemand::new(model).unwrap())
+                .await
+                .unwrap(),
+            LocalPreparationOutcome::Ready
+        );
+        assert_eq!(orchestrator.workload_state(model), Some(NodeState::Ready));
+    }
+
+    #[tokio::test]
+    async fn interrupted_starting_reuses_persisted_runtime_and_artifact_receipts() {
+        let mut orchestrator = fake_orchestrator();
+        let model = "qwen-4b";
+
+        orchestrator.next_action(model).unwrap();
+        {
+            let workload = orchestrator.workloads.get_mut(model).expect("workload");
+            workload.resolved = Some(ResolvedModel {
+                model: model.into(),
+                artifact_source: "qwen/fake.gguf".into(),
+                artifact_digest: Some("sha256:fake".into()),
+                runtime: "llama.cpp".into(),
+                runtime_version: Some("fake-v0".into()),
+            });
+        }
+        orchestrator
+            .observe(model, ReconcileEvidence::Resolved)
+            .unwrap();
+        orchestrator.workloads.get_mut(model).expect("workload").artifact =
+            Some(PreparedArtifact {
+                local_path: "/fake/artifacts/qwen_fake.gguf".into(),
+                verified: true,
+            });
+        orchestrator
+            .observe(model, ReconcileEvidence::ArtifactPrepared)
+            .unwrap();
+        orchestrator.next_action(model).unwrap();
+        orchestrator.workloads.get_mut(model).expect("workload").runtime =
+            Some(PreparedRuntime {
+                executable: "/fake/runtime/llama.cpp/server".into(),
+            });
+        orchestrator
+            .observe(model, ReconcileEvidence::RuntimePrepared)
+            .unwrap();
+
+        assert_eq!(orchestrator.workload_state(model), Some(NodeState::Starting));
+
+        assert_eq!(
+            orchestrator
+                .prepare_until_ready(ModelDemand::new(model).unwrap())
+                .await
+                .unwrap(),
+            LocalPreparationOutcome::Ready
+        );
+        assert_eq!(orchestrator.workload_state(model), Some(NodeState::Ready));
     }
 
     #[tokio::test]
