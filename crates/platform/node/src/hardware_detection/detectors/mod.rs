@@ -25,4 +25,17 @@ pub fn ensure_runtime_compatible(runtime:&str,compatible:bool,reason:&str)->Resu
 pub fn max_available_nvidia_vram_bytes(profile:&HardwareProfile)->Option<u64>{profile.gpu.iter().filter(|g|g.vendor==GpuVendor::Nvidia).filter_map(|g|g.vram_free_mb).map(|m|m.saturating_mul(1024*1024)).max()}
 
 pub(crate) fn cache_path()->String { if let Ok(v)=std::env::var("BURNCLOUD_MODEL_CACHE"){return v} if cfg!(windows){std::env::var("LOCALAPPDATA").unwrap_or_else(|_|".".into())+"/BurnCloud/models"}else if cfg!(target_os="macos"){std::env::var("HOME").unwrap_or_else(|_|".".into())+"/Library/Application Support/BurnCloud/models"}else{std::env::var("HOME").unwrap_or_else(|_|".".into())+"/.local/share/burncloud/models"} }
-pub(crate) fn disk(path:&str)->(Option<u64>,Option<u64>){if cfg!(unix){if let Ok(s)=command("df", &["-m","-P",path]){if let Ok((t,a))=parse_df_output(&s){return(Some(t),Some(a))}}} (None,None)}
+pub(crate) fn disk(path:&str)->(Option<u64>,Option<u64>){
+    if cfg!(unix){if let Ok(s)=command("df", &["-m","-P",path]){if let Ok((t,a))=parse_df_output(&s){return(Some(t),Some(a))}}}
+    if cfg!(windows) {
+        let drive: String = path.chars().take(2).collect();
+        if drive.len() == 2 && drive.as_bytes().get(1) == Some(&b':') {
+            let script = format!(r#"$d=Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='{}'"; if($d){{"$($d.Size),$($d.FreeSpace)"}}"#, drive);
+            if let Ok(s) = command("powershell", &["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script]) {
+                let values: Vec<u64> = s.trim().split(',').filter_map(|v| v.trim().parse().ok()).collect();
+                if values.len() == 2 { return (Some(values[0] / (1024 * 1024)), Some(values[1] / (1024 * 1024))); }
+            }
+        }
+    }
+    (None,None)
+}

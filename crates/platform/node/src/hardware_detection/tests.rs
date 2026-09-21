@@ -13,4 +13,6 @@ mod tests {
     fn resource_none_is_unknown() { assert!(ensure_ram(1,None).is_err()); assert!(ensure_vram(1,None).is_err()); }
     #[test]
     fn max_gpu_uses_free_vram() { let p=HardwareProfile{os:super::super::hardware_profile::OsInfo{name:"x".into(),version:None,arch:"x".into()},cpu:super::super::hardware_profile::CpuInfo{arch:"x".into(),physical_cores:None,logical_cores:None,instruction_sets:vec![]},memory:super::super::hardware_profile::MemoryInfo{total_mb:None,available_mb:None},gpu:vec![GpuInfo{vendor:GpuVendor::Nvidia,model:"a".into(),vram_total_mb:Some(1),vram_free_mb:Some(2),driver_version:None,diagnostic:None}],disk:super::super::hardware_profile::DiskInfo{model_cache_path:"x".into(),total_mb:None,available_mb:None}}; assert_eq!(max_available_nvidia_vram_bytes(&p),Some(2*1024*1024)); }
+
+
 }
