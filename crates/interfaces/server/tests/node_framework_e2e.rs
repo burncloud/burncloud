@@ -1,6 +1,9 @@
 use burncloud_node_runtime::{
     FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, HealthError, HealthProbe,
+    NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle,
+    ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget,
+    RuntimeAdapter, RuntimeAdapterError,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_server::node_attachment::{
@@ -10,6 +13,107 @@ use burncloud_server::node_attachment::{
 use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
 use burncloud_server::node_request::NodeRequestState;
 use burncloud_service_models::FakeModelResolver;
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc, Mutex,
+};
+
+#[derive(Debug, Clone)]
+struct RecordingRuntimeAdapter {
+    inputs: Arc<Mutex<Option<(PreparedRuntime, PreparedArtifact)>>>,
+    plan: ProcessPlan,
+}
+
+#[async_trait::async_trait]
+impl RuntimeAdapter for RecordingRuntimeAdapter {
+    async fn plan(
+        &self,
+        runtime: &PreparedRuntime,
+        artifact: &PreparedArtifact,
+    ) -> Result<ProcessPlan, RuntimeAdapterError> {
+        *self.inputs.lock().unwrap() = Some((runtime.clone(), artifact.clone()));
+        Ok(self.plan.clone())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FailingRuntimeAdapter {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl RuntimeAdapter for FailingRuntimeAdapter {
+    async fn plan(
+        &self,
+        _runtime: &PreparedRuntime,
+        _artifact: &PreparedArtifact,
+    ) -> Result<ProcessPlan, RuntimeAdapterError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Err(RuntimeAdapterError::PlanFailed(
+            "intentional fake planning failure".into(),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct RecordingProcessManager {
+    started: Arc<Mutex<Option<ProcessSpec>>>,
+}
+
+#[async_trait::async_trait]
+impl ProcessManager for RecordingProcessManager {
+    async fn start(&self, spec: ProcessSpec) -> Result<ProcessHandle, ProcessError> {
+        *self.started.lock().unwrap() = Some(spec);
+        Ok(ProcessHandle { pid: 574 })
+    }
+
+    async fn stop(&self, _handle: ProcessHandle) -> Result<(), ProcessError> {
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct RecordingReadinessProbe {
+    target: Arc<Mutex<Option<ReadinessTarget>>>,
+}
+
+#[async_trait::async_trait]
+impl ReadinessProbe for RecordingReadinessProbe {
+    async fn wait_ready(&self, target: ReadinessTarget) -> Result<(), ReadinessError> {
+        *self.target.lock().unwrap() = Some(target);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct RecordingHealthProbe {
+    target: Arc<Mutex<Option<ReadinessTarget>>>,
+}
+
+#[async_trait::async_trait]
+impl HealthProbe for RecordingHealthProbe {
+    async fn is_healthy(&self, target: ReadinessTarget) -> Result<bool, HealthError> {
+        *self.target.lock().unwrap() = Some(target);
+        Ok(true)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PendingProcessManager {
+    entered: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl ProcessManager for PendingProcessManager {
+    async fn start(&self, _spec: ProcessSpec) -> Result<ProcessHandle, ProcessError> {
+        self.entered.store(true, Ordering::SeqCst);
+        std::future::pending().await
+    }
+
+    async fn stop(&self, _handle: ProcessHandle) -> Result<(), ProcessError> {
+        Ok(())
+    }
+}
 
 fn fake_orchestrator() -> NodeOrchestrator<
     FakeModelResolver,
@@ -396,4 +500,164 @@ async fn failed_detach_cannot_enter_recovery_rail() {
         node.workload_attachment_id("qwen-4b"),
         Some(LocalRouteAttachmentId(303))
     );
+}
+
+#[tokio::test]
+async fn injected_runtime_adapter_plan_flows_unchanged_to_every_consumer() {
+    let plan = ProcessPlan {
+        process: ProcessSpec {
+            program: "/fake/adapter/runner".into(),
+            args: vec!["fake-argument".into()],
+        },
+        readiness: ReadinessTarget {
+            endpoint: "fake://runtime/ready".into(),
+        },
+        local_endpoint: "fake://runtime".into(),
+    };
+    let inputs = Arc::new(Mutex::new(None));
+    let adapter = RecordingRuntimeAdapter {
+        inputs: inputs.clone(),
+        plan: plan.clone(),
+    };
+    let processes = RecordingProcessManager::default();
+    let started = processes.started.clone();
+    let readiness = RecordingReadinessProbe::default();
+    let readiness_target = readiness.target.clone();
+    let health = RecordingHealthProbe::default();
+    let health_target = health.target.clone();
+    let mut node = NodeOrchestrator::new(
+        FakeModelResolver,
+        adapter,
+        NodeComposition::start(
+            FakeHardwareProbe::default(),
+            FakeArtifactPreparer,
+            FakeRuntimePreparer,
+            processes,
+            readiness,
+            health,
+        ),
+    );
+    let attached = Arc::new(Mutex::new(None));
+    let attached_by_call = attached.clone();
+
+    let outcome = prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("qwen-4b").unwrap(),
+        move |model, endpoint| {
+            let attached = attached_by_call.clone();
+            async move {
+                *attached.lock().unwrap() = Some((model, endpoint));
+                Ok(LocalRouteAttachmentId(574))
+            }
+        },
+    )
+    .await
+    .unwrap();
+
+    let (runtime, artifact) = inputs.lock().unwrap().clone().unwrap();
+    assert!(!runtime.executable.is_empty());
+    assert!(!artifact.local_path.is_empty());
+    assert!(artifact.verified);
+    assert_eq!(started.lock().unwrap().as_ref(), Some(&plan.process));
+    assert_eq!(
+        readiness_target.lock().unwrap().as_ref(),
+        Some(&plan.readiness)
+    );
+    assert_eq!(
+        health_target.lock().unwrap().as_ref(),
+        Some(&plan.readiness)
+    );
+    assert_eq!(node.workload_plan("qwen-4b"), Some(&plan));
+    assert_eq!(
+        attached.lock().unwrap().clone(),
+        Some(("qwen-4b".into(), plan.local_endpoint.clone()))
+    );
+    assert_eq!(
+        outcome,
+        LocalRouteOutcome::Routable(LocalRouteAttachmentId(574))
+    );
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Routable));
+}
+
+#[tokio::test]
+async fn runtime_adapter_failure_blocks_process_probes_and_attachment() {
+    let adapter_calls = Arc::new(AtomicUsize::new(0));
+    let adapter = FailingRuntimeAdapter {
+        calls: adapter_calls.clone(),
+    };
+    let processes = RecordingProcessManager::default();
+    let started = processes.started.clone();
+    let readiness = RecordingReadinessProbe::default();
+    let readiness_target = readiness.target.clone();
+    let health = RecordingHealthProbe::default();
+    let health_target = health.target.clone();
+    let mut node = NodeOrchestrator::new(
+        FakeModelResolver,
+        adapter,
+        NodeComposition::start(
+            FakeHardwareProbe::default(),
+            FakeArtifactPreparer,
+            FakeRuntimePreparer,
+            processes,
+            readiness,
+            health,
+        ),
+    );
+    let attachment_calls = Arc::new(AtomicUsize::new(0));
+    let calls_by_attach = attachment_calls.clone();
+
+    let result = prepare_and_attach_node_route(
+        &mut node,
+        ModelDemand::new("qwen-4b").unwrap(),
+        move |_, _| {
+            calls_by_attach.fetch_add(1, Ordering::SeqCst);
+            async { Ok(LocalRouteAttachmentId(999)) }
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(adapter_calls.load(Ordering::SeqCst), 1);
+    assert!(started.lock().unwrap().is_none());
+    assert!(readiness_target.lock().unwrap().is_none());
+    assert!(health_target.lock().unwrap().is_none());
+    assert_eq!(attachment_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(node.workload_plan("qwen-4b"), None);
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Failed));
+}
+
+#[tokio::test]
+async fn process_plan_receipt_is_persisted_before_process_start_completes() {
+    let entered = Arc::new(AtomicBool::new(false));
+    let mut node = NodeOrchestrator::new(
+        FakeModelResolver,
+        FakeRuntimeAdapter,
+        NodeComposition::start(
+            FakeHardwareProbe::default(),
+            FakeArtifactPreparer,
+            FakeRuntimePreparer,
+            PendingProcessManager {
+                entered: entered.clone(),
+            },
+            FakeReadinessProbe,
+            FakeHealthProbe,
+        ),
+    );
+
+    {
+        let preparation = node.prepare_until_ready(ModelDemand::new("qwen-4b").unwrap());
+        tokio::pin!(preparation);
+        tokio::select! {
+            result = &mut preparation => panic!("process start unexpectedly completed: {result:?}"),
+            _ = async {
+                while !entered.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+            } => {}
+        }
+    }
+
+    assert!(entered.load(Ordering::SeqCst));
+    assert!(node.workload_plan("qwen-4b").is_some());
+    assert_eq!(node.workload_state("qwen-4b"), Some(NodeState::Starting));
 }
