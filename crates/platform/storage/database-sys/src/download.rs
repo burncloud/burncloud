@@ -9,24 +9,28 @@ use serde::{Deserialize, Serialize};
 pub struct SysDownload {
     /// Download GID (from aria2)
     pub gid: String,
+    /// Download status
+    pub status: String,
     /// JSON array of URIs
     pub uris: String,
+    /// Total bytes
+    pub total_length: Option<i64>,
+    /// Completed bytes
+    pub completed_length: Option<i64>,
+    /// Download speed (bytes/sec)
+    pub download_speed: Option<i64>,
     /// Download directory
     pub download_dir: Option<String>,
     /// Extracted filename
     pub filename: Option<String>,
-    /// Download status
-    pub status: String,
-    /// Total bytes
-    pub total: i64,
-    /// Completed bytes
-    pub completed: i64,
-    /// Download speed (bytes/sec)
-    pub speed: i64,
+    /// Number of connections
+    pub connections: Option<i64>,
+    /// Number of split connections
+    pub split: Option<i64>,
     /// Created timestamp
-    pub created_at: String,
+    pub created_at: Option<String>,
     /// Updated timestamp
-    pub updated_at: String,
+    pub updated_at: Option<String>,
 }
 
 /// Download database
@@ -50,15 +54,17 @@ impl DownloadDB {
                 r#"
             CREATE TABLE IF NOT EXISTS sys_downloads (
                 gid TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'waiting',
                 uris TEXT NOT NULL,
+                total_length INTEGER DEFAULT 0,
+                completed_length INTEGER DEFAULT 0,
+                download_speed INTEGER DEFAULT 0,
                 download_dir TEXT,
                 filename TEXT,
-                status TEXT NOT NULL DEFAULT 'active',
-                total INTEGER NOT NULL DEFAULT 0,
-                completed INTEGER NOT NULL DEFAULT 0,
-                speed INTEGER NOT NULL DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                connections INTEGER DEFAULT 16,
+                split INTEGER DEFAULT 5,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_sys_downloads_status ON sys_downloads(status);
             CREATE INDEX IF NOT EXISTS idx_sys_downloads_created_at ON sys_downloads(created_at);
@@ -83,8 +89,8 @@ impl DownloadDB {
         self.db
             .execute_query_with_params(
                 r#"
-                INSERT INTO sys_downloads (gid, uris, download_dir, filename, status, updated_at)
-                VALUES (?, ?, ?, ?, 'active', ?)
+                INSERT INTO sys_downloads (gid, status, uris, download_dir, filename, updated_at)
+                VALUES (?, 'active', ?, ?, ?, ?)
                 "#,
                 vec![
                     gid.to_string(),
@@ -113,17 +119,17 @@ impl DownloadDB {
     pub async fn update_progress(
         &self,
         gid: &str,
-        total: i64,
-        completed: i64,
-        speed: i64,
+        total_length: i64,
+        completed_length: i64,
+        download_speed: i64,
     ) -> Result<()> {
         self.db
             .execute_query_with_params(
-                "UPDATE sys_downloads SET total = ?, completed = ?, speed = ?, updated_at = ? WHERE gid = ?",
+                "UPDATE sys_downloads SET total_length = ?, completed_length = ?, download_speed = ?, updated_at = ? WHERE gid = ?",
                 vec![
-                    total.to_string(),
-                    completed.to_string(),
-                    speed.to_string(),
+                    total_length.to_string(),
+                    completed_length.to_string(),
+                    download_speed.to_string(),
                     Self::now_string(),
                     gid.to_string(),
                 ],
@@ -149,7 +155,8 @@ impl DownloadDB {
             Some(s) => {
                 self.db
                     .fetch_all_with_params::<SysDownload>(
-                        "SELECT * FROM sys_downloads WHERE status = ? ORDER BY created_at DESC",
+                        "SELECT gid, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, created_at, updated_at \
+                         FROM sys_downloads WHERE status = ? ORDER BY created_at DESC",
                         vec![s.to_string()],
                     )
                     .await
@@ -157,7 +164,8 @@ impl DownloadDB {
             None => {
                 self.db
                     .fetch_all::<SysDownload>(
-                        "SELECT * FROM sys_downloads ORDER BY created_at DESC",
+                        "SELECT gid, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, created_at, updated_at \
+                         FROM sys_downloads ORDER BY created_at DESC",
                     )
                     .await
             }
