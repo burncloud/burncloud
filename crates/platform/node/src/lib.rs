@@ -11,6 +11,7 @@ mod fake;
 mod lifecycle;
 mod preparation;
 mod reconciler;
+mod runtime_adapter;
 mod state;
 
 pub use composition::NodeComposition;
@@ -31,4 +32,7 @@ pub use preparation::{
     RuntimeRequest,
 };
 pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
+pub use runtime_adapter::{
+    LlamaCppNativeAdapter, LlamaCppNativeConfig, SglangDockerAdapter, SglangDockerConfig,
+};
 pub use state::{InvalidNodeTransition, NodeState, NodeStateMachine};
