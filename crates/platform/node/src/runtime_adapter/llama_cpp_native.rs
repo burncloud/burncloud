@@ -68,12 +68,8 @@ impl RuntimeAdapter for LlamaCppNativeAdapter {
         runtime: &PreparedRuntime,
         artifact: &PreparedArtifact,
     ) -> Result<ProcessPlan, RuntimeAdapterError> {
-        let (executable, artifact_path, host) = validate_common_inputs(
-            runtime,
-            artifact,
-            &self.config.host,
-            self.config.port,
-        )?;
+        let (executable, artifact_path, host) =
+            validate_common_inputs(runtime, artifact, &self.config.host, self.config.port)?;
         self.validate_extra_args()?;
 
         let mut args = vec![

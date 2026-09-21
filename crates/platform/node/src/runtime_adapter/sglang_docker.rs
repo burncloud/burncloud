@@ -57,12 +57,8 @@ impl RuntimeAdapter for SglangDockerAdapter {
         runtime: &PreparedRuntime,
         artifact: &PreparedArtifact,
     ) -> Result<ProcessPlan, RuntimeAdapterError> {
-        let (docker_executable, artifact_path, host) = validate_common_inputs(
-            runtime,
-            artifact,
-            &self.config.host,
-            self.config.port,
-        )?;
+        let (docker_executable, artifact_path, host) =
+            validate_common_inputs(runtime, artifact, &self.config.host, self.config.port)?;
         let image = self.image()?;
         let port = self.config.port.to_string();
 

@@ -42,7 +42,11 @@ async fn llama_cpp_native_plan_uses_exact_runtime_artifact_and_port() {
         .unwrap();
 
     assert_eq!(plan.process.program, r"C:\BurnCloud\llama-server.exe");
-    assert!(has_pair(&plan.process.args, "--model", r"D:\models\qwen.gguf"));
+    assert!(has_pair(
+        &plan.process.args,
+        "--model",
+        r"D:\models\qwen.gguf"
+    ));
     assert!(has_pair(&plan.process.args, "--host", "127.0.0.1"));
     assert!(has_pair(&plan.process.args, "--port", "39122"));
     assert_eq!(plan.local_endpoint, "http://127.0.0.1:39122");
@@ -60,7 +64,10 @@ async fn llama_cpp_native_plan_rejects_invalid_inputs_and_reserved_overrides() {
 
     for (executable, model, host, port) in invalid {
         let adapter = LlamaCppNativeAdapter::new(LlamaCppNativeConfig::new(host, port));
-        assert!(adapter.plan(&runtime(executable), &artifact(model)).await.is_err());
+        assert!(adapter
+            .plan(&runtime(executable), &artifact(model))
+            .await
+            .is_err());
     }
 
     let adapter = LlamaCppNativeAdapter::new(
@@ -115,7 +122,11 @@ async fn sglang_docker_plan_contains_image_mount_port_and_server_command() {
         "--volume",
         "/models/qwen:/models/burncloud-artifact:ro"
     ));
-    assert!(plan.process.args.iter().any(|arg| arg == "lmsysorg/sglang:latest"));
+    assert!(plan
+        .process
+        .args
+        .iter()
+        .any(|arg| arg == "lmsysorg/sglang:latest"));
     assert!(has_triplet(
         &plan.process.args,
         "python3",
@@ -144,7 +155,10 @@ async fn sglang_docker_plan_rejects_invalid_executable_image_artifact_host_and_p
 
     for (executable, image, model, host, port) in invalid {
         let adapter = SglangDockerAdapter::new(SglangDockerConfig::new(image, host, port));
-        assert!(adapter.plan(&runtime(executable), &artifact(model)).await.is_err());
+        assert!(adapter
+            .plan(&runtime(executable), &artifact(model))
+            .await
+            .is_err());
     }
 }
 
@@ -158,16 +172,19 @@ async fn runtime_adapter_plans_are_deterministic() {
         llama.plan(&llama_runtime, &llama_artifact).await.unwrap()
     );
 
-    let sglang = SglangDockerAdapter::new(SglangDockerConfig::new(
-        "sglang:latest",
-        "127.0.0.1",
-        39123,
-    ));
+    let sglang =
+        SglangDockerAdapter::new(SglangDockerConfig::new("sglang:latest", "127.0.0.1", 39123));
     let docker_runtime = runtime("docker");
     let docker_artifact = artifact("/models/qwen");
     assert_eq!(
-        sglang.plan(&docker_runtime, &docker_artifact).await.unwrap(),
-        sglang.plan(&docker_runtime, &docker_artifact).await.unwrap()
+        sglang
+            .plan(&docker_runtime, &docker_artifact)
+            .await
+            .unwrap(),
+        sglang
+            .plan(&docker_runtime, &docker_artifact)
+            .await
+            .unwrap()
     );
 }
 
