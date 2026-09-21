@@ -12,6 +12,7 @@ mod lifecycle;
 mod preparation;
 mod reconciler;
 mod state;
+pub mod hardware_detection;
 
 pub use composition::NodeComposition;
 pub use context::NodeContext;
@@ -32,3 +33,4 @@ pub use preparation::{
 };
 pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
 pub use state::{InvalidNodeTransition, NodeState, NodeStateMachine};
+pub use hardware_detection::{CachedHardwareProfile, HardwareError, HardwareProfile as DetectedHardwareProfile};
