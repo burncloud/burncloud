@@ -24,8 +24,8 @@ fn main() -> Result<()> {
 
     match args.as_slice() {
         [_] => {
-            // burncloud.exe (No args)
-            #[cfg(windows)]
+            // Native desktop application (no args).
+            #[cfg(any(windows, target_os = "macos"))]
             {
                 // Start Server in background thread
                 std::thread::spawn(|| {
@@ -48,7 +48,7 @@ fn main() -> Result<()> {
                 burncloud_client::launch_gui_with_tray();
             }
 
-            #[cfg(not(windows))]
+            #[cfg(not(any(windows, target_os = "macos")))]
             {
                 println!("Starting BurnCloud Server with LiveView (Headless Mode)...");
                 run_async_server()?;
@@ -57,12 +57,12 @@ fn main() -> Result<()> {
         [_, subcommand, _rest @ ..] => {
             match subcommand.as_str() {
                 "client" => {
-                    #[cfg(windows)]
+                    #[cfg(any(windows, target_os = "macos"))]
                     burncloud_client::launch_gui_with_tray();
 
-                    #[cfg(not(windows))]
+                    #[cfg(not(any(windows, target_os = "macos")))]
                     {
-                        println!("Desktop GUI is only available on Windows.");
+                        println!("Desktop GUI is only available on Windows and macOS.");
                         println!("On Linux, use 'burncloud server' to start the web dashboard.");
                     }
                 }

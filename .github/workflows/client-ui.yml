@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'Cargo.toml'
+      - 'crates/interfaces/cli/**'
       - 'crates/interfaces/client/**'
       - 'deploy/Dockerfile'
       - '.github/workflows/client-ui.yml'
@@ -63,3 +64,20 @@ jobs:
 
       - name: Check Dioxus Windows desktop client
         run: cargo check -p burncloud-client
+
+  macos-desktop:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Check BurnCloud macOS desktop integration
+        run: cargo check -p burncloud

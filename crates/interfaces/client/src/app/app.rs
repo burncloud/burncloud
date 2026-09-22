@@ -4,12 +4,12 @@ use dioxus::prelude::*;
 
 #[component]
 fn DesktopChrome() -> Element {
-    #[cfg(feature = "desktop")]
+    #[cfg(all(feature = "desktop", target_os = "windows"))]
     {
         return rsx! { crate::desktop_chrome::DesktopTitleBar {} };
     }
 
-    #[cfg(not(feature = "desktop"))]
+    #[cfg(not(all(feature = "desktop", target_os = "windows")))]
     {
         rsx! {}
     }
